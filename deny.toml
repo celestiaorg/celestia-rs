@@ -1,6 +1,11 @@
 [graph]
 all-features = true
 
+# NOTE: as of cargo-deny v0.17, the advisories check crashes when the
+# RUSTSEC database contains CVSS 4.0 advisories (introduced mid-2024). CI
+# currently runs only `check bans licenses sources` for this reason; see
+# .github/workflows/ci.yml. Local runs of `cargo deny check advisories`
+# may also fail until a fixed cargo-deny is released.
 [advisories]
 yanked = "deny"
 ignore = []

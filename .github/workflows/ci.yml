@@ -41,9 +41,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # NOTE: skipping the `advisories` check because cargo-deny < 0.18(?)
+      # crashes on CVSS 4.0 advisories in the RUSTSEC database. Reinstate
+      # `check` (no args) once upstream cargo-deny adds CVSS 4.0 support.
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check
+          command: check bans licenses sources
           arguments: --all-features
 
   fixturegen-build:
