@@ -11,7 +11,7 @@
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
 | 1 | `hash` | 0 | [hash.md](hash.md) | spec ready |
-| 2 | `encoding` | 0 | _to be written_ | pending |
+| 2 | `encoding` | 0 | [encoding.md](encoding.md) | spec ready |
 | 3 | `crypto` | 0 | _to be written_ | pending |
 | 4 | `merkle` | 0 | _to be written_ | pending |
 | 5 | `tendermint-types` | 1 | _to be written_ | pending |
