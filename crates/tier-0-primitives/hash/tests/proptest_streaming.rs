@@ -6,7 +6,7 @@
 // Tests use proptest macros and intentionally unwrap/expect.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use hash::{sha256, Sha256Hasher};
+use hash::{Sha256Hasher, sha256};
 use proptest::prelude::*;
 
 /// Strategy: any byte-vector up to 64 KiB.

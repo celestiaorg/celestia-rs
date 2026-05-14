@@ -6,7 +6,7 @@
 // Tests parse fixtures and use hex / serde utilities freely.
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
-use hash::{ripemd160, sha256, sha512, tmhash_len_prefixed, Sha256Hasher};
+use hash::{Sha256Hasher, ripemd160, sha256, sha512, tmhash_len_prefixed};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -107,8 +107,12 @@ fn tmhash_case_input(case: &TmhashCase) -> Vec<u8> {
         );
         bytes
     } else {
-        let fill = case.fill_byte.expect("fill_byte must be present when input_hex is absent");
-        let len = case.fill_len.expect("fill_len must be present when input_hex is absent");
+        let fill = case
+            .fill_byte
+            .expect("fill_byte must be present when input_hex is absent");
+        let len = case
+            .fill_len
+            .expect("fill_len must be present when input_hex is absent");
         assert_eq!(len, case.input_len);
         vec![fill; len]
     }
