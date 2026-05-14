@@ -6,7 +6,7 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 
 | #   | Status      | Milestone                            | Acceptance test |
 |-----|-------------|--------------------------------------|-----------------|
-| M0  | in-progress | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
+| M0  | completed   | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
 | M1  | pending     | Foundational libraries               | `m1-integration::parse_real_mainnet_block_produces_matching_dah` passes |
 | M2  | pending     | State & storage                      | `m2-integration::apply_mainnet_block_diff_produces_matching_kv_root` passes |
 | M3  | pending     | Tx & ante machinery                  | Tx-validation outcome matches Go for ≥ 1000 mainnet txs |
@@ -23,4 +23,4 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 | M14 | pending     | Mainnet validator                    | Signs blocks on mainnet without double-signs |
 
 ## Current focus
-**M0** — see `docs/superpowers/plans/2026-05-14-celestia-rs-bootstrap.md`.
+**M1** — see `docs/superpowers/specs/m1/_index.md`. Crate 1 (`hash`) spec ready; remaining 9 specs to be written by a follow-up plan.
