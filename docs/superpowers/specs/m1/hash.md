@@ -114,7 +114,7 @@ The fixturegen subcommand emits all four JSON files in one run.
 - [ ] `cargo fmt --check` green.
 - [ ] `cargo llvm-cov -p hash --summary-only` reports ≥ 90 % line coverage.
 - [ ] `crates/tier-0-primitives/hash/README.md` present with purpose / consumers / conformance.
-- [ ] `hash-vectors` scenario registered in BOTH the Go fixturegen (`conformance/fixturegen/cmd/`) AND the Rust `SCENARIOS` const in `xtask/src/refresh_fixtures.rs` (without the Rust entry, `cargo xtask refresh-fixtures --scenario hash-vectors` will error with "no scenarios matched").
+- [ ] Hash fixturegen scenario(s) registered in BOTH the Go fixturegen (`conformance/fixturegen/cmd/`) AND the Rust `SCENARIOS` const in `xtask/src/refresh_fixtures.rs`. Either a single `hash-vectors` scenario (extending the `Scenario` struct to emit multiple files) OR four scenarios `hash-empty`, `hash-short-vectors`, `hash-streaming`, `hash-tmhash` is acceptable.
 - [ ] PR opened as draft with auto-merge enabled; assignee `@rootulp`; PR body uses `Closes` for any tracked issue.
 
 ## Out of scope

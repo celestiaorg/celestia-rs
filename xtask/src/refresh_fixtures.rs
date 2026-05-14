@@ -24,11 +24,33 @@ pub struct Scenario {
     pub output_path: &'static str,
 }
 
-pub const SCENARIOS: &[Scenario] = &[Scenario {
-    name: "bech32-addresses",
-    crate_name: "_bootstrap",
-    output_path: "conformance/fixtures/_bootstrap/bech32-addresses.json",
-}];
+pub const SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "bech32-addresses",
+        crate_name: "_bootstrap",
+        output_path: "conformance/fixtures/_bootstrap/bech32-addresses.json",
+    },
+    Scenario {
+        name: "hash-empty",
+        crate_name: "hash",
+        output_path: "conformance/fixtures/hash/empty.json",
+    },
+    Scenario {
+        name: "hash-short-vectors",
+        crate_name: "hash",
+        output_path: "conformance/fixtures/hash/short-vectors.json",
+    },
+    Scenario {
+        name: "hash-streaming",
+        crate_name: "hash",
+        output_path: "conformance/fixtures/hash/streaming.json",
+    },
+    Scenario {
+        name: "hash-tmhash",
+        crate_name: "hash",
+        output_path: "conformance/fixtures/hash/tmhash.json",
+    },
+];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).
 fn workspace_root() -> PathBuf {

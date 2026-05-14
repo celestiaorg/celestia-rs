@@ -1,0 +1,14 @@
+{
+  "scenario": "hash-tmhash",
+  "source_chain": "n/a (hardcoded inputs exercising uvarint boundaries)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "crypto_packages": [
+    "crypto/sha256 (stdlib)",
+    "encoding/binary.PutUvarint (stdlib, Go-compatible uvarint/LEB-128)"
+  ],
+  "notes": "tmhash = sha256(uvarint(len(input)) || input), matching CometBFT tmhash.Sum but implemented without the CometBFT dependency.",
+  "regen_command": "cargo xtask refresh-fixtures --scenario hash-tmhash"
+}
