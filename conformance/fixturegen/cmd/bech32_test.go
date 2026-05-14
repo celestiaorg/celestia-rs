@@ -1,13 +1,27 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestBech32EmitProducesStableFixture(t *testing.T) {
+// expectedCase pins the exact output values the bech32 emitter must produce
+// for each hardcoded input. These are part of the public-test contract:
+// changing the inputs or the encoding upstream MUST require updating these.
+var expectedCases = []struct {
+	Label      string
+	AccAddress string
+	ValAddress string
+}{
+	{Label: "zero-bytes", AccAddress: "celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzf30as", ValAddress: "celestiavaloper1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq8knktk"},
+	{Label: "all-ones", AccAddress: "celestia1llllllllllllllllllllllllllllllllwcsq66", ValAddress: "celestiavaloper1llllllllllllllllllllllllllllllllt8jevu"},
+	{Label: "sequential", AccAddress: "celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgawu3", ValAddress: "celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5thlh2h"},
+}
+
+func TestBech32EmitProducesExpectedFixture(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "bech32-addresses.json")
 
@@ -40,16 +54,45 @@ func TestBech32EmitProducesStableFixture(t *testing.T) {
 	if fixture.Prefix != "celestia" {
 		t.Errorf("prefix = %q, want %q", fixture.Prefix, "celestia")
 	}
-	if len(fixture.Cases) < 3 {
-		t.Fatalf("expected ≥3 cases, got %d", len(fixture.Cases))
+	if got, want := len(fixture.Cases), len(expectedCases); got != want {
+		t.Fatalf("case count = %d, want %d", got, want)
+	}
+	for i, want := range expectedCases {
+		got := fixture.Cases[i]
+		if got.Label != want.Label {
+			t.Errorf("case %d label = %q, want %q", i, got.Label, want.Label)
+		}
+		if got.AccAddress != want.AccAddress {
+			t.Errorf("case %d (%s) acc_address = %q, want %q", i, want.Label, got.AccAddress, want.AccAddress)
+		}
+		if got.ValAddress != want.ValAddress {
+			t.Errorf("case %d (%s) val_address = %q, want %q", i, want.Label, got.ValAddress, want.ValAddress)
+		}
+	}
+}
+
+func TestBech32EmitIsByteStable(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.json")
+	second := filepath.Join(dir, "second.json")
+
+	if err := EmitBech32(first); err != nil {
+		t.Fatalf("first emit: %v", err)
+	}
+	if err := EmitBech32(second); err != nil {
+		t.Fatalf("second emit: %v", err)
 	}
 
-	for _, c := range fixture.Cases {
-		if len(c.AccAddress) == 0 || c.AccAddress[:9] != "celestia1" {
-			t.Errorf("case %q: acc_address %q does not start with celestia1", c.Label, c.AccAddress)
-		}
-		if len(c.ValAddress) == 0 || c.ValAddress[:16] != "celestiavaloper1" {
-			t.Errorf("case %q: val_address %q does not start with celestiavaloper1", c.Label, c.ValAddress)
-		}
+	a, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatalf("read first: %v", err)
+	}
+	b, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatalf("read second: %v", err)
+	}
+
+	if !bytes.Equal(a, b) {
+		t.Errorf("fixture is not byte-stable across two calls (%d vs %d bytes)", len(a), len(b))
 	}
 }

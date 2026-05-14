@@ -12,9 +12,8 @@ import (
 )
 
 const (
-	bech32Prefix         = "celestia"
-	bech32PrefixValOper  = "celestiavaloper"
-	bech32PrefixConsAddr = "celestiavalcons"
+	bech32Prefix        = "celestia"
+	bech32PrefixValOper = "celestiavaloper"
 )
 
 type testCase struct {
@@ -39,7 +38,6 @@ func EmitBech32(path string) error {
 	cfg := types.GetConfig()
 	cfg.SetBech32PrefixForAccount(bech32Prefix, bech32Prefix+"pub")
 	cfg.SetBech32PrefixForValidator(bech32PrefixValOper, bech32PrefixValOper+"pub")
-	cfg.SetBech32PrefixForConsensusNode(bech32PrefixConsAddr, bech32PrefixConsAddr+"pub")
 	// Do NOT cfg.Seal() — re-running in tests must succeed.
 
 	inputs := []struct {
@@ -84,12 +82,15 @@ func EmitBech32(path string) error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 	body, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal fixture: %w", err)
 	}
 	body = append(body, '\n')
-	return os.WriteFile(path, body, 0o644)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		return fmt.Errorf("write fixture %s: %w", path, err)
+	}
+	return nil
 }
