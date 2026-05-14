@@ -1,0 +1,6 @@
+# Future Git LFS patterns for large conformance fixtures (>10MB).
+# Activate via: git lfs install && git lfs track "<pattern>"
+# conformance/fixtures/**/*.bin.zst filter=lfs diff=lfs merge=lfs -text
+* text=auto eol=lf
+*.rs text diff=rust
+*.go text diff=golang

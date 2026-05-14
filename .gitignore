@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+.DS_Store
+/conformance/fixturegen/fixturegen
+/conformance/fixturegen/*.test
+.idea/
+.vscode/
+*.swp
