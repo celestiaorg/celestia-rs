@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+digest = "0.10"
 sha2 = "0.10"
 ripemd = "0.1"
 
