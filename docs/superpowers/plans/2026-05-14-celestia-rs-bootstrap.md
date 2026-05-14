@@ -30,6 +30,7 @@ rustfmt.toml                                 create
 clippy.toml                                  create
 Cargo.toml                                   create  # workspace manifest
 deny.toml                                    create
+.cargo/config.toml                           create  # `cargo xtask` alias
 xtask/Cargo.toml                             create
 xtask/src/main.rs                            create
 xtask/src/refresh_fixtures.rs                create
@@ -226,6 +227,7 @@ git commit -m "chore: initial repo files (license, gitignore, readme, milestones
 - Create: `clippy.toml`
 - Create: `Cargo.toml`
 - Create: `deny.toml`
+- Create: `.cargo/config.toml`
 
 - [ ] **Step 1: Create `rust-toolchain.toml`**
 
@@ -321,17 +323,31 @@ wildcards = "deny"
 deny = []
 ```
 
-- [ ] **Step 6: Verify workspace structure**
+- [ ] **Step 6: Create `.cargo/config.toml`**
+
+This file defines the `cargo xtask` alias used throughout the project. Without it, `cargo xtask ...` invocations fail with `error: no such subcommand: xtask`.
+
+```toml
+[alias]
+xtask = "run --package xtask --release --"
+```
+
+Then verify directory creation:
+
+Run: `mkdir -p .cargo && ls .cargo/config.toml`
+Expected: `.cargo/config.toml` exists.
+
+- [ ] **Step 7: Verify workspace structure**
 
 Run: `cargo metadata --format-version 1 --no-deps > /dev/null && echo OK`
 Expected: prints `OK` (the workspace parses even though xtask doesn't exist yet — Cargo will warn but exit 0 once xtask is created in Task 3; for now this command will fail because xtask is missing).
 
 If this step fails because `xtask` is not yet a member, that is expected — proceed to Task 3, then re-run after Task 3 step 4.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add rust-toolchain.toml rustfmt.toml clippy.toml Cargo.toml deny.toml
+git add rust-toolchain.toml rustfmt.toml clippy.toml Cargo.toml deny.toml .cargo/config.toml
 git commit -m "chore: pin rust toolchain and configure workspace + cargo-deny"
 ```
 
