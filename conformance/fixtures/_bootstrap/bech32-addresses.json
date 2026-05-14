@@ -1,0 +1,24 @@
+{
+  "scenario": "bech32-addresses",
+  "prefix": "celestia",
+  "cases": [
+    {
+      "label": "zero-bytes",
+      "pubkey_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "acc_address": "celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzf30as",
+      "val_address": "celestiavaloper1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq8knktk"
+    },
+    {
+      "label": "all-ones",
+      "pubkey_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "acc_address": "celestia1llllllllllllllllllllllllllllllllwcsq66",
+      "val_address": "celestiavaloper1llllllllllllllllllllllllllllllllt8jevu"
+    },
+    {
+      "label": "sequential",
+      "pubkey_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "acc_address": "celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgawu3",
+      "val_address": "celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5thlh2h"
+    }
+  ]
+}

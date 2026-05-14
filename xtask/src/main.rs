@@ -7,6 +7,8 @@
 // xtask is an internal CLI tool, not a library — stdout is its primary output.
 #![allow(clippy::print_stdout)]
 
+mod refresh_fixtures;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -25,7 +27,7 @@ enum Cmd {
         #[arg(long)]
         scenario: Option<String>,
         /// Limit regeneration to fixtures for a specific crate.
-        #[arg(long)]
+        #[arg(long = "crate-name")]
         crate_name: Option<String>,
         /// Print what would run without executing.
         #[arg(long)]
@@ -40,18 +42,6 @@ fn main() -> Result<()> {
             scenario,
             crate_name,
             dry_run,
-        } => refresh_fixtures(scenario.as_deref(), crate_name.as_deref(), dry_run),
+        } => refresh_fixtures::run(scenario.as_deref(), crate_name.as_deref(), dry_run),
     }
-}
-
-fn refresh_fixtures(
-    _scenario: Option<&str>,
-    _crate_name: Option<&str>,
-    dry_run: bool,
-) -> Result<()> {
-    if dry_run {
-        println!("[dry-run] would invoke fixturegen");
-        return Ok(());
-    }
-    anyhow::bail!("fixturegen invocation not yet wired (see Task 9)")
 }
