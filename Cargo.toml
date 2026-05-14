@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/tier-0-primitives/hash",
     "xtask",
 ]
 
