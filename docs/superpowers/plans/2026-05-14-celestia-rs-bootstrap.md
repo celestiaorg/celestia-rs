@@ -234,7 +234,7 @@ git commit -m "chore: initial repo files (license, gitignore, readme, milestones
 ```toml
 [toolchain]
 channel = "stable"
-components = ["rustfmt", "clippy", "llvm-tools-preview"]
+components = ["rustfmt", "clippy", "llvm-tools"]
 profile = "minimal"
 ```
 
@@ -386,6 +386,9 @@ clap.workspace = true
 ```rust
 //! Integration tests for the xtask CLI.
 
+// Tests legitimately panic on assertion failures and unwrap result values.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use std::process::Command;
 
 fn xtask_bin() -> &'static str {
@@ -433,6 +436,9 @@ Expected: build failure (no `xtask` binary defined yet) or test failure.
 //! Subcommands:
 //! - `refresh-fixtures` — regenerate conformance fixtures by shelling out to
 //!   the Go program in `conformance/fixturegen/`.
+
+// xtask is an internal CLI tool, not a library — stdout is its primary output.
+#![allow(clippy::print_stdout)]
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -629,7 +635,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: llvm-tools
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
@@ -1070,6 +1076,9 @@ Replace the file with:
 ```rust
 //! Integration tests for the xtask CLI.
 
+// Tests legitimately panic on assertion failures and unwrap result values.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -1156,6 +1165,10 @@ fn workspace_root_is_a_git_repo() {
 //! `conformance/fixturegen/`. Every scenario known to celestia-rs is declared
 //! in [`SCENARIOS`]; subcommand filters apply against this list.
 
+// Internal CLI tool — stdout is the user-facing output channel; expects on
+// `CARGO_MANIFEST_DIR`-derived paths are guaranteed by the build system.
+#![allow(clippy::print_stdout, clippy::expect_used)]
+
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -1238,6 +1251,9 @@ pub fn run(scenario: Option<&str>, crate_name: Option<&str>, dry_run: bool) -> R
 //! Subcommands:
 //! - `refresh-fixtures` — regenerate conformance fixtures by shelling out to
 //!   the Go program in `conformance/fixturegen/`.
+
+// xtask is an internal CLI tool, not a library — stdout is its primary output.
+#![allow(clippy::print_stdout)]
 
 mod refresh_fixtures;
 
