@@ -1,0 +1,31 @@
+# Conformance
+
+This directory holds **golden vectors** generated from Go celestia-app, plus the Go program that generates them. Every Rust crate that has byte-level Go compatibility requirements asserts against fixtures here.
+
+## Layout
+
+```
+conformance/
+├── fixtures/        # committed golden vectors (JSON or zstd-compressed binary)
+│   └── <crate>/<scenario>/<file>.json
+│   └── <crate>/<scenario>/<file>.meta.json   # source chain, height, app version, generating commit
+└── fixturegen/      # Go program that emits fixtures; the only Go in the repo
+```
+
+## Regenerating fixtures
+
+```bash
+cargo xtask refresh-fixtures                       # all scenarios
+cargo xtask refresh-fixtures --scenario bech32-addresses
+cargo xtask refresh-fixtures --crate-name hash
+```
+
+The Rust runner shells out to `go run ./conformance/fixturegen ...`. Go 1.22+ is required for regeneration only; consumers of fixtures (Rust crates) need no Go toolchain.
+
+## When to regenerate
+
+- After mainnet upgrades to a new app version.
+- After adding a new fixture scenario.
+- Never as part of normal feature work — regeneration is a deliberate step that may invalidate test expectations.
+
+Each fixture has a sibling `<file>.meta.json` recording: source chain, height (if applicable), app version, celestia-app commit SHA at generation time, timestamp.
