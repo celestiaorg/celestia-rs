@@ -1,0 +1,69 @@
+{
+  "scenario": "hash-tmhash",
+  "cases": [
+    {
+      "label": "empty",
+      "input_hex": "",
+      "input_len": 0,
+      "tmhash": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    },
+    {
+      "label": "1-byte",
+      "input_hex": "00",
+      "input_len": 1,
+      "tmhash": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "label": "127-bytes",
+      "input_hex": "ababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "input_len": 127,
+      "tmhash": "2342ea7c42168bc22367f544814b4b3c719751aa1638222019aa355ea4ac6748"
+    },
+    {
+      "label": "128-bytes",
+      "input_hex": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "input_len": 128,
+      "tmhash": "15342be11cdb50ec1532338fa29aeb9478cf295894c211e8aef09f48b8271158"
+    },
+    {
+      "label": "200-bytes",
+      "input_hex": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "input_len": 200,
+      "tmhash": "dc81da9e8e0e5740fb7aa60c748b7512a41e08d4f954a1fc834ae3be61d31856"
+    },
+    {
+      "label": "255-bytes",
+      "input_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "input_len": 255,
+      "tmhash": "2462a329a9bd80e2ae9a8e6cd798b684b29d585e645a9c22431e04c853c45b11"
+    },
+    {
+      "label": "1kib",
+      "fill_byte": 66,
+      "fill_len": 1024,
+      "input_len": 1024,
+      "tmhash": "888744ec9ff414cba4c20555ddfc3de293d9f9512bf9b290a4fbb077092c509a"
+    },
+    {
+      "label": "16383-bytes",
+      "fill_byte": 1,
+      "fill_len": 16383,
+      "input_len": 16383,
+      "tmhash": "997a8d02cab54a1b4bbdfdbffb79121064342843a8eafd69aae530ac36a37693"
+    },
+    {
+      "label": "16384-bytes",
+      "fill_byte": 1,
+      "fill_len": 16384,
+      "input_len": 16384,
+      "tmhash": "31e00ec104a8408cb06d9cba1c20626dd9e25be15d1ead5847997a58eabb9224"
+    },
+    {
+      "label": "64kib",
+      "fill_byte": 85,
+      "fill_len": 65536,
+      "input_len": 65536,
+      "tmhash": "9b79ac52df89ee7def38b0cd010ea559196da3bbdc51fad496ec8d16de96795c"
+    }
+  ]
+}

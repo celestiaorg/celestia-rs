@@ -1,0 +1,86 @@
+{
+  "scenario": "hash-streaming",
+  "cases": [
+    {
+      "label": "hello-world-single-chunk",
+      "input_hex": "48656c6c6f2c20576f726c6421",
+      "chunks_hex": [
+        "48656c6c6f2c20576f726c6421"
+      ],
+      "sha256": "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+    },
+    {
+      "label": "hello-world-byte-by-byte",
+      "input_hex": "48656c6c6f2c20576f726c6421",
+      "chunks_hex": [
+        "48",
+        "65",
+        "6c",
+        "6c",
+        "6f",
+        "2c",
+        "20",
+        "57",
+        "6f",
+        "72",
+        "6c",
+        "64",
+        "21"
+      ],
+      "sha256": "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+    },
+    {
+      "label": "abc-long-two-halves",
+      "input_hex": "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071",
+      "chunks_hex": [
+        "6162636462636465636465666465666765666768666768696768696a",
+        "68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071"
+      ],
+      "sha256": "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+    },
+    {
+      "label": "celestia-3-byte-chunks",
+      "input_hex": "63656c6573746961",
+      "chunks_hex": [
+        "63656c",
+        "657374",
+        "6961"
+      ],
+      "sha256": "13569e544705849042059c1e3092cd39a934f4501f3078b0218a8e688cbfd0f9"
+    },
+    {
+      "label": "ten-bytes-individual",
+      "input_hex": "00010203040506070809",
+      "chunks_hex": [
+        "00",
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09"
+      ],
+      "sha256": "1f825aa2f0020ef7cf91dfa30da4668d791c5d4824fc8e41354b89ec05795ab3"
+    },
+    {
+      "label": "empty-single-chunk",
+      "input_hex": "",
+      "chunks_hex": [
+        ""
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "64-bytes-two-halves",
+      "input_hex": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "chunks_hex": [
+        "abababababababababababababababababababababababababababababababab",
+        "abababababababababababababababababababababababababababababababab"
+      ],
+      "sha256": "ec65c8798ecf95902413c40f7b9e6d4b0068885f5f324aba1f9ba1c8e14aea61"
+    }
+  ]
+}
