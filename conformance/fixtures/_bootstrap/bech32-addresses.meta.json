@@ -1,0 +1,9 @@
+{
+  "scenario": "bech32-addresses",
+  "source_chain": "n/a (hardcoded test vectors)",
+  "source_heights": [],
+  "app_version": "n/a (bootstrap fixture)",
+  "celestia_app_commit": "n/a",
+  "cosmos_sdk_version": "v0.50.10",
+  "regen_command": "cargo xtask refresh-fixtures --scenario bech32-addresses"
+}
