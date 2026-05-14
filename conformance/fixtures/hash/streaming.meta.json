@@ -1,0 +1,12 @@
+{
+  "scenario": "hash-streaming",
+  "source_chain": "n/a (hardcoded chunking patterns)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "crypto_packages": [
+    "crypto/sha256 (stdlib)"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario hash-streaming"
+}
