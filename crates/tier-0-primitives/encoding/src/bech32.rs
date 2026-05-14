@@ -1,5 +1,6 @@
 //! Bech32 helpers for Celestia addresses.
 
+use ::bech32::{FromBase32, ToBase32, Variant};
 use core::fmt;
 
 /// Celestia account address human-readable prefix.
@@ -61,13 +62,18 @@ impl From<::bech32::Error> for Error {
 }
 
 /// Encode arbitrary bytes with an explicit bech32 human-readable prefix.
-pub fn encode(_prefix: &str, _bytes: &[u8]) -> Result<String, Error> {
-    Ok(String::new())
+pub fn encode(prefix: &str, bytes: &[u8]) -> Result<String, Error> {
+    ::bech32::encode(prefix, bytes.to_base32(), Variant::Bech32).map_err(Error::from)
 }
 
 /// Decode a bech32 string into its human-readable prefix and data bytes.
-pub fn decode(_input: &str) -> Result<(String, Vec<u8>), Error> {
-    Ok((String::new(), Vec::new()))
+pub fn decode(input: &str) -> Result<(String, Vec<u8>), Error> {
+    let (prefix, data, variant) = ::bech32::decode(input)?;
+    if variant != Variant::Bech32 {
+        return Err(Error::Invalid(::bech32::Error::InvalidChecksum));
+    }
+    let bytes = Vec::<u8>::from_base32(&data)?;
+    Ok((prefix, bytes))
 }
 
 /// Encode a 20-byte Celestia account address.
@@ -76,8 +82,8 @@ pub fn encode_account_address(bytes: &AddressBytes) -> Result<String, Error> {
 }
 
 /// Decode a Celestia account address, enforcing prefix and 20-byte length.
-pub fn decode_account_address(_input: &str) -> Result<AddressBytes, Error> {
-    Ok([0u8; ADDRESS_LENGTH])
+pub fn decode_account_address(input: &str) -> Result<AddressBytes, Error> {
+    decode_address(input, ACCOUNT_PREFIX)
 }
 
 /// Encode a 20-byte Celestia validator operator address.
@@ -86,8 +92,8 @@ pub fn encode_validator_operator_address(bytes: &AddressBytes) -> Result<String,
 }
 
 /// Decode a Celestia validator operator address, enforcing prefix and 20-byte length.
-pub fn decode_validator_operator_address(_input: &str) -> Result<AddressBytes, Error> {
-    Ok([0u8; ADDRESS_LENGTH])
+pub fn decode_validator_operator_address(input: &str) -> Result<AddressBytes, Error> {
+    decode_address(input, VALIDATOR_OPERATOR_PREFIX)
 }
 
 /// Encode a 20-byte Celestia validator consensus address.
@@ -96,6 +102,26 @@ pub fn encode_validator_consensus_address(bytes: &AddressBytes) -> Result<String
 }
 
 /// Decode a Celestia validator consensus address, enforcing prefix and 20-byte length.
-pub fn decode_validator_consensus_address(_input: &str) -> Result<AddressBytes, Error> {
-    Ok([0u8; ADDRESS_LENGTH])
+pub fn decode_validator_consensus_address(input: &str) -> Result<AddressBytes, Error> {
+    decode_address(input, VALIDATOR_CONSENSUS_PREFIX)
+}
+
+fn decode_address(input: &str, expected_prefix: &'static str) -> Result<AddressBytes, Error> {
+    let (actual_prefix, bytes) = decode(input)?;
+    if actual_prefix != expected_prefix {
+        return Err(Error::WrongPrefix {
+            expected: expected_prefix,
+            actual: actual_prefix,
+        });
+    }
+    if bytes.len() != ADDRESS_LENGTH {
+        return Err(Error::WrongLength {
+            expected: ADDRESS_LENGTH,
+            actual: bytes.len(),
+        });
+    }
+
+    let mut out = [0u8; ADDRESS_LENGTH];
+    out.copy_from_slice(&bytes);
+    Ok(out)
 }
