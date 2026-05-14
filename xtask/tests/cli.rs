@@ -34,4 +34,21 @@ fn refresh_fixtures_dry_run_succeeds() {
         "refresh-fixtures --dry-run should succeed; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("[dry-run]"),
+        "dry-run should print a [dry-run] prefix; got: {stdout}"
+    );
+}
+
+#[test]
+fn refresh_fixtures_without_dry_run_fails() {
+    let output = Command::new(xtask_bin())
+        .args(["refresh-fixtures"])
+        .output()
+        .expect("failed to invoke xtask binary");
+    assert!(
+        !output.status.success(),
+        "refresh-fixtures without --dry-run should fail until Task 9 wires it up"
+    );
 }
