@@ -54,7 +54,7 @@ docs/superpowers/specs/m1/hash.md            create
 
 - `Cargo.toml` (root) — workspace manifest only; no package. Member: `xtask`.
 - `xtask/src/main.rs` — clap-driven CLI dispatching to subcommand modules.
-- `xtask/src/refresh_fixtures.rs` — `refresh-fixtures [--scenario <name>] [--crate <name>]` subcommand; shells out to `go run ./conformance/fixturegen ...`.
+- `xtask/src/refresh_fixtures.rs` — `refresh-fixtures [--scenario <name>] [--crate-name <name>]` subcommand; shells out to `go run ./conformance/fixturegen ...`.
 - `conformance/fixturegen/main.go` — CLI entry point; dispatches to subcommands in `cmd/`.
 - `conformance/fixturegen/cmd/cmd.go` — shared command-registration plumbing.
 - `conformance/fixturegen/cmd/bech32.go` — the one initial fixture emitter; produces `conformance/fixtures/_bootstrap/bech32-addresses.json` from hardcoded test vectors using Cosmos SDK address types with the `celestia` bech32 prefix.

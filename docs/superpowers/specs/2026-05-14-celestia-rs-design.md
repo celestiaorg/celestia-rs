@@ -93,7 +93,7 @@ Strict sequential: 1 → 2 → {3, 4} → 5 → {6, 7} → 8 → 9 → 10. Paral
 1. Public API documented (`#![warn(missing_docs)]`).
 2. `cargo test` green; `cargo clippy --all-targets -- -D warnings` green; `cargo fmt --check` green.
 3. Line coverage ≥ 90 % via `cargo-llvm-cov` in CI. Carve-outs allowed only for unreachable error paths, reviewed.
-4. Conformance suite passes; vectors committed under `conformance/fixtures/<crate>/`; regenerable via `cargo xtask refresh-fixtures --crate <name>`.
+4. Conformance suite passes; vectors committed under `conformance/fixtures/<crate>/`; regenerable via `cargo xtask refresh-fixtures --crate-name <name>`.
 5. README: purpose, depends-on, consumers, `## Conformance` section.
 6. CHANGELOG entry; semver 0.x.
 
@@ -179,7 +179,7 @@ Three layers.
   - `fixturegen tx-corpus --count 1000`
   - `fixturegen unit <type> --seed <s>`
   - `fixturegen replay-state --start <h> --count <n>` (M2+)
-- Invoked via `cargo xtask refresh-fixtures [--crate <name>] [--scenario <name>]`.
+- Invoked via `cargo xtask refresh-fixtures [--crate-name <name>] [--scenario <name>]`.
 
 **Conformance test pattern**
 ```rust

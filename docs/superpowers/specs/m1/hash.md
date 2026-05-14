@@ -70,7 +70,7 @@ The crate sets `#![forbid(unsafe_code)]` and `#![warn(missing_docs)]`.
 
 **REQ-2.** `sha256("abc".as_bytes())` returns `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad` (hex).
 
-**REQ-3.** `sha512("".as_bytes())` returns the all-zeros-input SHA-512 vector from FIPS 180-4.
+**REQ-3.** `sha512("".as_bytes())` returns `cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e` (hex). This is the SHA-512 of the empty byte string, per FIPS 180-4.
 
 **REQ-4.** `ripemd160("".as_bytes())` returns `9c1185a5c5e9fc54612808977ee8f548b2258d31` (hex).
 
@@ -106,6 +106,7 @@ The fixturegen subcommand emits all four JSON files in one run.
 
 ## Definition of done
 
+- [ ] Crate created at `crates/tier-0-primitives/hash/` with a `Cargo.toml` that inherits workspace metadata (`edition.workspace = true`, etc.), and the crate path is added to the root `Cargo.toml` `[workspace] members` list.
 - [ ] All REQ-1..REQ-9 covered by unit or property tests.
 - [ ] All four conformance fixture files committed and tested against.
 - [ ] `cargo test -p hash` green.
@@ -113,6 +114,7 @@ The fixturegen subcommand emits all four JSON files in one run.
 - [ ] `cargo fmt --check` green.
 - [ ] `cargo llvm-cov -p hash --summary-only` reports ≥ 90 % line coverage.
 - [ ] `crates/tier-0-primitives/hash/README.md` present with purpose / consumers / conformance.
+- [ ] `hash-vectors` scenario registered in BOTH the Go fixturegen (`conformance/fixturegen/cmd/`) AND the Rust `SCENARIOS` const in `xtask/src/refresh_fixtures.rs` (without the Rust entry, `cargo xtask refresh-fixtures --scenario hash-vectors` will error with "no scenarios matched").
 - [ ] PR opened as draft with auto-merge enabled; assignee `@rootulp`; PR body uses `Closes` for any tracked issue.
 
 ## Out of scope
@@ -130,9 +132,14 @@ The fixturegen subcommand emits all four JSON files in one run.
 
 ## Notes for the implementing agent
 
-1. Write tests **first**. Start by translating REQ-1..REQ-6 into named `#[test]` functions in `crates/tier-0-primitives/hash/src/lib.rs` (or a `tests/` integration file). Run them; they must fail.
-2. Implement the public API to make REQ-1..REQ-8 pass. Use `sha2`, `sha512`, `ripemd` from RustCrypto. Use `unsigned-varint` or hand-rolled LEB128 for the tmhash length prefix.
-3. Add the proptest for REQ-9 once the unit tests are green.
-4. Add the new `hash-vectors` subcommand to fixturegen (mirroring `bech32-addresses`'s shape). Regenerate the four fixture files, commit them.
-5. Add conformance tests that load each fixture file and assert function outputs match.
-6. Verify coverage, fmt, clippy. Open the PR.
+1. **Scaffold the crate.** Create `crates/tier-0-primitives/hash/{Cargo.toml,src/lib.rs}` with workspace-inherited metadata. Add `"crates/tier-0-primitives/hash"` to the root `Cargo.toml` `[workspace] members` list. Confirm `cargo build -p hash` works (with an empty `lib.rs` it will succeed).
+2. **Write tests first.** Translate REQ-1..REQ-6 into named `#[test]` functions in `src/lib.rs` (or a `tests/` integration file). Run them; they must fail (TDD red).
+3. **Implement the public API** to make REQ-1..REQ-8 pass. Use `sha2`, `sha512`, `ripemd` from RustCrypto. Use `unsigned-varint` or hand-rolled LEB128 for the tmhash length prefix.
+4. **Add the proptest** for REQ-9 once the unit tests are green.
+5. **Add the `hash-vectors` fixturegen scenario.** Both sides:
+   - In Go: create `conformance/fixturegen/cmd/hash_vectors.go` mirroring `bech32.go`'s shape. Register it in `cmd.All` in `cmd/cmd.go`.
+   - In Rust: append a `Scenario` entry to `SCENARIOS` in `xtask/src/refresh_fixtures.rs` with `name: "hash-vectors"`, `crate_name: "hash"`, and an `output_path` pointing to `conformance/fixtures/hash/`.
+   - Note: the current `Scenario` struct emits one output file per scenario. `hash-vectors` writes four files (empty.json, short-vectors.json, streaming.json, tmhash.json). Either extend the `Scenario` shape to support multiple outputs, or break `hash-vectors` into four separate `Scenario` entries that share one Go subcommand. Either approach is acceptable; pick one and document it in the PR.
+6. **Regenerate fixtures** with `cargo xtask refresh-fixtures --scenario hash-vectors` and commit the JSON files plus their `.meta.json` sidecars.
+7. **Add conformance tests** that load each fixture file and assert function outputs match.
+8. **Verify coverage, fmt, clippy.** Open the PR.
