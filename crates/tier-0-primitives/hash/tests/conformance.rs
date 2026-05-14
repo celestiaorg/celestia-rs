@@ -8,7 +8,7 @@
 
 use hash::{Sha256Hasher, ripemd160, sha256, sha512, tmhash_len_prefixed};
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 // --------------------------------------------------------------------------
 // Fixture path helper
@@ -22,8 +22,8 @@ fn workspace_root() -> PathBuf {
     for _ in 0..10 {
         let manifest = dir.join("Cargo.toml");
         if manifest.exists() {
-            let body = std::fs::read_to_string(&manifest)
-                .expect("read candidate workspace Cargo.toml");
+            let body =
+                std::fs::read_to_string(&manifest).expect("read candidate workspace Cargo.toml");
             if body.contains("[workspace]") {
                 return dir;
             }
@@ -33,14 +33,6 @@ fn workspace_root() -> PathBuf {
         }
     }
     panic!("no workspace Cargo.toml with [workspace] found above CARGO_MANIFEST_DIR")
-}
-
-fn fixture_path(name: &str) -> PathBuf {
-    workspace_root()
-        .join("conformance")
-        .join("fixtures")
-        .join("hash")
-        .join(name)
 }
 
 // --------------------------------------------------------------------------
@@ -58,12 +50,7 @@ struct HashAllCase {
 }
 
 #[derive(Deserialize)]
-struct EmptyFixture {
-    cases: Vec<HashAllCase>,
-}
-
-#[derive(Deserialize)]
-struct ShortVectorsFixture {
+struct HashAllFixture {
     cases: Vec<HashAllCase>,
 }
 
@@ -103,6 +90,51 @@ fn decode_hex(s: &str) -> Vec<u8> {
     hex::decode(s).expect("valid hex in fixture")
 }
 
+/// Run all four hash assertions for every case in a `HashAllFixture` JSON file.
+///
+/// `relative_path` is relative to `conformance/fixtures/` at the workspace root,
+/// e.g. `"hash/empty.json"`.
+fn assert_hash_all_fixture(relative_path: &str) {
+    let path = workspace_root()
+        .join("conformance/fixtures")
+        .join(relative_path);
+    let body =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let fixture: HashAllFixture =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    for case in &fixture.cases {
+        let input = decode_hex(&case.input_hex);
+        assert_eq!(
+            hex::encode(sha256(&input)),
+            case.sha256,
+            "{}: sha256 mismatch on case {}",
+            relative_path,
+            case.label
+        );
+        assert_eq!(
+            hex::encode(sha512(&input)),
+            case.sha512,
+            "{}: sha512 mismatch on case {}",
+            relative_path,
+            case.label
+        );
+        assert_eq!(
+            hex::encode(ripemd160(&input)),
+            case.ripemd160,
+            "{}: ripemd160 mismatch on case {}",
+            relative_path,
+            case.label
+        );
+        assert_eq!(
+            hex::encode(tmhash_len_prefixed(&input)),
+            case.tmhash,
+            "{}: tmhash mismatch on case {}",
+            relative_path,
+            case.label
+        );
+    }
+}
+
 /// Reconstruct the input bytes from a `TmhashCase`.
 fn tmhash_case_input(case: &TmhashCase) -> Vec<u8> {
     if let Some(ref h) = case.input_hex {
@@ -132,82 +164,17 @@ fn tmhash_case_input(case: &TmhashCase) -> Vec<u8> {
 
 #[test]
 fn conformance_empty() {
-    let path = fixture_path("empty.json");
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let fixture: EmptyFixture = serde_json::from_str(&content).expect("parse empty.json");
-
-    for case in &fixture.cases {
-        let input = decode_hex(&case.input_hex);
-
-        assert_eq!(
-            hex::encode(sha256(&input)),
-            case.sha256,
-            "sha256 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(sha512(&input)),
-            case.sha512,
-            "sha512 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(ripemd160(&input)),
-            case.ripemd160,
-            "ripemd160 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(tmhash_len_prefixed(&input)),
-            case.tmhash,
-            "tmhash mismatch for '{}'",
-            case.label
-        );
-    }
+    assert_hash_all_fixture("hash/empty.json");
 }
 
 #[test]
 fn conformance_short_vectors() {
-    let path = fixture_path("short-vectors.json");
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let fixture: ShortVectorsFixture =
-        serde_json::from_str(&content).expect("parse short-vectors.json");
-
-    for case in &fixture.cases {
-        let input = decode_hex(&case.input_hex);
-
-        assert_eq!(
-            hex::encode(sha256(&input)),
-            case.sha256,
-            "sha256 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(sha512(&input)),
-            case.sha512,
-            "sha512 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(ripemd160(&input)),
-            case.ripemd160,
-            "ripemd160 mismatch for '{}'",
-            case.label
-        );
-        assert_eq!(
-            hex::encode(tmhash_len_prefixed(&input)),
-            case.tmhash,
-            "tmhash mismatch for '{}'",
-            case.label
-        );
-    }
+    assert_hash_all_fixture("hash/short-vectors.json");
 }
 
 #[test]
 fn conformance_streaming() {
-    let path = fixture_path("streaming.json");
+    let path = workspace_root().join("conformance/fixtures/hash/streaming.json");
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let fixture: StreamingFixture = serde_json::from_str(&content).expect("parse streaming.json");
@@ -239,7 +206,7 @@ fn conformance_streaming() {
 
 #[test]
 fn conformance_tmhash() {
-    let path = fixture_path("tmhash.json");
+    let path = workspace_root().join("conformance/fixtures/hash/tmhash.json");
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let fixture: TmhashFixture = serde_json::from_str(&content).expect("parse tmhash.json");
