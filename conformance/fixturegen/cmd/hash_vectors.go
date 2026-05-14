@@ -77,9 +77,12 @@ func hashRipemd160(data []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// tmhashLenPrefixed implements sha256(uvarint(len(data)) || data), matching
-// github.com/cometbft/cometbft/crypto/tmhash.Sum — but without pulling in
-// CometBFT. encoding/binary.PutUvarint is Go's canonical unsigned LEB-128.
+// tmhashLenPrefixed implements sha256(uvarint(len(data)) || data).
+//
+// This matches CometBFT's Merkle leaf hashing: sha256(uvarint(len(input)) || input).
+// See github.com/cometbft/cometbft/crypto/merkle for the original implementation;
+// note that CometBFT's `tmhash.Sum` is a plain SHA-256 and does NOT length-prefix.
+// encoding/binary.PutUvarint is Go's canonical unsigned LEB-128.
 func tmhashLenPrefixed(data []byte) string {
 	var buf [10]byte
 	n := binary.PutUvarint(buf[:], uint64(len(data)))
