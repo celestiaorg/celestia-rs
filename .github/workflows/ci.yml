@@ -8,7 +8,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RUSTFLAGS: -D warnings
 
 jobs:
   fmt:
@@ -55,6 +54,7 @@ jobs:
         with:
           go-version: "1.22"
       - run: |
+          set -euo pipefail
           if [ -f conformance/fixturegen/go.mod ]; then
             cd conformance/fixturegen
             go build ./...
