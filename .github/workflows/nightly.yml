@@ -1,0 +1,42 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # 07:00 UTC daily
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  conformance-corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run full conformance corpus
+        run: |
+          set -euo pipefail
+          # Activated when the first conformance test crate lands.
+          # For now this job is a no-op placeholder so the workflow exists.
+          echo "No conformance crates yet — placeholder run."
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Compute coverage
+        run: |
+          set -euo pipefail
+          # Coverage threshold enforced once first non-xtask crate lands.
+          cargo llvm-cov --workspace --summary-only || echo "coverage tooling smoke-run only"
