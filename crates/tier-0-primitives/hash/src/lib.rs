@@ -296,4 +296,53 @@ mod tests {
         assert_eq!(n, 2);
         assert_eq!(&buf[..2], &[0xac, 0x02]);
     }
+
+    // ---- REQ-7: determinism + side-effect-free ----
+    #[test]
+    fn req7_sha256_is_deterministic() {
+        let input = b"celestia";
+        let first = sha256(input);
+        let second = sha256(input);
+        assert_eq!(first, second, "sha256 must be deterministic");
+    }
+
+    #[test]
+    fn req7_sha512_is_deterministic() {
+        let input = b"celestia";
+        assert_eq!(sha512(input), sha512(input));
+    }
+
+    #[test]
+    fn req7_ripemd160_is_deterministic() {
+        let input = b"celestia";
+        assert_eq!(ripemd160(input), ripemd160(input));
+    }
+
+    #[test]
+    fn req7_tmhash_is_deterministic() {
+        let input = b"celestia";
+        assert_eq!(tmhash_len_prefixed(input), tmhash_len_prefixed(input));
+    }
+
+    // ---- REQ-8: public API returns plain byte arrays (no RustCrypto types) ----
+    // This test exists purely to document the contract — the type signatures
+    // below would fail to compile if the API ever returned a non-array type.
+    #[test]
+    fn req8_public_api_returns_plain_byte_arrays() {
+        let sha256_out: [u8; 32] = sha256(b"");
+        let sha512_out: [u8; 64] = sha512(b"");
+        let ripemd160_out: [u8; 20] = ripemd160(b"");
+        let tmhash_out: [u8; 32] = tmhash_len_prefixed(b"");
+        let mut hasher = Sha256Hasher::new();
+        hasher.update(b"");
+        let streaming_out: [u8; 32] = hasher.finalize();
+        // Suppress unused warnings.
+        let _ = (
+            sha256_out,
+            sha512_out,
+            ripemd160_out,
+            tmhash_out,
+            streaming_out,
+        );
+    }
 }
