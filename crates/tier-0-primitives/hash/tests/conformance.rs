@@ -14,17 +14,25 @@ use std::path::{Path, PathBuf};
 // Fixture path helper
 // --------------------------------------------------------------------------
 
-/// Return the workspace root by walking up from `CARGO_MANIFEST_DIR`
-/// until we find a `Cargo.toml` that contains `[workspace]`.
+/// Walks up from `CARGO_MANIFEST_DIR` until a `Cargo.toml` containing
+/// `[workspace]` is found. Panics if no workspace root is found within
+/// 10 levels — this avoids infinite loops if the crate is misconfigured.
 fn workspace_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    // crates/tier-0-primitives/hash -> go up 3 levels to workspace root
-    manifest
-        .parent() // tier-0-primitives
-        .and_then(|p| p.parent()) // crates
-        .and_then(|p| p.parent()) // workspace root
-        .expect("CARGO_MANIFEST_DIR must be at least 3 levels deep")
-        .to_path_buf()
+    let mut dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for _ in 0..10 {
+        let manifest = dir.join("Cargo.toml");
+        if manifest.exists() {
+            let body = std::fs::read_to_string(&manifest)
+                .expect("read candidate workspace Cargo.toml");
+            if body.contains("[workspace]") {
+                return dir;
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    panic!("no workspace Cargo.toml with [workspace] found above CARGO_MANIFEST_DIR")
 }
 
 fn fixture_path(name: &str) -> PathBuf {
