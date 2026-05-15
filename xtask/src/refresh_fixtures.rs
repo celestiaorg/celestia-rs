@@ -70,6 +70,36 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "encoding",
         output_path: "conformance/fixtures/encoding/bech32-addresses.json",
     },
+    Scenario {
+        name: "crypto-ed25519",
+        crate_name: "crypto",
+        output_path: "conformance/fixtures/crypto/ed25519.json",
+    },
+    Scenario {
+        name: "crypto-secp256k1",
+        crate_name: "crypto",
+        output_path: "conformance/fixtures/crypto/secp256k1.json",
+    },
+    Scenario {
+        name: "crypto-bls12381",
+        crate_name: "crypto",
+        output_path: "conformance/fixtures/crypto/bls12381.json",
+    },
+    Scenario {
+        name: "merkle-roots",
+        crate_name: "merkle",
+        output_path: "conformance/fixtures/merkle/roots.json",
+    },
+    Scenario {
+        name: "merkle-proofs",
+        crate_name: "merkle",
+        output_path: "conformance/fixtures/merkle/proofs.json",
+    },
+    Scenario {
+        name: "merkle-malformed-proofs",
+        crate_name: "merkle",
+        output_path: "conformance/fixtures/merkle/malformed-proofs.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

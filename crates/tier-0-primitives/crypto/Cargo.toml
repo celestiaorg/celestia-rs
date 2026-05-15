@@ -1,0 +1,24 @@
+[package]
+name = "crypto"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Public-key cryptography primitives for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+blst = "=0.3.14"
+ed25519-consensus = "2.1"
+hash = { path = "../hash" }
+k256 = { version = "0.13", features = ["ecdsa"] }
+
+[dev-dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

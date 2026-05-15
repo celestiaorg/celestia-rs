@@ -1,0 +1,12 @@
+{
+  "scenario": "crypto-bls12381",
+  "source_chain": "n/a (hardcoded key/message vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "go_packages": [
+    "github.com/supranational/blst/bindings/go v0.3.14"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario crypto-bls12381"
+}

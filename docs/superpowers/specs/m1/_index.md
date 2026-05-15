@@ -10,11 +10,11 @@
 
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
-| 1 | `hash` | 0 | [hash.md](hash.md) | spec ready |
-| 2 | `encoding` | 0 | [encoding.md](encoding.md) | spec ready |
-| 3 | `crypto` | 0 | _to be written_ | pending |
-| 4 | `merkle` | 0 | _to be written_ | pending |
-| 5 | `tendermint-types` | 1 | _to be written_ | pending |
+| 1 | `hash` | 0 | [hash.md](hash.md) | implemented |
+| 2 | `encoding` | 0 | [encoding.md](encoding.md) | implemented |
+| 3 | `crypto` | 0 | [crypto.md](crypto.md) | implemented |
+| 4 | `merkle` | 0 | [merkle.md](merkle.md) | implemented |
+| 5 | `tendermint-types` | 1 | [tendermint-types.md](tendermint-types.md) | spec ready |
 | 6 | `cosmos-types` | 1 | _to be written_ | pending |
 | 7 | `abci-types` | 1 | _to be written_ | pending |
 | 8 | `nmt` | 1 | _to be written_ | pending |

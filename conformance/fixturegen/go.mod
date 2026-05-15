@@ -2,7 +2,10 @@ module github.com/rootulp/celestia-rs/conformance/fixturegen
 
 go 1.22
 
-require github.com/cosmos/cosmos-sdk v0.50.10
+require (
+	github.com/cosmos/cosmos-sdk v0.50.10
+	github.com/supranational/blst v0.3.14
+)
 
 require (
 	cosmossdk.io/api v0.7.5 // indirect

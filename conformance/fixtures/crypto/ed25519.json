@@ -1,0 +1,36 @@
+{
+  "scenario": "crypto-ed25519",
+  "cases": [
+    {
+      "label": "zero-secret",
+      "seed_hex": "70d1abb5cc5f522725d34c95977acc481748b55dae4b1f2dd96f57afee2bbcb8",
+      "secret_hex": "7a65726f20736563726574",
+      "private_key_hex": "70d1abb5cc5f522725d34c95977acc481748b55dae4b1f2dd96f57afee2bbcb84f73186f216d849937224806f0b3aa5f9b87a6fda98cffd985fe94376fa8f056",
+      "public_key_hex": "4f73186f216d849937224806f0b3aa5f9b87a6fda98cffd985fe94376fa8f056",
+      "message_hex": "68656c6c6f",
+      "signature_hex": "c2f66596d35df7d77aa82d5aafc6f07405d3f14861581d1624c934bf0edba1a5742fb7b6858234f45ff86df9162947058411609d231f8678795398c04bf85607",
+      "address_hex": "975a0df8517ee05e267de06f20a5a7634c680e87"
+    },
+    {
+      "label": "celestia-secret",
+      "seed_hex": "0601f3a40fd1cf1aae5c972dcbd832531f74e702ca213608dd4760eb71d61077",
+      "secret_hex": "63656c65737469612d65643235353139",
+      "private_key_hex": "0601f3a40fd1cf1aae5c972dcbd832531f74e702ca213608dd4760eb71d610771b60e37bcae958a7cc4ea4e8337246e3d08327b1c657f6a3b37d7b18135cafcb",
+      "public_key_hex": "1b60e37bcae958a7cc4ea4e8337246e3d08327b1c657f6a3b37d7b18135cafcb",
+      "message_hex": "766f7465207369676e206279746573",
+      "signature_hex": "7d7c264f4360e4e10806eaf12e91115e20915af50242c344640264a820f18bff058e8530972c6195cb74fbcf6a016fd46c28f06e2be10575290ad0e91ae78c0f",
+      "address_hex": "d34948fe7206043c089f007904f63be9ed7c7894"
+    },
+    {
+      "label": "binary-message",
+      "seed_hex": "955807e09153e1b88677c56256e8fb73b188c8e402bf1d7c1ad52dea1e8aac77",
+      "secret_hex": "636f6e73656e73757320736563726574",
+      "private_key_hex": "955807e09153e1b88677c56256e8fb73b188c8e402bf1d7c1ad52dea1e8aac77d475864c2a498d371a1996862bb226cfbb45b12370392afbaef2b82a62373640",
+      "public_key_hex": "d475864c2a498d371a1996862bb226cfbb45b12370392afbaef2b82a62373640",
+      "message_hex": "000102ff",
+      "signature_hex": "59e15a9c6f5034e25645d5d7222de4cdf8d4de090e6811a481385198e1f65a34e7baf4d7d100a802941a493db38cc022a361ed6ce59c139cdd28b493f81a4400",
+      "address_hex": "39a9b4f9ac529f35ba0e8542462357b62703f2be"
+    }
+  ],
+  "malformed_private_key_hex": "108664a1bed5df3b654b2713b36ff85a6587c03fc2a1ea205f2fea2b255b547c5e046c16c7db49f009077e1508b96fed3f11582f1a9d34abe60fe5804f65468f"
+}

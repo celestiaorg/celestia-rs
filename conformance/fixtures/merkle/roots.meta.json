@@ -1,0 +1,13 @@
+{
+  "scenario": "merkle-roots",
+  "source_chain": "n/a (hardcoded test vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "go_packages": [
+    "github.com/cometbft/cometbft/crypto/merkle v0.38.12",
+    "crypto/sha256 (stdlib)"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario merkle-roots"
+}
