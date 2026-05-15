@@ -19,3 +19,6 @@
 - Added the Tier-1 `tendermint-types` crate spec for CometBFT headers,
   commits, validator sets, votes, proposals, canonical sign bytes, and
   fixture requirements.
+- Started the Tier-1 `tendermint-types` crate with domain types, protobuf
+  conversion, header hashing, canonical sign-byte helpers, and CometBFT
+  header conformance fixtures.

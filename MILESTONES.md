@@ -25,5 +25,5 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 ## Current focus
 **M1** — see `docs/superpowers/specs/m1/_index.md`. Tier-0 crates 1-4 (`hash`,
 `encoding`, `crypto`, and `merkle`) are implemented. Crate 5
-(`tendermint-types`) has a spec ready for implementation. The remaining tier-1
-specs are still to be written.
+(`tendermint-types`) is in progress with header conformance started. The
+remaining tier-1 specs are still to be written.

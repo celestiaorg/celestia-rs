@@ -100,6 +100,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "merkle",
         output_path: "conformance/fixtures/merkle/malformed-proofs.json",
     },
+    Scenario {
+        name: "tendermint-headers",
+        crate_name: "tendermint-types",
+        output_path: "conformance/fixtures/tendermint-types/headers.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).
