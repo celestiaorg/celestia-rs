@@ -104,10 +104,6 @@ pub fn decode_uvarint(src: &[u8]) -> Result<(u64, usize), Error> {
     let mut value = 0u64;
 
     for (i, byte) in src.iter().copied().enumerate() {
-        if i == MAX_VARINT_LEN64 {
-            return Err(Error::Overflow);
-        }
-
         if byte < 0x80 {
             if i == MAX_VARINT_LEN64 - 1 && byte > 1 {
                 return Err(Error::Overflow);
@@ -138,11 +134,6 @@ pub fn decode_varint(src: &[u8]) -> Result<(i64, usize), Error> {
     } else {
         !magnitude
     };
-
-    if encoded_varint_len(value) != consumed {
-        return Err(Error::NonCanonical);
-    }
-
     Ok((value, consumed))
 }
 

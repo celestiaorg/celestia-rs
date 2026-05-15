@@ -103,6 +103,10 @@ fn varint_rejects_malformed_inputs_and_preserves_small_buffers() {
         varint::decode_uvarint(&[0xff; 10]),
         Err(varint::Error::Overflow)
     );
+    assert_eq!(
+        varint::decode_uvarint(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]),
+        Err(varint::Error::Overflow)
+    );
 
     let mut buf = [0xaa, 0xbb];
     assert_eq!(
@@ -113,6 +117,26 @@ fn varint_rejects_malformed_inputs_and_preserves_small_buffers() {
         })
     );
     assert_eq!(buf, [0xaa, 0xbb]);
+}
+
+#[test]
+fn varint_errors_display_readable_messages() {
+    let cases = [
+        (
+            varint::Error::BufferTooSmall {
+                required: 3,
+                available: 2,
+            },
+            "buffer too small for varint: required 3 bytes, available 2",
+        ),
+        (varint::Error::Incomplete, "incomplete varint"),
+        (varint::Error::Overflow, "varint overflows 64-bit range"),
+        (varint::Error::NonCanonical, "non-canonical varint encoding"),
+    ];
+
+    for (error, expected) in cases {
+        assert_eq!(error.to_string(), expected);
+    }
 }
 
 #[test]
@@ -162,5 +186,39 @@ fn bech32_address_helpers_round_trip_and_enforce_prefixes() {
     assert!(matches!(
         bech32::decode_account_address(&operator),
         Err(bech32::Error::WrongPrefix { .. })
+    ));
+}
+
+#[test]
+fn bech32_errors_display_readable_messages() {
+    use ::bech32::{ToBase32, Variant};
+
+    let invalid = bech32::decode("not-a-bech32").unwrap_err();
+    assert!(invalid.to_string().starts_with("invalid bech32 string:"));
+
+    let short = bech32::encode(bech32::ACCOUNT_PREFIX, &[0x01, 0x02, 0x03]).unwrap();
+    let wrong_length = bech32::decode_account_address(&short).unwrap_err();
+    assert_eq!(
+        wrong_length.to_string(),
+        "wrong address length: expected 20, got 3"
+    );
+
+    let operator =
+        bech32::encode_validator_operator_address(&[0u8; bech32::ADDRESS_LENGTH]).unwrap();
+    let wrong_prefix = bech32::decode_account_address(&operator).unwrap_err();
+    assert_eq!(
+        wrong_prefix.to_string(),
+        "wrong bech32 prefix: expected celestia, got celestiavaloper"
+    );
+
+    let bech32m = ::bech32::encode(
+        bech32::ACCOUNT_PREFIX,
+        [0u8; bech32::ADDRESS_LENGTH].to_base32(),
+        Variant::Bech32m,
+    )
+    .unwrap();
+    assert!(matches!(
+        bech32::decode(&bech32m),
+        Err(bech32::Error::Invalid(_))
     ));
 }
