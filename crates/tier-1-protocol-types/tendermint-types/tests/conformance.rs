@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 use tendermint_types::{
-    Commit, Header, Proposal, PublicKey, Validator, ValidatorSet, Vote,
+    BlockId, Commit, Error, Header, Proposal, PublicKey, Validator, ValidatorSet, Vote,
     proto::{self},
 };
 
@@ -105,6 +105,19 @@ struct CanonicalCase {
     vote_extension_sign_bytes_hex: Option<String>,
     proposal_proto_hex: Option<String>,
     proposal_sign_bytes_hex: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MalformedFixture {
+    cases: Vec<MalformedCase>,
+}
+
+#[derive(Deserialize)]
+struct MalformedCase {
+    label: String,
+    kind: String,
+    proto_hex: String,
+    expected_error: String,
 }
 
 #[test]
@@ -258,10 +271,83 @@ fn conformance_canonical_sign_bytes() {
     }
 }
 
+#[test]
+fn conformance_malformed() {
+    let fixture: MalformedFixture = load_fixture("tendermint-types/malformed.json");
+
+    for case in &fixture.cases {
+        let result = malformed_result(case);
+        let Err(error) = result else {
+            panic!("malformed case '{}' unexpectedly succeeded", case.label);
+        };
+        assert_eq!(
+            error_code(&error),
+            case.expected_error,
+            "malformed error mismatch for '{}'",
+            case.label
+        );
+    }
+}
+
 fn decode_array<const N: usize>(hex: &str) -> [u8; N] {
     let bytes = hex::decode(hex).expect("valid fixture hex");
     assert_eq!(bytes.len(), N, "fixture byte length");
     bytes
         .try_into()
         .unwrap_or_else(|_| panic!("{N}-byte fixture"))
+}
+
+fn malformed_result(case: &MalformedCase) -> Result<(), Error> {
+    let encoded = hex::decode(&case.proto_hex).expect("valid malformed protobuf hex");
+    match case.kind.as_str() {
+        "block_id" => decode_proto::<proto::types::BlockId>(&encoded)
+            .and_then(BlockId::from_proto)
+            .map(|_| ()),
+        "header" => Header::decode(&encoded).map(|_| ()),
+        "validator" => decode_proto::<proto::types::Validator>(&encoded)
+            .and_then(Validator::from_proto)
+            .map(|_| ()),
+        "validator_set" => decode_proto::<proto::types::ValidatorSet>(&encoded)
+            .and_then(ValidatorSet::from_proto)
+            .map(|_| ()),
+        "commit" => decode_proto::<proto::types::Commit>(&encoded)
+            .and_then(Commit::from_proto)
+            .map(|_| ()),
+        "vote" => decode_proto::<proto::types::Vote>(&encoded)
+            .and_then(Vote::from_proto)
+            .map(|_| ()),
+        "proposal" => decode_proto::<proto::types::Proposal>(&encoded)
+            .and_then(Proposal::from_proto)
+            .map(|_| ()),
+        other => panic!("unknown malformed kind '{other}'"),
+    }
+}
+
+fn decode_proto<T>(bytes: &[u8]) -> Result<T, Error>
+where
+    T: prost::Message + Default,
+{
+    <T as prost::Message>::decode(bytes).map_err(|e| Error::Decode(e.to_string()))
+}
+
+fn error_code(error: &Error) -> &'static str {
+    match error {
+        Error::InvalidHashLength { .. } => "invalid_hash_length",
+        Error::InvalidAddressLength { .. } => "invalid_address_length",
+        Error::InvalidChainIdLength { .. } => "invalid_chain_id_length",
+        Error::InvalidHeight => "invalid_height",
+        Error::InvalidRound => "invalid_round",
+        Error::InvalidBlockId => "invalid_block_id",
+        Error::InvalidPartSetHeader => "invalid_part_set_header",
+        Error::InvalidCommit => "invalid_commit",
+        Error::InvalidCommitSig => "invalid_commit_sig",
+        Error::InvalidValidator => "invalid_validator",
+        Error::InvalidValidatorSet => "invalid_validator_set",
+        Error::InvalidVote => "invalid_vote",
+        Error::InvalidProposal => "invalid_proposal",
+        Error::InvalidPublicKey => "invalid_public_key",
+        Error::InvalidTimestamp => "invalid_timestamp",
+        Error::Decode(_) => "decode",
+        Error::Encode(_) => "encode",
+    }
 }

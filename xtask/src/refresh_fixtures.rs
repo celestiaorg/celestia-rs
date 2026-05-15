@@ -120,6 +120,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "tendermint-types",
         output_path: "conformance/fixtures/tendermint-types/canonical-sign-bytes.json",
     },
+    Scenario {
+        name: "tendermint-malformed",
+        crate_name: "tendermint-types",
+        output_path: "conformance/fixtures/tendermint-types/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

@@ -56,6 +56,7 @@ Fixture files live at
 | `validators.json` | `tendermint-validators` | CometBFT validator bytes, ordering, proposer, and validator-set hash vectors |
 | `commits.json` | `tendermint-commits` | CometBFT commit protobuf, commit-hash, and vote sign-byte vectors |
 | `canonical-sign-bytes.json` | `tendermint-canonical-sign-bytes` | CometBFT vote, vote-extension, and proposal sign-byte vectors |
+| `malformed.json` | `tendermint-malformed` | Malformed protobuf cases for validation error paths |
 
 Regenerate fixtures:
 

@@ -5,6 +5,7 @@ use crate::hash::{Address, address_from_bytes};
 use crate::proto;
 use crypto::{ed25519, secp256k1};
 use prost::Message;
+use std::collections::BTreeSet;
 
 /// CometBFT public key variants used by validator and consensus types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,14 +159,15 @@ impl ValidatorSet {
                 .cmp(&left.voting_power)
                 .then_with(|| left.address.cmp(&right.address))
         });
+        if validators.is_empty() {
+            return Err(Error::InvalidValidatorSet);
+        }
+        let mut addresses = BTreeSet::new();
         for validator in &validators {
             validator.validate_basic()?;
-        }
-        if validators
-            .windows(2)
-            .any(|window| window[0].address == window[1].address)
-        {
-            return Err(Error::InvalidValidatorSet);
+            if !addresses.insert(validator.address) {
+                return Err(Error::InvalidValidatorSet);
+            }
         }
         let proposer = validators.first().cloned();
         Ok(Self {
@@ -176,7 +178,23 @@ impl ValidatorSet {
 
     /// Perform CometBFT stateless validator-set validation.
     pub fn validate_basic(&self) -> Result<()> {
-        Self::new(self.validators.clone()).map(|_| ())
+        if self.validators.is_empty() {
+            return Err(Error::InvalidValidatorSet);
+        }
+        let mut addresses = BTreeSet::new();
+        for validator in &self.validators {
+            validator.validate_basic()?;
+            if !addresses.insert(validator.address) {
+                return Err(Error::InvalidValidatorSet);
+            }
+        }
+        let proposer = self.proposer.as_ref().ok_or(Error::InvalidValidatorSet)?;
+        proposer.validate_basic()?;
+        if addresses.contains(&proposer.address) {
+            Ok(())
+        } else {
+            Err(Error::InvalidValidatorSet)
+        }
     }
 
     /// Return CometBFT's validator-set hash.
@@ -207,6 +225,7 @@ impl ValidatorSet {
             .collect::<Result<Vec<_>>>()?;
         let mut set = Self::new(validators)?;
         set.proposer = proto.proposer.map(Validator::from_proto).transpose()?;
+        set.validate_basic()?;
         Ok(set)
     }
 

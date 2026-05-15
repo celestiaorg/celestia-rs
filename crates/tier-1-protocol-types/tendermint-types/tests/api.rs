@@ -3,9 +3,9 @@
 #![allow(clippy::expect_used)]
 
 use tendermint_types::{
-    BlockId, BlockIdFlag, Commit, CommitSig, ConsensusVersion, Header, PartSetHeader, PublicKey,
-    SignedMsgType, Validator, ValidatorSet, Vote,
-    canonical::vote_sign_bytes,
+    BlockId, BlockIdFlag, Commit, CommitSig, ConsensusVersion, Error, Header, PartSetHeader,
+    Proposal, PublicKey, SignedMsgType, Validator, ValidatorSet, Vote,
+    canonical::{canonical_time, proposal_sign_bytes, vote_sign_bytes},
     hash::{address_from_bytes, optional_hash_from_bytes},
     proto,
 };
@@ -33,6 +33,102 @@ fn complete_block_id() -> BlockId {
             hash: Some(hash(2)),
         },
     }
+}
+
+fn valid_vote() -> Vote {
+    Vote {
+        ty: SignedMsgType::Precommit,
+        height: 10,
+        round: 2,
+        block_id: complete_block_id(),
+        timestamp: Some(timestamp()),
+        validator_address: address(14),
+        validator_index: 0,
+        signature: vec![15; 64],
+        extension: b"extension".to_vec(),
+        extension_signature: vec![16; 64],
+    }
+}
+
+fn valid_proposal() -> Proposal {
+    Proposal {
+        height: 10,
+        round: 2,
+        pol_round: -1,
+        block_id: complete_block_id(),
+        timestamp: Some(timestamp()),
+        signature: vec![19; 64],
+    }
+}
+
+#[test]
+fn error_display_messages_are_stable() {
+    let cases = [
+        (
+            Error::InvalidHashLength { actual: 3 },
+            "invalid CometBFT hash length: 3",
+        ),
+        (
+            Error::InvalidAddressLength { actual: 3 },
+            "invalid CometBFT address length: 3",
+        ),
+        (
+            Error::InvalidChainIdLength {
+                actual: 51,
+                max: 50,
+            },
+            "invalid CometBFT chain ID length: 51 > 50",
+        ),
+        (Error::InvalidHeight, "invalid CometBFT height"),
+        (Error::InvalidRound, "invalid CometBFT round"),
+        (Error::InvalidBlockId, "invalid CometBFT block ID"),
+        (
+            Error::InvalidPartSetHeader,
+            "invalid CometBFT part-set header",
+        ),
+        (Error::InvalidCommit, "invalid CometBFT commit"),
+        (Error::InvalidCommitSig, "invalid CometBFT commit signature"),
+        (Error::InvalidValidator, "invalid CometBFT validator"),
+        (Error::InvalidValidatorSet, "invalid CometBFT validator set"),
+        (Error::InvalidVote, "invalid CometBFT vote"),
+        (Error::InvalidProposal, "invalid CometBFT proposal"),
+        (Error::InvalidPublicKey, "invalid CometBFT public key"),
+        (Error::InvalidTimestamp, "invalid CometBFT timestamp"),
+        (
+            Error::Decode("boom".to_owned()),
+            "decode CometBFT protobuf: boom",
+        ),
+        (
+            Error::Encode("boom".to_owned()),
+            "encode CometBFT protobuf: boom",
+        ),
+    ];
+
+    for (error, message) in cases {
+        assert_eq!(error.to_string(), message);
+    }
+}
+
+#[test]
+fn canonical_time_formats_and_rejects_invalid_timestamps() {
+    assert_eq!(
+        canonical_time(&timestamp()).expect("canonical timestamp"),
+        "2023-11-14T22:13:20.123Z"
+    );
+    assert_eq!(
+        canonical_time(&proto::google::Timestamp {
+            seconds: 1_700_000_000,
+            nanos: 1_000_000_000,
+        }),
+        Err(Error::InvalidTimestamp)
+    );
+    assert_eq!(
+        canonical_time(&proto::google::Timestamp {
+            seconds: i64::MAX,
+            nanos: 0,
+        }),
+        Err(Error::InvalidTimestamp)
+    );
 }
 
 #[test]
@@ -162,20 +258,42 @@ fn validators_sort_deduplicate_hash_and_round_trip_proto() {
 }
 
 #[test]
-fn vote_proto_and_canonical_sign_bytes_work() {
-    let vote = Vote {
-        ty: SignedMsgType::Precommit,
-        height: 10,
-        round: 2,
-        block_id: complete_block_id(),
-        timestamp: Some(timestamp()),
-        validator_address: address(14),
-        validator_index: 0,
-        signature: vec![15; 64],
-        extension: b"extension".to_vec(),
-        extension_signature: vec![16; 64],
-    };
+fn validator_set_rejects_empty_bad_proposer_duplicates_and_overflow() {
+    assert!(ValidatorSet::new(Vec::new()).is_err());
 
+    let validator_a_high = Validator::new(PublicKey::Ed25519([1; 32]), 30);
+    let validator_b = Validator::new(PublicKey::Ed25519([2; 32]), 20);
+    let validator_a_low = Validator::new(PublicKey::Ed25519([1; 32]), 10);
+    assert!(
+        ValidatorSet::new(vec![
+            validator_a_high.clone(),
+            validator_b.clone(),
+            validator_a_low,
+        ])
+        .is_err()
+    );
+
+    let mut set = ValidatorSet::new(vec![validator_a_high, validator_b]).expect("validator set");
+    set.proposer = None;
+    assert_eq!(set.validate_basic(), Err(Error::InvalidValidatorSet));
+
+    set.proposer = Some(Validator::new(PublicKey::Ed25519([3; 32]), 1));
+    assert_eq!(set.validate_basic(), Err(Error::InvalidValidatorSet));
+
+    let overflow = ValidatorSet::new(vec![
+        Validator::new(PublicKey::Ed25519([4; 32]), i64::MAX),
+        Validator::new(PublicKey::Ed25519([5; 32]), 1),
+    ])
+    .expect("validator set");
+    assert_eq!(
+        overflow.total_voting_power(),
+        Err(Error::InvalidValidatorSet)
+    );
+}
+
+#[test]
+fn vote_proto_and_canonical_sign_bytes_work() {
+    let vote = valid_vote();
     vote.validate_basic().expect("valid vote");
     let proto = vote.to_proto();
     assert_eq!(Vote::from_proto(proto).expect("vote from proto"), vote);
@@ -186,5 +304,71 @@ fn vote_proto_and_canonical_sign_bytes_work() {
     assert_eq!(
         vote.commit_sig().expect("commit sig").block_id_flag,
         BlockIdFlag::Commit
+    );
+    assert!(!vote.verify("test-chain", &PublicKey::Ed25519([3; 32])));
+}
+
+#[test]
+fn vote_validation_rejects_incomplete_blocks_and_bad_extensions() {
+    let mut vote = valid_vote();
+    vote.block_id = BlockId {
+        hash: Some(hash(1)),
+        part_set_header: PartSetHeader::default(),
+    };
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidBlockId));
+
+    vote = valid_vote();
+    vote.validator_index = -1;
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidVote));
+
+    vote = valid_vote();
+    vote.ty = SignedMsgType::Prevote;
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidVote));
+
+    vote = valid_vote();
+    vote.block_id = BlockId::default();
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidVote));
+
+    vote = valid_vote();
+    vote.extension_signature.clear();
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidVote));
+
+    vote = valid_vote();
+    vote.extension_signature = vec![16; 65];
+    assert_eq!(vote.validate_basic(), Err(Error::InvalidVote));
+}
+
+#[test]
+fn proposal_proto_canonical_sign_bytes_and_validation_work() {
+    let proposal = valid_proposal();
+    proposal.validate_basic().expect("valid proposal");
+    let proto = proposal.to_proto();
+    assert_eq!(
+        Proposal::from_proto(proto).expect("proposal from proto"),
+        proposal
+    );
+    assert_eq!(
+        proposal
+            .sign_bytes("test-chain")
+            .expect("proposal sign bytes"),
+        proposal_sign_bytes("test-chain", &proposal).expect("free proposal sign bytes")
+    );
+    assert!(!proposal.verify("test-chain", &PublicKey::Ed25519([3; 32])));
+
+    let mut zero_height = proposal.clone();
+    zero_height.height = 0;
+    zero_height
+        .validate_basic()
+        .expect("CometBFT allows zero-height proposals");
+
+    let mut negative_round = proposal.clone();
+    negative_round.round = -1;
+    assert_eq!(negative_round.validate_basic(), Err(Error::InvalidRound));
+
+    let mut negative_pol_round = proposal.clone();
+    negative_pol_round.pol_round = -2;
+    assert_eq!(
+        negative_pol_round.validate_basic(),
+        Err(Error::InvalidRound)
     );
 }

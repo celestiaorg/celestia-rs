@@ -75,12 +75,30 @@ impl Vote {
         if self.height <= 0 {
             return Err(Error::InvalidHeight);
         }
-        if self.round < 0 || self.validator_index < 0 {
+        if self.round < 0 {
             return Err(Error::InvalidRound);
         }
+        if self.validator_index < 0 {
+            return Err(Error::InvalidVote);
+        }
         self.block_id.validate_basic()?;
+        if !self.block_id.is_zero() && !self.block_id.is_complete() {
+            return Err(Error::InvalidBlockId);
+        }
         if self.signature.is_empty() || self.signature.len() > MAX_SIGNATURE_SIZE {
             return Err(Error::InvalidVote);
+        }
+        if self.ty != SignedMsgType::Precommit || self.block_id.is_zero() {
+            if !self.extension.is_empty() || !self.extension_signature.is_empty() {
+                return Err(Error::InvalidVote);
+            }
+        } else {
+            if self.extension_signature.len() > MAX_SIGNATURE_SIZE {
+                return Err(Error::InvalidVote);
+            }
+            if !self.extension.is_empty() && self.extension_signature.is_empty() {
+                return Err(Error::InvalidVote);
+            }
         }
         Ok(())
     }

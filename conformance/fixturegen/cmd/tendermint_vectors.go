@@ -4,10 +4,12 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	cmted25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
+	cmtcryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -35,6 +37,11 @@ func init() {
 			Name:        "tendermint-canonical-sign-bytes",
 			Description: "Emit CometBFT canonical sign-byte vectors for the tendermint-types crate.",
 			Run:         runTendermintCanonicalSignBytes,
+		},
+		Subcommand{
+			Name:        "tendermint-malformed",
+			Description: "Emit malformed CometBFT protobuf vectors for the tendermint-types crate.",
+			Run:         runTendermintMalformed,
 		},
 	)
 }
@@ -97,6 +104,22 @@ type tendermintCanonicalCase struct {
 	VoteExtensionSignBytesHex string `json:"vote_extension_sign_bytes_hex,omitempty"`
 	ProposalProtoHex          string `json:"proposal_proto_hex,omitempty"`
 	ProposalSignBytesHex      string `json:"proposal_sign_bytes_hex,omitempty"`
+}
+
+type tendermintMalformedFixture struct {
+	Scenario string                    `json:"scenario"`
+	Cases    []tendermintMalformedCase `json:"cases"`
+}
+
+type tendermintMalformedCase struct {
+	Label         string `json:"label"`
+	Kind          string `json:"kind"`
+	ProtoHex      string `json:"proto_hex"`
+	ExpectedError string `json:"expected_error"`
+}
+
+type tendermintProtoMarshaler interface {
+	Marshal() ([]byte, error)
 }
 
 func runTendermintHeaders(args []string) error {
@@ -263,6 +286,183 @@ func runTendermintCanonicalSignBytes(args []string) error {
 	return nil
 }
 
+func runTendermintMalformed(args []string) error {
+	fs := flag.NewFlagSet("tendermint-malformed", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/tendermint-types/malformed.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cases := make([]tendermintMalformedCase, 0, 19)
+	add := func(label string, kind string, message tendermintProtoMarshaler, expected string) error {
+		encoded, err := message.Marshal()
+		if err != nil {
+			return fmt.Errorf("marshal malformed %s: %w", label, err)
+		}
+		cases = append(cases, tendermintMalformedCase{
+			Label:         label,
+			Kind:          kind,
+			ProtoHex:      hex.EncodeToString(encoded),
+			ExpectedError: expected,
+		})
+		return nil
+	}
+
+	blockID := tendermintBlockIDProto()
+	blockID.Hash = repeatByte(0x01, 31)
+	if err := add("block-id-invalid-hash-length", "block_id", &blockID, "invalid_hash_length"); err != nil {
+		return err
+	}
+
+	header := tendermintHeaderProto()
+	header.DataHash = repeatByte(0x03, 31)
+	if err := add("header-invalid-hash-length", "header", header, "invalid_hash_length"); err != nil {
+		return err
+	}
+
+	header = tendermintHeaderProto()
+	header.ProposerAddress = repeatByte(0x0b, 19)
+	if err := add("header-invalid-address-length", "header", header, "invalid_address_length"); err != nil {
+		return err
+	}
+
+	header = tendermintHeaderProto()
+	header.ChainID = strings.Repeat("x", 51)
+	if err := add("header-chain-id-too-long", "header", header, "invalid_chain_id_length"); err != nil {
+		return err
+	}
+
+	header = tendermintHeaderProto()
+	header.Height = -1
+	if err := add("header-negative-height", "header", header, "invalid_height"); err != nil {
+		return err
+	}
+
+	validator := tendermintValidatorProto("malformed-validator", 10)
+	validator.PubKey = cmtcryptoproto.PublicKey{}
+	if err := add("validator-missing-public-key", "validator", validator, "invalid_public_key"); err != nil {
+		return err
+	}
+
+	validator = tendermintValidatorProto("malformed-validator", 10)
+	validator.Address = repeatByte(0xff, 20)
+	if err := add("validator-address-mismatch", "validator", validator, "invalid_validator"); err != nil {
+		return err
+	}
+
+	validatorSet := &cmtproto.ValidatorSet{}
+	if err := add("validator-set-empty", "validator_set", validatorSet, "invalid_validator_set"); err != nil {
+		return err
+	}
+
+	validatorA30 := tendermintValidatorProto("duplicate-validator-a", 30)
+	validatorB20 := tendermintValidatorProto("duplicate-validator-b", 20)
+	validatorA10 := tendermintValidatorProto("duplicate-validator-a", 10)
+	validatorC10 := tendermintValidatorProto("proposer-not-in-set", 10)
+	validatorSet = &cmtproto.ValidatorSet{
+		Validators:       []*cmtproto.Validator{validatorA30, validatorB20, validatorA10},
+		Proposer:         validatorA30,
+		TotalVotingPower: 60,
+	}
+	if err := add("validator-set-duplicate-nonadjacent", "validator_set", validatorSet, "invalid_validator_set"); err != nil {
+		return err
+	}
+
+	validatorSet = &cmtproto.ValidatorSet{
+		Validators:       []*cmtproto.Validator{validatorA30, validatorB20},
+		Proposer:         validatorC10,
+		TotalVotingPower: 50,
+	}
+	if err := add("validator-set-proposer-not-in-set", "validator_set", validatorSet, "invalid_validator_set"); err != nil {
+		return err
+	}
+
+	commit := tendermintCommit().ToProto()
+	commit.Round = -1
+	if err := add("commit-negative-round", "commit", commit, "invalid_round"); err != nil {
+		return err
+	}
+
+	commit = tendermintCommit().ToProto()
+	commit.Signatures = nil
+	if err := add("commit-missing-signatures", "commit", commit, "invalid_commit"); err != nil {
+		return err
+	}
+
+	commit = tendermintCommit().ToProto()
+	commit.Signatures = []cmtproto.CommitSig{
+		{
+			BlockIdFlag: cmtproto.BlockIDFlagAbsent,
+			Signature:   repeatByte(0x0d, 1),
+		},
+	}
+	if err := add("commit-sig-absent-with-signature", "commit", commit, "invalid_commit_sig"); err != nil {
+		return err
+	}
+
+	vote := tendermintVote().ToProto()
+	vote.BlockID = cmtproto.BlockID{
+		Hash: repeatByte(0x01, 32),
+	}
+	if err := add("vote-incomplete-block-id", "vote", vote, "invalid_block_id"); err != nil {
+		return err
+	}
+
+	vote = tendermintVote().ToProto()
+	vote.ValidatorIndex = -1
+	if err := add("vote-negative-validator-index", "vote", vote, "invalid_vote"); err != nil {
+		return err
+	}
+
+	vote = tendermintVote().ToProto()
+	vote.Type = cmtproto.PrevoteType
+	vote.Extension = []byte("prevote-extension")
+	vote.ExtensionSignature = nil
+	if err := add("vote-extension-on-prevote", "vote", vote, "invalid_vote"); err != nil {
+		return err
+	}
+
+	vote = tendermintVote().ToProto()
+	vote.ExtensionSignature = repeatByte(0x12, 65)
+	if err := add("vote-extension-signature-too-large", "vote", vote, "invalid_vote"); err != nil {
+		return err
+	}
+
+	proposal := tendermintProposal().ToProto()
+	proposal.Type = cmtproto.PrecommitType
+	if err := add("proposal-wrong-type", "proposal", proposal, "invalid_proposal"); err != nil {
+		return err
+	}
+
+	proposal = tendermintProposal().ToProto()
+	proposal.Height = -1
+	if err := add("proposal-negative-height", "proposal", proposal, "invalid_height"); err != nil {
+		return err
+	}
+
+	proposal = tendermintProposal().ToProto()
+	proposal.BlockID = cmtproto.BlockID{}
+	if err := add("proposal-nil-block-id", "proposal", proposal, "invalid_block_id"); err != nil {
+		return err
+	}
+
+	proposal = tendermintProposal().ToProto()
+	proposal.Signature = nil
+	if err := add("proposal-missing-signature", "proposal", proposal, "invalid_proposal"); err != nil {
+		return err
+	}
+
+	fixture := tendermintMalformedFixture{
+		Scenario: "tendermint-malformed",
+		Cases:    cases,
+	}
+	if err := writeJSON(*out, fixture); err != nil {
+		return fmt.Errorf("emit tendermint-malformed: %w", err)
+	}
+	fmt.Printf("wrote %s\n", *out)
+	return nil
+}
+
 func tendermintHeader(validatorsHash cmtbytes.HexBytes) cmttypes.Header {
 	return cmttypes.Header{
 		Version: cmtversion.Consensus{
@@ -291,6 +491,11 @@ func tendermintHeader(validatorsHash cmtbytes.HexBytes) cmttypes.Header {
 	}
 }
 
+func tendermintHeaderProto() *cmtproto.Header {
+	header := tendermintHeader(cmtbytes.HexBytes(repeatByte(0x05, 32)))
+	return header.ToProto()
+}
+
 func tendermintCommit() *cmttypes.Commit {
 	return &cmttypes.Commit{
 		Height:  10,
@@ -311,6 +516,19 @@ func tendermintCommit() *cmttypes.Commit {
 			},
 			cmttypes.NewCommitSigAbsent(),
 		},
+	}
+}
+
+func tendermintValidatorProto(secret string, votingPower int64) *cmtproto.Validator {
+	pubKey := cmted25519.GenPrivKeyFromSecret([]byte(secret)).PubKey().(cmted25519.PubKey)
+	return &cmtproto.Validator{
+		Address: pubKey.Address(),
+		PubKey: cmtcryptoproto.PublicKey{
+			Sum: &cmtcryptoproto.PublicKey_Ed25519{
+				Ed25519: pubKey.Bytes(),
+			},
+		},
+		VotingPower: votingPower,
 	}
 }
 
@@ -339,6 +557,11 @@ func tendermintProposal() *cmttypes.Proposal {
 		Timestamp: time.Unix(1_700_000_004, 987_000_000).UTC(),
 		Signature: repeatByte(0x13, 64),
 	}
+}
+
+func tendermintBlockIDProto() cmtproto.BlockID {
+	blockID := tendermintBlockID()
+	return blockID.ToProto()
 }
 
 func tendermintBlockID() cmttypes.BlockID {
