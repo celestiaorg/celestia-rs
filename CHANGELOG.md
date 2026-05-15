@@ -22,3 +22,9 @@
 - Started the Tier-1 `tendermint-types` crate with domain types, protobuf
   conversion, header hashing, canonical sign-byte helpers, and CometBFT
   header conformance fixtures.
+- Expanded the Tier-1 `tendermint-types` crate with validator, commit,
+  canonical sign-byte, malformed protobuf conformance fixtures, stricter
+  validation, and coverage above the M1 threshold.
+- Added the Tier-1 `cosmos-types` crate spec for Cosmos SDK transaction raw
+  bytes, direct sign docs, auth info, coins, public-key `Any`, and Celestia
+  address helpers.

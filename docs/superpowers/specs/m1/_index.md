@@ -14,8 +14,8 @@
 | 2 | `encoding` | 0 | [encoding.md](encoding.md) | implemented |
 | 3 | `crypto` | 0 | [crypto.md](crypto.md) | implemented |
 | 4 | `merkle` | 0 | [merkle.md](merkle.md) | implemented |
-| 5 | `tendermint-types` | 1 | [tendermint-types.md](tendermint-types.md) | in progress |
-| 6 | `cosmos-types` | 1 | _to be written_ | pending |
+| 5 | `tendermint-types` | 1 | [tendermint-types.md](tendermint-types.md) | implemented |
+| 6 | `cosmos-types` | 1 | [cosmos-types.md](cosmos-types.md) | pending |
 | 7 | `abci-types` | 1 | _to be written_ | pending |
 | 8 | `nmt` | 1 | _to be written_ | pending |
 | 9 | `shares` | 1 | _to be written_ | pending |
