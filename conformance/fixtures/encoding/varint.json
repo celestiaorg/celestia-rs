@@ -1,0 +1,166 @@
+{
+  "scenario": "encoding-varint",
+  "unsigned_cases": [
+    {
+      "label": "zero",
+      "value": 0,
+      "encoded_hex": "00"
+    },
+    {
+      "label": "one",
+      "value": 1,
+      "encoded_hex": "01"
+    },
+    {
+      "label": "max-one-byte",
+      "value": 127,
+      "encoded_hex": "7f"
+    },
+    {
+      "label": "first-two-byte",
+      "value": 128,
+      "encoded_hex": "8001"
+    },
+    {
+      "label": "two-byte-255",
+      "value": 255,
+      "encoded_hex": "ff01"
+    },
+    {
+      "label": "two-byte-300",
+      "value": 300,
+      "encoded_hex": "ac02"
+    },
+    {
+      "label": "max-two-byte",
+      "value": 16383,
+      "encoded_hex": "ff7f"
+    },
+    {
+      "label": "first-three-byte",
+      "value": 16384,
+      "encoded_hex": "808001"
+    },
+    {
+      "label": "u32-max",
+      "value": 4294967295,
+      "encoded_hex": "ffffffff0f"
+    },
+    {
+      "label": "u64-max",
+      "value": 18446744073709551615,
+      "encoded_hex": "ffffffffffffffffff01"
+    }
+  ],
+  "signed_cases": [
+    {
+      "label": "zero",
+      "value": 0,
+      "encoded_hex": "00"
+    },
+    {
+      "label": "one",
+      "value": 1,
+      "encoded_hex": "02"
+    },
+    {
+      "label": "negative-one",
+      "value": -1,
+      "encoded_hex": "01"
+    },
+    {
+      "label": "max-single-positive",
+      "value": 63,
+      "encoded_hex": "7e"
+    },
+    {
+      "label": "first-two-byte-positive",
+      "value": 64,
+      "encoded_hex": "8001"
+    },
+    {
+      "label": "max-single-negative",
+      "value": -64,
+      "encoded_hex": "7f"
+    },
+    {
+      "label": "first-two-byte-negative",
+      "value": -65,
+      "encoded_hex": "8101"
+    },
+    {
+      "label": "i32-min",
+      "value": -2147483648,
+      "encoded_hex": "ffffffff0f"
+    },
+    {
+      "label": "i32-max",
+      "value": 2147483647,
+      "encoded_hex": "feffffff0f"
+    },
+    {
+      "label": "i64-min",
+      "value": -9223372036854775808,
+      "encoded_hex": "ffffffffffffffffff01"
+    },
+    {
+      "label": "i64-max",
+      "value": 9223372036854775807,
+      "encoded_hex": "feffffffffffffffff01"
+    }
+  ],
+  "malformed_uvarints": [
+    {
+      "label": "incomplete-one-byte",
+      "input_hex": "80",
+      "expected_error": "incomplete"
+    },
+    {
+      "label": "non-canonical-zero",
+      "input_hex": "8000",
+      "expected_error": "non_canonical"
+    },
+    {
+      "label": "non-canonical-one",
+      "input_hex": "8100",
+      "expected_error": "non_canonical"
+    },
+    {
+      "label": "overflow-ten-continuation-bytes",
+      "input_hex": "ffffffffffffffffffff",
+      "expected_error": "overflow"
+    },
+    {
+      "label": "overflow-eleven-bytes",
+      "input_hex": "8080808080808080808000",
+      "expected_error": "overflow"
+    }
+  ],
+  "malformed_varints": [
+    {
+      "label": "incomplete-one-byte",
+      "input_hex": "80",
+      "expected_error": "incomplete"
+    },
+    {
+      "label": "non-canonical-zero",
+      "input_hex": "8000",
+      "expected_error": "non_canonical"
+    },
+    {
+      "label": "non-canonical-one",
+      "input_hex": "8100",
+      "expected_error": "non_canonical"
+    },
+    {
+      "label": "overflow-ten-continuation-bytes",
+      "input_hex": "ffffffffffffffffffff",
+      "expected_error": "overflow"
+    },
+    {
+      "label": "overflow-eleven-bytes",
+      "input_hex": "8080808080808080808000",
+      "expected_error": "overflow"
+    }
+  ]
+}

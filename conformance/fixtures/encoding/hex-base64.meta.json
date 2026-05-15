@@ -1,0 +1,13 @@
+{
+  "scenario": "encoding-hex-base64",
+  "source_chain": "n/a (hardcoded test vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "go_packages": [
+    "encoding/hex (stdlib)",
+    "encoding/base64 (stdlib)"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario encoding-hex-base64"
+}
