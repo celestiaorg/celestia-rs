@@ -86,11 +86,11 @@ pub fn put_uvarint(dst: &mut [u8], value: u64) -> Result<usize, Error> {
     let mut value = value;
     let mut i = 0;
     while value >= 0x80 {
-        dst[i] = (value as u8 & 0x7f) | 0x80;
+        dst[i] = low_7_bits(value) | 0x80;
         value >>= 7;
         i += 1;
     }
-    dst[i] = value as u8;
+    dst[i] = low_7_bits(value);
     Ok(required)
 }
 
@@ -132,11 +132,11 @@ pub fn decode_uvarint(src: &[u8]) -> Result<(u64, usize), Error> {
 /// Decode a canonical Go `binary.Varint` byte sequence.
 pub fn decode_varint(src: &[u8]) -> Result<(i64, usize), Error> {
     let (encoded, consumed) = decode_uvarint(src)?;
-    let shifted = (encoded >> 1) as i64;
+    let magnitude = i64::try_from(encoded >> 1).map_err(|_| Error::Overflow)?;
     let value = if encoded & 1 == 0 {
-        shifted
+        magnitude
     } else {
-        !shifted
+        !magnitude
     };
 
     if encoded_varint_len(value) != consumed {
@@ -147,14 +147,22 @@ pub fn decode_varint(src: &[u8]) -> Result<(i64, usize), Error> {
 }
 
 const fn signed_to_uvarint(value: i64) -> u64 {
-    let shifted = (value as u64) << 1;
-    if value < 0 { !shifted } else { shifted }
+    let magnitude = value.unsigned_abs();
+    if value < 0 {
+        magnitude.wrapping_shl(1).wrapping_sub(1)
+    } else {
+        magnitude << 1
+    }
 }
 
 fn append_uvarint(out: &mut Vec<u8>, mut value: u64) {
     while value >= 0x80 {
-        out.push((value as u8 & 0x7f) | 0x80);
+        out.push(low_7_bits(value) | 0x80);
         value >>= 7;
     }
-    out.push(value as u8);
+    out.push(low_7_bits(value));
+}
+
+const fn low_7_bits(value: u64) -> u8 {
+    value.to_le_bytes()[0] & 0x7f
 }

@@ -24,7 +24,10 @@ fn protobuf_helpers_round_trip_raw_and_length_delimited() {
     };
 
     let encoded = protobuf::encode_to_vec(&message);
-    assert_eq!(protobuf::decode::<FixtureMessage>(&encoded).unwrap(), message);
+    assert_eq!(
+        protobuf::decode::<FixtureMessage>(&encoded).unwrap(),
+        message
+    );
 
     let delimited = protobuf::encode_length_delimited_to_vec(&message);
     assert_eq!(
@@ -88,7 +91,10 @@ fn signed_varint_matches_go_boundaries() {
 
 #[test]
 fn varint_rejects_malformed_inputs_and_preserves_small_buffers() {
-    assert_eq!(varint::decode_uvarint(&[0x80]), Err(varint::Error::Incomplete));
+    assert_eq!(
+        varint::decode_uvarint(&[0x80]),
+        Err(varint::Error::Incomplete)
+    );
     assert_eq!(
         varint::decode_uvarint(&[0x80, 0x00]),
         Err(varint::Error::NonCanonical)
@@ -133,8 +139,8 @@ fn base64_standard_and_url_safe_are_padded() {
 #[test]
 fn bech32_address_helpers_round_trip_and_enforce_prefixes() {
     let bytes: bech32::AddressBytes = [
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-        0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14,
     ];
 
     let account = bech32::encode_account_address(&bytes).unwrap();
