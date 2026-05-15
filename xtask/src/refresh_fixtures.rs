@@ -50,6 +50,26 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "hash",
         output_path: "conformance/fixtures/hash/tmhash.json",
     },
+    Scenario {
+        name: "encoding-protobuf",
+        crate_name: "encoding",
+        output_path: "conformance/fixtures/encoding/protobuf.json",
+    },
+    Scenario {
+        name: "encoding-varint",
+        crate_name: "encoding",
+        output_path: "conformance/fixtures/encoding/varint.json",
+    },
+    Scenario {
+        name: "encoding-hex-base64",
+        crate_name: "encoding",
+        output_path: "conformance/fixtures/encoding/hex-base64.json",
+    },
+    Scenario {
+        name: "encoding-bech32-addresses",
+        crate_name: "encoding",
+        output_path: "conformance/fixtures/encoding/bech32-addresses.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

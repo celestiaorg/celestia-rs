@@ -1,0 +1,33 @@
+{
+  "scenario": "encoding-bech32-addresses",
+  "account_prefix": "celestia",
+  "validator_operator_prefix": "celestiavaloper",
+  "validator_consensus_prefix": "celestiavalcons",
+  "cases": [
+    {
+      "label": "zero-bytes",
+      "pubkey_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "address_hex": "0000000000000000000000000000000000000000",
+      "account_address": "celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzf30as",
+      "validator_operator_address": "celestiavaloper1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq8knktk",
+      "validator_consensus_address": "celestiavalcons1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqn9q28h"
+    },
+    {
+      "label": "all-ones",
+      "pubkey_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "address_hex": "ffffffffffffffffffffffffffffffffffffffff",
+      "account_address": "celestia1llllllllllllllllllllllllllllllllwcsq66",
+      "validator_operator_address": "celestiavaloper1llllllllllllllllllllllllllllllllt8jevu",
+      "validator_consensus_address": "celestiavalcons1lllllllllllllllllllllllllllllllll5p9qa"
+    },
+    {
+      "label": "sequential",
+      "pubkey_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "address_hex": "0102030405060708090a0b0c0d0e0f1011121314",
+      "account_address": "celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgawu3",
+      "validator_operator_address": "celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5thlh2h",
+      "validator_consensus_address": "celestiavalcons1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5lyvtxk"
+    }
+  ],
+  "invalid_address_length_case_hex": "010203"
+}
