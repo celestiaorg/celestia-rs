@@ -53,6 +53,9 @@ Fixture files live at
 | File | Scenario | Description |
 |---|---|---|
 | `headers.json` | `tendermint-headers` | CometBFT header protobuf and header-hash vectors |
+| `validators.json` | `tendermint-validators` | CometBFT validator bytes, ordering, proposer, and validator-set hash vectors |
+| `commits.json` | `tendermint-commits` | CometBFT commit protobuf, commit-hash, and vote sign-byte vectors |
+| `canonical-sign-bytes.json` | `tendermint-canonical-sign-bytes` | CometBFT vote, vote-extension, and proposal sign-byte vectors |
 
 Regenerate fixtures:
 

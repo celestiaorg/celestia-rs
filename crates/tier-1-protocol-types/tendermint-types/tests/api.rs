@@ -147,7 +147,7 @@ fn validators_sort_deduplicate_hash_and_round_trip_proto() {
 
     let set = ValidatorSet::new(vec![validator_b.clone(), validator_a.clone()])
         .expect("valid validator set");
-    assert_eq!(set.validators[0].address, validator_a.address);
+    assert_eq!(set.validators[0].address, validator_b.address);
     assert_eq!(set.total_voting_power().expect("total power"), 30);
     assert_eq!(
         set.hash().expect("validator set hash"),

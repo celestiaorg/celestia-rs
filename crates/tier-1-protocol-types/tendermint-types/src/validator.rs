@@ -140,19 +140,24 @@ impl Validator {
     }
 }
 
-/// A CometBFT validator set sorted by address.
+/// A CometBFT validator set sorted by voting power, then address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatorSet {
-    /// Validators sorted by address.
+    /// Validators sorted by voting power descending, then address ascending.
     pub validators: Vec<Validator>,
     /// Current proposer, when known.
     pub proposer: Option<Validator>,
 }
 
 impl ValidatorSet {
-    /// Create a validator set sorted by validator address.
+    /// Create a validator set sorted by voting power descending, then address.
     pub fn new(mut validators: Vec<Validator>) -> Result<Self> {
-        validators.sort_by(|left, right| left.address.cmp(&right.address));
+        validators.sort_by(|left, right| {
+            right
+                .voting_power
+                .cmp(&left.voting_power)
+                .then_with(|| left.address.cmp(&right.address))
+        });
         for validator in &validators {
             validator.validate_basic()?;
         }

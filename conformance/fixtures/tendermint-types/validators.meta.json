@@ -1,0 +1,12 @@
+{
+  "scenario": "tendermint-validators",
+  "source_chain": "n/a (hardcoded CometBFT validator vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.22",
+  "go_packages": [
+    "github.com/cometbft/cometbft/types v0.38.12"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario tendermint-validators"
+}

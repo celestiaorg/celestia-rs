@@ -78,9 +78,12 @@ impl CommitSig {
     pub fn validate_basic(&self) -> Result<()> {
         match self.block_id_flag {
             BlockIdFlag::Absent => {
-                if self.validator_address.is_some()
-                    || self.timestamp.is_some()
-                    || !self.signature.is_empty()
+                if self.validator_address.is_some() || !self.signature.is_empty() {
+                    return Err(Error::InvalidCommitSig);
+                }
+                if self
+                    .timestamp
+                    .is_some_and(|timestamp| !is_go_zero_time(&timestamp))
                 {
                     return Err(Error::InvalidCommitSig);
                 }
@@ -129,6 +132,10 @@ impl CommitSig {
             signature: self.signature.clone(),
         }
     }
+}
+
+fn is_go_zero_time(timestamp: &proto::google::Timestamp) -> bool {
+    timestamp.seconds == -62_135_596_800 && timestamp.nanos == 0
 }
 
 /// CometBFT commit.

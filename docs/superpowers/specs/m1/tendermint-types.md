@@ -268,7 +268,7 @@ impl Validator {
     pub fn to_proto(&self) -> proto::types::Validator;
 }
 
-/// A CometBFT validator set sorted by address.
+/// A CometBFT validator set sorted by voting power, then address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatorSet {
     pub validators: Vec<Validator>,
@@ -429,8 +429,9 @@ uses RIPEMD-160(SHA-256(compressed_public_key)).
 protobuf `SimpleValidator` with public key and voting power only, excluding
 address and proposer priority.
 
-**REQ-12.** `ValidatorSet::new` sorts validators by address exactly as
-CometBFT does and rejects duplicate validator addresses.
+**REQ-12.** `ValidatorSet::new` sorts validators by voting power descending,
+using address ascending as the tiebreaker exactly as CometBFT does, and rejects
+duplicate validator addresses.
 
 **REQ-13.** `ValidatorSet::hash` matches CometBFT `ValidatorSet.Hash()` by
 hashing each validator's `bytes()` output with the CometBFT simple Merkle tree.

@@ -1,0 +1,38 @@
+{
+  "scenario": "tendermint-validators",
+  "cases": [
+    {
+      "label": "validator-0",
+      "public_key_hex": "a88c2a62768085e2568aa9826de55c0a0bc6e997fde333b9f1b49bb8fbbd5620",
+      "address_hex": "0e0d049342cf7ff3eff7d4455d581dad22c45323",
+      "voting_power": 30,
+      "proposer_priority": -40,
+      "validator_bytes_hex": "0a220a20a88c2a62768085e2568aa9826de55c0a0bc6e997fde333b9f1b49bb8fbbd5620101e"
+    },
+    {
+      "label": "validator-1",
+      "public_key_hex": "316c70701cb6855af0138f8ee173f3ceccec64cfaf7b33d42117f782e9fce140",
+      "address_hex": "78775eeea98eb1d543a61ebb19270b7d258124e2",
+      "voting_power": 30,
+      "proposer_priority": 30,
+      "validator_bytes_hex": "0a220a20316c70701cb6855af0138f8ee173f3ceccec64cfaf7b33d42117f782e9fce140101e"
+    },
+    {
+      "label": "validator-2",
+      "public_key_hex": "0fdf876f833377313469bbddee3300372fd39a40b19e2bdd7390757bda3b1b23",
+      "address_hex": "68d3ba428048b56068f9fad6d3f060c08ebc32e4",
+      "voting_power": 10,
+      "proposer_priority": 10,
+      "validator_bytes_hex": "0a220a200fdf876f833377313469bbddee3300372fd39a40b19e2bdd7390757bda3b1b23100a"
+    }
+  ],
+  "set": {
+    "validator_addresses_hex": [
+      "0e0d049342cf7ff3eff7d4455d581dad22c45323",
+      "78775eeea98eb1d543a61ebb19270b7d258124e2",
+      "68d3ba428048b56068f9fad6d3f060c08ebc32e4"
+    ],
+    "proposer_address_hex": "0e0d049342cf7ff3eff7d4455d581dad22c45323",
+    "validator_set_hash_hex": "17c8d8706ba4b483e1d08bd1dcce9803f16ee08dff874c27ff30f0b32aaa7aaa"
+  }
+}
