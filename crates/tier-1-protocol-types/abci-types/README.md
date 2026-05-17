@@ -51,10 +51,18 @@ for the full API contract.
 ## Conformance
 
 Focused API tests live under [`tests/api.rs`](tests/api.rs). Go-generated
-conformance fixtures are planned under
-[`conformance/fixtures/abci-types/`](../../../conformance/fixtures/abci-types/).
+conformance fixtures live at
+[`conformance/fixtures/abci-types/`](../../../conformance/fixtures/abci-types/):
 
-Regenerate fixtures once scenarios are registered:
+| File | Scenario | Description |
+|---|---|---|
+| `requests.json` | `abci-requests` | ABCI++ request-envelope protobuf vectors |
+| `responses.json` | `abci-responses` | ABCI++ response-envelope protobuf vectors |
+| `vote-extensions.json` | `abci-vote-extensions` | Commit info and vote-extension vectors |
+| `events.json` | `abci-events` | Event, tx result, CheckTx, and FinalizeBlock vectors |
+| `malformed.json` | `abci-malformed` | Malformed protobuf and validation vectors |
+
+Regenerate fixtures:
 
 ```bash
 cargo xtask refresh-fixtures --crate-name abci-types
@@ -64,6 +72,12 @@ Run API tests:
 
 ```bash
 cargo test -p abci-types --test api
+```
+
+Run conformance tests:
+
+```bash
+cargo test -p abci-types --test conformance
 ```
 
 ## Out of scope

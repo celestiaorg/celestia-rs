@@ -41,3 +41,6 @@
   re-exports, request/response envelope wrappers, event/tx-result/snapshot
   domain types, validator updates, misbehavior descriptors, commit info, vote
   extensions, and focused API coverage.
+- Added Go-generated `abci-types` conformance fixtures for ABCI++ request and
+  response envelopes, vote extensions, events, tx execution results, snapshots,
+  validator updates, and malformed protobuf/domain cases.

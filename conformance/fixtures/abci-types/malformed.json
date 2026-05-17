@@ -1,0 +1,131 @@
+{
+  "scenario": "abci-malformed",
+  "cases": [
+    {
+      "label": "request-missing-oneof",
+      "kind": "request",
+      "proto_hex": "",
+      "expected_error": "invalid_request"
+    },
+    {
+      "label": "response-missing-oneof",
+      "kind": "response",
+      "proto_hex": "",
+      "expected_error": "invalid_response"
+    },
+    {
+      "label": "request-check-tx-unknown-type",
+      "kind": "request",
+      "proto_hex": "42021063",
+      "expected_error": "invalid_status"
+    },
+    {
+      "label": "request-bad-hash",
+      "kind": "request",
+      "proto_hex": "9a011d0a03010203121401010101010101010101010101010101010101011801",
+      "expected_error": "invalid_hash_length"
+    },
+    {
+      "label": "request-bad-address",
+      "kind": "request",
+      "proto_hex": "9a01390a2001010101010101010101010101010101010101010101010101010101010101011213010101010101010101010101010101010101011801",
+      "expected_error": "invalid_address_length"
+    },
+    {
+      "label": "request-bad-height",
+      "kind": "request",
+      "proto_hex": "9a01380a20010101010101010101010101010101010101010101010101010101010101010112140101010101010101010101010101010101010101",
+      "expected_error": "invalid_height"
+    },
+    {
+      "label": "response-verify-unknown",
+      "kind": "response",
+      "proto_hex": "a20100",
+      "expected_error": "invalid_status"
+    },
+    {
+      "label": "response-verify-invalid",
+      "kind": "response",
+      "proto_hex": "a201020863",
+      "expected_error": "invalid_status"
+    },
+    {
+      "label": "event-empty-type",
+      "kind": "event",
+      "proto_hex": "121b0a0673656e646572120f63656c65737469613173656e6465721801",
+      "expected_error": "invalid_event"
+    },
+    {
+      "label": "event-empty-attribute-key",
+      "kind": "event_attribute",
+      "proto_hex": "120576616c75651801",
+      "expected_error": "invalid_event"
+    },
+    {
+      "label": "validator-bad-address",
+      "kind": "validator",
+      "proto_hex": "0a030102031801",
+      "expected_error": "invalid_address_length"
+    },
+    {
+      "label": "validator-negative-power",
+      "kind": "validator",
+      "proto_hex": "0a14010101010101010101010101010101010101010118ffffffffffffffffff01",
+      "expected_error": "invalid_validator"
+    },
+    {
+      "label": "validator-update-bad-public-key",
+      "kind": "validator_update",
+      "proto_hex": "0a210a1f020202020202020202020202020202020202020202020202020202020202021001",
+      "expected_error": "invalid_public_key"
+    },
+    {
+      "label": "commit-negative-round",
+      "kind": "commit_info",
+      "proto_hex": "08ffffffffffffffffff01",
+      "expected_error": "invalid_round"
+    },
+    {
+      "label": "vote-info-unknown-flag",
+      "kind": "vote_info",
+      "proto_hex": "0a180a140101010101010101010101010101010101010101180a",
+      "expected_error": "invalid_vote_info"
+    },
+    {
+      "label": "extended-vote-large-signature",
+      "kind": "extended_vote_info",
+      "proto_hex": "0a180a140101010101010101010101010101010101010101180a1a09657874656e73696f6e224103030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303032802",
+      "expected_error": "invalid_vote_info"
+    },
+    {
+      "label": "misbehavior-invalid-type",
+      "kind": "misbehavior",
+      "proto_hex": "086312180a140101010101010101010101010101010101010101180a1801220b0880e2cfaa0610c0a9d33a280a",
+      "expected_error": "invalid_misbehavior"
+    },
+    {
+      "label": "misbehavior-zero-height",
+      "kind": "misbehavior",
+      "proto_hex": "080112180a140101010101010101010101010101010101010101180a220b0880e2cfaa0610c0a9d33a280a",
+      "expected_error": "invalid_misbehavior"
+    },
+    {
+      "label": "snapshot-zero-height",
+      "kind": "snapshot",
+      "proto_hex": "10011801220468617368",
+      "expected_error": "invalid_snapshot"
+    },
+    {
+      "label": "response-process-unknown",
+      "kind": "response",
+      "proto_hex": "920100",
+      "expected_error": "invalid_status"
+    },
+    {
+      "label": "response-process-invalid",
+      "kind": "response",
+      "proto_hex": "9201020863",
+      "expected_error": "invalid_status"
+    }
+  ]
+}

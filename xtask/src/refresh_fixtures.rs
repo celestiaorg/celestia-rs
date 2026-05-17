@@ -155,6 +155,31 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "cosmos-types",
         output_path: "conformance/fixtures/cosmos-types/malformed.json",
     },
+    Scenario {
+        name: "abci-requests",
+        crate_name: "abci-types",
+        output_path: "conformance/fixtures/abci-types/requests.json",
+    },
+    Scenario {
+        name: "abci-responses",
+        crate_name: "abci-types",
+        output_path: "conformance/fixtures/abci-types/responses.json",
+    },
+    Scenario {
+        name: "abci-vote-extensions",
+        crate_name: "abci-types",
+        output_path: "conformance/fixtures/abci-types/vote-extensions.json",
+    },
+    Scenario {
+        name: "abci-events",
+        crate_name: "abci-types",
+        output_path: "conformance/fixtures/abci-types/events.json",
+    },
+    Scenario {
+        name: "abci-malformed",
+        crate_name: "abci-types",
+        output_path: "conformance/fixtures/abci-types/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

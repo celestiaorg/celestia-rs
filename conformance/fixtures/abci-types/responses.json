@@ -1,0 +1,110 @@
+{
+  "scenario": "abci-responses",
+  "cases": [
+    {
+      "label": "exception",
+      "variant": "exception",
+      "proto_hex": "0a060a04626f6f6d"
+    },
+    {
+      "label": "echo",
+      "variant": "echo",
+      "proto_hex": "12070a0568656c6c6f"
+    },
+    {
+      "label": "flush",
+      "variant": "flush",
+      "proto_hex": "1a00"
+    },
+    {
+      "label": "info",
+      "variant": "info",
+      "proto_hex": "22300a0464617461120276311801200a2a201717171717171717171717171717171717171717171717171717171717171717"
+    },
+    {
+      "label": "init-chain",
+      "variant": "init_chain",
+      "proto_hex": "324a12260a220a206064b6da088389f56a99345f6b8ce72e37d9559a9d1f37a281bedd609d5ae386100b1a201818181818181818181818181818181818181818181818181818181818181818"
+    },
+    {
+      "label": "query",
+      "variant": "query",
+      "proto_hex": "3a211a036c6f672204696e666f280132036b65793a0576616c7565480a520462616e6b"
+    },
+    {
+      "label": "check-tx",
+      "variant": "check_tx",
+      "proto_hex": "4a561204646174611a036c6f672204696e666f28ffffffffffffffffff0130feffffffffffffffff013a270a087472616e73666572121b0a0673656e646572120f63656c65737469613173656e6465721801420462616e6b"
+    },
+    {
+      "label": "commit",
+      "variant": "commit",
+      "proto_hex": "62021801"
+    },
+    {
+      "label": "list-snapshots",
+      "variant": "list_snapshots",
+      "proto_hex": "6a210a1f080a10011802220d736e617073686f742d686173682a086d65746164617461"
+    },
+    {
+      "label": "offer-snapshot-accept",
+      "variant": "offer_snapshot",
+      "proto_hex": "72020801"
+    },
+    {
+      "label": "offer-snapshot-reject-format",
+      "variant": "offer_snapshot",
+      "proto_hex": "72020804"
+    },
+    {
+      "label": "load-snapshot-chunk",
+      "variant": "load_snapshot_chunk",
+      "proto_hex": "7a070a056368756e6b"
+    },
+    {
+      "label": "apply-snapshot-chunk-accept",
+      "variant": "apply_snapshot_chunk",
+      "proto_hex": "82010c0801120201021a0470656572"
+    },
+    {
+      "label": "apply-snapshot-chunk-retry",
+      "variant": "apply_snapshot_chunk",
+      "proto_hex": "8201020803"
+    },
+    {
+      "label": "prepare-proposal",
+      "variant": "prepare_proposal",
+      "proto_hex": "8a010a0a037478310a03747832"
+    },
+    {
+      "label": "process-proposal-accept",
+      "variant": "process_proposal",
+      "proto_hex": "9201020801"
+    },
+    {
+      "label": "process-proposal-reject",
+      "variant": "process_proposal",
+      "proto_hex": "9201020802"
+    },
+    {
+      "label": "extend-vote",
+      "variant": "extend_vote",
+      "proto_hex": "9a010b0a09657874656e73696f6e"
+    },
+    {
+      "label": "verify-vote-extension-accept",
+      "variant": "verify_vote_extension",
+      "proto_hex": "a201020801"
+    },
+    {
+      "label": "verify-vote-extension-reject",
+      "variant": "verify_vote_extension",
+      "proto_hex": "a201020802"
+    },
+    {
+      "label": "finalize-block",
+      "variant": "finalize_block",
+      "proto_hex": "aa01cb010a270a087472616e73666572121b0a0673656e646572120f63656c65737469613173656e646572180112561204646174611a036c6f672204696e666f28ffffffffffffffffff0130feffffffffffffffff013a270a087472616e73666572121b0a0673656e646572120f63656c65737469613173656e6465721801420462616e6b1a260a220a206064b6da088389f56a99345f6b8ce72e37d9559a9d1f37a281bedd609d5ae386100b2a201919191919191919191919191919191919191919191919191919191919191919"
+    }
+  ]
+}

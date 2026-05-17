@@ -1,0 +1,39 @@
+{
+  "scenario": "abci-vote-extensions",
+  "cases": [
+    {
+      "label": "commit-info",
+      "kind": "commit_info",
+      "proto_hex": "0801121c0a180a140101010101010101010101010101010101010101180a1802"
+    },
+    {
+      "label": "extended-commit-info",
+      "kind": "extended_commit_info",
+      "proto_hex": "080112690a180a140101010101010101010101010101010101010101180a1a09657874656e73696f6e2240030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303032802",
+      "vote_extension_hex": "657874656e73696f6e"
+    },
+    {
+      "label": "request-extend-vote",
+      "kind": "request_extend_vote",
+      "proto_hex": "0a200c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c100b1a0b0883e2cfaa0610c0a9d33a220374783122037478322a200801121c0a180a140101010101010101010101010101010101010101180a1802322d080112180a140101010101010101010101010101010101010101180a1809220b0885e2cfaa0610c0a9d33a28643a200d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d42140101010101010101010101010101010101010101"
+    },
+    {
+      "label": "request-verify-vote-extension",
+      "kind": "request_verify_vote_extension",
+      "proto_hex": "0a200e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e12140101010101010101010101010101010101010101180b2209657874656e73696f6e",
+      "vote_extension_hex": "657874656e73696f6e"
+    },
+    {
+      "label": "response-extend-vote",
+      "kind": "response_extend_vote",
+      "proto_hex": "0a09657874656e73696f6e",
+      "vote_extension_hex": "657874656e73696f6e"
+    },
+    {
+      "label": "response-verify-vote-extension",
+      "kind": "response_verify_vote_extension",
+      "proto_hex": "0801",
+      "status": "accept"
+    }
+  ]
+}

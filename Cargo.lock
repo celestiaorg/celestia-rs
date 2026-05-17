@@ -9,6 +9,8 @@ dependencies = [
  "encoding",
  "hex",
  "prost",
+ "serde",
+ "serde_json",
  "tendermint-proto",
  "tendermint-types",
 ]
