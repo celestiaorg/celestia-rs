@@ -1,0 +1,24 @@
+[package]
+name = "cosmos-types"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK protocol types for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+cosmos-sdk-proto = { version = "=0.26.1", default-features = false, features = ["std"] }
+crypto = { path = "../../tier-0-primitives/crypto" }
+encoding = { path = "../../tier-0-primitives/encoding" }
+hash = { path = "../../tier-0-primitives/hash" }
+prost = "0.13"
+tendermint-types = { path = "../tendermint-types" }
+
+[dev-dependencies]
+hex = "0.4"

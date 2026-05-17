@@ -28,3 +28,6 @@
 - Added the Tier-1 `cosmos-types` crate spec for Cosmos SDK transaction raw
   bytes, direct sign docs, auth info, coins, public-key `Any`, and Celestia
   address helpers.
+- Started the Tier-1 `cosmos-types` crate with Celestia address helpers, coins,
+  protobuf `Any`, secp256k1 public-key packing, Cosmos SDK transaction domain
+  types, raw transaction hashing, direct sign bytes, and focused API coverage.

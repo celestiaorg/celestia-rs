@@ -151,12 +151,14 @@ pub enum SignMode {
     Unspecified = 0,
     /// SIGN_MODE_DIRECT.
     Direct = 1,
+    /// SIGN_MODE_TEXTUAL.
+    Textual = 2,
+    /// SIGN_MODE_DIRECT_AUX.
+    DirectAux = 3,
     /// SIGN_MODE_LEGACY_AMINO_JSON.
     LegacyAminoJson = 127,
-    /// SIGN_MODE_DIRECT_AUX.
-    DirectAux = 2,
-    /// SIGN_MODE_TEXTUAL.
-    Textual = 3,
+    /// SIGN_MODE_EIP_191.
+    Eip191 = 191,
 }
 
 impl TryFrom<i32> for SignMode;
@@ -170,7 +172,7 @@ pub enum ModeInfo {
     /// Multisig mode with nested mode infos and compact bit array bytes.
     Multi {
         bitarray_extra_bits_stored: u32,
-        bitarray_elems: Vec<u64>,
+        bitarray_elems: Vec<u8>,
         mode_infos: Vec<ModeInfo>,
     },
 }
@@ -322,6 +324,7 @@ preferred API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     InvalidAddressLength { actual: usize },
+    InvalidAddress,
     InvalidAddressPrefix { expected: &'static str, actual: String },
     InvalidAny,
     InvalidCoin,
@@ -401,7 +404,7 @@ a later crate spec explicitly grants an exception.
 
 ## Conformance fixtures
 
-Committed under `conformance/fixtures/cosmos-types/`:
+To be committed under `conformance/fixtures/cosmos-types/`:
 
 - `addresses.json` - Celestia account, validator-operator, and
   validator-consensus bech32 vectors.

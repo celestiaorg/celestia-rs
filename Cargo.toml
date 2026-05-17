@@ -5,6 +5,7 @@ members = [
     "crates/tier-0-primitives/encoding",
     "crates/tier-0-primitives/hash",
     "crates/tier-0-primitives/merkle",
+    "crates/tier-1-protocol-types/cosmos-types",
     "crates/tier-1-protocol-types/tendermint-types",
     "xtask",
 ]
