@@ -482,6 +482,7 @@ impl TxRaw {
         if self.body_bytes.is_empty() || self.auth_info_bytes.is_empty() {
             return Err(Error::InvalidTx);
         }
+        TxBody::from_proto(decode_proto(&self.body_bytes)?)?;
         let auth_info = AuthInfo::from_proto(decode_proto(&self.auth_info_bytes)?)?;
         validate_signature_count(&self.signatures, &auth_info)?;
         Ok(())
@@ -529,6 +530,8 @@ impl SignDoc {
         {
             return Err(Error::InvalidSignDoc);
         }
+        TxBody::from_proto(decode_proto(&self.body_bytes)?)?;
+        AuthInfo::from_proto(decode_proto(&self.auth_info_bytes)?)?;
         Ok(())
     }
 
@@ -594,7 +597,8 @@ fn validate_coins(coins: &[Coin]) -> Result<()> {
 fn validate_public_key_any(any: &Any) -> Result<()> {
     any.validate_basic()?;
     if any.type_url == SECP256K1_PUBLIC_KEY_TYPE_URL {
-        let public_key: proto::crypto::secp256k1::PubKey = decode_proto(&any.value)?;
+        let public_key: proto::crypto::secp256k1::PubKey =
+            decode_proto(&any.value).map_err(|_| Error::InvalidPublicKey)?;
         if public_key.key.len() != crypto::secp256k1::PUBLIC_KEY_LENGTH {
             return Err(Error::InvalidPublicKey);
         }

@@ -1,0 +1,83 @@
+{
+  "scenario": "cosmos-malformed",
+  "cases": [
+    {
+      "label": "account-address-wrong-prefix",
+      "kind": "account_address",
+      "value": "celestiavaloper1jhwp9yfc3rawhjntggddpmstrdrc3zkfzuexye",
+      "expected_error": "invalid_address_prefix"
+    },
+    {
+      "label": "account-address-invalid-bech32",
+      "kind": "account_address",
+      "value": "not-bech32",
+      "expected_error": "invalid_address"
+    },
+    {
+      "label": "any-missing-leading-slash",
+      "kind": "any",
+      "proto_hex": "0a1b636f736d6f732e62616e6b2e763162657461312e4d736753656e64120101",
+      "expected_error": "invalid_any"
+    },
+    {
+      "label": "coin-invalid-denom",
+      "kind": "coin",
+      "proto_hex": "0a0431746961120131",
+      "expected_error": "invalid_denom"
+    },
+    {
+      "label": "coin-negative-amount",
+      "kind": "coin",
+      "proto_hex": "0a047574696112022d31",
+      "expected_error": "invalid_amount"
+    },
+    {
+      "label": "mode-info-unknown-sign-mode",
+      "kind": "mode_info",
+      "proto_hex": "0a0308e707",
+      "expected_error": "invalid_sign_mode"
+    },
+    {
+      "label": "mode-info-missing-bitarray",
+      "kind": "mode_info",
+      "proto_hex": "120612040a020801",
+      "expected_error": "invalid_mode_info"
+    },
+    {
+      "label": "signer-info-missing-mode-info",
+      "kind": "signer_info",
+      "proto_hex": "0a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f88",
+      "expected_error": "invalid_signer_info"
+    },
+    {
+      "label": "signer-info-bad-public-key",
+      "kind": "signer_info",
+      "proto_hex": "0a240a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b65791201ff12040a020801",
+      "expected_error": "invalid_public_key"
+    },
+    {
+      "label": "sign-doc-empty-chain-id",
+      "kind": "sign_doc",
+      "proto_hex": "0a7a0a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312046d656d6f180cfa3f1e0a192f63656c65737469612e74782e76312e457874656e73696f6e1201aafa7f290a242f63656c65737469612e74782e76312e4e6f6e437269746963616c457874656e73696f6e1201bb12650a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f8812040a020801180712110a0b0a047574696112033132331080f104202a",
+      "expected_error": "invalid_sign_doc"
+    },
+    {
+      "label": "tx-raw-empty-body",
+      "kind": "tx_raw",
+      "proto_hex": "12650a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f8812040a020801180712110a0b0a047574696112033132331080f1041a4009090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909",
+      "expected_error": "invalid_tx"
+    },
+    {
+      "label": "tx-raw-signature-count-mismatch",
+      "kind": "tx_raw",
+      "proto_hex": "0a7a0a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312046d656d6f180cfa3f1e0a192f63656c65737469612e74782e76312e457874656e73696f6e1201aafa7f290a242f63656c65737469612e74782e76312e4e6f6e437269746963616c457874656e73696f6e1201bb12650a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f8812040a020801180712110a0b0a047574696112033132331080f104",
+      "expected_error": "invalid_tx"
+    },
+    {
+      "label": "tx-raw-bad-auth-info-bytes",
+      "kind": "tx_raw",
+      "proto_hex": "0a7a0a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312046d656d6f180cfa3f1e0a192f63656c65737469612e74782e76312e457874656e73696f6e1201aafa7f290a242f63656c65737469612e74782e76312e4e6f6e437269746963616c457874656e73696f6e1201bb1201ff1a4009090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909",
+      "expected_error": "decode"
+    }
+  ]
+}

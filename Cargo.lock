@@ -242,6 +242,8 @@ dependencies = [
  "hash",
  "hex",
  "prost",
+ "serde",
+ "serde_json",
  "tendermint-types",
 ]
 

@@ -404,7 +404,7 @@ a later crate spec explicitly grants an exception.
 
 ## Conformance fixtures
 
-To be committed under `conformance/fixtures/cosmos-types/`:
+Committed under `conformance/fixtures/cosmos-types/`:
 
 - `addresses.json` - Celestia account, validator-operator, and
   validator-consensus bech32 vectors.

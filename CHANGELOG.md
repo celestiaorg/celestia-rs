@@ -31,3 +31,6 @@
 - Started the Tier-1 `cosmos-types` crate with Celestia address helpers, coins,
   protobuf `Any`, secp256k1 public-key packing, Cosmos SDK transaction domain
   types, raw transaction hashing, direct sign bytes, and focused API coverage.
+- Added Go-generated `cosmos-types` conformance fixtures for Celestia
+  addresses, coins, public keys, direct sign docs, raw transaction hashes, and
+  malformed Cosmos SDK protobuf/domain cases.

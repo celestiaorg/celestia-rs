@@ -22,3 +22,5 @@ tendermint-types = { path = "../tendermint-types" }
 
 [dev-dependencies]
 hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

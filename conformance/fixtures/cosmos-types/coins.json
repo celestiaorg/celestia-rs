@@ -1,0 +1,43 @@
+{
+  "scenario": "cosmos-coins",
+  "valid_cases": [
+    {
+      "label": "valid-0",
+      "denom": "utia",
+      "amount": "0",
+      "proto_hex": "0a0475746961120130"
+    },
+    {
+      "label": "valid-1",
+      "denom": "transfer/channel-0/utia",
+      "amount": "123456789",
+      "proto_hex": "0a177472616e736665722f6368616e6e656c2d302f757469611209313233343536373839"
+    },
+    {
+      "label": "valid-2",
+      "denom": "factory/celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqcrl88e/utia",
+      "amount": "42",
+      "proto_hex": "0a3c666163746f72792f63656c657374696131717171717171717171717171717171717171717171717171717171717171717163726c3838652f7574696112023432"
+    }
+  ],
+  "malformed_cases": [
+    {
+      "label": "coin-invalid-denom",
+      "kind": "coin",
+      "proto_hex": "0a0431746961120131",
+      "expected_error": "invalid_denom"
+    },
+    {
+      "label": "coin-negative-amount",
+      "kind": "coin",
+      "proto_hex": "0a047574696112022d31",
+      "expected_error": "invalid_amount"
+    },
+    {
+      "label": "coin-empty-amount",
+      "kind": "coin",
+      "proto_hex": "0a0475746961",
+      "expected_error": "invalid_amount"
+    }
+  ]
+}

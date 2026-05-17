@@ -1,0 +1,13 @@
+{
+  "scenario": "cosmos-public-keys",
+  "cases": [
+    {
+      "label": "secp256k1",
+      "public_key_hex": "03118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f88",
+      "address_hex": "95dc12913888faebca6b421ad0ee0b1b47888ac9",
+      "any_type_url": "/cosmos.crypto.secp256k1.PubKey",
+      "any_value_hex": "0a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f88",
+      "any_proto_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103118af283b4bfa4e27f561c8e5bf45314803edc144fd4deaa9299b2a0ab905f88"
+    }
+  ]
+}

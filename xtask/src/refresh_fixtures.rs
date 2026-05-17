@@ -125,6 +125,36 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "tendermint-types",
         output_path: "conformance/fixtures/tendermint-types/malformed.json",
     },
+    Scenario {
+        name: "cosmos-addresses",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/addresses.json",
+    },
+    Scenario {
+        name: "cosmos-coins",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/coins.json",
+    },
+    Scenario {
+        name: "cosmos-public-keys",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/public-keys.json",
+    },
+    Scenario {
+        name: "cosmos-sign-docs",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/sign-docs.json",
+    },
+    Scenario {
+        name: "cosmos-tx-raw",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/tx-raw.json",
+    },
+    Scenario {
+        name: "cosmos-malformed",
+        crate_name: "cosmos-types",
+        output_path: "conformance/fixtures/cosmos-types/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

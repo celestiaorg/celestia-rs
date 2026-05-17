@@ -49,11 +49,11 @@ for the full API contract.
 
 ## Conformance
 
-The initial crate implementation has focused API tests under
-[`tests/api.rs`](tests/api.rs). Go-generated conformance fixtures are tracked by
-the crate spec and are the next remaining hardening slice:
+Focused API tests live under [`tests/api.rs`](tests/api.rs). Go-generated
+conformance fixtures live at
+[`conformance/fixtures/cosmos-types/`](../../../conformance/fixtures/cosmos-types/):
 
-| Planned file | Scenario | Description |
+| File | Scenario | Description |
 |---|---|---|
 | `addresses.json` | `cosmos-addresses` | Celestia bech32 address vectors |
 | `coins.json` | `cosmos-coins` | Cosmos SDK coin validation vectors |
@@ -62,10 +62,22 @@ the crate spec and are the next remaining hardening slice:
 | `tx-raw.json` | `cosmos-tx-raw` | Raw transaction encoding and hash vectors |
 | `malformed.json` | `cosmos-malformed` | Malformed protobuf and validation vectors |
 
+Regenerate fixtures:
+
+```bash
+cargo xtask refresh-fixtures --crate-name cosmos-types
+```
+
 Run API tests:
 
 ```bash
-cargo test -p cosmos-types
+cargo test -p cosmos-types --test api
+```
+
+Run conformance tests:
+
+```bash
+cargo test -p cosmos-types --test conformance
 ```
 
 ## Out of scope

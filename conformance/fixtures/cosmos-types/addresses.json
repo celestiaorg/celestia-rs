@@ -1,0 +1,23 @@
+{
+  "scenario": "cosmos-addresses",
+  "cases": [
+    {
+      "label": "account",
+      "kind": "account",
+      "address_hex": "95dc12913888faebca6b421ad0ee0b1b47888ac9",
+      "bech32": "celestia1jhwp9yfc3rawhjntggddpmstrdrc3zkf8rmljl"
+    },
+    {
+      "label": "validator-operator",
+      "kind": "valoper",
+      "address_hex": "95dc12913888faebca6b421ad0ee0b1b47888ac9",
+      "bech32": "celestiavaloper1jhwp9yfc3rawhjntggddpmstrdrc3zkfzuexye"
+    },
+    {
+      "label": "validator-consensus",
+      "kind": "valcons",
+      "address_hex": "95dc12913888faebca6b421ad0ee0b1b47888ac9",
+      "bech32": "celestiavalcons1jhwp9yfc3rawhjntggddpmstrdrc3zkfk026gc"
+    }
+  ]
+}
