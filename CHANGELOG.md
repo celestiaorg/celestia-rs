@@ -34,3 +34,6 @@
 - Added Go-generated `cosmos-types` conformance fixtures for Celestia
   addresses, coins, public keys, direct sign docs, raw transaction hashes, and
   malformed Cosmos SDK protobuf/domain cases.
+- Added the Tier-1 `abci-types` crate spec for CometBFT ABCI++ request/response
+  envelopes, vote extensions, validator updates, events, tx execution results,
+  and snapshot protocol types.
