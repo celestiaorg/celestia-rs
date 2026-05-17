@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "abci-types"
+version = "0.0.1"
+dependencies = [
+ "encoding",
+ "hex",
+ "prost",
+ "tendermint-proto",
+ "tendermint-types",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,22 @@
+[package]
+name = "abci-types"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "CometBFT ABCI++ protocol types for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+encoding = { path = "../../tier-0-primitives/encoding" }
+prost = "0.13"
+tendermint-proto = { version = "=0.40.4", default-features = false, features = ["std"] }
+tendermint-types = { path = "../tendermint-types" }
+
+[dev-dependencies]
+hex = "0.4"

@@ -37,3 +37,7 @@
 - Added the Tier-1 `abci-types` crate spec for CometBFT ABCI++ request/response
   envelopes, vote extensions, validator updates, events, tx execution results,
   and snapshot protocol types.
+- Started the Tier-1 `abci-types` crate with CometBFT v0.38 ABCI++ protobuf
+  re-exports, request/response envelope wrappers, event/tx-result/snapshot
+  domain types, validator updates, misbehavior descriptors, commit info, vote
+  extensions, and focused API coverage.

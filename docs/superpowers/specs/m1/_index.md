@@ -16,7 +16,7 @@
 | 4 | `merkle` | 0 | [merkle.md](merkle.md) | implemented |
 | 5 | `tendermint-types` | 1 | [tendermint-types.md](tendermint-types.md) | implemented |
 | 6 | `cosmos-types` | 1 | [cosmos-types.md](cosmos-types.md) | implemented |
-| 7 | `abci-types` | 1 | [abci-types.md](abci-types.md) | pending |
+| 7 | `abci-types` | 1 | [abci-types.md](abci-types.md) | implementation started |
 | 8 | `nmt` | 1 | _to be written_ | pending |
 | 9 | `shares` | 1 | _to be written_ | pending |
 | 10 | `square` | 1 | _to be written_ | pending |
