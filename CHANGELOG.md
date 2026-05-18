@@ -74,3 +74,5 @@
   roots and Merkle mountain range sizing.
 - Added the `square` data availability header value type with protobuf
   conversion, root-count validation, and DAH hash calculation.
+- Added `square` Leopard erasure coding, extended data-square import/export,
+  row/column root calculation, and DAH construction from EDS roots.

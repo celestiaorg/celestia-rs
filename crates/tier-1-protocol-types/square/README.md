@@ -7,13 +7,14 @@ construction, blob share placement, blob commitment rules, erasure extension,
 and data availability headers. The current implementation checkpoint covers
 the low-level blob transaction wrapper, inclusion math, square sizing, and
 `write_square` layout foundation, builder/export mechanics, blob commitments,
-and data availability header value helpers.
+data availability header value helpers, and Leopard erasure-coded EDS helpers.
 
 ## Depends On
 
 - `shares`
 - `encoding`
 - `hash`
+- `leopard-codec`
 - `merkle`
 
 ## Consumers

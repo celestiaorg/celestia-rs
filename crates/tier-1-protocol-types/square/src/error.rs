@@ -70,6 +70,32 @@ pub enum Error {
         /// Observed column root count.
         columns: usize,
     },
+    /// An erasure input had an invalid share or shard count.
+    InvalidErasureShardCount {
+        /// Observed shard count.
+        actual: usize,
+    },
+    /// An erasure input had an invalid shard byte length.
+    InvalidErasureChunkSize {
+        /// Observed byte length.
+        actual: usize,
+    },
+    /// An extended data square axis index was out of range.
+    ExtendedDataSquareIndexOutOfRange {
+        /// Axis name.
+        axis: &'static str,
+        /// Observed index.
+        index: usize,
+        /// Extended data square width.
+        width: usize,
+    },
+    /// The erasure codec returned an error.
+    ErasureCodec {
+        /// Codec name.
+        codec: &'static str,
+        /// Error message.
+        message: String,
+    },
     /// Share primitive operation failed.
     Share(shares::Error),
     /// Protobuf decoding failed.
@@ -129,6 +155,19 @@ impl core::fmt::Display for Error {
                 f,
                 "data availability row/column root count mismatch: rows {rows}, columns {columns}"
             ),
+            Self::InvalidErasureShardCount { actual } => {
+                write!(f, "invalid erasure shard count: {actual}")
+            }
+            Self::InvalidErasureChunkSize { actual } => {
+                write!(f, "invalid erasure chunk size: {actual}")
+            }
+            Self::ExtendedDataSquareIndexOutOfRange { axis, index, width } => write!(
+                f,
+                "extended data square {axis} index out of range: {index} >= {width}"
+            ),
+            Self::ErasureCodec { codec, message } => {
+                write!(f, "{codec} erasure codec error: {message}")
+            }
             Self::Share(error) => write!(f, "share error: {error}"),
             Self::Decode(message) => write!(f, "decode square data: {message}"),
             Self::Encode(message) => write!(f, "encode square data: {message}"),

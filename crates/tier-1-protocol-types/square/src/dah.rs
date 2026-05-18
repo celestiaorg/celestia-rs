@@ -2,7 +2,9 @@
 
 use encoding::protobuf::Message;
 
+use crate::erasure::{ExtendedDataSquare, extend_shares};
 use crate::square::DEFAULT_MAX_SQUARE_SIZE;
+use crate::square::empty_square;
 use crate::{Error, Result};
 
 const MIN_EXTENDED_SQUARE_WIDTH: usize = shares::MIN_SQUARE_SIZE * 2;
@@ -100,6 +102,27 @@ impl DataAvailabilityHeader {
 /// Decode a protobuf data availability header.
 pub fn data_availability_header_from_proto(bytes: &[u8]) -> Result<DataAvailabilityHeader> {
     DataAvailabilityHeader::from_proto_bytes(bytes)
+}
+
+/// Construct a data availability header from an extended data square.
+pub fn new_data_availability_header(eds: &ExtendedDataSquare) -> Result<DataAvailabilityHeader> {
+    DataAvailabilityHeader::new(eds.row_roots()?, eds.column_roots()?)
+}
+
+/// Return the minimum valid data availability header.
+#[allow(clippy::panic)]
+#[must_use]
+pub fn min_data_availability_header() -> DataAvailabilityHeader {
+    match min_data_availability_header_result() {
+        Ok(dah) => dah,
+        Err(error) => panic!("minimum data availability header construction failed: {error}"),
+    }
+}
+
+fn min_data_availability_header_result() -> Result<DataAvailabilityHeader> {
+    let square = empty_square();
+    let eds = extend_shares(square.as_shares())?;
+    new_data_availability_header(&eds)
 }
 
 fn decode_roots(roots: Vec<Vec<u8>>) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {

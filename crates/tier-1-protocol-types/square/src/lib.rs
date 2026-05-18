@@ -9,6 +9,7 @@ pub mod blob_tx;
 pub mod builder;
 pub mod commitment;
 pub mod dah;
+pub mod erasure;
 pub mod error;
 pub mod inclusion;
 pub mod square;
@@ -24,6 +25,11 @@ pub use commitment::{
 };
 pub use dah::{
     DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, data_availability_header_from_proto,
+    min_data_availability_header, new_data_availability_header,
+};
+pub use erasure::{
+    ErasureCodec, ExtendedDataSquare, LeoRsCodec, compute_extended_data_square, extend_shares,
+    import_extended_data_square,
 };
 pub use error::{Error, Result};
 pub use inclusion::{

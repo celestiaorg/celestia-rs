@@ -2,16 +2,17 @@
 
 use shares::{
     Blob, CompactShareSplitter, DEFAULT_SHARE_VERSION, Namespace, PAY_FOR_BLOB_NAMESPACE,
-    SparseShareSplitter, TX_NAMESPACE,
+    SHARE_SIZE, SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Builder, DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, Error,
-    PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
-    blob_shares_used_non_interactive_defaults, build, construct,
-    data_availability_header_from_proto, deconstruct, empty_square, is_power_of_two,
-    merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
-    round_up_by_multiple_of, round_up_power_of_two, round_up_power_of_two_strict, size,
-    sub_tree_width, tx_share_range, write_square,
+    BlobTx, Builder, DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, ErasureCodec, Error,
+    ExtendedDataSquare, LeoRsCodec, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size,
+    blob_share_range, blob_shares_used_non_interactive_defaults, build,
+    compute_extended_data_square, construct, data_availability_header_from_proto, deconstruct,
+    empty_square, extend_shares, import_extended_data_square, is_power_of_two,
+    merkle_mountain_range_sizes, min_data_availability_header, new_data_availability_header,
+    next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
+    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
 };
 
 #[test]
@@ -397,6 +398,81 @@ fn data_availability_header_rejects_invalid_shapes() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn leopard_codec_encodes_and_reconstructs_shards() -> Result<(), Box<dyn std::error::Error>> {
+    let codec = LeoRsCodec::new();
+    let data = vec![vec![1; SHARE_SIZE], vec![2; SHARE_SIZE]];
+
+    assert_eq!(codec.name(), "Leopard");
+    assert_eq!(codec.max_chunks(), 128 * 128);
+    codec.validate_chunk_size(SHARE_SIZE)?;
+    assert!(codec.validate_chunk_size(7).is_err());
+
+    let parity = codec.encode(&data)?;
+    assert_eq!(parity.len(), data.len());
+    assert!(parity.iter().all(|shard| shard.len() == SHARE_SIZE));
+
+    let mut shards = vec![
+        Some(data[0].clone()),
+        None,
+        Some(parity[0].clone()),
+        Some(parity[1].clone()),
+    ];
+    let reconstructed = codec.decode(&mut shards)?;
+    assert_eq!(&reconstructed[..data.len()], data.as_slice());
+    assert!(shards.iter().all(Option::is_some));
+    Ok(())
+}
+
+#[test]
+fn extended_data_square_extends_imports_and_roots() -> Result<(), Box<dyn std::error::Error>> {
+    let codec = LeoRsCodec::new();
+    let square = empty_square();
+
+    let eds = compute_extended_data_square(square.as_shares(), &codec)?;
+    let default_eds = extend_shares(square.as_shares())?;
+    assert_eq!(eds, default_eds);
+    assert_eq!(eds.original_width(), 1);
+    assert_eq!(eds.width(), 2);
+    assert_eq!(eds.flattened().len(), 4);
+    assert_eq!(
+        eds.flattened_ods(),
+        vec![square.as_shares()[0].as_bytes().to_vec()]
+    );
+    assert_eq!(eds.row(0)?.len(), 2);
+    assert_eq!(eds.column(0)?.len(), 2);
+    assert!(eds.row(2).is_err());
+    assert!(eds.column(2).is_err());
+
+    let imported = import_extended_data_square(eds.flattened(), &codec)?;
+    assert_eq!(imported, eds);
+    assert_eq!(eds.row_roots()?.len(), 2);
+    assert_eq!(eds.column_roots()?.len(), 2);
+    assert_eq!(eds.roots()?.len(), 4);
+
+    let dah = new_data_availability_header(&eds)?;
+    assert_eq!(dah.row_roots, eds.row_roots()?);
+    assert_eq!(dah.column_roots, eds.column_roots()?);
+    assert_eq!(min_data_availability_header(), dah);
+    Ok(())
+}
+
+#[test]
+fn extended_data_square_rejects_invalid_shapes() -> Result<(), Box<dyn std::error::Error>> {
+    let codec = LeoRsCodec::new();
+
+    assert!(ExtendedDataSquare::new(&codec, 3, SHARE_SIZE).is_err());
+    assert!(ExtendedDataSquare::new(&codec, 2, 7).is_err());
+    assert!(import_extended_data_square(vec![vec![0; SHARE_SIZE]; 3], &codec).is_err());
+    assert!(import_extended_data_square(vec![vec![0; 7]; 4], &codec).is_err());
+    assert!(compute_extended_data_square(&[], &codec).is_err());
+    assert!(compute_extended_data_square(&shares::tail_padding_shares(2), &codec).is_err());
+
+    let empty = ExtendedDataSquare::new(&codec, 2, SHARE_SIZE)?;
+    assert_eq!(empty.flattened().len(), 4);
+    Ok(())
+}
+
+#[test]
 fn error_display_messages_are_stable() {
     let cases = [
         (
@@ -455,6 +531,29 @@ fn error_display_messages_are_stable() {
                 columns: 3,
             },
             "data availability row/column root count mismatch: rows 2, columns 3",
+        ),
+        (
+            Error::InvalidErasureShardCount { actual: 3 },
+            "invalid erasure shard count: 3",
+        ),
+        (
+            Error::InvalidErasureChunkSize { actual: 7 },
+            "invalid erasure chunk size: 7",
+        ),
+        (
+            Error::ExtendedDataSquareIndexOutOfRange {
+                axis: "row",
+                index: 2,
+                width: 2,
+            },
+            "extended data square row index out of range: 2 >= 2",
+        ),
+        (
+            Error::ErasureCodec {
+                codec: "Leopard",
+                message: "bad shards".to_owned(),
+            },
+            "Leopard erasure codec error: bad shards",
         ),
         (
             Error::Share(shares::Error::InvalidBlob),

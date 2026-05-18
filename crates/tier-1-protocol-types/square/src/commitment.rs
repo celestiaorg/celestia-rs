@@ -43,7 +43,7 @@ pub fn create_commitment(
             leaf.extend_from_slice(share.as_bytes());
             leaves.push(leaf);
         }
-        subtree_roots.push(nmt_root(&leaves)?.to_bytes().to_vec());
+        subtree_roots.push(namespaced_merkle_root(&leaves)?.to_vec());
         cursor = end;
     }
 
@@ -159,6 +159,10 @@ fn nmt_root<T: AsRef<[u8]>>(leaves: &[T]) -> Result<NamespacedRoot> {
             NamespacedRoot::node(&left, &right)
         }
     }
+}
+
+pub(crate) fn namespaced_merkle_root<T: AsRef<[u8]>>(leaves: &[T]) -> Result<[u8; NMT_NODE_SIZE]> {
+    Ok(nmt_root(leaves)?.to_bytes())
 }
 
 fn nmt_split_point(len: usize) -> Result<usize> {

@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 encoding = { path = "../../tier-0-primitives/encoding" }
 hash = { path = "../../tier-0-primitives/hash" }
+leopard-codec = "0.2"
 merkle = { path = "../../tier-0-primitives/merkle" }
 prost = "0.13"
 shares = { path = "../shares" }
