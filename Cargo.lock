@@ -698,6 +698,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmt"
+version = "0.0.1"
+dependencies = [
+ "encoding",
+ "hash",
+ "hex",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

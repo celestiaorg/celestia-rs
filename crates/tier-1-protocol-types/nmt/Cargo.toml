@@ -1,0 +1,20 @@
+[package]
+name = "nmt"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Celestia namespaced Merkle tree primitives for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+encoding = { path = "../../tier-0-primitives/encoding" }
+hash = { path = "../../tier-0-primitives/hash" }
+
+[dev-dependencies]
+hex = "0.4"

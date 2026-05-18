@@ -46,3 +46,6 @@
   validator updates, and malformed protobuf/domain cases.
 - Added the Tier-1 `nmt` crate spec for Celestia namespaced Merkle tree roots,
   namespace proofs, subroot path calculation, and Go conformance fixtures.
+- Started the Tier-1 `nmt` crate with fixed namespace IDs, namespaced hashing,
+  ordered tree roots, namespace inclusion/absence proof verification, subroot
+  path calculation, and focused API coverage.
