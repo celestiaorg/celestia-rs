@@ -6,11 +6,16 @@
 #![warn(missing_docs)]
 
 pub mod blob_tx;
+pub mod builder;
 pub mod error;
 pub mod inclusion;
 pub mod square;
 
 pub use blob_tx::{BlobTx, PROTO_BLOB_TX_TYPE_ID};
+pub use builder::{
+    BuildResult, Builder, Element, blob_share_range, build, construct, deconstruct, tx_share_range,
+    worst_case_share_indexes,
+};
 pub use error::{Error, Result};
 pub use inclusion::{
     blob_min_square_size, blob_shares_used_non_interactive_defaults, is_power_of_two,

@@ -5,10 +5,11 @@ use shares::{
     SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Error, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size,
-    blob_shares_used_non_interactive_defaults, empty_square, is_power_of_two, next_share_index,
-    round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
-    round_up_power_of_two_strict, size, sub_tree_width, write_square,
+    BlobTx, Builder, Error, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
+    blob_shares_used_non_interactive_defaults, build, construct, deconstruct, empty_square,
+    is_power_of_two, next_share_index, round_down_power_of_two, round_up_by_multiple_of,
+    round_up_power_of_two, round_up_power_of_two_strict, size, sub_tree_width, tx_share_range,
+    write_square,
 };
 
 #[test]
@@ -197,6 +198,96 @@ fn write_square_rejects_invalid_layouts() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
+fn builder_exports_square_and_finds_ranges() -> Result<(), Box<dyn std::error::Error>> {
+    let ordinary_tx = b"ordinary".to_vec();
+    let blob = Blob::new(
+        Namespace::new_v0(&[3])?,
+        b"blob-data".to_vec(),
+        DEFAULT_SHARE_VERSION,
+    )?;
+    let blob_tx = BlobTx::new(b"pfb".to_vec(), vec![blob.clone()])?.encode()?;
+    let txs = vec![ordinary_tx.clone(), blob_tx.clone()];
+
+    let mut builder = Builder::new(4, 64, &txs)?;
+    assert_eq!(builder.num_txs(), 2);
+    assert_eq!(builder.num_pfbs(), 1);
+    assert_eq!(builder.subtree_root_threshold(), 64);
+    assert!(builder.current_size() >= 3);
+
+    let square = builder.export()?;
+    assert_eq!(square.size(), 2);
+
+    let ordinary_range = builder.find_tx_share_range(0)?;
+    let pfb_range = builder.find_tx_share_range(1)?;
+    assert_eq!(ordinary_range, shares::ShareRange::new(0, 1));
+    assert_eq!(pfb_range, shares::ShareRange::new(1, 2));
+    assert_eq!(tx_share_range(&txs, 0, 4, 64)?, ordinary_range);
+
+    let blob_start = builder.find_blob_starting_index(1, 0)?;
+    let blob_len = builder.blob_share_length(1, 0)?;
+    assert_eq!(blob_len, 1);
+    assert_eq!(
+        blob_share_range(&txs, 1, 0, 4, 64)?,
+        shares::ShareRange::new(blob_start, blob_start + blob_len)
+    );
+
+    let wrapped = builder.get_wrapped_pfb(1)?;
+    assert_eq!(wrapped.tx, b"pfb");
+    assert_eq!(wrapped.share_indexes, vec![u32::try_from(blob_start)?]);
+    Ok(())
+}
+
+#[test]
+fn build_construct_and_deconstruct_round_trip_blob_transactions()
+-> Result<(), Box<dyn std::error::Error>> {
+    let ordinary_tx = b"ordinary".to_vec();
+    let blob = Blob::new(
+        Namespace::new_v0(&[4])?,
+        b"blob-data".to_vec(),
+        DEFAULT_SHARE_VERSION,
+    )?;
+    let blob_tx = BlobTx::new(b"pfb".to_vec(), vec![blob.clone()])?.encode()?;
+
+    let built = build(&[blob_tx.clone(), ordinary_tx.clone()], 4, 64)?;
+    assert_eq!(
+        built.included_txs,
+        vec![ordinary_tx.clone(), blob_tx.clone()]
+    );
+
+    let square = construct(&[ordinary_tx.clone(), blob_tx.clone()], 4, 64)?;
+    assert_eq!(square, built.square);
+
+    let deconstructed = deconstruct(&square, |tx| {
+        assert_eq!(tx, b"pfb");
+        let blob_len = u32::try_from(blob.data_len()).map_err(|_| Error::ArithmeticOverflow)?;
+        Ok(vec![blob_len])
+    })?;
+    assert_eq!(deconstructed, vec![ordinary_tx, blob_tx]);
+    Ok(())
+}
+
+#[test]
+fn builder_rejects_invalid_order_and_indexes() -> Result<(), Box<dyn std::error::Error>> {
+    let ordinary_tx = b"ordinary".to_vec();
+    let blob = Blob::new(
+        Namespace::new_v0(&[5])?,
+        b"blob-data".to_vec(),
+        DEFAULT_SHARE_VERSION,
+    )?;
+    let blob_tx = BlobTx::new(b"pfb".to_vec(), vec![blob])?.encode()?;
+
+    assert!(Builder::new(3, 64, &[]).is_err());
+    assert!(construct(&[blob_tx.clone(), ordinary_tx], 4, 64).is_err());
+
+    let mut builder = Builder::new(4, 64, &[blob_tx])?;
+    assert!(builder.find_tx_share_range(2).is_err());
+    assert!(builder.get_wrapped_pfb(0).is_ok());
+    assert!(builder.get_wrapped_pfb(1).is_err());
+    assert!(builder.find_blob_starting_index(0, 1).is_err());
+    Ok(())
+}
+
+#[test]
 fn error_display_messages_are_stable() {
     let cases = [
         (
@@ -214,6 +305,26 @@ fn error_display_messages_are_stable() {
             "share index overflows uint32: 18446744073709551615",
         ),
         (Error::InvalidBlobTx, "invalid blob transaction wrapper"),
+        (
+            Error::TxIndexOutOfRange { index: 9 },
+            "transaction index out of range: 9",
+        ),
+        (
+            Error::BlobIndexOutOfRange { index: 2 },
+            "blob index out of range: 2",
+        ),
+        (
+            Error::NotPayForBlob { index: 1 },
+            "transaction index does not identify a PFB: 1",
+        ),
+        (
+            Error::NormalTxAfterBlobTx { index: 3 },
+            "normal transaction after blob transaction at index 3",
+        ),
+        (
+            Error::BuilderInvariant("bad layout"),
+            "builder invariant failed: bad layout",
+        ),
         (
             Error::Share(shares::Error::InvalidBlob),
             "share error: invalid blob",

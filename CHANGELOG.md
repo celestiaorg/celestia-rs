@@ -67,3 +67,6 @@
 - Started the Tier-1 `square` crate with blob transaction wrapper encoding,
   inclusion-rule math, square sizing, `write_square` layout, and focused API
   coverage.
+- Expanded the Tier-1 `square` crate with builder/export mechanics, wrapped
+  PFB index assignment, transaction/blob share ranges, and square
+  deconstruction helpers.
