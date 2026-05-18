@@ -1,0 +1,66 @@
+//! Error types for data-square helpers.
+
+/// Result alias for this crate.
+pub type Result<T> = core::result::Result<T, Error>;
+
+/// Errors returned by Celestia data-square helpers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    /// A square had an invalid share count or side length.
+    InvalidSquareSize {
+        /// Observed value.
+        actual: usize,
+    },
+    /// A square-size input was not a power of two.
+    NotPowerOfTwo {
+        /// Observed value.
+        actual: usize,
+    },
+    /// A multiple or threshold argument was zero.
+    ZeroDivisor,
+    /// Arithmetic overflowed while calculating layout indexes.
+    ArithmeticOverflow,
+    /// A share index does not fit in Go's `uint32` fixture/API shape.
+    ShareIndexOverflow {
+        /// Observed index.
+        actual: usize,
+    },
+    /// A blob transaction wrapper is malformed.
+    InvalidBlobTx,
+    /// Share primitive operation failed.
+    Share(shares::Error),
+    /// Protobuf decoding failed.
+    Decode(String),
+    /// Protobuf encoding failed.
+    Encode(String),
+}
+
+impl From<shares::Error> for Error {
+    fn from(error: shares::Error) -> Self {
+        Self::Share(error)
+    }
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidSquareSize { actual } => {
+                write!(f, "invalid square size or share count: {actual}")
+            }
+            Self::NotPowerOfTwo { actual } => {
+                write!(f, "value is not a power of two: {actual}")
+            }
+            Self::ZeroDivisor => f.write_str("divisor must be non-zero"),
+            Self::ArithmeticOverflow => f.write_str("arithmetic overflow"),
+            Self::ShareIndexOverflow { actual } => {
+                write!(f, "share index overflows uint32: {actual}")
+            }
+            Self::InvalidBlobTx => f.write_str("invalid blob transaction wrapper"),
+            Self::Share(error) => write!(f, "share error: {error}"),
+            Self::Decode(message) => write!(f, "decode square data: {message}"),
+            Self::Encode(message) => write!(f, "encode square data: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}

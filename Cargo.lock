@@ -1103,6 +1103,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "square"
+version = "0.0.1"
+dependencies = [
+ "encoding",
+ "hex",
+ "prost",
+ "shares",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

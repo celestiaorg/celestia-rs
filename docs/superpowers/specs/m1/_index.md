@@ -19,7 +19,7 @@
 | 7 | `abci-types` | 1 | [abci-types.md](abci-types.md) | implemented |
 | 8 | `nmt` | 1 | [nmt.md](nmt.md) | implemented |
 | 9 | `shares` | 1 | [shares.md](shares.md) | implemented |
-| 10 | `square` | 1 | [square.md](square.md) | spec ready |
+| 10 | `square` | 1 | [square.md](square.md) | in progress |
 
 ## Dependency DAG
 

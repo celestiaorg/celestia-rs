@@ -64,3 +64,6 @@
 - Added the Tier-1 `square` crate spec for original data square layout,
   wrapped PFB placement, blob commitment rules, erasure extension, DAH roots,
   and Go conformance fixtures.
+- Started the Tier-1 `square` crate with blob transaction wrapper encoding,
+  inclusion-rule math, square sizing, `write_square` layout, and focused API
+  coverage.
