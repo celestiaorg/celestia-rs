@@ -5,9 +5,11 @@ use shares::{
     SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Builder, Error, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
-    blob_shares_used_non_interactive_defaults, build, construct, deconstruct, empty_square,
-    is_power_of_two, merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
+    BlobTx, Builder, DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, Error,
+    PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
+    blob_shares_used_non_interactive_defaults, build, construct,
+    data_availability_header_from_proto, deconstruct, empty_square, is_power_of_two,
+    merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
     round_up_by_multiple_of, round_up_power_of_two, round_up_power_of_two_strict, size,
     sub_tree_width, tx_share_range, write_square,
 };
@@ -343,6 +345,58 @@ fn commitments_blob(namespace: Namespace) -> Result<Blob, shares::Error> {
 }
 
 #[test]
+fn data_availability_header_hashes_and_round_trips_proto() -> Result<(), Box<dyn std::error::Error>>
+{
+    assert_eq!(DAH_HASH_SIZE, 32);
+    assert_eq!(DAH_ROOT_SIZE, 90);
+
+    let row_roots = vec![root_bytes(1), root_bytes(2)];
+    let column_roots = vec![root_bytes(3), root_bytes(4)];
+    let dah = DataAvailabilityHeader::new(row_roots.clone(), column_roots.clone())?;
+
+    let expected_items = vec![
+        row_roots[0].to_vec(),
+        row_roots[1].to_vec(),
+        column_roots[0].to_vec(),
+        column_roots[1].to_vec(),
+    ];
+    assert_eq!(dah.hash(), merkle::root_from_byte_slices(&expected_items));
+    assert!(!dah.is_zero());
+    assert!(dah.equals(&dah.clone()));
+
+    let encoded = dah.to_proto_bytes()?;
+    let decoded = DataAvailabilityHeader::from_proto_bytes(&encoded)?;
+    let decoded_via_free_fn = data_availability_header_from_proto(&encoded)?;
+    assert_eq!(decoded, dah);
+    assert_eq!(decoded_via_free_fn, dah);
+    Ok(())
+}
+
+#[test]
+fn data_availability_header_rejects_invalid_shapes() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(DataAvailabilityHeader::new(Vec::new(), Vec::new()).is_err());
+    assert!(
+        DataAvailabilityHeader::new(vec![root_bytes(1), root_bytes(2)], vec![root_bytes(3)])
+            .is_err()
+    );
+    assert!(
+        DataAvailabilityHeader::new(vec![root_bytes(1); 257], vec![root_bytes(2); 257]).is_err()
+    );
+    let malformed_root = encode_test_dah(&TestDahProto {
+        row_roots: vec![vec![1; DAH_ROOT_SIZE - 1], root_bytes(2).to_vec()],
+        column_roots: vec![root_bytes(3).to_vec(), root_bytes(4).to_vec()],
+    })?;
+    assert!(data_availability_header_from_proto(&malformed_root).is_err());
+
+    let zero = DataAvailabilityHeader {
+        row_roots: Vec::new(),
+        column_roots: vec![root_bytes(1)],
+    };
+    assert!(zero.is_zero());
+    Ok(())
+}
+
+#[test]
 fn error_display_messages_are_stable() {
     let cases = [
         (
@@ -385,6 +439,24 @@ fn error_display_messages_are_stable() {
             "invalid namespaced Merkle tree: empty tree",
         ),
         (
+            Error::InvalidDataAvailabilityRootLength {
+                actual: 89,
+                expected: 90,
+            },
+            "invalid data availability root length: got 89, want 90",
+        ),
+        (
+            Error::InvalidDataAvailabilityRootCount { actual: 1 },
+            "invalid data availability root count: 1",
+        ),
+        (
+            Error::DataAvailabilityAxisMismatch {
+                rows: 2,
+                columns: 3,
+            },
+            "data availability row/column root count mismatch: rows 2, columns 3",
+        ),
+        (
             Error::Share(shares::Error::InvalidBlob),
             "share error: invalid blob",
         ),
@@ -425,8 +497,26 @@ struct TestBlobTxProto {
     type_id: String,
 }
 
+#[derive(Clone, PartialEq, prost::Message)]
+struct TestDahProto {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    row_roots: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    column_roots: Vec<Vec<u8>>,
+}
+
 fn encode_test_blob_tx(proto: &TestBlobTxProto) -> Result<Vec<u8>, prost::EncodeError> {
     let mut out = Vec::with_capacity(prost::Message::encoded_len(proto));
     prost::Message::encode(proto, &mut out)?;
     Ok(out)
+}
+
+fn encode_test_dah(proto: &TestDahProto) -> Result<Vec<u8>, prost::EncodeError> {
+    let mut out = Vec::with_capacity(prost::Message::encoded_len(proto));
+    prost::Message::encode(proto, &mut out)?;
+    Ok(out)
+}
+
+fn root_bytes(fill: u8) -> [u8; DAH_ROOT_SIZE] {
+    [fill; DAH_ROOT_SIZE]
 }

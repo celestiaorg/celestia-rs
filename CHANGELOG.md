@@ -72,3 +72,5 @@
   deconstruction helpers.
 - Added `square` blob share commitment helpers with 29-byte namespace NMT
   roots and Merkle mountain range sizing.
+- Added the `square` data availability header value type with protobuf
+  conversion, root-count validation, and DAH hash calculation.

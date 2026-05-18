@@ -8,6 +8,7 @@
 pub mod blob_tx;
 pub mod builder;
 pub mod commitment;
+pub mod dah;
 pub mod error;
 pub mod inclusion;
 pub mod square;
@@ -20,6 +21,9 @@ pub use builder::{
 pub use commitment::{
     COMMITMENT_HASH_SIZE, MerkleRootFn, NMT_NODE_SIZE, create_commitment, create_commitments,
     merkle_mountain_range_sizes,
+};
+pub use dah::{
+    DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, data_availability_header_from_proto,
 };
 pub use error::{Error, Result};
 pub use inclusion::{

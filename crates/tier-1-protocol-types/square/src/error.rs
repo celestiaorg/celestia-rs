@@ -51,6 +51,25 @@ pub enum Error {
     BuilderInvariant(&'static str),
     /// Namespaced Merkle tree input was malformed.
     InvalidNamespacedMerkleTree(&'static str),
+    /// A data availability header root had the wrong byte length.
+    InvalidDataAvailabilityRootLength {
+        /// Observed byte length.
+        actual: usize,
+        /// Expected byte length.
+        expected: usize,
+    },
+    /// A data availability header had too few or too many roots.
+    InvalidDataAvailabilityRootCount {
+        /// Observed root count.
+        actual: usize,
+    },
+    /// A data availability header had different row and column root counts.
+    DataAvailabilityAxisMismatch {
+        /// Observed row root count.
+        rows: usize,
+        /// Observed column root count.
+        columns: usize,
+    },
     /// Share primitive operation failed.
     Share(shares::Error),
     /// Protobuf decoding failed.
@@ -99,6 +118,17 @@ impl core::fmt::Display for Error {
             Self::InvalidNamespacedMerkleTree(message) => {
                 write!(f, "invalid namespaced Merkle tree: {message}")
             }
+            Self::InvalidDataAvailabilityRootLength { actual, expected } => write!(
+                f,
+                "invalid data availability root length: got {actual}, want {expected}"
+            ),
+            Self::InvalidDataAvailabilityRootCount { actual } => {
+                write!(f, "invalid data availability root count: {actual}")
+            }
+            Self::DataAvailabilityAxisMismatch { rows, columns } => write!(
+                f,
+                "data availability row/column root count mismatch: rows {rows}, columns {columns}"
+            ),
             Self::Share(error) => write!(f, "share error: {error}"),
             Self::Decode(message) => write!(f, "decode square data: {message}"),
             Self::Encode(message) => write!(f, "encode square data: {message}"),

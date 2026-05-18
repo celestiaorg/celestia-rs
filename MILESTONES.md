@@ -27,5 +27,6 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 `encoding`, `crypto`, and `merkle`) and tier-1 crates 5-9
 (`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, and `shares`) are
 implemented. Crate 10 (`square`) is the next strict dependency step and needs
-implementation work from its completed spec. The crate has started with the
-layout and inclusion foundation.
+implementation work from its completed spec. The crate has covered the layout,
+builder, blob commitment, and DAH value-type checkpoints; erasure extension,
+Go conformance fixtures, and M1 block-level DAH matching remain.
