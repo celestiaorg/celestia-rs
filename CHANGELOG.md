@@ -61,3 +61,6 @@
 - Added Go-generated `shares` conformance fixtures for namespaces,
   info/reserved bytes, builders, compact transactions, sparse blobs, padding,
   and malformed share cases.
+- Added the Tier-1 `square` crate spec for original data square layout,
+  wrapped PFB placement, blob commitment rules, erasure extension, DAH roots,
+  and Go conformance fixtures.
