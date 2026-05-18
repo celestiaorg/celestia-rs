@@ -52,3 +52,6 @@
 - Added Go-generated `nmt` conformance fixtures for primitive hashes, ordered
   tree roots, namespace/range proofs, subroot paths, and malformed domain
   cases.
+- Added the Tier-1 `shares` crate spec for Celestia namespaces, fixed-size
+  shares, compact transaction shares, sparse blob shares, padding, parsing, and
+  Go conformance fixtures.
