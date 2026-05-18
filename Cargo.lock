@@ -1065,6 +1065,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shares"
+version = "0.0.1"
+dependencies = [
+ "encoding",
+ "hash",
+ "hex",
+ "prost",
+]
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -55,3 +55,6 @@
 - Added the Tier-1 `shares` crate spec for Celestia namespaces, fixed-size
   shares, compact transaction shares, sparse blob shares, padding, parsing, and
   Go conformance fixtures.
+- Started the Tier-1 `shares` crate with 29-byte namespaces, info/reserved
+  bytes, fixed-size share layout, compact and sparse splitting/parsing helpers,
+  padding constructors, index-wrapper encoding, and focused API coverage.
