@@ -205,6 +205,41 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "nmt",
         output_path: "conformance/fixtures/nmt/malformed.json",
     },
+    Scenario {
+        name: "shares-namespaces",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/namespaces.json",
+    },
+    Scenario {
+        name: "shares-info-reserved",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/info-reserved.json",
+    },
+    Scenario {
+        name: "shares-builders",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/builders.json",
+    },
+    Scenario {
+        name: "shares-compact",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/compact.json",
+    },
+    Scenario {
+        name: "shares-sparse",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/sparse.json",
+    },
+    Scenario {
+        name: "shares-padding",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/padding.json",
+    },
+    Scenario {
+        name: "shares-malformed",
+        crate_name: "shares",
+        output_path: "conformance/fixtures/shares/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

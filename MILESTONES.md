@@ -25,6 +25,6 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 ## Current focus
 **M1** — see `docs/superpowers/specs/m1/_index.md`. Tier-0 crates 1-4 (`hash`,
 `encoding`, `crypto`, and `merkle`) and tier-1 crates 5-8
-(`tendermint-types`, `cosmos-types`, `abci-types`, and `nmt`) are implemented.
-Crate 9 (`shares`) is in progress with the initial share-format primitives and
-focused API tests added.
+(`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, and `shares`) are
+implemented. Crate 10 (`square`) is the next strict dependency step and needs
+an implementation spec.

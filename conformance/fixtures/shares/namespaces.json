@@ -1,0 +1,112 @@
+{
+  "scenario": "shares-namespaces",
+  "namespace_size": 29,
+  "namespace_id_size": 28,
+  "namespace_version_zero_id_size": 10,
+  "namespace_version_zero_prefix_size": 18,
+  "constants": [
+    {
+      "label": "tx",
+      "namespace_hex": "0000000000000000000000000000000000000000000000000000000001",
+      "version": 0,
+      "id_hex": "00000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "label": "intermediate-state-roots",
+      "namespace_hex": "0000000000000000000000000000000000000000000000000000000002",
+      "version": 0,
+      "id_hex": "00000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "label": "pay-for-blob",
+      "namespace_hex": "0000000000000000000000000000000000000000000000000000000004",
+      "version": 0,
+      "id_hex": "00000000000000000000000000000000000000000000000000000004"
+    },
+    {
+      "label": "primary-reserved-padding",
+      "namespace_hex": "00000000000000000000000000000000000000000000000000000000ff",
+      "version": 0,
+      "id_hex": "000000000000000000000000000000000000000000000000000000ff"
+    },
+    {
+      "label": "max-primary-reserved",
+      "namespace_hex": "00000000000000000000000000000000000000000000000000000000ff",
+      "version": 0,
+      "id_hex": "000000000000000000000000000000000000000000000000000000ff"
+    },
+    {
+      "label": "min-secondary-reserved",
+      "namespace_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+      "version": 255,
+      "id_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffff00"
+    },
+    {
+      "label": "tail-padding",
+      "namespace_hex": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe",
+      "version": 255,
+      "id_hex": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
+    },
+    {
+      "label": "parity-shares",
+      "namespace_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "version": 255,
+      "id_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "constructors": [
+    {
+      "label": "new-v0-empty",
+      "namespace_hex": "0000000000000000000000000000000000000000000000000000000000",
+      "version": 0,
+      "id_hex": "00000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "label": "new-v0-short-sub-id",
+      "namespace_hex": "000000000000000000000000000000000000000000000000000000abcd",
+      "version": 0,
+      "id_hex": "0000000000000000000000000000000000000000000000000000abcd"
+    },
+    {
+      "label": "new-v0-full-sub-id",
+      "namespace_hex": "000000000000000000000000000000000000000102030405060708090a",
+      "version": 0,
+      "id_hex": "0000000000000000000000000000000000000102030405060708090a"
+    },
+    {
+      "label": "new-max-version",
+      "namespace_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "version": 255,
+      "id_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "ordering_hex": [
+    "0000000000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000001",
+    "000000000000000000000000000000000000000000000000000000abcd",
+    "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  ],
+  "malformed": [
+    {
+      "label": "short-namespace",
+      "expected_error": "invalid_namespace"
+    },
+    {
+      "label": "unsupported-version",
+      "expected_error": "invalid_namespace"
+    },
+    {
+      "label": "short-id",
+      "expected_error": "invalid_namespace"
+    },
+    {
+      "label": "invalid-v0-prefix",
+      "expected_error": "invalid_namespace"
+    },
+    {
+      "label": "long-v0-sub-id",
+      "expected_error": "invalid_namespace"
+    }
+  ]
+}

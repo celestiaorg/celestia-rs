@@ -52,8 +52,18 @@ for the locked API contract.
 
 ## Conformance
 
-Fixture files will live at
-[`conformance/fixtures/shares/`](../../../conformance/fixtures/shares/).
+Fixture files live at
+[`conformance/fixtures/shares/`](../../../conformance/fixtures/shares/):
+
+| File | Scenario | Description |
+|---|---|---|
+| `namespaces.json` | `shares-namespaces` | namespace constructors, constants, ordering, and malformed namespace cases |
+| `info-reserved.json` | `shares-info-reserved` | info-byte and compact reserved-byte vectors |
+| `builders.json` | `shares-builders` | compact and sparse builder layout vectors |
+| `compact.json` | `shares-compact` | compact transaction splitting, parsing, ranges, and index wrappers |
+| `sparse.json` | `shares-sparse` | sparse blob splitting and parsing |
+| `padding.json` | `shares-padding` | namespace, reserved, and tail padding shares |
+| `malformed.json` | `shares-malformed` | invalid share length, sparse, compact, and version cases |
 
 Regenerate fixtures:
 

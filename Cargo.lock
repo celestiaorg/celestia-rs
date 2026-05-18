@@ -1072,6 +1072,8 @@ dependencies = [
  "hash",
  "hex",
  "prost",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

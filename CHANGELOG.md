@@ -58,3 +58,6 @@
 - Started the Tier-1 `shares` crate with 29-byte namespaces, info/reserved
   bytes, fixed-size share layout, compact and sparse splitting/parsing helpers,
   padding constructors, index-wrapper encoding, and focused API coverage.
+- Added Go-generated `shares` conformance fixtures for namespaces,
+  info/reserved bytes, builders, compact transactions, sparse blobs, padding,
+  and malformed share cases.

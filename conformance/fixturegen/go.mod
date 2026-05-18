@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	cosmossdk.io/math v1.3.0
+	github.com/celestiaorg/go-square v1.0.1
 	github.com/celestiaorg/nmt v0.24.3
 	github.com/cometbft/cometbft v0.38.12
 	github.com/cosmos/cosmos-sdk v0.50.10

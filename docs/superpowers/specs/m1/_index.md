@@ -18,7 +18,7 @@
 | 6 | `cosmos-types` | 1 | [cosmos-types.md](cosmos-types.md) | implemented |
 | 7 | `abci-types` | 1 | [abci-types.md](abci-types.md) | implemented |
 | 8 | `nmt` | 1 | [nmt.md](nmt.md) | implemented |
-| 9 | `shares` | 1 | [shares.md](shares.md) | in progress |
+| 9 | `shares` | 1 | [shares.md](shares.md) | implemented |
 | 10 | `square` | 1 | _to be written_ | pending |
 
 ## Dependency DAG

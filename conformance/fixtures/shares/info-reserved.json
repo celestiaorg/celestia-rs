@@ -1,0 +1,77 @@
+{
+  "scenario": "shares-info-reserved",
+  "info_cases": [
+    {
+      "label": "version-0-start-false",
+      "version": 0,
+      "is_sequence_start": false,
+      "byte_hex": "00"
+    },
+    {
+      "label": "version-0-start-true",
+      "version": 0,
+      "is_sequence_start": true,
+      "byte_hex": "01"
+    },
+    {
+      "label": "version-1-start-false",
+      "version": 1,
+      "is_sequence_start": false,
+      "byte_hex": "02"
+    },
+    {
+      "label": "version-1-start-true",
+      "version": 1,
+      "is_sequence_start": true,
+      "byte_hex": "03"
+    },
+    {
+      "label": "version-127-start-false",
+      "version": 127,
+      "is_sequence_start": false,
+      "byte_hex": "fe"
+    },
+    {
+      "label": "version-127-start-true",
+      "version": 127,
+      "is_sequence_start": true,
+      "byte_hex": "ff"
+    }
+  ],
+  "reserved_cases": [
+    {
+      "label": "index-0",
+      "byte_index": 0,
+      "bytes_hex": "00000000"
+    },
+    {
+      "label": "index-34",
+      "byte_index": 34,
+      "bytes_hex": "00000022"
+    },
+    {
+      "label": "index-38",
+      "byte_index": 38,
+      "bytes_hex": "00000026"
+    },
+    {
+      "label": "index-511",
+      "byte_index": 511,
+      "bytes_hex": "000001ff"
+    }
+  ],
+  "malformed": [
+    {
+      "label": "info-version-too-large",
+      "expected_error": "invalid_share"
+    },
+    {
+      "label": "reserved-short",
+      "expected_error": "invalid_share"
+    },
+    {
+      "label": "reserved-out-of-range",
+      "expected_error": "invalid_share"
+    }
+  ]
+}
