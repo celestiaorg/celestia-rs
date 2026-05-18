@@ -76,3 +76,5 @@
   conversion, root-count validation, and DAH hash calculation.
 - Added `square` Leopard erasure coding, extended data-square import/export,
   row/column root calculation, and DAH construction from EDS roots.
+- Added initial Go-generated `square` conformance fixtures for power-of-two
+  sizing helpers and blob inclusion-rule placement.

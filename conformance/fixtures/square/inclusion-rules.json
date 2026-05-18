@@ -1,0 +1,132 @@
+{
+  "scenario": "square-inclusion-rules",
+  "subtree_cases": [
+    {
+      "label": "one-share",
+      "share_count": 1,
+      "subtree_root_threshold": 64,
+      "blob_min_square_size": 1,
+      "sub_tree_width": 1
+    },
+    {
+      "label": "small",
+      "share_count": 11,
+      "subtree_root_threshold": 4,
+      "blob_min_square_size": 4,
+      "sub_tree_width": 4
+    },
+    {
+      "label": "threshold",
+      "share_count": 64,
+      "subtree_root_threshold": 64,
+      "blob_min_square_size": 8,
+      "sub_tree_width": 1
+    },
+    {
+      "label": "over-threshold",
+      "share_count": 65,
+      "subtree_root_threshold": 64,
+      "blob_min_square_size": 16,
+      "sub_tree_width": 2
+    },
+    {
+      "label": "large",
+      "share_count": 257,
+      "subtree_root_threshold": 64,
+      "blob_min_square_size": 32,
+      "sub_tree_width": 8
+    }
+  ],
+  "next_cases": [
+    {
+      "label": "already-aligned",
+      "cursor": 16,
+      "blob_share_len": 11,
+      "subtree_root_threshold": 4,
+      "next_share_index": 16
+    },
+    {
+      "label": "round-up",
+      "cursor": 13,
+      "blob_share_len": 11,
+      "subtree_root_threshold": 4,
+      "next_share_index": 16
+    },
+    {
+      "label": "single-share",
+      "cursor": 3,
+      "blob_share_len": 1,
+      "subtree_root_threshold": 64,
+      "next_share_index": 3
+    },
+    {
+      "label": "threshold-crossing",
+      "cursor": 130,
+      "blob_share_len": 65,
+      "subtree_root_threshold": 64,
+      "next_share_index": 130
+    }
+  ],
+  "used_cases": [
+    {
+      "label": "empty",
+      "cursor": 0,
+      "subtree_root_threshold": 64,
+      "blob_share_lengths": [],
+      "shares_used": 0,
+      "indexes": []
+    },
+    {
+      "label": "mixed-small",
+      "cursor": 3,
+      "subtree_root_threshold": 4,
+      "blob_share_lengths": [
+        2,
+        11,
+        1
+      ],
+      "shares_used": 17,
+      "indexes": [
+        3,
+        8,
+        19
+      ]
+    },
+    {
+      "label": "threshold-crossing",
+      "cursor": 0,
+      "subtree_root_threshold": 64,
+      "blob_share_lengths": [
+        1,
+        65,
+        130
+      ],
+      "shares_used": 198,
+      "indexes": [
+        0,
+        2,
+        68
+      ]
+    }
+  ],
+  "round_up_cases": [
+    {
+      "label": "already-multiple",
+      "cursor": 16,
+      "value": 4,
+      "rounded": 16
+    },
+    {
+      "label": "round-up",
+      "cursor": 17,
+      "value": 4,
+      "rounded": 20
+    },
+    {
+      "label": "large",
+      "cursor": 129,
+      "value": 64,
+      "rounded": 192
+    }
+  ]
+}

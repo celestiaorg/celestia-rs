@@ -1122,6 +1122,8 @@ dependencies = [
  "leopard-codec",
  "merkle",
  "prost",
+ "serde",
+ "serde_json",
  "shares",
 ]
 

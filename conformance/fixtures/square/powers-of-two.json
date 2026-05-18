@@ -1,0 +1,124 @@
+{
+  "scenario": "square-powers-of-two",
+  "cases": [
+    {
+      "label": "input-0",
+      "input": 0,
+      "round_up": 1,
+      "round_down_error": true,
+      "round_up_strict": 1,
+      "is_power_of_two": false,
+      "square_size": 1
+    },
+    {
+      "label": "input-1",
+      "input": 1,
+      "round_up": 1,
+      "round_down": 1,
+      "round_down_error": false,
+      "round_up_strict": 2,
+      "is_power_of_two": true,
+      "square_size": 1,
+      "blob_min_square_size": 1
+    },
+    {
+      "label": "input-2",
+      "input": 2,
+      "round_up": 2,
+      "round_down": 2,
+      "round_down_error": false,
+      "round_up_strict": 4,
+      "is_power_of_two": true,
+      "square_size": 2,
+      "blob_min_square_size": 2
+    },
+    {
+      "label": "input-3",
+      "input": 3,
+      "round_up": 4,
+      "round_down": 2,
+      "round_down_error": false,
+      "round_up_strict": 4,
+      "is_power_of_two": false,
+      "square_size": 2,
+      "blob_min_square_size": 2
+    },
+    {
+      "label": "input-4",
+      "input": 4,
+      "round_up": 4,
+      "round_down": 4,
+      "round_down_error": false,
+      "round_up_strict": 8,
+      "is_power_of_two": true,
+      "square_size": 2,
+      "blob_min_square_size": 2
+    },
+    {
+      "label": "input-5",
+      "input": 5,
+      "round_up": 8,
+      "round_down": 4,
+      "round_down_error": false,
+      "round_up_strict": 8,
+      "is_power_of_two": false,
+      "square_size": 4,
+      "blob_min_square_size": 4
+    },
+    {
+      "label": "input-16",
+      "input": 16,
+      "round_up": 16,
+      "round_down": 16,
+      "round_down_error": false,
+      "round_up_strict": 32,
+      "is_power_of_two": true,
+      "square_size": 4,
+      "blob_min_square_size": 4
+    },
+    {
+      "label": "input-17",
+      "input": 17,
+      "round_up": 32,
+      "round_down": 16,
+      "round_down_error": false,
+      "round_up_strict": 32,
+      "is_power_of_two": false,
+      "square_size": 8,
+      "blob_min_square_size": 8
+    },
+    {
+      "label": "input-127",
+      "input": 127,
+      "round_up": 128,
+      "round_down": 64,
+      "round_down_error": false,
+      "round_up_strict": 128,
+      "is_power_of_two": false,
+      "square_size": 16,
+      "blob_min_square_size": 16
+    },
+    {
+      "label": "input-128",
+      "input": 128,
+      "round_up": 128,
+      "round_down": 128,
+      "round_down_error": false,
+      "round_up_strict": 256,
+      "is_power_of_two": true,
+      "square_size": 16,
+      "blob_min_square_size": 16
+    },
+    {
+      "label": "input-129",
+      "input": 129,
+      "round_up": 256,
+      "round_down": 128,
+      "round_down_error": false,
+      "round_up_strict": 256,
+      "is_power_of_two": false,
+      "square_size": 16,
+      "blob_min_square_size": 16
+    }
+  ]
+}
