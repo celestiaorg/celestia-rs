@@ -25,5 +25,5 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 ## Current focus
 **M1** — see `docs/superpowers/specs/m1/_index.md`. Tier-0 crates 1-4 (`hash`,
 `encoding`, `crypto`, and `merkle`) and tier-1 crates 5-7
-(`tendermint-types`, `cosmos-types`, and `abci-types`) are implemented. The
-remaining tier-1 specs are the next strict dependency step.
+(`tendermint-types`, `cosmos-types`, and `abci-types`) are implemented. Crate 8
+(`nmt`) is the next strict dependency step and has a ready implementation spec.

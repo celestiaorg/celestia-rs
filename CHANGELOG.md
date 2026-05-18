@@ -44,3 +44,5 @@
 - Added Go-generated `abci-types` conformance fixtures for ABCI++ request and
   response envelopes, vote extensions, events, tx execution results, snapshots,
   validator updates, and malformed protobuf/domain cases.
+- Added the Tier-1 `nmt` crate spec for Celestia namespaced Merkle tree roots,
+  namespace proofs, subroot path calculation, and Go conformance fixtures.
