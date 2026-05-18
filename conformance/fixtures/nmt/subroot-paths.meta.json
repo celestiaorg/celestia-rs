@@ -1,0 +1,12 @@
+{
+  "scenario": "nmt-subroot-paths",
+  "source_chain": "n/a (hardcoded test vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.24.11",
+  "go_packages": [
+    "github.com/celestiaorg/nmt v0.24.3"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario nmt-subroot-paths"
+}

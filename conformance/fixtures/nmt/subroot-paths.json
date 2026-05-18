@@ -1,0 +1,145 @@
+{
+  "scenario": "nmt-subroot-paths",
+  "cases": [
+    {
+      "label": "single-share",
+      "square_size": 2,
+      "share_start": 0,
+      "share_count": 1,
+      "paths": [
+        [
+          [
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "label": "full-row",
+      "square_size": 32,
+      "share_start": 0,
+      "share_count": 32,
+      "paths": [
+        [
+          []
+        ]
+      ]
+    },
+    {
+      "label": "partial-row",
+      "square_size": 4,
+      "share_start": 1,
+      "share_count": 2,
+      "paths": [
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "label": "offset-row",
+      "square_size": 8,
+      "share_start": 1,
+      "share_count": 6,
+      "paths": [
+        [
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            1,
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "label": "three-full-rows",
+      "square_size": 32,
+      "share_start": 0,
+      "share_count": 96,
+      "paths": [
+        [
+          []
+        ],
+        [
+          []
+        ],
+        [
+          []
+        ]
+      ]
+    },
+    {
+      "label": "last-two-rows",
+      "square_size": 32,
+      "share_start": 988,
+      "share_count": 32,
+      "paths": [
+        [
+          [
+            1,
+            1,
+            1
+          ]
+        ],
+        [
+          [
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "label": "bad-square-size",
+      "square_size": 1,
+      "share_start": 0,
+      "share_count": 1,
+      "paths": null,
+      "error": "invalid_subroot_path"
+    },
+    {
+      "label": "zero-share-count",
+      "square_size": 4,
+      "share_start": 0,
+      "share_count": 0,
+      "paths": null,
+      "error": "invalid_subroot_path"
+    },
+    {
+      "label": "past-square-size",
+      "square_size": 4,
+      "share_start": 0,
+      "share_count": 17,
+      "paths": null,
+      "error": "invalid_subroot_path"
+    }
+  ]
+}

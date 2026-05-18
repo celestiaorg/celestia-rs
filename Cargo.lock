@@ -704,6 +704,8 @@ dependencies = [
  "encoding",
  "hash",
  "hex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

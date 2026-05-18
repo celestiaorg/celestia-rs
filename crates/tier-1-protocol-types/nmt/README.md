@@ -54,7 +54,7 @@ for the locked API contract.
 
 ## Conformance
 
-Fixture files will live at
+Fixture files live at
 [`conformance/fixtures/nmt/`](../../../conformance/fixtures/nmt/):
 
 | File | Scenario | Description |

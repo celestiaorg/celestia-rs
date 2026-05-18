@@ -180,6 +180,31 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "abci-types",
         output_path: "conformance/fixtures/abci-types/malformed.json",
     },
+    Scenario {
+        name: "nmt-hashes",
+        crate_name: "nmt",
+        output_path: "conformance/fixtures/nmt/hashes.json",
+    },
+    Scenario {
+        name: "nmt-roots",
+        crate_name: "nmt",
+        output_path: "conformance/fixtures/nmt/roots.json",
+    },
+    Scenario {
+        name: "nmt-proofs",
+        crate_name: "nmt",
+        output_path: "conformance/fixtures/nmt/proofs.json",
+    },
+    Scenario {
+        name: "nmt-subroot-paths",
+        crate_name: "nmt",
+        output_path: "conformance/fixtures/nmt/subroot-paths.json",
+    },
+    Scenario {
+        name: "nmt-malformed",
+        crate_name: "nmt",
+        output_path: "conformance/fixtures/nmt/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

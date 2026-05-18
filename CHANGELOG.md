@@ -49,3 +49,6 @@
 - Started the Tier-1 `nmt` crate with fixed namespace IDs, namespaced hashing,
   ordered tree roots, namespace inclusion/absence proof verification, subroot
   path calculation, and focused API coverage.
+- Added Go-generated `nmt` conformance fixtures for primitive hashes, ordered
+  tree roots, namespace/range proofs, subroot paths, and malformed domain
+  cases.
