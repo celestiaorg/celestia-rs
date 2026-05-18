@@ -7,9 +7,9 @@ use shares::{
 use square::{
     BlobTx, Builder, Error, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
     blob_shares_used_non_interactive_defaults, build, construct, deconstruct, empty_square,
-    is_power_of_two, next_share_index, round_down_power_of_two, round_up_by_multiple_of,
-    round_up_power_of_two, round_up_power_of_two_strict, size, sub_tree_width, tx_share_range,
-    write_square,
+    is_power_of_two, merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
+    round_up_by_multiple_of, round_up_power_of_two, round_up_power_of_two_strict, size,
+    sub_tree_width, tx_share_range, write_square,
 };
 
 #[test]
@@ -288,6 +288,61 @@ fn builder_rejects_invalid_order_and_indexes() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn merkle_mountain_ranges_match_commitment_rules() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(merkle_mountain_range_sizes(0, 4)?, Vec::<u64>::new());
+    assert_eq!(merkle_mountain_range_sizes(4, 4)?, vec![4]);
+    assert_eq!(merkle_mountain_range_sizes(11, 4)?, vec![4, 4, 2, 1]);
+    assert!(merkle_mountain_range_sizes(1, 0).is_err());
+    Ok(())
+}
+
+#[test]
+fn blob_commitments_are_deterministic_and_data_dependent() -> Result<(), Box<dyn std::error::Error>>
+{
+    let namespace = Namespace::new_v0(&[6])?;
+    let blob = Blob::new(namespace, b"blob-data".repeat(80), DEFAULT_SHARE_VERSION)?;
+    let changed_blob = Blob::new(namespace, b"blob-data!".repeat(80), DEFAULT_SHARE_VERSION)?;
+
+    let commitment = square::create_commitment(&blob, merkle::root_from_byte_slices, 64)?;
+    let repeated = square::create_commitment(&blob, merkle::root_from_byte_slices, 64)?;
+    let single_tree_commitment =
+        square::create_commitment(&blob, merkle::root_from_byte_slices, 1)?;
+    let changed = square::create_commitment(&changed_blob, merkle::root_from_byte_slices, 64)?;
+    let commitments =
+        square::create_commitments(&[blob, changed_blob], merkle::root_from_byte_slices, 64)?;
+
+    assert_eq!(commitment, repeated);
+    assert_ne!(commitment, single_tree_commitment);
+    assert_ne!(commitment, changed);
+    assert_eq!(commitments, vec![commitment, changed]);
+    assert!(
+        square::create_commitment(
+            &Blob {
+                namespace,
+                data: Vec::new(),
+                share_version: DEFAULT_SHARE_VERSION,
+            },
+            merkle::root_from_byte_slices,
+            64,
+        )
+        .is_err()
+    );
+    assert!(
+        square::create_commitment(
+            &commitments_blob(namespace)?,
+            merkle::root_from_byte_slices,
+            0
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+fn commitments_blob(namespace: Namespace) -> Result<Blob, shares::Error> {
+    Blob::new(namespace, b"blob-data".to_vec(), DEFAULT_SHARE_VERSION)
+}
+
+#[test]
 fn error_display_messages_are_stable() {
     let cases = [
         (
@@ -324,6 +379,10 @@ fn error_display_messages_are_stable() {
         (
             Error::BuilderInvariant("bad layout"),
             "builder invariant failed: bad layout",
+        ),
+        (
+            Error::InvalidNamespacedMerkleTree("empty tree"),
+            "invalid namespaced Merkle tree: empty tree",
         ),
         (
             Error::Share(shares::Error::InvalidBlob),

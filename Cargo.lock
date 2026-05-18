@@ -1109,6 +1109,7 @@ dependencies = [
  "encoding",
  "hash",
  "hex",
+ "merkle",
  "prost",
  "shares",
 ]

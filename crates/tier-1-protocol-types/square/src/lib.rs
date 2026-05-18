@@ -7,6 +7,7 @@
 
 pub mod blob_tx;
 pub mod builder;
+pub mod commitment;
 pub mod error;
 pub mod inclusion;
 pub mod square;
@@ -15,6 +16,10 @@ pub use blob_tx::{BlobTx, PROTO_BLOB_TX_TYPE_ID};
 pub use builder::{
     BuildResult, Builder, Element, blob_share_range, build, construct, deconstruct, tx_share_range,
     worst_case_share_indexes,
+};
+pub use commitment::{
+    COMMITMENT_HASH_SIZE, MerkleRootFn, NMT_NODE_SIZE, create_commitment, create_commitments,
+    merkle_mountain_range_sizes,
 };
 pub use error::{Error, Result};
 pub use inclusion::{

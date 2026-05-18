@@ -70,3 +70,5 @@
 - Expanded the Tier-1 `square` crate with builder/export mechanics, wrapped
   PFB index assignment, transaction/blob share ranges, and square
   deconstruction helpers.
+- Added `square` blob share commitment helpers with 29-byte namespace NMT
+  roots and Merkle mountain range sizing.

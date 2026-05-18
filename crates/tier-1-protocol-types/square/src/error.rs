@@ -49,6 +49,8 @@ pub enum Error {
     },
     /// Builder accounting invariants were violated.
     BuilderInvariant(&'static str),
+    /// Namespaced Merkle tree input was malformed.
+    InvalidNamespacedMerkleTree(&'static str),
     /// Share primitive operation failed.
     Share(shares::Error),
     /// Protobuf decoding failed.
@@ -94,6 +96,9 @@ impl core::fmt::Display for Error {
                 )
             }
             Self::BuilderInvariant(message) => write!(f, "builder invariant failed: {message}"),
+            Self::InvalidNamespacedMerkleTree(message) => {
+                write!(f, "invalid namespaced Merkle tree: {message}")
+            }
             Self::Share(error) => write!(f, "share error: {error}"),
             Self::Decode(message) => write!(f, "decode square data: {message}"),
             Self::Encode(message) => write!(f, "encode square data: {message}"),
