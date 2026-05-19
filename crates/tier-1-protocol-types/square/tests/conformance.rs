@@ -8,11 +8,14 @@
 )]
 
 use serde::Deserialize;
+use shares::{Blob, Namespace};
 use square::{
-    blob_min_square_size, blob_shares_used_non_interactive_defaults, is_power_of_two,
+    BlobTx, PROTO_BLOB_TX_TYPE_ID, blob_min_square_size, blob_shares_used_non_interactive_defaults,
+    create_commitment, create_commitments, is_power_of_two, merkle_mountain_range_sizes,
     next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
     round_up_power_of_two_strict, size, sub_tree_width,
 };
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -45,6 +48,14 @@ where
     serde_json::from_str(&body).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
+fn decode_bytes(hex: &str) -> Vec<u8> {
+    hex::decode(hex).expect("valid fixture hex")
+}
+
+fn decode_namespace(hex: &str) -> shares::Result<Namespace> {
+    Namespace::from_slice(&decode_bytes(hex))
+}
+
 #[derive(Deserialize)]
 struct PowersFixture {
     cases: Vec<PowerCase>,
@@ -71,6 +82,65 @@ struct InclusionFixture {
     next_cases: Vec<NextCase>,
     used_cases: Vec<BlobSharesUsedCase>,
     round_up_cases: Vec<RoundUpCase>,
+}
+
+#[derive(Deserialize)]
+struct BlobTxFixture {
+    type_id: String,
+    cases: Vec<BlobTxCase>,
+    non_wrappers: Vec<NonWrapperCase>,
+}
+
+#[derive(Deserialize)]
+struct BlobTxCase {
+    label: String,
+    tx_hex: String,
+    blobs: Vec<BlobFixture>,
+    encoded_hex: String,
+}
+
+#[derive(Deserialize)]
+struct BlobFixture {
+    namespace_hex: String,
+    data_hex: String,
+    share_version: u8,
+}
+
+#[derive(Deserialize)]
+struct NonWrapperCase {
+    label: String,
+    input_hex: String,
+}
+
+#[derive(Deserialize)]
+struct CommitmentsFixture {
+    mmr_cases: Vec<MMRCase>,
+    commitment_cases: Vec<CommitmentCase>,
+    batch_case: CommitmentBatch,
+}
+
+#[derive(Deserialize)]
+struct MMRCase {
+    label: String,
+    total_size: u64,
+    max_tree_size: u64,
+    sizes: Vec<u64>,
+}
+
+#[derive(Clone, Deserialize)]
+struct CommitmentCase {
+    label: String,
+    namespace_hex: String,
+    data_hex: String,
+    share_version: u8,
+    subtree_root_threshold: usize,
+    commitment_hex: String,
+}
+
+#[derive(Deserialize)]
+struct CommitmentBatch {
+    labels: Vec<String>,
+    commitments_hex: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -210,5 +280,96 @@ fn inclusion_rule_fixtures_match_go_square() -> square::Result<()> {
             case.label
         );
     }
+    Ok(())
+}
+
+#[test]
+fn blob_tx_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: BlobTxFixture = load_fixture("square/blob-tx.json");
+    assert_eq!(fixture.type_id, PROTO_BLOB_TX_TYPE_ID);
+
+    for case in fixture.cases {
+        let tx = decode_bytes(&case.tx_hex);
+        let blobs = case
+            .blobs
+            .iter()
+            .map(|blob| {
+                Blob::new(
+                    decode_namespace(&blob.namespace_hex)?,
+                    decode_bytes(&blob.data_hex),
+                    blob.share_version,
+                )
+                .map_err(square::Error::from)
+            })
+            .collect::<square::Result<Vec<_>>>()?;
+        let blob_tx = BlobTx::new(tx, blobs)?;
+        let encoded = decode_bytes(&case.encoded_hex);
+        assert_eq!(blob_tx.encode()?, encoded, "{}", case.label);
+        assert_eq!(BlobTx::decode(&encoded)?, Some(blob_tx), "{}", case.label);
+    }
+
+    for case in fixture.non_wrappers {
+        assert_eq!(
+            BlobTx::decode(&decode_bytes(&case.input_hex))?,
+            None,
+            "{}",
+            case.label
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn commitment_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: CommitmentsFixture = load_fixture("square/commitments.json");
+
+    for case in fixture.mmr_cases {
+        assert_eq!(
+            merkle_mountain_range_sizes(case.total_size, case.max_tree_size)?,
+            case.sizes,
+            "{}",
+            case.label
+        );
+    }
+
+    let mut by_label = BTreeMap::new();
+    for case in fixture.commitment_cases {
+        let blob = Blob::new(
+            decode_namespace(&case.namespace_hex)?,
+            decode_bytes(&case.data_hex),
+            case.share_version,
+        )?;
+        assert_eq!(
+            hex::encode(create_commitment(
+                &blob,
+                merkle::root_from_byte_slices,
+                case.subtree_root_threshold,
+            )?),
+            case.commitment_hex,
+            "{}",
+            case.label
+        );
+        by_label.insert(case.label, (blob, case.subtree_root_threshold));
+    }
+
+    let mut batch_blobs = Vec::with_capacity(fixture.batch_case.labels.len());
+    let mut threshold = None;
+    for label in &fixture.batch_case.labels {
+        let (blob, case_threshold) = by_label
+            .get(label)
+            .unwrap_or_else(|| panic!("unknown batch commitment label {label}"));
+        threshold = Some(threshold.unwrap_or(*case_threshold));
+        assert_eq!(threshold, Some(*case_threshold));
+        batch_blobs.push(blob.clone());
+    }
+    let commitments = create_commitments(
+        &batch_blobs,
+        merkle::root_from_byte_slices,
+        threshold.unwrap_or(64),
+    )?;
+    assert_eq!(
+        commitments.iter().map(hex::encode).collect::<Vec<_>>(),
+        fixture.batch_case.commitments_hex
+    );
     Ok(())
 }

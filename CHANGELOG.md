@@ -78,3 +78,5 @@
   row/column root calculation, and DAH construction from EDS roots.
 - Added initial Go-generated `square` conformance fixtures for power-of-two
   sizing helpers and blob inclusion-rule placement.
+- Added Go-generated `square` conformance fixtures for blob transaction
+  wrappers and blob share commitments.

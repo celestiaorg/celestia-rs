@@ -250,6 +250,16 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "square",
         output_path: "conformance/fixtures/square/inclusion-rules.json",
     },
+    Scenario {
+        name: "square-blob-tx",
+        crate_name: "square",
+        output_path: "conformance/fixtures/square/blob-tx.json",
+    },
+    Scenario {
+        name: "square-commitments",
+        crate_name: "square",
+        output_path: "conformance/fixtures/square/commitments.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

@@ -32,5 +32,5 @@ be committed under `conformance/fixtures/square/` and regenerated with:
 cargo xtask refresh-fixtures --crate-name square
 ```
 
-The current fixture checkpoint covers power-of-two sizing helpers and blob
-inclusion-rule placement.
+The current fixture checkpoint covers power-of-two sizing helpers, blob
+inclusion-rule placement, blob transaction wrappers, and blob commitments.
