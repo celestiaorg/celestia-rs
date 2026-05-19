@@ -50,6 +50,11 @@ func init() {
 			Description: "Emit go-square tx and blob share range vectors.",
 			Run:         runSquareRanges,
 		},
+		Subcommand{
+			Name:        "square-deconstruct",
+			Description: "Emit go-square square deconstruction vectors.",
+			Run:         runSquareDeconstruct,
+		},
 	)
 }
 
@@ -263,6 +268,31 @@ type squareBlobRangeExpectation struct {
 	Error     bool   `json:"error"`
 	Start     int    `json:"start,omitempty"`
 	End       int    `json:"end,omitempty"`
+}
+
+type squareDeconstructFixture struct {
+	Scenario   string                       `json:"scenario"`
+	Cases      []squareDeconstructCase      `json:"cases"`
+	ErrorCases []squareDeconstructErrorCase `json:"error_cases"`
+}
+
+type squareDeconstructCase struct {
+	Label               string                `json:"label"`
+	InputTxsHex         []string              `json:"input_txs_hex"`
+	SquareSharesHex     []string              `json:"square_shares_hex"`
+	DecoderOutputs      []squarePFBDecodeCase `json:"decoder_outputs"`
+	DeconstructedTxsHex []string              `json:"deconstructed_txs_hex"`
+}
+
+type squareDeconstructErrorCase struct {
+	Label           string                `json:"label"`
+	SquareSharesHex []string              `json:"square_shares_hex"`
+	DecoderOutputs  []squarePFBDecodeCase `json:"decoder_outputs"`
+}
+
+type squarePFBDecodeCase struct {
+	TxHex     string   `json:"tx_hex"`
+	BlobSizes []uint32 `json:"blob_sizes"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -652,6 +682,70 @@ func runSquareRanges(args []string) error {
 	})
 }
 
+func runSquareDeconstruct(args []string) error {
+	fs := flag.NewFlagSet("square-deconstruct", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/deconstruct.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	blobOne := squareBlob(squareNamespace([]byte{14}), []byte("deconstruct-one"), goshares.ShareVersionZero)
+	blobTwo := squareBlob(squareNamespace([]byte{15}), repeatByte(0x6c, 600), goshares.ShareVersionZero)
+	pfbTx := []byte("deconstruct-pfb")
+	blobTx := mustSquareBlobTxBytes(pfbTx, []*sqblob.Blob{blobOne, blobTwo})
+	blobDecoder := []squarePFBDecodeCase{
+		{
+			TxHex: hex.EncodeToString(pfbTx),
+			BlobSizes: []uint32{
+				uint32(len(blobOne.Data)),
+				uint32(len(blobTwo.Data)),
+			},
+		},
+	}
+	blobSquare := mustSquareConstruct([][]byte{[]byte("ordinary-deconstruct"), blobTx}, 4, 64)
+
+	return writeSquareJSON(*out, squareDeconstructFixture{
+		Scenario: "square-deconstruct",
+		Cases: []squareDeconstructCase{
+			mustSquareDeconstructCase(
+				"empty-square",
+				nil,
+				gosquare.EmptySquare(),
+				nil,
+			),
+			mustSquareDeconstructCase(
+				"ordinary-only",
+				[][]byte{[]byte("ordinary-deconstruct")},
+				mustSquareConstruct([][]byte{[]byte("ordinary-deconstruct")}, 4, 64),
+				nil,
+			),
+			mustSquareDeconstructCase(
+				"ordered-blob",
+				[][]byte{[]byte("ordinary-deconstruct"), blobTx},
+				blobSquare,
+				blobDecoder,
+			),
+		},
+		ErrorCases: []squareDeconstructErrorCase{
+			mustSquareDeconstructErrorCase(
+				"decoder-count-mismatch",
+				blobSquare,
+				[]squarePFBDecodeCase{
+					{
+						TxHex:     hex.EncodeToString(pfbTx),
+						BlobSizes: []uint32{uint32(len(blobOne.Data))},
+					},
+				},
+			),
+			mustSquareDeconstructErrorCase(
+				"missing-decoder-output",
+				blobSquare,
+				nil,
+			),
+		},
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -730,6 +824,14 @@ func mustSquareIndexWrapperBytes(tx []byte, shareIndexes ...uint32) []byte {
 		panic(err)
 	}
 	return encoded
+}
+
+func mustSquareConstruct(txs [][]byte, maxSquareSize int, subtreeRootThreshold int) gosquare.Square {
+	square, err := gosquare.Construct(txs, maxSquareSize, subtreeRootThreshold)
+	if err != nil {
+		panic(err)
+	}
+	return square
 }
 
 type squareBlobRequest struct {
@@ -1008,5 +1110,61 @@ func mustSquareRangeCase(
 		TxsHex:               hexSquareByteSlices(txs),
 		TxRanges:             txRanges,
 		BlobRanges:           blobRanges,
+	}
+}
+
+func mustSquareDeconstructCase(
+	label string,
+	inputTxs [][]byte,
+	square gosquare.Square,
+	decoderOutputs []squarePFBDecodeCase,
+) squareDeconstructCase {
+	decoderOutputs = squarePFBDecodeCases(decoderOutputs)
+	txs, err := gosquare.Deconstruct(square, squarePFBDecoder(decoderOutputs))
+	if err != nil {
+		panic(err)
+	}
+	return squareDeconstructCase{
+		Label:               label,
+		InputTxsHex:         hexSquareByteSlices(inputTxs),
+		SquareSharesHex:     hexSquareByteSlices(goshares.ToBytes(square)),
+		DecoderOutputs:      decoderOutputs,
+		DeconstructedTxsHex: hexSquareByteSlices(txs),
+	}
+}
+
+func mustSquareDeconstructErrorCase(
+	label string,
+	square gosquare.Square,
+	decoderOutputs []squarePFBDecodeCase,
+) squareDeconstructErrorCase {
+	decoderOutputs = squarePFBDecodeCases(decoderOutputs)
+	_, err := gosquare.Deconstruct(square, squarePFBDecoder(decoderOutputs))
+	if err == nil {
+		panic(fmt.Sprintf("expected deconstruct error for %s", label))
+	}
+	return squareDeconstructErrorCase{
+		Label:           label,
+		SquareSharesHex: hexSquareByteSlices(goshares.ToBytes(square)),
+		DecoderOutputs:  decoderOutputs,
+	}
+}
+
+func squarePFBDecodeCases(cases []squarePFBDecodeCase) []squarePFBDecodeCase {
+	if cases == nil {
+		return []squarePFBDecodeCase{}
+	}
+	return cases
+}
+
+func squarePFBDecoder(cases []squarePFBDecodeCase) gosquare.PFBDecoder {
+	return func(txBytes []byte) ([]uint32, error) {
+		txHex := hex.EncodeToString(txBytes)
+		for _, candidate := range cases {
+			if candidate.TxHex == txHex {
+				return candidate.BlobSizes, nil
+			}
+		}
+		return nil, fmt.Errorf("missing decoder output for %s", txHex)
 	}
 }

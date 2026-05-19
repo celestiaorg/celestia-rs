@@ -275,6 +275,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "square",
         output_path: "conformance/fixtures/square/ranges.json",
     },
+    Scenario {
+        name: "square-deconstruct",
+        crate_name: "square",
+        output_path: "conformance/fixtures/square/deconstruct.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

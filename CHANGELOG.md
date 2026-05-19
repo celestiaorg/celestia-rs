@@ -86,3 +86,5 @@
   empty squares, wrapped PFB extraction, and malformed square sizes.
 - Added Go-generated `square` conformance fixtures for transaction and blob
   share ranges, including non-PFB and out-of-range errors.
+- Added Go-generated `square` conformance fixtures for square deconstruction,
+  blob transaction reconstruction, and PFB decoder error handling.

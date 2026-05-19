@@ -15,7 +15,7 @@ use shares::{
 use square::{
     BlobTx, Builder, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
     blob_shares_used_non_interactive_defaults, build, construct, create_commitment,
-    create_commitments, empty_square, is_power_of_two, merkle_mountain_range_sizes,
+    create_commitments, deconstruct, empty_square, is_power_of_two, merkle_mountain_range_sizes,
     next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
     round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
 };
@@ -73,6 +73,19 @@ fn decode_shares(hexes: &[String]) -> square::Result<Vec<shares::Share>> {
         .iter()
         .map(|hex| Ok(shares::Share::from_slice(&decode_bytes(hex))?))
         .collect()
+}
+
+fn decode_square(hexes: &[String]) -> square::Result<Square> {
+    Square::new(decode_shares(hexes)?)
+}
+
+fn decode_pfb_sizes(outputs: &[PfbDecodeCase], tx: &[u8]) -> square::Result<Vec<u32>> {
+    let tx_hex = hex::encode(tx);
+    outputs
+        .iter()
+        .find(|output| output.tx_hex == tx_hex)
+        .map(|output| output.blob_sizes.clone())
+        .ok_or(square::Error::BuilderInvariant("missing decoder fixture"))
 }
 
 #[derive(Deserialize)]
@@ -154,6 +167,12 @@ struct SquaresFixture {
 #[derive(Deserialize)]
 struct RangesFixture {
     cases: Vec<RangeCase>,
+}
+
+#[derive(Deserialize)]
+struct DeconstructFixture {
+    cases: Vec<DeconstructCase>,
+    error_cases: Vec<DeconstructErrorCase>,
 }
 
 #[derive(Deserialize)]
@@ -279,6 +298,27 @@ struct RangeBlobExpectation {
     start: usize,
     #[serde(default)]
     end: usize,
+}
+
+#[derive(Deserialize)]
+struct DeconstructCase {
+    label: String,
+    square_shares_hex: Vec<String>,
+    decoder_outputs: Vec<PfbDecodeCase>,
+    deconstructed_txs_hex: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct DeconstructErrorCase {
+    label: String,
+    square_shares_hex: Vec<String>,
+    decoder_outputs: Vec<PfbDecodeCase>,
+}
+
+#[derive(Deserialize)]
+struct PfbDecodeCase {
+    tx_hex: String,
+    blob_sizes: Vec<u32>,
 }
 
 #[derive(Deserialize)]
@@ -679,6 +719,33 @@ fn share_range_fixtures_match_go_square() -> square::Result<()> {
                 );
             }
         }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn deconstruct_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: DeconstructFixture = load_fixture("square/deconstruct.json");
+
+    for case in fixture.cases {
+        let square = decode_square(&case.square_shares_hex)?;
+        let txs = deconstruct(&square, |tx| decode_pfb_sizes(&case.decoder_outputs, tx))?;
+        assert_eq!(
+            txs.iter().map(hex::encode).collect::<Vec<_>>(),
+            case.deconstructed_txs_hex,
+            "{}",
+            case.label
+        );
+    }
+
+    for case in fixture.error_cases {
+        let square = decode_square(&case.square_shares_hex)?;
+        assert!(
+            deconstruct(&square, |tx| decode_pfb_sizes(&case.decoder_outputs, tx)).is_err(),
+            "{}",
+            case.label
+        );
     }
 
     Ok(())
