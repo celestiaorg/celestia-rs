@@ -13,13 +13,14 @@ use shares::{
     SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Builder, LeoRsCodec, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size,
-    blob_share_range, blob_shares_used_non_interactive_defaults, build,
-    compute_extended_data_square, construct, create_commitment, create_commitments, deconstruct,
-    empty_square, extend_shares, import_extended_data_square, is_power_of_two,
-    merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
-    round_up_by_multiple_of, round_up_power_of_two, round_up_power_of_two_strict, size,
-    sub_tree_width, tx_share_range, write_square,
+    BlobTx, Builder, DataAvailabilityHeader, LeoRsCodec, PROTO_BLOB_TX_TYPE_ID, Square,
+    blob_min_square_size, blob_share_range, blob_shares_used_non_interactive_defaults, build,
+    compute_extended_data_square, construct, create_commitment, create_commitments,
+    data_availability_header_from_proto, deconstruct, empty_square, extend_shares,
+    import_extended_data_square, is_power_of_two, merkle_mountain_range_sizes,
+    min_data_availability_header, new_data_availability_header, next_share_index,
+    round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
+    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -80,6 +81,17 @@ fn hex_bytes_vec(values: &[Vec<u8>]) -> Vec<String> {
 
 fn hex_roots<const N: usize>(values: &[[u8; N]]) -> Vec<String> {
     values.iter().map(hex::encode).collect()
+}
+
+fn decode_roots<const N: usize>(hexes: &[String]) -> Vec<[u8; N]> {
+    hexes
+        .iter()
+        .map(|hex| {
+            decode_bytes(hex)
+                .try_into()
+                .unwrap_or_else(|bytes: Vec<u8>| panic!("invalid root length {}", bytes.len()))
+        })
+        .collect()
 }
 
 fn decode_shares(hexes: &[String]) -> square::Result<Vec<shares::Share>> {
@@ -193,6 +205,12 @@ struct DeconstructFixture {
 struct ErasureFixture {
     cases: Vec<ErasureCase>,
     invalid_cases: Vec<ErasureInvalidCase>,
+}
+
+#[derive(Deserialize)]
+struct DahFixture {
+    cases: Vec<DahCase>,
+    invalid_cases: Vec<DahInvalidCase>,
 }
 
 #[derive(Deserialize)]
@@ -363,6 +381,31 @@ struct ErasureInvalidCase {
     extended_shares_hex: Vec<String>,
     compute_error: bool,
     import_error: bool,
+}
+
+#[derive(Deserialize)]
+struct DahCase {
+    label: String,
+    ods_shares_hex: Vec<String>,
+    row_roots_hex: Vec<String>,
+    column_roots_hex: Vec<String>,
+    hash_hex: String,
+    proto_hex: String,
+    is_minimum: bool,
+    is_zero: bool,
+    width: usize,
+}
+
+#[derive(Deserialize)]
+struct DahInvalidCase {
+    label: String,
+    #[serde(default)]
+    row_roots_hex: Vec<String>,
+    #[serde(default)]
+    column_roots_hex: Vec<String>,
+    proto_hex: String,
+    validate_error: bool,
+    decode_error: bool,
 }
 
 #[derive(Deserialize)]
@@ -852,6 +895,68 @@ fn erasure_fixtures_match_rsmt2d() -> square::Result<()> {
             assert!(
                 import_extended_data_square(decode_bytes_vec(&case.extended_shares_hex), &codec)
                     .is_err(),
+                "{label}"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn dah_fixtures_match_go_shape() -> square::Result<()> {
+    let fixture: DahFixture = load_fixture("square/dah.json");
+
+    for case in fixture.cases {
+        let label = case.label.as_str();
+        let shares = decode_shares(&case.ods_shares_hex)?;
+        let eds = extend_shares(&shares)?;
+        let dah = new_data_availability_header(&eds)?;
+
+        assert_eq!(dah.row_roots.len(), case.width, "{label}");
+        assert_eq!(dah.column_roots.len(), case.width, "{label}");
+        assert_eq!(
+            hex_roots(&dah.row_roots).as_slice(),
+            case.row_roots_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_roots(&dah.column_roots).as_slice(),
+            case.column_roots_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(hex::encode(dah.hash()), case.hash_hex, "{label}");
+        assert_eq!(
+            hex::encode(dah.to_proto_bytes()?),
+            case.proto_hex,
+            "{label}"
+        );
+        assert_eq!(dah.is_zero(), case.is_zero, "{label}");
+        assert_eq!(
+            data_availability_header_from_proto(&decode_bytes(&case.proto_hex))?,
+            dah,
+            "{label}"
+        );
+        if case.is_minimum {
+            assert_eq!(min_data_availability_header(), dah, "{label}");
+        }
+    }
+
+    for case in fixture.invalid_cases {
+        let label = case.label.as_str();
+        if case.validate_error {
+            assert!(
+                DataAvailabilityHeader::new(
+                    decode_roots(&case.row_roots_hex),
+                    decode_roots(&case.column_roots_hex),
+                )
+                .is_err(),
+                "{label}"
+            );
+        }
+        if case.decode_error {
+            assert!(
+                data_availability_header_from_proto(&decode_bytes(&case.proto_hex)).is_err(),
                 "{label}"
             );
         }

@@ -64,6 +64,11 @@ func init() {
 			Description: "Emit rsmt2d Leopard EDS and NMT root vectors.",
 			Run:         runSquareErasure,
 		},
+		Subcommand{
+			Name:        "square-dah",
+			Description: "Emit data availability header root, hash, and proto vectors.",
+			Run:         runSquareDah,
+		},
 	)
 }
 
@@ -328,6 +333,33 @@ type squareErasureInvalidCase struct {
 	ExtendedSharesHex []string `json:"extended_shares_hex"`
 	ComputeError      bool     `json:"compute_error"`
 	ImportError       bool     `json:"import_error"`
+}
+
+type squareDahFixture struct {
+	Scenario     string                 `json:"scenario"`
+	Cases        []squareDahCase        `json:"cases"`
+	InvalidCases []squareDahInvalidCase `json:"invalid_cases"`
+}
+
+type squareDahCase struct {
+	Label          string   `json:"label"`
+	OdsSharesHex   []string `json:"ods_shares_hex"`
+	RowRootsHex    []string `json:"row_roots_hex"`
+	ColumnRootsHex []string `json:"column_roots_hex"`
+	HashHex        string   `json:"hash_hex"`
+	ProtoHex       string   `json:"proto_hex"`
+	IsMinimum      bool     `json:"is_minimum"`
+	IsZero         bool     `json:"is_zero"`
+	Width          int      `json:"width"`
+}
+
+type squareDahInvalidCase struct {
+	Label          string   `json:"label"`
+	RowRootsHex    []string `json:"row_roots_hex"`
+	ColumnRootsHex []string `json:"column_roots_hex"`
+	ProtoHex       string   `json:"proto_hex"`
+	ValidateError  bool     `json:"validate_error"`
+	DecodeError    bool     `json:"decode_error"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -817,6 +849,50 @@ func runSquareErasure(args []string) error {
 	})
 }
 
+func runSquareDah(args []string) error {
+	fs := flag.NewFlagSet("square-dah", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/dah.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	minCase := mustSquareDahCase(
+		"minimum-empty-square",
+		goshares.ToBytes(gosquare.EmptySquare()),
+		true,
+	)
+	ordinarySquare := mustSquareConstruct([][]byte{repeatByte(0x42, 1200)}, 4, 64)
+	ordinaryCase := mustSquareDahCase(
+		"two-by-two-ordinary",
+		goshares.ToBytes(ordinarySquare),
+		false,
+	)
+
+	return writeSquareJSON(*out, squareDahFixture{
+		Scenario: "square-dah",
+		Cases: []squareDahCase{
+			minCase,
+			ordinaryCase,
+		},
+		InvalidCases: []squareDahInvalidCase{
+			mustSquareDahValidateErrorCase("empty-roots", nil, nil),
+			mustSquareDahValidateErrorCase(
+				"axis-mismatch",
+				hexStringsToBytes(minCase.RowRootsHex),
+				hexStringsToBytes(minCase.ColumnRootsHex[:1]),
+			),
+			mustSquareDahDecodeErrorCase(
+				"short-proto-root",
+				[][]byte{
+					repeatByte(0x01, 89),
+					hexStringToBytes(minCase.RowRootsHex[1]),
+				},
+				hexStringsToBytes(minCase.ColumnRootsHex),
+			),
+		},
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -1241,17 +1317,8 @@ func squarePFBDecoder(cases []squarePFBDecodeCase) gosquare.PFBDecoder {
 }
 
 func mustSquareErasureCase(label string, odsShares [][]byte) squareErasureCase {
-	originalWidth := gosquare.Size(len(odsShares))
-	if originalWidth*originalWidth != len(odsShares) {
-		panic(fmt.Sprintf("erasure case %s ODS share count is not square", label))
-	}
-
+	eds, originalWidth := mustSquareEDS(label, odsShares)
 	codec := rsmt2d.NewLeoRSCodec()
-	treeFn := newSquareNMTTreeConstructor(uint64(originalWidth))
-	eds, err := rsmt2d.ComputeExtendedDataSquare(odsShares, codec, treeFn)
-	if err != nil {
-		panic(err)
-	}
 
 	imported, err := rsmt2d.ImportExtendedDataSquare(
 		eds.Flattened(),
@@ -1329,6 +1396,158 @@ func mustSquareErasureImportErrorCase(
 		ExtendedSharesHex: hexSquareByteSlices(extendedShares),
 		ImportError:       true,
 	}
+}
+
+func mustSquareDahCase(label string, odsShares [][]byte, isMinimum bool) squareDahCase {
+	eds, _ := mustSquareEDS(label, odsShares)
+	rowRoots, err := eds.RowRoots()
+	if err != nil {
+		panic(err)
+	}
+	columnRoots, err := eds.ColRoots()
+	if err != nil {
+		panic(err)
+	}
+
+	return squareDahCase{
+		Label:          label,
+		OdsSharesHex:   hexSquareByteSlices(odsShares),
+		RowRootsHex:    hexSquareByteSlices(rowRoots),
+		ColumnRootsHex: hexSquareByteSlices(columnRoots),
+		HashHex:        hex.EncodeToString(squareDahHash(rowRoots, columnRoots)),
+		ProtoHex:       hex.EncodeToString(squareDahProtoBytes(rowRoots, columnRoots)),
+		IsMinimum:      isMinimum,
+		IsZero:         len(rowRoots) == 0 || len(columnRoots) == 0,
+		Width:          int(eds.Width()),
+	}
+}
+
+func mustSquareDahValidateErrorCase(
+	label string,
+	rowRoots [][]byte,
+	columnRoots [][]byte,
+) squareDahInvalidCase {
+	if err := squareDahValidateBasic(rowRoots, columnRoots); err == nil {
+		panic(fmt.Sprintf("expected DAH validation error for %s", label))
+	}
+	return squareDahInvalidCase{
+		Label:          label,
+		RowRootsHex:    hexSquareByteSlices(rowRoots),
+		ColumnRootsHex: hexSquareByteSlices(columnRoots),
+		ProtoHex:       "",
+		ValidateError:  true,
+	}
+}
+
+func mustSquareDahDecodeErrorCase(
+	label string,
+	rowRoots [][]byte,
+	columnRoots [][]byte,
+) squareDahInvalidCase {
+	if err := squareDahValidateRootLengths(rowRoots, columnRoots); err == nil {
+		panic(fmt.Sprintf("expected DAH decode error for %s", label))
+	}
+	return squareDahInvalidCase{
+		Label:          label,
+		RowRootsHex:    []string{},
+		ColumnRootsHex: []string{},
+		ProtoHex:       hex.EncodeToString(squareDahProtoBytes(rowRoots, columnRoots)),
+		DecodeError:    true,
+	}
+}
+
+func mustSquareEDS(label string, odsShares [][]byte) (*rsmt2d.ExtendedDataSquare, int) {
+	originalWidth := gosquare.Size(len(odsShares))
+	if originalWidth*originalWidth != len(odsShares) {
+		panic(fmt.Sprintf("erasure case %s ODS share count is not square", label))
+	}
+
+	eds, err := rsmt2d.ComputeExtendedDataSquare(
+		odsShares,
+		rsmt2d.NewLeoRSCodec(),
+		newSquareNMTTreeConstructor(uint64(originalWidth)),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return eds, originalWidth
+}
+
+func squareDahHash(rowRoots [][]byte, columnRoots [][]byte) []byte {
+	roots := make([][]byte, 0, len(rowRoots)+len(columnRoots))
+	roots = append(roots, rowRoots...)
+	roots = append(roots, columnRoots...)
+	return merkle.HashFromByteSlices(roots)
+}
+
+func squareDahProtoBytes(rowRoots [][]byte, columnRoots [][]byte) []byte {
+	out := []byte{}
+	for _, root := range rowRoots {
+		out = appendProtoBytesField(out, 1, root)
+	}
+	for _, root := range columnRoots {
+		out = appendProtoBytesField(out, 2, root)
+	}
+	return out
+}
+
+func appendProtoBytesField(out []byte, fieldNumber int, value []byte) []byte {
+	out = appendProtoVarint(out, uint64(fieldNumber<<3|2))
+	out = appendProtoVarint(out, uint64(len(value)))
+	return append(out, value...)
+}
+
+func appendProtoVarint(out []byte, value uint64) []byte {
+	for value >= 0x80 {
+		out = append(out, byte(value)|0x80)
+		value >>= 7
+	}
+	return append(out, byte(value))
+}
+
+func squareDahValidateBasic(rowRoots [][]byte, columnRoots [][]byte) error {
+	if len(rowRoots) < 2 || len(columnRoots) < 2 {
+		return fmt.Errorf("minimum valid DataAvailabilityHeader has at least 2 row and column roots")
+	}
+	if len(rowRoots) > 256 || len(columnRoots) > 256 {
+		return fmt.Errorf("maximum valid DataAvailabilityHeader has at most 256 row and column roots")
+	}
+	if len(rowRoots) != len(columnRoots) {
+		return fmt.Errorf(
+			"unequal number of row and column roots: row %d col %d",
+			len(rowRoots),
+			len(columnRoots),
+		)
+	}
+	if err := squareDahValidateRootLengths(rowRoots, columnRoots); err != nil {
+		return err
+	}
+	return nil
+}
+
+func squareDahValidateRootLengths(rowRoots [][]byte, columnRoots [][]byte) error {
+	for _, root := range append(append([][]byte{}, rowRoots...), columnRoots...) {
+		if len(root) != sqnamespace.NamespaceSize*2+32 {
+			return fmt.Errorf("invalid DAH root length: %d", len(root))
+		}
+	}
+	return nil
+}
+
+func hexStringToBytes(value string) []byte {
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		panic(err)
+	}
+	return decoded
+}
+
+func hexStringsToBytes(values []string) [][]byte {
+	out := make([][]byte, len(values))
+	for i, value := range values {
+		out[i] = hexStringToBytes(value)
+	}
+	return out
 }
 
 type squareNMTTree struct {
