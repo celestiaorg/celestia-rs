@@ -10,10 +10,11 @@
 use serde::Deserialize;
 use shares::{Blob, Namespace};
 use square::{
-    BlobTx, PROTO_BLOB_TX_TYPE_ID, blob_min_square_size, blob_shares_used_non_interactive_defaults,
-    create_commitment, create_commitments, is_power_of_two, merkle_mountain_range_sizes,
-    next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
-    round_up_power_of_two_strict, size, sub_tree_width,
+    BlobTx, Builder, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
+    blob_shares_used_non_interactive_defaults, build, construct, create_commitment,
+    create_commitments, is_power_of_two, merkle_mountain_range_sizes, next_share_index,
+    round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
+    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -54,6 +55,14 @@ fn decode_bytes(hex: &str) -> Vec<u8> {
 
 fn decode_namespace(hex: &str) -> shares::Result<Namespace> {
     Namespace::from_slice(&decode_bytes(hex))
+}
+
+fn hex_square(square: &Square) -> Vec<String> {
+    square
+        .as_shares()
+        .iter()
+        .map(|share| hex::encode(share.as_bytes()))
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -120,6 +129,11 @@ struct CommitmentsFixture {
 }
 
 #[derive(Deserialize)]
+struct BuildersFixture {
+    cases: Vec<BuilderCase>,
+}
+
+#[derive(Deserialize)]
 struct MMRCase {
     label: String,
     total_size: u64,
@@ -141,6 +155,44 @@ struct CommitmentCase {
 struct CommitmentBatch {
     labels: Vec<String>,
     commitments_hex: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct BuilderCase {
+    label: String,
+    max_square_size: usize,
+    subtree_root_threshold: usize,
+    input_txs_hex: Vec<String>,
+    build_square_shares_hex: Vec<String>,
+    included_txs_hex: Vec<String>,
+    construct_error: bool,
+    #[serde(default)]
+    construct_square_shares_hex: Vec<String>,
+    tx_ranges: Vec<TxRangeCase>,
+    blob_ranges: Vec<BlobRangeCase>,
+    wrapped_pfbs: Vec<WrappedPfbCase>,
+}
+
+#[derive(Deserialize)]
+struct TxRangeCase {
+    tx_index: usize,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Deserialize)]
+struct BlobRangeCase {
+    tx_index: usize,
+    blob_index: usize,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Deserialize)]
+struct WrappedPfbCase {
+    tx_index: usize,
+    tx_hex: String,
+    share_indexes: Vec<u32>,
 }
 
 #[derive(Deserialize)]
@@ -316,6 +368,90 @@ fn blob_tx_fixtures_match_go_square() -> square::Result<()> {
             case.label
         );
     }
+    Ok(())
+}
+
+#[test]
+fn builder_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: BuildersFixture = load_fixture("square/builders.json");
+
+    for case in fixture.cases {
+        let txs = case
+            .input_txs_hex
+            .iter()
+            .map(|tx| decode_bytes(tx))
+            .collect::<Vec<_>>();
+
+        let built = build(&txs, case.max_square_size, case.subtree_root_threshold)?;
+        assert_eq!(
+            hex_square(&built.square),
+            case.build_square_shares_hex,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            built
+                .included_txs
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>(),
+            case.included_txs_hex,
+            "{}",
+            case.label
+        );
+
+        let constructed = construct(&txs, case.max_square_size, case.subtree_root_threshold);
+        if case.construct_error {
+            assert!(constructed.is_err(), "{}", case.label);
+        } else {
+            assert_eq!(
+                hex_square(&constructed?),
+                case.construct_square_shares_hex,
+                "{}",
+                case.label
+            );
+        }
+
+        for range in case.tx_ranges {
+            assert_eq!(
+                tx_share_range(
+                    &txs,
+                    range.tx_index,
+                    case.max_square_size,
+                    case.subtree_root_threshold,
+                )?,
+                shares::ShareRange::new(range.start, range.end),
+                "{}",
+                case.label
+            );
+        }
+
+        for range in case.blob_ranges {
+            assert_eq!(
+                blob_share_range(
+                    &txs,
+                    range.tx_index,
+                    range.blob_index,
+                    case.max_square_size,
+                    case.subtree_root_threshold,
+                )?,
+                shares::ShareRange::new(range.start, range.end),
+                "{}",
+                case.label
+            );
+        }
+
+        if !case.wrapped_pfbs.is_empty() {
+            let mut builder =
+                Builder::new(case.max_square_size, case.subtree_root_threshold, &txs)?;
+            for wrapped in case.wrapped_pfbs {
+                let got = builder.get_wrapped_pfb(wrapped.tx_index)?;
+                assert_eq!(hex::encode(got.tx), wrapped.tx_hex, "{}", case.label);
+                assert_eq!(got.share_indexes, wrapped.share_indexes, "{}", case.label);
+            }
+        }
+    }
+
     Ok(())
 }
 

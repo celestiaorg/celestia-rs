@@ -35,6 +35,11 @@ func init() {
 			Description: "Emit go-square blob commitment vectors.",
 			Run:         runSquareCommitments,
 		},
+		Subcommand{
+			Name:        "square-builders",
+			Description: "Emit go-square builder and construct vectors.",
+			Run:         runSquareBuilders,
+		},
 	)
 }
 
@@ -146,6 +151,44 @@ type squareCommitmentCase struct {
 type squareCommitmentBatch struct {
 	Labels         []string `json:"labels"`
 	CommitmentsHex []string `json:"commitments_hex"`
+}
+
+type squareBuildersFixture struct {
+	Scenario string              `json:"scenario"`
+	Cases    []squareBuilderCase `json:"cases"`
+}
+
+type squareBuilderCase struct {
+	Label                    string                 `json:"label"`
+	MaxSquareSize            int                    `json:"max_square_size"`
+	SubtreeRootThreshold     int                    `json:"subtree_root_threshold"`
+	InputTxsHex              []string               `json:"input_txs_hex"`
+	BuildSquareSharesHex     []string               `json:"build_square_shares_hex"`
+	IncludedTxsHex           []string               `json:"included_txs_hex"`
+	ConstructError           bool                   `json:"construct_error"`
+	ConstructSquareSharesHex []string               `json:"construct_square_shares_hex,omitempty"`
+	TxRanges                 []squareTxRangeCase    `json:"tx_ranges"`
+	BlobRanges               []squareBlobRangeCase  `json:"blob_ranges"`
+	WrappedPFBs              []squareWrappedPFBCase `json:"wrapped_pfbs"`
+}
+
+type squareTxRangeCase struct {
+	TxIndex int `json:"tx_index"`
+	Start   int `json:"start"`
+	End     int `json:"end"`
+}
+
+type squareBlobRangeCase struct {
+	TxIndex   int `json:"tx_index"`
+	BlobIndex int `json:"blob_index"`
+	Start     int `json:"start"`
+	End       int `json:"end"`
+}
+
+type squareWrappedPFBCase struct {
+	TxIndex      int      `json:"tx_index"`
+	TxHex        string   `json:"tx_hex"`
+	ShareIndexes []uint32 `json:"share_indexes"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -386,6 +429,54 @@ func runSquareCommitments(args []string) error {
 	})
 }
 
+func runSquareBuilders(args []string) error {
+	fs := flag.NewFlagSet("square-builders", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/builders.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	blobOne := squareBlob(squareNamespace([]byte{7}), []byte("blob-one"), goshares.ShareVersionZero)
+	blobTwo := squareBlob(squareNamespace([]byte{8}), repeatByte(0x8a, 600), goshares.ShareVersionZero)
+	blobTxOne := mustSquareBlobTxBytes([]byte("pfb-one"), []*sqblob.Blob{blobOne})
+	blobTxTwo := mustSquareBlobTxBytes([]byte("pfb-two"), []*sqblob.Blob{blobOne, blobTwo})
+
+	cases := []squareBuilderCase{
+		mustSquareBuilderCase(
+			"ordinary-only",
+			[][]byte{[]byte("ordinary")},
+			4,
+			64,
+			nil,
+			nil,
+			nil,
+		),
+		mustSquareBuilderCase(
+			"blob-first-build-reorders",
+			[][]byte{blobTxOne, []byte("ordinary")},
+			4,
+			64,
+			nil,
+			nil,
+			nil,
+		),
+		mustSquareBuilderCase(
+			"ordered-blob",
+			[][]byte{[]byte("ordinary"), blobTxTwo},
+			4,
+			64,
+			[]int{0, 1},
+			[]squareBlobRequest{{txIndex: 1, blobIndex: 0}, {txIndex: 1, blobIndex: 1}},
+			[]int{1},
+		),
+	}
+
+	return writeSquareJSON(*out, squareBuildersFixture{
+		Scenario: "square-builders",
+		Cases:    cases,
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -448,4 +539,124 @@ func mustSquareCommitmentCase(
 		SubtreeRootThreshold: subtreeRootThreshold,
 		CommitmentHex:        hex.EncodeToString(commitment),
 	}
+}
+
+func mustSquareBlobTxBytes(tx []byte, blobs []*sqblob.Blob) []byte {
+	encoded, err := sqblob.MarshalBlobTx(tx, blobs...)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
+type squareBlobRequest struct {
+	txIndex   int
+	blobIndex int
+}
+
+func mustSquareBuilderCase(
+	label string,
+	txs [][]byte,
+	maxSquareSize int,
+	subtreeRootThreshold int,
+	txRangeIndexes []int,
+	blobRangeRequests []squareBlobRequest,
+	wrappedIndexes []int,
+) squareBuilderCase {
+	builtSquare, includedTxs, err := gosquare.Build(txs, maxSquareSize, subtreeRootThreshold)
+	if err != nil {
+		panic(err)
+	}
+
+	constructedSquare, constructErr := gosquare.Construct(txs, maxSquareSize, subtreeRootThreshold)
+	constructShares := []string(nil)
+	if constructErr == nil {
+		constructShares = hexSquareByteSlices(goshares.ToBytes(constructedSquare))
+	}
+
+	txRanges := make([]squareTxRangeCase, 0, len(txRangeIndexes))
+	for _, txIndex := range txRangeIndexes {
+		rng, err := gosquare.TxShareRange(txs, txIndex, maxSquareSize, subtreeRootThreshold)
+		if err != nil {
+			panic(err)
+		}
+		txRanges = append(txRanges, squareTxRangeCase{
+			TxIndex: txIndex,
+			Start:   rng.Start,
+			End:     rng.End,
+		})
+	}
+
+	blobRanges := make([]squareBlobRangeCase, 0, len(blobRangeRequests))
+	for _, request := range blobRangeRequests {
+		rng, err := gosquare.BlobShareRange(
+			txs,
+			request.txIndex,
+			request.blobIndex,
+			maxSquareSize,
+			subtreeRootThreshold,
+		)
+		if err != nil {
+			panic(err)
+		}
+		blobRanges = append(blobRanges, squareBlobRangeCase{
+			TxIndex:   request.txIndex,
+			BlobIndex: request.blobIndex,
+			Start:     rng.Start,
+			End:       rng.End,
+		})
+	}
+
+	builder, err := gosquare.NewBuilder(maxSquareSize, subtreeRootThreshold, txs...)
+	if err != nil {
+		if constructErr != nil {
+			return squareBuilderCase{
+				Label:                label,
+				MaxSquareSize:        maxSquareSize,
+				SubtreeRootThreshold: subtreeRootThreshold,
+				InputTxsHex:          hexSquareByteSlices(txs),
+				BuildSquareSharesHex: hexSquareByteSlices(goshares.ToBytes(builtSquare)),
+				IncludedTxsHex:       hexSquareByteSlices(includedTxs),
+				ConstructError:       true,
+				TxRanges:             []squareTxRangeCase{},
+				BlobRanges:           []squareBlobRangeCase{},
+				WrappedPFBs:          []squareWrappedPFBCase{},
+			}
+		}
+		panic(err)
+	}
+	wrapped := make([]squareWrappedPFBCase, 0, len(wrappedIndexes))
+	for _, txIndex := range wrappedIndexes {
+		wpfb, err := builder.GetWrappedPFB(txIndex)
+		if err != nil {
+			panic(err)
+		}
+		wrapped = append(wrapped, squareWrappedPFBCase{
+			TxIndex:      txIndex,
+			TxHex:        hex.EncodeToString(wpfb.Tx),
+			ShareIndexes: wpfb.ShareIndexes,
+		})
+	}
+
+	return squareBuilderCase{
+		Label:                    label,
+		MaxSquareSize:            maxSquareSize,
+		SubtreeRootThreshold:     subtreeRootThreshold,
+		InputTxsHex:              hexSquareByteSlices(txs),
+		BuildSquareSharesHex:     hexSquareByteSlices(goshares.ToBytes(builtSquare)),
+		IncludedTxsHex:           hexSquareByteSlices(includedTxs),
+		ConstructError:           constructErr != nil,
+		ConstructSquareSharesHex: constructShares,
+		TxRanges:                 txRanges,
+		BlobRanges:               blobRanges,
+		WrappedPFBs:              wrapped,
+	}
+}
+
+func hexSquareByteSlices(values [][]byte) []string {
+	out := make([]string, len(values))
+	for i, value := range values {
+		out[i] = hex.EncodeToString(value)
+	}
+	return out
 }

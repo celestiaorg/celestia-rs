@@ -260,6 +260,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "square",
         output_path: "conformance/fixtures/square/commitments.json",
     },
+    Scenario {
+        name: "square-builders",
+        crate_name: "square",
+        output_path: "conformance/fixtures/square/builders.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

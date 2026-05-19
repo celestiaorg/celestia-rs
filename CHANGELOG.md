@@ -80,3 +80,5 @@
   sizing helpers and blob inclusion-rule placement.
 - Added Go-generated `square` conformance fixtures for blob transaction
   wrappers and blob share commitments.
+- Added Go-generated `square` conformance fixtures for builder/export behavior,
+  ordered construction errors, share ranges, and wrapped PFB indexes.
