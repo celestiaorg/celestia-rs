@@ -20,7 +20,7 @@ cargo xtask refresh-fixtures --scenario bech32-addresses
 cargo xtask refresh-fixtures --crate-name hash
 ```
 
-The Rust runner shells out to `go run ./conformance/fixturegen ...`. Go 1.22+ is required for regeneration only; consumers of fixtures (Rust crates) need no Go toolchain.
+The Rust runner shells out to `go run ./conformance/fixturegen ...`. Go 1.24.11 is required for regeneration only; consumers of fixtures (Rust crates) need no Go toolchain.
 
 ## When to regenerate
 

@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"crypto/sha256"
-	_ "embed"
+	"embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
+	"sort"
+	"strings"
 
 	sqblob "github.com/celestiaorg/go-square/blob"
 	"github.com/celestiaorg/go-square/inclusion"
@@ -22,8 +25,8 @@ import (
 	"github.com/cometbft/cometbft/crypto/merkle"
 )
 
-//go:embed testdata/mainnet_block_10126899.json
-var squareMainnetBlock10126899JSON []byte
+//go:embed testdata/mainnet_block_*.json
+var squareMainnetBlockJSONFS embed.FS
 
 func init() {
 	All = append(All,
@@ -965,18 +968,14 @@ func runSquareMainnetBlocks(args []string) error {
 		return err
 	}
 
-	mainnetCase, err := squareMainnetBlockCaseFromJSON(
-		"mainnet-10126899-app-v6",
-		"mainnet",
-		squareMainnetBlock10126899JSON,
-	)
+	cases, err := squareMainnetBlockCases(squareMainnetBlockJSONFS, "mainnet")
 	if err != nil {
 		return err
 	}
 
 	return writeSquareJSON(*out, squareMainnetBlocksFixture{
 		Scenario: "square-mainnet-blocks",
-		Cases:    []squareMainnetBlockCase{mainnetCase},
+		Cases:    cases,
 	})
 }
 
@@ -1607,15 +1606,16 @@ func mustSquareDahDecodeErrorCase(
 }
 
 func squareMainnetBlockCaseFromJSON(
-	label string,
+	source string,
 	network string,
 	data []byte,
 ) (squareMainnetBlockCase, error) {
 	var block squareRawMainnetBlock
 	if err := json.Unmarshal(data, &block); err != nil {
-		return squareMainnetBlockCase{}, fmt.Errorf("decode %s block json: %w", label, err)
+		return squareMainnetBlockCase{}, fmt.Errorf("decode %s block json: %w", source, err)
 	}
 
+	label := fmt.Sprintf("%s-%d-app-v%d", network, block.Height, block.AppVersion)
 	txs := make([][]byte, len(block.Txs))
 	for i, tx := range block.Txs {
 		decoded, err := base64.StdEncoding.DecodeString(tx)
@@ -1672,6 +1672,45 @@ func squareMainnetBlockCaseFromJSON(
 		ColumnRootsHex: hexSquareByteSlices(columnRoots),
 		DahHashHex:     hex.EncodeToString(dahHash),
 	}, nil
+}
+
+func squareMainnetBlockCases(fsys fs.FS, network string) ([]squareMainnetBlockCase, error) {
+	entries, err := fs.ReadDir(fsys, "testdata")
+	if err != nil {
+		return nil, fmt.Errorf("read mainnet block testdata: %w", err)
+	}
+
+	cases := make([]squareMainnetBlockCase, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() ||
+			!strings.HasPrefix(name, "mainnet_block_") ||
+			!strings.HasSuffix(name, ".json") {
+			continue
+		}
+
+		source := "testdata/" + name
+		data, err := fs.ReadFile(fsys, source)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", source, err)
+		}
+		blockCase, err := squareMainnetBlockCaseFromJSON(source, network, data)
+		if err != nil {
+			return nil, err
+		}
+		cases = append(cases, blockCase)
+	}
+	if len(cases) == 0 {
+		return nil, fmt.Errorf("no embedded mainnet block fixtures found")
+	}
+
+	sort.Slice(cases, func(i, j int) bool {
+		if cases[i].Height == cases[j].Height {
+			return cases[i].Label < cases[j].Label
+		}
+		return cases[i].Height < cases[j].Height
+	})
+	return cases, nil
 }
 
 func mustSquareEDS(label string, odsShares [][]byte) (*rsmt2d.ExtendedDataSquare, int) {

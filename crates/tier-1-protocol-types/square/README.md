@@ -2,12 +2,13 @@
 
 Celestia data-square layout primitives for `celestia-rs`.
 
-This crate is the M1 layer above `shares`. It will own original data square
+This crate is the M1 layer above `shares`. It owns original data square
 construction, blob share placement, blob commitment rules, erasure extension,
-and data availability headers. The current implementation checkpoint covers
-the low-level blob transaction wrapper, inclusion math, square sizing, and
-`write_square` layout foundation, builder/export mechanics, blob commitments,
-data availability header value helpers, and Leopard erasure-coded EDS helpers.
+and data availability headers. The current implementation covers blob
+transaction wrappers, inclusion math, square sizing, `write_square` layout,
+builder/export mechanics, share ranges, deconstruction, blob commitments, data
+availability header helpers, Leopard erasure-coded EDS helpers, and cached
+mainnet DAH validation.
 
 ## Depends On
 
@@ -37,4 +38,7 @@ inclusion-rule placement, blob transaction wrappers, blob commitments, and
 builder/export behavior, direct square layout, share ranges, and square
 deconstruction, plus Leopard EDS extension, import/export, and row/column NMT
 roots, DAH roots, hashes, and protobuf encoding, an initial cached mainnet
-block DAH vector, and aggregated malformed input/error vectors.
+block DAH vector, and aggregated malformed input/error vectors. Additional
+cached mainnet blocks can be added as
+`conformance/fixturegen/cmd/testdata/mainnet_block_<height>.json`; the
+`square-mainnet-blocks` generator includes every matching embedded file.

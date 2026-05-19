@@ -88,3 +88,12 @@
   share ranges, including non-PFB and out-of-range errors.
 - Added Go-generated `square` conformance fixtures for square deconstruction,
   blob transaction reconstruction, and PFB decoder error handling.
+- Added Go-generated `square` conformance fixtures for Leopard erasure
+  extension, DAH roots/hashes/protobuf, and malformed square inputs.
+- Added signer-aware share version 1 support for `shares` sparse blobs and
+  `square` blob transaction wrappers.
+- Added a cached mainnet block DAH fixture for height 10126899 and the
+  `m1-integration` acceptance scaffold.
+- Made the `square-mainnet-blocks` fixture generator consume every embedded
+  `mainnet_block_*.json` testdata file and aligned fixturegen CI with Go
+  1.24.11.
