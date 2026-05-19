@@ -470,8 +470,8 @@ the first unit that starts in the share.
 
 **REQ-10.** Sparse shares are all non-compact shares. First sparse shares
 include a 4-byte sequence length; continuation sparse shares do not.
-Share-version-one first sparse shares with nonzero sequence length also carry
-the 20-byte signer immediately after the sequence length.
+Share-version-one sequence-start shares also reserve the 20-byte signer region
+immediately after the sequence length.
 
 **REQ-11.** `Share::raw_data()` starts after namespace, info byte, optional
 sequence length, optional version-one signer, and compact-share reserved bytes

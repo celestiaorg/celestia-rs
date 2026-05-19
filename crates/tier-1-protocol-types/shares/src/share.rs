@@ -158,10 +158,7 @@ impl Share {
 
     /// Return true when this share contains a version-one signer.
     pub fn contains_signer(&self) -> Result<bool> {
-        Ok(self.version()? == SHARE_VERSION_ONE
-            && self.is_sequence_start()?
-            && !self.is_compact_share()?
-            && self.sequence_len()? != Some(0))
+        Ok(self.version()? == SHARE_VERSION_ONE && self.is_sequence_start()?)
     }
 
     /// Return the signer encoded in a version-one sequence-start share.

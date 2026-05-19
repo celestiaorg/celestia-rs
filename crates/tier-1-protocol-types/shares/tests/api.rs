@@ -417,7 +417,7 @@ fn sparse_split_parse_and_padding_round_trip_blobs() -> shares::Result<()> {
     );
     let v1_padding = namespace_padding_share(namespace, SHARE_VERSION_ONE)?;
     assert!(v1_padding.is_padding()?);
-    assert!(!v1_padding.contains_signer()?);
+    assert!(v1_padding.contains_signer()?);
     Ok(())
 }
 
