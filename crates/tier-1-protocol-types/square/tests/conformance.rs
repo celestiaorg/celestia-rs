@@ -214,6 +214,11 @@ struct DahFixture {
 }
 
 #[derive(Deserialize)]
+struct MalformedFixture {
+    cases: Vec<MalformedCase>,
+}
+
+#[derive(Deserialize)]
 struct MMRCase {
     label: String,
     total_size: u64,
@@ -406,6 +411,29 @@ struct DahInvalidCase {
     proto_hex: String,
     validate_error: bool,
     decode_error: bool,
+}
+
+#[derive(Deserialize)]
+struct MalformedCase {
+    label: String,
+    operation: String,
+    expected_error: String,
+    #[serde(default)]
+    input_hex: String,
+    #[serde(default)]
+    inputs_hex: Vec<String>,
+    #[serde(default)]
+    txs_hex: Vec<String>,
+    #[serde(default)]
+    max_square_size: usize,
+    #[serde(default)]
+    subtree_root_threshold: usize,
+    #[serde(default)]
+    cursor: usize,
+    #[serde(default)]
+    blob_share_len: usize,
+    #[serde(default)]
+    row_index: usize,
 }
 
 #[derive(Deserialize)]
@@ -963,6 +991,74 @@ fn dah_fixtures_match_go_shape() -> square::Result<()> {
     }
 
     Ok(())
+}
+
+#[test]
+fn malformed_fixtures_exercise_error_surfaces() -> square::Result<()> {
+    let fixture: MalformedFixture = load_fixture("square/malformed.json");
+    let codec = LeoRsCodec::new();
+
+    for case in fixture.cases {
+        match case.operation.as_str() {
+            "blob_tx_decode" => {
+                assert_square_error(&case, BlobTx::decode(&decode_bytes(&case.input_hex)));
+            }
+            "next_share_index" => {
+                assert_square_error(
+                    &case,
+                    next_share_index(
+                        case.cursor,
+                        case.blob_share_len,
+                        case.subtree_root_threshold,
+                    ),
+                );
+            }
+            "construct" => {
+                assert_square_error(
+                    &case,
+                    construct(
+                        &decode_bytes_vec(&case.txs_hex),
+                        case.max_square_size,
+                        case.subtree_root_threshold,
+                    ),
+                );
+            }
+            "erasure_import" => {
+                assert_square_error(
+                    &case,
+                    import_extended_data_square(decode_bytes_vec(&case.inputs_hex), &codec),
+                );
+            }
+            "eds_row" => {
+                let eds = import_extended_data_square(decode_bytes_vec(&case.inputs_hex), &codec)?;
+                assert_square_error(&case, eds.row(case.row_index));
+            }
+            "dah_decode" => {
+                assert_square_error(
+                    &case,
+                    data_availability_header_from_proto(&decode_bytes(&case.input_hex)),
+                );
+            }
+            other => panic!("unknown malformed fixture operation {other}"),
+        }
+    }
+
+    Ok(())
+}
+
+fn assert_square_error<T>(case: &MalformedCase, result: square::Result<T>) {
+    match result {
+        Ok(_) => panic!("{}: expected square error", case.label),
+        Err(error) => {
+            let message = error.to_string();
+            assert!(
+                message.contains(&case.expected_error),
+                "{}: error {message:?} did not contain {:?}",
+                case.label,
+                case.expected_error
+            );
+        }
+    }
 }
 
 #[test]

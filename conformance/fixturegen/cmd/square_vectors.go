@@ -69,6 +69,11 @@ func init() {
 			Description: "Emit data availability header root, hash, and proto vectors.",
 			Run:         runSquareDah,
 		},
+		Subcommand{
+			Name:        "square-malformed",
+			Description: "Emit cross-cutting malformed square input vectors.",
+			Run:         runSquareMalformed,
+		},
 	)
 }
 
@@ -360,6 +365,25 @@ type squareDahInvalidCase struct {
 	ProtoHex       string   `json:"proto_hex"`
 	ValidateError  bool     `json:"validate_error"`
 	DecodeError    bool     `json:"decode_error"`
+}
+
+type squareMalformedFixture struct {
+	Scenario string                `json:"scenario"`
+	Cases    []squareMalformedCase `json:"cases"`
+}
+
+type squareMalformedCase struct {
+	Label                string   `json:"label"`
+	Operation            string   `json:"operation"`
+	ExpectedError        string   `json:"expected_error"`
+	InputHex             string   `json:"input_hex,omitempty"`
+	InputsHex            []string `json:"inputs_hex,omitempty"`
+	TxsHex               []string `json:"txs_hex,omitempty"`
+	MaxSquareSize        int      `json:"max_square_size,omitempty"`
+	SubtreeRootThreshold int      `json:"subtree_root_threshold,omitempty"`
+	Cursor               int      `json:"cursor,omitempty"`
+	BlobShareLen         int      `json:"blob_share_len,omitempty"`
+	RowIndex             int      `json:"row_index,omitempty"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -889,6 +913,69 @@ func runSquareDah(args []string) error {
 				},
 				hexStringsToBytes(minCase.ColumnRootsHex),
 			),
+		},
+	})
+}
+
+func runSquareMalformed(args []string) error {
+	fs := flag.NewFlagSet("square-malformed", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/malformed.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	validBlobTx := mustSquareBlobTxBytes(
+		[]byte("malformed-pfb"),
+		[]*sqblob.Blob{
+			squareBlob(squareNamespace([]byte{16}), []byte("malformed-blob"), goshares.ShareVersionZero),
+		},
+	)
+	emptyEDS := mustSquareErasureCase("malformed-empty-square", goshares.ToBytes(gosquare.EmptySquare()))
+
+	return writeSquareJSON(*out, squareMalformedFixture{
+		Scenario: "square-malformed",
+		Cases: []squareMalformedCase{
+			{
+				Label:         "blob-tx-short-namespace-id",
+				Operation:     "blob_tx_decode",
+				InputHex:      hex.EncodeToString(squareMalformedBlobTxBytes([]byte{0x01}, 0, 0)),
+				ExpectedError: "invalid blob transaction wrapper",
+			},
+			{
+				Label:                "next-share-index-zero-threshold",
+				Operation:            "next_share_index",
+				Cursor:               1,
+				BlobShareLen:         3,
+				SubtreeRootThreshold: 0,
+				ExpectedError:        "divisor must be non-zero",
+			},
+			{
+				Label:                "construct-normal-after-blob",
+				Operation:            "construct",
+				TxsHex:               hexSquareByteSlices([][]byte{validBlobTx, []byte("ordinary-after-blob")}),
+				MaxSquareSize:        4,
+				SubtreeRootThreshold: 64,
+				ExpectedError:        "normal transaction after blob transaction",
+			},
+			{
+				Label:         "erasure-import-uneven-shards",
+				Operation:     "erasure_import",
+				InputsHex:     hexSquareByteSlices([][]byte{repeatByte(0x11, 512), repeatByte(0x22, 512), repeatByte(0x33, 512), repeatByte(0x44, 64)}),
+				ExpectedError: "shards of different lengths found",
+			},
+			{
+				Label:         "eds-row-out-of-range",
+				Operation:     "eds_row",
+				InputsHex:     emptyEDS.ExtendedSharesHex,
+				RowIndex:      emptyEDS.Width,
+				ExpectedError: "extended data square row index out of range",
+			},
+			{
+				Label:         "dah-truncated-protobuf",
+				Operation:     "dah_decode",
+				InputHex:      "0a",
+				ExpectedError: "decode square data",
+			},
 		},
 	})
 }
@@ -1491,10 +1578,33 @@ func squareDahProtoBytes(rowRoots [][]byte, columnRoots [][]byte) []byte {
 	return out
 }
 
+func squareMalformedBlobTxBytes(namespaceID []byte, shareVersion uint32, namespaceVersion uint32) []byte {
+	blob := []byte{}
+	blob = appendProtoBytesField(blob, 1, namespaceID)
+	blob = appendProtoBytesField(blob, 2, []byte("malformed-blob"))
+	blob = appendProtoVarintField(blob, 3, uint64(shareVersion))
+	blob = appendProtoVarintField(blob, 4, uint64(namespaceVersion))
+
+	out := []byte{}
+	out = appendProtoBytesField(out, 1, []byte("malformed-pfb"))
+	out = appendProtoBytesField(out, 2, blob)
+	out = appendProtoStringField(out, 3, sqblob.ProtoBlobTxTypeID)
+	return out
+}
+
+func appendProtoStringField(out []byte, fieldNumber int, value string) []byte {
+	return appendProtoBytesField(out, fieldNumber, []byte(value))
+}
+
 func appendProtoBytesField(out []byte, fieldNumber int, value []byte) []byte {
 	out = appendProtoVarint(out, uint64(fieldNumber<<3|2))
 	out = appendProtoVarint(out, uint64(len(value)))
 	return append(out, value...)
+}
+
+func appendProtoVarintField(out []byte, fieldNumber int, value uint64) []byte {
+	out = appendProtoVarint(out, uint64(fieldNumber<<3))
+	return appendProtoVarint(out, value)
 }
 
 func appendProtoVarint(out []byte, value uint64) []byte {
