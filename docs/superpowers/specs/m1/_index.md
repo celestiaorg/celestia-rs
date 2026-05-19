@@ -21,6 +21,13 @@
 | 9 | `shares` | 1 | [shares.md](shares.md) | implemented |
 | 10 | `square` | 1 | [square.md](square.md) | in progress |
 
+## Acceptance Scaffold
+
+`crates/m1-integration/` contains
+`parse_real_mainnet_block_produces_matching_dah`, currently backed by the
+cached mainnet height `10126899` fixture. The broader target corpus for full M1
+acceptance remains at the square spec's mainnet sample size.
+
 ## Dependency DAG
 
 ```
