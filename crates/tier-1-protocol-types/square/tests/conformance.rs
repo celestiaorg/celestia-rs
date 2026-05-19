@@ -8,13 +8,16 @@
 )]
 
 use serde::Deserialize;
-use shares::{Blob, Namespace};
+use shares::{
+    Blob, CompactShareSplitter, DEFAULT_SHARE_VERSION, Namespace, PAY_FOR_BLOB_NAMESPACE,
+    SparseShareSplitter, TX_NAMESPACE,
+};
 use square::{
     BlobTx, Builder, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
     blob_shares_used_non_interactive_defaults, build, construct, create_commitment,
-    create_commitments, is_power_of_two, merkle_mountain_range_sizes, next_share_index,
-    round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
-    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range,
+    create_commitments, empty_square, is_power_of_two, merkle_mountain_range_sizes,
+    next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
+    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -62,6 +65,13 @@ fn hex_square(square: &Square) -> Vec<String> {
         .as_shares()
         .iter()
         .map(|share| hex::encode(share.as_bytes()))
+        .collect()
+}
+
+fn decode_shares(hexes: &[String]) -> square::Result<Vec<shares::Share>> {
+    hexes
+        .iter()
+        .map(|hex| Ok(shares::Share::from_slice(&decode_bytes(hex))?))
         .collect()
 }
 
@@ -134,6 +144,14 @@ struct BuildersFixture {
 }
 
 #[derive(Deserialize)]
+struct SquaresFixture {
+    empty_square_shares_hex: Vec<String>,
+    empty_square_size: usize,
+    write_cases: Vec<WriteSquareCase>,
+    invalid_square_size_cases: Vec<InvalidSquareCase>,
+}
+
+#[derive(Deserialize)]
 struct MMRCase {
     label: String,
     total_size: u64,
@@ -193,6 +211,36 @@ struct WrappedPfbCase {
     tx_index: usize,
     tx_hex: String,
     share_indexes: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+struct WriteSquareCase {
+    label: String,
+    txs_hex: Vec<String>,
+    pfb_txs_hex: Vec<String>,
+    blob_ops: Vec<BlobWriteOp>,
+    non_reserved_start: usize,
+    square_size: usize,
+    shares_hex: Vec<String>,
+    wrapped_pfbs_hex: Vec<String>,
+    is_empty: bool,
+}
+
+#[derive(Deserialize)]
+struct BlobWriteOp {
+    kind: String,
+    namespace_hex: Option<String>,
+    data_hex: Option<String>,
+    #[serde(default)]
+    share_version: u8,
+    #[serde(default)]
+    count: usize,
+}
+
+#[derive(Deserialize)]
+struct InvalidSquareCase {
+    label: String,
+    shares_hex: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -450,6 +498,83 @@ fn builder_fixtures_match_go_square() -> square::Result<()> {
                 assert_eq!(got.share_indexes, wrapped.share_indexes, "{}", case.label);
             }
         }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn square_layout_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: SquaresFixture = load_fixture("square/squares.json");
+
+    let empty = empty_square();
+    assert_eq!(hex_square(&empty), fixture.empty_square_shares_hex);
+    assert_eq!(empty.size(), fixture.empty_square_size);
+    assert!(empty.is_empty_square());
+
+    for case in fixture.write_cases {
+        let mut tx_writer = CompactShareSplitter::new(TX_NAMESPACE, DEFAULT_SHARE_VERSION)?;
+        for tx in &case.txs_hex {
+            tx_writer.write_tx(&decode_bytes(tx))?;
+        }
+
+        let mut pfb_writer =
+            CompactShareSplitter::new(PAY_FOR_BLOB_NAMESPACE, DEFAULT_SHARE_VERSION)?;
+        for pfb_tx in &case.pfb_txs_hex {
+            pfb_writer.write_tx(&decode_bytes(pfb_tx))?;
+        }
+
+        let mut blob_writer = SparseShareSplitter::new();
+        for op in &case.blob_ops {
+            match op.kind.as_str() {
+                "blob" => {
+                    let namespace_hex = op
+                        .namespace_hex
+                        .as_deref()
+                        .unwrap_or_else(|| panic!("missing namespace for {}", case.label));
+                    let data_hex = op
+                        .data_hex
+                        .as_deref()
+                        .unwrap_or_else(|| panic!("missing blob data for {}", case.label));
+                    let blob = Blob::new(
+                        decode_namespace(namespace_hex)?,
+                        decode_bytes(data_hex),
+                        op.share_version,
+                    )?;
+                    blob_writer.write(&blob)?;
+                }
+                "namespace-padding" => {
+                    blob_writer.write_namespace_padding_shares(op.count)?;
+                }
+                other => panic!("unknown blob op kind {other} for {}", case.label),
+            }
+        }
+
+        let square = write_square(
+            tx_writer,
+            pfb_writer,
+            blob_writer,
+            case.non_reserved_start,
+            case.square_size,
+        )?;
+        assert_eq!(hex_square(&square), case.shares_hex, "{}", case.label);
+        assert_eq!(square.size(), case.square_size, "{}", case.label);
+        assert_eq!(square.is_empty_square(), case.is_empty, "{}", case.label);
+        assert_eq!(
+            square
+                .wrapped_pfbs()?
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>(),
+            case.wrapped_pfbs_hex,
+            "{}",
+            case.label
+        );
+    }
+
+    for case in fixture.invalid_square_size_cases {
+        let shares = decode_shares(&case.shares_hex)?;
+        assert!(Square::new(shares).is_err(), "{}", case.label);
     }
 
     Ok(())

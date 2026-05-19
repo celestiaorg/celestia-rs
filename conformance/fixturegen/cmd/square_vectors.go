@@ -40,6 +40,11 @@ func init() {
 			Description: "Emit go-square builder and construct vectors.",
 			Run:         runSquareBuilders,
 		},
+		Subcommand{
+			Name:        "square-squares",
+			Description: "Emit go-square direct square layout vectors.",
+			Run:         runSquareSquares,
+		},
 	)
 }
 
@@ -189,6 +194,39 @@ type squareWrappedPFBCase struct {
 	TxIndex      int      `json:"tx_index"`
 	TxHex        string   `json:"tx_hex"`
 	ShareIndexes []uint32 `json:"share_indexes"`
+}
+
+type squareSquaresFixture struct {
+	Scenario              string                    `json:"scenario"`
+	EmptySquareSharesHex  []string                  `json:"empty_square_shares_hex"`
+	EmptySquareSize       int                       `json:"empty_square_size"`
+	WriteCases            []squareWriteSquareCase   `json:"write_cases"`
+	InvalidSquareSizeCase []squareInvalidSquareCase `json:"invalid_square_size_cases"`
+}
+
+type squareWriteSquareCase struct {
+	Label            string                  `json:"label"`
+	TxsHex           []string                `json:"txs_hex"`
+	PfbTxsHex        []string                `json:"pfb_txs_hex"`
+	BlobOps          []squareBlobWriteJSONOp `json:"blob_ops"`
+	NonReservedStart int                     `json:"non_reserved_start"`
+	SquareSize       int                     `json:"square_size"`
+	SharesHex        []string                `json:"shares_hex"`
+	WrappedPFBsHex   []string                `json:"wrapped_pfbs_hex"`
+	IsEmpty          bool                    `json:"is_empty"`
+}
+
+type squareBlobWriteJSONOp struct {
+	Kind         string `json:"kind"`
+	NamespaceHex string `json:"namespace_hex,omitempty"`
+	DataHex      string `json:"data_hex,omitempty"`
+	ShareVersion uint8  `json:"share_version,omitempty"`
+	Count        int    `json:"count,omitempty"`
+}
+
+type squareInvalidSquareCase struct {
+	Label     string   `json:"label"`
+	SharesHex []string `json:"shares_hex"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -477,6 +515,70 @@ func runSquareBuilders(args []string) error {
 	})
 }
 
+func runSquareSquares(args []string) error {
+	fs := flag.NewFlagSet("square-squares", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/squares.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	wrappedPFB := mustSquareIndexWrapperBytes([]byte("pfb-square"), 3)
+	writeCases := []squareWriteSquareCase{
+		mustSquareWriteSquareCase(
+			"tx-pfb-reserved-blob-tail",
+			[][]byte{[]byte("ordinary-square")},
+			[][]byte{wrappedPFB},
+			[]squareBlobWriteOp{
+				squareBlobWriteBlob(
+					squareNamespace([]byte{9}),
+					[]byte("square-blob"),
+					goshares.ShareVersionZero,
+				),
+			},
+			3,
+			4,
+		),
+		mustSquareWriteSquareCase(
+			"namespace-padding-between-blobs",
+			nil,
+			nil,
+			[]squareBlobWriteOp{
+				squareBlobWriteBlob(
+					squareNamespace([]byte{10}),
+					[]byte("first-blob"),
+					goshares.ShareVersionZero,
+				),
+				squareBlobWriteNamespacePadding(1),
+				squareBlobWriteBlob(
+					squareNamespace([]byte{11}),
+					[]byte("second-blob"),
+					goshares.ShareVersionZero,
+				),
+			},
+			0,
+			2,
+		),
+	}
+
+	return writeSquareJSON(*out, squareSquaresFixture{
+		Scenario:             "square-squares",
+		EmptySquareSharesHex: hexSquareByteSlices(goshares.ToBytes(gosquare.EmptySquare())),
+		EmptySquareSize:      gosquare.Size(len(gosquare.EmptySquare())),
+		WriteCases:           writeCases,
+		InvalidSquareSizeCase: []squareInvalidSquareCase{
+			{Label: "empty-share-list", SharesHex: []string{}},
+			{
+				Label:     "two-tail-padding-shares",
+				SharesHex: hexSquareByteSlices(goshares.ToBytes(goshares.TailPaddingShares(2))),
+			},
+			{
+				Label:     "three-tail-padding-shares",
+				SharesHex: hexSquareByteSlices(goshares.ToBytes(goshares.TailPaddingShares(3))),
+			},
+		},
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -543,6 +645,14 @@ func mustSquareCommitmentCase(
 
 func mustSquareBlobTxBytes(tx []byte, blobs []*sqblob.Blob) []byte {
 	encoded, err := sqblob.MarshalBlobTx(tx, blobs...)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
+func mustSquareIndexWrapperBytes(tx []byte, shareIndexes ...uint32) []byte {
+	encoded, err := sqblob.MarshalIndexWrapper(tx, shareIndexes...)
 	if err != nil {
 		panic(err)
 	}
@@ -659,4 +769,100 @@ func hexSquareByteSlices(values [][]byte) []string {
 		out[i] = hex.EncodeToString(value)
 	}
 	return out
+}
+
+type squareBlobWriteOp struct {
+	blob                  *sqblob.Blob
+	namespacePaddingCount int
+}
+
+func squareBlobWriteBlob(
+	ns sqnamespace.Namespace,
+	data []byte,
+	shareVersion uint8,
+) squareBlobWriteOp {
+	return squareBlobWriteOp{
+		blob: squareBlob(ns, data, shareVersion),
+	}
+}
+
+func squareBlobWriteNamespacePadding(count int) squareBlobWriteOp {
+	return squareBlobWriteOp{
+		namespacePaddingCount: count,
+	}
+}
+
+func mustSquareWriteSquareCase(
+	label string,
+	txs [][]byte,
+	pfbTxs [][]byte,
+	blobOps []squareBlobWriteOp,
+	nonReservedStart int,
+	squareSize int,
+) squareWriteSquareCase {
+	txWriter := goshares.NewCompactShareSplitter(sqnamespace.TxNamespace, goshares.ShareVersionZero)
+	for _, tx := range txs {
+		if err := txWriter.WriteTx(tx); err != nil {
+			panic(err)
+		}
+	}
+
+	pfbWriter := goshares.NewCompactShareSplitter(sqnamespace.PayForBlobNamespace, goshares.ShareVersionZero)
+	for _, pfbTx := range pfbTxs {
+		if err := pfbWriter.WriteTx(pfbTx); err != nil {
+			panic(err)
+		}
+	}
+
+	blobWriter := goshares.NewSparseShareSplitter()
+	jsonOps := make([]squareBlobWriteJSONOp, 0, len(blobOps))
+	for _, op := range blobOps {
+		if op.blob != nil {
+			if err := blobWriter.Write(op.blob); err != nil {
+				panic(err)
+			}
+			jsonOps = append(jsonOps, squareBlobWriteJSONOp{
+				Kind:         "blob",
+				NamespaceHex: hex.EncodeToString(op.blob.Namespace().Bytes()),
+				DataHex:      hex.EncodeToString(op.blob.Data),
+				ShareVersion: uint8(op.blob.ShareVersion),
+			})
+			continue
+		}
+
+		if err := blobWriter.WriteNamespacePaddingShares(op.namespacePaddingCount); err != nil {
+			panic(err)
+		}
+		jsonOps = append(jsonOps, squareBlobWriteJSONOp{
+			Kind:  "namespace-padding",
+			Count: op.namespacePaddingCount,
+		})
+	}
+
+	square, err := gosquare.WriteSquare(
+		txWriter,
+		pfbWriter,
+		blobWriter,
+		nonReservedStart,
+		squareSize,
+	)
+	if err != nil {
+		panic(err)
+	}
+	wrappedPFBs, err := square.WrappedPFBs()
+	if err != nil {
+		panic(err)
+	}
+
+	return squareWriteSquareCase{
+		Label:            label,
+		TxsHex:           hexSquareByteSlices(txs),
+		PfbTxsHex:        hexSquareByteSlices(pfbTxs),
+		BlobOps:          jsonOps,
+		NonReservedStart: nonReservedStart,
+		SquareSize:       squareSize,
+		SharesHex:        hexSquareByteSlices(goshares.ToBytes(square)),
+		WrappedPFBsHex:   hexSquareByteSlices(wrappedPFBs),
+		IsEmpty:          square.IsEmpty(),
+	}
 }

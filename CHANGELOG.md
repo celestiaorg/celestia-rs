@@ -82,3 +82,5 @@
   wrappers and blob share commitments.
 - Added Go-generated `square` conformance fixtures for builder/export behavior,
   ordered construction errors, share ranges, and wrapped PFB indexes.
+- Added Go-generated `square` conformance fixtures for direct square layout,
+  empty squares, wrapped PFB extraction, and malformed square sizes.
