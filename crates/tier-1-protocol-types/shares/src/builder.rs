@@ -4,6 +4,7 @@ use crate::info_byte::InfoByte;
 use crate::reserved::ReservedBytes;
 use crate::share::{
     COMPACT_SHARE_RESERVED_BYTES, SEQUENCE_LEN_BYTES, SHARE_INFO_BYTES, SHARE_SIZE,
+    SHARE_VERSION_ONE, SIGNER_SIZE,
 };
 use crate::{Error, Namespace, Result, Share};
 
@@ -141,6 +142,13 @@ impl ShareBuilder {
         Ok(())
     }
 
+    /// Write the signer bytes carried by a version-one sequence-start share.
+    pub fn write_signer(&mut self, signer: &[u8; SIGNER_SIZE]) {
+        if self.is_first_share && self.share_version == SHARE_VERSION_ONE {
+            self.raw_share_data.extend_from_slice(signer);
+        }
+    }
+
     /// Flip the sequence-start bit in the prepared info byte.
     pub fn flip_sequence_start(&mut self) {
         let index = crate::namespace::NAMESPACE_SIZE;
@@ -173,6 +181,9 @@ impl ShareBuilder {
         let mut expected = crate::namespace::NAMESPACE_SIZE + SHARE_INFO_BYTES;
         if self.is_first_share {
             expected += SEQUENCE_LEN_BYTES;
+        }
+        if self.is_first_share && self.share_version == SHARE_VERSION_ONE {
+            expected += SIGNER_SIZE;
         }
         if self.is_compact_share {
             expected += COMPACT_SHARE_RESERVED_BYTES;

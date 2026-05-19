@@ -72,6 +72,13 @@ pub enum Error {
     InvalidPadding,
     /// A blob is malformed.
     InvalidBlob,
+    /// A signer had the wrong length for a version-one blob.
+    InvalidSignerLength {
+        /// Observed byte length.
+        actual: usize,
+        /// Required byte length.
+        expected: usize,
+    },
     /// A compact share operation is malformed.
     InvalidCompactShare,
     /// A sparse share operation is malformed.
@@ -130,6 +137,9 @@ impl core::fmt::Display for Error {
             Self::InvalidShareRange => f.write_str("invalid share range"),
             Self::InvalidPadding => f.write_str("invalid share padding"),
             Self::InvalidBlob => f.write_str("invalid blob"),
+            Self::InvalidSignerLength { actual, expected } => {
+                write!(f, "invalid signer length: got {actual}, want {expected}")
+            }
             Self::InvalidCompactShare => f.write_str("invalid compact share"),
             Self::InvalidSparseShare => f.write_str("invalid sparse share"),
             Self::InvalidIndexWrapper => f.write_str("invalid index wrapper"),

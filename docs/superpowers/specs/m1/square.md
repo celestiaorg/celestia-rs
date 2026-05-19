@@ -79,10 +79,11 @@ The crate sets `#![forbid(unsafe_code)]` and `#![warn(missing_docs)]`.
 ### `blob_tx`
 
 `BlobTx` is the minimal byte wrapper needed by `square`. It is not a Cosmos SDK
-semantic validator.
+semantic validator. Its blob protobuf shape preserves the optional
+`shares::Blob` signer bytes in field 5 for share-version-one blobs.
 
 ```rust
-pub const PROTO_BLOB_TX_TYPE_ID: [u8; 4] = *b"BLOB";
+pub const PROTO_BLOB_TX_TYPE_ID: &str = "BLOB";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlobTx {
@@ -414,7 +415,8 @@ reverts the counter and returns `false`.
 
 **REQ-8.** `append_blob_tx` wraps the original PFB tx bytes in
 `shares::IndexWrapper`, estimates wrapper protobuf size using worst-case share
-indexes of `128 * 128`, and tracks one `Element` for each blob.
+indexes of `128 * 128`, preserves version-one blob signer bytes when encoding
+or decoding `BlobTx`, and tracks one `Element` for each blob.
 
 **REQ-9.** `Element::num_shares` is `shares::SparseShareSplitter`'s required
 share count for the blob data length. `Element::max_padding` is

@@ -1,6 +1,6 @@
 //! Blob and index-wrapper helpers.
 
-use crate::share::{DEFAULT_SHARE_VERSION, MAX_SHARE_VERSION};
+use crate::share::{DEFAULT_SHARE_VERSION, MAX_SHARE_VERSION, SHARE_VERSION_ONE, SIGNER_SIZE};
 use crate::{Error, Namespace, Result, Share, split_blobs};
 use encoding::protobuf::Message;
 
@@ -18,15 +18,28 @@ pub struct Blob {
     pub data: Vec<u8>,
     /// Share version used to encode this blob.
     pub share_version: u8,
+    /// Optional signer encoded in version-one blob shares.
+    pub signer: Option<[u8; SIGNER_SIZE]>,
 }
 
 impl Blob {
     /// Construct a blob.
     pub fn new(namespace: Namespace, data: Vec<u8>, share_version: u8) -> Result<Self> {
+        Self::new_with_signer(namespace, data, share_version, None)
+    }
+
+    /// Construct a blob with an optional signer.
+    pub fn new_with_signer(
+        namespace: Namespace,
+        data: Vec<u8>,
+        share_version: u8,
+        signer: Option<[u8; SIGNER_SIZE]>,
+    ) -> Result<Self> {
         let blob = Self {
             namespace,
             data,
             share_version,
+            signer,
         };
         blob.validate_basic()?;
         Ok(blob)
@@ -35,6 +48,11 @@ impl Blob {
     /// Construct a blob using the default share version.
     pub fn new_v0(namespace: Namespace, data: Vec<u8>) -> Result<Self> {
         Self::new(namespace, data, DEFAULT_SHARE_VERSION)
+    }
+
+    /// Construct a signer-aware version-one blob.
+    pub fn new_v1(namespace: Namespace, data: Vec<u8>, signer: [u8; SIGNER_SIZE]) -> Result<Self> {
+        Self::new_with_signer(namespace, data, SHARE_VERSION_ONE, Some(signer))
     }
 
     /// Validate this blob.
@@ -48,6 +66,15 @@ impl Blob {
                 version: self.share_version,
                 max: MAX_SHARE_VERSION,
             });
+        }
+        if self.share_version == SHARE_VERSION_ONE && self.signer.is_none() {
+            return Err(Error::InvalidSignerLength {
+                actual: 0,
+                expected: SIGNER_SIZE,
+            });
+        }
+        if self.share_version != SHARE_VERSION_ONE && self.signer.is_some() {
+            return Err(Error::InvalidBlob);
         }
         Ok(())
     }
@@ -74,6 +101,18 @@ impl Blob {
     #[must_use]
     pub fn share_version(&self) -> u8 {
         self.share_version
+    }
+
+    /// Return the signer encoded in version-one blob shares.
+    #[must_use]
+    pub const fn signer(&self) -> Option<[u8; SIGNER_SIZE]> {
+        self.signer
+    }
+
+    /// Return true when this blob has an encoded signer.
+    #[must_use]
+    pub const fn has_signer(&self) -> bool {
+        self.signer.is_some()
     }
 
     /// Return true when the blob data is empty.

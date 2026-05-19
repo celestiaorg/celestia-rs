@@ -2,7 +2,7 @@
 
 use shares::{
     Blob, CompactShareSplitter, DEFAULT_SHARE_VERSION, Namespace, PAY_FOR_BLOB_NAMESPACE,
-    SHARE_SIZE, SparseShareSplitter, TX_NAMESPACE,
+    SHARE_SIZE, SHARE_VERSION_ONE, SIGNER_SIZE, SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
     BlobTx, Builder, DAH_HASH_SIZE, DAH_ROOT_SIZE, DataAvailabilityHeader, ErasureCodec, Error,
@@ -60,14 +60,16 @@ fn inclusion_helpers_reject_invalid_inputs() {
 fn blob_tx_round_trips_as_go_protobuf_shape() -> Result<(), Box<dyn std::error::Error>> {
     let namespace = Namespace::new_v0(&[1, 2, 3])?;
     let blob = Blob::new(namespace, b"blob-data".to_vec(), DEFAULT_SHARE_VERSION)?;
-    let blob_tx = BlobTx::new(b"sdk-tx".to_vec(), vec![blob.clone()])?;
+    let signer = [9; SIGNER_SIZE];
+    let v1_blob = Blob::new_v1(namespace, b"v1-blob-data".to_vec(), signer)?;
+    let blob_tx = BlobTx::new(b"sdk-tx".to_vec(), vec![blob.clone(), v1_blob.clone()])?;
 
     let encoded = blob_tx.encode()?;
     let decoded =
         BlobTx::decode(&encoded)?.ok_or_else(|| std::io::Error::other("expected blob tx"))?;
 
     assert_eq!(decoded.tx, b"sdk-tx");
-    assert_eq!(decoded.blobs, vec![blob]);
+    assert_eq!(decoded.blobs, vec![blob, v1_blob]);
     assert!(BlobTx::decode(b"not protobuf")?.is_none());
     Ok(())
 }
@@ -98,10 +100,24 @@ fn blob_tx_decode_handles_non_wrappers_and_malformed_wrappers()
             data: b"blob".to_vec(),
             share_version: u32::from(DEFAULT_SHARE_VERSION),
             namespace_version: 0,
+            signer: Vec::new(),
         }],
         type_id: PROTO_BLOB_TX_TYPE_ID.to_owned(),
     })?;
     assert!(BlobTx::decode(&malformed_blob).is_err());
+
+    let malformed_signer = encode_test_blob_tx(&TestBlobTxProto {
+        tx: b"tx".to_vec(),
+        blobs: vec![TestBlobProto {
+            namespace_id: vec![7; shares::NAMESPACE_VERSION_ZERO_ID_SIZE],
+            data: b"blob".to_vec(),
+            share_version: u32::from(SHARE_VERSION_ONE),
+            namespace_version: 0,
+            signer: vec![1; SIGNER_SIZE - 1],
+        }],
+        type_id: PROTO_BLOB_TX_TYPE_ID.to_owned(),
+    })?;
+    assert!(BlobTx::decode(&malformed_signer).is_err());
 
     Ok(())
 }
@@ -324,6 +340,7 @@ fn blob_commitments_are_deterministic_and_data_dependent() -> Result<(), Box<dyn
                 namespace,
                 data: Vec::new(),
                 share_version: DEFAULT_SHARE_VERSION,
+                signer: None,
             },
             merkle::root_from_byte_slices,
             64,
@@ -584,6 +601,8 @@ struct TestBlobProto {
     share_version: u32,
     #[prost(uint32, tag = "4")]
     namespace_version: u32,
+    #[prost(bytes = "vec", tag = "5")]
+    signer: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]

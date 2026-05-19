@@ -277,7 +277,7 @@ fn error_name(error: &Error) -> &'static str {
         Error::InvalidSequenceLen => "invalid_sequence_len",
         Error::InvalidShareRange => "invalid_share_range",
         Error::InvalidPadding => "invalid_padding",
-        Error::InvalidBlob => "invalid_blob",
+        Error::InvalidBlob | Error::InvalidSignerLength { .. } => "invalid_blob",
         Error::InvalidCompactShare => "invalid_compact_share",
         Error::InvalidSparseShare => "invalid_sparse_share",
         Error::InvalidIndexWrapper => "invalid_index_wrapper",

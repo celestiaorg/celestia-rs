@@ -13,6 +13,8 @@ pub const SHARE_INFO_BYTES: usize = 1;
 pub const SEQUENCE_LEN_BYTES: usize = 4;
 /// Initial share version.
 pub const SHARE_VERSION_ZERO: u8 = 0;
+/// Signer-aware share version used by current mainnet blob shares.
+pub const SHARE_VERSION_ONE: u8 = 1;
 /// Default share version.
 pub const DEFAULT_SHARE_VERSION: u8 = SHARE_VERSION_ZERO;
 /// Number of compact-share reserved bytes.
@@ -29,6 +31,11 @@ pub const CONTINUATION_COMPACT_SHARE_CONTENT_SIZE: usize =
 /// Usable content bytes in the first sparse share of a sequence.
 pub const FIRST_SPARSE_SHARE_CONTENT_SIZE: usize =
     SHARE_SIZE - NAMESPACE_SIZE - SHARE_INFO_BYTES - SEQUENCE_LEN_BYTES;
+/// Size of the signer bytes included in the first share of a version-one blob.
+pub const SIGNER_SIZE: usize = 20;
+/// Usable content bytes in the first sparse share of a version-one sequence.
+pub const FIRST_SPARSE_SHARE_CONTENT_SIZE_WITH_SIGNER: usize =
+    FIRST_SPARSE_SHARE_CONTENT_SIZE - SIGNER_SIZE;
 /// Usable content bytes in a sparse continuation share.
 pub const CONTINUATION_SPARSE_SHARE_CONTENT_SIZE: usize =
     SHARE_SIZE - NAMESPACE_SIZE - SHARE_INFO_BYTES;
@@ -39,7 +46,7 @@ pub const MIN_SHARE_COUNT: usize = MIN_SQUARE_SIZE * MIN_SQUARE_SIZE;
 /// Maximum share version representable in an info byte.
 pub const MAX_SHARE_VERSION: u8 = 127;
 /// Supported share versions.
-pub const SUPPORTED_SHARE_VERSIONS: &[u8] = &[SHARE_VERSION_ZERO];
+pub const SUPPORTED_SHARE_VERSIONS: &[u8] = &[SHARE_VERSION_ZERO, SHARE_VERSION_ONE];
 
 /// A fixed 512-byte Celestia share.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +156,30 @@ impl Share {
         Ok(&self.0[self.raw_data_start_index()?..])
     }
 
+    /// Return true when this share contains a version-one signer.
+    pub fn contains_signer(&self) -> Result<bool> {
+        Ok(self.version()? == SHARE_VERSION_ONE
+            && self.is_sequence_start()?
+            && !self.is_compact_share()?
+            && self.sequence_len()? != Some(0))
+    }
+
+    /// Return the signer encoded in a version-one sequence-start share.
+    pub fn signer(&self) -> Result<Option<[u8; SIGNER_SIZE]>> {
+        if !self.contains_signer()? {
+            return Ok(None);
+        }
+        let start = NAMESPACE_SIZE + SHARE_INFO_BYTES + SEQUENCE_LEN_BYTES;
+        let end = start + SIGNER_SIZE;
+        let signer = self.0[start..end]
+            .try_into()
+            .map_err(|_| Error::InvalidSignerLength {
+                actual: end.saturating_sub(start),
+                expected: SIGNER_SIZE,
+            })?;
+        Ok(Some(signer))
+    }
+
     /// Return raw content using compact reserved bytes for the first share.
     pub fn raw_data_using_reserved(&self) -> Result<&[u8]> {
         let index = self.raw_data_start_index_using_reserved()?;
@@ -166,6 +197,9 @@ impl Share {
         if self.is_compact_share()? {
             index += COMPACT_SHARE_RESERVED_BYTES;
         }
+        if self.contains_signer()? {
+            index += SIGNER_SIZE;
+        }
         Ok(index)
     }
 
@@ -177,6 +211,9 @@ impl Share {
         let mut reserved_index = NAMESPACE_SIZE + SHARE_INFO_BYTES;
         if self.is_sequence_start()? {
             reserved_index += SEQUENCE_LEN_BYTES;
+        }
+        if self.contains_signer()? {
+            reserved_index += SIGNER_SIZE;
         }
         let reserved = ReservedBytes::parse(
             &self.0[reserved_index..reserved_index + COMPACT_SHARE_RESERVED_BYTES],

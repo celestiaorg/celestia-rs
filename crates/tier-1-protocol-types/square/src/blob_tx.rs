@@ -1,7 +1,7 @@
 //! Blob transaction wrapper helpers.
 
 use encoding::protobuf::Message;
-use shares::{Blob, Namespace};
+use shares::{Blob, Namespace, SIGNER_SIZE};
 
 use crate::{Error, Result};
 
@@ -82,6 +82,8 @@ struct BlobProto {
     share_version: u32,
     #[prost(uint32, tag = "4")]
     namespace_version: u32,
+    #[prost(bytes = "vec", tag = "5")]
+    signer: Vec<u8>,
 }
 
 impl BlobProto {
@@ -91,6 +93,9 @@ impl BlobProto {
             data: blob.data().to_vec(),
             share_version: u32::from(blob.share_version()),
             namespace_version: u32::from(blob.namespace().version()),
+            signer: blob
+                .signer()
+                .map_or_else(Vec::new, |signer| signer.to_vec()),
         }
     }
 
@@ -103,7 +108,17 @@ impl BlobProto {
             u8::try_from(self.namespace_version).map_err(|_| Error::InvalidBlobTx)?;
         let share_version = u8::try_from(self.share_version).map_err(|_| Error::InvalidBlobTx)?;
         let namespace = Namespace::new(namespace_version, namespace_id)?;
-        Blob::new(namespace, self.data, share_version).map_err(Error::from)
+        let signer = if self.signer.is_empty() {
+            None
+        } else {
+            Some(self.signer.try_into().map_err(|signer: Vec<u8>| {
+                Error::Share(shares::Error::InvalidSignerLength {
+                    actual: signer.len(),
+                    expected: SIGNER_SIZE,
+                })
+            })?)
+        };
+        Blob::new_with_signer(namespace, self.data, share_version, signer).map_err(Error::from)
     }
 }
 

@@ -23,6 +23,14 @@ pub fn parse_compact_shares(
         return Ok(Vec::new());
     }
     validate_share_versions(shares, supported_share_versions)?;
+    for share in shares {
+        if share.version()? != crate::SHARE_VERSION_ZERO {
+            return Err(Error::UnsupportedShareVersion {
+                version: share.version()?,
+                supported: vec![crate::SHARE_VERSION_ZERO],
+            });
+        }
+    }
     let raw_data = extract_raw_data(shares)?;
     parse_raw_data(&raw_data)
 }
@@ -41,10 +49,17 @@ pub fn parse_sparse_shares(shares: &[Share], supported_share_versions: &[u8]) ->
         }
         if share.is_sequence_start()? {
             let sequence_len = share.sequence_len()?.ok_or(Error::InvalidSequenceLen)?;
-            let blob = Blob::new(
+            let version = share.version()?;
+            let signer = if version == crate::SHARE_VERSION_ONE {
+                share.signer()?
+            } else {
+                None
+            };
+            let blob = Blob::new_with_signer(
                 share.namespace()?,
                 share.raw_data()?.to_vec(),
-                share.version()?,
+                version,
+                signer,
             )?;
             sequences.push((blob, sequence_len));
         } else {

@@ -6,7 +6,9 @@
 reconstruction, and downstream data-availability proof machinery.
 **Source of truth (Go):** `github.com/celestiaorg/go-square` v1.0.1 packages
 `namespace`, `shares`, and `blob`, as used by current local
-celestia-app / go-square module snapshots.
+celestia-app / go-square module snapshots. Share-version-one signer handling
+follows the celestia-app v9 / go-square v3 layout used by current mainnet
+block fixtures.
 **Crate location:** `crates/tier-1-protocol-types/shares/`
 
 ## Purpose
@@ -67,9 +69,10 @@ pub use share::{
     COMPACT_SHARE_RESERVED_BYTES, CONTINUATION_COMPACT_SHARE_CONTENT_SIZE,
     CONTINUATION_SPARSE_SHARE_CONTENT_SIZE, DEFAULT_SHARE_VERSION,
     FIRST_COMPACT_SHARE_CONTENT_SIZE, FIRST_SPARSE_SHARE_CONTENT_SIZE,
-    MAX_SHARE_VERSION, MIN_SHARE_COUNT, MIN_SQUARE_SIZE, SEQUENCE_LEN_BYTES,
-    SHARE_INFO_BYTES, SHARE_SIZE, SHARE_VERSION_ZERO, SUPPORTED_SHARE_VERSIONS,
-    Share, shares_from_bytes, shares_to_bytes,
+    FIRST_SPARSE_SHARE_CONTENT_SIZE_WITH_SIGNER, MAX_SHARE_VERSION,
+    MIN_SHARE_COUNT, MIN_SQUARE_SIZE, SEQUENCE_LEN_BYTES, SHARE_INFO_BYTES,
+    SHARE_SIZE, SHARE_VERSION_ONE, SHARE_VERSION_ZERO, SIGNER_SIZE,
+    SUPPORTED_SHARE_VERSIONS, Share, shares_from_bytes, shares_to_bytes,
 };
 pub use sparse::{SparseShareSplitter, split_blobs};
 ```
@@ -192,6 +195,7 @@ pub const SHARE_SIZE: usize = 512;
 pub const SHARE_INFO_BYTES: usize = 1;
 pub const SEQUENCE_LEN_BYTES: usize = 4;
 pub const SHARE_VERSION_ZERO: u8 = 0;
+pub const SHARE_VERSION_ONE: u8 = 1;
 pub const DEFAULT_SHARE_VERSION: u8 = SHARE_VERSION_ZERO;
 pub const COMPACT_SHARE_RESERVED_BYTES: usize = 4;
 pub const FIRST_COMPACT_SHARE_CONTENT_SIZE: usize =
@@ -201,12 +205,15 @@ pub const CONTINUATION_COMPACT_SHARE_CONTENT_SIZE: usize =
     SHARE_SIZE - NAMESPACE_SIZE - SHARE_INFO_BYTES - COMPACT_SHARE_RESERVED_BYTES;
 pub const FIRST_SPARSE_SHARE_CONTENT_SIZE: usize =
     SHARE_SIZE - NAMESPACE_SIZE - SHARE_INFO_BYTES - SEQUENCE_LEN_BYTES;
+pub const SIGNER_SIZE: usize = 20;
+pub const FIRST_SPARSE_SHARE_CONTENT_SIZE_WITH_SIGNER: usize =
+    FIRST_SPARSE_SHARE_CONTENT_SIZE - SIGNER_SIZE;
 pub const CONTINUATION_SPARSE_SHARE_CONTENT_SIZE: usize =
     SHARE_SIZE - NAMESPACE_SIZE - SHARE_INFO_BYTES;
 pub const MIN_SQUARE_SIZE: usize = 1;
 pub const MIN_SHARE_COUNT: usize = MIN_SQUARE_SIZE * MIN_SQUARE_SIZE;
 pub const MAX_SHARE_VERSION: u8 = 127;
-pub const SUPPORTED_SHARE_VERSIONS: &[u8] = &[SHARE_VERSION_ZERO];
+pub const SUPPORTED_SHARE_VERSIONS: &[u8] = &[SHARE_VERSION_ZERO, SHARE_VERSION_ONE];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Share([u8; SHARE_SIZE]);
@@ -227,6 +234,8 @@ impl Share {
     pub fn sequence_len(&self) -> Result<Option<u32>>;
     pub fn is_padding(&self) -> Result<bool>;
     pub fn raw_data(&self) -> Result<&[u8]>;
+    pub fn contains_signer(&self) -> Result<bool>;
+    pub fn signer(&self) -> Result<Option<[u8; SIGNER_SIZE]>>;
     pub fn raw_data_using_reserved(&self) -> Result<&[u8]>;
 }
 
@@ -245,16 +254,27 @@ pub struct Blob {
     pub namespace: Namespace,
     pub data: Vec<u8>,
     pub share_version: u8,
+    pub signer: Option<[u8; SIGNER_SIZE]>,
 }
 
 impl Blob {
     pub fn new(namespace: Namespace, data: Vec<u8>, share_version: u8) -> Result<Self>;
+    pub fn new_with_signer(
+        namespace: Namespace,
+        data: Vec<u8>,
+        share_version: u8,
+        signer: Option<[u8; SIGNER_SIZE]>,
+    ) -> Result<Self>;
     pub fn new_v0(namespace: Namespace, data: Vec<u8>) -> Result<Self>;
+    pub fn new_v1(namespace: Namespace, data: Vec<u8>, signer: [u8; SIGNER_SIZE])
+        -> Result<Self>;
     pub fn validate_basic(&self) -> Result<()>;
     pub fn namespace(&self) -> Namespace;
     pub fn data(&self) -> &[u8];
     pub fn data_len(&self) -> usize;
     pub fn share_version(&self) -> u8;
+    pub fn signer(&self) -> Option<[u8; SIGNER_SIZE]>;
+    pub fn has_signer(&self) -> bool;
     pub fn is_empty(&self) -> bool;
     pub fn to_shares(&self) -> Result<Vec<Share>>;
 }
@@ -295,6 +315,7 @@ impl ShareBuilder {
     pub fn zero_pad_if_necessary(&mut self) -> usize;
     pub fn maybe_write_reserved_bytes(&mut self) -> Result<()>;
     pub fn write_sequence_len(&mut self, sequence_len: u32) -> Result<()>;
+    pub fn write_signer(&mut self, signer: &[u8; SIGNER_SIZE]);
     pub fn flip_sequence_start(&mut self);
 }
 ```
@@ -399,6 +420,7 @@ pub enum Error {
     InvalidShareRange,
     InvalidPadding,
     InvalidBlob,
+    InvalidSignerLength { actual: usize, expected: usize },
     InvalidCompactShare,
     InvalidSparseShare,
     InvalidIndexWrapper,
@@ -448,10 +470,12 @@ the first unit that starts in the share.
 
 **REQ-10.** Sparse shares are all non-compact shares. First sparse shares
 include a 4-byte sequence length; continuation sparse shares do not.
+Share-version-one first sparse shares with nonzero sequence length also carry
+the 20-byte signer immediately after the sequence length.
 
 **REQ-11.** `Share::raw_data()` starts after namespace, info byte, optional
-sequence length, and compact-share reserved bytes exactly like Go
-`Share.rawDataStartIndex`.
+sequence length, optional version-one signer, and compact-share reserved bytes
+exactly like Go `Share.rawDataStartIndex`.
 
 **REQ-12.** `Share::raw_data_using_reserved()` uses compact reserved bytes for
 the first compact share in a sequence and returns an empty slice when reserved
@@ -477,21 +501,24 @@ txs to `PAY_FOR_BLOB_NAMESPACE`, then offsets PFB share ranges by the number of
 ordinary tx shares.
 
 **REQ-18.** `SparseShareSplitter::write` validates blobs, rejects unsupported
-share versions, writes sequence length equal to blob data length, emits
-continuation shares as needed, and zero-pads the last share.
+share versions, writes sequence length equal to blob data length, writes the
+signer for share-version-one blobs, emits continuation shares as needed, and
+zero-pads the last share.
 
 **REQ-19.** Namespace padding shares use the preceding blob namespace and
 share version, set sequence length to zero, and fill the first sparse content
 region with zeroes. Reserved and tail padding use their reserved namespaces.
 
-**REQ-20.** `parse_compact_shares` validates share versions, concatenates raw
-data with reserved-byte handling for the first share, parses varint-delimited
-units, stops on zero-length delimiter padding, and stops without error when the
+**REQ-20.** `parse_compact_shares` validates share versions, rejects compact
+shares whose version is not `SHARE_VERSION_ZERO`, concatenates raw data with
+reserved-byte handling for the first share, parses varint-delimited units,
+stops on zero-length delimiter padding, and stops without error when the
 remaining bytes contain only a partial next unit.
 
 **REQ-21.** `parse_sparse_shares` skips padding shares, starts a new blob on
-sequence-start shares, appends continuation raw data to the previous blob, and
-trims each blob to its declared sequence length.
+sequence-start shares, preserves the signer for version-one blobs, appends
+continuation raw data to the previous blob, and trims each blob to its declared
+sequence length.
 
 **REQ-22.** `parse_sparse_shares` rejects a continuation share before any
 sequence-start share and rejects unsupported share versions.
@@ -500,8 +527,10 @@ sequence-start share and rejects unsupported share versions.
 empty range when the namespace is outside the first/last namespace or absent,
 and returns the end-exclusive contiguous range when present.
 
-**REQ-24.** `Blob::validate_basic` rejects empty data, invalid namespace, and
-share versions above `u8::MAX`; `Blob::to_shares` delegates to sparse splitting.
+**REQ-24.** `Blob::validate_basic` rejects empty data, invalid namespace, share
+versions above `u8::MAX`, version-one blobs without a signer, and blobs that
+are not version one but include a signer; `Blob::to_shares` delegates to sparse
+splitting.
 
 **REQ-25.** `IndexWrapper` encoding/decoding is byte-compatible with Go
 `blob.IndexWrapper` protobuf shape and uses type ID `INDX`. Non-wrapper bytes

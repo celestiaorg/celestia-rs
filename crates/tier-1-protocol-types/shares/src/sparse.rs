@@ -30,6 +30,9 @@ impl SparseShareSplitter {
         let mut builder = ShareBuilder::new(blob.namespace(), blob.share_version(), true)?;
         builder
             .write_sequence_len(u32::try_from(raw_data.len()).map_err(|_| Error::InvalidBlob)?)?;
+        if let Some(signer) = blob.signer() {
+            builder.write_signer(&signer);
+        }
 
         loop {
             let leftover = builder.add_data(&raw_data);

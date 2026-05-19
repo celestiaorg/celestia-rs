@@ -5,17 +5,18 @@
 use shares::{
     Blob, COMPACT_SHARE_RESERVED_BYTES, CONTINUATION_SPARSE_SHARE_CONTENT_SIZE,
     CompactShareSplitter, Error, FIRST_COMPACT_SHARE_CONTENT_SIZE, FIRST_SPARSE_SHARE_CONTENT_SIZE,
-    IndexWrapper, InfoByte, MAX_PRIMARY_RESERVED_NAMESPACE, MAX_SHARE_VERSION,
-    MIN_SECONDARY_RESERVED_NAMESPACE, MIN_SHARE_COUNT, MIN_SQUARE_SIZE, NAMESPACE_ID_SIZE,
-    NAMESPACE_SIZE, NAMESPACE_VERSION_MAX, NAMESPACE_VERSION_SIZE, NAMESPACE_VERSION_ZERO,
-    NAMESPACE_VERSION_ZERO_ID_SIZE, NAMESPACE_VERSION_ZERO_PREFIX_SIZE, Namespace,
-    PARITY_SHARES_NAMESPACE, PAY_FOR_BLOB_NAMESPACE, PRIMARY_RESERVED_PADDING_NAMESPACE,
-    ReservedBytes, SEQUENCE_LEN_BYTES, SHARE_INFO_BYTES, SHARE_SIZE, SHARE_VERSION_ZERO,
-    SUPPORTED_SHARE_VERSIONS, Share, ShareBuilder, ShareRange, SparseShareSplitter,
-    TAIL_PADDING_NAMESPACE, TX_NAMESPACE, get_share_range_for_namespace, marshal_delimited_tx,
-    namespace_padding_share, namespace_padding_shares, parse_blobs, parse_compact_shares,
-    parse_reserved_bytes, parse_sparse_shares, parse_txs, reserved_padding_share,
-    reserved_padding_shares, split_blobs, split_txs, tail_padding_share, tail_padding_shares,
+    FIRST_SPARSE_SHARE_CONTENT_SIZE_WITH_SIGNER, IndexWrapper, InfoByte,
+    MAX_PRIMARY_RESERVED_NAMESPACE, MAX_SHARE_VERSION, MIN_SECONDARY_RESERVED_NAMESPACE,
+    MIN_SHARE_COUNT, MIN_SQUARE_SIZE, NAMESPACE_ID_SIZE, NAMESPACE_SIZE, NAMESPACE_VERSION_MAX,
+    NAMESPACE_VERSION_SIZE, NAMESPACE_VERSION_ZERO, NAMESPACE_VERSION_ZERO_ID_SIZE,
+    NAMESPACE_VERSION_ZERO_PREFIX_SIZE, Namespace, PARITY_SHARES_NAMESPACE, PAY_FOR_BLOB_NAMESPACE,
+    PRIMARY_RESERVED_PADDING_NAMESPACE, ReservedBytes, SEQUENCE_LEN_BYTES, SHARE_INFO_BYTES,
+    SHARE_SIZE, SHARE_VERSION_ONE, SHARE_VERSION_ZERO, SIGNER_SIZE, SUPPORTED_SHARE_VERSIONS,
+    Share, ShareBuilder, ShareRange, SparseShareSplitter, TAIL_PADDING_NAMESPACE, TX_NAMESPACE,
+    get_share_range_for_namespace, marshal_delimited_tx, namespace_padding_share,
+    namespace_padding_shares, parse_blobs, parse_compact_shares, parse_reserved_bytes,
+    parse_sparse_shares, parse_txs, reserved_padding_share, reserved_padding_shares, split_blobs,
+    split_txs, tail_padding_share, tail_padding_shares,
 };
 
 const SHARE_SIZE_U32: u32 = 512;
@@ -126,10 +127,17 @@ fn error_display_messages_are_stable() {
         ),
         (
             Error::UnsupportedShareVersion {
-                version: 1,
-                supported: vec![0],
+                version: 2,
+                supported: vec![0, 1],
             },
-            "unsupported share version 1; supported versions: [0]",
+            "unsupported share version 2; supported versions: [0, 1]",
+        ),
+        (
+            Error::InvalidSignerLength {
+                actual: 3,
+                expected: SIGNER_SIZE,
+            },
+            "invalid signer length: got 3, want 20",
         ),
         (Error::InvalidInfoByte, "invalid share info byte"),
         (
@@ -365,6 +373,51 @@ fn sparse_split_parse_and_padding_round_trip_blobs() -> shares::Result<()> {
     let mut with_padding = shares;
     with_padding.push(padding);
     assert_eq!(parse_sparse_shares(&with_padding, &[0])?, vec![blob]);
+
+    let signer = [7; SIGNER_SIZE];
+    let v1_blob = Blob::new_v1(
+        namespace,
+        vec![2; FIRST_SPARSE_SHARE_CONTENT_SIZE_WITH_SIGNER + 3],
+        signer,
+    )?;
+    assert!(v1_blob.has_signer());
+    assert_eq!(v1_blob.signer(), Some(signer));
+    let v1_shares = v1_blob.to_shares()?;
+    assert_eq!(v1_shares.len(), 2);
+    assert_eq!(v1_shares[0].version()?, SHARE_VERSION_ONE);
+    assert!(v1_shares[0].contains_signer()?);
+    assert_eq!(v1_shares[0].signer()?, Some(signer));
+    assert_eq!(&v1_shares[0].raw_data()?[..3], &[2; 3]);
+    assert_eq!(parse_blobs(&v1_shares)?, vec![v1_blob.clone()]);
+    assert_eq!(
+        parse_sparse_shares(&v1_shares, &[SHARE_VERSION_ZERO])
+            .expect_err("version one not in explicit supported list"),
+        Error::UnsupportedShareVersion {
+            version: SHARE_VERSION_ONE,
+            supported: vec![SHARE_VERSION_ZERO],
+        }
+    );
+    assert_eq!(
+        Blob::new(namespace, b"missing signer".to_vec(), SHARE_VERSION_ONE)
+            .expect_err("version one signer required"),
+        Error::InvalidSignerLength {
+            actual: 0,
+            expected: SIGNER_SIZE,
+        }
+    );
+    assert_eq!(
+        Blob::new_with_signer(
+            namespace,
+            b"unexpected signer".to_vec(),
+            SHARE_VERSION_ZERO,
+            Some(signer),
+        )
+        .expect_err("version zero signer rejected"),
+        Error::InvalidBlob,
+    );
+    let v1_padding = namespace_padding_share(namespace, SHARE_VERSION_ONE)?;
+    assert!(v1_padding.is_padding()?);
+    assert!(!v1_padding.contains_signer()?);
     Ok(())
 }
 
@@ -446,7 +499,8 @@ fn sparse_splitter_padding_and_error_paths() -> shares::Result<()> {
     assert_eq!(MIN_SQUARE_SIZE, 1);
     assert_eq!(MIN_SHARE_COUNT, 1);
     assert_eq!(SHARE_VERSION_ZERO, 0);
-    assert_eq!(SUPPORTED_SHARE_VERSIONS, &[0]);
+    assert_eq!(SHARE_VERSION_ONE, 1);
+    assert_eq!(SUPPORTED_SHARE_VERSIONS, &[0, 1]);
 
     let namespace = blob_namespace(0x66)?;
     let blob = Blob::new(namespace, b"blob".to_vec(), 0)?;
@@ -476,14 +530,14 @@ fn sparse_splitter_padding_and_error_paths() -> shares::Result<()> {
     );
     assert_eq!(tail_padding_shares(2), vec![tail_padding_share(); 2]);
 
-    let unsupported = Blob::new(namespace, b"blob".to_vec(), 1)?;
+    let unsupported = Blob::new(namespace, b"blob".to_vec(), 2)?;
     assert_eq!(
         SparseShareSplitter::new()
             .write(&unsupported)
             .expect_err("unsupported sparse share version"),
         Error::UnsupportedShareVersion {
-            version: 1,
-            supported: vec![0],
+            version: 2,
+            supported: vec![0, 1],
         }
     );
     Ok(())
