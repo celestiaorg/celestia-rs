@@ -34,4 +34,4 @@ cargo xtask refresh-fixtures --crate-name square
 
 The current fixture checkpoint covers power-of-two sizing helpers, blob
 inclusion-rule placement, blob transaction wrappers, blob commitments, and
-builder/export behavior, and direct square layout.
+builder/export behavior, direct square layout, and share ranges.

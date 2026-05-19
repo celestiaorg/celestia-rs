@@ -45,6 +45,11 @@ func init() {
 			Description: "Emit go-square direct square layout vectors.",
 			Run:         runSquareSquares,
 		},
+		Subcommand{
+			Name:        "square-ranges",
+			Description: "Emit go-square tx and blob share range vectors.",
+			Run:         runSquareRanges,
+		},
 	)
 }
 
@@ -227,6 +232,37 @@ type squareBlobWriteJSONOp struct {
 type squareInvalidSquareCase struct {
 	Label     string   `json:"label"`
 	SharesHex []string `json:"shares_hex"`
+}
+
+type squareRangesFixture struct {
+	Scenario string            `json:"scenario"`
+	Cases    []squareRangeCase `json:"cases"`
+}
+
+type squareRangeCase struct {
+	Label                string                       `json:"label"`
+	MaxSquareSize        int                          `json:"max_square_size"`
+	SubtreeRootThreshold int                          `json:"subtree_root_threshold"`
+	TxsHex               []string                     `json:"txs_hex"`
+	TxRanges             []squareTxRangeExpectation   `json:"tx_ranges"`
+	BlobRanges           []squareBlobRangeExpectation `json:"blob_ranges"`
+}
+
+type squareTxRangeExpectation struct {
+	Label   string `json:"label"`
+	TxIndex int    `json:"tx_index"`
+	Error   bool   `json:"error"`
+	Start   int    `json:"start,omitempty"`
+	End     int    `json:"end,omitempty"`
+}
+
+type squareBlobRangeExpectation struct {
+	Label     string `json:"label"`
+	TxIndex   int    `json:"tx_index"`
+	BlobIndex int    `json:"blob_index"`
+	Error     bool   `json:"error"`
+	Start     int    `json:"start,omitempty"`
+	End       int    `json:"end,omitempty"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -579,6 +615,43 @@ func runSquareSquares(args []string) error {
 	})
 }
 
+func runSquareRanges(args []string) error {
+	fs := flag.NewFlagSet("square-ranges", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/ranges.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	blobOne := squareBlob(squareNamespace([]byte{12}), []byte("range-blob-one"), goshares.ShareVersionZero)
+	blobTwo := squareBlob(squareNamespace([]byte{13}), repeatByte(0x7b, 600), goshares.ShareVersionZero)
+	blobTx := mustSquareBlobTxBytes([]byte("range-pfb"), []*sqblob.Blob{blobOne, blobTwo})
+	txs := [][]byte{[]byte("ordinary-range"), blobTx}
+
+	return writeSquareJSON(*out, squareRangesFixture{
+		Scenario: "square-ranges",
+		Cases: []squareRangeCase{
+			mustSquareRangeCase(
+				"ordered-blob-ranges",
+				txs,
+				4,
+				64,
+				[]squareTxRangeRequest{
+					{label: "ordinary", txIndex: 0},
+					{label: "wrapped-pfb", txIndex: 1},
+					{label: "tx-out-of-range", txIndex: 2},
+				},
+				[]squareBlobRangeRequest{
+					{label: "first-blob", txIndex: 1, blobIndex: 0},
+					{label: "second-blob", txIndex: 1, blobIndex: 1},
+					{label: "ordinary-is-not-pfb", txIndex: 0, blobIndex: 0},
+					{label: "blob-out-of-range", txIndex: 1, blobIndex: 2},
+					{label: "tx-out-of-range", txIndex: 2, blobIndex: 0},
+				},
+			),
+		},
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -660,6 +733,17 @@ func mustSquareIndexWrapperBytes(tx []byte, shareIndexes ...uint32) []byte {
 }
 
 type squareBlobRequest struct {
+	txIndex   int
+	blobIndex int
+}
+
+type squareTxRangeRequest struct {
+	label   string
+	txIndex int
+}
+
+type squareBlobRangeRequest struct {
+	label     string
 	txIndex   int
 	blobIndex int
 }
@@ -864,5 +948,65 @@ func mustSquareWriteSquareCase(
 		SharesHex:        hexSquareByteSlices(goshares.ToBytes(square)),
 		WrappedPFBsHex:   hexSquareByteSlices(wrappedPFBs),
 		IsEmpty:          square.IsEmpty(),
+	}
+}
+
+func mustSquareRangeCase(
+	label string,
+	txs [][]byte,
+	maxSquareSize int,
+	subtreeRootThreshold int,
+	txRequests []squareTxRangeRequest,
+	blobRequests []squareBlobRangeRequest,
+) squareRangeCase {
+	txRanges := make([]squareTxRangeExpectation, 0, len(txRequests))
+	for _, request := range txRequests {
+		rng, err := gosquare.TxShareRange(
+			txs,
+			request.txIndex,
+			maxSquareSize,
+			subtreeRootThreshold,
+		)
+		expectation := squareTxRangeExpectation{
+			Label:   request.label,
+			TxIndex: request.txIndex,
+			Error:   err != nil,
+		}
+		if err == nil {
+			expectation.Start = rng.Start
+			expectation.End = rng.End
+		}
+		txRanges = append(txRanges, expectation)
+	}
+
+	blobRanges := make([]squareBlobRangeExpectation, 0, len(blobRequests))
+	for _, request := range blobRequests {
+		rng, err := gosquare.BlobShareRange(
+			txs,
+			request.txIndex,
+			request.blobIndex,
+			maxSquareSize,
+			subtreeRootThreshold,
+		)
+		expectation := squareBlobRangeExpectation{
+			Label:     request.label,
+			TxIndex:   request.txIndex,
+			BlobIndex: request.blobIndex,
+			Error:     err != nil,
+		}
+		if err == nil {
+			expectation.Start = rng.Start
+			expectation.End = rng.End
+		}
+		blobRanges = append(blobRanges, expectation)
+	}
+
+	return squareRangeCase{
+		Label:                label,
+		MaxSquareSize:        maxSquareSize,
+		SubtreeRootThreshold: subtreeRootThreshold,
+		TxsHex:               hexSquareByteSlices(txs),
+		TxRanges:             txRanges,
+		BlobRanges:           blobRanges,
 	}
 }

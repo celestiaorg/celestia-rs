@@ -152,6 +152,11 @@ struct SquaresFixture {
 }
 
 #[derive(Deserialize)]
+struct RangesFixture {
+    cases: Vec<RangeCase>,
+}
+
+#[derive(Deserialize)]
 struct MMRCase {
     label: String,
     total_size: u64,
@@ -241,6 +246,39 @@ struct BlobWriteOp {
 struct InvalidSquareCase {
     label: String,
     shares_hex: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct RangeCase {
+    label: String,
+    max_square_size: usize,
+    subtree_root_threshold: usize,
+    txs_hex: Vec<String>,
+    tx_ranges: Vec<RangeTxExpectation>,
+    blob_ranges: Vec<RangeBlobExpectation>,
+}
+
+#[derive(Deserialize)]
+struct RangeTxExpectation {
+    label: String,
+    tx_index: usize,
+    error: bool,
+    #[serde(default)]
+    start: usize,
+    #[serde(default)]
+    end: usize,
+}
+
+#[derive(Deserialize)]
+struct RangeBlobExpectation {
+    label: String,
+    tx_index: usize,
+    blob_index: usize,
+    error: bool,
+    #[serde(default)]
+    start: usize,
+    #[serde(default)]
+    end: usize,
 }
 
 #[derive(Deserialize)]
@@ -575,6 +613,72 @@ fn square_layout_fixtures_match_go_square() -> square::Result<()> {
     for case in fixture.invalid_square_size_cases {
         let shares = decode_shares(&case.shares_hex)?;
         assert!(Square::new(shares).is_err(), "{}", case.label);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn share_range_fixtures_match_go_square() -> square::Result<()> {
+    let fixture: RangesFixture = load_fixture("square/ranges.json");
+
+    for case in fixture.cases {
+        let txs = case
+            .txs_hex
+            .iter()
+            .map(|tx| decode_bytes(tx))
+            .collect::<Vec<_>>();
+
+        for range in case.tx_ranges {
+            let actual = tx_share_range(
+                &txs,
+                range.tx_index,
+                case.max_square_size,
+                case.subtree_root_threshold,
+            );
+            if range.error {
+                assert!(
+                    actual.is_err(),
+                    "{}:{} expected tx range error",
+                    case.label,
+                    range.label
+                );
+            } else {
+                assert_eq!(
+                    actual?,
+                    shares::ShareRange::new(range.start, range.end),
+                    "{}:{}",
+                    case.label,
+                    range.label
+                );
+            }
+        }
+
+        for range in case.blob_ranges {
+            let actual = blob_share_range(
+                &txs,
+                range.tx_index,
+                range.blob_index,
+                case.max_square_size,
+                case.subtree_root_threshold,
+            );
+            if range.error {
+                assert!(
+                    actual.is_err(),
+                    "{}:{} expected blob range error",
+                    case.label,
+                    range.label
+                );
+            } else {
+                assert_eq!(
+                    actual?,
+                    shares::ShareRange::new(range.start, range.end),
+                    "{}:{}",
+                    case.label,
+                    range.label
+                );
+            }
+        }
     }
 
     Ok(())

@@ -84,3 +84,5 @@
   ordered construction errors, share ranges, and wrapped PFB indexes.
 - Added Go-generated `square` conformance fixtures for direct square layout,
   empty squares, wrapped PFB extraction, and malformed square sizes.
+- Added Go-generated `square` conformance fixtures for transaction and blob
+  share ranges, including non-PFB and out-of-range errors.

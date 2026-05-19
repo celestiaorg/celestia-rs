@@ -1,0 +1,70 @@
+{
+  "scenario": "square-ranges",
+  "cases": [
+    {
+      "label": "ordered-blob-ranges",
+      "max_square_size": 4,
+      "subtree_root_threshold": 64,
+      "txs_hex": [
+        "6f7264696e6172792d72616e6765",
+        "0a0972616e67652d706662122e0a1c0000000000000000000000000000000000000000000000000000000c120e72616e67652d626c6f622d6f6e6512f9040a1c0000000000000000000000000000000000000000000000000000000d12d8047b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b1a04424c4f42"
+      ],
+      "tx_ranges": [
+        {
+          "label": "ordinary",
+          "tx_index": 0,
+          "error": false,
+          "end": 1
+        },
+        {
+          "label": "wrapped-pfb",
+          "tx_index": 1,
+          "error": false,
+          "start": 1,
+          "end": 2
+        },
+        {
+          "label": "tx-out-of-range",
+          "tx_index": 2,
+          "error": true
+        }
+      ],
+      "blob_ranges": [
+        {
+          "label": "first-blob",
+          "tx_index": 1,
+          "blob_index": 0,
+          "error": false,
+          "start": 2,
+          "end": 3
+        },
+        {
+          "label": "second-blob",
+          "tx_index": 1,
+          "blob_index": 1,
+          "error": false,
+          "start": 3,
+          "end": 5
+        },
+        {
+          "label": "ordinary-is-not-pfb",
+          "tx_index": 0,
+          "blob_index": 0,
+          "error": true
+        },
+        {
+          "label": "blob-out-of-range",
+          "tx_index": 1,
+          "blob_index": 2,
+          "error": true
+        },
+        {
+          "label": "tx-out-of-range",
+          "tx_index": 2,
+          "blob_index": 0,
+          "error": true
+        }
+      ]
+    }
+  ]
+}
