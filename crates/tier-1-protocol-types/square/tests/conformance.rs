@@ -13,13 +13,13 @@ use shares::{
     SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Builder, DataAvailabilityHeader, LeoRsCodec, PROTO_BLOB_TX_TYPE_ID, Square,
-    blob_min_square_size, blob_share_range, blob_shares_used_non_interactive_defaults, build,
-    compute_extended_data_square, construct, create_commitment, create_commitments,
-    data_availability_header_from_proto, deconstruct, empty_square, extend_shares,
-    import_extended_data_square, is_power_of_two, merkle_mountain_range_sizes,
-    min_data_availability_header, new_data_availability_header, next_share_index,
-    round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
+    BlobTx, Builder, DEFAULT_SUBTREE_ROOT_THRESHOLD, DataAvailabilityHeader, LeoRsCodec,
+    PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
+    blob_shares_used_non_interactive_defaults, build, compute_extended_data_square, construct,
+    create_commitment, create_commitments, data_availability_header_from_proto, deconstruct,
+    empty_square, extend_shares, import_extended_data_square, is_power_of_two,
+    merkle_mountain_range_sizes, min_data_availability_header, new_data_availability_header,
+    next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
     round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
 };
 use std::collections::BTreeMap;
@@ -211,6 +211,11 @@ struct ErasureFixture {
 struct DahFixture {
     cases: Vec<DahCase>,
     invalid_cases: Vec<DahInvalidCase>,
+}
+
+#[derive(Deserialize)]
+struct MainnetBlocksFixture {
+    cases: Vec<MainnetBlockCase>,
 }
 
 #[derive(Deserialize)]
@@ -411,6 +416,22 @@ struct DahInvalidCase {
     proto_hex: String,
     validate_error: bool,
     decode_error: bool,
+}
+
+#[derive(Deserialize)]
+struct MainnetBlockCase {
+    label: String,
+    network: String,
+    height: i64,
+    app_version: u64,
+    square_size: usize,
+    width: usize,
+    data_hash_hex: String,
+    txs_hex: Vec<String>,
+    ods_shares_hex: Vec<String>,
+    row_roots_hex: Vec<String>,
+    column_roots_hex: Vec<String>,
+    dah_hash_hex: String,
 }
 
 #[derive(Deserialize)]
@@ -988,6 +1009,46 @@ fn dah_fixtures_match_go_shape() -> square::Result<()> {
                 "{label}"
             );
         }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn mainnet_block_fixtures_match_go_dah() -> square::Result<()> {
+    let fixture: MainnetBlocksFixture = load_fixture("square/mainnet-blocks.json");
+
+    for case in fixture.cases {
+        let label = case.label.as_str();
+        assert_eq!(case.network, "mainnet", "{label}");
+        assert!(case.height > 0, "{label}");
+        assert_eq!(case.app_version, 6, "{label}");
+
+        let txs = decode_bytes_vec(&case.txs_hex);
+        let square = construct(&txs, case.square_size, DEFAULT_SUBTREE_ROOT_THRESHOLD)?;
+        assert_eq!(square.size(), case.square_size, "{label}");
+        assert_eq!(
+            hex_square(&square).as_slice(),
+            case.ods_shares_hex.as_slice(),
+            "{label}"
+        );
+
+        let eds = extend_shares(square.as_shares())?;
+        assert_eq!(eds.width(), case.width, "{label}");
+        assert_eq!(
+            hex_roots(&eds.row_roots()?).as_slice(),
+            case.row_roots_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_roots(&eds.column_roots()?).as_slice(),
+            case.column_roots_hex.as_slice(),
+            "{label}"
+        );
+
+        let dah = new_data_availability_header(&eds)?;
+        assert_eq!(hex::encode(dah.hash()), case.dah_hash_hex, "{label}");
+        assert_eq!(case.dah_hash_hex, case.data_hash_hex, "{label}");
     }
 
     Ok(())

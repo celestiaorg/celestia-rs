@@ -291,6 +291,11 @@ pub const SCENARIOS: &[Scenario] = &[
         output_path: "conformance/fixtures/square/dah.json",
     },
     Scenario {
+        name: "square-mainnet-blocks",
+        crate_name: "square",
+        output_path: "conformance/fixtures/square/mainnet-blocks.json",
+    },
+    Scenario {
         name: "square-malformed",
         crate_name: "square",
         output_path: "conformance/fixtures/square/malformed.json",

@@ -1,10 +1,13 @@
 module github.com/rootulp/celestia-rs/conformance/fixturegen
 
-go 1.23
+go 1.24.0
+
+toolchain go1.24.11
 
 require (
 	cosmossdk.io/math v1.3.0
 	github.com/celestiaorg/go-square v1.0.1
+	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.3
 	github.com/celestiaorg/rsmt2d v0.14.0
 	github.com/cometbft/cometbft v0.38.12
@@ -12,7 +15,7 @@ require (
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/supranational/blst v0.3.14
 	golang.org/x/crypto v0.26.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.36.9
 )
 
 require (
@@ -91,9 +94,9 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/tendermint/go-amino v0.16.0 // indirect
 	go.etcd.io/bbolt v1.3.10 // indirect
-	golang.org/x/exp v0.0.0-20240404231335-c0f41cb1a7a0 // indirect
+	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect

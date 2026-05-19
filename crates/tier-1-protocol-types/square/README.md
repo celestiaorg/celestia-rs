@@ -36,5 +36,5 @@ The current fixture checkpoint covers power-of-two sizing helpers, blob
 inclusion-rule placement, blob transaction wrappers, blob commitments, and
 builder/export behavior, direct square layout, share ranges, and square
 deconstruction, plus Leopard EDS extension, import/export, and row/column NMT
-roots, DAH roots, hashes, and protobuf encoding, and aggregated malformed
-input/error vectors.
+roots, DAH roots, hashes, and protobuf encoding, an initial cached mainnet
+block DAH vector, and aggregated malformed input/error vectors.

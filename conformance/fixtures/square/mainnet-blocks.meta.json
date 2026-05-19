@@ -1,0 +1,17 @@
+{
+  "scenario": "square-mainnet-blocks",
+  "source_chain": "celestia-mainnet",
+  "source_heights": [
+    10126899
+  ],
+  "app_version": "6",
+  "celestia_app_commit": "b2c8d9c29491241b8ed78143df7fef577fec722e",
+  "go_version": "1.24.11",
+  "go_packages": [
+    "github.com/celestiaorg/go-square/v3 v3.0.2",
+    "github.com/celestiaorg/nmt v0.24.3",
+    "github.com/celestiaorg/rsmt2d v0.14.0",
+    "github.com/cometbft/cometbft v0.38.12"
+  ],
+  "regen_command": "GOCACHE=/private/tmp/celestia-rs-go-build-cache GONOSUMDB=github.com/celestiaorg/* GOPROXY=off cargo xtask refresh-fixtures --scenario square-mainnet-blocks"
+}

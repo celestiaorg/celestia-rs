@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"crypto/sha256"
+	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 
@@ -11,11 +14,16 @@ import (
 	sqnamespace "github.com/celestiaorg/go-square/namespace"
 	goshares "github.com/celestiaorg/go-square/shares"
 	gosquare "github.com/celestiaorg/go-square/square"
+	squarev3 "github.com/celestiaorg/go-square/v3"
+	sharev3 "github.com/celestiaorg/go-square/v3/share"
 	"github.com/celestiaorg/nmt"
 	nmtnamespace "github.com/celestiaorg/nmt/namespace"
 	rsmt2d "github.com/celestiaorg/rsmt2d"
 	"github.com/cometbft/cometbft/crypto/merkle"
 )
+
+//go:embed testdata/mainnet_block_10126899.json
+var squareMainnetBlock10126899JSON []byte
 
 func init() {
 	All = append(All,
@@ -68,6 +76,11 @@ func init() {
 			Name:        "square-dah",
 			Description: "Emit data availability header root, hash, and proto vectors.",
 			Run:         runSquareDah,
+		},
+		Subcommand{
+			Name:        "square-mainnet-blocks",
+			Description: "Emit mainnet block square and DAH vectors.",
+			Run:         runSquareMainnetBlocks,
 		},
 		Subcommand{
 			Name:        "square-malformed",
@@ -365,6 +378,34 @@ type squareDahInvalidCase struct {
 	ProtoHex       string   `json:"proto_hex"`
 	ValidateError  bool     `json:"validate_error"`
 	DecodeError    bool     `json:"decode_error"`
+}
+
+type squareMainnetBlocksFixture struct {
+	Scenario string                   `json:"scenario"`
+	Cases    []squareMainnetBlockCase `json:"cases"`
+}
+
+type squareMainnetBlockCase struct {
+	Label          string   `json:"label"`
+	Network        string   `json:"network"`
+	Height         int64    `json:"height"`
+	AppVersion     uint64   `json:"app_version"`
+	SquareSize     int      `json:"square_size"`
+	Width          int      `json:"width"`
+	DataHashHex    string   `json:"data_hash_hex"`
+	TxsHex         []string `json:"txs_hex"`
+	OdsSharesHex   []string `json:"ods_shares_hex"`
+	RowRootsHex    []string `json:"row_roots_hex"`
+	ColumnRootsHex []string `json:"column_roots_hex"`
+	DahHashHex     string   `json:"dah_hash_hex"`
+}
+
+type squareRawMainnetBlock struct {
+	Height     int64    `json:"height"`
+	AppVersion uint64   `json:"app_version"`
+	DataHash   string   `json:"data_hash"`
+	SquareSize int      `json:"square_size"`
+	Txs        []string `json:"txs"`
 }
 
 type squareMalformedFixture struct {
@@ -914,6 +955,28 @@ func runSquareDah(args []string) error {
 				hexStringsToBytes(minCase.ColumnRootsHex),
 			),
 		},
+	})
+}
+
+func runSquareMainnetBlocks(args []string) error {
+	fs := flag.NewFlagSet("square-mainnet-blocks", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/mainnet-blocks.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	mainnetCase, err := squareMainnetBlockCaseFromJSON(
+		"mainnet-10126899-app-v6",
+		"mainnet",
+		squareMainnetBlock10126899JSON,
+	)
+	if err != nil {
+		return err
+	}
+
+	return writeSquareJSON(*out, squareMainnetBlocksFixture{
+		Scenario: "square-mainnet-blocks",
+		Cases:    []squareMainnetBlockCase{mainnetCase},
 	})
 }
 
@@ -1541,6 +1604,74 @@ func mustSquareDahDecodeErrorCase(
 		ProtoHex:       hex.EncodeToString(squareDahProtoBytes(rowRoots, columnRoots)),
 		DecodeError:    true,
 	}
+}
+
+func squareMainnetBlockCaseFromJSON(
+	label string,
+	network string,
+	data []byte,
+) (squareMainnetBlockCase, error) {
+	var block squareRawMainnetBlock
+	if err := json.Unmarshal(data, &block); err != nil {
+		return squareMainnetBlockCase{}, fmt.Errorf("decode %s block json: %w", label, err)
+	}
+
+	txs := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		decoded, err := base64.StdEncoding.DecodeString(tx)
+		if err != nil {
+			return squareMainnetBlockCase{}, fmt.Errorf("decode %s tx %d: %w", label, i, err)
+		}
+		txs[i] = decoded
+	}
+
+	var odsShares [][]byte
+	switch block.AppVersion {
+	case 6, 7:
+		square, err := squarev3.Construct(txs, block.SquareSize, 64)
+		if err != nil {
+			return squareMainnetBlockCase{}, fmt.Errorf("construct %s square: %w", label, err)
+		}
+		odsShares = sharev3.ToBytes(square)
+	default:
+		return squareMainnetBlockCase{}, fmt.Errorf("unsupported mainnet block app version %d", block.AppVersion)
+	}
+
+	eds, originalWidth := mustSquareEDS(label, odsShares)
+	if originalWidth != block.SquareSize {
+		return squareMainnetBlockCase{}, fmt.Errorf("square size mismatch for %s: got %d want %d", label, originalWidth, block.SquareSize)
+	}
+	rowRoots, err := eds.RowRoots()
+	if err != nil {
+		return squareMainnetBlockCase{}, fmt.Errorf("row roots for %s: %w", label, err)
+	}
+	columnRoots, err := eds.ColRoots()
+	if err != nil {
+		return squareMainnetBlockCase{}, fmt.Errorf("column roots for %s: %w", label, err)
+	}
+	dahHash := squareDahHash(rowRoots, columnRoots)
+	expectedHash, err := hex.DecodeString(block.DataHash)
+	if err != nil {
+		return squareMainnetBlockCase{}, fmt.Errorf("decode %s data hash: %w", label, err)
+	}
+	if hex.EncodeToString(dahHash) != hex.EncodeToString(expectedHash) {
+		return squareMainnetBlockCase{}, fmt.Errorf("data hash mismatch for %s: got %X want %X", label, dahHash, expectedHash)
+	}
+
+	return squareMainnetBlockCase{
+		Label:          label,
+		Network:        network,
+		Height:         block.Height,
+		AppVersion:     block.AppVersion,
+		SquareSize:     block.SquareSize,
+		Width:          int(eds.Width()),
+		DataHashHex:    hex.EncodeToString(expectedHash),
+		TxsHex:         hexSquareByteSlices(txs),
+		OdsSharesHex:   hexSquareByteSlices(odsShares),
+		RowRootsHex:    hexSquareByteSlices(rowRoots),
+		ColumnRootsHex: hexSquareByteSlices(columnRoots),
+		DahHashHex:     hex.EncodeToString(dahHash),
+	}, nil
 }
 
 func mustSquareEDS(label string, odsShares [][]byte) (*rsmt2d.ExtendedDataSquare, int) {

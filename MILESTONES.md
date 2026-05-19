@@ -30,5 +30,6 @@ implemented. Crate 10 (`square`) is the next strict dependency step and needs
 implementation work from its completed spec. The crate has covered the layout,
 builder, blob commitment, DAH value-type, erasure/EDS, and initial
 power/inclusion/blob-tx/commitment/builder/square-layout/range/deconstruct/erasure/DAH
-and malformed conformance checkpoints; remaining mainnet square fixtures and
-M1 block-level DAH matching remain.
+and malformed conformance checkpoints, plus a cached mainnet app-v6 block DAH
+fixture. Expanding the mainnet corpus to the target sample size and the full
+M1 block-level DAH matching acceptance test remain.
