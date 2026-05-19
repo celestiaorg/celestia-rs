@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	sqnamespace "github.com/celestiaorg/go-square/namespace"
 	goshares "github.com/celestiaorg/go-square/shares"
 	gosquare "github.com/celestiaorg/go-square/square"
+	"github.com/celestiaorg/nmt"
+	nmtnamespace "github.com/celestiaorg/nmt/namespace"
+	rsmt2d "github.com/celestiaorg/rsmt2d"
 	"github.com/cometbft/cometbft/crypto/merkle"
 )
 
@@ -54,6 +58,11 @@ func init() {
 			Name:        "square-deconstruct",
 			Description: "Emit go-square square deconstruction vectors.",
 			Run:         runSquareDeconstruct,
+		},
+		Subcommand{
+			Name:        "square-erasure",
+			Description: "Emit rsmt2d Leopard EDS and NMT root vectors.",
+			Run:         runSquareErasure,
 		},
 	)
 }
@@ -293,6 +302,32 @@ type squareDeconstructErrorCase struct {
 type squarePFBDecodeCase struct {
 	TxHex     string   `json:"tx_hex"`
 	BlobSizes []uint32 `json:"blob_sizes"`
+}
+
+type squareErasureFixture struct {
+	Scenario     string                     `json:"scenario"`
+	Cases        []squareErasureCase        `json:"cases"`
+	InvalidCases []squareErasureInvalidCase `json:"invalid_cases"`
+}
+
+type squareErasureCase struct {
+	Label             string   `json:"label"`
+	OdsSharesHex      []string `json:"ods_shares_hex"`
+	ExtendedSharesHex []string `json:"extended_shares_hex"`
+	FlattenedOdsHex   []string `json:"flattened_ods_hex"`
+	RowRootsHex       []string `json:"row_roots_hex"`
+	ColumnRootsHex    []string `json:"column_roots_hex"`
+	RootsHex          []string `json:"roots_hex"`
+	OriginalWidth     int      `json:"original_width"`
+	Width             int      `json:"width"`
+}
+
+type squareErasureInvalidCase struct {
+	Label             string   `json:"label"`
+	OdsSharesHex      []string `json:"ods_shares_hex"`
+	ExtendedSharesHex []string `json:"extended_shares_hex"`
+	ComputeError      bool     `json:"compute_error"`
+	ImportError       bool     `json:"import_error"`
 }
 
 func runSquarePowersOfTwo(args []string) error {
@@ -746,6 +781,42 @@ func runSquareDeconstruct(args []string) error {
 	})
 }
 
+func runSquareErasure(args []string) error {
+	fs := flag.NewFlagSet("square-erasure", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/square/erasure.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ordinarySquare := mustSquareConstruct([][]byte{repeatByte(0x42, 1200)}, 4, 64)
+
+	return writeSquareJSON(*out, squareErasureFixture{
+		Scenario: "square-erasure",
+		Cases: []squareErasureCase{
+			mustSquareErasureCase("empty-square", goshares.ToBytes(gosquare.EmptySquare())),
+			mustSquareErasureCase("two-by-two-ordinary", goshares.ToBytes(ordinarySquare)),
+		},
+		InvalidCases: []squareErasureInvalidCase{
+			mustSquareErasureComputeErrorCase(
+				"two-ods-shares",
+				goshares.ToBytes(goshares.TailPaddingShares(2)),
+			),
+			mustSquareErasureComputeErrorCase(
+				"three-ods-shares",
+				goshares.ToBytes(goshares.TailPaddingShares(3)),
+			),
+			mustSquareErasureImportErrorCase(
+				"three-extended-shares",
+				goshares.ToBytes(goshares.TailPaddingShares(3)),
+			),
+			mustSquareErasureImportErrorCase(
+				"bad-chunk-size",
+				[][]byte{{0}, {0}, {0}, {0}},
+			),
+		},
+	})
+}
+
 func writeSquareJSON(path string, v any) error {
 	if err := writeJSON(path, v); err != nil {
 		return err
@@ -1167,4 +1238,150 @@ func squarePFBDecoder(cases []squarePFBDecodeCase) gosquare.PFBDecoder {
 		}
 		return nil, fmt.Errorf("missing decoder output for %s", txHex)
 	}
+}
+
+func mustSquareErasureCase(label string, odsShares [][]byte) squareErasureCase {
+	originalWidth := gosquare.Size(len(odsShares))
+	if originalWidth*originalWidth != len(odsShares) {
+		panic(fmt.Sprintf("erasure case %s ODS share count is not square", label))
+	}
+
+	codec := rsmt2d.NewLeoRSCodec()
+	treeFn := newSquareNMTTreeConstructor(uint64(originalWidth))
+	eds, err := rsmt2d.ComputeExtendedDataSquare(odsShares, codec, treeFn)
+	if err != nil {
+		panic(err)
+	}
+
+	imported, err := rsmt2d.ImportExtendedDataSquare(
+		eds.Flattened(),
+		codec,
+		newSquareNMTTreeConstructor(uint64(originalWidth)),
+	)
+	if err != nil {
+		panic(err)
+	}
+	if !imported.Equals(eds) {
+		panic(fmt.Sprintf("imported EDS did not round-trip for %s", label))
+	}
+
+	rowRoots, err := eds.RowRoots()
+	if err != nil {
+		panic(err)
+	}
+	columnRoots, err := eds.ColRoots()
+	if err != nil {
+		panic(err)
+	}
+	roots, err := eds.Roots()
+	if err != nil {
+		panic(err)
+	}
+
+	return squareErasureCase{
+		Label:             label,
+		OdsSharesHex:      hexSquareByteSlices(odsShares),
+		ExtendedSharesHex: hexSquareByteSlices(eds.Flattened()),
+		FlattenedOdsHex:   hexSquareByteSlices(eds.FlattenedODS()),
+		RowRootsHex:       hexSquareByteSlices(rowRoots),
+		ColumnRootsHex:    hexSquareByteSlices(columnRoots),
+		RootsHex:          hexSquareByteSlices(roots),
+		OriginalWidth:     originalWidth,
+		Width:             int(eds.Width()),
+	}
+}
+
+func mustSquareErasureComputeErrorCase(
+	label string,
+	odsShares [][]byte,
+) squareErasureInvalidCase {
+	_, err := rsmt2d.ComputeExtendedDataSquare(
+		odsShares,
+		rsmt2d.NewLeoRSCodec(),
+		newSquareNMTTreeConstructor(1),
+	)
+	if err == nil {
+		panic(fmt.Sprintf("expected erasure compute error for %s", label))
+	}
+	return squareErasureInvalidCase{
+		Label:             label,
+		OdsSharesHex:      hexSquareByteSlices(odsShares),
+		ExtendedSharesHex: []string{},
+		ComputeError:      true,
+	}
+}
+
+func mustSquareErasureImportErrorCase(
+	label string,
+	extendedShares [][]byte,
+) squareErasureInvalidCase {
+	_, err := rsmt2d.ImportExtendedDataSquare(
+		extendedShares,
+		rsmt2d.NewLeoRSCodec(),
+		newSquareNMTTreeConstructor(1),
+	)
+	if err == nil {
+		panic(fmt.Sprintf("expected erasure import error for %s", label))
+	}
+	return squareErasureInvalidCase{
+		Label:             label,
+		OdsSharesHex:      []string{},
+		ExtendedSharesHex: hexSquareByteSlices(extendedShares),
+		ImportError:       true,
+	}
+}
+
+type squareNMTTree struct {
+	squareSize uint64
+	tree       *nmt.NamespacedMerkleTree
+	axisIndex  uint64
+	shareIndex uint64
+}
+
+func newSquareNMTTreeConstructor(squareSize uint64) rsmt2d.TreeConstructorFn {
+	return func(_ rsmt2d.Axis, axisIndex uint) rsmt2d.Tree {
+		return &squareNMTTree{
+			squareSize: squareSize,
+			tree: nmt.New(
+				sha256.New(),
+				nmt.NamespaceIDSize(sqnamespace.NamespaceSize),
+				nmt.IgnoreMaxNamespace(true),
+			),
+			axisIndex: uint64(axisIndex),
+		}
+	}
+}
+
+func (t *squareNMTTree) Push(data []byte) error {
+	if t.squareSize == 0 {
+		return fmt.Errorf("square size must be non-zero")
+	}
+	if len(data) < sqnamespace.NamespaceSize {
+		return fmt.Errorf("data is too short to contain namespace")
+	}
+	if t.axisIndex+1 > 2*t.squareSize || t.shareIndex+1 > 2*t.squareSize {
+		return fmt.Errorf("pushed past square size %d", t.squareSize)
+	}
+
+	namespacedData := make([]byte, sqnamespace.NamespaceSize+len(data))
+	copy(namespacedData[sqnamespace.NamespaceSize:], data)
+	if t.isQuadrantZero() {
+		copy(namespacedData[:sqnamespace.NamespaceSize], data[:sqnamespace.NamespaceSize])
+	} else {
+		copy(namespacedData[:sqnamespace.NamespaceSize], sqnamespace.ParitySharesNamespace.Bytes())
+	}
+
+	if err := t.tree.Push(nmtnamespace.PrefixedData(namespacedData)); err != nil {
+		return err
+	}
+	t.shareIndex++
+	return nil
+}
+
+func (t *squareNMTTree) Root() ([]byte, error) {
+	return t.tree.Root()
+}
+
+func (t *squareNMTTree) isQuadrantZero() bool {
+	return t.axisIndex < t.squareSize && t.shareIndex < t.squareSize
 }

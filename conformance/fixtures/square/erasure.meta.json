@@ -1,0 +1,14 @@
+{
+  "scenario": "square-erasure",
+  "source_chain": "n/a (hardcoded test vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.24.11",
+  "go_packages": [
+    "github.com/celestiaorg/go-square v1.0.1",
+    "github.com/celestiaorg/nmt v0.24.3",
+    "github.com/celestiaorg/rsmt2d v0.14.0"
+  ],
+  "regen_command": "GOCACHE=/private/tmp/celestia-rs-go-build-cache GOSUMDB=off GOPROXY=off cargo xtask refresh-fixtures --scenario square-erasure"
+}

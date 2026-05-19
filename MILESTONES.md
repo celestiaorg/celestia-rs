@@ -29,6 +29,6 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 implemented. Crate 10 (`square`) is the next strict dependency step and needs
 implementation work from its completed spec. The crate has covered the layout,
 builder, blob commitment, DAH value-type, erasure/EDS, and initial
-power/inclusion/blob-tx/commitment/builder/square-layout/range/deconstruct
+power/inclusion/blob-tx/commitment/builder/square-layout/range/deconstruct/erasure
 conformance checkpoints; remaining square fixtures and M1 block-level DAH
 matching remain.

@@ -6,6 +6,7 @@ require (
 	cosmossdk.io/math v1.3.0
 	github.com/celestiaorg/go-square v1.0.1
 	github.com/celestiaorg/nmt v0.24.3
+	github.com/celestiaorg/rsmt2d v0.14.0
 	github.com/cometbft/cometbft v0.38.12
 	github.com/cosmos/cosmos-sdk v0.50.10
 	github.com/cosmos/gogoproto v1.7.0
@@ -26,6 +27,7 @@ require (
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4 // indirect
+	github.com/celestiaorg/merkletree v0.0.0-20210714075610-a84dc3ddbbe4 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
@@ -63,6 +65,8 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/klauspost/reedsolomon v1.12.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/linxGnu/grocksdb v1.8.14 // indirect
@@ -89,6 +93,7 @@ require (
 	go.etcd.io/bbolt v1.3.10 // indirect
 	golang.org/x/exp v0.0.0-20240404231335-c0f41cb1a7a0 // indirect
 	golang.org/x/net v0.28.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect

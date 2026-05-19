@@ -13,11 +13,13 @@ use shares::{
     SparseShareSplitter, TX_NAMESPACE,
 };
 use square::{
-    BlobTx, Builder, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size, blob_share_range,
-    blob_shares_used_non_interactive_defaults, build, construct, create_commitment,
-    create_commitments, deconstruct, empty_square, is_power_of_two, merkle_mountain_range_sizes,
-    next_share_index, round_down_power_of_two, round_up_by_multiple_of, round_up_power_of_two,
-    round_up_power_of_two_strict, size, sub_tree_width, tx_share_range, write_square,
+    BlobTx, Builder, LeoRsCodec, PROTO_BLOB_TX_TYPE_ID, Square, blob_min_square_size,
+    blob_share_range, blob_shares_used_non_interactive_defaults, build,
+    compute_extended_data_square, construct, create_commitment, create_commitments, deconstruct,
+    empty_square, extend_shares, import_extended_data_square, is_power_of_two,
+    merkle_mountain_range_sizes, next_share_index, round_down_power_of_two,
+    round_up_by_multiple_of, round_up_power_of_two, round_up_power_of_two_strict, size,
+    sub_tree_width, tx_share_range, write_square,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -56,6 +58,10 @@ fn decode_bytes(hex: &str) -> Vec<u8> {
     hex::decode(hex).expect("valid fixture hex")
 }
 
+fn decode_bytes_vec(hexes: &[String]) -> Vec<Vec<u8>> {
+    hexes.iter().map(|hex| decode_bytes(hex)).collect()
+}
+
 fn decode_namespace(hex: &str) -> shares::Result<Namespace> {
     Namespace::from_slice(&decode_bytes(hex))
 }
@@ -66,6 +72,14 @@ fn hex_square(square: &Square) -> Vec<String> {
         .iter()
         .map(|share| hex::encode(share.as_bytes()))
         .collect()
+}
+
+fn hex_bytes_vec(values: &[Vec<u8>]) -> Vec<String> {
+    values.iter().map(hex::encode).collect()
+}
+
+fn hex_roots<const N: usize>(values: &[[u8; N]]) -> Vec<String> {
+    values.iter().map(hex::encode).collect()
 }
 
 fn decode_shares(hexes: &[String]) -> square::Result<Vec<shares::Share>> {
@@ -173,6 +187,12 @@ struct RangesFixture {
 struct DeconstructFixture {
     cases: Vec<DeconstructCase>,
     error_cases: Vec<DeconstructErrorCase>,
+}
+
+#[derive(Deserialize)]
+struct ErasureFixture {
+    cases: Vec<ErasureCase>,
+    invalid_cases: Vec<ErasureInvalidCase>,
 }
 
 #[derive(Deserialize)]
@@ -319,6 +339,30 @@ struct DeconstructErrorCase {
 struct PfbDecodeCase {
     tx_hex: String,
     blob_sizes: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+struct ErasureCase {
+    label: String,
+    ods_shares_hex: Vec<String>,
+    extended_shares_hex: Vec<String>,
+    flattened_ods_hex: Vec<String>,
+    row_roots_hex: Vec<String>,
+    column_roots_hex: Vec<String>,
+    roots_hex: Vec<String>,
+    original_width: usize,
+    width: usize,
+}
+
+#[derive(Deserialize)]
+struct ErasureInvalidCase {
+    label: String,
+    #[serde(default)]
+    ods_shares_hex: Vec<String>,
+    #[serde(default)]
+    extended_shares_hex: Vec<String>,
+    compute_error: bool,
+    import_error: bool,
 }
 
 #[derive(Deserialize)]
@@ -746,6 +790,71 @@ fn deconstruct_fixtures_match_go_square() -> square::Result<()> {
             "{}",
             case.label
         );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn erasure_fixtures_match_rsmt2d() -> square::Result<()> {
+    let fixture: ErasureFixture = load_fixture("square/erasure.json");
+    let codec = LeoRsCodec::new();
+
+    for case in fixture.cases {
+        let label = case.label.as_str();
+        let shares = decode_shares(&case.ods_shares_hex)?;
+        let eds = compute_extended_data_square(&shares, &codec)?;
+        assert_eq!(extend_shares(&shares)?, eds, "{label}");
+        assert_eq!(eds.original_width(), case.original_width, "{label}");
+        assert_eq!(eds.width(), case.width, "{label}");
+
+        assert_eq!(
+            hex_bytes_vec(&eds.flattened()).as_slice(),
+            case.extended_shares_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_bytes_vec(&eds.flattened_ods()).as_slice(),
+            case.flattened_ods_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_roots(&eds.row_roots()?).as_slice(),
+            case.row_roots_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_roots(&eds.column_roots()?).as_slice(),
+            case.column_roots_hex.as_slice(),
+            "{label}"
+        );
+        assert_eq!(
+            hex_roots(&eds.roots()?).as_slice(),
+            case.roots_hex.as_slice(),
+            "{label}"
+        );
+
+        let imported =
+            import_extended_data_square(decode_bytes_vec(&case.extended_shares_hex), &codec)?;
+        assert_eq!(imported, eds, "{label}");
+    }
+
+    for case in fixture.invalid_cases {
+        let label = case.label.as_str();
+        if case.compute_error {
+            let shares = decode_shares(&case.ods_shares_hex)?;
+            assert!(
+                compute_extended_data_square(&shares, &codec).is_err(),
+                "{label}"
+            );
+        }
+        if case.import_error {
+            assert!(
+                import_extended_data_square(decode_bytes_vec(&case.extended_shares_hex), &codec)
+                    .is_err(),
+                "{label}"
+            );
+        }
     }
 
     Ok(())
