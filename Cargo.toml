@@ -11,6 +11,7 @@ members = [
     "crates/tier-1-protocol-types/shares",
     "crates/tier-1-protocol-types/square",
     "crates/tier-1-protocol-types/tendermint-types",
+    "crates/tier-2-state-and-store/iavl",
     "crates/m1-integration",
     "xtask",
 ]

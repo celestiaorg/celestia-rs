@@ -604,6 +604,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "iavl"
+version = "0.0.1"
+dependencies = [
+ "hash",
+ "hex",
+]
+
+[[package]]
 name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

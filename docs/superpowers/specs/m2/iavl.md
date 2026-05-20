@@ -1,7 +1,7 @@
 # Crate: `iavl`
 
 **Tier:** 2 (state and store)
-**Depends on:** `hash`, `encoding`
+**Depends on:** `hash`
 **Consumed by:** `kvstore`, `ics23-proofs`, `multistore`, M2 integration tests, and later SDK module stores.
 **Source of truth (Go):** `github.com/cosmos/iavl` v1.2.0 as pulled by `cosmossdk.io/store` v1.1.1, plus Cosmos SDK store tests for iterator and commit semantics.
 **Crate location:** `crates/tier-2-state-and-store/iavl/`

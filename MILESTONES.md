@@ -28,5 +28,7 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 (`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, `shares`, and
 `square`) are implemented, and the `m1-integration` DAH acceptance test passes
 against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
-(`iavl`) are ready under `docs/superpowers/specs/m2/`; the next strict
-dependency step is implementing `crates/tier-2-state-and-store/iavl/`.
+(`iavl`) are under `docs/superpowers/specs/m2/`; `crates/tier-2-state-and-store/iavl/`
+has an initial in-memory API checkpoint. The next strict dependency step is
+adding Go IAVL root fixtures and replacing the placeholder root/proof internals
+with byte-exact Go-compatible behavior.

@@ -102,3 +102,6 @@
 - Expanded `square-mainnet-blocks` to 100 cached mainnet app-v6 blocks and
   marked M1 complete.
 - Added the M2 state-and-storage spec index and the first M2 `iavl` crate spec.
+- Started the Tier-2 `iavl` crate with an in-memory mutation API, version
+  commits, deterministic root hashing, range iterators, and placeholder proof
+  material.
