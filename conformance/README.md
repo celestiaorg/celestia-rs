@@ -22,6 +22,20 @@ cargo xtask refresh-fixtures --crate-name hash
 
 The Rust runner shells out to `go run ./conformance/fixturegen ...`. Go 1.24.11 is required for regeneration only; consumers of fixtures (Rust crates) need no Go toolchain.
 
+## Expanding cached mainnet blocks
+
+The `square-mainnet-blocks` fixture is generated from cached CometBFT block
+JSON files under `conformance/fixturegen/cmd/testdata/`. To add more source
+blocks, run the fetch utility from the fixturegen module, then regenerate the
+derived golden fixture:
+
+```bash
+cd conformance/fixturegen
+go run . square-fetch-mainnet-blocks --rpc <cometbft-rpc-url> --start <height> --count <n>
+cd ../..
+cargo xtask refresh-fixtures --scenario square-mainnet-blocks
+```
+
 ## When to regenerate
 
 - After mainnet upgrades to a new app version.

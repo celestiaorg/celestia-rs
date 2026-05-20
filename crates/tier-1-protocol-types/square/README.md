@@ -37,8 +37,14 @@ The current fixture checkpoint covers power-of-two sizing helpers, blob
 inclusion-rule placement, blob transaction wrappers, blob commitments, and
 builder/export behavior, direct square layout, share ranges, and square
 deconstruction, plus Leopard EDS extension, import/export, and row/column NMT
-roots, DAH roots, hashes, and protobuf encoding, an initial cached mainnet
-block DAH vector, and aggregated malformed input/error vectors. Additional
+roots, DAH roots, hashes, and protobuf encoding, 100 cached mainnet app-v6
+block DAH vectors, and aggregated malformed input/error vectors. Additional
 cached mainnet blocks can be added as
 `conformance/fixturegen/cmd/testdata/mainnet_block_<height>.json`; the
-`square-mainnet-blocks` generator includes every matching embedded file.
+`square-mainnet-blocks` generator includes every matching embedded file. The
+source testdata can be fetched from a CometBFT RPC endpoint with:
+
+```bash
+cd conformance/fixturegen
+go run . square-fetch-mainnet-blocks --rpc <cometbft-rpc-url> --start <height> --count <n>
+```

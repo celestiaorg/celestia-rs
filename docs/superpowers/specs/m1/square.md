@@ -619,6 +619,13 @@ cargo xtask refresh-fixtures --scenario square-mainnet-blocks
 cargo xtask refresh-fixtures --scenario square-malformed
 ```
 
+Populate additional cached source blocks for the mainnet corpus:
+
+```bash
+cd conformance/fixturegen
+go run . square-fetch-mainnet-blocks --rpc <cometbft-rpc-url> --start <height> --count <n>
+```
+
 Each scenario must be registered in BOTH the Go fixturegen
 (`conformance/fixturegen/cmd/`) and the Rust `SCENARIOS` const in
 `xtask/src/refresh_fixtures.rs`.

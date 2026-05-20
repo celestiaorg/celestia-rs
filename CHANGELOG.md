@@ -97,3 +97,7 @@
 - Made the `square-mainnet-blocks` fixture generator consume every embedded
   `mainnet_block_*.json` testdata file and aligned fixturegen CI with Go
   1.24.11.
+- Added a `square-fetch-mainnet-blocks` fixturegen utility to cache CometBFT
+  RPC block responses for future mainnet corpus expansion.
+- Expanded `square-mainnet-blocks` to 100 cached mainnet app-v6 blocks and
+  marked M1 complete.

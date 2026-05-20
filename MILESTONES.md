@@ -7,7 +7,7 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 | #   | Status      | Milestone                            | Acceptance test |
 |-----|-------------|--------------------------------------|-----------------|
 | M0  | completed   | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
-| M1  | pending     | Foundational libraries               | `m1-integration::parse_real_mainnet_block_produces_matching_dah` passes |
+| M1  | completed   | Foundational libraries               | `m1-integration::parse_real_mainnet_block_produces_matching_dah` passes |
 | M2  | pending     | State & storage                      | `m2-integration::apply_mainnet_block_diff_produces_matching_kv_root` passes |
 | M3  | pending     | Tx & ante machinery                  | Tx-validation outcome matches Go for ≥ 1000 mainnet txs |
 | M4  | pending     | Core SDK modules (auth, bank, staking) | Per-module subtree roots match Go after replaying mainnet blocks |
@@ -23,13 +23,10 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 | M14 | pending     | Mainnet validator                    | Signs blocks on mainnet without double-signs |
 
 ## Current focus
-**M1** — see `docs/superpowers/specs/m1/_index.md`. Tier-0 crates 1-4 (`hash`,
-`encoding`, `crypto`, and `merkle`) and tier-1 crates 5-9
-(`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, and `shares`) are
-implemented. Crate 10 (`square`) is the next strict dependency step and needs
-implementation work from its completed spec. The crate has covered the layout,
-builder, blob commitment, DAH value-type, erasure/EDS, and initial
-power/inclusion/blob-tx/commitment/builder/square-layout/range/deconstruct/erasure/DAH
-and malformed conformance checkpoints, plus a cached mainnet app-v6 block DAH
-fixture and `m1-integration` acceptance scaffold. Expanding the mainnet corpus
-to the target sample size remains.
+**M2** — state & storage. M1 is complete: tier-0 crates 1-4 (`hash`,
+`encoding`, `crypto`, and `merkle`) and tier-1 crates 5-10
+(`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, `shares`, and
+`square`) are implemented, and the `m1-integration` DAH acceptance test passes
+against 100 cached mainnet app-v6 blocks. The next strict dependency step is
+to write the M2 spec/index for state and storage, then start the first M2
+crate from that spec.

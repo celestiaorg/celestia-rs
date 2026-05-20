@@ -19,14 +19,13 @@
 | 7 | `abci-types` | 1 | [abci-types.md](abci-types.md) | implemented |
 | 8 | `nmt` | 1 | [nmt.md](nmt.md) | implemented |
 | 9 | `shares` | 1 | [shares.md](shares.md) | implemented |
-| 10 | `square` | 1 | [square.md](square.md) | in progress |
+| 10 | `square` | 1 | [square.md](square.md) | implemented |
 
 ## Acceptance Scaffold
 
 `crates/m1-integration/` contains
-`parse_real_mainnet_block_produces_matching_dah`, currently backed by the
-cached mainnet height `10126899` fixture. The broader target corpus for full M1
-acceptance remains at the square spec's mainnet sample size.
+`parse_real_mainnet_block_produces_matching_dah`, backed by 100 cached mainnet
+app-v6 blocks at heights `10126899..10126998`.
 
 ## Dependency DAG
 

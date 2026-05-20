@@ -86,6 +86,11 @@ func init() {
 			Run:         runSquareMainnetBlocks,
 		},
 		Subcommand{
+			Name:        "square-fetch-mainnet-blocks",
+			Description: "Fetch CometBFT mainnet block JSON into square fixture testdata.",
+			Run:         runSquareFetchMainnetBlocks,
+		},
+		Subcommand{
 			Name:        "square-malformed",
 			Description: "Emit cross-cutting malformed square input vectors.",
 			Run:         runSquareMalformed,
