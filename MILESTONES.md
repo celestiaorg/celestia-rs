@@ -27,6 +27,6 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 `encoding`, `crypto`, and `merkle`) and tier-1 crates 5-10
 (`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, `shares`, and
 `square`) are implemented, and the `m1-integration` DAH acceptance test passes
-against 100 cached mainnet app-v6 blocks. The next strict dependency step is
-to write the M2 spec/index for state and storage, then start the first M2
-crate from that spec.
+against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
+(`iavl`) are ready under `docs/superpowers/specs/m2/`; the next strict
+dependency step is implementing `crates/tier-2-state-and-store/iavl/`.

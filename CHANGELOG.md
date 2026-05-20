@@ -101,3 +101,4 @@
   RPC block responses for future mainnet corpus expansion.
 - Expanded `square-mainnet-blocks` to 100 cached mainnet app-v6 blocks and
   marked M1 complete.
+- Added the M2 state-and-storage spec index and the first M2 `iavl` crate spec.
