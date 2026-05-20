@@ -29,6 +29,7 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 `square`) are implemented, and the `m1-integration` DAH acceptance test passes
 against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
 (`iavl`) are under `docs/superpowers/specs/m2/`; `crates/tier-2-state-and-store/iavl/`
-has an initial in-memory API checkpoint. The next strict dependency step is
-adding Go IAVL root fixtures and replacing the placeholder root/proof internals
-with byte-exact Go-compatible behavior.
+has an in-memory API checkpoint with Go-compatible versioned AVL root hashing
+for committed root and iterator fixtures. The next strict dependency step is
+replacing the placeholder proof internals with byte-exact ICS-23 proof
+generation/verification, then broadening malformed proof coverage.

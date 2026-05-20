@@ -1,0 +1,283 @@
+{
+  "scenario": "iavl-roots",
+  "source": "github.com/cosmos/iavl v1.2.0",
+  "cases": [
+    {
+      "label": "empty",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [],
+          "version": 1,
+          "size": 0,
+          "root_hash_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "label": "single_leaf",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "61",
+              "value_hex": "6f6e65"
+            }
+          ],
+          "version": 1,
+          "size": 1,
+          "root_hash_hex": "cd196f82e08829ad358b90a69b81c3e16aa8b97c280b100778f0c9b0bcaf5c84"
+        }
+      ]
+    },
+    {
+      "label": "sorted_inserts",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "action": "set",
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "action": "set",
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "action": "set",
+              "key_hex": "64",
+              "value_hex": "34"
+            }
+          ],
+          "version": 1,
+          "size": 4,
+          "root_hash_hex": "4a3f7f08cba479fa489cb56bf4d44b5d237eac7e76c2bcb2f9893d1a570f57ef"
+        }
+      ]
+    },
+    {
+      "label": "reverse_inserts",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "64",
+              "value_hex": "34"
+            },
+            {
+              "action": "set",
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "action": "set",
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "action": "set",
+              "key_hex": "61",
+              "value_hex": "31"
+            }
+          ],
+          "version": 1,
+          "size": 4,
+          "root_hash_hex": "4a3f7f08cba479fa489cb56bf4d44b5d237eac7e76c2bcb2f9893d1a570f57ef"
+        }
+      ]
+    },
+    {
+      "label": "replace_across_versions",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "action": "set",
+              "key_hex": "62",
+              "value_hex": "32"
+            }
+          ],
+          "version": 1,
+          "size": 2,
+          "root_hash_hex": "94b037ab65e50f94eb827902a873ee796cb04e3c9ad38c9860d84cbad668a9e7"
+        },
+        {
+          "label": "version_2",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "62",
+              "value_hex": "74776f"
+            }
+          ],
+          "version": 2,
+          "size": 2,
+          "root_hash_hex": "ca042040c8b1baf8d472a08a3a31b6eaea6bc487e40ce4c70b759e0058aa2191"
+        }
+      ]
+    },
+    {
+      "label": "delete_and_rebalance",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "0a",
+              "value_hex": "0a"
+            },
+            {
+              "action": "set",
+              "key_hex": "11",
+              "value_hex": "11"
+            },
+            {
+              "action": "set",
+              "key_hex": "2e",
+              "value_hex": "2e"
+            },
+            {
+              "action": "set",
+              "key_hex": "32",
+              "value_hex": "32"
+            },
+            {
+              "action": "set",
+              "key_hex": "50",
+              "value_hex": "50"
+            },
+            {
+              "action": "set",
+              "key_hex": "72",
+              "value_hex": "72"
+            },
+            {
+              "action": "set",
+              "key_hex": "99",
+              "value_hex": "99"
+            },
+            {
+              "action": "set",
+              "key_hex": "a1",
+              "value_hex": "a1"
+            },
+            {
+              "action": "set",
+              "key_hex": "e4",
+              "value_hex": "e4"
+            },
+            {
+              "action": "set",
+              "key_hex": "f7",
+              "value_hex": "f7"
+            }
+          ],
+          "version": 1,
+          "size": 10,
+          "root_hash_hex": "0f804861e051c7cb7949afb131c7e5986f80be2968dfecf0b2577a4d31c4b3b2"
+        },
+        {
+          "label": "version_2",
+          "mutations": [
+            {
+              "action": "remove",
+              "key_hex": "0a"
+            },
+            {
+              "action": "remove",
+              "key_hex": "72"
+            },
+            {
+              "action": "remove",
+              "key_hex": "f7"
+            }
+          ],
+          "version": 2,
+          "size": 7,
+          "root_hash_hex": "bee67fccc1ff6cf71d0166888f17e72c2e22e1995f9434a140d44a1d0ee1d498"
+        }
+      ]
+    },
+    {
+      "label": "mixed_versions",
+      "commits": [
+        {
+          "label": "version_1",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "6163636f756e742f616c696365",
+              "value_hex": "313030"
+            },
+            {
+              "action": "set",
+              "key_hex": "6163636f756e742f626f62",
+              "value_hex": "3530"
+            },
+            {
+              "action": "set",
+              "key_hex": "7374616b652f76616c31",
+              "value_hex": "626f6e646564"
+            }
+          ],
+          "version": 1,
+          "size": 3,
+          "root_hash_hex": "51264dfd912cc343c4f7e41291cce7cabd19276962ebdcf5c325da9bab2c0598"
+        },
+        {
+          "label": "version_2",
+          "mutations": [
+            {
+              "action": "set",
+              "key_hex": "6163636f756e742f616c696365",
+              "value_hex": "3735"
+            },
+            {
+              "action": "set",
+              "key_hex": "6163636f756e742f6361726f6c"
+            }
+          ],
+          "version": 2,
+          "size": 4,
+          "root_hash_hex": "4ab37a081a9e6390e73f92427c47fd56d477f3fac1cb99423a0807cff0067623"
+        },
+        {
+          "label": "version_3",
+          "mutations": [
+            {
+              "action": "remove",
+              "key_hex": "6163636f756e742f626f62"
+            },
+            {
+              "action": "set",
+              "key_hex": "7374616b652f76616c32",
+              "value_hex": "756e626f6e64696e67"
+            }
+          ],
+          "version": 3,
+          "size": 4,
+          "root_hash_hex": "638eee0fadbca0dadfb0daf2bcf799f6559116a682ada23bb1bc4c63abf03d88"
+        }
+      ]
+    }
+  ]
+}

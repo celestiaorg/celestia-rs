@@ -300,6 +300,26 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "square",
         output_path: "conformance/fixtures/square/malformed.json",
     },
+    Scenario {
+        name: "iavl-roots",
+        crate_name: "iavl",
+        output_path: "conformance/fixtures/iavl/roots.json",
+    },
+    Scenario {
+        name: "iavl-iterators",
+        crate_name: "iavl",
+        output_path: "conformance/fixtures/iavl/iterators.json",
+    },
+    Scenario {
+        name: "iavl-proofs",
+        crate_name: "iavl",
+        output_path: "conformance/fixtures/iavl/proofs.json",
+    },
+    Scenario {
+        name: "iavl-malformed",
+        crate_name: "iavl",
+        output_path: "conformance/fixtures/iavl/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

@@ -609,6 +609,8 @@ version = "0.0.1"
 dependencies = [
  "hash",
  "hex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

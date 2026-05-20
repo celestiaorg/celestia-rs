@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.11
 
 require (
+	cosmossdk.io/log v1.4.1
 	cosmossdk.io/math v1.3.0
 	github.com/celestiaorg/go-square v1.0.1
 	github.com/celestiaorg/go-square/v3 v3.0.2
@@ -13,6 +14,7 @@ require (
 	github.com/cometbft/cometbft v0.38.12
 	github.com/cosmos/cosmos-sdk v0.50.10
 	github.com/cosmos/gogoproto v1.7.0
+	github.com/cosmos/iavl v1.2.0
 	github.com/supranational/blst v0.3.14
 	golang.org/x/crypto v0.26.0
 	google.golang.org/protobuf v1.36.9
@@ -24,7 +26,6 @@ require (
 	cosmossdk.io/core v0.11.1 // indirect
 	cosmossdk.io/depinject v1.0.0 // indirect
 	cosmossdk.io/errors v1.0.1 // indirect
-	cosmossdk.io/log v1.4.1 // indirect
 	cosmossdk.io/store v1.1.1 // indirect
 	cosmossdk.io/x/tx v0.13.5 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
@@ -50,6 +51,7 @@ require (
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/emicklei/dot v1.6.1 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect

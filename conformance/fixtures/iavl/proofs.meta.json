@@ -1,0 +1,14 @@
+{
+  "scenario": "iavl-proofs",
+  "source_chain": "n/a (deterministic local Go IAVL vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.24",
+  "crypto_packages": [
+    "crypto/sha256 (stdlib)",
+    "github.com/cosmos/iavl v1.2.0",
+    "github.com/cosmos/ics23/go v0.11.0"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario iavl-proofs"
+}

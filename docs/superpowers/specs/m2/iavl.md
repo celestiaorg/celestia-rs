@@ -196,20 +196,20 @@ Each scenario must be registered in BOTH the Go fixturegen
 
 ## Definition Of Done
 
-- [ ] Crate created at `crates/tier-2-state-and-store/iavl/` with a
+- [x] Crate created at `crates/tier-2-state-and-store/iavl/` with a
       `Cargo.toml` inheriting workspace metadata, and the crate path is added
       to root `Cargo.toml` `[workspace]` members.
-- [ ] Public API above implemented with documented modules and
+- [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
 - [ ] All REQ-1..REQ-15 covered by unit, property, or conformance tests.
-- [ ] All four conformance fixture files committed with `.meta.json` sidecars.
-- [ ] `cargo test -p iavl` green.
-- [ ] `cargo clippy -p iavl --all-targets -- -D warnings` green.
-- [ ] `cargo fmt --check` green.
-- [ ] `cargo llvm-cov -p iavl --summary-only` reports >= 90 % line coverage.
-- [ ] `crates/tier-2-state-and-store/iavl/README.md` present with purpose /
+- [x] All four conformance fixture files committed with `.meta.json` sidecars.
+- [x] `cargo test -p iavl` green.
+- [x] `cargo clippy -p iavl --all-targets -- -D warnings` green.
+- [x] `cargo fmt --check` green.
+- [x] `cargo llvm-cov -p iavl --summary-only` reports >= 90 % line coverage.
+- [x] `crates/tier-2-state-and-store/iavl/README.md` present with purpose /
       consumers / conformance.
-- [ ] IAVL fixturegen scenarios registered in BOTH the Go fixturegen and the
+- [x] IAVL fixturegen scenarios registered in BOTH the Go fixturegen and the
       Rust `SCENARIOS` const.
 
 ## Out Of Scope

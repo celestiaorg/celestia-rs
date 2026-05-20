@@ -25,6 +25,8 @@ pub type Version = i64;
 pub struct Tree {
     version: Version,
     entries: BTreeMap<Vec<u8>, Vec<u8>>,
+    root: Option<Box<Node>>,
+    dirty: bool,
 }
 
 impl Tree {
@@ -55,7 +57,7 @@ impl Tree {
     /// Return the deterministic root hash for the current tree contents.
     #[must_use]
     pub fn root_hash(&self) -> Hash {
-        root_hash_for_entries(self.version.max(1), self.entries.iter())
+        root_hash_for_node(self.root.as_deref(), self.hash_version())
     }
 
     /// Return the value for `key`, if present.
@@ -69,7 +71,13 @@ impl Tree {
         if key.is_empty() {
             return Err(Error::EmptyKey);
         }
-        Ok(self.entries.insert(key, value))
+        let previous = self.entries.insert(key.clone(), value.clone());
+        self.root = Some(match self.root.take() {
+            Some(root) => Box::new(recursive_set(*root, key, value).0),
+            None => Box::new(Node::leaf(key, value)),
+        });
+        self.dirty = true;
+        Ok(previous)
     }
 
     /// Remove a key/value pair, returning the previous value.
@@ -77,7 +85,14 @@ impl Tree {
         if key.is_empty() {
             return Err(Error::EmptyKey);
         }
-        Ok(self.entries.remove(key))
+        let previous = self.entries.remove(key);
+        if previous.is_some() {
+            if let Some(root) = self.root.take() {
+                self.root = recursive_remove(*root, key).node.map(Box::new);
+            }
+            self.dirty = true;
+        }
+        Ok(previous)
     }
 
     /// Commit the current working tree as the next version.
@@ -92,10 +107,15 @@ impl Tree {
                 version: next_version,
             });
         }
+        let root_hash = match self.root.as_mut() {
+            Some(root) => root.assign_hashes(next_version),
+            None => hash::sha256(&[]),
+        };
         self.version = next_version;
+        self.dirty = false;
         Ok(CommitInfo {
             version: self.version,
-            root_hash: self.root_hash(),
+            root_hash,
             size: self.entries.len(),
         })
     }
@@ -138,6 +158,14 @@ impl Tree {
             return Ok(());
         }
         Err(Error::InvalidProof("non-membership proof mismatch"))
+    }
+
+    fn hash_version(&self) -> Version {
+        if self.dirty {
+            self.version.saturating_add(1).max(1)
+        } else {
+            self.version.max(1)
+        }
     }
 }
 
@@ -278,64 +306,379 @@ pub enum ProofOpType {
     IavlCommitment,
 }
 
-fn root_hash_for_entries<'a>(
-    version: Version,
-    entries: impl ExactSizeIterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
-) -> Hash {
-    if entries.len() == 0 {
-        return hash::sha256(&[]);
-    }
-    let leaves = entries
-        .map(|(key, value)| node_hash(0, 1, version, key, value, None, None))
-        .collect::<Vec<_>>();
-    fold_hashes(version, &leaves)
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Node {
+    Leaf(LeafNode),
+    Inner(InnerNode),
 }
 
-fn fold_hashes(version: Version, hashes: &[Hash]) -> Hash {
-    if hashes.len() == 1 {
-        return hashes[0];
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LeafNode {
+    key: Vec<u8>,
+    value: Vec<u8>,
+    hash: Option<Hash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InnerNode {
+    key: Vec<u8>,
+    height: i8,
+    size: i64,
+    left: Box<Node>,
+    right: Box<Node>,
+    hash: Option<Hash>,
+}
+
+impl Node {
+    fn leaf(key: Vec<u8>, value: Vec<u8>) -> Self {
+        Self::Leaf(LeafNode {
+            key,
+            value,
+            hash: None,
+        })
     }
 
-    let split = hashes.len() / 2;
-    let left = fold_hashes(version, &hashes[..split]);
-    let right = fold_hashes(version, &hashes[split..]);
-    node_hash(
-        height_for_len(hashes.len()),
-        i64::try_from(hashes.len()).unwrap_or(i64::MAX),
-        version,
-        &[],
-        &[],
-        Some(left),
-        Some(right),
-    )
+    fn height(&self) -> i8 {
+        match self {
+            Self::Leaf(_) => 0,
+            Self::Inner(node) => node.height,
+        }
+    }
+
+    fn size(&self) -> i64 {
+        match self {
+            Self::Leaf(_) => 1,
+            Self::Inner(node) => node.size,
+        }
+    }
+
+    fn cached_hash(&self) -> Option<Hash> {
+        match self {
+            Self::Leaf(node) => node.hash,
+            Self::Inner(node) => node.hash,
+        }
+    }
+
+    fn hash_for(&self, version: Version) -> Hash {
+        if let Some(hash) = self.cached_hash() {
+            return hash;
+        }
+        match self {
+            Self::Leaf(node) => leaf_hash(version, &node.key, &node.value),
+            Self::Inner(node) => {
+                let left = node.left.hash_for(version);
+                let right = node.right.hash_for(version);
+                inner_hash(i64::from(node.height), node.size, version, left, right)
+            }
+        }
+    }
+
+    fn assign_hashes(&mut self, version: Version) -> Hash {
+        if let Some(hash) = self.cached_hash() {
+            return hash;
+        }
+        let hash = match self {
+            Self::Leaf(node) => leaf_hash(version, &node.key, &node.value),
+            Self::Inner(node) => {
+                let left = node.left.assign_hashes(version);
+                let right = node.right.assign_hashes(version);
+                inner_hash(i64::from(node.height), node.size, version, left, right)
+            }
+        };
+        match self {
+            Self::Leaf(node) => node.hash = Some(hash),
+            Self::Inner(node) => node.hash = Some(hash),
+        }
+        hash
+    }
+}
+
+fn root_hash_for_node(root: Option<&Node>, version: Version) -> Hash {
+    root.map_or_else(|| hash::sha256(&[]), |node| node.hash_for(version))
+}
+
+fn recursive_set(node: Node, key: Vec<u8>, value: Vec<u8>) -> (Node, bool) {
+    match node {
+        Node::Leaf(leaf) => match key.as_slice().cmp(leaf.key.as_slice()) {
+            core::cmp::Ordering::Less => (
+                make_inner(
+                    leaf.key.clone(),
+                    Box::new(Node::leaf(key, value)),
+                    Box::new(Node::Leaf(leaf)),
+                ),
+                false,
+            ),
+            core::cmp::Ordering::Greater => (
+                make_inner(
+                    key.clone(),
+                    Box::new(Node::Leaf(leaf)),
+                    Box::new(Node::leaf(key, value)),
+                ),
+                false,
+            ),
+            core::cmp::Ordering::Equal => (Node::leaf(key, value), true),
+        },
+        Node::Inner(mut inner) => {
+            let updated = if key.as_slice() < inner.key.as_slice() {
+                let (left, updated) = recursive_set(*inner.left, key, value);
+                inner.left = Box::new(left);
+                updated
+            } else {
+                let (right, updated) = recursive_set(*inner.right, key, value);
+                inner.right = Box::new(right);
+                updated
+            };
+            if updated {
+                return (
+                    Node::Inner(InnerNode {
+                        hash: None,
+                        ..inner
+                    }),
+                    true,
+                );
+            }
+            (
+                balance(make_inner(inner.key, inner.left, inner.right)),
+                false,
+            )
+        }
+    }
+}
+
+struct RemoveResult {
+    node: Option<Node>,
+    new_key: Option<Vec<u8>>,
+    value: Option<Vec<u8>>,
+    removed: bool,
+}
+
+#[allow(clippy::too_many_lines)]
+fn recursive_remove(node: Node, key: &[u8]) -> RemoveResult {
+    match node {
+        Node::Leaf(leaf) => {
+            if key == leaf.key.as_slice() {
+                RemoveResult {
+                    node: None,
+                    new_key: None,
+                    value: Some(leaf.value),
+                    removed: true,
+                }
+            } else {
+                RemoveResult {
+                    node: Some(Node::Leaf(leaf)),
+                    new_key: None,
+                    value: None,
+                    removed: false,
+                }
+            }
+        }
+        Node::Inner(inner) => {
+            let InnerNode {
+                key: mut node_key,
+                height,
+                size,
+                left,
+                right,
+                hash,
+            } = inner;
+            if key < node_key.as_slice() {
+                let result = recursive_remove(*left, key);
+                if !result.removed {
+                    let Some(left) = result.node else {
+                        return RemoveResult {
+                            node: None,
+                            new_key: None,
+                            value: result.value,
+                            removed: false,
+                        };
+                    };
+                    return RemoveResult {
+                        node: Some(Node::Inner(InnerNode {
+                            key: node_key,
+                            height,
+                            size,
+                            left: Box::new(left),
+                            right,
+                            hash,
+                        })),
+                        new_key: None,
+                        value: result.value,
+                        removed: false,
+                    };
+                }
+                let Some(left) = result.node else {
+                    return RemoveResult {
+                        node: Some(*right),
+                        new_key: Some(node_key),
+                        value: result.value,
+                        removed: true,
+                    };
+                };
+                let node = balance(make_inner(node_key, Box::new(left), right));
+                RemoveResult {
+                    node: Some(node),
+                    new_key: result.new_key,
+                    value: result.value,
+                    removed: true,
+                }
+            } else {
+                let result = recursive_remove(*right, key);
+                if !result.removed {
+                    let Some(right) = result.node else {
+                        return RemoveResult {
+                            node: None,
+                            new_key: None,
+                            value: result.value,
+                            removed: false,
+                        };
+                    };
+                    return RemoveResult {
+                        node: Some(Node::Inner(InnerNode {
+                            key: node_key,
+                            height,
+                            size,
+                            left,
+                            right: Box::new(right),
+                            hash,
+                        })),
+                        new_key: None,
+                        value: result.value,
+                        removed: false,
+                    };
+                }
+                let Some(right) = result.node else {
+                    return RemoveResult {
+                        node: Some(*left),
+                        new_key: None,
+                        value: result.value,
+                        removed: true,
+                    };
+                };
+                if let Some(new_key) = result.new_key {
+                    node_key = new_key;
+                }
+                let node = balance(make_inner(node_key, left, Box::new(right)));
+                RemoveResult {
+                    node: Some(node),
+                    new_key: None,
+                    value: result.value,
+                    removed: true,
+                }
+            }
+        }
+    }
+}
+
+fn make_inner(key: Vec<u8>, left: Box<Node>, right: Box<Node>) -> Node {
+    Node::Inner(InnerNode {
+        key,
+        height: left.height().max(right.height()) + 1,
+        size: left.size() + right.size(),
+        left,
+        right,
+        hash: None,
+    })
+}
+
+fn balance(node: Node) -> Node {
+    let inner = match node {
+        Node::Inner(inner) => inner,
+        leaf @ Node::Leaf(_) => return leaf,
+    };
+    let balance = i16::from(inner.left.height()) - i16::from(inner.right.height());
+    if balance > 1 {
+        let left_balance = match inner.left.as_ref() {
+            Node::Leaf(_) => 0,
+            Node::Inner(left) => i16::from(left.left.height()) - i16::from(left.right.height()),
+        };
+        if left_balance >= 0 {
+            return rotate_right(inner);
+        }
+        let mut inner = inner;
+        inner.left = Box::new(rotate_left_child(*inner.left));
+        return rotate_right(inner);
+    }
+    if balance < -1 {
+        let right_balance = match inner.right.as_ref() {
+            Node::Leaf(_) => 0,
+            Node::Inner(right) => i16::from(right.left.height()) - i16::from(right.right.height()),
+        };
+        if right_balance <= 0 {
+            return rotate_left(inner);
+        }
+        let mut inner = inner;
+        inner.right = Box::new(rotate_right_child(*inner.right));
+        return rotate_left(inner);
+    }
+    Node::Inner(inner)
+}
+
+fn rotate_right_child(node: Node) -> Node {
+    match node {
+        Node::Inner(inner) => rotate_right(inner),
+        leaf @ Node::Leaf(_) => leaf,
+    }
+}
+
+fn rotate_left_child(node: Node) -> Node {
+    match node {
+        Node::Inner(inner) => rotate_left(inner),
+        leaf @ Node::Leaf(_) => leaf,
+    }
+}
+
+fn rotate_right(mut node: InnerNode) -> Node {
+    let left = match *node.left {
+        Node::Inner(left) => left,
+        leaf @ Node::Leaf(_) => {
+            node.left = Box::new(leaf);
+            return Node::Inner(node);
+        }
+    };
+    let old_root = make_inner(node.key, left.right, node.right);
+    make_inner(left.key, left.left, Box::new(old_root))
+}
+
+fn rotate_left(mut node: InnerNode) -> Node {
+    let right = match *node.right {
+        Node::Inner(right) => right,
+        leaf @ Node::Leaf(_) => {
+            node.right = Box::new(leaf);
+            return Node::Inner(node);
+        }
+    };
+    let old_root = make_inner(node.key, node.left, right.left);
+    make_inner(right.key, Box::new(old_root), right.right)
+}
+
+fn leaf_hash(version: Version, key: &[u8], value: &[u8]) -> Hash {
+    node_hash(0, 1, version, Some((key, value)), None)
+}
+
+fn inner_hash(height: i64, size: i64, version: Version, left: Hash, right: Hash) -> Hash {
+    node_hash(height, size, version, None, Some((left, right)))
 }
 
 fn node_hash(
     height: i64,
     size: i64,
     version: Version,
-    key: &[u8],
-    value: &[u8],
-    left: Option<Hash>,
-    right: Option<Hash>,
+    leaf: Option<(&[u8], &[u8])>,
+    children: Option<(Hash, Hash)>,
 ) -> Hash {
     let mut bytes = Vec::new();
     encode_varint(&mut bytes, height);
     encode_varint(&mut bytes, size);
     encode_varint(&mut bytes, version);
-    if let (Some(left), Some(right)) = (left, right) {
+    if let Some((left, right)) = children {
         encode_hash(&mut bytes, &left);
         encode_hash(&mut bytes, &right);
-    } else {
+    } else if let Some((key, value)) = leaf {
         encode_bytes(&mut bytes, key);
         let value_hash = hash::sha256(value);
         encode_hash(&mut bytes, &value_hash);
     }
     hash::sha256(&bytes)
-}
-
-fn height_for_len(len: usize) -> i64 {
-    i64::from(usize::BITS) - i64::from((len - 1).leading_zeros())
 }
 
 fn encode_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
@@ -365,7 +708,7 @@ fn encode_uvarint(out: &mut Vec<u8>, mut value: u64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, Tree};
+    use super::{Error, InnerNode, Node, Proof, ProofOp, ProofOpType, Tree, Version};
 
     #[test]
     fn empty_tree_matches_iavl_empty_hash() {
@@ -416,6 +759,40 @@ mod tests {
     }
 
     #[test]
+    fn length_empty_invalid_versions_and_errors_are_reported() -> Result<(), Error> {
+        let mut tree = Tree::new();
+        assert_eq!(tree.len(), 0);
+        assert!(tree.is_empty());
+
+        tree.set(b"a".to_vec(), b"1".to_vec())?;
+        assert_eq!(tree.len(), 1);
+        assert!(!tree.is_empty());
+
+        tree.version = Version::MAX;
+        assert_eq!(
+            tree.save_version(),
+            Err(Error::InvalidVersion {
+                version: Version::MAX
+            })
+        );
+        tree.version = -1;
+        assert_eq!(
+            tree.save_version(),
+            Err(Error::InvalidVersion { version: 0 })
+        );
+
+        assert_eq!(Error::EmptyKey.to_string(), "empty key");
+        assert_eq!(
+            Error::InvalidVersion { version: 7 }.to_string(),
+            "invalid version 7"
+        );
+        assert_eq!(Error::InvalidRange.to_string(), "invalid range");
+        assert_eq!(Error::InvalidProof("bad").to_string(), "invalid proof: bad");
+
+        Ok(())
+    }
+
+    #[test]
     fn iterators_respect_half_open_ranges() -> Result<(), Error> {
         let mut tree = Tree::new();
         for (key, value) in [(b"a", b"1"), (b"b", b"2"), (b"c", b"3"), (b"d", b"4")] {
@@ -445,6 +822,7 @@ mod tests {
                 (b"b".to_vec(), b"2".to_vec())
             ]
         );
+        assert_eq!(tree.iter(Some(b"d"), Some(b"a")).count(), 0);
 
         Ok(())
     }
@@ -457,8 +835,81 @@ mod tests {
         let proof = tree
             .get_with_proof(b"key")?
             .ok_or(Error::InvalidProof("missing proof"))?;
+        assert!(proof.ops().is_empty());
         Tree::verify_membership(tree.root_hash(), &proof, b"key", b"value")?;
         assert!(Tree::verify_membership(tree.root_hash(), &proof, b"key", b"other").is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn placeholder_non_membership_and_proof_ops_expose_fields() {
+        let proof = Proof {
+            key: b"missing".to_vec(),
+            value: None,
+            ops: vec![ProofOp {
+                field_type: ProofOpType::IavlAbsence,
+                key: b"k".to_vec(),
+                data: b"d".to_vec(),
+            }],
+        };
+
+        assert!(!proof.is_membership());
+        assert_eq!(proof.value(), None);
+        assert_eq!(proof.ops()[0].field_type(), ProofOpType::IavlAbsence);
+        assert_eq!(proof.ops()[0].key(), b"k");
+        assert_eq!(proof.ops()[0].data(), b"d");
+        assert!(Tree::verify_non_membership([0; 32], &proof, b"missing").is_ok());
+        assert!(Tree::verify_non_membership([0; 32], &proof, b"other").is_err());
+    }
+
+    #[test]
+    fn avl_rotations_dirty_hashes_and_removals_cover_edge_paths() -> Result<(), Error> {
+        let mut left_right = Tree::new();
+        for key in [b"c", b"a", b"b"] {
+            left_right.set(key.to_vec(), key.to_vec())?;
+        }
+        assert_ne!(left_right.root_hash(), [0; 32]);
+        let left_right_commit = left_right.save_version()?;
+        assert_eq!(left_right_commit.size, 3);
+
+        let mut right_left = Tree::new();
+        for key in [b"a", b"c", b"b"] {
+            right_left.set(key.to_vec(), key.to_vec())?;
+        }
+        assert_ne!(right_left.root_hash(), [0; 32]);
+        let right_left_commit = right_left.save_version()?;
+        assert_eq!(right_left_commit.size, 3);
+
+        assert_eq!(right_left.remove(b"0")?, None);
+        assert_eq!(right_left.remove(b"z")?, None);
+        assert_eq!(right_left.remove(b"c")?, Some(b"c".to_vec()));
+        assert_eq!(right_left.remove(b"a")?, Some(b"a".to_vec()));
+        assert_eq!(right_left.save_version()?.size, 1);
+
+        let leaf = Node::leaf(b"x".to_vec(), b"1".to_vec());
+        assert!(matches!(super::rotate_left_child(leaf), Node::Leaf(_)));
+        let leaf = Node::leaf(b"x".to_vec(), b"1".to_vec());
+        assert!(matches!(super::rotate_right_child(leaf), Node::Leaf(_)));
+
+        let invalid_left = InnerNode {
+            key: b"y".to_vec(),
+            height: 1,
+            size: 2,
+            left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
+            hash: None,
+        };
+        assert!(matches!(super::rotate_right(invalid_left), Node::Inner(_)));
+        let invalid_right = InnerNode {
+            key: b"y".to_vec(),
+            height: 1,
+            size: 2,
+            left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
+            hash: None,
+        };
+        assert!(matches!(super::rotate_left(invalid_right), Node::Inner(_)));
 
         Ok(())
     }

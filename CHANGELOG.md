@@ -105,3 +105,7 @@
 - Started the Tier-2 `iavl` crate with an in-memory mutation API, version
   commits, deterministic root hashing, range iterators, and placeholder proof
   material.
+- Added Go-generated `iavl` conformance fixtures for roots, iterators,
+  ICS-23 proof bytes, and malformed API cases, then aligned Rust IAVL root
+  hashing and versioned AVL tree shape with Go for committed root/iterator
+  fixtures.

@@ -1,0 +1,189 @@
+{
+  "scenario": "iavl-iterators",
+  "source": "github.com/cosmos/iavl v1.2.0",
+  "cases": [
+    {
+      "label": "committed_six_keys",
+      "entries": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "32"
+        },
+        {
+          "key_hex": "63",
+          "value_hex": "33"
+        },
+        {
+          "key_hex": "64",
+          "value_hex": "34"
+        },
+        {
+          "key_hex": "656d707479",
+          "value_hex": ""
+        },
+        {
+          "key_hex": "ff00",
+          "value_hex": "6869"
+        }
+      ],
+      "ranges": [
+        {
+          "label": "full_forward",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            },
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            },
+            {
+              "key_hex": "ff00",
+              "value_hex": "6869"
+            }
+          ]
+        },
+        {
+          "label": "full_reverse",
+          "ascending": false,
+          "entries": [
+            {
+              "key_hex": "ff00",
+              "value_hex": "6869"
+            },
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            },
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            }
+          ]
+        },
+        {
+          "label": "middle_forward",
+          "start_hex": "62",
+          "end_hex": "656d707479",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            }
+          ]
+        },
+        {
+          "label": "middle_reverse",
+          "start_hex": "62",
+          "end_hex": "656d707479",
+          "ascending": false,
+          "entries": [
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            }
+          ]
+        },
+        {
+          "label": "exact_empty_value",
+          "start_hex": "656d707479",
+          "end_hex": "656d70747a",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            }
+          ]
+        },
+        {
+          "label": "missing_bounds",
+          "start_hex": "60",
+          "end_hex": "65",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            }
+          ]
+        },
+        {
+          "label": "empty_range",
+          "start_hex": "62",
+          "end_hex": "62",
+          "ascending": true,
+          "entries": []
+        },
+        {
+          "label": "after_last",
+          "start_hex": "ff01",
+          "ascending": true,
+          "entries": []
+        }
+      ],
+      "root_hash_hex": "99bd5c0b3466964d14145f633d6d5ecd9ae16e82e063d01966b15534a1b4a7e1",
+      "tree_size": 6,
+      "tree_version": 1
+    }
+  ]
+}

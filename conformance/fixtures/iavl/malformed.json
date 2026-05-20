@@ -1,0 +1,18 @@
+{
+  "scenario": "iavl-malformed",
+  "source": "github.com/cosmos/iavl v1.2.0",
+  "cases": [
+    {
+      "label": "set_nil_value",
+      "api": "set",
+      "key_hex": "6b6579",
+      "error": "attempt to store nil value at key 'key'"
+    },
+    {
+      "label": "start_after_end_iterator",
+      "api": "iterator",
+      "start_hex": "64",
+      "end_hex": "61"
+    }
+  ]
+}
