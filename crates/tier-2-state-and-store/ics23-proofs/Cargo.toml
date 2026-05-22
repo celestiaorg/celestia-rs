@@ -1,0 +1,22 @@
+[package]
+name = "ics23-proofs"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK ICS-23 proof operation primitives for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+iavl = { path = "../iavl" }
+ics23 = "0.12"
+prost = "0.13"
+
+[dev-dependencies]
+hex = "0.4"
+tendermint-proto = { version = "=0.40.4", default-features = false, features = ["std"] }

@@ -219,19 +219,19 @@ Each scenario must be registered in BOTH the Go fixturegen
 
 ## Definition Of Done
 
-- [ ] Crate created at `crates/tier-2-state-and-store/ics23-proofs/` with a
+- [x] Crate created at `crates/tier-2-state-and-store/ics23-proofs/` with a
       `Cargo.toml` inheriting workspace metadata, and the crate path is added
       to root `Cargo.toml` `[workspace]` members.
-- [ ] Public API above implemented with documented modules and
+- [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
 - [ ] All REQ-1..REQ-17 covered by unit, property, or conformance tests.
 - [ ] All four conformance fixture files committed with `.meta.json` sidecars.
-- [ ] `cargo test -p ics23-proofs` green.
-- [ ] `cargo clippy -p ics23-proofs --all-targets -- -D warnings` green.
-- [ ] `cargo fmt --check` green.
-- [ ] `cargo llvm-cov -p ics23-proofs --summary-only` reports >= 90 % line
+- [x] `cargo test -p ics23-proofs` green.
+- [x] `cargo clippy -p ics23-proofs --all-targets -- -D warnings` green.
+- [x] `cargo fmt --check` green.
+- [x] `cargo llvm-cov -p ics23-proofs --summary-only` reports >= 90 % line
       coverage.
-- [ ] `crates/tier-2-state-and-store/ics23-proofs/README.md` present with
+- [x] `crates/tier-2-state-and-store/ics23-proofs/README.md` present with
       purpose / consumers / conformance.
 - [ ] ICS23 proof fixturegen scenarios registered in BOTH the Go fixturegen and
       the Rust `SCENARIOS` const.

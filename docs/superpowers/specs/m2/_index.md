@@ -14,7 +14,7 @@ wrappers, and ICS-23 proof material.
 |---|---|---|---|---|
 | 1 | `iavl` | 2 | [iavl.md](iavl.md) | complete |
 | 2 | `kvstore` | 2 | [kvstore.md](kvstore.md) | complete |
-| 3 | `ics23-proofs` | 2 | [ics23-proofs.md](ics23-proofs.md) | specified |
+| 3 | `ics23-proofs` | 2 | [ics23-proofs.md](ics23-proofs.md) | in progress |
 | 4 | `multistore` | 2 | _to be written_ | pending |
 
 ## Acceptance Scaffold

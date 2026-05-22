@@ -124,6 +124,10 @@
 - Added the M2 `ics23-proofs` crate spec for SDK proof-op wrapping,
   membership / non-membership verification, simple commitment proofs, and
   conformance fixtures.
+- Started the Tier-2 `ics23-proofs` crate with SDK proof-op wrappers, IAVL
+  membership / non-membership verification, batch and compressed proof root
+  calculation, CometBFT `ProofOp` protobuf compatibility, and focused coverage
+  above the M2 threshold.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

@@ -33,5 +33,8 @@ has an in-memory API checkpoint with Go-compatible roots, iterators, proof op
 bytes, malformed proof coverage, and private node-shape checks. The `kvstore`
 crate is complete with IAVL-backed state, cache, prefix, gas, SDK helper
 coverage, Go-generated conformance fixtures, and `xtask` fixture refresh
-registration. The M2 `ics23-proofs` crate spec is now written; the next strict
-dependency step is implementing `ics23-proofs` before `multistore`.
+registration. The M2 `ics23-proofs` crate has an SDK proof-op API checkpoint
+with IAVL membership / non-membership verification, batch and compressed proof
+handling, CometBFT `ProofOp` protobuf compatibility, and focused coverage
+above the M2 threshold. The next strict dependency step is adding
+Go-generated `ics23-proofs` conformance fixtures before `multistore`.
