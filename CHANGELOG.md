@@ -109,6 +109,8 @@
   ICS-23 proof bytes, and malformed API cases, then aligned Rust IAVL root
   hashing and versioned AVL tree shape with Go for committed root/iterator
   fixtures.
+- Replaced placeholder `iavl` proof operations with fixture-backed ICS-23
+  membership and non-membership proof bytes plus root verification.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

@@ -4,7 +4,7 @@
 
 use std::{fs, path::PathBuf};
 
-use iavl::Tree;
+use iavl::{ProofOpType, Tree};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +65,23 @@ struct RangeCase {
 struct Kv {
     key_hex: String,
     value_hex: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProofFixture {
+    cases: Vec<ProofCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProofCase {
+    label: String,
+    proof_type: String,
+    key_hex: String,
+    #[serde(default)]
+    value_hex: String,
+    root_hash_hex: String,
+    proof_proto_hex: String,
+    verified: bool,
 }
 
 #[test]
@@ -141,6 +158,54 @@ fn iterator_fixtures_match_go_iavl() {
                 })
                 .collect::<Vec<_>>();
             assert_eq!(entries, range.entries, "{}:{}", case.label, range.label);
+        }
+    }
+}
+
+#[test]
+fn proof_fixtures_match_go_iavl() {
+    let fixture: ProofFixture = read_fixture("proofs.json");
+    let mut tree = Tree::new();
+    for key in ["0a", "11", "2e", "32", "50", "72", "99", "a1", "e4", "f7"] {
+        let bytes = decode_hex(key);
+        tree.set(bytes.clone(), bytes)
+            .unwrap_or_else(|err| panic!("set proof fixture key {key}: {err}"));
+    }
+    let root = tree
+        .save_version()
+        .unwrap_or_else(|err| panic!("save proof fixture tree: {err}"))
+        .root_hash;
+
+    for case in fixture.cases {
+        assert_eq!(hex::encode(root), case.root_hash_hex, "{}", case.label);
+        let key = decode_hex(&case.key_hex);
+        let proof = tree
+            .get_with_proof(&key)
+            .unwrap_or_else(|err| panic!("{} get proof: {err}", case.label))
+            .unwrap_or_else(|| panic!("{} missing proof", case.label));
+        assert_eq!(
+            hex::encode(proof.ops()[0].data()),
+            case.proof_proto_hex,
+            "{}",
+            case.label
+        );
+        assert!(case.verified, "{}", case.label);
+
+        match case.proof_type.as_str() {
+            "membership" => {
+                let value = decode_hex(&case.value_hex);
+                assert_eq!(proof.ops()[0].field_type(), ProofOpType::IavlValue);
+                assert_eq!(proof.value(), Some(value.as_slice()));
+                Tree::verify_membership(root, &proof, &key, &value)
+                    .unwrap_or_else(|err| panic!("{} verify membership: {err}", case.label));
+            }
+            "non_membership" => {
+                assert_eq!(proof.ops()[0].field_type(), ProofOpType::IavlAbsence);
+                assert_eq!(proof.value(), None);
+                Tree::verify_non_membership(root, &proof, &key)
+                    .unwrap_or_else(|err| panic!("{} verify non-membership: {err}", case.label));
+            }
+            other => panic!("unknown proof type {other}"),
         }
     }
 }

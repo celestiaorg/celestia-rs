@@ -4,11 +4,10 @@ Cosmos IAVL+ state tree primitives for `celestia-rs`.
 
 This crate is the first M2 state-and-storage layer. It provides the Rust API
 surface for key/value mutation, deterministic root hashes, versioned commits,
-range iteration, and future proof material. The current implementation
-checkpoint is an in-memory tree with Go-compatible committed root hashes and
-iterator behavior. Proof generation and verification still use placeholder
-material while the committed ICS-23 proof fixtures are wired into the next
-implementation step.
+range iteration, and proof material. The current implementation checkpoint is
+an in-memory tree with Go-compatible committed root hashes, iterator behavior,
+and ICS-23 membership/non-membership proof operation bytes for the committed
+fixtures.
 
 ## Depends On
 

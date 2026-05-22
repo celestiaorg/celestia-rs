@@ -13,6 +13,7 @@ pub use error::{Error, Result};
 
 /// Byte length of an IAVL root hash.
 pub const HASH_SIZE: usize = 32;
+const HASH_SIZE_PREFIX: u8 = 32;
 
 /// IAVL root hash bytes.
 pub type Hash = [u8; HASH_SIZE];
@@ -137,24 +138,36 @@ impl Tree {
         if key.is_empty() {
             return Err(Error::EmptyKey);
         }
-        Ok(self.entries.get(key).map(|value| Proof {
-            key: key.to_vec(),
-            value: Some(value.clone()),
-            ops: Vec::new(),
-        }))
+        if self.root.is_none() {
+            return Ok(None);
+        }
+        Ok(if let Some(value) = self.entries.get(key) {
+            Some(self.membership_proof(key, value)?)
+        } else {
+            Some(self.non_membership_proof(key)?)
+        })
     }
 
     /// Verify an IAVL membership proof.
-    pub fn verify_membership(_root: Hash, proof: &Proof, key: &[u8], value: &[u8]) -> Result<()> {
-        if proof.key() == key && proof.value() == Some(value) && proof.is_membership() {
+    pub fn verify_membership(root: Hash, proof: &Proof, key: &[u8], value: &[u8]) -> Result<()> {
+        if proof.key() == key
+            && proof.value() == Some(value)
+            && proof.is_membership()
+            && proof.root_hash == root
+            && proof.computed_root()? == root
+        {
             return Ok(());
         }
         Err(Error::InvalidProof("membership proof mismatch"))
     }
 
     /// Verify an IAVL non-membership proof.
-    pub fn verify_non_membership(_root: Hash, proof: &Proof, key: &[u8]) -> Result<()> {
-        if proof.key() == key && !proof.is_membership() {
+    pub fn verify_non_membership(root: Hash, proof: &Proof, key: &[u8]) -> Result<()> {
+        if proof.key() == key
+            && !proof.is_membership()
+            && proof.root_hash == root
+            && proof.non_membership_root_matches(root)?
+        {
             return Ok(());
         }
         Err(Error::InvalidProof("non-membership proof mismatch"))
@@ -166,6 +179,82 @@ impl Tree {
         } else {
             self.version.max(1)
         }
+    }
+
+    fn membership_proof(&self, key: &[u8], value: &[u8]) -> Result<Proof> {
+        let existence = self
+            .existence_proof(key)
+            .ok_or(Error::InvalidProof("missing membership proof path"))?;
+        let data = commitment_existence_proto(&existence);
+        Ok(Proof {
+            key: key.to_vec(),
+            value: Some(value.to_vec()),
+            ops: vec![ProofOp {
+                field_type: ProofOpType::IavlValue,
+                key: key.to_vec(),
+                data,
+            }],
+            root_hash: self.root_hash(),
+            kind: ProofKind::Membership(existence),
+        })
+    }
+
+    fn non_membership_proof(&self, key: &[u8]) -> Result<Proof> {
+        let key_vec = key.to_vec();
+        let left_key = self
+            .entries
+            .range(..key_vec.clone())
+            .next_back()
+            .map(|(left, _)| left.clone());
+        let right_key = self
+            .entries
+            .range(key_vec..)
+            .next()
+            .map(|(right, _)| right.clone());
+
+        let left = left_key
+            .as_deref()
+            .map(|left| {
+                self.existence_proof(left)
+                    .ok_or(Error::InvalidProof("missing left non-membership neighbor"))
+            })
+            .transpose()?;
+        let right = right_key
+            .as_deref()
+            .map(|right| {
+                self.existence_proof(right)
+                    .ok_or(Error::InvalidProof("missing right non-membership neighbor"))
+            })
+            .transpose()?;
+        let data = commitment_nonexistence_proto(key, left.as_ref(), right.as_ref());
+        Ok(Proof {
+            key: key.to_vec(),
+            value: None,
+            ops: vec![ProofOp {
+                field_type: ProofOpType::IavlAbsence,
+                key: key.to_vec(),
+                data,
+            }],
+            root_hash: self.root_hash(),
+            kind: ProofKind::NonMembership { left, right },
+        })
+    }
+
+    fn existence_proof(&self, key: &[u8]) -> Option<ExistenceProof> {
+        let mut path = Vec::new();
+        let (leaf, found) = self
+            .root
+            .as_deref()?
+            .path_to_leaf(key, self.hash_version(), &mut path);
+        if !found {
+            return None;
+        }
+        Some(ExistenceProof {
+            key: leaf.key.clone(),
+            value: leaf.value.clone(),
+            leaf_version: leaf.version.unwrap_or_else(|| self.hash_version()),
+            path,
+        })
     }
 }
 
@@ -239,6 +328,8 @@ pub struct Proof {
     key: Vec<u8>,
     value: Option<Vec<u8>>,
     ops: Vec<ProofOp>,
+    root_hash: Hash,
+    kind: ProofKind,
 }
 
 impl Proof {
@@ -264,6 +355,28 @@ impl Proof {
     #[must_use]
     pub fn ops(&self) -> &[ProofOp] {
         &self.ops
+    }
+
+    fn computed_root(&self) -> Result<Hash> {
+        match &self.kind {
+            ProofKind::Membership(existence) => Ok(existence.compute_root()),
+            ProofKind::NonMembership { .. } => {
+                Err(Error::InvalidProof("expected membership proof"))
+            }
+        }
+    }
+
+    fn non_membership_root_matches(&self, root: Hash) -> Result<bool> {
+        let ProofKind::NonMembership { left, right } = &self.kind else {
+            return Err(Error::InvalidProof("expected non-membership proof"));
+        };
+        let left_ok = left.as_ref().is_none_or(|left| {
+            left.key.as_slice() < self.key.as_slice() && left.compute_root() == root
+        });
+        let right_ok = right.as_ref().is_none_or(|right| {
+            right.key.as_slice() > self.key.as_slice() && right.compute_root() == root
+        });
+        Ok(left_ok && right_ok && (left.is_some() || right.is_some()))
     }
 }
 
@@ -307,6 +420,147 @@ pub enum ProofOpType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ProofKind {
+    Membership(ExistenceProof),
+    NonMembership {
+        left: Option<ExistenceProof>,
+        right: Option<ExistenceProof>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExistenceProof {
+    key: Vec<u8>,
+    value: Vec<u8>,
+    leaf_version: Version,
+    path: Vec<ProofInner>,
+}
+
+impl ExistenceProof {
+    fn compute_root(&self) -> Hash {
+        let mut hash = leaf_hash(self.leaf_version, &self.key, &self.value);
+        for inner in self.path.iter().rev() {
+            hash = match (inner.left, inner.right) {
+                (Some(left), None) => inner_hash(
+                    i64::from(inner.height),
+                    inner.size,
+                    inner.version,
+                    left,
+                    hash,
+                ),
+                (None, Some(right)) => inner_hash(
+                    i64::from(inner.height),
+                    inner.size,
+                    inner.version,
+                    hash,
+                    right,
+                ),
+                _ => hash,
+            };
+        }
+        hash
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProofInner {
+    height: i8,
+    size: i64,
+    version: Version,
+    left: Option<Hash>,
+    right: Option<Hash>,
+}
+
+fn commitment_existence_proto(proof: &ExistenceProof) -> Vec<u8> {
+    let exist = existence_proto(proof);
+    let mut out = Vec::new();
+    proto_bytes_field(&mut out, 1, &exist);
+    out
+}
+
+fn commitment_nonexistence_proto(
+    key: &[u8],
+    left: Option<&ExistenceProof>,
+    right: Option<&ExistenceProof>,
+) -> Vec<u8> {
+    let mut nonexist = Vec::new();
+    proto_bytes_field(&mut nonexist, 1, key);
+    if let Some(left) = left {
+        proto_bytes_field(&mut nonexist, 2, &existence_proto(left));
+    }
+    if let Some(right) = right {
+        proto_bytes_field(&mut nonexist, 3, &existence_proto(right));
+    }
+
+    let mut out = Vec::new();
+    proto_bytes_field(&mut out, 2, &nonexist);
+    out
+}
+
+fn existence_proto(proof: &ExistenceProof) -> Vec<u8> {
+    let mut out = Vec::new();
+    proto_bytes_field(&mut out, 1, &proof.key);
+    proto_bytes_field(&mut out, 2, &proof.value);
+    proto_bytes_field(&mut out, 3, &leaf_op_proto(proof.leaf_version));
+    for inner in proof.path.iter().rev() {
+        proto_bytes_field(&mut out, 4, &inner_op_proto(inner));
+    }
+    out
+}
+
+fn leaf_op_proto(version: Version) -> Vec<u8> {
+    let mut prefix = Vec::new();
+    encode_varint(&mut prefix, 0);
+    encode_varint(&mut prefix, 1);
+    encode_varint(&mut prefix, version);
+
+    let mut out = Vec::new();
+    proto_varint_field(&mut out, 1, 1);
+    proto_varint_field(&mut out, 3, 1);
+    proto_varint_field(&mut out, 4, 1);
+    proto_bytes_field(&mut out, 5, &prefix);
+    out
+}
+
+fn inner_op_proto(inner: &ProofInner) -> Vec<u8> {
+    let mut prefix = Vec::new();
+    encode_varint(&mut prefix, i64::from(inner.height));
+    encode_varint(&mut prefix, inner.size);
+    encode_varint(&mut prefix, inner.version);
+
+    let mut suffix = Vec::new();
+    if let Some(left) = inner.left {
+        prefix.push(HASH_SIZE_PREFIX);
+        prefix.extend_from_slice(&left);
+        prefix.push(HASH_SIZE_PREFIX);
+    } else if let Some(right) = inner.right {
+        prefix.push(HASH_SIZE_PREFIX);
+        suffix.push(HASH_SIZE_PREFIX);
+        suffix.extend_from_slice(&right);
+    }
+
+    let mut out = Vec::new();
+    proto_varint_field(&mut out, 1, 1);
+    proto_bytes_field(&mut out, 2, &prefix);
+    proto_bytes_field(&mut out, 3, &suffix);
+    out
+}
+
+fn proto_varint_field(out: &mut Vec<u8>, field_number: u64, value: u64) {
+    encode_uvarint(out, field_number << 3);
+    encode_uvarint(out, value);
+}
+
+fn proto_bytes_field(out: &mut Vec<u8>, field_number: u64, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    encode_uvarint(out, (field_number << 3) | 2);
+    encode_uvarint(out, bytes.len() as u64);
+    out.extend_from_slice(bytes);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Node {
     Leaf(LeafNode),
     Inner(InnerNode),
@@ -317,6 +571,7 @@ struct LeafNode {
     key: Vec<u8>,
     value: Vec<u8>,
     hash: Option<Hash>,
+    version: Option<Version>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,6 +582,7 @@ struct InnerNode {
     left: Box<Node>,
     right: Box<Node>,
     hash: Option<Hash>,
+    version: Option<Version>,
 }
 
 impl Node {
@@ -335,6 +591,7 @@ impl Node {
             key,
             value,
             hash: None,
+            version: None,
         })
     }
 
@@ -356,6 +613,13 @@ impl Node {
         match self {
             Self::Leaf(node) => node.hash,
             Self::Inner(node) => node.hash,
+        }
+    }
+
+    fn version(&self) -> Option<Version> {
+        match self {
+            Self::Leaf(node) => node.version,
+            Self::Inner(node) => node.version,
         }
     }
 
@@ -386,10 +650,47 @@ impl Node {
             }
         };
         match self {
-            Self::Leaf(node) => node.hash = Some(hash),
-            Self::Inner(node) => node.hash = Some(hash),
+            Self::Leaf(node) => {
+                node.hash = Some(hash);
+                node.version = Some(version);
+            }
+            Self::Inner(node) => {
+                node.hash = Some(hash);
+                node.version = Some(version);
+            }
         }
         hash
+    }
+
+    fn path_to_leaf<'a>(
+        &'a self,
+        key: &[u8],
+        version: Version,
+        path: &mut Vec<ProofInner>,
+    ) -> (&'a LeafNode, bool) {
+        match self {
+            Self::Leaf(leaf) => (leaf, leaf.key.as_slice() == key),
+            Self::Inner(inner) if key < inner.key.as_slice() => {
+                path.push(ProofInner {
+                    height: inner.height,
+                    size: inner.size,
+                    version: self.version().unwrap_or(version),
+                    left: None,
+                    right: Some(inner.right.hash_for(version)),
+                });
+                inner.left.path_to_leaf(key, version, path)
+            }
+            Self::Inner(inner) => {
+                path.push(ProofInner {
+                    height: inner.height,
+                    size: inner.size,
+                    version: self.version().unwrap_or(version),
+                    left: Some(inner.left.hash_for(version)),
+                    right: None,
+                });
+                inner.right.path_to_leaf(key, version, path)
+            }
+        }
     }
 }
 
@@ -432,6 +733,7 @@ fn recursive_set(node: Node, key: Vec<u8>, value: Vec<u8>) -> (Node, bool) {
                 return (
                     Node::Inner(InnerNode {
                         hash: None,
+                        version: None,
                         ..inner
                     }),
                     true,
@@ -480,6 +782,7 @@ fn recursive_remove(node: Node, key: &[u8]) -> RemoveResult {
                 left,
                 right,
                 hash,
+                version,
             } = inner;
             if key < node_key.as_slice() {
                 let result = recursive_remove(*left, key);
@@ -500,6 +803,7 @@ fn recursive_remove(node: Node, key: &[u8]) -> RemoveResult {
                             left: Box::new(left),
                             right,
                             hash,
+                            version,
                         })),
                         new_key: None,
                         value: result.value,
@@ -540,6 +844,7 @@ fn recursive_remove(node: Node, key: &[u8]) -> RemoveResult {
                             left,
                             right: Box::new(right),
                             hash,
+                            version,
                         })),
                         new_key: None,
                         value: result.value,
@@ -577,6 +882,7 @@ fn make_inner(key: Vec<u8>, left: Box<Node>, right: Box<Node>) -> Node {
         left,
         right,
         hash: None,
+        version: None,
     })
 }
 
@@ -708,7 +1014,7 @@ fn encode_uvarint(out: &mut Vec<u8>, mut value: u64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, InnerNode, Node, Proof, ProofOp, ProofOpType, Tree, Version};
+    use super::{Error, InnerNode, Node, ProofOpType, Tree, Version};
 
     #[test]
     fn empty_tree_matches_iavl_empty_hash() {
@@ -828,39 +1134,43 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_membership_proofs_round_trip_key_and_value() -> Result<(), Error> {
+    fn membership_proofs_round_trip_key_value_and_root() -> Result<(), Error> {
         let mut tree = Tree::new();
         tree.set(b"key".to_vec(), b"value".to_vec())?;
+        let root = tree.save_version()?.root_hash;
 
         let proof = tree
             .get_with_proof(b"key")?
             .ok_or(Error::InvalidProof("missing proof"))?;
-        assert!(proof.ops().is_empty());
-        Tree::verify_membership(tree.root_hash(), &proof, b"key", b"value")?;
-        assert!(Tree::verify_membership(tree.root_hash(), &proof, b"key", b"other").is_err());
+        assert_eq!(proof.ops()[0].field_type(), ProofOpType::IavlValue);
+        assert_eq!(proof.ops()[0].key(), b"key");
+        assert!(!proof.ops()[0].data().is_empty());
+        Tree::verify_membership(root, &proof, b"key", b"value")?;
+        assert!(Tree::verify_membership(root, &proof, b"key", b"other").is_err());
 
         Ok(())
     }
 
     #[test]
-    fn placeholder_non_membership_and_proof_ops_expose_fields() {
-        let proof = Proof {
-            key: b"missing".to_vec(),
-            value: None,
-            ops: vec![ProofOp {
-                field_type: ProofOpType::IavlAbsence,
-                key: b"k".to_vec(),
-                data: b"d".to_vec(),
-            }],
-        };
+    fn non_membership_proofs_round_trip_neighbors_and_ops() -> Result<(), Error> {
+        let mut tree = Tree::new();
+        tree.set(b"a".to_vec(), b"1".to_vec())?;
+        tree.set(b"c".to_vec(), b"3".to_vec())?;
+        let root = tree.save_version()?.root_hash;
+
+        let proof = tree
+            .get_with_proof(b"b")?
+            .ok_or(Error::InvalidProof("missing proof"))?;
 
         assert!(!proof.is_membership());
         assert_eq!(proof.value(), None);
         assert_eq!(proof.ops()[0].field_type(), ProofOpType::IavlAbsence);
-        assert_eq!(proof.ops()[0].key(), b"k");
-        assert_eq!(proof.ops()[0].data(), b"d");
-        assert!(Tree::verify_non_membership([0; 32], &proof, b"missing").is_ok());
-        assert!(Tree::verify_non_membership([0; 32], &proof, b"other").is_err());
+        assert_eq!(proof.ops()[0].key(), b"b");
+        assert!(!proof.ops()[0].data().is_empty());
+        Tree::verify_non_membership(root, &proof, b"b")?;
+        assert!(Tree::verify_non_membership(root, &proof, b"a").is_err());
+
+        Ok(())
     }
 
     #[test]
@@ -899,6 +1209,7 @@ mod tests {
             left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
             right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
             hash: None,
+            version: None,
         };
         assert!(matches!(super::rotate_right(invalid_left), Node::Inner(_)));
         let invalid_right = InnerNode {
@@ -908,6 +1219,7 @@ mod tests {
             left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
             right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
             hash: None,
+            version: None,
         };
         assert!(matches!(super::rotate_left(invalid_right), Node::Inner(_)));
 
