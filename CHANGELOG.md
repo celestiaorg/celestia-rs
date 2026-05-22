@@ -141,6 +141,9 @@
 - Added Go-generated `multistore` conformance fixtures for app-hash commits,
   cache multi-store write-back, store-root plus IAVL proof-op chaining, and
   malformed multi-store cases.
+- Added the `m2-integration` acceptance scaffold with a Go-generated
+  mainnet-height state-diff fixture that verifies Rust multi-store app hashes
+  against Go SDK roots.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

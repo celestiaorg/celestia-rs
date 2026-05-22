@@ -1,0 +1,21 @@
+[package]
+name = "m2-integration"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "M2 acceptance tests for celestia-rs state and storage."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+multistore = { path = "../tier-2-state-and-store/multistore" }
+
+[dev-dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

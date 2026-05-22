@@ -41,5 +41,8 @@ the M2 threshold. The M2 `multistore` crate is complete with in-memory store
 mounting, commit-info protobuf compatibility, deterministic app-hash
 composition, store-root proof ops, commit history, cache multi-store behavior,
 Go-generated conformance fixtures, and focused coverage above the M2
-threshold. The next strict dependency step is creating the M2 integration
-acceptance scaffold.
+threshold. The `m2-integration` acceptance scaffold exists and
+`apply_mainnet_block_diff_produces_matching_kv_root` passes against a
+Go-generated, mainnet-height synthetic state-diff window. The remaining M2
+hardening step is replacing or supplementing that synthetic fixture with real
+`fixturegen replay-state` mainnet state diffs before moving into M3.

@@ -1,0 +1,18 @@
+{
+  "scenario": "m2-integration-state-diffs",
+  "source_chain": "mainnet-height synthetic state diff",
+  "source_heights": [
+    10126900,
+    10126901,
+    10126902
+  ],
+  "app_version": "app-v6 shape, synthetic state writes",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.24",
+  "crypto_packages": [
+    "cosmossdk.io/store v1.1.1",
+    "github.com/cometbft/cometbft v0.38.12",
+    "github.com/cosmos/iavl v1.2.0"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario m2-integration-state-diffs"
+}

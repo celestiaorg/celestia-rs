@@ -19,10 +19,13 @@ wrappers, and ICS-23 proof material.
 
 ## Acceptance Scaffold
 
-Create `crates/m2-integration/` once the first M2 crate is implemented. The
-acceptance test consumes Go-generated state-diff fixtures and applies them
-through the Rust state layer, then verifies the final store root against the Go
-fixture.
+`crates/m2-integration/` contains the M2 acceptance test
+`apply_mainnet_block_diff_produces_matching_kv_root`. The current fixture is a
+Go-generated, mainnet-height synthetic state-diff window that applies writes
+through the Rust multi-store and verifies every committed app hash against the
+Go SDK store root. The next fixture expansion is replacing or supplementing
+that synthetic window with `fixturegen replay-state` output from real mainnet
+state diffs.
 
 ## Dependency DAG
 

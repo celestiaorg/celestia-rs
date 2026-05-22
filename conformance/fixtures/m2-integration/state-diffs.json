@@ -1,0 +1,136 @@
+{
+  "scenario": "m2-integration-state-diffs",
+  "source": "Go Cosmos SDK store stack over synthetic state writes at mainnet-like heights",
+  "cases": [
+    {
+      "label": "mainnet_height_state_diff_window",
+      "network": "mainnet-synthetic",
+      "start_height": 10126900,
+      "initial_version": 10126900,
+      "mounts": [
+        "auth",
+        "bank",
+        "staking"
+      ],
+      "blocks": [
+        {
+          "height": 10126900,
+          "mutations": [
+            {
+              "store_name": "auth",
+              "action": "set",
+              "key_hex": "6163636f756e74732f616c696365",
+              "value_hex": "73657175656e63653a31"
+            },
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e6365732f616c6963652f75746961",
+              "value_hex": "313030"
+            },
+            {
+              "store_name": "staking",
+              "action": "set",
+              "key_hex": "64656c65676174696f6e732f616c6963652f76616c31",
+              "value_hex": "3530"
+            }
+          ],
+          "app_hash_hex": "84d1b53cafa43502b0e4fda80234bd3eff42ee1322586edd5f932d7ef010aa0d",
+          "store_infos": [
+            {
+              "name": "auth",
+              "version": 10126900,
+              "hash_hex": "38c7a4b4728332879a94d1d06cc2abd124d7b915986b63747466cdc5a74009e5"
+            },
+            {
+              "name": "bank",
+              "version": 10126900,
+              "hash_hex": "5afad2b1d376dce2df3d81c3e1594c9d931252345563ee6c02649a4b9dc748e7"
+            },
+            {
+              "name": "staking",
+              "version": 10126900,
+              "hash_hex": "d7d63782a4e26726df4aede534fc88f7d92ecb45b3f8c9fe798b50ee2b44088d"
+            }
+          ]
+        },
+        {
+          "height": 10126901,
+          "mutations": [
+            {
+              "store_name": "auth",
+              "action": "set",
+              "key_hex": "6163636f756e74732f626f62",
+              "value_hex": "73657175656e63653a30"
+            },
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e6365732f616c6963652f75746961",
+              "value_hex": "3838"
+            },
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e6365732f626f622f75746961",
+              "value_hex": "3132"
+            }
+          ],
+          "app_hash_hex": "6c8fbc9905c2069f37e1038393b69eccf43cc65ad5dc64fcece600c6c7006ad7",
+          "store_infos": [
+            {
+              "name": "auth",
+              "version": 10126901,
+              "hash_hex": "be57583fcce3603e82b334e1e80cb5f05a53678d9ac1648c9b8b2025638ae73f"
+            },
+            {
+              "name": "bank",
+              "version": 10126901,
+              "hash_hex": "87893ba2c63f39b6c8496d211c1ce7c8a7d01bc0fdf9296d9b5a9dfda480cf20"
+            },
+            {
+              "name": "staking",
+              "version": 10126901,
+              "hash_hex": "d7d63782a4e26726df4aede534fc88f7d92ecb45b3f8c9fe798b50ee2b44088d"
+            }
+          ]
+        },
+        {
+          "height": 10126902,
+          "mutations": [
+            {
+              "store_name": "staking",
+              "action": "set",
+              "key_hex": "64656c65676174696f6e732f616c6963652f76616c31",
+              "value_hex": "3438"
+            },
+            {
+              "store_name": "staking",
+              "action": "set",
+              "key_hex": "64656c65676174696f6e732f626f622f76616c31",
+              "value_hex": "32"
+            }
+          ],
+          "app_hash_hex": "45da6a81d3f7d771461f75b7aa7dab6d9f3ce0a68a0ca8df159fbd7d7d58d0a9",
+          "store_infos": [
+            {
+              "name": "auth",
+              "version": 10126902,
+              "hash_hex": "be57583fcce3603e82b334e1e80cb5f05a53678d9ac1648c9b8b2025638ae73f"
+            },
+            {
+              "name": "bank",
+              "version": 10126902,
+              "hash_hex": "87893ba2c63f39b6c8496d211c1ce7c8a7d01bc0fdf9296d9b5a9dfda480cf20"
+            },
+            {
+              "name": "staking",
+              "version": 10126902,
+              "hash_hex": "183c338e0612695fb7f93dd3a5deee4b4d043a9ca93dc1efcd31409210580945"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
