@@ -41,7 +41,9 @@ roots, DAH roots, hashes, and protobuf encoding, 100 cached mainnet app-v6
 block DAH vectors, and aggregated malformed input/error vectors. Additional
 cached mainnet blocks can be added as
 `conformance/fixturegen/cmd/testdata/mainnet_block_<height>.json`; the
-`square-mainnet-blocks` generator includes every matching embedded file. The
+`square-mainnet-blocks` generator includes every matching embedded file and
+omits derived ODS share dumps from the generated JSON to keep the corpus below
+single-file repository warning thresholds. The
 source testdata can be fetched from a CometBFT RPC endpoint with:
 
 ```bash

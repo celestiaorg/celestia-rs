@@ -428,7 +428,6 @@ struct MainnetBlockCase {
     width: usize,
     data_hash_hex: String,
     txs_hex: Vec<String>,
-    ods_shares_hex: Vec<String>,
     row_roots_hex: Vec<String>,
     column_roots_hex: Vec<String>,
     dah_hash_hex: String,
@@ -1027,11 +1026,6 @@ fn mainnet_block_fixtures_match_go_dah() -> square::Result<()> {
         let txs = decode_bytes_vec(&case.txs_hex);
         let square = construct(&txs, case.square_size, DEFAULT_SUBTREE_ROOT_THRESHOLD)?;
         assert_eq!(square.size(), case.square_size, "{label}");
-        assert_eq!(
-            hex_square(&square).as_slice(),
-            case.ods_shares_hex.as_slice(),
-            "{label}"
-        );
 
         let eds = extend_shares(square.as_shares())?;
         assert_eq!(eds.width(), case.width, "{label}");

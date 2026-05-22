@@ -592,7 +592,9 @@ Committed under `conformance/fixtures/square/`:
 - `dah.json` - minimum DAH, DAH roots, DAH hash, protobuf conversion, and
   `ValidateBasic` error cases.
 - `mainnet-blocks.json` - at least 100 sampled mainnet block data inputs with
-  expected ordered txs, ODS bytes, EDS roots, DAH hash, and block height.
+  expected ordered txs, EDS roots, DAH hash, and block height. The fixture
+  intentionally omits derived ODS share dumps so the corpus stays below
+  repository size warning thresholds.
 - `malformed.json` - invalid input combinations not covered by the focused
   fixtures.
 

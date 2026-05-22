@@ -29,6 +29,11 @@ JSON files under `conformance/fixturegen/cmd/testdata/`. To add more source
 blocks, run the fetch utility from the fixturegen module, then regenerate the
 derived golden fixture:
 
+The generated `mainnet-blocks.json` stores source transactions and Go-derived
+row/column roots plus DAH hashes, but not the derived ODS share dump. This keeps
+the 100-block corpus below GitHub's recommended 50 MB single-file threshold
+while preserving the DAH conformance signal.
+
 ```bash
 cd conformance/fixturegen
 go run . square-fetch-mainnet-blocks --rpc <cometbft-rpc-url> --start <height> --count <n>

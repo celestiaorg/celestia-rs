@@ -402,7 +402,6 @@ type squareMainnetBlockCase struct {
 	Width          int      `json:"width"`
 	DataHashHex    string   `json:"data_hash_hex"`
 	TxsHex         []string `json:"txs_hex"`
-	OdsSharesHex   []string `json:"ods_shares_hex"`
 	RowRootsHex    []string `json:"row_roots_hex"`
 	ColumnRootsHex []string `json:"column_roots_hex"`
 	DahHashHex     string   `json:"dah_hash_hex"`
@@ -1672,7 +1671,6 @@ func squareMainnetBlockCaseFromJSON(
 		Width:          int(eds.Width()),
 		DataHashHex:    hex.EncodeToString(expectedHash),
 		TxsHex:         hexSquareByteSlices(txs),
-		OdsSharesHex:   hexSquareByteSlices(odsShares),
 		RowRootsHex:    hexSquareByteSlices(rowRoots),
 		ColumnRootsHex: hexSquareByteSlices(columnRoots),
 		DahHashHex:     hex.EncodeToString(dahHash),
