@@ -131,6 +131,9 @@
 - Added Go-generated `ics23-proofs` conformance fixtures for IAVL commitment
   ops, simple Merkle store-root proofs, CometBFT `ProofOp` / `ProofOps`
   encoding, and malformed proof-op cases.
+- Added the M2 `multistore` crate spec for Cosmos SDK commit info protobufs,
+  deterministic multi-store app hashes, store-root proof ops, and cache
+  multi-store behavior.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.
