@@ -14,6 +14,7 @@ members = [
     "crates/tier-2-state-and-store/iavl",
     "crates/tier-2-state-and-store/ics23-proofs",
     "crates/tier-2-state-and-store/kvstore",
+    "crates/tier-2-state-and-store/multistore",
     "crates/m1-integration",
     "xtask",
 ]

@@ -15,7 +15,7 @@ wrappers, and ICS-23 proof material.
 | 1 | `iavl` | 2 | [iavl.md](iavl.md) | complete |
 | 2 | `kvstore` | 2 | [kvstore.md](kvstore.md) | complete |
 | 3 | `ics23-proofs` | 2 | [ics23-proofs.md](ics23-proofs.md) | complete |
-| 4 | `multistore` | 2 | [multistore.md](multistore.md) | specified |
+| 4 | `multistore` | 2 | [multistore.md](multistore.md) | started |
 
 ## Acceptance Scaffold
 
@@ -30,6 +30,7 @@ fixture.
 hash -> iavl -> ics23-proofs -> multistore -> m2-integration
 hash -> iavl -> kvstore -> multistore -> m2-integration
 encoding -> kvstore -> multistore -> m2-integration
+encoding -> multistore -> m2-integration
 hash -> merkle -> multistore -> m2-integration
 ```
 

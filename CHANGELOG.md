@@ -134,6 +134,10 @@
 - Added the M2 `multistore` crate spec for Cosmos SDK commit info protobufs,
   deterministic multi-store app hashes, store-root proof ops, and cache
   multi-store behavior.
+- Started the Tier-2 `multistore` crate with in-memory store mounting,
+  commit-info protobuf encoding, deterministic app-hash composition,
+  store-root proof ops, commit history, and clone-backed cache multi-store
+  write-back.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

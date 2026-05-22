@@ -1,7 +1,7 @@
 # Crate: `multistore`
 
 **Tier:** 2 (state and store)
-**Depends on:** `iavl`, `kvstore`, `ics23-proofs`, `merkle`, `hash`
+**Depends on:** `encoding`, `iavl`, `kvstore`, `ics23-proofs`, `merkle`, `hash`
 **Consumed by:** M2 integration tests, later SDK module keepers, ABCI query
 proofs, and app-hash replay.
 **Source of truth (Go):** `cosmossdk.io/store` v1.1.1 packages `rootmulti`,
@@ -258,10 +258,10 @@ Each scenario must be registered in BOTH the Go fixturegen
 
 ## Definition Of Done
 
-- [ ] Crate created at `crates/tier-2-state-and-store/multistore/` with a
+- [x] Crate created at `crates/tier-2-state-and-store/multistore/` with a
       `Cargo.toml` inheriting workspace metadata, and the crate path is added
       to root `Cargo.toml` `[workspace]` members.
-- [ ] Public API above implemented with documented modules and
+- [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
 - [ ] All REQ-1..REQ-22 covered by unit, property, or conformance tests.
 - [ ] All four conformance fixture files committed with `.meta.json` sidecars.
@@ -270,7 +270,7 @@ Each scenario must be registered in BOTH the Go fixturegen
 - [ ] `cargo fmt --check` green.
 - [ ] `cargo llvm-cov -p multistore --summary-only` reports >= 90 % line
       coverage.
-- [ ] `crates/tier-2-state-and-store/multistore/README.md` present with
+- [x] `crates/tier-2-state-and-store/multistore/README.md` present with
       purpose / consumers / conformance.
 - [ ] Multistore fixturegen scenarios registered in BOTH the Go fixturegen and
       the Rust `SCENARIOS` const.
