@@ -121,6 +121,9 @@
 - Added Go-generated `kvstore` conformance fixtures for basic IAVL-backed
   operations, cache write-back, prefix stores, gas accounting, and malformed
   API cases.
+- Added the M2 `ics23-proofs` crate spec for SDK proof-op wrapping,
+  membership / non-membership verification, simple commitment proofs, and
+  conformance fixtures.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.
