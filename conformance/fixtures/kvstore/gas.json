@@ -1,0 +1,131 @@
+{
+  "scenario": "kvstore-gas",
+  "source": "cosmossdk.io/store/gaskv and cosmossdk.io/store/types v1.1.1",
+  "configs": [
+    {
+      "label": "kv",
+      "has_cost": 1000,
+      "delete_cost": 1000,
+      "read_cost_flat": 1000,
+      "read_cost_per_byte": 3,
+      "write_cost_flat": 2000,
+      "write_cost_per_byte": 30,
+      "iter_next_cost_flat": 30
+    },
+    {
+      "label": "transient",
+      "has_cost": 100,
+      "delete_cost": 100,
+      "read_cost_flat": 100,
+      "read_cost_per_byte": 0,
+      "write_cost_flat": 200,
+      "write_cost_per_byte": 3,
+      "iter_next_cost_flat": 3
+    }
+  ],
+  "operation_case": {
+    "label": "kv_get_has_set_delete",
+    "limit": 10000,
+    "operations": [
+      {
+        "action": "set",
+        "key_hex": "6b",
+        "value_hex": "76616c7565",
+        "consumed": 2180,
+        "consumed_to_limit": 2180
+      },
+      {
+        "action": "get",
+        "key_hex": "6b",
+        "result_exists": true,
+        "result_value_hex": "76616c7565",
+        "consumed": 3198,
+        "consumed_to_limit": 3198
+      },
+      {
+        "action": "has",
+        "key_hex": "6b",
+        "has": true,
+        "consumed": 4198,
+        "consumed_to_limit": 4198
+      },
+      {
+        "action": "delete",
+        "key_hex": "6b",
+        "consumed": 5198,
+        "consumed_to_limit": 5198
+      },
+      {
+        "action": "get",
+        "key_hex": "6d697373696e67",
+        "consumed": 6219,
+        "consumed_to_limit": 6219
+      }
+    ]
+  },
+  "iterator_cases": [
+    {
+      "label": "forward_two_entries",
+      "limit": 10000,
+      "ascending": true,
+      "setup_entries": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "3232"
+        }
+      ],
+      "entries": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "3232"
+        }
+      ],
+      "consumed": 111,
+      "consumed_to_limit": 111
+    },
+    {
+      "label": "reverse_two_entries",
+      "limit": 10000,
+      "ascending": false,
+      "setup_entries": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "3232"
+        }
+      ],
+      "entries": [
+        {
+          "key_hex": "62",
+          "value_hex": "3232"
+        },
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        }
+      ],
+      "consumed": 114,
+      "consumed_to_limit": 114
+    },
+    {
+      "label": "empty_iterator",
+      "limit": 10000,
+      "ascending": true,
+      "setup_entries": [],
+      "entries": [],
+      "consumed": 30,
+      "consumed_to_limit": 30
+    }
+  ]
+}

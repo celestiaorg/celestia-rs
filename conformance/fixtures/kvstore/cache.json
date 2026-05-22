@@ -1,0 +1,140 @@
+{
+  "scenario": "kvstore-cache",
+  "source": "cosmossdk.io/store/cachekv v1.1.1",
+  "cases": [
+    {
+      "label": "write_back_merge_and_flush",
+      "parent_entries": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "32"
+        },
+        {
+          "key_hex": "64",
+          "value_hex": "34"
+        }
+      ],
+      "operations": [
+        {
+          "action": "get",
+          "key_hex": "61",
+          "result_exists": true,
+          "result_value_hex": "31"
+        },
+        {
+          "action": "has",
+          "key_hex": "62",
+          "has": true
+        },
+        {
+          "action": "set",
+          "key_hex": "62",
+          "value_hex": "74776f",
+          "previous_exists": true,
+          "previous_value_hex": "32"
+        },
+        {
+          "action": "set",
+          "key_hex": "63",
+          "value_hex": "33"
+        },
+        {
+          "action": "delete",
+          "key_hex": "61",
+          "previous_exists": true,
+          "previous_value_hex": "31"
+        },
+        {
+          "action": "delete",
+          "key_hex": "6d697373696e67"
+        }
+      ],
+      "iterator_cases": [
+        {
+          "label": "cache_full_forward",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "62",
+              "value_hex": "74776f"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            }
+          ]
+        },
+        {
+          "label": "cache_full_reverse",
+          "ascending": false,
+          "entries": [
+            {
+              "key_hex": "64",
+              "value_hex": "34"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "74776f"
+            }
+          ]
+        },
+        {
+          "label": "cache_middle_forward",
+          "start_hex": "62",
+          "end_hex": "64",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "62",
+              "value_hex": "74776f"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "33"
+            }
+          ]
+        }
+      ],
+      "parent_before_write": [
+        {
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62",
+          "value_hex": "32"
+        },
+        {
+          "key_hex": "64",
+          "value_hex": "34"
+        }
+      ],
+      "parent_after_write": [
+        {
+          "key_hex": "62",
+          "value_hex": "74776f"
+        },
+        {
+          "key_hex": "63",
+          "value_hex": "33"
+        },
+        {
+          "key_hex": "64",
+          "value_hex": "34"
+        }
+      ]
+    }
+  ]
+}

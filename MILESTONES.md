@@ -31,7 +31,7 @@ against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
 (`iavl`) are under `docs/superpowers/specs/m2/`; `crates/tier-2-state-and-store/iavl/`
 has an in-memory API checkpoint with Go-compatible roots, iterators, proof op
 bytes, malformed proof coverage, and private node-shape checks. The `kvstore`
-spec is written next to it, and `crates/tier-2-state-and-store/kvstore/` now
-has the in-memory API foundation with cache, prefix, gas, and helper coverage.
-The next strict dependency step is adding Go-generated `kvstore` conformance
-fixtures and wiring them through `xtask`.
+crate is complete with IAVL-backed state, cache, prefix, gas, SDK helper
+coverage, Go-generated conformance fixtures, and `xtask` fixture refresh
+registration. The next strict dependency step is specifying the M2
+`ics23-proofs` crate before `multistore`.

@@ -15,3 +15,8 @@ workspace = true
 [dependencies]
 encoding = { path = "../../tier-0-primitives/encoding" }
 iavl = { path = "../iavl" }
+
+[dev-dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

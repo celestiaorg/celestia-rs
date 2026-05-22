@@ -1,0 +1,82 @@
+{
+  "scenario": "kvstore-malformed",
+  "source": "cosmossdk.io/store v1.1.1",
+  "cases": [
+    {
+      "label": "store_get_empty_key",
+      "api": "store_get",
+      "expected_error": "empty_key",
+      "go_panicked": false
+    },
+    {
+      "label": "cache_get_empty_key",
+      "api": "cache_get",
+      "expected_error": "empty_key",
+      "go_panicked": true,
+      "go_panic_type": "string",
+      "go_panic_message": "key is nil or empty"
+    },
+    {
+      "label": "prefix_set_empty_key",
+      "api": "prefix_set",
+      "expected_error": "empty_key",
+      "go_panicked": true,
+      "go_panic_type": "string",
+      "go_panic_message": "key is nil or empty"
+    },
+    {
+      "label": "gas_get_empty_key",
+      "api": "gas_get",
+      "expected_error": "empty_key",
+      "go_panicked": false
+    },
+    {
+      "label": "iterator_start_after_end",
+      "api": "iterator",
+      "start_hex": "7a",
+      "end_hex": "61",
+      "expected_error": "invalid_range",
+      "go_panicked": false
+    },
+    {
+      "label": "big_endian_short",
+      "api": "big_endian_to_u64",
+      "input_hex": "0102",
+      "expected_error": "invalid_range",
+      "go_panicked": true,
+      "go_panic_type": "runtime.boundsError",
+      "go_panic_message": "runtime error: index out of range [7] with length 2"
+    },
+    {
+      "label": "gas_set_out_of_gas",
+      "api": "gas_set",
+      "expected_error": "out_of_gas",
+      "go_panicked": true,
+      "go_panic_type": "out_of_gas",
+      "go_descriptor": "WriteFlat",
+      "consumed": 2000
+    },
+    {
+      "label": "gas_iterator_out_of_gas",
+      "api": "gas_iterator",
+      "limit": 50,
+      "expected_error": "out_of_gas",
+      "go_panicked": true,
+      "go_panic_type": "out_of_gas",
+      "go_descriptor": "IterNextFlat",
+      "consumed": 72,
+      "consumed_to_limit": 50
+    },
+    {
+      "label": "gas_overflow",
+      "api": "gas_meter_consume",
+      "limit": 18446744073709551615,
+      "expected_error": "gas_overflow",
+      "go_panicked": true,
+      "go_panic_type": "gas_overflow",
+      "go_descriptor": "overflow",
+      "consumed": 18446744073709551615,
+      "consumed_to_limit": 18446744073709551615
+    }
+  ]
+}

@@ -118,6 +118,9 @@
 - Started the Tier-2 `kvstore` crate with an IAVL-backed store, write-back
   cache, prefix-scoped view, gas-metered access, SDK byte helpers, and focused
   API coverage above the M2 threshold.
+- Added Go-generated `kvstore` conformance fixtures for basic IAVL-backed
+  operations, cache write-back, prefix stores, gas accounting, and malformed
+  API cases.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

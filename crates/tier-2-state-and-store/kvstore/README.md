@@ -20,8 +20,8 @@ multi-store and module crates.
 ## Conformance
 
 The implementation spec is `docs/superpowers/specs/m2/kvstore.md`.
-Go-generated conformance fixtures will live under
-`conformance/fixtures/kvstore/` and are regenerated with:
+Go-generated conformance fixtures live under `conformance/fixtures/kvstore/`
+and are regenerated with:
 
 ```bash
 cargo xtask refresh-fixtures --crate-name kvstore

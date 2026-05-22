@@ -671,7 +671,10 @@ name = "kvstore"
 version = "0.0.1"
 dependencies = [
  "encoding",
+ "hex",
  "iavl",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,110 @@
+{
+  "scenario": "kvstore-basic",
+  "source": "cosmossdk.io/store v1.1.1; github.com/cosmos/iavl v1.2.0",
+  "cases": [
+    {
+      "label": "set_replace_delete_commit",
+      "operations": [
+        {
+          "action": "set",
+          "key_hex": "61",
+          "value_hex": "6f6e65"
+        },
+        {
+          "action": "set",
+          "key_hex": "62",
+          "value_hex": "74776f"
+        },
+        {
+          "action": "set",
+          "key_hex": "62",
+          "value_hex": "64657578",
+          "previous_exists": true,
+          "previous_value_hex": "74776f",
+          "updated": true
+        },
+        {
+          "action": "set",
+          "key_hex": "656d707479"
+        },
+        {
+          "action": "get",
+          "key_hex": "62",
+          "result_exists": true,
+          "result_value_hex": "64657578"
+        },
+        {
+          "action": "has",
+          "key_hex": "61",
+          "has": true
+        },
+        {
+          "action": "delete",
+          "key_hex": "6d697373696e67"
+        },
+        {
+          "action": "delete",
+          "key_hex": "61",
+          "previous_exists": true,
+          "previous_value_hex": "6f6e65"
+        }
+      ],
+      "version": 1,
+      "size": 2,
+      "root_hash_hex": "6ea7aef2cbaa9791ab8e1dfc29cb3cae16aab4fd8b784b1cb21debd40e090c85",
+      "iterator_cases": [
+        {
+          "label": "full_forward",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "62",
+              "value_hex": "64657578"
+            },
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            }
+          ]
+        },
+        {
+          "label": "full_reverse",
+          "ascending": false,
+          "entries": [
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "64657578"
+            }
+          ]
+        },
+        {
+          "label": "middle_forward",
+          "start_hex": "62",
+          "end_hex": "66",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "62",
+              "value_hex": "64657578"
+            },
+            {
+              "key_hex": "656d707479",
+              "value_hex": ""
+            }
+          ]
+        },
+        {
+          "label": "empty_equal_bounds",
+          "start_hex": "62",
+          "end_hex": "62",
+          "ascending": true,
+          "entries": []
+        }
+      ]
+    }
+  ]
+}

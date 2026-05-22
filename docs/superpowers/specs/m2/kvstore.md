@@ -292,8 +292,8 @@ Each scenario must be registered in BOTH the Go fixturegen
       to root `Cargo.toml` `[workspace]` members.
 - [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
-- [ ] All REQ-1..REQ-18 covered by unit, property, or conformance tests.
-- [ ] All five conformance fixture files committed with `.meta.json` sidecars.
+- [x] All REQ-1..REQ-18 covered by unit, property, or conformance tests.
+- [x] All five conformance fixture files committed with `.meta.json` sidecars.
 - [x] `cargo test -p kvstore` green.
 - [x] `cargo clippy -p kvstore --all-targets -- -D warnings` green.
 - [x] `cargo fmt --check` green.
@@ -301,7 +301,7 @@ Each scenario must be registered in BOTH the Go fixturegen
       coverage.
 - [x] `crates/tier-2-state-and-store/kvstore/README.md` present with purpose /
       consumers / conformance.
-- [ ] KVStore fixturegen scenarios registered in BOTH the Go fixturegen and the
+- [x] KVStore fixturegen scenarios registered in BOTH the Go fixturegen and the
       Rust `SCENARIOS` const.
 
 ## Out Of Scope

@@ -320,6 +320,31 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "iavl",
         output_path: "conformance/fixtures/iavl/malformed.json",
     },
+    Scenario {
+        name: "kvstore-basic",
+        crate_name: "kvstore",
+        output_path: "conformance/fixtures/kvstore/basic.json",
+    },
+    Scenario {
+        name: "kvstore-cache",
+        crate_name: "kvstore",
+        output_path: "conformance/fixtures/kvstore/cache.json",
+    },
+    Scenario {
+        name: "kvstore-prefix",
+        crate_name: "kvstore",
+        output_path: "conformance/fixtures/kvstore/prefix.json",
+    },
+    Scenario {
+        name: "kvstore-gas",
+        crate_name: "kvstore",
+        output_path: "conformance/fixtures/kvstore/gas.json",
+    },
+    Scenario {
+        name: "kvstore-malformed",
+        crate_name: "kvstore",
+        output_path: "conformance/fixtures/kvstore/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

@@ -1,0 +1,171 @@
+{
+  "scenario": "kvstore-prefix",
+  "source": "cosmossdk.io/store/prefix and cosmossdk.io/store/types v1.1.1",
+  "prefix_end_cases": [
+    {
+      "label": "empty",
+      "prefix_hex": ""
+    },
+    {
+      "label": "simple_increment",
+      "prefix_hex": "aa00",
+      "end_exists": true,
+      "end_hex": "aa01"
+    },
+    {
+      "label": "truncate_ff_suffix",
+      "prefix_hex": "aaff",
+      "end_exists": true,
+      "end_hex": "ab"
+    },
+    {
+      "label": "all_ff",
+      "prefix_hex": "ffff"
+    }
+  ],
+  "inclusive_end_cases": [
+    {
+      "label": "abc",
+      "in_hex": "616263",
+      "out_hex": "61626300"
+    }
+  ],
+  "big_endian_cases": [
+    {
+      "label": "zero",
+      "value": 0,
+      "encoded_hex": "0000000000000000",
+      "decoded": 0
+    },
+    {
+      "label": "forty_two",
+      "value": 42,
+      "encoded_hex": "000000000000002a",
+      "decoded": 42
+    },
+    {
+      "label": "max",
+      "value": 18446744073709551615,
+      "encoded_hex": "ffffffffffffffff",
+      "decoded": 18446744073709551615
+    }
+  ],
+  "cases": [
+    {
+      "label": "bank_prefix_maps_and_filters",
+      "prefix_hex": "62616e6b2f",
+      "parent_entries": [
+        {
+          "key_hex": "62616e6b2f61",
+          "value_hex": "31"
+        },
+        {
+          "key_hex": "62616e6b2f62",
+          "value_hex": "32"
+        },
+        {
+          "key_hex": "7374616b696e672f61",
+          "value_hex": "33"
+        }
+      ],
+      "operations": [
+        {
+          "action": "get",
+          "key_hex": "61",
+          "result_exists": true,
+          "result_value_hex": "31"
+        },
+        {
+          "action": "has",
+          "key_hex": "62",
+          "has": true
+        },
+        {
+          "action": "set",
+          "key_hex": "63",
+          "value_hex": "34"
+        }
+      ],
+      "iterator_cases": [
+        {
+          "label": "prefix_full_forward",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "34"
+            }
+          ]
+        },
+        {
+          "label": "prefix_full_reverse",
+          "ascending": false,
+          "entries": [
+            {
+              "key_hex": "63",
+              "value_hex": "34"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            }
+          ]
+        },
+        {
+          "label": "prefix_bounded",
+          "start_hex": "61",
+          "end_hex": "7a",
+          "ascending": true,
+          "entries": [
+            {
+              "key_hex": "61",
+              "value_hex": "31"
+            },
+            {
+              "key_hex": "62",
+              "value_hex": "32"
+            },
+            {
+              "key_hex": "63",
+              "value_hex": "34"
+            }
+          ]
+        }
+      ],
+      "final_operations": [
+        {
+          "action": "delete",
+          "key_hex": "61",
+          "previous_exists": true,
+          "previous_value_hex": "31"
+        }
+      ],
+      "parent_entries_after": [
+        {
+          "key_hex": "62616e6b2f62",
+          "value_hex": "32"
+        },
+        {
+          "key_hex": "62616e6b2f63",
+          "value_hex": "34"
+        },
+        {
+          "key_hex": "7374616b696e672f61",
+          "value_hex": "33"
+        }
+      ]
+    }
+  ]
+}
