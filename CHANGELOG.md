@@ -113,6 +113,8 @@
   membership and non-membership proof bytes plus root verification.
 - Expanded `iavl` malformed coverage for invalid proof verification inputs,
   proof operation payload mismatches, and impossible private node shapes.
+- Added the M2 `kvstore` crate spec for IAVL-backed KV access, cache branches,
+  prefix stores, gas accounting, and conformance fixtures.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

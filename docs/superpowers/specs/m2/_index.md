@@ -12,8 +12,8 @@ wrappers, and ICS-23 proof material.
 
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
-| 1 | `iavl` | 2 | [iavl.md](iavl.md) | in progress |
-| 2 | `kvstore` | 2 | _to be written_ | pending |
+| 1 | `iavl` | 2 | [iavl.md](iavl.md) | complete |
+| 2 | `kvstore` | 2 | [kvstore.md](kvstore.md) | specified |
 | 3 | `ics23-proofs` | 2 | _to be written_ | pending |
 | 4 | `multistore` | 2 | _to be written_ | pending |
 
