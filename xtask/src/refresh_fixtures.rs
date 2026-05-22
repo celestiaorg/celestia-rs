@@ -345,6 +345,26 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "kvstore",
         output_path: "conformance/fixtures/kvstore/malformed.json",
     },
+    Scenario {
+        name: "ics23-proofs-iavl",
+        crate_name: "ics23-proofs",
+        output_path: "conformance/fixtures/ics23-proofs/iavl.json",
+    },
+    Scenario {
+        name: "ics23-proofs-simple",
+        crate_name: "ics23-proofs",
+        output_path: "conformance/fixtures/ics23-proofs/simple.json",
+    },
+    Scenario {
+        name: "ics23-proofs-ops",
+        crate_name: "ics23-proofs",
+        output_path: "conformance/fixtures/ics23-proofs/ops.json",
+    },
+    Scenario {
+        name: "ics23-proofs-malformed",
+        crate_name: "ics23-proofs",
+        output_path: "conformance/fixtures/ics23-proofs/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

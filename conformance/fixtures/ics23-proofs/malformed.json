@@ -1,0 +1,66 @@
+{
+  "scenario": "ics23-proofs-malformed",
+  "source": "cosmossdk.io/store/types v1.1.1 malformed proof-op cases",
+  "cases": [
+    {
+      "label": "malformed_proto",
+      "api": "proof_decode",
+      "data_hex": "ff",
+      "expected_error": "malformed_proto"
+    },
+    {
+      "label": "missing_commitment_variant",
+      "api": "proof_decode",
+      "expected_error": "malformed_proto"
+    },
+    {
+      "label": "unknown_proof_op_type",
+      "api": "op_decode",
+      "proof_op_type": "unknown",
+      "key_hex": "0a",
+      "data_hex": "0a9a010a010a12010a1a0b0801180120012a03000202222b08011204020402201a2120154b101a72acffe0f5e65d1e144a57dc6f97758d2049821231f02b6a5b44fe81222b08011204040802201a2120734fad809673ab2b9672453a8b2bc8c9591e2d1d97933df5b4c3b0531bf82e72222b08011204081402201a212022b4e34a1778d6a03aac39f00d89deb886e0cc37454e300b7aebeb4f4939c079",
+      "expected_error": "invalid_type"
+    },
+    {
+      "label": "empty_proof_op_key",
+      "api": "op_decode",
+      "proof_op_type": "ics23:iavl",
+      "data_hex": "0a9a010a010a12010a1a0b0801180120012a03000202222b08011204020402201a2120154b101a72acffe0f5e65d1e144a57dc6f97758d2049821231f02b6a5b44fe81222b08011204040802201a2120734fad809673ab2b9672453a8b2bc8c9591e2d1d97933df5b4c3b0531bf82e72222b08011204081402201a212022b4e34a1778d6a03aac39f00d89deb886e0cc37454e300b7aebeb4f4939c079",
+      "expected_error": "empty_key"
+    },
+    {
+      "label": "bad_run_arg_count",
+      "api": "run",
+      "proof_op_type": "ics23:iavl",
+      "key_hex": "0a",
+      "data_hex": "0a9a010a010a12010a1a0b0801180120012a03000202222b08011204020402201a2120154b101a72acffe0f5e65d1e144a57dc6f97758d2049821231f02b6a5b44fe81222b08011204040802201a2120734fad809673ab2b9672453a8b2bc8c9591e2d1d97933df5b4c3b0531bf82e72222b08011204081402201a212022b4e34a1778d6a03aac39f00d89deb886e0cc37454e300b7aebeb4f4939c079",
+      "run_args_hex": [
+        "0a",
+        "6578747261"
+      ],
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "wrong_membership_value",
+      "api": "run",
+      "proof_op_type": "ics23:iavl",
+      "key_hex": "0a",
+      "data_hex": "0a9a010a010a12010a1a0b0801180120012a03000202222b08011204020402201a2120154b101a72acffe0f5e65d1e144a57dc6f97758d2049821231f02b6a5b44fe81222b08011204040802201a2120734fad809673ab2b9672453a8b2bc8c9591e2d1d97933df5b4c3b0531bf82e72222b08011204081402201a212022b4e34a1778d6a03aac39f00d89deb886e0cc37454e300b7aebeb4f4939c079",
+      "run_args_hex": [
+        "77726f6e67"
+      ],
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "wrong_membership_key",
+      "api": "run",
+      "proof_op_type": "ics23:iavl",
+      "key_hex": "ff",
+      "data_hex": "0a9a010a010a12010a1a0b0801180120012a03000202222b08011204020402201a2120154b101a72acffe0f5e65d1e144a57dc6f97758d2049821231f02b6a5b44fe81222b08011204040802201a2120734fad809673ab2b9672453a8b2bc8c9591e2d1d97933df5b4c3b0531bf82e72222b08011204081402201a212022b4e34a1778d6a03aac39f00d89deb886e0cc37454e300b7aebeb4f4939c079",
+      "run_args_hex": [
+        "0a"
+      ],
+      "expected_error": "invalid_proof"
+    }
+  ]
+}

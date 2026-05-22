@@ -128,6 +128,9 @@
   membership / non-membership verification, batch and compressed proof root
   calculation, CometBFT `ProofOp` protobuf compatibility, and focused coverage
   above the M2 threshold.
+- Added Go-generated `ics23-proofs` conformance fixtures for IAVL commitment
+  ops, simple Merkle store-root proofs, CometBFT `ProofOp` / `ProofOps`
+  encoding, and malformed proof-op cases.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

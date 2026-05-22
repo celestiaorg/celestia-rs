@@ -687,6 +687,8 @@ dependencies = [
  "iavl",
  "ics23",
  "prost",
+ "serde",
+ "serde_json",
  "tendermint-proto",
 ]
 

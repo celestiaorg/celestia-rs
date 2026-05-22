@@ -1,0 +1,16 @@
+{
+  "scenario": "ics23-proofs-iavl",
+  "source_chain": "n/a (deterministic local Go ICS-23 vectors)",
+  "source_heights": [],
+  "app_version": "n/a",
+  "celestia_app_commit": "n/a",
+  "go_version": "1.24",
+  "crypto_packages": [
+    "crypto/sha256 (stdlib)",
+    "cosmossdk.io/store v1.1.1",
+    "github.com/cometbft/cometbft v0.38.12",
+    "github.com/cosmos/ics23/go v0.11.0",
+    "github.com/cosmos/iavl v1.2.0"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario ics23-proofs-iavl"
+}

@@ -224,8 +224,8 @@ Each scenario must be registered in BOTH the Go fixturegen
       to root `Cargo.toml` `[workspace]` members.
 - [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
-- [ ] All REQ-1..REQ-17 covered by unit, property, or conformance tests.
-- [ ] All four conformance fixture files committed with `.meta.json` sidecars.
+- [x] All REQ-1..REQ-17 covered by unit, property, or conformance tests.
+- [x] All four conformance fixture files committed with `.meta.json` sidecars.
 - [x] `cargo test -p ics23-proofs` green.
 - [x] `cargo clippy -p ics23-proofs --all-targets -- -D warnings` green.
 - [x] `cargo fmt --check` green.
@@ -233,7 +233,7 @@ Each scenario must be registered in BOTH the Go fixturegen
       coverage.
 - [x] `crates/tier-2-state-and-store/ics23-proofs/README.md` present with
       purpose / consumers / conformance.
-- [ ] ICS23 proof fixturegen scenarios registered in BOTH the Go fixturegen and
+- [x] ICS23 proof fixturegen scenarios registered in BOTH the Go fixturegen and
       the Rust `SCENARIOS` const.
 
 ## Out Of Scope

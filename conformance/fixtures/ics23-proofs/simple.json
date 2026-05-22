@@ -1,0 +1,40 @@
+{
+  "scenario": "ics23-proofs-simple",
+  "source": "cosmossdk.io/store/types ProofOpFromMap v1.1.1",
+  "entries": [
+    {
+      "store_name": "acc",
+      "key_hex": "616363",
+      "value_hex": "9c2c1be6daaeddf4641c7d621264659bef4181645c1f6af747516e3443642eed"
+    },
+    {
+      "store_name": "bank",
+      "key_hex": "62616e6b",
+      "value_hex": "49ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d"
+    },
+    {
+      "store_name": "staking",
+      "key_hex": "7374616b696e67",
+      "value_hex": "76ae7fb0a7e85f50a373c679eec8022d1eb85360c7196e95b81b64480ec4b993"
+    }
+  ],
+  "cases": [
+    {
+      "label": "bank_store_root",
+      "store_name": "bank",
+      "proof_type": "membership",
+      "proof_op_type": "ics23:simple",
+      "key_hex": "62616e6b",
+      "value_hex": "49ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d",
+      "root_hash_hex": "d021f48963fa7a972e2e9e4cb93fa4c2c2f0da178205b704d576d19730cdc9c2",
+      "proof_proto_hex": "0a83010a0462616e6b122049ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d1a090801180120012a01002225080112210141d5619257b2369bb11d49bc95e074ec1af06d70a0bba71b1cf7d4fa4edff35b222708011201011a20abe178bbc7494cede6c9e8987e5b54c3d34cefd44dd49058e4bee803f1cda87f",
+      "proof_op_key_hex": "62616e6b",
+      "proof_op_data_hex": "0a83010a0462616e6b122049ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d1a090801180120012a01002225080112210141d5619257b2369bb11d49bc95e074ec1af06d70a0bba71b1cf7d4fa4edff35b222708011201011a20abe178bbc7494cede6c9e8987e5b54c3d34cefd44dd49058e4bee803f1cda87f",
+      "run_args_hex": [
+        "49ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d"
+      ],
+      "run_root_hex": "d021f48963fa7a972e2e9e4cb93fa4c2c2f0da178205b704d576d19730cdc9c2",
+      "verified": true
+    }
+  ]
+}
