@@ -1,0 +1,17 @@
+[package]
+name = "kvstore"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK key/value store primitives for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+encoding = { path = "../../tier-0-primitives/encoding" }
+iavl = { path = "../iavl" }

@@ -287,19 +287,19 @@ Each scenario must be registered in BOTH the Go fixturegen
 
 ## Definition Of Done
 
-- [ ] Crate created at `crates/tier-2-state-and-store/kvstore/` with a
+- [x] Crate created at `crates/tier-2-state-and-store/kvstore/` with a
       `Cargo.toml` inheriting workspace metadata, and the crate path is added
       to root `Cargo.toml` `[workspace]` members.
-- [ ] Public API above implemented with documented modules and
+- [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
 - [ ] All REQ-1..REQ-18 covered by unit, property, or conformance tests.
 - [ ] All five conformance fixture files committed with `.meta.json` sidecars.
-- [ ] `cargo test -p kvstore` green.
-- [ ] `cargo clippy -p kvstore --all-targets -- -D warnings` green.
-- [ ] `cargo fmt --check` green.
-- [ ] `cargo llvm-cov -p kvstore --summary-only` reports >= 90 % line
+- [x] `cargo test -p kvstore` green.
+- [x] `cargo clippy -p kvstore --all-targets -- -D warnings` green.
+- [x] `cargo fmt --check` green.
+- [x] `cargo llvm-cov -p kvstore --summary-only` reports >= 90 % line
       coverage.
-- [ ] `crates/tier-2-state-and-store/kvstore/README.md` present with purpose /
+- [x] `crates/tier-2-state-and-store/kvstore/README.md` present with purpose /
       consumers / conformance.
 - [ ] KVStore fixturegen scenarios registered in BOTH the Go fixturegen and the
       Rust `SCENARIOS` const.

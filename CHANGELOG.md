@@ -115,6 +115,9 @@
   proof operation payload mismatches, and impossible private node shapes.
 - Added the M2 `kvstore` crate spec for IAVL-backed KV access, cache branches,
   prefix stores, gas accounting, and conformance fixtures.
+- Started the Tier-2 `kvstore` crate with an IAVL-backed store, write-back
+  cache, prefix-scoped view, gas-metered access, SDK byte helpers, and focused
+  API coverage above the M2 threshold.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.
