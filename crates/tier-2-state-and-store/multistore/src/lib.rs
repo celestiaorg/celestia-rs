@@ -73,7 +73,7 @@ impl CommitInfo {
         Ok(Self {
             version,
             store_infos,
-            timestamp: None,
+            timestamp: Some(go_zero_timestamp()),
         })
     }
 
@@ -531,6 +531,13 @@ fn validate_store_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+fn go_zero_timestamp() -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: -62_135_596_800,
+        nanos: 0,
+    }
+}
+
 fn simple_map_leaves(store_infos: &[StoreInfo]) -> Vec<Vec<u8>> {
     store_infos
         .iter()
@@ -686,5 +693,193 @@ impl TryFrom<RawCommitId> for CommitId {
             version: value.version,
             hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic)]
+
+    use super::*;
+
+    #[test]
+    fn store_info_lookup_cache_helpers_and_defaults_work() {
+        let store_info = StoreInfo {
+            name: "auth".to_owned(),
+            commit_id: CommitId {
+                version: 1,
+                hash: hash::sha256(b"auth"),
+            },
+        };
+        let info = CommitInfo::new(1, vec![store_info]).expect("commit info");
+        assert!(info.store_info("auth").is_some());
+        assert!(info.store_info("bank").is_none());
+
+        let mut store = Store::default();
+        assert!(!store.has_store("bank"));
+        store
+            .mount_store("bank", StoreKind::Iavl)
+            .expect("mount bank");
+        assert!(store.has_store("bank"));
+
+        let cache = store.cache_multi_store();
+        assert!(cache.has_store("bank"));
+        assert_eq!(cache.store_names(), vec!["bank"]);
+        assert!(cache.get_store("bank").is_ok());
+        assert!(matches!(
+            cache.get_store("missing"),
+            Err(Error::UnknownStore(name)) if name == "missing"
+        ));
+
+        let parent_without_bank = &mut Store::new();
+        assert_eq!(
+            cache.write(parent_without_bank),
+            Err(Error::UnknownStore("bank".to_owned()))
+        );
+    }
+
+    #[test]
+    fn proto_error_paths_are_typed() {
+        let invalid = CommitInfo {
+            version: 0,
+            store_infos: Vec::new(),
+            timestamp: None,
+        };
+        assert_eq!(
+            invalid.to_proto_bytes(),
+            Err(Error::InvalidVersion { version: 0 })
+        );
+
+        let invalid_version = RawCommitInfo {
+            version: 0,
+            store_infos: Vec::new(),
+            timestamp: None,
+        }
+        .encode_to_vec();
+        assert_eq!(
+            CommitInfo::from_proto_bytes(&invalid_version),
+            Err(Error::InvalidVersion { version: 0 })
+        );
+
+        let missing_commit_id = RawCommitInfo {
+            version: 1,
+            store_infos: vec![RawStoreInfo {
+                name: "bank".to_owned(),
+                commit_id: None,
+            }],
+            timestamp: None,
+        }
+        .encode_to_vec();
+        assert_eq!(
+            CommitInfo::from_proto_bytes(&missing_commit_id),
+            Err(Error::InvalidCommitInfo("missing store commit ID"))
+        );
+
+        let invalid_commit_id_version = RawCommitInfo {
+            version: 1,
+            store_infos: vec![RawStoreInfo {
+                name: "bank".to_owned(),
+                commit_id: Some(RawCommitId {
+                    version: 0,
+                    hash: hash::sha256(b"bank").to_vec(),
+                }),
+            }],
+            timestamp: None,
+        }
+        .encode_to_vec();
+        assert_eq!(
+            CommitInfo::from_proto_bytes(&invalid_commit_id_version),
+            Err(Error::InvalidVersion { version: 0 })
+        );
+    }
+
+    #[test]
+    fn commit_rejects_impossible_next_versions() {
+        let mut overflow = Store {
+            initial_version: 1,
+            version: Version::MAX,
+            stores: std::collections::BTreeMap::new(),
+            last_commit_info: None,
+            history: std::collections::BTreeMap::new(),
+        };
+        assert_eq!(
+            overflow.commit(),
+            Err(Error::InvalidVersion {
+                version: Version::MAX
+            })
+        );
+
+        let mut negative = Store {
+            initial_version: 1,
+            version: -2,
+            stores: std::collections::BTreeMap::new(),
+            last_commit_info: None,
+            history: std::collections::BTreeMap::new(),
+        };
+        assert_eq!(
+            negative.commit(),
+            Err(Error::InvalidVersion { version: -1 })
+        );
+    }
+
+    #[test]
+    fn simple_proof_generation_covers_left_and_malformed_paths() {
+        let auth_hash = hash::sha256(b"auth");
+        let bank_hash = hash::sha256(b"bank");
+        let store_infos = vec![
+            StoreInfo {
+                name: "bank".to_owned(),
+                commit_id: CommitId {
+                    version: 1,
+                    hash: bank_hash,
+                },
+            },
+            StoreInfo {
+                name: "auth".to_owned(),
+                commit_id: CommitId {
+                    version: 1,
+                    hash: auth_hash,
+                },
+            },
+        ];
+        let root = commit_info_hash(&store_infos).expect("commit info hash");
+        let op = proof_op_from_store_infos(&store_infos, "auth").expect("auth proof op");
+        let commitment = ics23_proofs::CommitmentOp::from_proof_op(op).expect("commitment op");
+        assert_eq!(
+            commitment.run(&[&auth_hash]).expect("run proof op"),
+            vec![root]
+        );
+
+        let malformed = merkle::Proof {
+            total: 2,
+            index: 0,
+            leaf_hash: hash::sha256(b"leaf"),
+            aunts: Vec::new(),
+        };
+        assert_eq!(
+            inner_ops_from_simple_proof(&malformed),
+            Err(Error::Merkle(merkle::Error::UnexpectedAuntCount))
+        );
+    }
+
+    #[test]
+    fn error_display_and_from_impls_are_covered() {
+        let errors = [
+            Error::EmptyStoreName,
+            Error::DuplicateStoreName("bank".to_owned()),
+            Error::UnknownStore("bank".to_owned()),
+            Error::InvalidVersion { version: 0 },
+            Error::VersionNotFound { version: 9 },
+            Error::InvalidCommitInfo("bad info"),
+            Error::MalformedProto("bad proto"),
+            Error::from(kvstore::Error::EmptyKey),
+            Error::from(iavl::Error::EmptyKey),
+            Error::from(merkle::Error::InvalidTotal),
+            Error::from(ics23_proofs::Error::EmptyKey),
+        ];
+
+        for error in errors {
+            assert!(!error.to_string().is_empty());
+        }
     }
 }

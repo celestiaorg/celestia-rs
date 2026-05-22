@@ -1,0 +1,53 @@
+{
+  "scenario": "multistore-malformed",
+  "source": "cosmossdk.io/store/types malformed multistore API cases",
+  "cases": [
+    {
+      "label": "empty_store_name",
+      "api": "mount_store",
+      "expected_error": "empty_store_name"
+    },
+    {
+      "label": "duplicate_store_name",
+      "api": "mount_store",
+      "store_name": "bank",
+      "expected_error": "duplicate_store_name"
+    },
+    {
+      "label": "unknown_store",
+      "api": "get_store",
+      "store_name": "missing",
+      "expected_error": "unknown_store"
+    },
+    {
+      "label": "invalid_initial_version",
+      "api": "with_initial_version",
+      "expected_error": "invalid_version"
+    },
+    {
+      "label": "version_not_found",
+      "api": "get_commit_info",
+      "version": 99,
+      "expected_error": "version_not_found"
+    },
+    {
+      "label": "malformed_commit_info_proto",
+      "api": "commit_info_decode",
+      "commit_info_proto_hex": "ff",
+      "expected_error": "malformed_proto"
+    },
+    {
+      "label": "bad_commit_hash",
+      "api": "commit_info_decode",
+      "commit_info_proto_hex": "0801120e0a0462616e6b12060801120201021a0b088092b8c398feffffff01",
+      "expected_error": "invalid_commit_info"
+    },
+    {
+      "label": "unknown_proof_store",
+      "api": "proof_op",
+      "store_name": "missing",
+      "commit_info_proto_hex": "0801122c0a0462616e6b12240801122049ee651684ed23f166dea6ec2900325f5e2d03e1b258e6a258890d3a0f13d98d1a0b088092b8c398feffffff01",
+      "expected_error": "unknown_store"
+    }
+  ]
+}

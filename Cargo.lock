@@ -850,6 +850,8 @@ dependencies = [
  "merkle",
  "prost",
  "prost-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

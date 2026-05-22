@@ -1,0 +1,34 @@
+{
+  "scenario": "multistore-proofs",
+  "source": "cosmossdk.io/store/types CommitInfo.ProofOp + IAVL ICS-23 proofs v1.1.1",
+  "cases": [
+    {
+      "label": "bank_balance_alice",
+      "store_name": "bank",
+      "store_infos": [
+        {
+          "name": "auth",
+          "version": 3,
+          "hash_hex": "0d371f3bb37443cb00fe6d542de7409d7a10b6c68a28fd455518649edcd07ac7"
+        },
+        {
+          "name": "bank",
+          "version": 3,
+          "hash_hex": "5c97ebaf97a994669c3a18615863fd85313eb35bd806669cc152291860837908"
+        }
+      ],
+      "store_hash_hex": "5c97ebaf97a994669c3a18615863fd85313eb35bd806669cc152291860837908",
+      "app_hash_hex": "a62959e98a706802dea6b28510436da9ae406e48b3686c2412c67b45c3652ac8",
+      "store_proof_op_type": "ics23:simple",
+      "store_proof_op_key_hex": "62616e6b",
+      "store_proof_op_data_hex": "0a5a0a0462616e6b12205c97ebaf97a994669c3a18615863fd85313eb35bd806669cc1522918608379081a090801180120012a01002225080112210145cf1cb52b602e78630dda5a375843402111879ed76cc6641757a532b3bf1f0f",
+      "store_run_root_hex": "a62959e98a706802dea6b28510436da9ae406e48b3686c2412c67b45c3652ac8",
+      "key_hex": "62616c616e63652f616c696365",
+      "value_hex": "3130",
+      "iavl_proof_op_type": "ics23:iavl",
+      "iavl_proof_op_key_hex": "62616c616e63652f616c696365",
+      "iavl_proof_op_data_hex": "0a4d0a0d62616c616e63652f616c696365120231301a0b0801180120012a03000202222b08011204020402201a2120be513381a219c87e2f06cb08cda6619bf31c281f10d02fc6bc29c27e3c01c48b",
+      "iavl_run_root_hex": "5c97ebaf97a994669c3a18615863fd85313eb35bd806669cc152291860837908"
+    }
+  ]
+}

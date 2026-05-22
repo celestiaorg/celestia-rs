@@ -37,8 +37,9 @@ registration. The M2 `ics23-proofs` crate is complete with SDK proof-op
 wrappers, IAVL and simple Merkle membership verification, non-membership
 verification, batch and compressed proof handling, CometBFT `ProofOp` protobuf
 compatibility, Go-generated conformance fixtures, and focused coverage above
-the M2 threshold. The M2 `multistore` crate is now started with an in-memory
-commit multi-store foundation covering commit-info protobuf compatibility,
-deterministic app-hash composition, store-root proof ops, commit history, and
-cache multi-store behavior. The next strict dependency step is adding
-Go-generated `multistore` conformance fixtures.
+the M2 threshold. The M2 `multistore` crate is complete with in-memory store
+mounting, commit-info protobuf compatibility, deterministic app-hash
+composition, store-root proof ops, commit history, cache multi-store behavior,
+Go-generated conformance fixtures, and focused coverage above the M2
+threshold. The next strict dependency step is creating the M2 integration
+acceptance scaffold.

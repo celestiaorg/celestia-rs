@@ -263,16 +263,16 @@ Each scenario must be registered in BOTH the Go fixturegen
       to root `Cargo.toml` `[workspace]` members.
 - [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
-- [ ] All REQ-1..REQ-22 covered by unit, property, or conformance tests.
-- [ ] All four conformance fixture files committed with `.meta.json` sidecars.
-- [ ] `cargo test -p multistore` green.
-- [ ] `cargo clippy -p multistore --all-targets -- -D warnings` green.
-- [ ] `cargo fmt --check` green.
-- [ ] `cargo llvm-cov -p multistore --summary-only` reports >= 90 % line
+- [x] All REQ-1..REQ-22 covered by unit, property, or conformance tests.
+- [x] All four conformance fixture files committed with `.meta.json` sidecars.
+- [x] `cargo test -p multistore` green.
+- [x] `cargo clippy -p multistore --all-targets -- -D warnings` green.
+- [x] `cargo fmt --check` green.
+- [x] `cargo llvm-cov -p multistore --summary-only` reports >= 90 % line
       coverage.
 - [x] `crates/tier-2-state-and-store/multistore/README.md` present with
       purpose / consumers / conformance.
-- [ ] Multistore fixturegen scenarios registered in BOTH the Go fixturegen and
+- [x] Multistore fixturegen scenarios registered in BOTH the Go fixturegen and
       the Rust `SCENARIOS` const.
 
 ## Out Of Scope

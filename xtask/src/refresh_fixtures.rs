@@ -365,6 +365,26 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "ics23-proofs",
         output_path: "conformance/fixtures/ics23-proofs/malformed.json",
     },
+    Scenario {
+        name: "multistore-commit",
+        crate_name: "multistore",
+        output_path: "conformance/fixtures/multistore/commit.json",
+    },
+    Scenario {
+        name: "multistore-cache",
+        crate_name: "multistore",
+        output_path: "conformance/fixtures/multistore/cache.json",
+    },
+    Scenario {
+        name: "multistore-proofs",
+        crate_name: "multistore",
+        output_path: "conformance/fixtures/multistore/proofs.json",
+    },
+    Scenario {
+        name: "multistore-malformed",
+        crate_name: "multistore",
+        output_path: "conformance/fixtures/multistore/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

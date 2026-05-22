@@ -1,0 +1,123 @@
+{
+  "scenario": "multistore-commit",
+  "source": "cosmossdk.io/store/types CommitInfo.Hash and CommitInfo protobuf v1.1.1",
+  "cases": [
+    {
+      "label": "empty_store",
+      "mounts": [],
+      "commits": [
+        {
+          "label": "commit_1",
+          "mutations": [],
+          "version": 1,
+          "store_infos": [],
+          "app_hash_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "commit_info_proto_hex": "08011a0b088092b8c398feffffff01"
+        }
+      ]
+    },
+    {
+      "label": "auth_bank_two_versions",
+      "mounts": [
+        "auth",
+        "bank"
+      ],
+      "commits": [
+        {
+          "label": "commit_1",
+          "mutations": [
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e63652f616c696365",
+              "value_hex": "3130"
+            },
+            {
+              "store_name": "auth",
+              "action": "set",
+              "key_hex": "6163636f756e742f616c696365",
+              "value_hex": "31"
+            }
+          ],
+          "version": 1,
+          "store_infos": [
+            {
+              "name": "auth",
+              "version": 1,
+              "hash_hex": "0d371f3bb37443cb00fe6d542de7409d7a10b6c68a28fd455518649edcd07ac7"
+            },
+            {
+              "name": "bank",
+              "version": 1,
+              "hash_hex": "44dd4888e0ab395665a02cd08c0af0ff65cdd4dd742abd1966161d9eb8274b35"
+            }
+          ],
+          "app_hash_hex": "20be6695a8244f52c1a3441fc4ec91ff608e002d24c0bc76f47f1d1fb120f1b4",
+          "commit_info_proto_hex": "0801122c0a04617574681224080112200d371f3bb37443cb00fe6d542de7409d7a10b6c68a28fd455518649edcd07ac7122c0a0462616e6b12240801122044dd4888e0ab395665a02cd08c0af0ff65cdd4dd742abd1966161d9eb8274b351a0b088092b8c398feffffff01"
+        },
+        {
+          "label": "commit_2",
+          "mutations": [
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e63652f616c696365",
+              "value_hex": "3132"
+            },
+            {
+              "store_name": "bank",
+              "action": "set",
+              "key_hex": "62616c616e63652f626f62",
+              "value_hex": "34"
+            }
+          ],
+          "version": 2,
+          "store_infos": [
+            {
+              "name": "auth",
+              "version": 2,
+              "hash_hex": "0d371f3bb37443cb00fe6d542de7409d7a10b6c68a28fd455518649edcd07ac7"
+            },
+            {
+              "name": "bank",
+              "version": 2,
+              "hash_hex": "70bded44e4ff29586fcfca4ab7394c0d47cde4bab89860912b07578da3e1f457"
+            }
+          ],
+          "app_hash_hex": "0cd8110dbd2fe5498b01f92a43eb92299eb2abebe607ca54527fa6de4c6d5229",
+          "commit_info_proto_hex": "0802122c0a04617574681224080212200d371f3bb37443cb00fe6d542de7409d7a10b6c68a28fd455518649edcd07ac7122c0a0462616e6b12240802122070bded44e4ff29586fcfca4ab7394c0d47cde4bab89860912b07578da3e1f4571a0b088092b8c398feffffff01"
+        }
+      ]
+    },
+    {
+      "label": "custom_initial_version",
+      "initial_version": 10,
+      "mounts": [
+        "gov"
+      ],
+      "commits": [
+        {
+          "label": "commit_1",
+          "mutations": [
+            {
+              "store_name": "gov",
+              "action": "set",
+              "key_hex": "70726f706f73616c2f31",
+              "value_hex": "6f70656e"
+            }
+          ],
+          "version": 10,
+          "store_infos": [
+            {
+              "name": "gov",
+              "version": 10,
+              "hash_hex": "5f52423fd084b8f6a953d991d0b36f5f6d5a02cbf5fbb7dcc6a1ca663db10bf2"
+            }
+          ],
+          "app_hash_hex": "5bc138fb94efb237c4500509e82cf0cedf29c475b0b5c29877b664e6da9c5d09",
+          "commit_info_proto_hex": "080a122b0a03676f761224080a12205f52423fd084b8f6a953d991d0b36f5f6d5a02cbf5fbb7dcc6a1ca663db10bf21a0b088092b8c398feffffff01"
+        }
+      ]
+    }
+  ]
+}

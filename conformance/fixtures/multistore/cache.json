@@ -1,0 +1,92 @@
+{
+  "scenario": "multistore-cache",
+  "source": "cosmossdk.io/store/cachemulti write-back semantics v1.1.1",
+  "cases": [
+    {
+      "label": "write_back_two_stores",
+      "mounts": [
+        "bank",
+        "staking"
+      ],
+      "parent_entries": [
+        {
+          "store_name": "bank",
+          "entries": [
+            {
+              "key_hex": "62616c616e63652f616c696365",
+              "value_hex": "3130"
+            }
+          ]
+        },
+        {
+          "store_name": "staking",
+          "entries": [
+            {
+              "key_hex": "64656c65676174696f6e2f616c696365",
+              "value_hex": "35"
+            }
+          ]
+        }
+      ],
+      "cache_mutations": [
+        {
+          "store_name": "bank",
+          "action": "set",
+          "key_hex": "62616c616e63652f616c696365",
+          "value_hex": "3135"
+        },
+        {
+          "store_name": "staking",
+          "action": "set",
+          "key_hex": "64656c65676174696f6e2f626f62",
+          "value_hex": "32"
+        }
+      ],
+      "parent_before_write": [
+        {
+          "store_name": "bank",
+          "entries": [
+            {
+              "key_hex": "62616c616e63652f616c696365",
+              "value_hex": "3130"
+            }
+          ]
+        },
+        {
+          "store_name": "staking",
+          "entries": [
+            {
+              "key_hex": "64656c65676174696f6e2f616c696365",
+              "value_hex": "35"
+            }
+          ]
+        }
+      ],
+      "parent_after_write": [
+        {
+          "store_name": "bank",
+          "entries": [
+            {
+              "key_hex": "62616c616e63652f616c696365",
+              "value_hex": "3135"
+            }
+          ]
+        },
+        {
+          "store_name": "staking",
+          "entries": [
+            {
+              "key_hex": "64656c65676174696f6e2f616c696365",
+              "value_hex": "35"
+            },
+            {
+              "key_hex": "64656c65676174696f6e2f626f62",
+              "value_hex": "32"
+            }
+          ]
+        }
+      ],
+      "app_hash_after_write_hex": "22939dfac09b6af22a7a82682b79088b7faa6c112fca53c346da6a92c0fdd959"
+    }
+  ]
+}
