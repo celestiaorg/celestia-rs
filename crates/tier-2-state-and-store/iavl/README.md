@@ -7,7 +7,7 @@ surface for key/value mutation, deterministic root hashes, versioned commits,
 range iteration, and proof material. The current implementation checkpoint is
 an in-memory tree with Go-compatible committed root hashes, iterator behavior,
 and ICS-23 membership/non-membership proof operation bytes for the committed
-fixtures.
+fixtures, including malformed proof verification coverage.
 
 ## Depends On
 

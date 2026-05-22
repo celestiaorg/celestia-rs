@@ -128,13 +128,20 @@ type iavlMalformedScenario struct {
 }
 
 type iavlMalformedVector struct {
-	Label    string `json:"label"`
-	API      string `json:"api"`
-	KeyHex   string `json:"key_hex,omitempty"`
-	StartHex string `json:"start_hex,omitempty"`
-	EndHex   string `json:"end_hex,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Entries  int    `json:"entries,omitempty"`
+	Label              string `json:"label"`
+	API                string `json:"api"`
+	ProofType          string `json:"proof_type,omitempty"`
+	KeyHex             string `json:"key_hex,omitempty"`
+	StartHex           string `json:"start_hex,omitempty"`
+	EndHex             string `json:"end_hex,omitempty"`
+	ProofKeyHex        string `json:"proof_key_hex,omitempty"`
+	VerifyKeyHex       string `json:"verify_key_hex,omitempty"`
+	ValueHex           string `json:"value_hex,omitempty"`
+	RootHashHex        string `json:"root_hash_hex,omitempty"`
+	MutatedRootHashHex string `json:"mutated_root_hash_hex,omitempty"`
+	Error              string `json:"error,omitempty"`
+	ExpectedError      string `json:"expected_error,omitempty"`
+	Entries            int    `json:"entries,omitempty"`
 }
 
 func runIavlRoots(args []string) error {
@@ -507,10 +514,112 @@ func buildIavlMalformed() (iavlMalformedScenario, error) {
 		EndHex:   "61",
 		Entries:  len(entries),
 	})
+	proofCases, err := buildIavlMalformedProofCases()
+	if err != nil {
+		return iavlMalformedScenario{}, err
+	}
+	cases = append(cases, proofCases...)
 	return iavlMalformedScenario{
 		Scenario: "iavl-malformed",
 		Source:   "github.com/cosmos/iavl v1.2.0",
 		Cases:    cases,
+	}, nil
+}
+
+func buildIavlMalformedProofCases() ([]iavlMalformedVector, error) {
+	tree := newIavlTree()
+	for _, entry := range []iavlFixtureKV{
+		{KeyHex: "61", ValueHex: "31"},
+		{KeyHex: "62", ValueHex: "32"},
+		{KeyHex: "64", ValueHex: "34"},
+	} {
+		if _, err := tree.Set(mustHex(entry.KeyHex), mustHex(entry.ValueHex)); err != nil {
+			return nil, err
+		}
+	}
+	root, _, err := tree.SaveVersion()
+	if err != nil {
+		return nil, err
+	}
+	rootHex := hex.EncodeToString(root)
+	mutatedRoot := append([]byte(nil), root...)
+	mutatedRoot[0] ^= 0xff
+	mutatedRootHex := hex.EncodeToString(mutatedRoot)
+
+	membershipProof, err := tree.GetMembershipProof(mustHex("62"))
+	if err != nil {
+		return nil, err
+	}
+	verified, err := tree.VerifyMembership(membershipProof, mustHex("62"))
+	if err != nil {
+		return nil, err
+	}
+	if !verified {
+		return nil, fmt.Errorf("valid membership proof did not verify")
+	}
+	nonMembershipProof, err := tree.GetNonMembershipProof(mustHex("63"))
+	if err != nil {
+		return nil, err
+	}
+	verified, err = tree.VerifyNonMembership(nonMembershipProof, mustHex("63"))
+	if err != nil {
+		return nil, err
+	}
+	if !verified {
+		return nil, fmt.Errorf("valid non-membership proof did not verify")
+	}
+
+	return []iavlMalformedVector{
+		{
+			Label:         "membership_wrong_key",
+			API:           "verify_membership",
+			ProofType:     "membership",
+			ProofKeyHex:   "62",
+			VerifyKeyHex:  "61",
+			ValueHex:      "32",
+			RootHashHex:   rootHex,
+			ExpectedError: "invalid_proof",
+		},
+		{
+			Label:         "membership_wrong_value",
+			API:           "verify_membership",
+			ProofType:     "membership",
+			ProofKeyHex:   "62",
+			VerifyKeyHex:  "62",
+			ValueHex:      "77726f6e67",
+			RootHashHex:   rootHex,
+			ExpectedError: "invalid_proof",
+		},
+		{
+			Label:              "membership_wrong_root",
+			API:                "verify_membership",
+			ProofType:          "membership",
+			ProofKeyHex:        "62",
+			VerifyKeyHex:       "62",
+			ValueHex:           "32",
+			RootHashHex:        rootHex,
+			MutatedRootHashHex: mutatedRootHex,
+			ExpectedError:      "invalid_proof",
+		},
+		{
+			Label:         "non_membership_wrong_key",
+			API:           "verify_non_membership",
+			ProofType:     "non_membership",
+			ProofKeyHex:   "63",
+			VerifyKeyHex:  "62",
+			RootHashHex:   rootHex,
+			ExpectedError: "invalid_proof",
+		},
+		{
+			Label:              "non_membership_wrong_root",
+			API:                "verify_non_membership",
+			ProofType:          "non_membership",
+			ProofKeyHex:        "63",
+			VerifyKeyHex:       "63",
+			RootHashHex:        rootHex,
+			MutatedRootHashHex: mutatedRootHex,
+			ExpectedError:      "invalid_proof",
+		},
 	}, nil
 }
 

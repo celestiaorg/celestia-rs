@@ -4,7 +4,7 @@
 
 use std::{fs, path::PathBuf};
 
-use iavl::{ProofOpType, Tree};
+use iavl::{Error, Hash, ProofOpType, Tree};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +82,35 @@ struct ProofCase {
     root_hash_hex: String,
     proof_proto_hex: String,
     verified: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct MalformedFixture {
+    cases: Vec<MalformedCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MalformedCase {
+    label: String,
+    api: String,
+    #[serde(default)]
+    key_hex: String,
+    #[serde(default)]
+    start_hex: String,
+    #[serde(default)]
+    end_hex: String,
+    #[serde(default)]
+    proof_key_hex: String,
+    #[serde(default)]
+    verify_key_hex: String,
+    #[serde(default)]
+    value_hex: String,
+    #[serde(default)]
+    root_hash_hex: String,
+    #[serde(default)]
+    mutated_root_hash_hex: String,
+    #[serde(default)]
+    error: String,
 }
 
 #[test]
@@ -210,6 +239,75 @@ fn proof_fixtures_match_go_iavl() {
     }
 }
 
+#[test]
+fn malformed_fixtures_match_expected_errors() {
+    let fixture: MalformedFixture = read_fixture("malformed.json");
+
+    for case in fixture.cases {
+        match case.api.as_str() {
+            "set" => {
+                assert_eq!(
+                    case.error, "attempt to store nil value at key 'key'",
+                    "{}",
+                    case.label
+                );
+                assert_eq!(case.key_hex, "6b6579", "{}", case.label);
+            }
+            "iterator" => {
+                let mut tree = Tree::new();
+                tree.set(b"a".to_vec(), b"1".to_vec())
+                    .unwrap_or_else(|err| panic!("{} set iterator tree: {err}", case.label));
+                tree.save_version()
+                    .unwrap_or_else(|err| panic!("{} save iterator tree: {err}", case.label));
+                let start = optional_hex(&case.start_hex);
+                let end = optional_hex(&case.end_hex);
+                assert_eq!(
+                    tree.iter(start.as_deref(), end.as_deref()).count(),
+                    0,
+                    "{}",
+                    case.label
+                );
+            }
+            "verify_membership" => {
+                let (tree, root) = proof_tree();
+                assert_eq!(hex::encode(root), case.root_hash_hex, "{}", case.label);
+                let proof_key = decode_hex(&case.proof_key_hex);
+                let verify_key = decode_hex(&case.verify_key_hex);
+                let value = decode_hex(&case.value_hex);
+                let root = root_for_case(root, &case);
+                let proof = tree
+                    .get_with_proof(&proof_key)
+                    .unwrap_or_else(|err| panic!("{} get proof: {err}", case.label))
+                    .unwrap_or_else(|| panic!("{} missing proof", case.label));
+                assert_eq!(
+                    Tree::verify_membership(root, &proof, &verify_key, &value),
+                    Err(Error::InvalidProof("membership proof mismatch")),
+                    "{}",
+                    case.label
+                );
+            }
+            "verify_non_membership" => {
+                let (tree, root) = proof_tree();
+                assert_eq!(hex::encode(root), case.root_hash_hex, "{}", case.label);
+                let proof_key = decode_hex(&case.proof_key_hex);
+                let verify_key = decode_hex(&case.verify_key_hex);
+                let root = root_for_case(root, &case);
+                let proof = tree
+                    .get_with_proof(&proof_key)
+                    .unwrap_or_else(|err| panic!("{} get proof: {err}", case.label))
+                    .unwrap_or_else(|| panic!("{} missing proof", case.label));
+                assert_eq!(
+                    Tree::verify_non_membership(root, &proof, &verify_key),
+                    Err(Error::InvalidProof("non-membership proof mismatch")),
+                    "{}",
+                    case.label
+                );
+            }
+            other => panic!("unknown malformed api {other}"),
+        }
+    }
+}
+
 fn apply_mutation(tree: &mut Tree, mutation: &Mutation) {
     match mutation.action.as_str() {
         "set" => {
@@ -254,4 +352,31 @@ fn optional_hex(input: &str) -> Option<Vec<u8>> {
 
 fn decode_hex(input: &str) -> Vec<u8> {
     hex::decode(input).unwrap_or_else(|err| panic!("decode hex {input}: {err}"))
+}
+
+fn decode_hash(input: &str) -> Hash {
+    decode_hex(input)
+        .try_into()
+        .unwrap_or_else(|bytes: Vec<u8>| panic!("expected 32-byte hash, got {}", bytes.len()))
+}
+
+fn root_for_case(default_root: Hash, case: &MalformedCase) -> Hash {
+    if case.mutated_root_hash_hex.is_empty() {
+        default_root
+    } else {
+        decode_hash(&case.mutated_root_hash_hex)
+    }
+}
+
+fn proof_tree() -> (Tree, Hash) {
+    let mut tree = Tree::new();
+    for (key, value) in [("61", "31"), ("62", "32"), ("64", "34")] {
+        tree.set(decode_hex(key), decode_hex(value))
+            .unwrap_or_else(|err| panic!("set proof malformed key {key}: {err}"));
+    }
+    let root = tree
+        .save_version()
+        .unwrap_or_else(|err| panic!("save proof malformed tree: {err}"))
+        .root_hash;
+    (tree, root)
 }

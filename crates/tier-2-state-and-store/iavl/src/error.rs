@@ -17,6 +17,8 @@ pub enum Error {
     InvalidRange,
     /// A proof was malformed or did not verify.
     InvalidProof(&'static str),
+    /// An internal node shape is impossible for a valid IAVL tree.
+    MalformedNode(&'static str),
 }
 
 impl core::fmt::Display for Error {
@@ -26,6 +28,7 @@ impl core::fmt::Display for Error {
             Self::InvalidVersion { version } => write!(f, "invalid version {version}"),
             Self::InvalidRange => f.write_str("invalid range"),
             Self::InvalidProof(message) => write!(f, "invalid proof: {message}"),
+            Self::MalformedNode(message) => write!(f, "malformed node: {message}"),
         }
     }
 }

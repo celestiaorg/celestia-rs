@@ -32,5 +32,5 @@ against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
 has an in-memory API checkpoint with Go-compatible versioned AVL root hashing
 for committed root and iterator fixtures plus byte-exact ICS-23
 membership/non-membership proof operation bytes for the committed proof
-fixtures. The next strict dependency step is broadening malformed proof/node
-encoding coverage, then moving to the next M2 crate spec.
+fixtures. Malformed proof verification and private node-shape checks are also
+covered. The next strict dependency step is moving to the next M2 crate spec.

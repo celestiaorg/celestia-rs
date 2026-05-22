@@ -111,6 +111,8 @@
   fixtures.
 - Replaced placeholder `iavl` proof operations with fixture-backed ICS-23
   membership and non-membership proof bytes plus root verification.
+- Expanded `iavl` malformed coverage for invalid proof verification inputs,
+  proof operation payload mismatches, and impossible private node shapes.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.

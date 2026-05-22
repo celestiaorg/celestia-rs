@@ -150,9 +150,12 @@ impl Tree {
 
     /// Verify an IAVL membership proof.
     pub fn verify_membership(root: Hash, proof: &Proof, key: &[u8], value: &[u8]) -> Result<()> {
+        if !proof.is_membership() {
+            return Err(Error::InvalidProof("membership proof mismatch"));
+        }
+        proof.validate_membership_ops()?;
         if proof.key() == key
             && proof.value() == Some(value)
-            && proof.is_membership()
             && proof.root_hash == root
             && proof.computed_root()? == root
         {
@@ -163,8 +166,11 @@ impl Tree {
 
     /// Verify an IAVL non-membership proof.
     pub fn verify_non_membership(root: Hash, proof: &Proof, key: &[u8]) -> Result<()> {
+        if proof.is_membership() {
+            return Err(Error::InvalidProof("non-membership proof mismatch"));
+        }
+        proof.validate_non_membership_ops()?;
         if proof.key() == key
-            && !proof.is_membership()
             && proof.root_hash == root
             && proof.non_membership_root_matches(root)?
         {
@@ -364,6 +370,44 @@ impl Proof {
                 Err(Error::InvalidProof("expected membership proof"))
             }
         }
+    }
+
+    fn validate_membership_ops(&self) -> Result<()> {
+        let ProofKind::Membership(existence) = &self.kind else {
+            return Err(Error::InvalidProof("expected membership proof"));
+        };
+        self.validate_single_op(
+            ProofOpType::IavlValue,
+            &self.key,
+            &commitment_existence_proto(existence),
+        )
+    }
+
+    fn validate_non_membership_ops(&self) -> Result<()> {
+        let ProofKind::NonMembership { left, right } = &self.kind else {
+            return Err(Error::InvalidProof("expected non-membership proof"));
+        };
+        self.validate_single_op(
+            ProofOpType::IavlAbsence,
+            &self.key,
+            &commitment_nonexistence_proto(&self.key, left.as_ref(), right.as_ref()),
+        )
+    }
+
+    fn validate_single_op(&self, field_type: ProofOpType, key: &[u8], data: &[u8]) -> Result<()> {
+        let [op] = self.ops.as_slice() else {
+            return Err(Error::InvalidProof("expected exactly one proof operation"));
+        };
+        if op.field_type != field_type {
+            return Err(Error::InvalidProof("proof operation type mismatch"));
+        }
+        if op.key != key {
+            return Err(Error::InvalidProof("proof operation key mismatch"));
+        }
+        if op.data != data {
+            return Err(Error::InvalidProof("proof operation data mismatch"));
+        }
+        Ok(())
     }
 
     fn non_membership_root_matches(&self, root: Hash) -> Result<bool> {
@@ -690,6 +734,77 @@ impl Node {
                 });
                 inner.right.path_to_leaf(key, version, path)
             }
+        }
+    }
+
+    #[cfg(test)]
+    fn validate_shape(&self, version: Version) -> Result<()> {
+        if version <= 0 {
+            return Err(Error::MalformedNode("version must be greater than 0"));
+        }
+        self.validate_node()
+    }
+
+    #[cfg(test)]
+    fn validate_node(&self) -> Result<()> {
+        match self {
+            Self::Leaf(leaf) => {
+                if leaf.key.is_empty() {
+                    return Err(Error::MalformedNode("key cannot be empty"));
+                }
+                if leaf.version.is_some_and(|version| version <= 0) {
+                    return Err(Error::MalformedNode("version must be greater than 0"));
+                }
+                Ok(())
+            }
+            Self::Inner(inner) => {
+                if inner.key.is_empty() {
+                    return Err(Error::MalformedNode("key cannot be empty"));
+                }
+                if inner.height <= 0 {
+                    return Err(Error::MalformedNode("height must be greater than 0"));
+                }
+                if inner.size < 2 {
+                    return Err(Error::MalformedNode("inner size must be at least 2"));
+                }
+                let expected_size = inner.left.size() + inner.right.size();
+                if inner.size != expected_size {
+                    return Err(Error::MalformedNode("inner size mismatch"));
+                }
+                let expected_height = inner.left.height().max(inner.right.height()) + 1;
+                if inner.height != expected_height {
+                    return Err(Error::MalformedNode("inner height mismatch"));
+                }
+                if inner.left.max_key() >= inner.key.as_slice() {
+                    return Err(Error::MalformedNode("left subtree overlaps separator"));
+                }
+                if inner.right.min_key() != inner.key.as_slice() {
+                    return Err(Error::MalformedNode(
+                        "right subtree must start at separator",
+                    ));
+                }
+                if inner.version.is_some_and(|version| version <= 0) {
+                    return Err(Error::MalformedNode("version must be greater than 0"));
+                }
+                inner.left.validate_node()?;
+                inner.right.validate_node()
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn min_key(&self) -> &[u8] {
+        match self {
+            Self::Leaf(leaf) => &leaf.key,
+            Self::Inner(inner) => inner.left.min_key(),
+        }
+    }
+
+    #[cfg(test)]
+    fn max_key(&self) -> &[u8] {
+        match self {
+            Self::Leaf(leaf) => &leaf.key,
+            Self::Inner(inner) => inner.right.max_key(),
         }
     }
 }
@@ -1094,6 +1209,10 @@ mod tests {
         );
         assert_eq!(Error::InvalidRange.to_string(), "invalid range");
         assert_eq!(Error::InvalidProof("bad").to_string(), "invalid proof: bad");
+        assert_eq!(
+            Error::MalformedNode("bad").to_string(),
+            "malformed node: bad"
+        );
 
         Ok(())
     }
@@ -1171,6 +1290,134 @@ mod tests {
         assert!(Tree::verify_non_membership(root, &proof, b"a").is_err());
 
         Ok(())
+    }
+
+    #[test]
+    fn proof_verification_rejects_malformed_operation_material() -> Result<(), Error> {
+        let mut tree = Tree::new();
+        tree.set(b"a".to_vec(), b"1".to_vec())?;
+        tree.set(b"c".to_vec(), b"3".to_vec())?;
+        let root = tree.save_version()?.root_hash;
+
+        let membership = tree
+            .get_with_proof(b"a")?
+            .ok_or(Error::InvalidProof("missing proof"))?;
+        let mut missing_op = membership.clone();
+        missing_op.ops.clear();
+        assert_eq!(
+            Tree::verify_membership(root, &missing_op, b"a", b"1"),
+            Err(Error::InvalidProof("expected exactly one proof operation"))
+        );
+
+        let mut wrong_type = membership.clone();
+        wrong_type.ops[0].field_type = ProofOpType::IavlAbsence;
+        assert_eq!(
+            Tree::verify_membership(root, &wrong_type, b"a", b"1"),
+            Err(Error::InvalidProof("proof operation type mismatch"))
+        );
+
+        let mut wrong_key = membership.clone();
+        wrong_key.ops[0].key = b"b".to_vec();
+        assert_eq!(
+            Tree::verify_membership(root, &wrong_key, b"a", b"1"),
+            Err(Error::InvalidProof("proof operation key mismatch"))
+        );
+
+        let mut wrong_data = membership;
+        wrong_data.ops[0].data.push(0);
+        assert_eq!(
+            Tree::verify_membership(root, &wrong_data, b"a", b"1"),
+            Err(Error::InvalidProof("proof operation data mismatch"))
+        );
+
+        let absence = tree
+            .get_with_proof(b"b")?
+            .ok_or(Error::InvalidProof("missing proof"))?;
+        let mut wrong_absence_data = absence;
+        wrong_absence_data.ops[0].data.clear();
+        assert_eq!(
+            Tree::verify_non_membership(root, &wrong_absence_data, b"b"),
+            Err(Error::InvalidProof("proof operation data mismatch"))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_node_shapes_are_rejected() {
+        let valid = super::make_inner(
+            b"b".to_vec(),
+            Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
+            Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
+        );
+        assert_eq!(valid.validate_shape(1), Ok(()));
+        assert_eq!(
+            valid.validate_shape(0),
+            Err(Error::MalformedNode("version must be greater than 0"))
+        );
+
+        assert_eq!(
+            Node::leaf(Vec::new(), b"1".to_vec()).validate_shape(1),
+            Err(Error::MalformedNode("key cannot be empty"))
+        );
+
+        let bad_height = InnerNode {
+            key: b"b".to_vec(),
+            height: 0,
+            size: 2,
+            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
+            hash: None,
+            version: None,
+        };
+        assert_eq!(
+            Node::Inner(bad_height).validate_shape(1),
+            Err(Error::MalformedNode("height must be greater than 0"))
+        );
+
+        let bad_size = InnerNode {
+            key: b"b".to_vec(),
+            height: 1,
+            size: 1,
+            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
+            hash: None,
+            version: None,
+        };
+        assert_eq!(
+            Node::Inner(bad_size).validate_shape(1),
+            Err(Error::MalformedNode("inner size must be at least 2"))
+        );
+
+        let bad_order = InnerNode {
+            key: b"z".to_vec(),
+            height: 1,
+            size: 2,
+            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
+            hash: None,
+            version: None,
+        };
+        assert_eq!(
+            Node::Inner(bad_order).validate_shape(1),
+            Err(Error::MalformedNode(
+                "right subtree must start at separator"
+            ))
+        );
+
+        let bad_version = InnerNode {
+            key: b"b".to_vec(),
+            height: 1,
+            size: 2,
+            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
+            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
+            hash: None,
+            version: Some(0),
+        };
+        assert_eq!(
+            Node::Inner(bad_version).validate_shape(1),
+            Err(Error::MalformedNode("version must be greater than 0"))
+        );
     }
 
     #[test]

@@ -13,6 +13,56 @@
       "api": "iterator",
       "start_hex": "64",
       "end_hex": "61"
+    },
+    {
+      "label": "membership_wrong_key",
+      "api": "verify_membership",
+      "proof_type": "membership",
+      "proof_key_hex": "62",
+      "verify_key_hex": "61",
+      "value_hex": "32",
+      "root_hash_hex": "171716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "membership_wrong_value",
+      "api": "verify_membership",
+      "proof_type": "membership",
+      "proof_key_hex": "62",
+      "verify_key_hex": "62",
+      "value_hex": "77726f6e67",
+      "root_hash_hex": "171716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "membership_wrong_root",
+      "api": "verify_membership",
+      "proof_type": "membership",
+      "proof_key_hex": "62",
+      "verify_key_hex": "62",
+      "value_hex": "32",
+      "root_hash_hex": "171716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "mutated_root_hash_hex": "e81716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "non_membership_wrong_key",
+      "api": "verify_non_membership",
+      "proof_type": "non_membership",
+      "proof_key_hex": "63",
+      "verify_key_hex": "62",
+      "root_hash_hex": "171716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "expected_error": "invalid_proof"
+    },
+    {
+      "label": "non_membership_wrong_root",
+      "api": "verify_non_membership",
+      "proof_type": "non_membership",
+      "proof_key_hex": "63",
+      "verify_key_hex": "63",
+      "root_hash_hex": "171716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "mutated_root_hash_hex": "e81716f1defab796d9adfaecf0edcedcc98b9ef07d6770e8e3f06bcc09e7e000",
+      "expected_error": "invalid_proof"
     }
   ]
 }

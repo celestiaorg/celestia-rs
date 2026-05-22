@@ -201,7 +201,7 @@ Each scenario must be registered in BOTH the Go fixturegen
       to root `Cargo.toml` `[workspace]` members.
 - [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
-- [ ] All REQ-1..REQ-15 covered by unit, property, or conformance tests.
+- [x] All REQ-1..REQ-15 covered by unit, property, or conformance tests.
 - [x] All four conformance fixture files committed with `.meta.json` sidecars.
 - [x] `cargo test -p iavl` green.
 - [x] `cargo clippy -p iavl --all-targets -- -D warnings` green.
