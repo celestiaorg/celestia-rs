@@ -16,7 +16,7 @@ Section 3.
 
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
-| 1 | `ante` | 3 | [ante.md](ante.md) | specified |
+| 1 | `ante` | 3 | [ante.md](ante.md) | started |
 
 ## Acceptance Scaffold
 
@@ -62,4 +62,3 @@ considered complete:
 5. README at `crates/tier-3-app-modules/<crate>/README.md`: purpose,
    depends-on, consumers, and `## Conformance` section.
 6. CHANGELOG entry; semver 0.x.
-

@@ -66,6 +66,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ante"
+version = "0.0.1"
+dependencies = [
+ "abci-types",
+ "cosmos-types",
+ "crypto",
+ "hash",
+ "kvstore",
+ "prost",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -49,3 +49,7 @@ remaining M2 hardening step is committing a real mainnet replay-state fixture
 when a retained mainnet application DB is available locally. M3 planning has
 started with the transaction-and-ante milestone index and first `ante` crate
 spec.
+
+The first M3 implementation checkpoint has started with
+`crates/tier-3-app-modules/ante/`: public ante skeleton, gas-meter behavior,
+and stateless transaction validation.

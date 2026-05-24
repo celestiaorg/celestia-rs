@@ -298,7 +298,7 @@ Each scenario must be registered in BOTH the Go fixturegen
 
 ## Definition Of Done
 
-- [ ] Crate created at `crates/tier-3-app-modules/ante/` with a `Cargo.toml`
+- [x] Crate created at `crates/tier-3-app-modules/ante/` with a `Cargo.toml`
       inheriting workspace metadata, and the crate path is added to root
       `Cargo.toml` `[workspace]` members.
 - [ ] Public API above implemented with documented modules and

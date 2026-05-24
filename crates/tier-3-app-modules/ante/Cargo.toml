@@ -1,0 +1,23 @@
+[package]
+name = "ante"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK transaction ante machinery for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+abci-types = { path = "../../tier-1-protocol-types/abci-types" }
+cosmos-types = { path = "../../tier-1-protocol-types/cosmos-types" }
+crypto = { path = "../../tier-0-primitives/crypto" }
+hash = { path = "../../tier-0-primitives/hash" }
+kvstore = { path = "../../tier-2-state-and-store/kvstore" }
+prost = "0.13"
+thiserror = "2"
+
