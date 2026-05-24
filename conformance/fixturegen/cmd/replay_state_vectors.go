@@ -157,7 +157,7 @@ func buildReplayStateFixture(cfg replayStateConfig) (m2StateDiffScenario, error)
 	}
 	defer db.Close()
 
-	keys := storetypes.NewKVStoreKeys(cfg.mounts...)
+	keys := replayStateKeys(cfg.mounts)
 	cms := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{})
 	for _, name := range sortedStrings(cfg.mounts) {
 		cms.MountStoreWithDB(keys[name], storetypes.StoreTypeIAVL, db)
@@ -313,6 +313,14 @@ func parseReplayStateMounts(input string) []string {
 		mounts = append(mounts, name)
 	}
 	return mounts
+}
+
+func replayStateKeys(mounts []string) map[string]*storetypes.KVStoreKey {
+	keys := make(map[string]*storetypes.KVStoreKey, len(mounts))
+	for _, mount := range mounts {
+		keys[mount] = storetypes.NewKVStoreKey(mount)
+	}
+	return keys
 }
 
 func heightRange(start, count int64) []int64 {

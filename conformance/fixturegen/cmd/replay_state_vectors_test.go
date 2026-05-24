@@ -53,3 +53,13 @@ func TestReplayStateConfigValidation(t *testing.T) {
 		t.Fatalf("mounts = %#v, want %#v", cfg.mounts, want)
 	}
 }
+
+func TestReplayStateKeysAllowCelestiaStorePrefixes(t *testing.T) {
+	keys := replayStateKeys([]string{"auth", "authz"})
+	if keys["auth"].Name() != "auth" {
+		t.Fatalf("auth key name = %q, want auth", keys["auth"].Name())
+	}
+	if keys["authz"].Name() != "authz" {
+		t.Fatalf("authz key name = %q, want authz", keys["authz"].Name())
+	}
+}
