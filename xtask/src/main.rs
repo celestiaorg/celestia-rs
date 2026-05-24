@@ -3,11 +3,13 @@
 //! Subcommands:
 //! - `refresh-fixtures` — regenerate conformance fixtures by shelling out to
 //!   the Go program in `conformance/fixturegen/`.
+//! - `repo-health` — run the local repository health gates.
 
 // xtask is an internal CLI tool, not a library — stdout is its primary output.
 #![allow(clippy::print_stdout)]
 
 mod refresh_fixtures;
+mod repo_health;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -33,6 +35,18 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Run the local repository health gates.
+    RepoHealth {
+        /// Print the checks without executing them.
+        #[arg(long)]
+        dry_run: bool,
+        /// Run cargo and Go commands without accessing the network.
+        #[arg(long)]
+        offline: bool,
+        /// Skip Go fixturegen checks.
+        #[arg(long)]
+        skip_go: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -43,5 +57,10 @@ fn main() -> Result<()> {
             crate_name,
             dry_run,
         } => refresh_fixtures::run(scenario.as_deref(), crate_name.as_deref(), dry_run),
+        Cmd::RepoHealth {
+            dry_run,
+            offline,
+            skip_go,
+        } => repo_health::run(dry_run, offline, skip_go),
     }
 }

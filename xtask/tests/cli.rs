@@ -29,6 +29,10 @@ fn help_prints_usage() {
         stdout.contains("refresh-fixtures"),
         "help should list the refresh-fixtures subcommand; got: {stdout}"
     );
+    assert!(
+        stdout.contains("repo-health"),
+        "help should list the repo-health subcommand; got: {stdout}"
+    );
 }
 
 #[test]
@@ -78,6 +82,56 @@ fn refresh_fixtures_unknown_scenario_filter_errors() {
         !output.status.success(),
         "unknown scenario filter should error; stdout={}",
         String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn repo_health_dry_run_lists_checks() {
+    let output = Command::new(xtask_bin())
+        .args(["repo-health", "--dry-run", "--offline"])
+        .output()
+        .expect("failed to invoke xtask binary");
+    assert!(
+        output.status.success(),
+        "repo-health --dry-run should succeed; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("CARGO_NET_OFFLINE=true cargo fmt --all --check"),
+        "dry-run should list cargo fmt; got: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+        ),
+        "dry-run should list cargo clippy; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("GOCACHE=") && stdout.contains("GOSUMDB=off GOPROXY=off go test ./..."),
+        "dry-run should list Go fixturegen tests; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("GOSUMDB=off GOPROXY=off go build ./..."),
+        "dry-run should list Go fixturegen build; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("fixture scenario inventory"),
+        "dry-run should include fixture inventory; got: {stdout}"
+    );
+}
+
+#[test]
+fn repo_health_skip_go_dry_run_omits_go_tests() {
+    let output = Command::new(xtask_bin())
+        .args(["repo-health", "--dry-run", "--skip-go"])
+        .output()
+        .expect("failed to invoke xtask binary");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !stdout.contains("go test ./...") && !stdout.contains("go build ./..."),
+        "skip-go should omit Go fixturegen checks; got: {stdout}"
     );
 }
 

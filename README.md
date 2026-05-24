@@ -2,7 +2,9 @@
 
 A Rust port of [celestia-app](https://github.com/celestiaorg/celestia-app) — a wire-compatible Celestia consensus node implementation.
 
-**Status:** Pre-M1. Active scaffolding. Not usable for anything yet.
+**Status:** M2 state-and-storage hardening. M1 is complete; M2 crates are
+implemented and the current work is replacing the synthetic M2 acceptance
+fixture with real replay-state mainnet state diffs.
 
 ## Design
 
@@ -26,6 +28,17 @@ cargo build --workspace
 cargo test --workspace
 cargo xtask --help
 ```
+
+## Repository health
+
+Run the local gate before moving between milestone sections:
+
+```
+cargo xtask repo-health --offline
+```
+
+Use `--dry-run` to print the command sequence and fixture inventory without
+running the gates.
 
 ## Regenerating conformance fixtures
 
