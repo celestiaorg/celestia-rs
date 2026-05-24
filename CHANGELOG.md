@@ -9,6 +9,9 @@
   account-state trait boundary for the next implementation section.
 - Started the Tier-3 `ante` crate with the public ante skeleton, gas-meter
   behavior, stateless `TxRaw` validation, and focused API tests.
+- Expanded `ante` API coverage for signed deliver-mode execution, sequence
+  increments, public-key persistence, sequence mismatches, and invalid
+  signatures.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
