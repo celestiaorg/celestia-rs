@@ -6,7 +6,7 @@ use ante::{
     Account, AccountReader, AccountWriter, AnteConfig, AnteContext, AnteHandler, Error, FeeKeeper,
     Gas, GasMeter, ModeInfo, RunTxMode, SignDoc, SignMode, SignerInfo, TxRaw,
 };
-use cosmos_types::{Any, AuthInfo, Fee, TxBody};
+use cosmos_types::{Any, AuthInfo, Coin, Fee, TxBody};
 use prost::Message;
 use std::collections::BTreeMap;
 
@@ -171,6 +171,94 @@ fn run_rejects_sequence_mismatch_and_bad_signature_without_state_mutation() {
     );
 }
 
+#[test]
+fn run_deducts_explicit_payer_fee_after_signature_checks() {
+    let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
+    config.min_gas_prices = vec![Coin::new("utia", "1").expect("valid coin")];
+    let handler = AnteHandler::new(config);
+    let payer = [7u8; cosmos_types::ADDRESS_LENGTH];
+    let fee = Fee {
+        amount: vec![Coin::new("utia", "600000").expect("valid coin")],
+        gas_limit: 500_000,
+        payer: cosmos_types::account_address_to_bech32(&payer),
+        granter: String::new(),
+    };
+    let (tx_bytes, address, public_key) = signed_tx_with_fee(7, 9, fee);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: Some(public_key),
+    });
+    let mut fees = Fees::from_balance(payer, Coin::new("utia", "700000").expect("valid coin"));
+
+    let outcome = handler
+        .run(deliver_context(), &tx_bytes, &mut accounts, &mut fees)
+        .expect("valid fee tx");
+
+    assert_eq!(outcome.signer_sequences, vec![(address, 10)]);
+    assert_eq!(fees.balance(&payer, "utia"), Some("100000".to_owned()));
+}
+
+#[test]
+fn run_rejects_insufficient_fee_and_insufficient_funds_before_sequence_mutation() {
+    let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
+    config.min_gas_prices = vec![Coin::new("utia", "2").expect("valid coin")];
+    let handler = AnteHandler::new(config);
+    let fee = Fee {
+        amount: vec![Coin::new("utia", "600000").expect("valid coin")],
+        gas_limit: 500_000,
+        payer: String::new(),
+        granter: String::new(),
+    };
+    let (tx_bytes, address, public_key) = signed_tx_with_fee(7, 9, fee.clone());
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: Some(public_key.clone()),
+    });
+    let mut fees = Fees::from_balance(address, Coin::new("utia", "2000000").expect("valid coin"));
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::InsufficientFee)
+    );
+    assert_eq!(
+        accounts
+            .account(&address)
+            .expect("account lookup")
+            .expect("account exists")
+            .sequence,
+        9
+    );
+
+    let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
+    config.min_gas_prices = vec![Coin::new("utia", "1").expect("valid coin")];
+    let handler = AnteHandler::new(config);
+    let (tx_bytes, address, public_key) = signed_tx_with_fee(7, 9, fee);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: Some(public_key),
+    });
+    let mut fees = Fees::from_balance(address, Coin::new("utia", "1").expect("valid coin"));
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::InsufficientFunds)
+    );
+    assert_eq!(
+        accounts
+            .account(&address)
+            .expect("account lookup")
+            .expect("account exists")
+            .sequence,
+        9
+    );
+}
+
 fn handler() -> AnteHandler {
     AnteHandler::new(AnteConfig::celestia_mainnet_app_v6("celestia"))
 }
@@ -215,6 +303,23 @@ fn tx_bytes(
 }
 
 fn signed_tx(account_number: u64, sequence: u64) -> (Vec<u8>, cosmos_types::AccountAddress, Any) {
+    signed_tx_with_fee(
+        account_number,
+        sequence,
+        Fee {
+            amount: Vec::new(),
+            gas_limit: 500_000,
+            payer: String::new(),
+            granter: String::new(),
+        },
+    )
+}
+
+fn signed_tx_with_fee(
+    account_number: u64,
+    sequence: u64,
+    fee: Fee,
+) -> (Vec<u8>, cosmos_types::AccountAddress, Any) {
     let secret_key = crypto::secp256k1::secret_key_from_secret(b"ante signed tx");
     let public_key =
         crypto::secp256k1::public_key_from_secret_key(&secret_key).expect("valid secret key");
@@ -237,12 +342,7 @@ fn signed_tx(account_number: u64, sequence: u64) -> (Vec<u8>, cosmos_types::Acco
             },
             sequence,
         }],
-        fee: Some(Fee {
-            amount: Vec::new(),
-            gas_limit: 500_000,
-            payer: String::new(),
-            granter: String::new(),
-        }),
+        fee: Some(fee),
         tip: None,
     }
     .to_proto()
@@ -347,4 +447,53 @@ impl FeeKeeper for NoFees {
     ) -> ante::Result<()> {
         Err(Error::State("unexpected fee deduction".to_owned()))
     }
+}
+
+#[derive(Debug, Default)]
+struct Fees {
+    balances: BTreeMap<(cosmos_types::AccountAddress, String), Coin>,
+}
+
+impl Fees {
+    fn from_balance(address: cosmos_types::AccountAddress, coin: Coin) -> Self {
+        Self {
+            balances: BTreeMap::from([((address, coin.denom.clone()), coin)]),
+        }
+    }
+
+    fn balance(&self, address: &cosmos_types::AccountAddress, denom: &str) -> Option<String> {
+        self.balances
+            .get(&(*address, denom.to_owned()))
+            .map(|coin| coin.amount.clone())
+    }
+}
+
+impl FeeKeeper for Fees {
+    fn spendable_balance(
+        &self,
+        address: &cosmos_types::AccountAddress,
+        denom: &str,
+    ) -> ante::Result<Option<Coin>> {
+        Ok(self.balances.get(&(*address, denom.to_owned())).cloned())
+    }
+
+    fn deduct_fees(
+        &mut self,
+        payer: &cosmos_types::AccountAddress,
+        fees: &[Coin],
+    ) -> ante::Result<()> {
+        for fee in fees {
+            let balance = self
+                .balances
+                .get_mut(&(*payer, fee.denom.clone()))
+                .ok_or(Error::InsufficientFunds)?;
+            let remaining = parse_amount(&balance.amount) - parse_amount(&fee.amount);
+            balance.amount = remaining.to_string();
+        }
+        Ok(())
+    }
+}
+
+fn parse_amount(input: &str) -> u128 {
+    input.parse().expect("valid integer amount")
 }
