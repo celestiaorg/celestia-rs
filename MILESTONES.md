@@ -46,4 +46,6 @@ threshold. The `m2-integration` acceptance scaffold exists and
 Go-generated, mainnet-height synthetic state-diff window. `fixturegen
 replay-state` is specified and scaffolded for local Celestia app DBs; the
 remaining M2 hardening step is committing a real mainnet replay-state fixture
-before moving into M3.
+when a retained mainnet application DB is available locally. M3 planning has
+started with the transaction-and-ante milestone index and first `ante` crate
+spec.

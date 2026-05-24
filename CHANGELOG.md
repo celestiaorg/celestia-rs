@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added the M3 transaction-and-ante milestone index plus the first `ante`
+  crate spec, defining the transaction validation, signature, gas, fee, and
+  account-state trait boundary for the next implementation section.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
