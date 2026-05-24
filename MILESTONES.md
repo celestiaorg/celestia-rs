@@ -43,6 +43,7 @@ composition, store-root proof ops, commit history, cache multi-store behavior,
 Go-generated conformance fixtures, and focused coverage above the M2
 threshold. The `m2-integration` acceptance scaffold exists and
 `apply_mainnet_block_diff_produces_matching_kv_root` passes against a
-Go-generated, mainnet-height synthetic state-diff window. The remaining M2
-hardening step is replacing or supplementing that synthetic fixture with real
-`fixturegen replay-state` mainnet state diffs before moving into M3.
+Go-generated, mainnet-height synthetic state-diff window. `fixturegen
+replay-state` is specified and scaffolded for local Celestia app DBs; the
+remaining M2 hardening step is committing a real mainnet replay-state fixture
+before moving into M3.

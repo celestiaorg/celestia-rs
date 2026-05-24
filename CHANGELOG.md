@@ -7,6 +7,9 @@
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
+- Added a DB-backed `fixturegen replay-state` utility plus the M2 replay-state
+  fixture hardening spec for replacing the synthetic M2 acceptance window with
+  real mainnet state diffs.
 - Added the Tier-0 `encoding` crate with protobuf, varint, hex, base64, and
   Celestia bech32 helpers plus Go-generated conformance fixtures.
 - Added the Tier-0 `crypto` crate spec and updated the M1 index after the

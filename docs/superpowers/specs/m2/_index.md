@@ -24,8 +24,8 @@ wrappers, and ICS-23 proof material.
 Go-generated, mainnet-height synthetic state-diff window that applies writes
 through the Rust multi-store and verifies every committed app hash against the
 Go SDK store root. The next fixture expansion is replacing or supplementing
-that synthetic window with `fixturegen replay-state` output from real mainnet
-state diffs.
+that synthetic window with [`fixturegen replay-state`](replay-state-fixtures.md)
+output from real mainnet state diffs.
 
 ## Dependency DAG
 
