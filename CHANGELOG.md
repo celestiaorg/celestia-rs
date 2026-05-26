@@ -14,6 +14,8 @@
   signatures.
 - Added `ante` fee-path coverage for explicit fee payers, minimum gas-price
   checks, insufficient fees, and insufficient funds without sequence mutation.
+- Added the first Go-generated `ante` conformance fixture for stateless
+  transaction validation and registered it with `xtask refresh-fixtures`.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.

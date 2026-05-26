@@ -390,6 +390,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "m2-integration",
         output_path: "conformance/fixtures/m2-integration/state-diffs.json",
     },
+    Scenario {
+        name: "ante-stateless",
+        crate_name: "ante",
+        output_path: "conformance/fixtures/ante/stateless.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

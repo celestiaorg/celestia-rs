@@ -304,7 +304,8 @@ Each scenario must be registered in BOTH the Go fixturegen
 - [ ] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
 - [ ] All REQ-1..REQ-14 covered by unit, property, or conformance tests.
-- [ ] All six conformance fixture files committed with `.meta.json` sidecars.
+- [ ] All six conformance fixture files committed with `.meta.json` sidecars
+      (`stateless.json` committed; remaining fixture groups pending).
 - [ ] `m3-integration::mainnet_tx_validation_matches_go` passes for at least
       1000 mainnet transactions.
 - [ ] `cargo test -p ante` green.
