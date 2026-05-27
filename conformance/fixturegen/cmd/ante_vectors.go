@@ -39,6 +39,11 @@ func init() {
 			Description: "Emit gas accounting and out-of-gas vectors for the ante crate.",
 			Run:         runAnteGas,
 		},
+		Subcommand{
+			Name:        "ante-malformed",
+			Description: "Emit malformed transaction vectors for the ante crate.",
+			Run:         runAnteMalformed,
+		},
 	)
 }
 
@@ -132,6 +137,18 @@ type anteGasCase struct {
 	ExpectedGasUsed       uint64 `json:"expected_gas_used,omitempty"`
 	ExpectedFinalSequence uint64 `json:"expected_final_sequence,omitempty"`
 	ExpectedPublicKeySet  bool   `json:"expected_public_key_set,omitempty"`
+}
+
+type anteMalformedFixture struct {
+	Scenario string              `json:"scenario"`
+	ChainID  string              `json:"chain_id"`
+	Cases    []anteMalformedCase `json:"cases"`
+}
+
+type anteMalformedCase struct {
+	Label         string `json:"label"`
+	TxRawHex      string `json:"tx_raw_hex"`
+	ExpectedError string `json:"expected_error"`
 }
 
 func runAnteStateless(args []string) error {
@@ -230,6 +247,105 @@ func runAnteStateless(args []string) error {
 	}
 	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-stateless")); err != nil {
 		return fmt.Errorf("emit ante-stateless metadata: %w", err)
+	}
+	fmt.Printf("wrote %s\n", *out)
+	return nil
+}
+
+func runAnteMalformed(args []string) error {
+	fs := flag.NewFlagSet("ante-malformed", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/ante/malformed.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	validBodyBytes, err := proto.Marshal(&txtypes.TxBody{Messages: []*types.Any{anteOpaqueMsg()}})
+	if err != nil {
+		return fmt.Errorf("marshal malformed valid body: %w", err)
+	}
+	validAuthInfoBytes, err := proto.Marshal(&txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{
+			ModeInfo: cosmosSingleModeInfo(),
+			Sequence: 7,
+		}},
+		Fee: &txtypes.Fee{GasLimit: 80_000},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal malformed valid auth info: %w", err)
+	}
+
+	badBodyTx, err := anteRawTxHex([]byte{0xff}, validAuthInfoBytes, [][]byte{repeatByte(0x42, 64)})
+	if err != nil {
+		return err
+	}
+	badAuthTx, err := anteRawTxHex(validBodyBytes, []byte{0xff}, [][]byte{repeatByte(0x42, 64)})
+	if err != nil {
+		return err
+	}
+	missingModeInfoTx, err := anteRawTxWithAuthInfo(validBodyBytes, &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{Sequence: 7}},
+		Fee:         &txtypes.Fee{GasLimit: 80_000},
+	})
+	if err != nil {
+		return err
+	}
+	unknownSignModeTx, err := anteRawTxWithAuthInfo(validBodyBytes, &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{
+			ModeInfo: &txtypes.ModeInfo{
+				Sum: &txtypes.ModeInfo_Single_{
+					Single: &txtypes.ModeInfo_Single{Mode: signing.SignMode(999)},
+				},
+			},
+			Sequence: 7,
+		}},
+		Fee: &txtypes.Fee{GasLimit: 80_000},
+	})
+	if err != nil {
+		return err
+	}
+	badPublicKeyTx, err := anteRawTxWithAuthInfo(validBodyBytes, &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{
+			PublicKey: &types.Any{TypeUrl: cosmosSecp256k1TypeURL, Value: []byte{0xff}},
+			ModeInfo:  cosmosSingleModeInfo(),
+			Sequence:  7,
+		}},
+		Fee: &txtypes.Fee{GasLimit: 80_000},
+	})
+	if err != nil {
+		return err
+	}
+	invalidFeeTx, err := anteRawTxWithAuthInfo(validBodyBytes, &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{
+			ModeInfo: cosmosSingleModeInfo(),
+			Sequence: 7,
+		}},
+		Fee: &txtypes.Fee{
+			Amount:   []sdk.Coin{{Denom: "1tia", Amount: math.NewInt(1)}},
+			GasLimit: 80_000,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	fixture := anteMalformedFixture{
+		Scenario: "ante-malformed",
+		ChainID:  "celestia",
+		Cases: []anteMalformedCase{
+			{Label: "invalid-tx-raw-protobuf", TxRawHex: "ff", ExpectedError: "malformed_tx"},
+			{Label: "bad-body-bytes", TxRawHex: badBodyTx, ExpectedError: "malformed_tx"},
+			{Label: "bad-auth-info-bytes", TxRawHex: badAuthTx, ExpectedError: "malformed_tx"},
+			{Label: "missing-mode-info", TxRawHex: missingModeInfoTx, ExpectedError: "malformed_tx"},
+			{Label: "unknown-sign-mode", TxRawHex: unknownSignModeTx, ExpectedError: "unsupported_sign_mode"},
+			{Label: "bad-public-key", TxRawHex: badPublicKeyTx, ExpectedError: "invalid_public_key"},
+			{Label: "invalid-fee-coin", TxRawHex: invalidFeeTx, ExpectedError: "malformed_tx"},
+		},
+	}
+	if err := writeJSON(*out, fixture); err != nil {
+		return fmt.Errorf("emit ante-malformed: %w", err)
+	}
+	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-malformed")); err != nil {
+		return fmt.Errorf("emit ante-malformed metadata: %w", err)
 	}
 	fmt.Printf("wrote %s\n", *out)
 	return nil
@@ -699,6 +815,26 @@ func anteTxRawHex(cfg anteTxConfig) (string, error) {
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal ante tx raw: %w", err)
+	}
+	return hex.EncodeToString(txBytes), nil
+}
+
+func anteRawTxWithAuthInfo(bodyBytes []byte, authInfo *txtypes.AuthInfo) (string, error) {
+	authInfoBytes, err := proto.Marshal(authInfo)
+	if err != nil {
+		return "", fmt.Errorf("marshal ante malformed auth info: %w", err)
+	}
+	return anteRawTxHex(bodyBytes, authInfoBytes, [][]byte{repeatByte(0x42, 64)})
+}
+
+func anteRawTxHex(bodyBytes []byte, authInfoBytes []byte, signatures [][]byte) (string, error) {
+	txBytes, err := proto.Marshal(&txtypes.TxRaw{
+		BodyBytes:     bodyBytes,
+		AuthInfoBytes: authInfoBytes,
+		Signatures:    signatures,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal ante raw tx: %w", err)
 	}
 	return hex.EncodeToString(txBytes), nil
 }

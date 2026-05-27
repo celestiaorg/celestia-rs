@@ -410,6 +410,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "ante",
         output_path: "conformance/fixtures/ante/gas.json",
     },
+    Scenario {
+        name: "ante-malformed",
+        crate_name: "ante",
+        output_path: "conformance/fixtures/ante/malformed.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

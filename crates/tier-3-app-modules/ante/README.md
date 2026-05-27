@@ -11,8 +11,8 @@ trait boundary that later `x/auth` and `x/bank` keepers will implement.
 The current checkpoint provides the crate skeleton, gas-meter behavior,
 stateless `TxRaw` validation, direct secp256k1 deliver execution, and fee-path
 coverage. The stateless and signature/account-state fixture groups are
-Go-generated, as are the first fee deduction and gas-accounting fixtures; the
-mainnet transaction corpus is next.
+Go-generated, as are the first fee deduction, gas-accounting, and malformed
+transaction fixtures; the mainnet transaction corpus is next.
 
 ## Depends On
 
@@ -44,3 +44,4 @@ cargo xtask refresh-fixtures --crate-name ante
 | `signatures.json` | `ante-signatures` | SIGN_MODE_DIRECT sign bytes, signer extraction, sequence drift, stored public-key mismatch, invalid public keys, and bad signatures |
 | `fees.json` | `ante-fees` | Minimum gas prices, implicit and explicit fee payers, insufficient fees/funds, and balance deductions |
 | `gas.json` | `ante-gas` | Tx-size gas, signature-verification gas, simulate mode, and out-of-gas failures |
+| `malformed.json` | `ante-malformed` | Malformed protobuf bytes and invalid signer-info, public-key, sign-mode, and fee fields |

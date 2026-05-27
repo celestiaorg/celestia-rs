@@ -130,6 +130,19 @@ struct GasCase {
     expected_public_key_set: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct MalformedFixture {
+    chain_id: String,
+    cases: Vec<MalformedCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MalformedCase {
+    label: String,
+    tx_raw_hex: String,
+    expected_error: String,
+}
+
 #[test]
 fn stateless_fixtures_match_go_tx_shapes() {
     let fixture: StatelessFixture = load_fixture("ante/stateless.json");
@@ -447,6 +460,25 @@ fn gas_fixtures_match_ante_accounting_and_modes() {
                 case.label
             );
         }
+    }
+}
+
+#[test]
+fn malformed_fixtures_match_stateless_error_mapping() {
+    let fixture: MalformedFixture = load_fixture("ante/malformed.json");
+    let handler = AnteHandler::new(AnteConfig::celestia_mainnet_app_v6(&fixture.chain_id));
+
+    for case in &fixture.cases {
+        let tx_bytes = decode_hex(&case.tx_raw_hex, &case.label, "tx raw");
+        let Err(error) = handler.validate_tx_stateless(&tx_bytes) else {
+            panic!("malformed fixture '{}' unexpectedly succeeded", case.label);
+        };
+        assert_eq!(
+            error_code(&error),
+            case.expected_error,
+            "error mismatch for '{}'",
+            case.label
+        );
     }
 }
 
