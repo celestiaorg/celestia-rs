@@ -1,0 +1,59 @@
+{
+  "scenario": "ante-gas",
+  "chain_id": "celestia",
+  "cases": [
+    {
+      "label": "deliver-charges-tx-size-and-signature",
+      "mode": "deliver",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312580a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a210312802a2ee8e22ffb974f968d963f7c755d67e1211988c3e3f6dbbad4a5ff707c12040a0208011809120410a0c21e1a4073cae1773ddb5ff9baa8eed7fd7c3fa8efe9f091457f18275e7e11f928d1a0615f1018c5679db2d9fc933816408989a0fe3f24789e9c191597115e4c1274827f",
+      "address_hex": "1fb10cbfa2797a3cb1b573d03cdda9cb8263a1e7",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a210312802a2ee8e22ffb974f968d963f7c755d67e1211988c3e3f6dbbad4a5ff707c",
+      "account_number": 7,
+      "account_sequence": 9,
+      "expected_ok": true,
+      "expected_gas_wanted": 500000,
+      "expected_gas_used": 2950,
+      "expected_final_sequence": 10,
+      "expected_public_key_set": true
+    },
+    {
+      "label": "simulate-charges-gas-without-state-mutation",
+      "mode": "simulate",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312580a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a21029f8c4aad2015e0a8701261f34ae1b1f5fcd1111eee9eec164dc4e0ced109535012040a0208011809120410a0c21e1a40da229a45de35d67f1b10639a7510e0108a204fb34a64bc5fcc44782343f3860a0cb9e00a969ea97654a698474516294118493a9c13e6df323a5d814ca47b38c6",
+      "address_hex": "d381111f08d6802265de3c5963bc16b053031fea",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a21029f8c4aad2015e0a8701261f34ae1b1f5fcd1111eee9eec164dc4e0ced1095350",
+      "account_number": 7,
+      "account_sequence": 9,
+      "expected_ok": true,
+      "expected_gas_wanted": 500000,
+      "expected_gas_used": 2950,
+      "expected_final_sequence": 9
+    },
+    {
+      "label": "out-of-gas-tx-size",
+      "mode": "deliver",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312560a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103d1e182c2d26649cc84cb7252aa328a603a441e349243b7fd271496546f87f0b312040a0208011809120210011a405869bbbc5d81dc95911529786ad993d2cefdc6a5e63fdb5337f271abe18e44212dc4ca5fc7ca50164a09806d133c7d2ff8d9f6b053ee33df11ca5464e1520ef5",
+      "address_hex": "02a2b3413158f39ae93db51ee3e36bf33211c818",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103d1e182c2d26649cc84cb7252aa328a603a441e349243b7fd271496546f87f0b3",
+      "account_number": 7,
+      "account_sequence": 9,
+      "expected_ok": false,
+      "expected_error": "out_of_gas",
+      "expected_gas_wanted": 1,
+      "expected_gas_used": 1930
+    },
+    {
+      "label": "out-of-gas-signature-verification",
+      "mode": "deliver",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312570a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103312c45b007ab67860d9e999ce91517c0052fb3db2e1b1a3d44f719c70aa1634812040a0208011809120310c4131a40c5dc4f5586c54f63fc8cf82e0f2878e24882a4cade10cd7f8ae274bfa85ffa182cdd24c66a888ad7099e3e59a06de9d3c55ba5e723ad325ce3cf56cb13c89ae3",
+      "address_hex": "2cfbbab164d3003ca971884ede8aa87a3406aa58",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103312c45b007ab67860d9e999ce91517c0052fb3db2e1b1a3d44f719c70aa16348",
+      "account_number": 7,
+      "account_sequence": 9,
+      "expected_ok": false,
+      "expected_error": "out_of_gas",
+      "expected_gas_wanted": 2500,
+      "expected_gas_used": 1940
+    }
+  ]
+}

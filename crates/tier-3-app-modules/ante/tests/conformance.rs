@@ -102,6 +102,34 @@ struct FixtureBalance {
     amount: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct GasFixture {
+    chain_id: String,
+    cases: Vec<GasCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GasCase {
+    label: String,
+    mode: String,
+    tx_raw_hex: String,
+    address_hex: String,
+    public_key_any_hex: String,
+    account_number: u64,
+    account_sequence: u64,
+    expected_ok: bool,
+    #[serde(default)]
+    expected_error: String,
+    #[serde(default)]
+    expected_gas_wanted: u64,
+    #[serde(default)]
+    expected_gas_used: u64,
+    #[serde(default)]
+    expected_final_sequence: u64,
+    #[serde(default)]
+    expected_public_key_set: bool,
+}
+
 #[test]
 fn stateless_fixtures_match_go_tx_shapes() {
     let fixture: StatelessFixture = load_fixture("ante/stateless.json");
@@ -339,6 +367,89 @@ fn fee_fixtures_match_min_gas_and_deduction_behavior() {
     }
 }
 
+#[test]
+fn gas_fixtures_match_ante_accounting_and_modes() {
+    let fixture: GasFixture = load_fixture("ante/gas.json");
+    let handler = AnteHandler::new(AnteConfig::celestia_mainnet_app_v6(&fixture.chain_id));
+
+    for case in &fixture.cases {
+        let tx_bytes = decode_hex(&case.tx_raw_hex, &case.label, "tx raw");
+        let address = decode_address(&case.address_hex, &case.label);
+        let mut accounts = Accounts::from_account(Account {
+            address,
+            account_number: case.account_number,
+            sequence: case.account_sequence,
+            public_key: None,
+        });
+        let mut fees = NoFees;
+
+        let result = handler.run(run_context(&case.mode), &tx_bytes, &mut accounts, &mut fees);
+        if case.expected_ok {
+            let outcome = result.unwrap_or_else(|error| {
+                panic!("gas fixture '{}' unexpectedly failed: {error}", case.label)
+            });
+            assert_eq!(
+                outcome.gas_wanted, case.expected_gas_wanted,
+                "gas wanted mismatch for '{}'",
+                case.label
+            );
+            assert_eq!(
+                outcome.gas_used, case.expected_gas_used,
+                "gas used mismatch for '{}'",
+                case.label
+            );
+            assert_eq!(
+                outcome.signer_sequences,
+                vec![(address, case.expected_final_sequence)],
+                "final signer sequence mismatch for '{}'",
+                case.label
+            );
+            let account = accounts
+                .account(&address)
+                .expect("account lookup")
+                .expect("account exists after successful ante run");
+            assert_eq!(
+                account.sequence, case.expected_final_sequence,
+                "stored sequence mismatch for '{}'",
+                case.label
+            );
+            let expected_public_key = if case.expected_public_key_set {
+                Some(decode_any(
+                    &case.public_key_any_hex,
+                    &case.label,
+                    "tx public key",
+                ))
+            } else {
+                None
+            };
+            assert_eq!(
+                account.public_key, expected_public_key,
+                "stored public key mismatch for '{}'",
+                case.label
+            );
+        } else {
+            let Err(error) = result else {
+                panic!("gas fixture '{}' unexpectedly succeeded", case.label);
+            };
+            assert_eq!(
+                error_code(&error),
+                case.expected_error,
+                "error mismatch for '{}'",
+                case.label
+            );
+            let account = accounts
+                .account(&address)
+                .expect("account lookup")
+                .expect("account exists after failed ante run");
+            assert_eq!(
+                account.sequence, case.account_sequence,
+                "sequence mutated after failing fixture '{}'",
+                case.label
+            );
+        }
+    }
+}
+
 fn load_fixture<T>(relative_path: &str) -> T
 where
     T: for<'de> Deserialize<'de>,
@@ -468,8 +579,19 @@ fn decode_any(input: &str, label: &str, field: &str) -> cosmos_types::Any {
 }
 
 fn deliver_context() -> AnteContext {
+    run_context("deliver")
+}
+
+fn run_context(mode: &str) -> AnteContext {
+    let mode = match mode {
+        "check" => RunTxMode::Check,
+        "recheck" => RunTxMode::Recheck,
+        "deliver" => RunTxMode::Deliver,
+        "simulate" => RunTxMode::Simulate,
+        other => panic!("unknown run tx mode '{other}'"),
+    };
     AnteContext {
-        mode: RunTxMode::Deliver,
+        mode,
         block_height: 10,
         gas_meter: GasMeter::infinite(),
         events: Vec::new(),

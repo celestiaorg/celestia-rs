@@ -22,6 +22,8 @@
 - Added Go-generated `ante` fee conformance fixtures for minimum gas prices,
   implicit and explicit fee payers, insufficient fees, insufficient funds, and
   fee balance deductions.
+- Added Go-generated `ante` gas conformance fixtures for tx-size gas,
+  signature-verification gas, simulate mode, and out-of-gas failures.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.

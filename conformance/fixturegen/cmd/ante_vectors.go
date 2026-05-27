@@ -34,6 +34,11 @@ func init() {
 			Description: "Emit fee deduction and min-gas-price vectors for the ante crate.",
 			Run:         runAnteFees,
 		},
+		Subcommand{
+			Name:        "ante-gas",
+			Description: "Emit gas accounting and out-of-gas vectors for the ante crate.",
+			Run:         runAnteGas,
+		},
 	)
 }
 
@@ -105,6 +110,28 @@ type anteFeeBalance struct {
 	AddressHex string `json:"address_hex"`
 	Denom      string `json:"denom"`
 	Amount     string `json:"amount"`
+}
+
+type anteGasFixture struct {
+	Scenario string        `json:"scenario"`
+	ChainID  string        `json:"chain_id"`
+	Cases    []anteGasCase `json:"cases"`
+}
+
+type anteGasCase struct {
+	Label                 string `json:"label"`
+	Mode                  string `json:"mode"`
+	TxRawHex              string `json:"tx_raw_hex"`
+	AddressHex            string `json:"address_hex"`
+	PublicKeyAnyHex       string `json:"public_key_any_hex"`
+	AccountNumber         uint64 `json:"account_number"`
+	AccountSequence       uint64 `json:"account_sequence"`
+	ExpectedOK            bool   `json:"expected_ok"`
+	ExpectedError         string `json:"expected_error,omitempty"`
+	ExpectedGasWanted     uint64 `json:"expected_gas_wanted,omitempty"`
+	ExpectedGasUsed       uint64 `json:"expected_gas_used,omitempty"`
+	ExpectedFinalSequence uint64 `json:"expected_final_sequence,omitempty"`
+	ExpectedPublicKeySet  bool   `json:"expected_public_key_set,omitempty"`
 }
 
 func runAnteStateless(args []string) error {
@@ -203,6 +230,79 @@ func runAnteStateless(args []string) error {
 	}
 	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-stateless")); err != nil {
 		return fmt.Errorf("emit ante-stateless metadata: %w", err)
+	}
+	fmt.Printf("wrote %s\n", *out)
+	return nil
+}
+
+func runAnteGas(args []string) error {
+	fs := flag.NewFlagSet("ante-gas", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/ante/gas.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	deliver, err := anteGasFixtureCase(anteGasConfig{
+		label:                 "deliver-charges-tx-size-and-signature",
+		secret:                []byte("ante gas deliver"),
+		mode:                  "deliver",
+		accountNumber:         7,
+		sequence:              9,
+		gasLimit:              500_000,
+		includeSignatureGas:   true,
+		expectedOK:            true,
+		expectedFinalSequence: 10,
+		expectedPublicKeySet:  true,
+	})
+	if err != nil {
+		return err
+	}
+	simulate, err := anteGasFixtureCase(anteGasConfig{
+		label:                 "simulate-charges-gas-without-state-mutation",
+		secret:                []byte("ante gas simulate"),
+		mode:                  "simulate",
+		accountNumber:         7,
+		sequence:              9,
+		gasLimit:              500_000,
+		includeSignatureGas:   true,
+		expectedOK:            true,
+		expectedFinalSequence: 9,
+	})
+	if err != nil {
+		return err
+	}
+	txSizeOutOfGas, err := anteGasFixtureCase(anteGasConfig{
+		label:         "out-of-gas-tx-size",
+		secret:        []byte("ante gas tx size out"),
+		mode:          "deliver",
+		accountNumber: 7,
+		sequence:      9,
+		gasLimit:      1,
+		expectedError: "out_of_gas",
+	})
+	if err != nil {
+		return err
+	}
+	signatureOutOfGas, err := anteSignatureOutOfGasCase()
+	if err != nil {
+		return err
+	}
+
+	fixture := anteGasFixture{
+		Scenario: "ante-gas",
+		ChainID:  "celestia",
+		Cases: []anteGasCase{
+			deliver,
+			simulate,
+			txSizeOutOfGas,
+			signatureOutOfGas,
+		},
+	}
+	if err := writeJSON(*out, fixture); err != nil {
+		return fmt.Errorf("emit ante-gas: %w", err)
+	}
+	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-gas")); err != nil {
+		return fmt.Errorf("emit ante-gas metadata: %w", err)
 	}
 	fmt.Printf("wrote %s\n", *out)
 	return nil
@@ -716,6 +816,87 @@ type anteFeeConfig struct {
 	expectedError         string
 	expectedGasWanted     uint64
 	expectedFinalSequence uint64
+}
+
+type anteGasConfig struct {
+	label                 string
+	secret                []byte
+	mode                  string
+	accountNumber         uint64
+	sequence              uint64
+	gasLimit              uint64
+	includeSignatureGas   bool
+	expectedOK            bool
+	expectedError         string
+	expectedFinalSequence uint64
+	expectedPublicKeySet  bool
+}
+
+func anteGasFixtureCase(cfg anteGasConfig) (anteGasCase, error) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              cfg.label,
+		secret:             cfg.secret,
+		signAccountNumber:  cfg.accountNumber,
+		accountNumber:      cfg.accountNumber,
+		txSequence:         cfg.sequence,
+		accountSequence:    cfg.sequence,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                &txtypes.Fee{GasLimit: cfg.gasLimit},
+		expectedOK:         cfg.expectedOK,
+		expectedError:      cfg.expectedError,
+	})
+	if err != nil {
+		return anteGasCase{}, err
+	}
+	txBytes, err := hex.DecodeString(signed.TxRawHex)
+	if err != nil {
+		return anteGasCase{}, fmt.Errorf("decode gas tx %s: %w", cfg.label, err)
+	}
+	expectedGasUsed := uint64(len(txBytes)) * 10
+	if cfg.includeSignatureGas {
+		expectedGasUsed += 1000
+	}
+	return anteGasCase{
+		Label:                 cfg.label,
+		Mode:                  cfg.mode,
+		TxRawHex:              signed.TxRawHex,
+		AddressHex:            signed.AddressHex,
+		PublicKeyAnyHex:       signed.PublicKeyAnyHex,
+		AccountNumber:         cfg.accountNumber,
+		AccountSequence:       cfg.sequence,
+		ExpectedOK:            cfg.expectedOK,
+		ExpectedError:         cfg.expectedError,
+		ExpectedGasWanted:     cfg.gasLimit,
+		ExpectedGasUsed:       expectedGasUsed,
+		ExpectedFinalSequence: cfg.expectedFinalSequence,
+		ExpectedPublicKeySet:  cfg.expectedPublicKeySet,
+	}, nil
+}
+
+func anteSignatureOutOfGasCase() (anteGasCase, error) {
+	cfg := anteGasConfig{
+		label:         "out-of-gas-signature-verification",
+		secret:        []byte("ante gas signature out"),
+		mode:          "deliver",
+		accountNumber: 7,
+		sequence:      9,
+		expectedError: "out_of_gas",
+	}
+	gasLimit := uint64(2_500)
+	for range 8 {
+		cfg.gasLimit = gasLimit
+		out, err := anteGasFixtureCase(cfg)
+		if err != nil {
+			return anteGasCase{}, err
+		}
+		txSizeGas := out.ExpectedGasUsed
+		if txSizeGas < gasLimit && gasLimit < txSizeGas+1000 {
+			return out, nil
+		}
+		gasLimit = txSizeGas + 999
+	}
+	return anteGasCase{}, fmt.Errorf("stabilize signature out-of-gas limit")
 }
 
 func anteFeeFixtureCase(cfg anteFeeConfig) (anteFeeCase, error) {
