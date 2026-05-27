@@ -16,6 +16,9 @@
   checks, insufficient fees, and insufficient funds without sequence mutation.
 - Added the first Go-generated `ante` conformance fixture for stateless
   transaction validation and registered it with `xtask refresh-fixtures`.
+- Added Go-generated `ante` SIGN_MODE_DIRECT signature/account-state
+  conformance fixtures covering signer extraction, sequence drift, stored
+  public-key mismatches, invalid public keys, and bad signatures.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
