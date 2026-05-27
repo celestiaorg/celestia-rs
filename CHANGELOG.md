@@ -19,6 +19,9 @@
 - Added Go-generated `ante` SIGN_MODE_DIRECT signature/account-state
   conformance fixtures covering signer extraction, sequence drift, stored
   public-key mismatches, invalid public keys, and bad signatures.
+- Added Go-generated `ante` fee conformance fixtures for minimum gas prices,
+  implicit and explicit fee payers, insufficient fees, insufficient funds, and
+  fee balance deductions.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.

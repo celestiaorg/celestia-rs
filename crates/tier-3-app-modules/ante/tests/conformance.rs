@@ -6,6 +6,7 @@ use ante::{
     Account, AccountReader, AccountWriter, AnteConfig, AnteContext, AnteHandler, Error, FeeKeeper,
     GasMeter, RunTxMode,
 };
+use cosmos_types::Coin;
 use prost::Message;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -60,6 +61,45 @@ struct SignatureCase {
     expected_final_sequence: u64,
     #[serde(default)]
     expected_final_public_key: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct FeesFixture {
+    chain_id: String,
+    cases: Vec<FeeCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FeeCase {
+    label: String,
+    tx_raw_hex: String,
+    address_hex: String,
+    public_key_any_hex: String,
+    account_number: u64,
+    account_sequence: u64,
+    min_gas_prices: Vec<FixtureCoin>,
+    balances: Vec<FixtureBalance>,
+    expected_ok: bool,
+    #[serde(default)]
+    expected_error: String,
+    #[serde(default)]
+    expected_gas_wanted: u64,
+    #[serde(default)]
+    expected_final_sequence: u64,
+    expected_balances: Vec<FixtureBalance>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixtureCoin {
+    denom: String,
+    amount: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FixtureBalance {
+    address_hex: String,
+    denom: String,
+    amount: String,
 }
 
 #[test]
@@ -210,6 +250,95 @@ fn signature_fixtures_match_go_sign_bytes_and_account_checks() {
     }
 }
 
+#[test]
+fn fee_fixtures_match_min_gas_and_deduction_behavior() {
+    let fixture: FeesFixture = load_fixture("ante/fees.json");
+
+    for case in &fixture.cases {
+        let mut config = AnteConfig::celestia_mainnet_app_v6(&fixture.chain_id);
+        config.min_gas_prices = case.min_gas_prices.iter().map(coin_from_fixture).collect();
+        let handler = AnteHandler::new(config);
+        let tx_bytes = decode_hex(&case.tx_raw_hex, &case.label, "tx raw");
+        let address = decode_address(&case.address_hex, &case.label);
+        let mut accounts = Accounts::from_account(Account {
+            address,
+            account_number: case.account_number,
+            sequence: case.account_sequence,
+            public_key: None,
+        });
+        let mut fees = Fees::from_fixture_balances(&case.balances);
+        let initial_balances = fees.snapshot();
+
+        let result = handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees);
+        if case.expected_ok {
+            let outcome = result.unwrap_or_else(|error| {
+                panic!("fee fixture '{}' unexpectedly failed: {error}", case.label)
+            });
+            assert_eq!(
+                outcome.gas_wanted, case.expected_gas_wanted,
+                "gas wanted mismatch for '{}'",
+                case.label
+            );
+            assert_eq!(
+                outcome.signer_sequences,
+                vec![(address, case.expected_final_sequence)],
+                "final signer sequence mismatch for '{}'",
+                case.label
+            );
+            let account = accounts
+                .account(&address)
+                .expect("account lookup")
+                .expect("account exists after successful ante run");
+            assert_eq!(
+                account.sequence, case.expected_final_sequence,
+                "stored sequence mismatch for '{}'",
+                case.label
+            );
+            assert_eq!(
+                account.public_key,
+                Some(decode_any(
+                    &case.public_key_any_hex,
+                    &case.label,
+                    "tx public key"
+                )),
+                "stored public key mismatch for '{}'",
+                case.label
+            );
+            assert_eq!(
+                fees.snapshot(),
+                balances_from_fixture(&case.expected_balances),
+                "balance mismatch for '{}'",
+                case.label
+            );
+        } else {
+            let Err(error) = result else {
+                panic!("fee fixture '{}' unexpectedly succeeded", case.label);
+            };
+            assert_eq!(
+                error_code(&error),
+                case.expected_error,
+                "error mismatch for '{}'",
+                case.label
+            );
+            let account = accounts
+                .account(&address)
+                .expect("account lookup")
+                .expect("account exists after failed ante run");
+            assert_eq!(
+                account.sequence, case.account_sequence,
+                "sequence mutated after failing fixture '{}'",
+                case.label
+            );
+            assert_eq!(
+                fees.snapshot(),
+                initial_balances,
+                "balances mutated after failing fixture '{}'",
+                case.label
+            );
+        }
+    }
+}
+
 fn load_fixture<T>(relative_path: &str) -> T
 where
     T: for<'de> Deserialize<'de>,
@@ -259,6 +388,33 @@ fn accounts_for_case(case: &SignatureCase) -> Accounts {
         sequence: case.account_sequence,
         public_key,
     })
+}
+
+fn coin_from_fixture(coin: &FixtureCoin) -> Coin {
+    Coin::new(&coin.denom, &coin.amount).unwrap_or_else(|error| {
+        panic!(
+            "convert fixture coin {}{}: {error}",
+            coin.amount, coin.denom
+        )
+    })
+}
+
+fn balances_from_fixture(
+    balances: &[FixtureBalance],
+) -> BTreeMap<(cosmos_types::AccountAddress, String), Coin> {
+    balances
+        .iter()
+        .map(|balance| {
+            let address = decode_address(&balance.address_hex, "fee balance");
+            let coin = Coin::new(&balance.denom, &balance.amount).unwrap_or_else(|error| {
+                panic!(
+                    "convert fixture balance {}{}: {error}",
+                    balance.amount, balance.denom
+                )
+            });
+            ((address, balance.denom.clone()), coin)
+        })
+        .collect()
 }
 
 fn assert_account_unchanged(case: &SignatureCase, accounts: &Accounts) {
@@ -385,6 +541,53 @@ impl FeeKeeper for NoFees {
     ) -> ante::Result<()> {
         Err(Error::State("unexpected fee deduction".to_owned()))
     }
+}
+
+#[derive(Debug, Default)]
+struct Fees {
+    balances: BTreeMap<(cosmos_types::AccountAddress, String), Coin>,
+}
+
+impl Fees {
+    fn from_fixture_balances(balances: &[FixtureBalance]) -> Self {
+        Self {
+            balances: balances_from_fixture(balances),
+        }
+    }
+
+    fn snapshot(&self) -> BTreeMap<(cosmos_types::AccountAddress, String), Coin> {
+        self.balances.clone()
+    }
+}
+
+impl FeeKeeper for Fees {
+    fn spendable_balance(
+        &self,
+        address: &cosmos_types::AccountAddress,
+        denom: &str,
+    ) -> ante::Result<Option<Coin>> {
+        Ok(self.balances.get(&(*address, denom.to_owned())).cloned())
+    }
+
+    fn deduct_fees(
+        &mut self,
+        payer: &cosmos_types::AccountAddress,
+        fees: &[Coin],
+    ) -> ante::Result<()> {
+        for fee in fees {
+            let balance = self
+                .balances
+                .get_mut(&(*payer, fee.denom.clone()))
+                .ok_or(Error::InsufficientFunds)?;
+            let remaining = parse_amount(&balance.amount) - parse_amount(&fee.amount);
+            balance.amount = remaining.to_string();
+        }
+        Ok(())
+    }
+}
+
+fn parse_amount(input: &str) -> u128 {
+    input.parse().expect("valid integer amount")
 }
 
 fn error_code(error: &Error) -> &'static str {

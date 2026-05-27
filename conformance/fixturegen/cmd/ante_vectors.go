@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdksecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkbech32 "github.com/cosmos/cosmos-sdk/types/bech32"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	signing "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
@@ -25,6 +28,11 @@ func init() {
 			Name:        "ante-signatures",
 			Description: "Emit SIGN_MODE_DIRECT signature and account-state vectors for the ante crate.",
 			Run:         runAnteSignatures,
+		},
+		Subcommand{
+			Name:        "ante-fees",
+			Description: "Emit fee deduction and min-gas-price vectors for the ante crate.",
+			Run:         runAnteFees,
 		},
 	)
 }
@@ -64,6 +72,39 @@ type anteSignatureCase struct {
 	ExpectedSignatureHex   string `json:"expected_signature_hex,omitempty"`
 	ExpectedFinalSequence  uint64 `json:"expected_final_sequence,omitempty"`
 	ExpectedFinalPublicKey bool   `json:"expected_final_public_key,omitempty"`
+}
+
+type anteFeesFixture struct {
+	Scenario string        `json:"scenario"`
+	ChainID  string        `json:"chain_id"`
+	Cases    []anteFeeCase `json:"cases"`
+}
+
+type anteFeeCase struct {
+	Label                 string            `json:"label"`
+	TxRawHex              string            `json:"tx_raw_hex"`
+	AddressHex            string            `json:"address_hex"`
+	PublicKeyAnyHex       string            `json:"public_key_any_hex"`
+	AccountNumber         uint64            `json:"account_number"`
+	AccountSequence       uint64            `json:"account_sequence"`
+	MinGasPrices          []anteFixtureCoin `json:"min_gas_prices"`
+	Balances              []anteFeeBalance  `json:"balances"`
+	ExpectedOK            bool              `json:"expected_ok"`
+	ExpectedError         string            `json:"expected_error,omitempty"`
+	ExpectedGasWanted     uint64            `json:"expected_gas_wanted,omitempty"`
+	ExpectedFinalSequence uint64            `json:"expected_final_sequence,omitempty"`
+	ExpectedBalances      []anteFeeBalance  `json:"expected_balances"`
+}
+
+type anteFixtureCoin struct {
+	Denom  string `json:"denom"`
+	Amount string `json:"amount"`
+}
+
+type anteFeeBalance struct {
+	AddressHex string `json:"address_hex"`
+	Denom      string `json:"denom"`
+	Amount     string `json:"amount"`
 }
 
 func runAnteStateless(args []string) error {
@@ -162,6 +203,147 @@ func runAnteStateless(args []string) error {
 	}
 	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-stateless")); err != nil {
 		return fmt.Errorf("emit ante-stateless metadata: %w", err)
+	}
+	fmt.Printf("wrote %s\n", *out)
+	return nil
+}
+
+func runAnteFees(args []string) error {
+	fs := flag.NewFlagSet("ante-fees", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/ante/fees.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	zeroFee, err := anteFeeFixtureCase(anteFeeConfig{
+		label:                 "zero-fee-without-min-gas",
+		secret:                []byte("ante fees zero fee"),
+		accountNumber:         7,
+		sequence:              9,
+		fee:                   &txtypes.Fee{GasLimit: 500_000},
+		expectedOK:            true,
+		expectedGasWanted:     500_000,
+		expectedFinalSequence: 10,
+	})
+	if err != nil {
+		return err
+	}
+	zeroFee.Balances = []anteFeeBalance{}
+	zeroFee.ExpectedBalances = []anteFeeBalance{}
+
+	implicitPayer, err := anteFeeFixtureCase(anteFeeConfig{
+		label:                 "implicit-payer-deducts-fee",
+		secret:                []byte("ante fees implicit payer"),
+		accountNumber:         7,
+		sequence:              9,
+		fee:                   anteFee(500_000, "", anteSDKCoin("utia", 600_000)),
+		minGasPrices:          []anteFixtureCoin{{Denom: "utia", Amount: "1"}},
+		expectedOK:            true,
+		expectedGasWanted:     500_000,
+		expectedFinalSequence: 10,
+	})
+	if err != nil {
+		return err
+	}
+	implicitPayer.Balances = []anteFeeBalance{{AddressHex: implicitPayer.AddressHex, Denom: "utia", Amount: "700000"}}
+	implicitPayer.ExpectedBalances = []anteFeeBalance{{AddressHex: implicitPayer.AddressHex, Denom: "utia", Amount: "100000"}}
+
+	explicitPayerBytes := repeatByte(0x07, 20)
+	explicitPayer, err := anteFeeFixtureCase(anteFeeConfig{
+		label:                 "explicit-payer-deducts-fee",
+		secret:                []byte("ante fees explicit payer"),
+		accountNumber:         7,
+		sequence:              9,
+		fee:                   anteFee(500_000, anteAccountBech32(explicitPayerBytes), anteSDKCoin("utia", 600_000)),
+		minGasPrices:          []anteFixtureCoin{{Denom: "utia", Amount: "1"}},
+		expectedOK:            true,
+		expectedGasWanted:     500_000,
+		expectedFinalSequence: 10,
+	})
+	if err != nil {
+		return err
+	}
+	explicitPayer.Balances = []anteFeeBalance{{AddressHex: hex.EncodeToString(explicitPayerBytes), Denom: "utia", Amount: "700000"}}
+	explicitPayer.ExpectedBalances = []anteFeeBalance{{AddressHex: hex.EncodeToString(explicitPayerBytes), Denom: "utia", Amount: "100000"}}
+
+	insufficientFee, err := anteFeeFixtureCase(anteFeeConfig{
+		label:         "insufficient-min-gas-price",
+		secret:        []byte("ante fees insufficient fee"),
+		accountNumber: 7,
+		sequence:      9,
+		fee:           anteFee(500_000, "", anteSDKCoin("utia", 600_000)),
+		minGasPrices:  []anteFixtureCoin{{Denom: "utia", Amount: "2"}},
+		expectedError: "insufficient_fee",
+	})
+	if err != nil {
+		return err
+	}
+	insufficientFee.Balances = []anteFeeBalance{{AddressHex: insufficientFee.AddressHex, Denom: "utia", Amount: "2000000"}}
+	insufficientFee.ExpectedBalances = insufficientFee.Balances
+
+	missingRequiredDenom, err := anteFeeFixtureCase(anteFeeConfig{
+		label:         "missing-required-fee-denom",
+		secret:        []byte("ante fees missing denom"),
+		accountNumber: 7,
+		sequence:      9,
+		fee:           anteFee(500_000, "", anteSDKCoin("utia", 600_000)),
+		minGasPrices:  []anteFixtureCoin{{Denom: "stake", Amount: "1"}},
+		expectedError: "insufficient_fee",
+	})
+	if err != nil {
+		return err
+	}
+	missingRequiredDenom.Balances = []anteFeeBalance{{AddressHex: missingRequiredDenom.AddressHex, Denom: "utia", Amount: "2000000"}}
+	missingRequiredDenom.ExpectedBalances = missingRequiredDenom.Balances
+
+	insufficientFunds, err := anteFeeFixtureCase(anteFeeConfig{
+		label:         "insufficient-funds",
+		secret:        []byte("ante fees insufficient funds"),
+		accountNumber: 7,
+		sequence:      9,
+		fee:           anteFee(500_000, "", anteSDKCoin("utia", 600_000)),
+		minGasPrices:  []anteFixtureCoin{{Denom: "utia", Amount: "1"}},
+		expectedError: "insufficient_funds",
+	})
+	if err != nil {
+		return err
+	}
+	insufficientFunds.Balances = []anteFeeBalance{{AddressHex: insufficientFunds.AddressHex, Denom: "utia", Amount: "1"}}
+	insufficientFunds.ExpectedBalances = insufficientFunds.Balances
+
+	malformedPayer, err := anteFeeFixtureCase(anteFeeConfig{
+		label:         "malformed-explicit-payer",
+		secret:        []byte("ante fees malformed payer"),
+		accountNumber: 7,
+		sequence:      9,
+		fee:           anteFee(500_000, "not-a-celestia-address", anteSDKCoin("utia", 600_000)),
+		minGasPrices:  []anteFixtureCoin{{Denom: "utia", Amount: "1"}},
+		expectedError: "malformed_tx",
+	})
+	if err != nil {
+		return err
+	}
+	malformedPayer.Balances = []anteFeeBalance{{AddressHex: malformedPayer.AddressHex, Denom: "utia", Amount: "2000000"}}
+	malformedPayer.ExpectedBalances = malformedPayer.Balances
+
+	fixture := anteFeesFixture{
+		Scenario: "ante-fees",
+		ChainID:  "celestia",
+		Cases: []anteFeeCase{
+			zeroFee,
+			implicitPayer,
+			explicitPayer,
+			insufficientFee,
+			missingRequiredDenom,
+			insufficientFunds,
+			malformedPayer,
+		},
+	}
+	if err := writeJSON(*out, fixture); err != nil {
+		return fmt.Errorf("emit ante-fees: %w", err)
+	}
+	if err := writeJSON(metaPath(*out), anteFixtureMeta("ante-fees")); err != nil {
+		return fmt.Errorf("emit ante-fees metadata: %w", err)
 	}
 	fmt.Printf("wrote %s\n", *out)
 	return nil
@@ -436,6 +618,7 @@ type anteSignatureConfig struct {
 	accountPublicKey       *types.Any
 	txPublicKey            *types.Any
 	includeTxPublicKey     bool
+	fee                    *txtypes.Fee
 	mutateSignature        func([]byte) []byte
 	expectedOK             bool
 	expectedError          string
@@ -450,6 +633,10 @@ func anteSignatureFixtureCase(cfg anteSignatureConfig) (anteSignatureCase, error
 	if txPublicKey == nil && cfg.includeTxPublicKey {
 		txPublicKey = anteAnyForPublicKey(pub)
 	}
+	fee := cfg.fee
+	if fee == nil {
+		fee = &txtypes.Fee{GasLimit: 500_000}
+	}
 
 	bodyBytes, err := proto.Marshal(&txtypes.TxBody{Messages: []*types.Any{anteOpaqueMsg()}})
 	if err != nil {
@@ -461,7 +648,7 @@ func anteSignatureFixtureCase(cfg anteSignatureConfig) (anteSignatureCase, error
 			ModeInfo:  cosmosSingleModeInfo(),
 			Sequence:  cfg.txSequence,
 		}},
-		Fee: &txtypes.Fee{GasLimit: 500_000},
+		Fee: fee,
 	})
 	if err != nil {
 		return anteSignatureCase{}, fmt.Errorf("marshal ante signature auth info %s: %w", cfg.label, err)
@@ -516,6 +703,75 @@ func anteSignatureFixtureCase(cfg anteSignatureConfig) (anteSignatureCase, error
 		ExpectedFinalSequence:  cfg.expectedFinalSequence,
 		ExpectedFinalPublicKey: cfg.expectedFinalPublicKey,
 	}, nil
+}
+
+type anteFeeConfig struct {
+	label                 string
+	secret                []byte
+	accountNumber         uint64
+	sequence              uint64
+	fee                   *txtypes.Fee
+	minGasPrices          []anteFixtureCoin
+	expectedOK            bool
+	expectedError         string
+	expectedGasWanted     uint64
+	expectedFinalSequence uint64
+}
+
+func anteFeeFixtureCase(cfg anteFeeConfig) (anteFeeCase, error) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              cfg.label,
+		secret:             cfg.secret,
+		signAccountNumber:  cfg.accountNumber,
+		accountNumber:      cfg.accountNumber,
+		txSequence:         cfg.sequence,
+		accountSequence:    cfg.sequence,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                cfg.fee,
+		expectedOK:         cfg.expectedOK,
+		expectedError:      cfg.expectedError,
+	})
+	if err != nil {
+		return anteFeeCase{}, err
+	}
+	minGasPrices := cfg.minGasPrices
+	if minGasPrices == nil {
+		minGasPrices = []anteFixtureCoin{}
+	}
+	return anteFeeCase{
+		Label:                 cfg.label,
+		TxRawHex:              signed.TxRawHex,
+		AddressHex:            signed.AddressHex,
+		PublicKeyAnyHex:       signed.PublicKeyAnyHex,
+		AccountNumber:         cfg.accountNumber,
+		AccountSequence:       cfg.sequence,
+		MinGasPrices:          minGasPrices,
+		ExpectedOK:            cfg.expectedOK,
+		ExpectedError:         cfg.expectedError,
+		ExpectedGasWanted:     cfg.expectedGasWanted,
+		ExpectedFinalSequence: cfg.expectedFinalSequence,
+	}, nil
+}
+
+func anteFee(gasLimit uint64, payer string, amount ...sdk.Coin) *txtypes.Fee {
+	return &txtypes.Fee{
+		Amount:   amount,
+		GasLimit: gasLimit,
+		Payer:    payer,
+	}
+}
+
+func anteSDKCoin(denom string, amount int64) sdk.Coin {
+	return sdk.Coin{Denom: denom, Amount: math.NewInt(amount)}
+}
+
+func anteAccountBech32(address []byte) string {
+	out, err := sdkbech32.ConvertAndEncode(cosmosAccountPrefix, address)
+	if err != nil {
+		panic(fmt.Sprintf("encode ante account address: %v", err))
+	}
+	return out
 }
 
 func antePublicKeyAny(secret []byte) *types.Any {

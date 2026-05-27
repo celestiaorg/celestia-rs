@@ -1,0 +1,202 @@
+{
+  "scenario": "ante-fees",
+  "chain_id": "celestia",
+  "cases": [
+    {
+      "label": "zero-fee-without-min-gas",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312580a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102939c369fe3ad875ce2613f36651d0c5d72fe3590f1ab02265ff931bf63d5033212040a0208011809120410a0c21e1a40339d9d3029fcdfbbb103e3448d22326e5dbc5b6588138ffe37f61af75f8c1a4d16d6cc6d3976f9cc5de5471b5fc6950ca75ef38d32fa953a19d175bed2089f2b",
+      "address_hex": "1b62ec867194147229c0ed0460f50716c74d28b6",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102939c369fe3ad875ce2613f36651d0c5d72fe3590f1ab02265ff931bf63d50332",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [],
+      "balances": [],
+      "expected_ok": true,
+      "expected_gas_wanted": 500000,
+      "expected_final_sequence": 10,
+      "expected_balances": []
+    },
+    {
+      "label": "implicit-payer-deducts-fee",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312680a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103b935cca8f53f696298e73349f7696ec6d25abdcd255512338b5ff72dfa41732c12040a020801180912140a0e0a0475746961120636303030303010a0c21e1a40b08f9e48bcf675646382097ef3eb2ea4f783f20535f9c4c81a6f8ef01fe252177c1c63e1c1c4b3388d41be8afe9732f340085e3884dc152700f1c202bdce940c",
+      "address_hex": "1360d54eeed70bb600d31042b01c829e31b4a4d9",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103b935cca8f53f696298e73349f7696ec6d25abdcd255512338b5ff72dfa41732c",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "utia",
+          "amount": "1"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "1360d54eeed70bb600d31042b01c829e31b4a4d9",
+          "denom": "utia",
+          "amount": "700000"
+        }
+      ],
+      "expected_ok": true,
+      "expected_gas_wanted": 500000,
+      "expected_final_sequence": 10,
+      "expected_balances": [
+        {
+          "address_hex": "1360d54eeed70bb600d31042b01c829e31b4a4d9",
+          "denom": "utia",
+          "amount": "100000"
+        }
+      ]
+    },
+    {
+      "label": "explicit-payer-deducts-fee",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e6412030102031299010a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103157a6ac2ea3d4a9431a074fb91804e09d6cffd80800e5f2d8e99b1e4fc4a2ed712040a020801180912450a0e0a0475746961120636303030303010a0c21e1a2f63656c65737469613171757273777063387175727377706338717572737770633871757273777063387a656b3236761a40203608bd6db52dfb1a06569885edcec46b7489e401bebb3852187109e187fb9d747f6f2c12c7e4fc54ee8f54043e3399e36554aa083adbbb8e8f457823948197",
+      "address_hex": "46cfcd4fb34ef0eca93e35ea55ae870521fb9b16",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103157a6ac2ea3d4a9431a074fb91804e09d6cffd80800e5f2d8e99b1e4fc4a2ed7",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "utia",
+          "amount": "1"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "0707070707070707070707070707070707070707",
+          "denom": "utia",
+          "amount": "700000"
+        }
+      ],
+      "expected_ok": true,
+      "expected_gas_wanted": 500000,
+      "expected_final_sequence": 10,
+      "expected_balances": [
+        {
+          "address_hex": "0707070707070707070707070707070707070707",
+          "denom": "utia",
+          "amount": "100000"
+        }
+      ]
+    },
+    {
+      "label": "insufficient-min-gas-price",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312680a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102397c5b3e72372ebfa9075663bf3d676070bd68cb0f5396013596f21f05bc972612040a020801180912140a0e0a0475746961120636303030303010a0c21e1a4055713e90475dc3b239aab365d901d6234a8a1c863e7772251b212240bead75d02367407ceecf4d1fc6fe6bdee79c97a48f20fc2f6b550135d30a92172ae87815",
+      "address_hex": "0a9c4f3ae9967903607d975b9d3599b837354da2",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102397c5b3e72372ebfa9075663bf3d676070bd68cb0f5396013596f21f05bc9726",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "utia",
+          "amount": "2"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "0a9c4f3ae9967903607d975b9d3599b837354da2",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ],
+      "expected_ok": false,
+      "expected_error": "insufficient_fee",
+      "expected_balances": [
+        {
+          "address_hex": "0a9c4f3ae9967903607d975b9d3599b837354da2",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ]
+    },
+    {
+      "label": "missing-required-fee-denom",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312680a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103c35b6bc133f8a7b09af40a043174142aa37e91fb5a00810d6fa0b1197312191212040a020801180912140a0e0a0475746961120636303030303010a0c21e1a40260875c50f24ecbe2ffcf22d128e3cfaea3893055f2f3a1d93985480980b857c3e065ae9b70c8ef638a5242c13dbabf25fe89e8a711671c1e9778eed5c695635",
+      "address_hex": "d3bde35c4d191298bfc169a527713fbd5cb52b2f",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103c35b6bc133f8a7b09af40a043174142aa37e91fb5a00810d6fa0b11973121912",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "stake",
+          "amount": "1"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "d3bde35c4d191298bfc169a527713fbd5cb52b2f",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ],
+      "expected_ok": false,
+      "expected_error": "insufficient_fee",
+      "expected_balances": [
+        {
+          "address_hex": "d3bde35c4d191298bfc169a527713fbd5cb52b2f",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ]
+    },
+    {
+      "label": "insufficient-funds",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120301020312680a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102f1baf1dc29b38f7031fa3f3a8d1fb6f306db3362dc58807adbbb30891ba893cf12040a020801180912140a0e0a0475746961120636303030303010a0c21e1a40d98f85ecac4b5f4da083b9caf649f30fcbcfa91138b22cb84a4bb906b0c35e90610853bed0acdfb2e6a219b8716b4b487a09997fab8a11803260a7a4d86cf3f0",
+      "address_hex": "3fa55b2ac9f0e97c6e2fe4f446434233e4f37f22",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102f1baf1dc29b38f7031fa3f3a8d1fb6f306db3362dc58807adbbb30891ba893cf",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "utia",
+          "amount": "1"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "3fa55b2ac9f0e97c6e2fe4f446434233e4f37f22",
+          "denom": "utia",
+          "amount": "1"
+        }
+      ],
+      "expected_ok": false,
+      "expected_error": "insufficient_funds",
+      "expected_balances": [
+        {
+          "address_hex": "3fa55b2ac9f0e97c6e2fe4f446434233e4f37f22",
+          "denom": "utia",
+          "amount": "1"
+        }
+      ]
+    },
+    {
+      "label": "malformed-explicit-payer",
+      "tx_raw_hex": "0a250a230a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e6412030102031280010a500a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a210291fe0e6f74ce6a2e3d59335d7d1a87abc352a3e368d0c33723f932fa86a605b612040a0208011809122c0a0e0a0475746961120636303030303010a0c21e1a166e6f742d612d63656c65737469612d616464726573731a407a9d26e9394a43543b01b792e64be279376a8052367fc6e21a900bb69bad9a4d142cc446131f53d54a9fbd32a95de83cacf301bcbb1b348ac8edad3d32ef3779",
+      "address_hex": "44a90f3fa24ccbf39c2fc8147975eb5347ed3682",
+      "public_key_any_hex": "0a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a210291fe0e6f74ce6a2e3d59335d7d1a87abc352a3e368d0c33723f932fa86a605b6",
+      "account_number": 7,
+      "account_sequence": 9,
+      "min_gas_prices": [
+        {
+          "denom": "utia",
+          "amount": "1"
+        }
+      ],
+      "balances": [
+        {
+          "address_hex": "44a90f3fa24ccbf39c2fc8147975eb5347ed3682",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ],
+      "expected_ok": false,
+      "expected_error": "malformed_tx",
+      "expected_balances": [
+        {
+          "address_hex": "44a90f3fa24ccbf39c2fc8147975eb5347ed3682",
+          "denom": "utia",
+          "amount": "2000000"
+        }
+      ]
+    }
+  ]
+}
