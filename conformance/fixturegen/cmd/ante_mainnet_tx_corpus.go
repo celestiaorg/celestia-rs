@@ -13,6 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdksecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
+	signing "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 const anteMainnetTxCorpusScenario = "ante-mainnet-tx-corpus"
@@ -53,6 +59,31 @@ type anteMainnetTxSample struct {
 	TxHash     string `json:"tx_hash"`
 }
 
+type anteMainnetTxDecoded struct {
+	Label            string                       `json:"label"`
+	BodyBytesHex     string                       `json:"body_bytes_hex"`
+	AuthInfoBytesHex string                       `json:"auth_info_bytes_hex"`
+	MessageCount     int                          `json:"message_count"`
+	SignatureCount   int                          `json:"signature_count"`
+	Fee              anteMainnetTxFee             `json:"fee"`
+	Signers          []anteMainnetTxDecodedSigner `json:"signers"`
+}
+
+type anteMainnetTxFee struct {
+	GasLimit uint64            `json:"gas_limit"`
+	Payer    string            `json:"payer,omitempty"`
+	Granter  string            `json:"granter,omitempty"`
+	Amount   []anteFixtureCoin `json:"amount"`
+}
+
+type anteMainnetTxDecodedSigner struct {
+	Index           int    `json:"index"`
+	Sequence        uint64 `json:"sequence"`
+	Mode            string `json:"mode"`
+	AddressHex      string `json:"address_hex,omitempty"`
+	PublicKeyAnyHex string `json:"public_key_any_hex,omitempty"`
+}
+
 type anteMainnetTxCorpusMeta struct {
 	Scenario           string  `json:"scenario"`
 	SourceChain        string  `json:"source_chain"`
@@ -84,10 +115,15 @@ func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error 
 	if err != nil {
 		return err
 	}
+	decoded, err := decodeAnteMainnetTxSamples(samples)
+	if err != nil {
+		return err
+	}
 	return fmt.Errorf(
-		"%s sampled %d transactions; account/bank state hydration and Go ante replay are not implemented yet",
+		"%s sampled %d transactions and decoded %d txs; account/bank state hydration and Go ante replay are not implemented yet",
 		anteMainnetTxCorpusScenario,
 		len(samples),
+		len(decoded),
 	)
 }
 
@@ -233,6 +269,154 @@ func sampleAnteMainnetTxs(
 		)
 	}
 	return samples, nil
+}
+
+func decodeAnteMainnetTxSamples(samples []anteMainnetTxSample) ([]anteMainnetTxDecoded, error) {
+	decoded := make([]anteMainnetTxDecoded, 0, len(samples))
+	for _, sample := range samples {
+		tx, err := decodeAnteMainnetTxSample(sample)
+		if err != nil {
+			return nil, err
+		}
+		decoded = append(decoded, tx)
+	}
+	return decoded, nil
+}
+
+func decodeAnteMainnetTxSample(sample anteMainnetTxSample) (anteMainnetTxDecoded, error) {
+	txBytes, err := hex.DecodeString(sample.TxRawHex)
+	if err != nil {
+		return anteMainnetTxDecoded{}, fmt.Errorf("%s: decode tx raw hex: %w", sample.Label, err)
+	}
+	var txRaw txtypes.TxRaw
+	if err := proto.Unmarshal(txBytes, &txRaw); err != nil {
+		return anteMainnetTxDecoded{}, fmt.Errorf("%s: unmarshal TxRaw: %w", sample.Label, err)
+	}
+
+	var body txtypes.TxBody
+	if err := proto.Unmarshal(txRaw.BodyBytes, &body); err != nil {
+		return anteMainnetTxDecoded{}, fmt.Errorf("%s: unmarshal TxBody: %w", sample.Label, err)
+	}
+	var authInfo txtypes.AuthInfo
+	if err := proto.Unmarshal(txRaw.AuthInfoBytes, &authInfo); err != nil {
+		return anteMainnetTxDecoded{}, fmt.Errorf("%s: unmarshal AuthInfo: %w", sample.Label, err)
+	}
+
+	fee, err := decodeAnteMainnetTxFee(authInfo.Fee)
+	if err != nil {
+		return anteMainnetTxDecoded{}, fmt.Errorf("%s: decode fee: %w", sample.Label, err)
+	}
+	signers := make([]anteMainnetTxDecodedSigner, 0, len(authInfo.SignerInfos))
+	for index, signerInfo := range authInfo.SignerInfos {
+		signer, err := decodeAnteMainnetTxSigner(index, signerInfo)
+		if err != nil {
+			return anteMainnetTxDecoded{}, fmt.Errorf("%s: decode signer %d: %w", sample.Label, index, err)
+		}
+		signers = append(signers, signer)
+	}
+
+	return anteMainnetTxDecoded{
+		Label:            sample.Label,
+		BodyBytesHex:     hex.EncodeToString(txRaw.BodyBytes),
+		AuthInfoBytesHex: hex.EncodeToString(txRaw.AuthInfoBytes),
+		MessageCount:     len(body.Messages),
+		SignatureCount:   len(txRaw.Signatures),
+		Fee:              fee,
+		Signers:          signers,
+	}, nil
+}
+
+func decodeAnteMainnetTxFee(fee *txtypes.Fee) (anteMainnetTxFee, error) {
+	if fee == nil {
+		return anteMainnetTxFee{Amount: []anteFixtureCoin{}}, nil
+	}
+	amount := make([]anteFixtureCoin, 0, len(fee.Amount))
+	for _, coin := range fee.Amount {
+		if err := coin.Validate(); err != nil {
+			return anteMainnetTxFee{}, err
+		}
+		amount = append(amount, anteFixtureCoin{
+			Denom:  coin.Denom,
+			Amount: coin.Amount.String(),
+		})
+	}
+	return anteMainnetTxFee{
+		GasLimit: fee.GasLimit,
+		Payer:    fee.Payer,
+		Granter:  fee.Granter,
+		Amount:   amount,
+	}, nil
+}
+
+func decodeAnteMainnetTxSigner(index int, signerInfo *txtypes.SignerInfo) (anteMainnetTxDecodedSigner, error) {
+	if signerInfo == nil {
+		return anteMainnetTxDecodedSigner{}, errors.New("nil signer info")
+	}
+	publicKeyAnyHex, err := anteAnyHex(signerInfo.PublicKey)
+	if err != nil {
+		return anteMainnetTxDecodedSigner{}, fmt.Errorf("marshal public key any: %w", err)
+	}
+	addressHex, err := anteMainnetTxSignerAddressHex(signerInfo.PublicKey)
+	if err != nil {
+		return anteMainnetTxDecodedSigner{}, err
+	}
+	return anteMainnetTxDecodedSigner{
+		Index:           index,
+		Sequence:        signerInfo.Sequence,
+		Mode:            anteMainnetTxModeInfoName(signerInfo.ModeInfo),
+		AddressHex:      addressHex,
+		PublicKeyAnyHex: publicKeyAnyHex,
+	}, nil
+}
+
+func anteMainnetTxSignerAddressHex(any *types.Any) (string, error) {
+	if any == nil {
+		return "", nil
+	}
+	if any.TypeUrl != cosmosSecp256k1TypeURL {
+		return "", fmt.Errorf("unsupported public key type %s", any.TypeUrl)
+	}
+	var publicKey sdksecp256k1.PubKey
+	if err := proto.Unmarshal(any.Value, &publicKey); err != nil {
+		return "", fmt.Errorf("unmarshal secp256k1 public key: %w", err)
+	}
+	return hex.EncodeToString(publicKey.Address().Bytes()), nil
+}
+
+func anteMainnetTxModeInfoName(modeInfo *txtypes.ModeInfo) string {
+	if modeInfo == nil {
+		return "missing"
+	}
+	switch mode := modeInfo.Sum.(type) {
+	case *txtypes.ModeInfo_Single_:
+		if mode.Single == nil {
+			return "single-missing"
+		}
+		return anteMainnetTxSignModeName(mode.Single.Mode)
+	case *txtypes.ModeInfo_Multi_:
+		return "multi"
+	default:
+		return "unknown"
+	}
+}
+
+func anteMainnetTxSignModeName(mode signing.SignMode) string {
+	switch mode {
+	case signing.SignMode_SIGN_MODE_DIRECT:
+		return "direct"
+	case signing.SignMode_SIGN_MODE_DIRECT_AUX:
+		return "direct_aux"
+	case signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON:
+		return "legacy_amino_json"
+	case signing.SignMode_SIGN_MODE_TEXTUAL:
+		return "textual"
+	case signing.SignMode_SIGN_MODE_EIP_191:
+		return "eip_191"
+	case signing.SignMode_SIGN_MODE_UNSPECIFIED:
+		return "unspecified"
+	default:
+		return fmt.Sprintf("unknown_%d", mode)
+	}
 }
 
 func anteMainnetTxCorpusFixtureMeta(

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"reflect"
@@ -207,7 +208,92 @@ func TestAnteMainnetTxCorpusFixtureMetaUsesConfig(t *testing.T) {
 	}
 }
 
+func TestDecodeAnteMainnetTxSampleExtractsSignerAndFee(t *testing.T) {
+	payer := anteAccountBech32(repeatByte(0x01, 20))
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "decode-mainnet-sample",
+		secret:             []byte("ante mainnet decode"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                anteFee(123456, payer, anteSDKCoin("utia", 789)),
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+
+	decoded, err := decodeAnteMainnetTxSample(anteMainnetTxSample{
+		Label:      "height-10-tx-0",
+		Height:     10,
+		TxIndex:    0,
+		AppVersion: 6,
+		TxRawHex:   signed.TxRawHex,
+	})
+	if err != nil {
+		t.Fatalf("decode tx sample: %v", err)
+	}
+
+	if decoded.Label != "height-10-tx-0" || decoded.MessageCount != 1 || decoded.SignatureCount != 1 {
+		t.Fatalf("decoded identity/counts = %#v", decoded)
+	}
+	if decoded.BodyBytesHex == "" || decoded.AuthInfoBytesHex == "" {
+		t.Fatalf("decoded body/auth bytes are empty: %#v", decoded)
+	}
+	if decoded.Fee.GasLimit != 123456 || decoded.Fee.Payer != payer {
+		t.Fatalf("fee = %#v, want gas limit 123456 and payer %q", decoded.Fee, payer)
+	}
+	if len(decoded.Fee.Amount) != 1 ||
+		decoded.Fee.Amount[0].Denom != "utia" ||
+		decoded.Fee.Amount[0].Amount != "789" {
+		t.Fatalf("fee amount = %#v, want 789utia", decoded.Fee.Amount)
+	}
+	if len(decoded.Signers) != 1 {
+		t.Fatalf("signers = %#v, want one signer", decoded.Signers)
+	}
+	signer := decoded.Signers[0]
+	if signer.Index != 0 || signer.Sequence != 9 || signer.Mode != "direct" {
+		t.Fatalf("signer index/sequence/mode = %#v", signer)
+	}
+	if signer.AddressHex != signed.AddressHex {
+		t.Fatalf("signer address = %q, want %q", signer.AddressHex, signed.AddressHex)
+	}
+	if signer.PublicKeyAnyHex != signed.PublicKeyAnyHex {
+		t.Fatalf("signer public key any = %q, want %q", signer.PublicKeyAnyHex, signed.PublicKeyAnyHex)
+	}
+}
+
+func TestDecodeAnteMainnetTxSampleRejectsMalformedHex(t *testing.T) {
+	_, err := decodeAnteMainnetTxSample(anteMainnetTxSample{Label: "bad", TxRawHex: "zz"})
+	if err == nil || !strings.Contains(err.Error(), "bad: decode tx raw hex") {
+		t.Fatalf("error = %v, want tx raw hex failure", err)
+	}
+}
+
 func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "pending-replay-sample",
+		secret:             []byte("ante mainnet pending"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	txBytes, err := hex.DecodeString(signed.TxRawHex)
+	if err != nil {
+		t.Fatalf("decode signed tx: %v", err)
+	}
+	txBase64 := base64.StdEncoding.EncodeToString(txBytes)
+
 	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		return jsonResponse(`{
 			"jsonrpc": "2.0",
@@ -219,13 +305,13 @@ func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 						"height": "10",
 						"data_hash": "abcd"
 					},
-					"data": { "txs": ["AQID"], "square_size": 8 }
+					"data": { "txs": ["` + txBase64 + `"], "square_size": 8 }
 				}
 			}
 		}`), nil
 	})}
 
-	err := runAnteMainnetTxCorpusWithClient([]string{
+	err = runAnteMainnetTxCorpusWithClient([]string{
 		"--rpc", "https://rpc.example.test",
 		"--db-dir", "/tmp/celestia",
 		"--start", "10",

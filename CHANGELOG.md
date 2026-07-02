@@ -62,6 +62,8 @@
   corpus fixture.
 - Added the `ante-mainnet-tx-corpus` fixturegen command scaffold with
   deterministic mainnet transaction sampling and metadata construction.
+- Expanded the pending `ante-mainnet-tx-corpus` fixturegen scaffold to decode
+  sampled `TxRaw` bytes into signer, fee, and signature metadata.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante
