@@ -13,6 +13,8 @@
 - Added M2 replay-state acceptance-loader support for
   `replay-state.json.zst` so large DB-backed fixtures can be committed
   compressed while retaining the JSON schema.
+- Made fixturegen write zstd-compressed JSON when an output path ends in
+  `.zst`.
 - Deferred `ante` Deliver-mode public-key and sequence writes until after fee
   validation so insufficient-fee and insufficient-funds failures leave account
   state unchanged.

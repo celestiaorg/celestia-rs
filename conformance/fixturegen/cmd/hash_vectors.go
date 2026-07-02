@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/crypto/ripemd160" //nolint:staticcheck // ripemd160 is a required hash function
 )
 
@@ -101,6 +102,16 @@ func writeJSON(path string, v any) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 	body = append(body, '\n')
+	if filepath.Ext(path) == ".zst" {
+		encoder, err := zstd.NewWriter(nil)
+		if err != nil {
+			return fmt.Errorf("create zstd encoder: %w", err)
+		}
+		body = encoder.EncodeAll(body, make([]byte, 0, len(body)))
+		if err := encoder.Close(); err != nil {
+			return fmt.Errorf("close zstd encoder: %w", err)
+		}
+	}
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -272,8 +283,8 @@ func runHashStreaming(args []string) error {
 			splits: nil, // one chunk
 		},
 		{
-			label:  "hello-world-byte-by-byte",
-			data:   helloWorld,
+			label: "hello-world-byte-by-byte",
+			data:  helloWorld,
 			splits: func() []int {
 				s := make([]int, len(helloWorld)-1)
 				for i := range s {
@@ -293,9 +304,9 @@ func runHashStreaming(args []string) error {
 			splits: []int{3, 6},
 		},
 		{
-			label:   "ten-bytes-individual",
-			data:    tenBytes,
-			splits:  []int{1, 2, 3, 4, 5, 6, 7, 8, 9},
+			label:  "ten-bytes-individual",
+			data:   tenBytes,
+			splits: []int{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		},
 		{
 			label:  "empty-single-chunk",
@@ -362,12 +373,12 @@ func splitIntoChunks(data []byte, splits []int) [][]byte {
 // maxInlineBytes we use a "fill" descriptor rather than inline hex to keep
 // the fixture file compact.
 type tmhashCase struct {
-	Label      string  `json:"label"`
-	InputHex   *string `json:"input_hex,omitempty"`
-	FillByte   *int    `json:"fill_byte,omitempty"`
-	FillLen    *int    `json:"fill_len,omitempty"`
-	InputLen   int     `json:"input_len"`
-	Tmhash     string  `json:"tmhash"`
+	Label    string  `json:"label"`
+	InputHex *string `json:"input_hex,omitempty"`
+	FillByte *int    `json:"fill_byte,omitempty"`
+	FillLen  *int    `json:"fill_len,omitempty"`
+	InputLen int     `json:"input_len"`
+	Tmhash   string  `json:"tmhash"`
 }
 
 type tmhashFixture struct {

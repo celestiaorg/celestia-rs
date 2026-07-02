@@ -222,6 +222,11 @@ func emitIavlFixture(out, scenario string, fixture any) error {
 }
 
 func metaPath(out string) string {
+	for _, suffix := range []string{".json.zst", ".bin.zst"} {
+		if strings.HasSuffix(out, suffix) {
+			return strings.TrimSuffix(out, suffix) + ".meta.json"
+		}
+	}
 	ext := filepath.Ext(out)
 	return strings.TrimSuffix(out, ext) + ".meta.json"
 }

@@ -31,6 +31,8 @@ the final committed fixture may need to be stored as
 `conformance/fixtures/m2-integration/replay-state.json.zst` and Git LFS if it
 exceeds repository limits. The Rust acceptance runner prefers the compressed
 fixture, then plain `replay-state.json`, then the synthetic fallback fixture.
+The generator writes zstd-compressed JSON automatically when `--out` ends in
+`.zst`.
 
 Required inputs:
 

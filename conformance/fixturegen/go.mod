@@ -17,6 +17,7 @@ require (
 	github.com/cosmos/cosmos-sdk v0.50.10
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/iavl v1.2.0
+	github.com/klauspost/compress v1.17.9
 	github.com/supranational/blst v0.3.14
 	golang.org/x/crypto v0.26.0
 	google.golang.org/protobuf v1.36.9
@@ -69,7 +70,6 @@ require (
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/klauspost/reedsolomon v1.12.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
