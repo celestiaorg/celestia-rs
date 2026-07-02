@@ -869,6 +869,7 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "zstd",
 ]
 
 [[package]]

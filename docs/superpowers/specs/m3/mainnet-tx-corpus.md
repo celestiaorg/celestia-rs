@@ -19,7 +19,7 @@ go run . ante-mainnet-tx-corpus \
   --start <height> \
   --count <blocks> \
   --min-txs 1000 \
-  --out conformance/fixtures/ante/mainnet-tx-corpus.json
+  --out conformance/fixtures/ante/mainnet-tx-corpus.json.zst
 ```
 
 The command samples committed mainnet transactions from app-v6 blocks,
@@ -78,10 +78,12 @@ source label, and the exact regeneration command.
 
 ## Rust Acceptance Behavior
 
-`m3-integration::mainnet_tx_validation_matches_go` loads the fixture, checks
-that it contains at least 1000 cases, runs each case through `ante::AnteHandler`
-with fixture-backed account and fee adapters, and compares the Rust outcome or
-error against the `expected` envelope.
+`m3-integration::mainnet_tx_validation_matches_go` prefers
+`conformance/fixtures/ante/mainnet-tx-corpus.json.zst`, falls back to
+`mainnet-tx-corpus.json`, checks that the fixture contains at least 1000 cases,
+runs each case through `ante::AnteHandler` with fixture-backed account and fee
+adapters, and compares the Rust outcome or error against the `expected`
+envelope.
 
 The first implementation may compare the fields already emitted by the current
 `ante` public API. If Go exposes more result detail than Rust can yet report,
@@ -91,15 +93,16 @@ fixture runner rather than silently ignoring the field.
 ## Current Status
 
 `crates/m3-integration/` contains the ignored acceptance entry point, but
-`conformance/fixtures/ante/mainnet-tx-corpus.json` is not committed yet. The
-current `ante` fixtures are explicit unit-scale vectors, not a broad mainnet
+`conformance/fixtures/ante/mainnet-tx-corpus.json.zst` is not committed yet.
+The runner can decode the compressed corpus once generated, but the current
+`ante` fixtures are still explicit unit-scale vectors, not a broad mainnet
 corpus.
 
 ## Definition Of Done
 
 - [ ] Implement `fixturegen ante-mainnet-tx-corpus`.
-- [ ] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json` or a compressed
-      equivalent plus `.meta.json`.
+- [ ] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
+      `.meta.json`.
 - [ ] Implement the full fixture runner in `m3-integration`.
 - [ ] Remove the ignore from `mainnet_tx_validation_matches_go`.
 - [ ] Run `cargo xtask repo-health --offline`.

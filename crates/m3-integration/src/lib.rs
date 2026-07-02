@@ -16,8 +16,9 @@ mod tests {
     use prost::Message;
     use serde::Deserialize;
     use std::collections::BTreeMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
+    const COMPRESSED_MAINNET_TX_CORPUS_FIXTURE: &str = "ante/mainnet-tx-corpus.json.zst";
     const MAINNET_TX_CORPUS_FIXTURE: &str = "ante/mainnet-tx-corpus.json";
     const MIN_MAINNET_TX_CASES: usize = 1_000;
 
@@ -161,9 +162,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json fixture"]
+    #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json.zst fixture"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
-        let fixture: MainnetTxCorpusFixture = load_fixture(MAINNET_TX_CORPUS_FIXTURE)?;
+        let (fixture, _) = load_mainnet_tx_corpus_fixture()?;
         run_mainnet_tx_fixture(&fixture, MIN_MAINNET_TX_CASES)
     }
 
@@ -213,6 +214,41 @@ mod tests {
         )
     }
 
+    #[test]
+    fn mainnet_tx_corpus_fixture_selection_prefers_compressed_when_available() {
+        assert_eq!(
+            select_mainnet_tx_corpus_fixture(true, true),
+            COMPRESSED_MAINNET_TX_CORPUS_FIXTURE,
+            "compressed mainnet tx corpus should be preferred for large corpora"
+        );
+        assert_eq!(
+            select_mainnet_tx_corpus_fixture(false, true),
+            MAINNET_TX_CORPUS_FIXTURE,
+            "plain JSON corpus remains supported for smaller corpora"
+        );
+        assert_eq!(
+            select_mainnet_tx_corpus_fixture(false, false),
+            MAINNET_TX_CORPUS_FIXTURE,
+            "missing corpus errors should point at the documented plain JSON path"
+        );
+    }
+
+    #[test]
+    fn mainnet_tx_fixture_body_decoder_reads_zstd_json() -> TestResult<()> {
+        let json = br#"{"scenario":"ante-mainnet-tx-corpus","source":"test","chain_id":"celestia","app_version":"test","cases":[]}"#;
+        let compressed = zstd::encode_all(&json[..], 0)?;
+
+        assert_eq!(
+            decode_fixture_body(COMPRESSED_MAINNET_TX_CORPUS_FIXTURE, compressed)?,
+            json
+        );
+        assert_eq!(
+            decode_fixture_body(MAINNET_TX_CORPUS_FIXTURE, json.to_vec())?,
+            json
+        );
+        Ok(())
+    }
+
     fn run_mainnet_tx_fixture(
         fixture: &MainnetTxCorpusFixture,
         min_cases: usize,
@@ -257,6 +293,25 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    fn load_mainnet_tx_corpus_fixture() -> TestResult<(MainnetTxCorpusFixture, &'static str)> {
+        let compressed_path = fixture_path(COMPRESSED_MAINNET_TX_CORPUS_FIXTURE)?;
+        let plain_path = fixture_path(MAINNET_TX_CORPUS_FIXTURE)?;
+        let relative_path =
+            select_mainnet_tx_corpus_fixture(compressed_path.exists(), plain_path.exists());
+        Ok((load_fixture(relative_path)?, relative_path))
+    }
+
+    fn select_mainnet_tx_corpus_fixture(
+        compressed_corpus_exists: bool,
+        _plain_corpus_exists: bool,
+    ) -> &'static str {
+        if compressed_corpus_exists {
+            COMPRESSED_MAINNET_TX_CORPUS_FIXTURE
+        } else {
+            MAINNET_TX_CORPUS_FIXTURE
+        }
     }
 
     fn synthetic_success_fixture() -> TestResult<MainnetTxCorpusFixture> {
@@ -383,10 +438,22 @@ mod tests {
         T: for<'de> Deserialize<'de>,
     {
         let path = fixture_path(relative_path)?;
-        let body = std::fs::read_to_string(&path)?;
-        serde_json::from_str(&body).map_err(|error| {
+        let body = decode_fixture_body(relative_path, std::fs::read(&path)?)?;
+        serde_json::from_slice(&body).map_err(|error| {
             invalid_data(format!("parse fixture {}: {error}", path.display())).into()
         })
+    }
+
+    fn decode_fixture_body(relative_path: &str, body: Vec<u8>) -> TestResult<Vec<u8>> {
+        if Path::new(relative_path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zst"))
+        {
+            Ok(zstd::decode_all(&body[..])?)
+        } else {
+            Ok(body)
+        }
     }
 
     fn fixture_path(relative_path: &str) -> TestResult<PathBuf> {
