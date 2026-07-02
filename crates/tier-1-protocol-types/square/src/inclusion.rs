@@ -101,7 +101,7 @@ pub fn round_down_power_of_two(input: usize) -> Result<usize> {
 pub fn round_up_power_of_two_strict(input: usize) -> usize {
     let rounded = round_up_power_of_two(input);
     if rounded == input {
-        return rounded.checked_mul(2).unwrap_or(usize::MAX);
+        return rounded.saturating_mul(2);
     }
     rounded
 }
