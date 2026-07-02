@@ -58,6 +58,8 @@
   `ante-mainnet-tx-corpus` generator and acceptance runner.
 - Added compressed `.json.zst` fixture-loader support for the pending M3
   mainnet transaction corpus.
+- Added metadata sidecar validation for the pending M3 mainnet transaction
+  corpus fixture.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante

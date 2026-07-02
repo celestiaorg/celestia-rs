@@ -23,6 +23,7 @@ mod tests {
     const MIN_MAINNET_TX_CASES: usize = 1_000;
 
     type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+    type MainnetTxCorpusArtifact = (MainnetTxCorpusFixture, MainnetTxCorpusMeta, &'static str);
 
     #[derive(Debug, Deserialize)]
     struct MainnetTxCorpusFixture {
@@ -31,6 +32,22 @@ mod tests {
         chain_id: String,
         app_version: String,
         cases: Vec<MainnetTxCase>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct MainnetTxCorpusMeta {
+        scenario: String,
+        source_chain: String,
+        source_heights: Vec<i64>,
+        source_transactions: usize,
+        emitted_cases: usize,
+        app_version: String,
+        celestia_app_commit: String,
+        cosmos_sdk_version: String,
+        go_version: String,
+        rpc_endpoint: String,
+        state_source: String,
+        regen_command: String,
     }
 
     #[derive(Debug, Deserialize)]
@@ -164,7 +181,8 @@ mod tests {
     #[test]
     #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json.zst fixture"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
-        let (fixture, _) = load_mainnet_tx_corpus_fixture()?;
+        let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
+        validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
         run_mainnet_tx_fixture(&fixture, MIN_MAINNET_TX_CASES)
     }
 
@@ -249,6 +267,32 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn mainnet_tx_corpus_meta_path_strips_compressed_fixture_suffix() -> TestResult<()> {
+        assert_eq!(
+            fixture_meta_relative_path(COMPRESSED_MAINNET_TX_CORPUS_FIXTURE)?,
+            "ante/mainnet-tx-corpus.meta.json"
+        );
+        assert_eq!(
+            fixture_meta_relative_path(MAINNET_TX_CORPUS_FIXTURE)?,
+            "ante/mainnet-tx-corpus.meta.json"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mainnet_tx_corpus_meta_validation_checks_provenance() -> TestResult<()> {
+        let fixture = synthetic_success_fixture()?;
+        let mut meta = synthetic_mainnet_tx_corpus_meta(&fixture);
+        validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
+
+        meta.emitted_cases += 1;
+        assert_error_contains(
+            validate_mainnet_tx_corpus_meta(&fixture, &meta),
+            "emitted case count",
+        )
+    }
+
     fn run_mainnet_tx_fixture(
         fixture: &MainnetTxCorpusFixture,
         min_cases: usize,
@@ -295,12 +339,17 @@ mod tests {
         Ok(())
     }
 
-    fn load_mainnet_tx_corpus_fixture() -> TestResult<(MainnetTxCorpusFixture, &'static str)> {
+    fn load_mainnet_tx_corpus_fixture() -> TestResult<MainnetTxCorpusArtifact> {
         let compressed_path = fixture_path(COMPRESSED_MAINNET_TX_CORPUS_FIXTURE)?;
         let plain_path = fixture_path(MAINNET_TX_CORPUS_FIXTURE)?;
         let relative_path =
             select_mainnet_tx_corpus_fixture(compressed_path.exists(), plain_path.exists());
-        Ok((load_fixture(relative_path)?, relative_path))
+        let meta_path = fixture_meta_relative_path(relative_path)?;
+        Ok((
+            load_fixture(relative_path)?,
+            load_fixture(&meta_path)?,
+            relative_path,
+        ))
     }
 
     fn select_mainnet_tx_corpus_fixture(
@@ -312,6 +361,86 @@ mod tests {
         } else {
             MAINNET_TX_CORPUS_FIXTURE
         }
+    }
+
+    fn validate_mainnet_tx_corpus_meta(
+        fixture: &MainnetTxCorpusFixture,
+        meta: &MainnetTxCorpusMeta,
+    ) -> TestResult<()> {
+        if meta.scenario != fixture.scenario {
+            return Err(invalid_data(format!(
+                "mainnet tx corpus metadata scenario {} does not match fixture scenario {}",
+                meta.scenario, fixture.scenario
+            ))
+            .into());
+        }
+        if meta.source_chain != "celestia-mainnet" {
+            return Err(invalid_data(format!(
+                "mainnet tx corpus source chain must be celestia-mainnet, got {}",
+                meta.source_chain
+            ))
+            .into());
+        }
+        if meta.source_heights.is_empty() {
+            return Err(
+                invalid_data("mainnet tx corpus metadata must record source heights").into(),
+            );
+        }
+        if meta.source_transactions == 0 {
+            return Err(
+                invalid_data("mainnet tx corpus metadata must record source transactions").into(),
+            );
+        }
+        if meta.emitted_cases != fixture.cases.len() {
+            return Err(invalid_data(format!(
+                "mainnet tx corpus emitted case count {} does not match fixture cases {}",
+                meta.emitted_cases,
+                fixture.cases.len()
+            ))
+            .into());
+        }
+        if meta.app_version != fixture.app_version {
+            return Err(invalid_data(format!(
+                "mainnet tx corpus metadata app version {} does not match fixture app version {}",
+                meta.app_version, fixture.app_version
+            ))
+            .into());
+        }
+        for (field, value) in [
+            ("celestia_app_commit", &meta.celestia_app_commit),
+            ("cosmos_sdk_version", &meta.cosmos_sdk_version),
+            ("go_version", &meta.go_version),
+            ("rpc_endpoint", &meta.rpc_endpoint),
+            ("state_source", &meta.state_source),
+            ("regen_command", &meta.regen_command),
+        ] {
+            if value.is_empty() {
+                return Err(invalid_data(format!(
+                    "mainnet tx corpus metadata field {field} must not be empty"
+                ))
+                .into());
+            }
+        }
+        if !meta.regen_command.contains("ante-mainnet-tx-corpus") {
+            return Err(invalid_data(format!(
+                "mainnet tx corpus regen command must reference ante-mainnet-tx-corpus, got {}",
+                meta.regen_command
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn fixture_meta_relative_path(relative_path: &str) -> TestResult<String> {
+        for suffix in [".json.zst", ".bin.zst", ".json"] {
+            if let Some(stem) = relative_path.strip_suffix(suffix) {
+                return Ok(format!("{stem}.meta.json"));
+            }
+        }
+        Err(invalid_data(format!(
+            "unsupported fixture extension for metadata sidecar: {relative_path}"
+        ))
+        .into())
     }
 
     fn synthetic_success_fixture() -> TestResult<MainnetTxCorpusFixture> {
@@ -417,6 +546,23 @@ mod tests {
                 },
             }],
         })
+    }
+
+    fn synthetic_mainnet_tx_corpus_meta(fixture: &MainnetTxCorpusFixture) -> MainnetTxCorpusMeta {
+        MainnetTxCorpusMeta {
+            scenario: fixture.scenario.clone(),
+            source_chain: "celestia-mainnet".to_owned(),
+            source_heights: vec![10],
+            source_transactions: fixture.cases.len(),
+            emitted_cases: fixture.cases.len(),
+            app_version: fixture.app_version.clone(),
+            celestia_app_commit: "synthetic".to_owned(),
+            cosmos_sdk_version: "synthetic".to_owned(),
+            go_version: "synthetic".to_owned(),
+            rpc_endpoint: "synthetic".to_owned(),
+            state_source: "synthetic".to_owned(),
+            regen_command: "go run . ante-mainnet-tx-corpus --out synthetic".to_owned(),
+        }
     }
 
     fn assert_error_contains(result: TestResult<()>, expected: &str) -> TestResult<()> {

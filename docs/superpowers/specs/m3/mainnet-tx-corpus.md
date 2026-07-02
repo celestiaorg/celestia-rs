@@ -71,19 +71,20 @@ The `expected` envelope records:
 - `signer_sequences`: final signer sequence summary.
 - `balances`: final fee-balance summary.
 
-The sidecar `.meta.json` must record source chain, sampled height range,
-number of source transactions, number of emitted cases, app version,
-celestia-app commit, Cosmos SDK version, Go version, RPC endpoint label, state
-source label, and the exact regeneration command.
+The sidecar `mainnet-tx-corpus.meta.json` must record source chain, sampled
+height range, number of source transactions, number of emitted cases, app
+version, celestia-app commit, Cosmos SDK version, Go version, RPC endpoint
+label, state source label, and the exact regeneration command.
 
 ## Rust Acceptance Behavior
 
 `m3-integration::mainnet_tx_validation_matches_go` prefers
 `conformance/fixtures/ante/mainnet-tx-corpus.json.zst`, falls back to
-`mainnet-tx-corpus.json`, checks that the fixture contains at least 1000 cases,
-runs each case through `ante::AnteHandler` with fixture-backed account and fee
-adapters, and compares the Rust outcome or error against the `expected`
-envelope.
+`mainnet-tx-corpus.json`, loads `mainnet-tx-corpus.meta.json`, checks that the
+metadata matches the fixture provenance and emitted case count, checks that the
+fixture contains at least 1000 cases, runs each case through
+`ante::AnteHandler` with fixture-backed account and fee adapters, and compares
+the Rust outcome or error against the `expected` envelope.
 
 The first implementation may compare the fields already emitted by the current
 `ante` public API. If Go exposes more result detail than Rust can yet report,
@@ -94,9 +95,9 @@ fixture runner rather than silently ignoring the field.
 
 `crates/m3-integration/` contains the ignored acceptance entry point, but
 `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` is not committed yet.
-The runner can decode the compressed corpus once generated, but the current
-`ante` fixtures are still explicit unit-scale vectors, not a broad mainnet
-corpus.
+The runner can decode the compressed corpus and validate its metadata sidecar
+once generated, but the current `ante` fixtures are still explicit unit-scale
+vectors, not a broad mainnet corpus.
 
 ## Definition Of Done
 
