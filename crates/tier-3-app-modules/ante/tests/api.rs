@@ -255,6 +255,65 @@ fn run_rejects_insufficient_fee_and_insufficient_funds_before_sequence_mutation(
     assert_eq!(account.public_key, None);
 }
 
+#[test]
+fn run_rejects_missing_fee_when_min_gas_price_is_nonzero() {
+    let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
+    config.min_gas_prices = vec![Coin::new("utia", "1").expect("valid coin")];
+    config.tx_size_cost_per_byte = 0;
+    config.consume_signature_verification_gas = false;
+    let handler = AnteHandler::new(config);
+    let (tx_bytes, address, _public_key) = signed_tx_with_optional_fee(7, 9, None);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    let mut fees = NoFees;
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::InsufficientFee)
+    );
+    let account = accounts
+        .account(&address)
+        .expect("account lookup")
+        .expect("account exists");
+    assert_eq!(account.sequence, 9);
+    assert_eq!(account.public_key, None);
+}
+
+#[test]
+fn run_accepts_missing_fee_when_min_gas_prices_are_zero() {
+    let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
+    config.min_gas_prices = vec![Coin::new("utia", "0").expect("valid coin")];
+    config.tx_size_cost_per_byte = 0;
+    config.consume_signature_verification_gas = false;
+    let handler = AnteHandler::new(config);
+    let (tx_bytes, address, public_key) = signed_tx_with_optional_fee(7, 9, None);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    let mut fees = NoFees;
+
+    let outcome = handler
+        .run(deliver_context(), &tx_bytes, &mut accounts, &mut fees)
+        .expect("valid missing fee tx");
+
+    assert_eq!(outcome.gas_wanted, 0);
+    assert_eq!(outcome.gas_used, 0);
+    assert_eq!(outcome.signer_sequences, vec![(address, 10)]);
+    let account = accounts
+        .account(&address)
+        .expect("account lookup")
+        .expect("account exists");
+    assert_eq!(account.sequence, 10);
+    assert_eq!(account.public_key, Some(public_key));
+}
+
 fn handler() -> AnteHandler {
     AnteHandler::new(AnteConfig::celestia_mainnet_app_v6("celestia"))
 }
@@ -316,6 +375,14 @@ fn signed_tx_with_fee(
     sequence: u64,
     fee: Fee,
 ) -> (Vec<u8>, cosmos_types::AccountAddress, Any) {
+    signed_tx_with_optional_fee(account_number, sequence, Some(fee))
+}
+
+fn signed_tx_with_optional_fee(
+    account_number: u64,
+    sequence: u64,
+    fee: Option<Fee>,
+) -> (Vec<u8>, cosmos_types::AccountAddress, Any) {
     let secret_key = crypto::secp256k1::secret_key_from_secret(b"ante signed tx");
     let public_key =
         crypto::secp256k1::public_key_from_secret_key(&secret_key).expect("valid secret key");
@@ -338,7 +405,7 @@ fn signed_tx_with_fee(
             },
             sequence,
         }],
-        fee: Some(fee),
+        fee,
         tip: None,
     }
     .to_proto()

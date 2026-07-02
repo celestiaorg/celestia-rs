@@ -321,8 +321,9 @@ impl AnteHandler {
         }
 
         if ctx.mode != RunTxMode::Simulate {
-            if let Some(fee) = fee {
-                self.validate_fees(fee, &signers, fees)?;
+            match fee {
+                Some(fee) => self.validate_fees(fee, &signers, fees)?,
+                None => self.validate_missing_fee()?,
             }
             if ctx.mode == RunTxMode::Deliver {
                 for signer in &signers {
@@ -401,6 +402,15 @@ impl AnteHandler {
                 .transpose()?
                 .unwrap_or(0);
             if paid < required {
+                return Err(Error::InsufficientFee);
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_missing_fee(&self) -> Result<()> {
+        for min_price in &self.config.min_gas_prices {
+            if parse_coin_amount(&min_price.amount)? != 0 {
                 return Err(Error::InsufficientFee);
             }
         }

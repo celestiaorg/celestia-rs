@@ -7,6 +7,8 @@
 - Deferred `ante` Deliver-mode public-key and sequence writes until after fee
   validation so insufficient-fee and insufficient-funds failures leave account
   state unchanged.
+- Made `ante` reject transactions with no fee field when any configured
+  minimum gas price is nonzero.
 
 ### Added
 
