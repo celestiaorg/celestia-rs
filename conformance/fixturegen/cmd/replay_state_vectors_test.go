@@ -139,6 +139,61 @@ func TestReplayStateEmptyStoresDetectsSdkEmptyHash(t *testing.T) {
 	}
 }
 
+func TestReplayStateStoresWithStateMountsStoreNonEmptyAnywhere(t *testing.T) {
+	emptyHash := sha256.Sum256(nil)
+	got, err := replayStateStoresWithState(
+		[]*storetypes.CommitInfo{
+			{
+				Version: 7,
+				StoreInfos: []storetypes.StoreInfo{
+					{Name: "signal", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+					{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{1}}},
+					{Name: "zkism", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+				},
+			},
+			{
+				Version: 8,
+				StoreInfos: []storetypes.StoreInfo{
+					{Name: "signal", CommitId: storetypes.CommitID{Hash: []byte{2}}},
+					{Name: "bank", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+					{Name: "zkism", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+				},
+			},
+		},
+		[]string{"signal", "bank", "zkism"},
+	)
+	if err != nil {
+		t.Fatalf("replayStateStoresWithState returned error: %v", err)
+	}
+
+	if !got["signal"] {
+		t.Fatalf("signal should be mounted because it is non-empty at height 8")
+	}
+	if !got["bank"] {
+		t.Fatalf("bank should be mounted because it is non-empty at height 7")
+	}
+	if got["zkism"] {
+		t.Fatalf("zkism should remain unmounted because it is empty across the full range")
+	}
+}
+
+func TestReplayStateStoresWithStateRejectsMissingStore(t *testing.T) {
+	_, err := replayStateStoresWithState(
+		[]*storetypes.CommitInfo{
+			{
+				Version: 7,
+				StoreInfos: []storetypes.StoreInfo{
+					{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{1}}},
+				},
+			},
+		},
+		[]string{"missing"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "has no store missing") {
+		t.Fatalf("error = %v, want missing store error", err)
+	}
+}
+
 func writeReplayStateTestDB(t *testing.T, dbDir string, mounts []string) {
 	t.Helper()
 

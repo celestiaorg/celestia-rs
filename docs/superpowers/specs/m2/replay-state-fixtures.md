@@ -68,7 +68,9 @@ acceptance fixture. It is mainnet-height synthetic data, not a real replay of
 mainnet writes. The Rust M2 integration test now prefers
 `m2-integration/replay-state.json` when that fixture is present and falls back
 to the synthetic fixture until the DB-backed corpus can be committed. The
-replay-state generator path exists, but a real fixture cannot be committed
+replay-state generator can read a retained application DB from the root store,
+uses current app-v6 store names, and treats stores that are empty across the
+requested range as empty in-memory stores. A real fixture cannot be committed
 until a retained mainnet application DB or exported state corpus is available
 locally.
 
