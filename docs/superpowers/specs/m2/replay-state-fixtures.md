@@ -27,8 +27,10 @@ the local application DB. The first emitted block bootstraps the complete store
 state at `--start` as `set` mutations so the fixture is self-contained for the
 current Rust acceptance test. Later blocks diff each mounted store at
 `height-1` versus `height`. Because the first block is a complete bootstrap,
-the final committed fixture may need to use the large-fixture path described in
-the top-level design (`.bin.zst`, and Git LFS if it exceeds repository limits).
+the final committed fixture may need to be stored as
+`conformance/fixtures/m2-integration/replay-state.json.zst` and Git LFS if it
+exceeds repository limits. The Rust acceptance runner prefers the compressed
+fixture, then plain `replay-state.json`, then the synthetic fallback fixture.
 
 Required inputs:
 
@@ -65,9 +67,10 @@ regeneration command.
 
 `conformance/fixtures/m2-integration/state-diffs.json` is still the committed
 acceptance fixture. It is mainnet-height synthetic data, not a real replay of
-mainnet writes. The Rust M2 integration test now prefers
-`m2-integration/replay-state.json` when that fixture is present and falls back
-to the synthetic fixture until the DB-backed corpus can be committed. The
+mainnet writes. The Rust M2 integration test now prefers compressed
+`m2-integration/replay-state.json.zst` or plain
+`m2-integration/replay-state.json` when either fixture is present and falls
+back to the synthetic fixture until the DB-backed corpus can be committed. The
 replay-state generator can read a retained application DB from the root store,
 uses current app-v6 store names, and treats stores that are empty across the
 requested range as empty in-memory stores. Its sidecar records the source
@@ -78,8 +81,8 @@ locally.
 
 ## Definition Of Done
 
-- [ ] Generate `conformance/fixtures/m2-integration/replay-state.json` from a
-  retained mainnet application DB.
+- [ ] Generate `conformance/fixtures/m2-integration/replay-state.json` or
+  `replay-state.json.zst` from a retained mainnet application DB.
 - [ ] Commit its `.meta.json` sidecar with the source DB/app version details.
 - [x] Update the M2 integration test to prefer the replay-state fixture while
   keeping the synthetic fixture only as a small regression scaffold if useful.

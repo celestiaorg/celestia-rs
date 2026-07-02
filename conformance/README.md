@@ -6,7 +6,7 @@ This directory holds **golden vectors** generated from Go celestia-app, plus the
 
 ```
 conformance/
-├── fixtures/        # committed golden vectors (JSON or zstd-compressed binary)
+├── fixtures/        # committed golden vectors (JSON, JSON.zst, or binary.zst)
 │   └── <crate>/<scenario>/<file>.json
 │   └── <crate>/<scenario>/<file>.meta.json   # source chain, height, app version, generating commit
 └── fixturegen/      # Go program that emits fixtures; the only Go in the repo

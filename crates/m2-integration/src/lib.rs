@@ -10,8 +10,9 @@
 mod tests {
     use multistore::{CommitId, Store, StoreInfo, StoreKind};
     use serde::Deserialize;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
+    const COMPRESSED_REPLAY_STATE_FIXTURE: &str = "m2-integration/replay-state.json.zst";
     const REPLAY_STATE_FIXTURE: &str = "m2-integration/replay-state.json";
     const SYNTHETIC_STATE_DIFF_FIXTURE: &str = "m2-integration/state-diffs.json";
 
@@ -103,15 +104,36 @@ mod tests {
     #[test]
     fn state_diff_fixture_selection_prefers_replay_state_when_available() {
         assert_eq!(
-            select_state_diff_fixture(true),
+            select_state_diff_fixture(true, true),
+            COMPRESSED_REPLAY_STATE_FIXTURE,
+            "compressed replay-state fixture should be preferred for large mainnet corpora"
+        );
+        assert_eq!(
+            select_state_diff_fixture(false, true),
             REPLAY_STATE_FIXTURE,
             "replay-state fixture should replace the synthetic scaffold when present"
         );
         assert_eq!(
-            select_state_diff_fixture(false),
+            select_state_diff_fixture(false, false),
             SYNTHETIC_STATE_DIFF_FIXTURE,
             "synthetic state diff fixture remains the fallback until replay-state is committed"
         );
+    }
+
+    #[test]
+    fn fixture_body_decoder_reads_zstd_json() -> Result<(), Box<dyn std::error::Error>> {
+        let json = br#"{"cases":[]}"#;
+        let compressed = zstd::encode_all(&json[..], 0)?;
+
+        assert_eq!(
+            decode_fixture_body(COMPRESSED_REPLAY_STATE_FIXTURE, compressed)?,
+            json
+        );
+        assert_eq!(
+            decode_fixture_body(REPLAY_STATE_FIXTURE, json.to_vec())?,
+            json
+        );
+        Ok(())
     }
 
     fn apply_mutation(
@@ -151,13 +173,20 @@ mod tests {
 
     fn load_state_diff_fixture()
     -> Result<(StateDiffFixture, &'static str), Box<dyn std::error::Error>> {
+        let compressed_replay_path = fixture_path(COMPRESSED_REPLAY_STATE_FIXTURE)?;
         let replay_path = fixture_path(REPLAY_STATE_FIXTURE)?;
-        let relative_path = select_state_diff_fixture(replay_path.exists());
+        let relative_path =
+            select_state_diff_fixture(compressed_replay_path.exists(), replay_path.exists());
         Ok((load_fixture(relative_path)?, relative_path))
     }
 
-    fn select_state_diff_fixture(replay_state_exists: bool) -> &'static str {
-        if replay_state_exists {
+    fn select_state_diff_fixture(
+        compressed_replay_state_exists: bool,
+        replay_state_exists: bool,
+    ) -> &'static str {
+        if compressed_replay_state_exists {
+            COMPRESSED_REPLAY_STATE_FIXTURE
+        } else if replay_state_exists {
             REPLAY_STATE_FIXTURE
         } else {
             SYNTHETIC_STATE_DIFF_FIXTURE
@@ -176,8 +205,22 @@ mod tests {
         T: for<'de> Deserialize<'de>,
     {
         let path = fixture_path(relative_path)?;
-        let body = std::fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&body)?)
+        let body = decode_fixture_body(relative_path, std::fs::read(path)?)?;
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    fn decode_fixture_body(
+        relative_path: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        if Path::new(relative_path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zst"))
+        {
+            Ok(zstd::decode_all(&body[..])?)
+        } else {
+            Ok(body)
+        }
     }
 
     fn fixture_path(relative_path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
