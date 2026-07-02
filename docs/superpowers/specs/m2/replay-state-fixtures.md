@@ -70,7 +70,9 @@ mainnet writes. The Rust M2 integration test now prefers
 to the synthetic fixture until the DB-backed corpus can be committed. The
 replay-state generator can read a retained application DB from the root store,
 uses current app-v6 store names, and treats stores that are empty across the
-requested range as empty in-memory stores. A real fixture cannot be committed
+requested range as empty in-memory stores. Its sidecar records the source
+height range, app version, Celestia app commit, runtime Go version, module
+versions, and full regeneration command. A real fixture cannot be committed
 until a retained mainnet application DB or exported state corpus is available
 locally.
 

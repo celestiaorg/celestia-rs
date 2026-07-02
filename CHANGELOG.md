@@ -8,6 +8,8 @@
   the root DB's per-store prefixes and use the current mainnet app-v6 store
   names by default, including empty-store mount planning across the full
   requested height range.
+- Made replay-state fixture metadata derive the Go runtime, Go module
+  versions, and full regeneration command from the generator inputs.
 - Deferred `ante` Deliver-mode public-key and sequence writes until after fee
   validation so insufficient-fee and insufficient-funds failures leave account
   state unchanged.

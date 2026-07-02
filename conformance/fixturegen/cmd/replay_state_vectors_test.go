@@ -60,6 +60,41 @@ func TestReplayStateConfigValidation(t *testing.T) {
 	}
 }
 
+func TestReplayStateFixtureMetaUsesConfig(t *testing.T) {
+	meta := replayStateFixtureMeta(replayStateConfig{
+		out:               "/tmp/replay state.json",
+		dbDir:             "/tmp/celestia data",
+		dbName:            "application",
+		dbBackend:         string(dbm.GoLevelDBBackend),
+		start:             7,
+		count:             2,
+		network:           "celestia-mainnet",
+		appVersion:        "app-v6",
+		celestiaAppCommit: "abc123",
+		mounts:            []string{"bank", "signal"},
+	})
+
+	if meta.Scenario != "m2-integration-replay-state" {
+		t.Fatalf("scenario = %q, want replay-state scenario", meta.Scenario)
+	}
+	if !reflect.DeepEqual(meta.SourceHeights, []int64{7, 8}) {
+		t.Fatalf("source heights = %#v, want 7 and 8", meta.SourceHeights)
+	}
+	if meta.GoVersion == "" || !strings.HasPrefix(meta.GoVersion, "go") {
+		t.Fatalf("go version = %q, want runtime Go version", meta.GoVersion)
+	}
+	for _, module := range []string{"cosmossdk.io/store ", "github.com/cosmos/cosmos-db ", "github.com/cosmos/iavl "} {
+		if !containsStringPrefix(meta.CryptoPackages, module) {
+			t.Fatalf("crypto packages = %#v, want module prefix %q", meta.CryptoPackages, module)
+		}
+	}
+
+	wantCommand := "go run . replay-state --db-dir '/tmp/celestia data' --db-name application --db-backend goleveldb --start 7 --count 2 --network celestia-mainnet --app-version app-v6 --celestia-app-commit abc123 --mounts bank,signal --out '/tmp/replay state.json'"
+	if meta.RegenCommand != wantCommand {
+		t.Fatalf("regen command = %q, want %q", meta.RegenCommand, wantCommand)
+	}
+}
+
 func TestBuildReplayStateFixtureReadsRootStorePrefixedMounts(t *testing.T) {
 	dbDir := t.TempDir()
 	mounts := []string{"auth", "bank"}
@@ -229,6 +264,15 @@ func writeReplayStateTestDB(t *testing.T, dbDir string, mounts []string) {
 func containsString(values []string, needle string) bool {
 	for _, value := range values {
 		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func containsStringPrefix(values []string, prefix string) bool {
+	for _, value := range values {
+		if strings.HasPrefix(value, prefix) {
 			return true
 		}
 	}

@@ -7,7 +7,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 
 	"cosmossdk.io/log"
@@ -80,20 +83,7 @@ func runReplayState(args []string) error {
 	if err := writeJSON(cfg.out, fixture); err != nil {
 		return err
 	}
-	if err := writeJSON(metaPath(cfg.out), m2IntegrationFixtureMeta{
-		Scenario:          "m2-integration-replay-state",
-		SourceChain:       cfg.network,
-		SourceHeights:     heightRange(cfg.start, cfg.count),
-		AppVersion:        cfg.appVersion,
-		CelestiaAppCommit: cfg.celestiaAppCommit,
-		GoVersion:         "1.24",
-		CryptoPackages: []string{
-			"cosmossdk.io/store v1.1.1",
-			"github.com/cosmos/cosmos-db v1.0.2",
-			"github.com/cosmos/iavl v1.2.0",
-		},
-		RegenCommand: fmt.Sprintf("go run . replay-state --db-dir <celestia-data-dir> --start %d --count %d --out %s", cfg.start, cfg.count, cfg.out),
-	}); err != nil {
+	if err := writeJSON(metaPath(cfg.out), replayStateFixtureMeta(cfg)); err != nil {
 		return err
 	}
 	fmt.Printf("wrote %s\n", cfg.out)
@@ -406,6 +396,113 @@ func replayStateKeys(mounts []string) map[string]*storetypes.KVStoreKey {
 		keys[mount] = storetypes.NewKVStoreKey(mount)
 	}
 	return keys
+}
+
+func replayStateFixtureMeta(cfg replayStateConfig) m2IntegrationFixtureMeta {
+	return m2IntegrationFixtureMeta{
+		Scenario:          "m2-integration-replay-state",
+		SourceChain:       cfg.network,
+		SourceHeights:     heightRange(cfg.start, cfg.count),
+		AppVersion:        cfg.appVersion,
+		CelestiaAppCommit: cfg.celestiaAppCommit,
+		GoVersion:         runtime.Version(),
+		CryptoPackages: []string{
+			goModuleVersion("cosmossdk.io/store"),
+			goModuleVersion("github.com/cosmos/cosmos-db"),
+			goModuleVersion("github.com/cosmos/iavl"),
+		},
+		RegenCommand: replayStateRegenCommand(cfg),
+	}
+}
+
+func replayStateRegenCommand(cfg replayStateConfig) string {
+	return shellJoin([]string{
+		"go",
+		"run",
+		".",
+		"replay-state",
+		"--db-dir",
+		cfg.dbDir,
+		"--db-name",
+		cfg.dbName,
+		"--db-backend",
+		cfg.dbBackend,
+		"--start",
+		strconv.FormatInt(cfg.start, 10),
+		"--count",
+		strconv.FormatInt(cfg.count, 10),
+		"--network",
+		cfg.network,
+		"--app-version",
+		cfg.appVersion,
+		"--celestia-app-commit",
+		cfg.celestiaAppCommit,
+		"--mounts",
+		strings.Join(cfg.mounts, ","),
+		"--out",
+		cfg.out,
+	})
+}
+
+func goModuleVersion(modulePath string) string {
+	info, ok := debug.ReadBuildInfo()
+	if ok {
+		if info.Main.Path == modulePath {
+			return formatGoModuleVersion(info.Main)
+		}
+		for _, dep := range info.Deps {
+			if dep.Path == modulePath {
+				return formatGoModuleVersion(*dep)
+			}
+		}
+	}
+	return modulePath + " unknown"
+}
+
+func formatGoModuleVersion(module debug.Module) string {
+	version := module.Version
+	if module.Replace != nil {
+		version = module.Replace.Version
+		if version == "" {
+			version = module.Replace.Path
+		}
+	}
+	if version == "" {
+		version = "unknown"
+	}
+	return module.Path + " " + version
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	if isShellSafe(arg) {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
+}
+
+func isShellSafe(arg string) bool {
+	for _, r := range arg {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case strings.ContainsRune("@%_+=:,./-", r):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func heightRange(start, count int64) []int64 {
