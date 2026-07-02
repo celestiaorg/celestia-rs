@@ -39,6 +39,10 @@
   transaction corpus.
 - Added the M3 mainnet transaction corpus fixture contract for the pending
   `ante-mainnet-tx-corpus` generator and acceptance runner.
+- Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
+  the documented corpus schema, hydrate account and fee snapshots, execute the
+  Rust ante handler by run mode, and compare every currently exposed ante
+  outcome field.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.

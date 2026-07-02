@@ -849,7 +849,12 @@ dependencies = [
 name = "m3-integration"
 version = "0.0.1"
 dependencies = [
+ "abci-types",
  "ante",
+ "cosmos-types",
+ "hex",
+ "prost",
+ "serde",
  "serde_json",
 ]
 
