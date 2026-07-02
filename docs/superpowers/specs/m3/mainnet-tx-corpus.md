@@ -96,12 +96,16 @@ fixture runner rather than silently ignoring the field.
 `crates/m3-integration/` contains the ignored acceptance entry point, but
 `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` is not committed yet.
 The runner can decode the compressed corpus and validate its metadata sidecar
-once generated, but the current `ante` fixtures are still explicit unit-scale
-vectors, not a broad mainnet corpus.
+once generated. `fixturegen ante-mainnet-tx-corpus` has validated
+configuration, deterministic RPC transaction sampling, and metadata scaffolding,
+but account/bank state hydration and Go ante replay are still pending. The
+current `ante` fixtures are still explicit unit-scale vectors, not a broad
+mainnet corpus.
 
 ## Definition Of Done
 
-- [ ] Implement `fixturegen ante-mainnet-tx-corpus`.
+- [ ] Complete `fixturegen ante-mainnet-tx-corpus` state hydration and Go ante
+      replay.
 - [ ] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
       `.meta.json`.
 - [ ] Implement the full fixture runner in `m3-integration`.

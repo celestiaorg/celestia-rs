@@ -289,13 +289,13 @@ cargo xtask refresh-fixtures --scenario ante-stateless
 cargo xtask refresh-fixtures --scenario ante-signatures
 cargo xtask refresh-fixtures --scenario ante-fees
 cargo xtask refresh-fixtures --scenario ante-gas
-cargo xtask refresh-fixtures --scenario ante-mainnet-tx-corpus
 cargo xtask refresh-fixtures --scenario ante-malformed
 ```
 
-Each scenario must be registered in BOTH the Go fixturegen
-(`conformance/fixturegen/cmd/`) and the Rust `SCENARIOS` const in
-`xtask/src/refresh_fixtures.rs`.
+The `ante-mainnet-tx-corpus` fixturegen command is intentionally not registered
+in `xtask refresh-fixtures` yet because it requires external mainnet RPC and
+local application DB inputs. Register it in `xtask/src/refresh_fixtures.rs`
+only once it can produce the committed corpus fixture from explicit inputs.
 
 ## Definition Of Done
 

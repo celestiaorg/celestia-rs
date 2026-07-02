@@ -60,6 +60,8 @@
   mainnet transaction corpus.
 - Added metadata sidecar validation for the pending M3 mainnet transaction
   corpus fixture.
+- Added the `ante-mainnet-tx-corpus` fixturegen command scaffold with
+  deterministic mainnet transaction sampling and metadata construction.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante
