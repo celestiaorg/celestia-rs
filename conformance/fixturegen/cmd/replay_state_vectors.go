@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"cosmossdk.io/log"
+	"cosmossdk.io/store/iavl"
 	"cosmossdk.io/store/mem"
 	"cosmossdk.io/store/metrics"
 	"cosmossdk.io/store/rootmulti"
@@ -39,7 +41,7 @@ type replayStateConfig struct {
 }
 
 var appV6StoreMounts = []string{
-	"auth",
+	"acc",
 	"authz",
 	"bank",
 	"staking",
@@ -54,7 +56,7 @@ var appV6StoreMounts = []string{
 	"capability",
 	"transfer",
 	"ibc",
-	"packetfoward",
+	"packetfowardmiddleware",
 	"icahost",
 	"signal",
 	"blob",
@@ -63,6 +65,7 @@ var appV6StoreMounts = []string{
 	"circuit",
 	"hyperlane",
 	"warp",
+	"zkism",
 }
 
 func runReplayState(args []string) error {
@@ -157,10 +160,20 @@ func buildReplayStateFixture(cfg replayStateConfig) (m2StateDiffScenario, error)
 	}
 	defer db.Close()
 
+	latest := rootmulti.GetLatestVersion(db)
+	latestCommitInfo, err := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{}).GetCommitInfo(latest)
+	if err != nil {
+		return m2StateDiffScenario{}, fmt.Errorf("commit info at latest height %d: %w", latest, err)
+	}
+	emptyLatestStores := replayStateEmptyStores(latestCommitInfo)
+
 	keys := replayStateKeys(cfg.mounts)
 	cms := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{})
 	for _, name := range sortedStrings(cfg.mounts) {
-		cms.MountStoreWithDB(keys[name], storetypes.StoreTypeIAVL, db)
+		if emptyLatestStores[name] {
+			continue
+		}
+		cms.MountStoreWithDB(keys[name], storetypes.StoreTypeIAVL, nil)
 	}
 	if err := cms.LoadLatestVersion(); err != nil {
 		return m2StateDiffScenario{}, fmt.Errorf("load latest version: %w", err)
@@ -197,15 +210,15 @@ func buildReplayStateFixture(cfg replayStateConfig) (m2StateDiffScenario, error)
 }
 
 func replayStateBlock(cms *rootmulti.Store, keys map[string]*storetypes.KVStoreKey, mounts []string, height int64, bootstrap bool) (m2BlockStateDiff, error) {
-	var before storetypes.CacheMultiStore
+	var before map[string]storetypes.KVStore
 	if !bootstrap {
 		var err error
-		before, err = cms.CacheMultiStoreWithVersion(height - 1)
+		before, err = replayStateStoresAtVersion(cms, keys, mounts, height-1)
 		if err != nil {
 			return m2BlockStateDiff{}, fmt.Errorf("load height %d before-state: %w", height, err)
 		}
 	}
-	after, err := cms.CacheMultiStoreWithVersion(height)
+	after, err := replayStateStoresAtVersion(cms, keys, mounts, height)
 	if err != nil {
 		return m2BlockStateDiff{}, fmt.Errorf("load height %d after-state: %w", height, err)
 	}
@@ -214,9 +227,9 @@ func replayStateBlock(cms *rootmulti.Store, keys map[string]*storetypes.KVStoreK
 	for _, name := range sortedStrings(mounts) {
 		beforeStore := storetypes.KVStore(mem.NewStore())
 		if !bootstrap {
-			beforeStore = before.GetKVStore(keys[name])
+			beforeStore = before[name]
 		}
-		storeMutations, err := replayStateMutations(name, beforeStore, after.GetKVStore(keys[name]))
+		storeMutations, err := replayStateMutations(name, beforeStore, after[name])
 		if err != nil {
 			return m2BlockStateDiff{}, fmt.Errorf("diff %s at height %d: %w", name, height, err)
 		}
@@ -233,6 +246,45 @@ func replayStateBlock(cms *rootmulti.Store, keys map[string]*storetypes.KVStoreK
 		AppHashHex: hex.EncodeToString(commitInfo.Hash()),
 		StoreInfos: fixtureStoreInfos(commitInfo.StoreInfos),
 	}, nil
+}
+
+func replayStateStoresAtVersion(cms *rootmulti.Store, keys map[string]*storetypes.KVStoreKey, mounts []string, height int64) (map[string]storetypes.KVStore, error) {
+	commitInfo, err := cms.GetCommitInfo(height)
+	if err != nil {
+		return nil, fmt.Errorf("commit info at height %d: %w", height, err)
+	}
+	emptyStores := replayStateEmptyStores(commitInfo)
+
+	stores := make(map[string]storetypes.KVStore, len(mounts))
+	for _, name := range sortedStrings(mounts) {
+		if emptyStores[name] {
+			stores[name] = mem.NewStore()
+			continue
+		}
+		commitStore := cms.GetCommitKVStore(keys[name])
+		if commitStore == nil {
+			return nil, fmt.Errorf("store %s is not mounted and is not empty at height %d", name, height)
+		}
+		store, ok := commitStore.(*iavl.Store)
+		if !ok {
+			return nil, fmt.Errorf("store %s is %T, want *iavl.Store", name, commitStore)
+		}
+		versioned, err := store.GetImmutable(height)
+		if err != nil {
+			return nil, fmt.Errorf("load %s at height %d: %w", name, height, err)
+		}
+		stores[name] = versioned
+	}
+	return stores, nil
+}
+
+func replayStateEmptyStores(commitInfo *storetypes.CommitInfo) map[string]bool {
+	emptyHash := sha256.Sum256(nil)
+	emptyStores := make(map[string]bool)
+	for _, storeInfo := range commitInfo.StoreInfos {
+		emptyStores[storeInfo.Name] = bytes.Equal(storeInfo.CommitId.Hash, emptyHash[:])
+	}
+	return emptyStores
 }
 
 func replayStateMutations(storeName string, before, after storetypes.KVStore) ([]multistoreMutation, error) {

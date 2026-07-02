@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Fixed the DB-backed replay-state fixture generator to mount app stores from
+  the root DB's per-store prefixes and use the current mainnet app-v6 store
+  names by default.
 - Deferred `ante` Deliver-mode public-key and sequence writes until after fee
   validation so insufficient-fee and insufficient-funds failures leave account
   state unchanged.
