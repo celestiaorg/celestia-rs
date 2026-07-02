@@ -179,6 +179,40 @@ mod tests {
         run_mainnet_tx_fixture(&fixture, 1)
     }
 
+    #[test]
+    fn mainnet_tx_runner_rejects_uncompared_go_abci_fields() -> TestResult<()> {
+        let mut fixture = synthetic_success_fixture()?;
+        fixture.cases[0].expected.code = 1;
+        fixture.cases[0].expected.codespace = "sdk".to_owned();
+        fixture.cases[0].expected.log = "go ante log".to_owned();
+
+        assert_error_contains(
+            run_mainnet_tx_fixture(&fixture, 1),
+            "Go ABCI code/codespace/log fields",
+        )
+    }
+
+    #[test]
+    fn mainnet_tx_runner_rejects_uncompared_rejected_tx_fields() -> TestResult<()> {
+        let mut fixture = synthetic_fee_rejection_fixture()?;
+        let address_hex = fixture.cases[0].accounts[0].address_hex.clone();
+        let sequence = fixture.cases[0].accounts[0].sequence;
+        fixture.cases[0].expected.gas_wanted = 500_000;
+        fixture.cases[0].expected.gas_used = 2_950;
+        fixture.cases[0]
+            .expected
+            .signer_sequences
+            .push(FixtureSignerSequence {
+                address_hex,
+                sequence,
+            });
+
+        assert_error_contains(
+            run_mainnet_tx_fixture(&fixture, 1),
+            "rejected-tx gas, events, or signer state fields",
+        )
+    }
+
     fn run_mainnet_tx_fixture(
         fixture: &MainnetTxCorpusFixture,
         min_cases: usize,
@@ -328,6 +362,20 @@ mod tests {
                 },
             }],
         })
+    }
+
+    fn assert_error_contains(result: TestResult<()>, expected: &str) -> TestResult<()> {
+        match result {
+            Ok(()) => Err(invalid_data(format!("expected error containing `{expected}`")).into()),
+            Err(error) => {
+                let message = error.to_string();
+                assert!(
+                    message.contains(expected),
+                    "error `{message}` did not contain `{expected}`"
+                );
+                Ok(())
+            }
+        }
     }
 
     fn load_fixture<T>(relative_path: &str) -> TestResult<T>
