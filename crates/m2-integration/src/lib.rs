@@ -12,6 +12,9 @@ mod tests {
     use serde::Deserialize;
     use std::path::PathBuf;
 
+    const REPLAY_STATE_FIXTURE: &str = "m2-integration/replay-state.json";
+    const SYNTHETIC_STATE_DIFF_FIXTURE: &str = "m2-integration/state-diffs.json";
+
     #[derive(Debug, Deserialize)]
     struct StateDiffFixture {
         cases: Vec<StateDiffCase>,
@@ -54,11 +57,15 @@ mod tests {
     #[test]
     fn apply_mainnet_block_diff_produces_matching_kv_root() -> Result<(), Box<dyn std::error::Error>>
     {
-        let fixture: StateDiffFixture = load_fixture("m2-integration/state-diffs.json")?;
+        let (fixture, fixture_name) = load_state_diff_fixture()?;
 
         for case in fixture.cases {
-            assert!(case.network.starts_with("mainnet"), "{}", case.label);
-            assert!(case.start_height > 0, "{}", case.label);
+            assert!(
+                case.network.starts_with("mainnet"),
+                "{fixture_name}: {}",
+                case.label
+            );
+            assert!(case.start_height > 0, "{fixture_name}: {}", case.label);
             let mut store = Store::with_initial_version(case.initial_version)?;
             for mount in &case.mounts {
                 store.mount_store(mount, StoreKind::Iavl)?;
@@ -74,7 +81,7 @@ mod tests {
                 assert_eq!(
                     hex::encode(commit_id.hash),
                     block.app_hash_hex,
-                    "{} app hash at {}",
+                    "{fixture_name}: {} app hash at {}",
                     case.label,
                     block.height
                 );
@@ -83,7 +90,7 @@ mod tests {
                 assert_eq!(
                     commit_info.store_infos,
                     store_infos_from_fixture(&block.store_infos)?,
-                    "{} store infos at {}",
+                    "{fixture_name}: {} store infos at {}",
                     case.label,
                     block.height
                 );
@@ -91,6 +98,20 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn state_diff_fixture_selection_prefers_replay_state_when_available() {
+        assert_eq!(
+            select_state_diff_fixture(true),
+            REPLAY_STATE_FIXTURE,
+            "replay-state fixture should replace the synthetic scaffold when present"
+        );
+        assert_eq!(
+            select_state_diff_fixture(false),
+            SYNTHETIC_STATE_DIFF_FIXTURE,
+            "synthetic state diff fixture remains the fallback until replay-state is committed"
+        );
     }
 
     fn apply_mutation(
@@ -128,6 +149,21 @@ mod tests {
             .collect()
     }
 
+    fn load_state_diff_fixture()
+    -> Result<(StateDiffFixture, &'static str), Box<dyn std::error::Error>> {
+        let replay_path = fixture_path(REPLAY_STATE_FIXTURE)?;
+        let relative_path = select_state_diff_fixture(replay_path.exists());
+        Ok((load_fixture(relative_path)?, relative_path))
+    }
+
+    fn select_state_diff_fixture(replay_state_exists: bool) -> &'static str {
+        if replay_state_exists {
+            REPLAY_STATE_FIXTURE
+        } else {
+            SYNTHETIC_STATE_DIFF_FIXTURE
+        }
+    }
+
     fn decode_hash(input: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
         let bytes = hex::decode(input)?;
         bytes
@@ -139,11 +175,15 @@ mod tests {
     where
         T: for<'de> Deserialize<'de>,
     {
-        let path = workspace_root()?
-            .join("conformance/fixtures")
-            .join(relative_path);
+        let path = fixture_path(relative_path)?;
         let body = std::fs::read_to_string(path)?;
         Ok(serde_json::from_str(&body)?)
+    }
+
+    fn fixture_path(relative_path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        Ok(workspace_root()?
+            .join("conformance/fixtures")
+            .join(relative_path))
     }
 
     fn workspace_root() -> Result<PathBuf, Box<dyn std::error::Error>> {

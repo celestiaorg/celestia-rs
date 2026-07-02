@@ -65,16 +65,19 @@ regeneration command.
 
 `conformance/fixtures/m2-integration/state-diffs.json` is still the committed
 acceptance fixture. It is mainnet-height synthetic data, not a real replay of
-mainnet writes. The replay-state generator path exists, but a real fixture
-cannot be committed until a retained mainnet application DB or exported state
-corpus is available locally.
+mainnet writes. The Rust M2 integration test now prefers
+`m2-integration/replay-state.json` when that fixture is present and falls back
+to the synthetic fixture until the DB-backed corpus can be committed. The
+replay-state generator path exists, but a real fixture cannot be committed
+until a retained mainnet application DB or exported state corpus is available
+locally.
 
 ## Definition Of Done
 
 - [ ] Generate `conformance/fixtures/m2-integration/replay-state.json` from a
   retained mainnet application DB.
 - [ ] Commit its `.meta.json` sidecar with the source DB/app version details.
-- [ ] Update the M2 integration test to prefer the replay-state fixture while
+- [x] Update the M2 integration test to prefer the replay-state fixture while
   keeping the synthetic fixture only as a small regression scaffold if useful.
 - [ ] Run `cargo xtask repo-health --offline`.
 - [ ] Mark M2 complete once the replay-state fixture is committed and the
