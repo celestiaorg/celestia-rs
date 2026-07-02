@@ -229,6 +229,97 @@ func TestReplayStateStoresWithStateRejectsMissingStore(t *testing.T) {
 	}
 }
 
+func TestReplayStateBootstrapConflictsRejectsPreexistingStores(t *testing.T) {
+	emptyHash := sha256.Sum256(nil)
+	conflicts, err := replayStateBootstrapConflicts(
+		&storetypes.CommitInfo{
+			Version: 6,
+			StoreInfos: []storetypes.StoreInfo{
+				{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{1}}},
+				{Name: "signal", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+				{Name: "zkism", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+			},
+		},
+		&storetypes.CommitInfo{
+			Version: 7,
+			StoreInfos: []storetypes.StoreInfo{
+				{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{2}}},
+				{Name: "signal", CommitId: storetypes.CommitID{Hash: []byte{3}}},
+				{Name: "zkism", CommitId: storetypes.CommitID{Hash: emptyHash[:]}},
+			},
+		},
+		[]string{"zkism", "bank", "signal"},
+	)
+	if err != nil {
+		t.Fatalf("replayStateBootstrapConflicts returned error: %v", err)
+	}
+	if want := []string{"bank"}; !reflect.DeepEqual(conflicts, want) {
+		t.Fatalf("conflicts = %#v, want %#v", conflicts, want)
+	}
+}
+
+func TestReplayStateBootstrapConflictsRejectsMissingStore(t *testing.T) {
+	_, err := replayStateBootstrapConflicts(
+		&storetypes.CommitInfo{
+			Version:    6,
+			StoreInfos: []storetypes.StoreInfo{{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{1}}}},
+		},
+		&storetypes.CommitInfo{
+			Version:    7,
+			StoreInfos: []storetypes.StoreInfo{{Name: "bank", CommitId: storetypes.CommitID{Hash: []byte{1}}}},
+		},
+		[]string{"missing"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "has no store missing") {
+		t.Fatalf("error = %v, want missing store error", err)
+	}
+}
+
+func TestReplayStateCommitInfoForMountsFiltersAndSortsStores(t *testing.T) {
+	commitInfo := &storetypes.CommitInfo{
+		Version: 7,
+		StoreInfos: []storetypes.StoreInfo{
+			{Name: "staking", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{3}}},
+			{Name: "bank", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{2}}},
+			{Name: "auth", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{1}}},
+		},
+	}
+
+	got, err := replayStateCommitInfoForMounts(commitInfo, []string{"bank", "auth"})
+	if err != nil {
+		t.Fatalf("replayStateCommitInfoForMounts returned error: %v", err)
+	}
+
+	wantStoreInfos := []storetypes.StoreInfo{
+		{Name: "auth", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{1}}},
+		{Name: "bank", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{2}}},
+	}
+	if !reflect.DeepEqual(got.StoreInfos, wantStoreInfos) {
+		t.Fatalf("store infos = %#v, want %#v", got.StoreInfos, wantStoreInfos)
+	}
+	if got.Version != 7 {
+		t.Fatalf("version = %d, want 7", got.Version)
+	}
+	if reflect.DeepEqual(got.Hash(), commitInfo.Hash()) {
+		t.Fatalf("filtered commit hash should differ from full commit hash")
+	}
+}
+
+func TestReplayStateCommitInfoForMountsRejectsMissingStore(t *testing.T) {
+	_, err := replayStateCommitInfoForMounts(
+		&storetypes.CommitInfo{
+			Version: 7,
+			StoreInfos: []storetypes.StoreInfo{
+				{Name: "bank", CommitId: storetypes.CommitID{Version: 7, Hash: []byte{1}}},
+			},
+		},
+		[]string{"missing"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "has no store missing") {
+		t.Fatalf("error = %v, want missing store error", err)
+	}
+}
+
 func writeReplayStateTestDB(t *testing.T, dbDir string, mounts []string) {
 	t.Helper()
 
@@ -246,8 +337,13 @@ func writeReplayStateTestDB(t *testing.T, dbDir string, mounts []string) {
 	if err := cms.LoadLatestVersion(); err != nil {
 		t.Fatalf("LoadLatestVersion returned error: %v", err)
 	}
-	if err := cms.SetInitialVersion(7); err != nil {
+	if err := cms.SetInitialVersion(6); err != nil {
 		t.Fatalf("SetInitialVersion returned error: %v", err)
+	}
+
+	commitID := cms.Commit()
+	if commitID.Version != 6 {
+		t.Fatalf("empty commit version = %d, want 6", commitID.Version)
 	}
 
 	cache := cms.CacheMultiStore()
@@ -255,7 +351,7 @@ func writeReplayStateTestDB(t *testing.T, dbDir string, mounts []string) {
 	cache.GetKVStore(keys["bank"]).Set([]byte("balance/alice/utia"), []byte("100"))
 	cache.Write()
 
-	commitID := cms.Commit()
+	commitID = cms.Commit()
 	if commitID.Version != 7 {
 		t.Fatalf("commit version = %d, want 7", commitID.Version)
 	}

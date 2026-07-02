@@ -29,6 +29,13 @@ impl Store {
         Self::default()
     }
 
+    /// Create an empty store with a custom first commit version.
+    pub fn with_initial_version(initial_version: Version) -> Result<Self> {
+        Ok(Self {
+            tree: iavl::Tree::with_initial_version(initial_version)?,
+        })
+    }
+
     /// Create a store from an existing IAVL tree.
     #[must_use]
     pub fn from_tree(tree: iavl::Tree) -> Self {
@@ -847,6 +854,20 @@ mod tests {
         assert_eq!(commit.size, 2);
         assert_eq!(store.version(), 1);
         assert_eq!(store.root_hash(), commit.root_hash);
+        Ok(())
+    }
+
+    #[test]
+    fn store_custom_initial_version_delegates_to_iavl() -> Result<(), Error> {
+        let mut store = Store::with_initial_version(7)?;
+        store.set(b"k".to_vec(), b"v".to_vec())?;
+        let commit = store.save_version()?;
+        assert_eq!(commit.version, 7);
+        assert_eq!(store.version(), 7);
+        assert!(matches!(
+            Store::with_initial_version(0),
+            Err(Error::Iavl(iavl::Error::InvalidVersion { version: 0 }))
+        ));
         Ok(())
     }
 

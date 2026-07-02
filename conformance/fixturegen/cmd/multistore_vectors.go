@@ -275,7 +275,11 @@ func buildMultistoreCommit() (multistoreCommitScenario, error) {
 func buildMultistoreCommitCase(label string, initialVersion int64, mounts []string, commits [][]multistoreMutation) (multistoreCommitCase, error) {
 	trees := make(map[string]iavlTree, len(mounts))
 	for _, mount := range mounts {
-		trees[mount] = iavlTree{tree: newIavlTree()}
+		tree := newIavlTree()
+		if initialVersion > 1 {
+			tree.SetInitialVersion(uint64(initialVersion))
+		}
+		trees[mount] = iavlTree{tree: tree}
 	}
 	steps := make([]multistoreCommitStep, 0, len(commits))
 	version := int64(0)
@@ -481,6 +485,7 @@ type iavlMutableTree interface {
 	SaveVersion() ([]byte, int64, error)
 	Get(key []byte) ([]byte, error)
 	GetMembershipProof(key []byte) (*ics23.CommitmentProof, error)
+	SetInitialVersion(version uint64)
 }
 
 type iavlTree struct {

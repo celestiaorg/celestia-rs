@@ -22,19 +22,48 @@ pub type Hash = [u8; HASH_SIZE];
 pub type Version = i64;
 
 /// Versioned in-memory IAVL tree.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Tree {
+    initial_version: Version,
     version: Version,
     entries: BTreeMap<Vec<u8>, Vec<u8>>,
     root: Option<Box<Node>>,
     dirty: bool,
 }
 
+impl Default for Tree {
+    fn default() -> Self {
+        Self {
+            initial_version: 1,
+            version: 0,
+            entries: BTreeMap::new(),
+            root: None,
+            dirty: false,
+        }
+    }
+}
+
 impl Tree {
     /// Create an empty tree at version zero.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            initial_version: 1,
+            ..Self::default()
+        }
+    }
+
+    /// Create an empty tree with a custom first commit version.
+    pub fn with_initial_version(initial_version: Version) -> Result<Self> {
+        if initial_version <= 0 {
+            return Err(Error::InvalidVersion {
+                version: initial_version,
+            });
+        }
+        Ok(Self {
+            initial_version,
+            ..Self::new()
+        })
     }
 
     /// Return the latest saved version.
@@ -98,16 +127,7 @@ impl Tree {
 
     /// Commit the current working tree as the next version.
     pub fn save_version(&mut self) -> Result<CommitInfo> {
-        let Some(next_version) = self.version.checked_add(1) else {
-            return Err(Error::InvalidVersion {
-                version: self.version,
-            });
-        };
-        if next_version <= 0 {
-            return Err(Error::InvalidVersion {
-                version: next_version,
-            });
-        }
+        let next_version = self.next_version()?;
         let root_hash = match self.root.as_mut() {
             Some(root) => root.assign_hashes(next_version),
             None => hash::sha256(&[]),
@@ -181,10 +201,27 @@ impl Tree {
 
     fn hash_version(&self) -> Version {
         if self.dirty {
-            self.version.saturating_add(1).max(1)
+            self.next_version()
+                .unwrap_or_else(|_| self.version.saturating_add(1).max(1))
         } else {
             self.version.max(1)
         }
+    }
+
+    fn next_version(&self) -> Result<Version> {
+        let next_version = if self.version == 0 && self.initial_version > 1 {
+            self.initial_version
+        } else {
+            self.version.checked_add(1).ok_or(Error::InvalidVersion {
+                version: self.version,
+            })?
+        };
+        if next_version <= 0 {
+            return Err(Error::InvalidVersion {
+                version: next_version,
+            });
+        }
+        Ok(next_version)
     }
 
     fn membership_proof(&self, key: &[u8], value: &[u8]) -> Result<Proof> {
@@ -1164,6 +1201,28 @@ mod tests {
         assert_eq!(tree.remove(b"missing")?, None);
         assert_eq!(tree.get(b"a"), None);
 
+        Ok(())
+    }
+
+    #[test]
+    fn custom_initial_version_controls_first_hash_version() -> Result<(), Error> {
+        let mut tree = Tree::with_initial_version(7)?;
+        tree.set(b"k".to_vec(), b"v".to_vec())?;
+        let working_hash = tree.root_hash();
+        let commit = tree.save_version()?;
+        assert_eq!(commit.version, 7);
+        assert_eq!(commit.root_hash, working_hash);
+
+        let mut default_tree = Tree::new();
+        default_tree.set(b"k".to_vec(), b"v".to_vec())?;
+        assert_ne!(commit.root_hash, default_tree.save_version()?.root_hash);
+
+        tree.set(b"k".to_vec(), b"v2".to_vec())?;
+        assert_eq!(tree.save_version()?.version, 8);
+        assert!(matches!(
+            Tree::with_initial_version(0),
+            Err(Error::InvalidVersion { version: 0 })
+        ));
         Ok(())
     }
 

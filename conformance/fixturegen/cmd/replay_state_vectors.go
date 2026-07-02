@@ -156,8 +156,13 @@ func buildReplayStateFixture(cfg replayStateConfig) (m2StateDiffScenario, error)
 		return m2StateDiffScenario{}, fmt.Errorf("db latest version %d is before requested end height %d", latest, end)
 	}
 
+	planningStore := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{})
+	if err := validateReplayStateBootstrap(planningStore, cfg.mounts, cfg.start); err != nil {
+		return m2StateDiffScenario{}, err
+	}
+
 	storesToMount, err := replayStateStoresToMount(
-		rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{}),
+		planningStore,
 		cfg.mounts,
 		cfg.start,
 		end,
@@ -180,7 +185,7 @@ func buildReplayStateFixture(cfg replayStateConfig) (m2StateDiffScenario, error)
 
 	blocks := make([]m2BlockStateDiff, 0, cfg.count)
 	for height := cfg.start; height <= end; height++ {
-		block, err := replayStateBlock(cms, keys, cfg.mounts, height, height == cfg.start)
+		block, err := replayStateBlock(cms, keys, cfg.mounts, height, height == 1)
 		if err != nil {
 			return m2StateDiffScenario{}, err
 		}
@@ -234,11 +239,15 @@ func replayStateBlock(cms *rootmulti.Store, keys map[string]*storetypes.KVStoreK
 	if err != nil {
 		return m2BlockStateDiff{}, fmt.Errorf("commit info at height %d: %w", height, err)
 	}
+	mountedCommitInfo, err := replayStateCommitInfoForMounts(commitInfo, mounts)
+	if err != nil {
+		return m2BlockStateDiff{}, fmt.Errorf("filter commit info at height %d: %w", height, err)
+	}
 	return m2BlockStateDiff{
 		Height:     height,
 		Mutations:  mutations,
-		AppHashHex: hex.EncodeToString(commitInfo.Hash()),
-		StoreInfos: fixtureStoreInfos(commitInfo.StoreInfos),
+		AppHashHex: hex.EncodeToString(mountedCommitInfo.Hash()),
+		StoreInfos: fixtureStoreInfos(mountedCommitInfo.StoreInfos),
 	}, nil
 }
 
@@ -299,6 +308,74 @@ func replayStateStoresWithState(commitInfos []*storetypes.CommitInfo, mounts []s
 		}
 	}
 	return storesToMount, nil
+}
+
+func validateReplayStateBootstrap(cms *rootmulti.Store, mounts []string, start int64) error {
+	if start <= 1 {
+		return nil
+	}
+	before, err := cms.GetCommitInfo(start - 1)
+	if err != nil {
+		return fmt.Errorf("commit info at height %d: %w", start-1, err)
+	}
+	after, err := cms.GetCommitInfo(start)
+	if err != nil {
+		return fmt.Errorf("commit info at height %d: %w", start, err)
+	}
+	conflicts, err := replayStateBootstrapConflicts(before, after, mounts)
+	if err != nil {
+		return err
+	}
+	if len(conflicts) > 0 {
+		return fmt.Errorf(
+			"cannot bootstrap stores with pre-existing state at height %d: %s; choose an earlier start height, limit --mounts to stores empty before the start height, or import historical IAVL node versions",
+			start,
+			strings.Join(conflicts, ","),
+		)
+	}
+	return nil
+}
+
+func replayStateBootstrapConflicts(before, after *storetypes.CommitInfo, mounts []string) ([]string, error) {
+	beforeEmpty := replayStateEmptyStores(before)
+	afterEmpty := replayStateEmptyStores(after)
+
+	var conflicts []string
+	for _, name := range sortedStrings(mounts) {
+		emptyBefore, ok := beforeEmpty[name]
+		if !ok {
+			return nil, fmt.Errorf("commit info at height %d has no store %s", before.Version, name)
+		}
+		_, ok = afterEmpty[name]
+		if !ok {
+			return nil, fmt.Errorf("commit info at height %d has no store %s", after.Version, name)
+		}
+		if !emptyBefore {
+			conflicts = append(conflicts, name)
+		}
+	}
+	return conflicts, nil
+}
+
+func replayStateCommitInfoForMounts(commitInfo *storetypes.CommitInfo, mounts []string) (*storetypes.CommitInfo, error) {
+	storeInfosByName := make(map[string]storetypes.StoreInfo, len(commitInfo.StoreInfos))
+	for _, storeInfo := range commitInfo.StoreInfos {
+		storeInfosByName[storeInfo.Name] = storeInfo
+	}
+
+	storeInfos := make([]storetypes.StoreInfo, 0, len(mounts))
+	for _, name := range sortedStrings(mounts) {
+		storeInfo, ok := storeInfosByName[name]
+		if !ok {
+			return nil, fmt.Errorf("commit info at height %d has no store %s", commitInfo.Version, name)
+		}
+		storeInfos = append(storeInfos, storeInfo)
+	}
+	return &storetypes.CommitInfo{
+		Version:    commitInfo.Version,
+		StoreInfos: storeInfos,
+		Timestamp:  commitInfo.Timestamp,
+	}, nil
 }
 
 func replayStateEmptyStores(commitInfo *storetypes.CommitInfo) map[string]bool {

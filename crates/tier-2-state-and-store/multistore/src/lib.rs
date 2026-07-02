@@ -190,7 +190,8 @@ impl Store {
         }
         match kind {
             StoreKind::Iavl => {
-                self.stores.insert(name, KvStore::new());
+                self.stores
+                    .insert(name, KvStore::with_initial_version(self.initial_version)?);
             }
         }
         Ok(())
@@ -735,6 +736,41 @@ mod tests {
         assert_eq!(
             cache.write(parent_without_bank),
             Err(Error::UnknownStore("bank".to_owned()))
+        );
+    }
+
+    #[test]
+    fn custom_initial_version_reaches_mounted_iavl_stores() {
+        let mut custom = Store::with_initial_version(7).expect("custom store");
+        custom
+            .mount_store("bank", StoreKind::Iavl)
+            .expect("mount bank");
+        custom
+            .get_store_mut("bank")
+            .expect("bank store")
+            .set(b"k".to_vec(), b"v".to_vec())
+            .expect("set bank key");
+        let custom_commit = custom.commit().expect("custom commit");
+        assert_eq!(custom_commit.version, 7);
+
+        let custom_info = custom.last_commit_info().expect("custom commit info");
+        assert_eq!(custom_info.store_infos[0].commit_id.version, 7);
+
+        let mut default = Store::new();
+        default
+            .mount_store("bank", StoreKind::Iavl)
+            .expect("mount bank");
+        default
+            .get_store_mut("bank")
+            .expect("bank store")
+            .set(b"k".to_vec(), b"v".to_vec())
+            .expect("set bank key");
+        let default_commit = default.commit().expect("default commit");
+        assert_eq!(default_commit.version, 1);
+        let default_info = default.last_commit_info().expect("default commit info");
+        assert_ne!(
+            custom_info.store_infos[0].commit_id.hash,
+            default_info.store_infos[0].commit_id.hash
         );
     }
 

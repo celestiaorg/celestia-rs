@@ -4,10 +4,16 @@
 
 ### Fixed
 
+- Propagated custom initial versions into IAVL, KV store, and multistore child
+  commits so high-height roots are hashed with the intended first commit
+  version instead of version one.
 - Fixed the DB-backed replay-state fixture generator to mount app stores from
   the root DB's per-store prefixes and use the current mainnet app-v6 store
   names by default, including empty-store mount planning across the full
   requested height range.
+- Hardened the DB-backed replay-state fixture generator to filter app hashes to
+  mounted stores and reject non-empty pre-start bootstraps that cannot preserve
+  historical IAVL node versions from key/value diffs alone.
 - Made replay-state fixture metadata derive the Go runtime, Go module
   versions, and full regeneration command from the generator inputs.
 - Added M2 replay-state acceptance-loader support for
@@ -67,6 +73,9 @@
 - Added a DB-backed `fixturegen replay-state` utility plus the M2 replay-state
   fixture hardening spec for replacing the synthetic M2 acceptance window with
   real mainnet state diffs.
+- Added a compressed, DB-backed M2 mainnet replay shard for the empty `signal`
+  and `zkism` stores at heights `11350567..=11350568`, including source
+  metadata.
 - Updated the M2 integration acceptance loader to prefer the pending
   DB-backed replay-state fixture while retaining the synthetic state-diff
   fixture as fallback.

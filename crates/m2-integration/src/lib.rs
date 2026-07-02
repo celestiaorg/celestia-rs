@@ -62,7 +62,7 @@ mod tests {
 
         for case in fixture.cases {
             assert!(
-                case.network.starts_with("mainnet"),
+                case.network.contains("mainnet"),
                 "{fixture_name}: {}",
                 case.label
             );
@@ -79,19 +79,18 @@ mod tests {
 
                 let commit_id = store.commit()?;
                 assert_eq!(commit_id.version, block.height, "{} height", case.label);
-                assert_eq!(
-                    hex::encode(commit_id.hash),
-                    block.app_hash_hex,
-                    "{fixture_name}: {} app hash at {}",
-                    case.label,
-                    block.height
-                );
-
                 let commit_info = store.get_commit_info(block.height)?;
                 assert_eq!(
                     commit_info.store_infos,
                     store_infos_from_fixture(&block.store_infos)?,
                     "{fixture_name}: {} store infos at {}",
+                    case.label,
+                    block.height
+                );
+                assert_eq!(
+                    hex::encode(commit_id.hash),
+                    block.app_hash_hex,
+                    "{fixture_name}: {} app hash at {}",
                     case.label,
                     block.height
                 );

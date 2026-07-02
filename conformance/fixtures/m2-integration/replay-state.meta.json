@@ -1,0 +1,17 @@
+{
+  "scenario": "m2-integration-replay-state",
+  "source_chain": "celestia-mainnet",
+  "source_heights": [
+    11350567,
+    11350568
+  ],
+  "app_version": "8.0.7-rc0-1-g61864c4a7",
+  "celestia_app_commit": "61864c4a7",
+  "go_version": "go1.24.11",
+  "crypto_packages": [
+    "cosmossdk.io/store v1.1.1",
+    "github.com/cosmos/cosmos-db v1.0.2",
+    "github.com/cosmos/iavl v1.2.0"
+  ],
+  "regen_command": "go run . replay-state --db-dir /Users/rootulp/.celestia-app/data --db-name application --db-backend goleveldb --start 11350567 --count 2 --network celestia-mainnet --app-version 8.0.7-rc0-1-g61864c4a7 --celestia-app-commit 61864c4a7 --mounts signal,zkism --out ../../conformance/fixtures/m2-integration/replay-state.json.zst"
+}

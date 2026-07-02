@@ -35,22 +35,22 @@
               "value_hex": "3530"
             }
           ],
-          "app_hash_hex": "84d1b53cafa43502b0e4fda80234bd3eff42ee1322586edd5f932d7ef010aa0d",
+          "app_hash_hex": "82c08853cded9edf8d8eca904e0dbd321a006c5b5bf8a0d9d53faed0bc0ab866",
           "store_infos": [
             {
               "name": "auth",
               "version": 10126900,
-              "hash_hex": "38c7a4b4728332879a94d1d06cc2abd124d7b915986b63747466cdc5a74009e5"
+              "hash_hex": "3ee56c4276633a3772e216bb733cf112b0c7d5c0e4f3ac269f7d1870bb0401f1"
             },
             {
               "name": "bank",
               "version": 10126900,
-              "hash_hex": "5afad2b1d376dce2df3d81c3e1594c9d931252345563ee6c02649a4b9dc748e7"
+              "hash_hex": "93928f9a0ad1d7d59675d5995ca9c7d73a8e17a759a51017cbaabab4b60490dd"
             },
             {
               "name": "staking",
               "version": 10126900,
-              "hash_hex": "d7d63782a4e26726df4aede534fc88f7d92ecb45b3f8c9fe798b50ee2b44088d"
+              "hash_hex": "601f23b92c7f62fa0c32799c1cb9c5f4d6dfa813421259e74d8e33682837b284"
             }
           ]
         },
@@ -76,22 +76,22 @@
               "value_hex": "3132"
             }
           ],
-          "app_hash_hex": "6c8fbc9905c2069f37e1038393b69eccf43cc65ad5dc64fcece600c6c7006ad7",
+          "app_hash_hex": "049de8ab9e51749fa6524ec129e43a1813415db07c6fc5456f3be1f9ab9e64d3",
           "store_infos": [
             {
               "name": "auth",
               "version": 10126901,
-              "hash_hex": "be57583fcce3603e82b334e1e80cb5f05a53678d9ac1648c9b8b2025638ae73f"
+              "hash_hex": "0fc4073e7f60ee40230c043303797c85eb5f0cc7382637136a81073154736bf3"
             },
             {
               "name": "bank",
               "version": 10126901,
-              "hash_hex": "87893ba2c63f39b6c8496d211c1ce7c8a7d01bc0fdf9296d9b5a9dfda480cf20"
+              "hash_hex": "c27931b4c4ffbe1dc42ae761c0656e3fae8c50d741a35fb472c805ca8e8acbd7"
             },
             {
               "name": "staking",
               "version": 10126901,
-              "hash_hex": "d7d63782a4e26726df4aede534fc88f7d92ecb45b3f8c9fe798b50ee2b44088d"
+              "hash_hex": "601f23b92c7f62fa0c32799c1cb9c5f4d6dfa813421259e74d8e33682837b284"
             }
           ]
         },
@@ -111,22 +111,22 @@
               "value_hex": "32"
             }
           ],
-          "app_hash_hex": "45da6a81d3f7d771461f75b7aa7dab6d9f3ce0a68a0ca8df159fbd7d7d58d0a9",
+          "app_hash_hex": "5e2ac5141c07ad5ba95267016db9d23182b86e883960b9b522e1bb9a164d9497",
           "store_infos": [
             {
               "name": "auth",
               "version": 10126902,
-              "hash_hex": "be57583fcce3603e82b334e1e80cb5f05a53678d9ac1648c9b8b2025638ae73f"
+              "hash_hex": "0fc4073e7f60ee40230c043303797c85eb5f0cc7382637136a81073154736bf3"
             },
             {
               "name": "bank",
               "version": 10126902,
-              "hash_hex": "87893ba2c63f39b6c8496d211c1ce7c8a7d01bc0fdf9296d9b5a9dfda480cf20"
+              "hash_hex": "c27931b4c4ffbe1dc42ae761c0656e3fae8c50d741a35fb472c805ca8e8acbd7"
             },
             {
               "name": "staking",
               "version": 10126902,
-              "hash_hex": "183c338e0612695fb7f93dd3a5deee4b4d043a9ca93dc1efcd31409210580945"
+              "hash_hex": "df2ad8bfb3a5a8636e2df369d6afac84b9e9fc2f763b8b669bd024807928bcbd"
             }
           ]
         }

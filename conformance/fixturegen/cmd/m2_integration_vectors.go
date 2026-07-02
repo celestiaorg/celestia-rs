@@ -124,7 +124,9 @@ func buildM2IntegrationStateDiffs() (m2StateDiffScenario, error) {
 func buildM2StateDiffCase(label string, startHeight int64, mounts []string, blocks [][]multistoreMutation) (m2StateDiffCase, error) {
 	trees := make(map[string]iavlTree, len(mounts))
 	for _, mount := range mounts {
-		trees[mount] = iavlTree{tree: newIavlTree()}
+		tree := newIavlTree()
+		tree.SetInitialVersion(uint64(startHeight))
+		trees[mount] = iavlTree{tree: tree}
 	}
 
 	outBlocks := make([]m2BlockStateDiff, 0, len(blocks))
