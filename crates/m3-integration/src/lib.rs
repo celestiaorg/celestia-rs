@@ -116,10 +116,46 @@ mod tests {
         sequence: u64,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct GasFixture {
+        chain_id: String,
+        cases: Vec<GasCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct GasCase {
+        label: String,
+        mode: String,
+        tx_raw_hex: String,
+        address_hex: String,
+        account_number: u64,
+        account_sequence: u64,
+        expected_ok: bool,
+        #[serde(default)]
+        expected_gas_wanted: u64,
+        #[serde(default)]
+        expected_gas_used: u64,
+        #[serde(default)]
+        expected_final_sequence: u64,
+    }
+
     #[test]
     #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json fixture"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
         let fixture: MainnetTxCorpusFixture = load_fixture(MAINNET_TX_CORPUS_FIXTURE)?;
+        run_mainnet_tx_fixture(&fixture, MIN_MAINNET_TX_CASES)
+    }
+
+    #[test]
+    fn mainnet_tx_runner_accepts_synthetic_success_case() -> TestResult<()> {
+        let fixture = synthetic_success_fixture()?;
+        run_mainnet_tx_fixture(&fixture, 1)
+    }
+
+    fn run_mainnet_tx_fixture(
+        fixture: &MainnetTxCorpusFixture,
+        min_cases: usize,
+    ) -> TestResult<()> {
         assert_eq!(fixture.scenario, "ante-mainnet-tx-corpus");
         assert!(
             !fixture.source.is_empty(),
@@ -131,8 +167,8 @@ mod tests {
         );
 
         assert!(
-            fixture.cases.len() >= MIN_MAINNET_TX_CASES,
-            "mainnet tx corpus must contain at least {MIN_MAINNET_TX_CASES} cases"
+            fixture.cases.len() >= min_cases,
+            "mainnet tx corpus must contain at least {min_cases} cases"
         );
 
         for case in &fixture.cases {
@@ -160,6 +196,60 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    fn synthetic_success_fixture() -> TestResult<MainnetTxCorpusFixture> {
+        let gas_fixture: GasFixture = load_fixture("ante/gas.json")?;
+        let case = gas_fixture
+            .cases
+            .iter()
+            .find(|case| case.label == "deliver-charges-tx-size-and-signature")
+            .ok_or_else(|| invalid_data("missing ante gas success fixture"))?;
+        if !case.expected_ok {
+            return Err(invalid_data(format!(
+                "{}: expected source gas fixture to be successful",
+                case.label
+            ))
+            .into());
+        }
+
+        Ok(MainnetTxCorpusFixture {
+            scenario: "ante-mainnet-tx-corpus".to_owned(),
+            source: "synthetic smoke case translated from ante/gas.json".to_owned(),
+            chain_id: gas_fixture.chain_id,
+            app_version: "synthetic".to_owned(),
+            cases: vec![MainnetTxCase {
+                label: case.label.clone(),
+                network: "mainnet".to_owned(),
+                height: 10,
+                tx_index: 0,
+                mode: case.mode.clone(),
+                tx_raw_hex: case.tx_raw_hex.clone(),
+                min_gas_prices: Vec::new(),
+                accounts: vec![FixtureAccount {
+                    address_hex: case.address_hex.clone(),
+                    account_number: case.account_number,
+                    sequence: case.account_sequence,
+                    public_key_any_hex: None,
+                }],
+                balances: Vec::new(),
+                expected: ExpectedEnvelope {
+                    ok: true,
+                    error: String::new(),
+                    code: 0,
+                    codespace: String::new(),
+                    log: String::new(),
+                    gas_wanted: case.expected_gas_wanted,
+                    gas_used: case.expected_gas_used,
+                    events: Vec::new(),
+                    signer_sequences: vec![FixtureSignerSequence {
+                        address_hex: case.address_hex.clone(),
+                        sequence: case.expected_final_sequence,
+                    }],
+                    balances: Vec::new(),
+                },
+            }],
+        })
     }
 
     fn load_fixture<T>(relative_path: &str) -> TestResult<T>

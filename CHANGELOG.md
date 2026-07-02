@@ -43,6 +43,8 @@
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante
   outcome field.
+- Added non-ignored M3 acceptance-runner smoke coverage using the existing
+  Go-generated `ante` gas fixture as a one-case synthetic corpus.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
