@@ -35,6 +35,8 @@
 - Added the `m3-integration` acceptance scaffold with the ignored
   `mainnet_tx_validation_matches_go` entry point for the pending mainnet
   transaction corpus.
+- Added the M3 mainnet transaction corpus fixture contract for the pending
+  `ante-mainnet-tx-corpus` generator and acceptance runner.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
