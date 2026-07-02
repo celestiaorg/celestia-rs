@@ -371,6 +371,11 @@ fn fee_fixtures_match_min_gas_and_deduction_behavior() {
                 case.label
             );
             assert_eq!(
+                account.public_key, None,
+                "public key mutated after failing fixture '{}'",
+                case.label
+            );
+            assert_eq!(
                 fees.snapshot(),
                 initial_balances,
                 "balances mutated after failing fixture '{}'",

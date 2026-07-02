@@ -318,19 +318,24 @@ impl AnteHandler {
                 )?;
             }
             verify_signer(signer)?;
-            if ctx.mode == RunTxMode::Deliver {
-                accounts.set_public_key(&signer.address, signer.public_key.clone())?;
-            }
         }
 
         if ctx.mode != RunTxMode::Simulate {
             if let Some(fee) = fee {
-                self.validate_and_deduct_fees(fee, &signers, fees)?;
+                self.validate_fees(fee, &signers, fees)?;
+            }
+            if ctx.mode == RunTxMode::Deliver {
+                for signer in &signers {
+                    accounts.set_public_key(&signer.address, signer.public_key.clone())?;
+                }
             }
             if ctx.mode == RunTxMode::Deliver {
                 for signer in &signers {
                     accounts.set_sequence(&signer.address, signer.sequence + 1)?;
                 }
+            }
+            if let Some(fee) = fee {
+                deduct_fees(fee, &signers, fees)?;
             }
         }
 
@@ -362,21 +367,17 @@ impl AnteHandler {
         meter.consume(gas, "tx size")
     }
 
-    fn validate_and_deduct_fees<F: FeeKeeper>(
+    fn validate_fees<F: FeeKeeper>(
         &self,
         fee: &Fee,
         signers: &[SignerData],
-        fees: &mut F,
+        fees: &F,
     ) -> Result<()> {
         self.validate_minimum_fees(&fee.amount, fee.gas_limit)?;
         if fee.amount.is_empty() {
             return Ok(());
         }
-        let payer = if fee.payer.is_empty() {
-            signers.first().ok_or(Error::MissingSigner)?.address
-        } else {
-            cosmos_types::account_address_from_bech32(&fee.payer).map_err(|_| Error::MalformedTx)?
-        };
+        let payer = fee_payer(fee, signers)?;
         for coin in &fee.amount {
             let Some(balance) = fees.spendable_balance(&payer, &coin.denom)? else {
                 return Err(Error::InsufficientFunds);
@@ -385,7 +386,7 @@ impl AnteHandler {
                 return Err(Error::InsufficientFunds);
             }
         }
-        fees.deduct_fees(&payer, &fee.amount)
+        Ok(())
     }
 
     fn validate_minimum_fees(&self, fees: &[cosmos_types::Coin], gas_limit: Gas) -> Result<()> {
@@ -404,6 +405,25 @@ impl AnteHandler {
             }
         }
         Ok(())
+    }
+}
+
+fn deduct_fees<F: FeeKeeper>(fee: &Fee, signers: &[SignerData], fees: &mut F) -> Result<()> {
+    if fee.amount.is_empty() {
+        return Ok(());
+    }
+    let payer = fee_payer(fee, signers)?;
+    fees.deduct_fees(&payer, &fee.amount)
+}
+
+fn fee_payer(fee: &Fee, signers: &[SignerData]) -> Result<cosmos_types::AccountAddress> {
+    if fee.payer.is_empty() {
+        signers
+            .first()
+            .map(|signer| signer.address)
+            .ok_or(Error::MissingSigner)
+    } else {
+        cosmos_types::account_address_from_bech32(&fee.payer).map_err(|_| Error::MalformedTx)
     }
 }
 

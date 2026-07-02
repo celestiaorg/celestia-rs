@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Deferred `ante` Deliver-mode public-key and sequence writes until after fee
+  validation so insufficient-fee and insufficient-funds failures leave account
+  state unchanged.
+
 ### Added
 
 - Added the M3 transaction-and-ante milestone index plus the first `ante`

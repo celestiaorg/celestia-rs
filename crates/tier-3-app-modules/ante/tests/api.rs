@@ -211,12 +211,12 @@ fn run_rejects_insufficient_fee_and_insufficient_funds_before_sequence_mutation(
         payer: String::new(),
         granter: String::new(),
     };
-    let (tx_bytes, address, public_key) = signed_tx_with_fee(7, 9, fee.clone());
+    let (tx_bytes, address, _public_key) = signed_tx_with_fee(7, 9, fee.clone());
     let mut accounts = Accounts::from_account(Account {
         address,
         account_number: 7,
         sequence: 9,
-        public_key: Some(public_key.clone()),
+        public_key: None,
     });
     let mut fees = Fees::from_balance(address, Coin::new("utia", "2000000").expect("valid coin"));
 
@@ -224,24 +224,22 @@ fn run_rejects_insufficient_fee_and_insufficient_funds_before_sequence_mutation(
         handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
         Err(Error::InsufficientFee)
     );
-    assert_eq!(
-        accounts
-            .account(&address)
-            .expect("account lookup")
-            .expect("account exists")
-            .sequence,
-        9
-    );
+    let account = accounts
+        .account(&address)
+        .expect("account lookup")
+        .expect("account exists");
+    assert_eq!(account.sequence, 9);
+    assert_eq!(account.public_key, None);
 
     let mut config = AnteConfig::celestia_mainnet_app_v6("celestia");
     config.min_gas_prices = vec![Coin::new("utia", "1").expect("valid coin")];
     let handler = AnteHandler::new(config);
-    let (tx_bytes, address, public_key) = signed_tx_with_fee(7, 9, fee);
+    let (tx_bytes, address, _public_key) = signed_tx_with_fee(7, 9, fee);
     let mut accounts = Accounts::from_account(Account {
         address,
         account_number: 7,
         sequence: 9,
-        public_key: Some(public_key),
+        public_key: None,
     });
     let mut fees = Fees::from_balance(address, Coin::new("utia", "1").expect("valid coin"));
 
@@ -249,14 +247,12 @@ fn run_rejects_insufficient_fee_and_insufficient_funds_before_sequence_mutation(
         handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
         Err(Error::InsufficientFunds)
     );
-    assert_eq!(
-        accounts
-            .account(&address)
-            .expect("account lookup")
-            .expect("account exists")
-            .sequence,
-        9
-    );
+    let account = accounts
+        .account(&address)
+        .expect("account lookup")
+        .expect("account exists");
+    assert_eq!(account.sequence, 9);
+    assert_eq!(account.public_key, None);
 }
 
 fn handler() -> AnteHandler {
