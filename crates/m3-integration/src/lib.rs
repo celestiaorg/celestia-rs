@@ -139,6 +139,27 @@ mod tests {
         expected_final_sequence: u64,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct FeeFixture {
+        chain_id: String,
+        cases: Vec<FeeCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct FeeCase {
+        label: String,
+        tx_raw_hex: String,
+        address_hex: String,
+        account_number: u64,
+        account_sequence: u64,
+        min_gas_prices: Vec<FixtureCoin>,
+        balances: Vec<FixtureBalance>,
+        expected_ok: bool,
+        #[serde(default)]
+        expected_error: String,
+        expected_balances: Vec<FixtureBalance>,
+    }
+
     #[test]
     #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json fixture"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
@@ -149,6 +170,12 @@ mod tests {
     #[test]
     fn mainnet_tx_runner_accepts_synthetic_success_case() -> TestResult<()> {
         let fixture = synthetic_success_fixture()?;
+        run_mainnet_tx_fixture(&fixture, 1)
+    }
+
+    #[test]
+    fn mainnet_tx_runner_rejects_synthetic_fee_case() -> TestResult<()> {
+        let fixture = synthetic_fee_rejection_fixture()?;
         run_mainnet_tx_fixture(&fixture, 1)
     }
 
@@ -247,6 +274,57 @@ mod tests {
                         sequence: case.expected_final_sequence,
                     }],
                     balances: Vec::new(),
+                },
+            }],
+        })
+    }
+
+    fn synthetic_fee_rejection_fixture() -> TestResult<MainnetTxCorpusFixture> {
+        let fee_fixture: FeeFixture = load_fixture("ante/fees.json")?;
+        let case = fee_fixture
+            .cases
+            .iter()
+            .find(|case| case.label == "insufficient-min-gas-price")
+            .ok_or_else(|| invalid_data("missing ante fee rejection fixture"))?;
+        if case.expected_ok {
+            return Err(invalid_data(format!(
+                "{}: expected source fee fixture to be rejected",
+                case.label
+            ))
+            .into());
+        }
+
+        Ok(MainnetTxCorpusFixture {
+            scenario: "ante-mainnet-tx-corpus".to_owned(),
+            source: "synthetic rejection case translated from ante/fees.json".to_owned(),
+            chain_id: fee_fixture.chain_id,
+            app_version: "synthetic".to_owned(),
+            cases: vec![MainnetTxCase {
+                label: case.label.clone(),
+                network: "mainnet".to_owned(),
+                height: 10,
+                tx_index: 0,
+                mode: "deliver".to_owned(),
+                tx_raw_hex: case.tx_raw_hex.clone(),
+                min_gas_prices: case.min_gas_prices.clone(),
+                accounts: vec![FixtureAccount {
+                    address_hex: case.address_hex.clone(),
+                    account_number: case.account_number,
+                    sequence: case.account_sequence,
+                    public_key_any_hex: None,
+                }],
+                balances: case.balances.clone(),
+                expected: ExpectedEnvelope {
+                    ok: false,
+                    error: case.expected_error.clone(),
+                    code: 0,
+                    codespace: String::new(),
+                    log: String::new(),
+                    gas_wanted: 0,
+                    gas_used: 0,
+                    events: Vec::new(),
+                    signer_sequences: Vec::new(),
+                    balances: case.expected_balances.clone(),
                 },
             }],
         })

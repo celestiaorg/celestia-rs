@@ -45,6 +45,8 @@
   outcome field.
 - Added non-ignored M3 acceptance-runner smoke coverage using the existing
   Go-generated `ante` gas fixture as a one-case synthetic corpus.
+- Added non-ignored M3 acceptance-runner rejection smoke coverage using the
+  existing Go-generated `ante` fee fixture as a one-case synthetic corpus.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.
