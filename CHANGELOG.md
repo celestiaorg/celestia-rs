@@ -32,6 +32,9 @@
   signature-verification gas, simulate mode, and out-of-gas failures.
 - Added Go-generated `ante` malformed transaction fixtures for protobuf,
   signer-info, public-key, sign-mode, and fee validation error mapping.
+- Added the `m3-integration` acceptance scaffold with the ignored
+  `mainnet_tx_validation_matches_go` entry point for the pending mainnet
+  transaction corpus.
 - Added `cargo xtask repo-health` to codify the local fmt, clippy, test,
   fixturegen, and fixture-inventory gates before moving between milestone
   sections.

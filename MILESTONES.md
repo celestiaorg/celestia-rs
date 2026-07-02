@@ -52,4 +52,9 @@ spec.
 
 The first M3 implementation checkpoint has started with
 `crates/tier-3-app-modules/ante/`: public ante skeleton, gas-meter behavior,
-and stateless transaction validation.
+stateless transaction validation, direct secp256k1 signer execution, fee and
+gas conformance fixtures, malformed transaction fixtures, and state-mutation
+hardening. The `m3-integration` crate now contains the ignored
+`mainnet_tx_validation_matches_go` acceptance entry point; the next hard gate
+is committing the Go-generated mainnet transaction corpus and enabling that
+test.

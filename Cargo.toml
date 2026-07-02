@@ -18,6 +18,7 @@ members = [
     "crates/tier-3-app-modules/ante",
     "crates/m1-integration",
     "crates/m2-integration",
+    "crates/m3-integration",
     "xtask",
 ]
 

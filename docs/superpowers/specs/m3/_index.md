@@ -20,12 +20,12 @@ Section 3.
 
 ## Acceptance Scaffold
 
-M3 should add `crates/m3-integration/` with
-`mainnet_tx_validation_matches_go`. The test loads a committed transaction
-corpus emitted by `fixturegen tx-corpus`, runs every transaction through the
-Rust ante pipeline, and compares the resulting code, codespace, gas wanted,
-gas used, events, signer sequence updates, and fee movement summary to the Go
-reference output.
+M3 has added `crates/m3-integration/` with the ignored
+`mainnet_tx_validation_matches_go` acceptance entry point. Once the committed
+transaction corpus exists, the test loads the corpus emitted by `fixturegen
+tx-corpus`, runs every transaction through the Rust ante pipeline, and
+compares the resulting code, codespace, gas wanted, gas used, events, signer
+sequence updates, and fee movement summary to the Go reference output.
 
 The fixture corpus must include both `CheckTx`-style and `FinalizeBlock`-style
 contexts when Go behavior differs. The first corpus can use a small account and
