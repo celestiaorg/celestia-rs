@@ -4,7 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -674,6 +677,106 @@ func TestBuildAnteMainnetTxCorpusFixtureRequiresHydratedSignerAccount(t *testing
 	}
 }
 
+func TestRunAnteMainnetTxCorpusWritesFixtureWithReplay(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "write-mainnet-corpus-sample",
+		secret:             []byte("ante mainnet write corpus"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	txBytes, err := hex.DecodeString(signed.TxRawHex)
+	if err != nil {
+		t.Fatalf("decode signed tx: %v", err)
+	}
+	txBase64 := base64.StdEncoding.EncodeToString(txBytes)
+	address, err := hex.DecodeString(signed.AddressHex)
+	if err != nil {
+		t.Fatalf("decode signer address: %v", err)
+	}
+	dbDir := t.TempDir()
+	writeAnteMainnetTxTestDB(
+		t,
+		dbDir,
+		9,
+		[]anteMainnetTxTestStoreEntry{{
+			key:   anteMainnetTxAuthAccountStoreKey(address),
+			value: anteMainnetTxTestAccountValue(t, address, 7, 9, anteMainnetTxTestAnyFromHex(t, signed.PublicKeyAnyHex)),
+		}},
+		nil,
+	)
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return jsonResponse(`{
+			"jsonrpc": "2.0",
+			"id": "",
+			"result": {
+				"block": {
+					"header": {
+						"version": { "block": "11", "app": "6" },
+						"height": "10",
+						"data_hash": "abcd"
+					},
+					"data": { "txs": ["` + txBase64 + `"], "square_size": 8 }
+				}
+			}
+		}`), nil
+	})}
+	out := filepath.Join(t.TempDir(), "mainnet-tx-corpus.json")
+
+	err = runAnteMainnetTxCorpusWithClientAndReplay([]string{
+		"--rpc", "https://rpc.example.test",
+		"--db-dir", dbDir,
+		"--start", "10",
+		"--count", "1",
+		"--min-txs", "1",
+		"--out", out,
+	}, client, func(input anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
+		if input.Mode != "deliver" {
+			t.Fatalf("replay mode = %q, want deliver", input.Mode)
+		}
+		return anteMainnetTxExpected{
+			OK:        true,
+			GasWanted: input.Tx.Fee.GasLimit,
+			GasUsed:   2_950,
+			SignerSequences: []anteMainnetTxSignerSequence{
+				{AddressHex: signed.AddressHex, Sequence: 10},
+			},
+			Balances: input.Balances,
+		}, nil
+	})
+	if err != nil {
+		t.Fatalf("run corpus with replay: %v", err)
+	}
+
+	var fixture anteMainnetTxCorpusFixture
+	readJSONFile(t, out, &fixture)
+	if fixture.Scenario != anteMainnetTxCorpusScenario || fixture.ChainID != "celestia" || fixture.AppVersion != "app-v6" {
+		t.Fatalf("fixture identity = %#v", fixture)
+	}
+	if len(fixture.Cases) != 1 {
+		t.Fatalf("cases = %#v, want one emitted case", fixture.Cases)
+	}
+	if fixture.Cases[0].Label != "height-10-tx-0-deliver" || !fixture.Cases[0].Expected.OK {
+		t.Fatalf("case = %#v, want accepted deliver case", fixture.Cases[0])
+	}
+
+	var meta anteMainnetTxCorpusMeta
+	readJSONFile(t, metaPath(out), &meta)
+	if meta.Scenario != anteMainnetTxCorpusScenario || meta.SourceTransactions != 1 || meta.EmittedCases != 1 {
+		t.Fatalf("metadata = %#v, want one source tx and emitted case", meta)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("stat fixture output: %v", err)
+	}
+}
+
 func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
 		label:              "pending-replay-sample",
@@ -745,6 +848,18 @@ func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 func txHashHex(tx []byte) string {
 	hash := sha256.Sum256(tx)
 	return strings.ToUpper(hex.EncodeToString(hash[:]))
+}
+
+func readJSONFile(t *testing.T, path string, out any) {
+	t.Helper()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) returned error: %v", path, err)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		t.Fatalf("Unmarshal(%s) returned error: %v", path, err)
+	}
 }
 
 type anteMainnetTxTestStoreEntry struct {

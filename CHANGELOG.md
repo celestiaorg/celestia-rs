@@ -71,6 +71,9 @@
 - Added deterministic M3 mainnet ante corpus case assembly from sampled
   transactions and hydrated account/balance state, with Go ante replay isolated
   behind an explicit adapter boundary.
+- Wired the pending M3 mainnet ante corpus generator to write the assembled
+  corpus and metadata sidecar once a replay adapter supplies expected Go ante
+  outcomes.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante
