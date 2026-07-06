@@ -145,8 +145,23 @@ func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error 
 	if err != nil {
 		return err
 	}
+	fixture, err := buildAnteMainnetTxCorpusFixture(cfg, samples, decoded, state, pendingAnteMainnetTxReplay)
+	if err != nil {
+		return fmt.Errorf(
+			"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, and hydrated %d accounts/%d balances from height %d; %w",
+			anteMainnetTxCorpusScenario,
+			len(samples),
+			len(decoded),
+			len(plan.Accounts),
+			len(plan.Balances),
+			len(state.Accounts),
+			len(state.Balances),
+			preBlockStateHeight,
+			err,
+		)
+	}
 	return fmt.Errorf(
-		"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, and hydrated %d accounts/%d balances from height %d; Go ante replay is not implemented yet",
+		"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, hydrated %d accounts/%d balances from height %d, and built %d cases; Go ante replay is not implemented yet",
 		anteMainnetTxCorpusScenario,
 		len(samples),
 		len(decoded),
@@ -155,6 +170,7 @@ func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error 
 		len(state.Accounts),
 		len(state.Balances),
 		preBlockStateHeight,
+		len(fixture.Cases),
 	)
 }
 

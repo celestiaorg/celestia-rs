@@ -524,6 +524,156 @@ func TestHydrateAnteMainnetTxStateReadsVersionedDB(t *testing.T) {
 	}
 }
 
+func TestBuildAnteMainnetTxCorpusFixtureAssemblesHydratedDeliverCases(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "mainnet-case-builder",
+		secret:             []byte("ante mainnet case builder"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                anteFee(500_000, "", anteSDKCoin("utia", 600_000)),
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	address, err := hex.DecodeString(signed.AddressHex)
+	if err != nil {
+		t.Fatalf("decode signer address: %v", err)
+	}
+	sample := anteMainnetTxSample{
+		Label:      "height-10-tx-2",
+		Height:     10,
+		TxIndex:    2,
+		AppVersion: 6,
+		TxRawHex:   signed.TxRawHex,
+		TxHash:     "ignored",
+	}
+	decoded, err := decodeAnteMainnetTxSample(sample)
+	if err != nil {
+		t.Fatalf("decode tx sample: %v", err)
+	}
+	state := anteMainnetTxHydratedState{
+		Accounts: []anteMainnetTxHydratedAccount{
+			{
+				AddressHex:      signed.AddressHex,
+				AccountNumber:   7,
+				Sequence:        9,
+				PublicKeyAnyHex: signed.PublicKeyAnyHex,
+			},
+		},
+		Balances: []anteMainnetTxHydratedBalance{
+			{
+				AddressHex: signed.AddressHex,
+				Denom:      "utia",
+				Amount:     "600000",
+			},
+		},
+	}
+	var replayInput anteMainnetTxReplayInput
+	fixture, err := buildAnteMainnetTxCorpusFixture(
+		anteMainnetTxCorpusConfig{
+			network:    "celestia-mainnet",
+			chainID:    "celestia",
+			appVersion: "app-v6",
+		},
+		[]anteMainnetTxSample{sample},
+		[]anteMainnetTxDecoded{decoded},
+		state,
+		func(input anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
+			replayInput = input
+			return anteMainnetTxExpected{
+				OK:        true,
+				GasWanted: input.Tx.Fee.GasLimit,
+				GasUsed:   2_950,
+				SignerSequences: []anteMainnetTxSignerSequence{
+					{AddressHex: signed.AddressHex, Sequence: 10},
+				},
+				Balances: input.Balances,
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("build corpus fixture: %v", err)
+	}
+
+	if fixture.Scenario != anteMainnetTxCorpusScenario || fixture.ChainID != "celestia" || fixture.AppVersion != "app-v6" {
+		t.Fatalf("fixture identity = %#v", fixture)
+	}
+	if len(fixture.Cases) != 1 {
+		t.Fatalf("cases = %#v, want one case", fixture.Cases)
+	}
+	got := fixture.Cases[0]
+	if got.Label != "height-10-tx-2-deliver" || got.Network != "mainnet" || got.Height != 10 || got.TxIndex != 2 || got.Mode != "deliver" {
+		t.Fatalf("case identity = %#v", got)
+	}
+	if got.TxRawHex != signed.TxRawHex {
+		t.Fatalf("tx raw = %q, want signed tx", got.TxRawHex)
+	}
+	if !reflect.DeepEqual(got.Accounts, state.Accounts) {
+		t.Fatalf("case accounts = %#v, want %#v", got.Accounts, state.Accounts)
+	}
+	if !reflect.DeepEqual(got.Balances, state.Balances) {
+		t.Fatalf("case balances = %#v, want %#v", got.Balances, state.Balances)
+	}
+	if got.Expected.GasWanted != 500_000 || got.Expected.GasUsed != 2_950 {
+		t.Fatalf("expected gas = %#v, want gas wanted 500000 and gas used 2950", got.Expected)
+	}
+	if got.Expected.Events == nil || got.Expected.SignerSequences == nil || got.Expected.Balances == nil {
+		t.Fatalf("expected defaults should be non-nil slices: %#v", got.Expected)
+	}
+	if replayInput.Mode != "deliver" || replayInput.Sample.Label != sample.Label || replayInput.Tx.Label != decoded.Label {
+		t.Fatalf("replay input = %#v, want deliver input for sample", replayInput)
+	}
+	if replayInput.Accounts[0].AddressHex != hex.EncodeToString(address) {
+		t.Fatalf("replay accounts = %#v, want signer account", replayInput.Accounts)
+	}
+}
+
+func TestBuildAnteMainnetTxCorpusFixtureRequiresHydratedSignerAccount(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "mainnet-case-builder-missing-account",
+		secret:             []byte("ante mainnet missing account"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	sample := anteMainnetTxSample{
+		Label:    "height-10-tx-0",
+		Height:   10,
+		TxIndex:  0,
+		TxRawHex: signed.TxRawHex,
+	}
+	decoded, err := decodeAnteMainnetTxSample(sample)
+	if err != nil {
+		t.Fatalf("decode tx sample: %v", err)
+	}
+
+	_, err = buildAnteMainnetTxCorpusFixture(
+		anteMainnetTxCorpusConfig{network: "celestia-mainnet", chainID: "celestia", appVersion: "app-v6"},
+		[]anteMainnetTxSample{sample},
+		[]anteMainnetTxDecoded{decoded},
+		anteMainnetTxHydratedState{},
+		func(anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
+			t.Fatal("replay should not run when hydrated signer state is missing")
+			return anteMainnetTxExpected{}, nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "missing hydrated account") {
+		t.Fatalf("error = %v, want missing hydrated account failure", err)
+	}
+}
+
 func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
 		label:              "pending-replay-sample",
