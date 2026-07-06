@@ -8,6 +8,15 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"cosmossdk.io/log"
+	"cosmossdk.io/store/mem"
+	"cosmossdk.io/store/metrics"
+	"cosmossdk.io/store/rootmulti"
+	storetypes "cosmossdk.io/store/types"
+	dbm "github.com/cosmos/cosmos-db"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 func TestAnteMainnetTxCorpusConfigValidationAndDefaults(t *testing.T) {
@@ -375,6 +384,146 @@ func TestPlanAnteMainnetTxHydrationRejectsMalformedFeePayer(t *testing.T) {
 	}
 }
 
+func TestHydrateAnteMainnetTxStateFromStoresReadsAccountsAndBalances(t *testing.T) {
+	address := repeatByte(0x03, 20)
+	addressHex := hex.EncodeToString(address)
+	publicKey := antePublicKeyAny([]byte("ante mainnet hydrated account"))
+	publicKeyHex, err := anteAnyHex(publicKey)
+	if err != nil {
+		t.Fatalf("marshal public key any: %v", err)
+	}
+	plan := anteMainnetTxHydrationPlan{
+		Accounts: []anteMainnetTxAccountRef{
+			{
+				AddressHex:  addressHex,
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxAuthAccountStoreKey(address)),
+			},
+		},
+		Balances: []anteMainnetTxBalanceRef{
+			{
+				AddressHex:  addressHex,
+				Denom:       "utia",
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxBankBalanceStoreKey(address, "utia")),
+			},
+		},
+	}
+	accountStore := storetypes.KVStore(mem.NewStore())
+	bankStore := storetypes.KVStore(mem.NewStore())
+	accountStore.Set(
+		anteMainnetTxAuthAccountStoreKey(address),
+		anteMainnetTxTestAccountValue(t, address, 42, 24, publicKey),
+	)
+	bankStore.Set(anteMainnetTxBankBalanceStoreKey(address, "utia"), []byte("789"))
+
+	state, err := hydrateAnteMainnetTxStateFromStores(9, accountStore, bankStore, plan)
+	if err != nil {
+		t.Fatalf("hydrate state: %v", err)
+	}
+
+	want := anteMainnetTxHydratedState{
+		Accounts: []anteMainnetTxHydratedAccount{
+			{
+				AddressHex:      addressHex,
+				AccountNumber:   42,
+				Sequence:        24,
+				PublicKeyAnyHex: publicKeyHex,
+			},
+		},
+		Balances: []anteMainnetTxHydratedBalance{
+			{
+				AddressHex: addressHex,
+				Denom:      "utia",
+				Amount:     "789",
+			},
+		},
+	}
+	if !reflect.DeepEqual(state, want) {
+		t.Fatalf("hydrated state = %#v, want %#v", state, want)
+	}
+}
+
+func TestHydrateAnteMainnetTxStateFromStoresSkipsMissingBalances(t *testing.T) {
+	address := repeatByte(0x04, 20)
+	addressHex := hex.EncodeToString(address)
+	plan := anteMainnetTxHydrationPlan{
+		Accounts: []anteMainnetTxAccountRef{
+			{
+				AddressHex:  addressHex,
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxAuthAccountStoreKey(address)),
+			},
+		},
+		Balances: []anteMainnetTxBalanceRef{
+			{
+				AddressHex:  addressHex,
+				Denom:       "utia",
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxBankBalanceStoreKey(address, "utia")),
+			},
+		},
+	}
+	accountStore := storetypes.KVStore(mem.NewStore())
+	accountStore.Set(
+		anteMainnetTxAuthAccountStoreKey(address),
+		anteMainnetTxTestAccountValue(t, address, 42, 24, nil),
+	)
+
+	state, err := hydrateAnteMainnetTxStateFromStores(9, accountStore, storetypes.KVStore(mem.NewStore()), plan)
+	if err != nil {
+		t.Fatalf("hydrate state: %v", err)
+	}
+	if len(state.Balances) != 0 {
+		t.Fatalf("balances = %#v, want missing balance omitted", state.Balances)
+	}
+}
+
+func TestHydrateAnteMainnetTxStateReadsVersionedDB(t *testing.T) {
+	address := repeatByte(0x05, 20)
+	addressHex := hex.EncodeToString(address)
+	plan := anteMainnetTxHydrationPlan{
+		Accounts: []anteMainnetTxAccountRef{
+			{
+				AddressHex:  addressHex,
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxAuthAccountStoreKey(address)),
+			},
+		},
+		Balances: []anteMainnetTxBalanceRef{
+			{
+				AddressHex:  addressHex,
+				Denom:       "utia",
+				StoreKeyHex: hex.EncodeToString(anteMainnetTxBankBalanceStoreKey(address, "utia")),
+			},
+		},
+	}
+	dbDir := t.TempDir()
+	writeAnteMainnetTxTestDB(
+		t,
+		dbDir,
+		9,
+		[]anteMainnetTxTestStoreEntry{{
+			key:   anteMainnetTxAuthAccountStoreKey(address),
+			value: anteMainnetTxTestAccountValue(t, address, 42, 24, nil),
+		}},
+		[]anteMainnetTxTestStoreEntry{{
+			key:   anteMainnetTxBankBalanceStoreKey(address, "utia"),
+			value: []byte("789"),
+		}},
+	)
+
+	state, err := hydrateAnteMainnetTxState(anteMainnetTxCorpusConfig{
+		dbDir:     dbDir,
+		dbName:    "application",
+		dbBackend: string(dbm.GoLevelDBBackend),
+	}, 9, plan)
+	if err != nil {
+		t.Fatalf("hydrate state from db: %v", err)
+	}
+	if len(state.Accounts) != 1 || state.Accounts[0].AddressHex != addressHex || state.Accounts[0].AccountNumber != 42 {
+		t.Fatalf("accounts = %#v, want hydrated account", state.Accounts)
+	}
+	if len(state.Balances) != 1 || state.Balances[0].Amount != "789" {
+		t.Fatalf("balances = %#v, want hydrated balance", state.Balances)
+	}
+}
+
 func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
 		label:              "pending-replay-sample",
@@ -395,6 +544,21 @@ func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 		t.Fatalf("decode signed tx: %v", err)
 	}
 	txBase64 := base64.StdEncoding.EncodeToString(txBytes)
+	address, err := hex.DecodeString(signed.AddressHex)
+	if err != nil {
+		t.Fatalf("decode signer address: %v", err)
+	}
+	dbDir := t.TempDir()
+	writeAnteMainnetTxTestDB(
+		t,
+		dbDir,
+		9,
+		[]anteMainnetTxTestStoreEntry{{
+			key:   anteMainnetTxAuthAccountStoreKey(address),
+			value: anteMainnetTxTestAccountValue(t, address, 7, 9, anteMainnetTxTestAnyFromHex(t, signed.PublicKeyAnyHex)),
+		}},
+		nil,
+	)
 
 	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		return jsonResponse(`{
@@ -415,17 +579,126 @@ func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 
 	err = runAnteMainnetTxCorpusWithClient([]string{
 		"--rpc", "https://rpc.example.test",
-		"--db-dir", "/tmp/celestia",
+		"--db-dir", dbDir,
 		"--start", "10",
 		"--count", "1",
 		"--min-txs", "1",
 	}, client)
-	if err == nil || !strings.Contains(err.Error(), "Go ante replay are not implemented yet") {
+	if err == nil || !strings.Contains(err.Error(), "Go ante replay is not implemented yet") {
 		t.Fatalf("error = %v, want pending replay error", err)
+	}
+	if !strings.Contains(err.Error(), "hydrated 1 accounts/0 balances from height 9") {
+		t.Fatalf("error = %v, want hydrated state counts", err)
 	}
 }
 
 func txHashHex(tx []byte) string {
 	hash := sha256.Sum256(tx)
 	return strings.ToUpper(hex.EncodeToString(hash[:]))
+}
+
+type anteMainnetTxTestStoreEntry struct {
+	key   []byte
+	value []byte
+}
+
+func anteMainnetTxTestAccountValue(
+	t *testing.T,
+	address []byte,
+	accountNumber uint64,
+	sequence uint64,
+	publicKey *codectypes.Any,
+) []byte {
+	t.Helper()
+
+	account := &anteMainnetTxBaseAccountProto{
+		Address:       anteAccountBech32(address),
+		PubKey:        anteMainnetTxTestAnyProto(publicKey),
+		AccountNumber: accountNumber,
+		Sequence:      sequence,
+	}
+	accountValue, err := proto.Marshal(account)
+	if err != nil {
+		t.Fatalf("marshal base account: %v", err)
+	}
+	anyValue, err := proto.Marshal(&codectypes.Any{
+		TypeUrl: anteMainnetTxBaseAccountTypeURL,
+		Value:   accountValue,
+	})
+	if err != nil {
+		t.Fatalf("marshal account any: %v", err)
+	}
+	return anyValue
+}
+
+func anteMainnetTxTestAnyFromHex(t *testing.T, valueHex string) *codectypes.Any {
+	t.Helper()
+
+	value, err := hex.DecodeString(valueHex)
+	if err != nil {
+		t.Fatalf("decode any hex: %v", err)
+	}
+	var any codectypes.Any
+	if err := proto.Unmarshal(value, &any); err != nil {
+		t.Fatalf("unmarshal any: %v", err)
+	}
+	return &any
+}
+
+func anteMainnetTxTestAnyProto(any *codectypes.Any) *anteMainnetTxAnyProto {
+	if any == nil {
+		return nil
+	}
+	return &anteMainnetTxAnyProto{
+		TypeUrl: any.TypeUrl,
+		Value:   any.Value,
+	}
+}
+
+func writeAnteMainnetTxTestDB(
+	t *testing.T,
+	dbDir string,
+	height int64,
+	accounts []anteMainnetTxTestStoreEntry,
+	balances []anteMainnetTxTestStoreEntry,
+) {
+	t.Helper()
+
+	db, err := dbm.NewDB("application", dbm.GoLevelDBBackend, dbDir)
+	if err != nil {
+		t.Fatalf("NewDB returned error: %v", err)
+	}
+	defer db.Close()
+
+	mounts := []string{anteMainnetTxAuthStoreMount, anteMainnetTxBankStoreMount}
+	keys := replayStateKeys(mounts)
+	cms := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NoOpMetrics{})
+	for _, name := range mounts {
+		cms.MountStoreWithDB(keys[name], storetypes.StoreTypeIAVL, nil)
+	}
+	if err := cms.LoadLatestVersion(); err != nil {
+		t.Fatalf("LoadLatestVersion returned error: %v", err)
+	}
+	if err := cms.SetInitialVersion(height - 1); err != nil {
+		t.Fatalf("SetInitialVersion returned error: %v", err)
+	}
+
+	commitID := cms.Commit()
+	if commitID.Version != height-1 {
+		t.Fatalf("empty commit version = %d, want %d", commitID.Version, height-1)
+	}
+
+	cache := cms.CacheMultiStore()
+	for _, entry := range accounts {
+		cache.GetKVStore(keys[anteMainnetTxAuthStoreMount]).Set(entry.key, entry.value)
+	}
+	for _, entry := range balances {
+		cache.GetKVStore(keys[anteMainnetTxBankStoreMount]).Set(entry.key, entry.value)
+	}
+	cache.Write()
+
+	commitID = cms.Commit()
+	if commitID.Version != height {
+		t.Fatalf("commit version = %d, want %d", commitID.Version, height)
+	}
 }

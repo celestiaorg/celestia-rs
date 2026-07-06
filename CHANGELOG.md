@@ -66,6 +66,8 @@
   sampled `TxRaw` bytes into signer, fee, and signature metadata.
 - Added SDK-auth/bank hydration-key planning for sampled mainnet ante
   transactions, including explicit and implicit fee-payer balance lookups.
+- Added DB-backed pre-block account and fee-balance hydration for the pending
+  M3 mainnet ante transaction corpus generator.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante

@@ -140,13 +140,21 @@ func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error 
 	if err != nil {
 		return err
 	}
+	preBlockStateHeight := cfg.start - 1
+	state, err := hydrateAnteMainnetTxState(cfg, preBlockStateHeight, plan)
+	if err != nil {
+		return err
+	}
 	return fmt.Errorf(
-		"%s sampled %d transactions, decoded %d txs, and planned %d account/%d balance lookups; live account/bank state hydration and Go ante replay are not implemented yet",
+		"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, and hydrated %d accounts/%d balances from height %d; Go ante replay is not implemented yet",
 		anteMainnetTxCorpusScenario,
 		len(samples),
 		len(decoded),
 		len(plan.Accounts),
 		len(plan.Balances),
+		len(state.Accounts),
+		len(state.Balances),
+		preBlockStateHeight,
 	)
 }
 
@@ -220,6 +228,9 @@ func (cfg anteMainnetTxCorpusConfig) validate() error {
 	}
 	if cfg.start <= 0 {
 		problems = append(problems, "--start must be positive")
+	}
+	if cfg.start == 1 {
+		problems = append(problems, "--start must be greater than 1 for pre-block state hydration")
 	}
 	if cfg.count <= 0 {
 		problems = append(problems, "--count must be positive")

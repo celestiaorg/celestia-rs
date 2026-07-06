@@ -98,15 +98,18 @@ fixture runner rather than silently ignoring the field.
 The runner can decode the compressed corpus and validate its metadata sidecar
 once generated. `fixturegen ante-mainnet-tx-corpus` has validated
 configuration, deterministic RPC transaction sampling, sampled `TxRaw`
-signer/fee decoding, SDK auth/bank hydration-key planning, and metadata
-scaffolding, but live account/bank state hydration and Go ante replay are still
-pending. The current `ante` fixtures are still explicit unit-scale vectors, not
-a broad mainnet corpus.
+signer/fee decoding, SDK auth/bank hydration-key planning, DB-backed pre-block
+account and fee-balance hydration, and metadata scaffolding. Per-transaction
+state replay through earlier transactions in the same block and Go ante replay
+are still pending. The current `ante` fixtures are still explicit unit-scale
+vectors, not a broad mainnet corpus.
 
 ## Definition Of Done
 
-- [ ] Complete `fixturegen ante-mainnet-tx-corpus` state hydration and Go ante
-      replay.
+- [x] Add DB-backed pre-block account and fee-balance hydration to
+      `fixturegen ante-mainnet-tx-corpus`.
+- [ ] Complete per-transaction same-block state replay and Go ante replay in
+      `fixturegen ante-mainnet-tx-corpus`.
 - [ ] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
       `.meta.json`.
 - [ ] Implement the full fixture runner in `m3-integration`.
