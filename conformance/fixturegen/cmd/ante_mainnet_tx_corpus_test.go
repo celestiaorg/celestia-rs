@@ -273,6 +273,108 @@ func TestDecodeAnteMainnetTxSampleRejectsMalformedHex(t *testing.T) {
 	}
 }
 
+func TestPlanAnteMainnetTxHydrationUsesSDKStoreKeys(t *testing.T) {
+	payerBytes := repeatByte(0x01, 20)
+	payer := anteAccountBech32(payerBytes)
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "plan-mainnet-sample",
+		secret:             []byte("ante mainnet plan explicit"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                anteFee(123456, payer, anteSDKCoin("utia", 789)),
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	decoded, err := decodeAnteMainnetTxSample(anteMainnetTxSample{
+		Label:    "height-10-tx-0",
+		TxRawHex: signed.TxRawHex,
+	})
+	if err != nil {
+		t.Fatalf("decode tx sample: %v", err)
+	}
+
+	plan, err := planAnteMainnetTxHydration([]anteMainnetTxDecoded{decoded})
+	if err != nil {
+		t.Fatalf("plan hydration: %v", err)
+	}
+
+	payerHex := hex.EncodeToString(payerBytes)
+	wantAccounts := []anteMainnetTxAccountRef{
+		{AddressHex: signed.AddressHex, StoreKeyHex: "01" + signed.AddressHex},
+		{AddressHex: payerHex, StoreKeyHex: "01" + payerHex},
+	}
+	if !reflect.DeepEqual(plan.Accounts, wantAccounts) {
+		t.Fatalf("account refs = %#v, want %#v", plan.Accounts, wantAccounts)
+	}
+	wantBalances := []anteMainnetTxBalanceRef{
+		{
+			AddressHex:  payerHex,
+			Denom:       "utia",
+			StoreKeyHex: "0214" + payerHex + hex.EncodeToString([]byte("utia")),
+		},
+	}
+	if !reflect.DeepEqual(plan.Balances, wantBalances) {
+		t.Fatalf("balance refs = %#v, want %#v", plan.Balances, wantBalances)
+	}
+}
+
+func TestPlanAnteMainnetTxHydrationUsesFirstSignerAsImplicitFeePayer(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "plan-mainnet-sample-implicit",
+		secret:             []byte("ante mainnet plan implicit"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		fee:                anteFee(123456, "", anteSDKCoin("utia", 789)),
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	decoded, err := decodeAnteMainnetTxSample(anteMainnetTxSample{
+		Label:    "height-10-tx-0",
+		TxRawHex: signed.TxRawHex,
+	})
+	if err != nil {
+		t.Fatalf("decode tx sample: %v", err)
+	}
+
+	plan, err := planAnteMainnetTxHydration([]anteMainnetTxDecoded{decoded})
+	if err != nil {
+		t.Fatalf("plan hydration: %v", err)
+	}
+
+	wantBalances := []anteMainnetTxBalanceRef{
+		{
+			AddressHex:  signed.AddressHex,
+			Denom:       "utia",
+			StoreKeyHex: "0214" + signed.AddressHex + hex.EncodeToString([]byte("utia")),
+		},
+	}
+	if !reflect.DeepEqual(plan.Balances, wantBalances) {
+		t.Fatalf("balance refs = %#v, want %#v", plan.Balances, wantBalances)
+	}
+}
+
+func TestPlanAnteMainnetTxHydrationRejectsMalformedFeePayer(t *testing.T) {
+	_, err := planAnteMainnetTxHydration([]anteMainnetTxDecoded{{
+		Label: "bad-payer",
+		Fee:   anteMainnetTxFee{Payer: "not-bech32"},
+	}})
+	if err == nil || !strings.Contains(err.Error(), `bad-payer: decode fee payer "not-bech32"`) {
+		t.Fatalf("error = %v, want fee payer decode failure", err)
+	}
+}
+
 func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
 		label:              "pending-replay-sample",

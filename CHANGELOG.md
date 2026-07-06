@@ -64,6 +64,8 @@
   deterministic mainnet transaction sampling and metadata construction.
 - Expanded the pending `ante-mainnet-tx-corpus` fixturegen scaffold to decode
   sampled `TxRaw` bytes into signer, fee, and signature metadata.
+- Added SDK-auth/bank hydration-key planning for sampled mainnet ante
+  transactions, including explicit and implicit fee-payer balance lookups.
 - Expanded the ignored M3 mainnet transaction acceptance runner to deserialize
   the documented corpus schema, hydrate account and fee snapshots, execute the
   Rust ante handler by run mode, and compare every currently exposed ante

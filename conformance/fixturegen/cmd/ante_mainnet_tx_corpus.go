@@ -16,6 +16,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdksecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	sdkbech32 "github.com/cosmos/cosmos-sdk/types/bech32"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	signing "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
@@ -84,6 +85,22 @@ type anteMainnetTxDecodedSigner struct {
 	PublicKeyAnyHex string `json:"public_key_any_hex,omitempty"`
 }
 
+type anteMainnetTxHydrationPlan struct {
+	Accounts []anteMainnetTxAccountRef `json:"accounts"`
+	Balances []anteMainnetTxBalanceRef `json:"balances"`
+}
+
+type anteMainnetTxAccountRef struct {
+	AddressHex  string `json:"address_hex"`
+	StoreKeyHex string `json:"store_key_hex"`
+}
+
+type anteMainnetTxBalanceRef struct {
+	AddressHex  string `json:"address_hex"`
+	Denom       string `json:"denom"`
+	StoreKeyHex string `json:"store_key_hex"`
+}
+
 type anteMainnetTxCorpusMeta struct {
 	Scenario           string  `json:"scenario"`
 	SourceChain        string  `json:"source_chain"`
@@ -119,11 +136,17 @@ func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error 
 	if err != nil {
 		return err
 	}
+	plan, err := planAnteMainnetTxHydration(decoded)
+	if err != nil {
+		return err
+	}
 	return fmt.Errorf(
-		"%s sampled %d transactions and decoded %d txs; account/bank state hydration and Go ante replay are not implemented yet",
+		"%s sampled %d transactions, decoded %d txs, and planned %d account/%d balance lookups; live account/bank state hydration and Go ante replay are not implemented yet",
 		anteMainnetTxCorpusScenario,
 		len(samples),
 		len(decoded),
+		len(plan.Accounts),
+		len(plan.Balances),
 	)
 }
 
@@ -417,6 +440,134 @@ func anteMainnetTxSignModeName(mode signing.SignMode) string {
 	default:
 		return fmt.Sprintf("unknown_%d", mode)
 	}
+}
+
+func planAnteMainnetTxHydration(decoded []anteMainnetTxDecoded) (anteMainnetTxHydrationPlan, error) {
+	plan := anteMainnetTxHydrationPlan{
+		Accounts: []anteMainnetTxAccountRef{},
+		Balances: []anteMainnetTxBalanceRef{},
+	}
+	accountSeen := make(map[string]struct{})
+	balanceSeen := make(map[string]struct{})
+
+	addAccount := func(label, addressHex string) error {
+		address, normalized, err := decodeAnteMainnetTxAddressHex(label, addressHex)
+		if err != nil {
+			return err
+		}
+		if _, ok := accountSeen[normalized]; ok {
+			return nil
+		}
+		accountSeen[normalized] = struct{}{}
+		plan.Accounts = append(plan.Accounts, anteMainnetTxAccountRef{
+			AddressHex:  normalized,
+			StoreKeyHex: hex.EncodeToString(anteMainnetTxAuthAccountStoreKey(address)),
+		})
+		return nil
+	}
+
+	addBalance := func(label, addressHex, denom string) error {
+		if strings.TrimSpace(denom) == "" {
+			return fmt.Errorf("%s: fee balance denom is empty", label)
+		}
+		address, normalized, err := decodeAnteMainnetTxAddressHex(label, addressHex)
+		if err != nil {
+			return err
+		}
+		key := normalized + "\x00" + denom
+		if _, ok := balanceSeen[key]; ok {
+			return nil
+		}
+		balanceSeen[key] = struct{}{}
+		plan.Balances = append(plan.Balances, anteMainnetTxBalanceRef{
+			AddressHex:  normalized,
+			Denom:       denom,
+			StoreKeyHex: hex.EncodeToString(anteMainnetTxBankBalanceStoreKey(address, denom)),
+		})
+		return nil
+	}
+
+	for _, tx := range decoded {
+		for _, signer := range tx.Signers {
+			if signer.AddressHex == "" {
+				return anteMainnetTxHydrationPlan{}, fmt.Errorf("%s: signer %d has no address; message signer extraction is not implemented yet", tx.Label, signer.Index)
+			}
+			if err := addAccount(fmt.Sprintf("%s signer %d", tx.Label, signer.Index), signer.AddressHex); err != nil {
+				return anteMainnetTxHydrationPlan{}, err
+			}
+		}
+
+		payerAddressHex, err := anteMainnetTxFeePayerAddressHex(tx)
+		if err != nil {
+			return anteMainnetTxHydrationPlan{}, err
+		}
+		if tx.Fee.Payer != "" {
+			if err := addAccount(tx.Label+" fee payer", payerAddressHex); err != nil {
+				return anteMainnetTxHydrationPlan{}, err
+			}
+		}
+		for _, coin := range tx.Fee.Amount {
+			if payerAddressHex == "" {
+				return anteMainnetTxHydrationPlan{}, fmt.Errorf("%s: fee amount %s%s has no payer address", tx.Label, coin.Amount, coin.Denom)
+			}
+			if err := addBalance(tx.Label+" fee payer", payerAddressHex, coin.Denom); err != nil {
+				return anteMainnetTxHydrationPlan{}, err
+			}
+		}
+	}
+
+	return plan, nil
+}
+
+func anteMainnetTxFeePayerAddressHex(tx anteMainnetTxDecoded) (string, error) {
+	if tx.Fee.Payer != "" {
+		prefix, address, err := sdkbech32.DecodeAndConvert(tx.Fee.Payer)
+		if err != nil {
+			return "", fmt.Errorf("%s: decode fee payer %q: %w", tx.Label, tx.Fee.Payer, err)
+		}
+		if prefix != cosmosAccountPrefix {
+			return "", fmt.Errorf("%s: fee payer prefix = %q, want %q", tx.Label, prefix, cosmosAccountPrefix)
+		}
+		if len(address) != 20 {
+			return "", fmt.Errorf("%s: fee payer address length = %d, want 20", tx.Label, len(address))
+		}
+		return hex.EncodeToString(address), nil
+	}
+	if len(tx.Signers) == 0 {
+		return "", nil
+	}
+	return tx.Signers[0].AddressHex, nil
+}
+
+func decodeAnteMainnetTxAddressHex(label, addressHex string) ([]byte, string, error) {
+	address, err := hex.DecodeString(addressHex)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: decode address hex: %w", label, err)
+	}
+	if len(address) != 20 {
+		return nil, "", fmt.Errorf("%s: address length = %d, want 20", label, len(address))
+	}
+	return address, hex.EncodeToString(address), nil
+}
+
+func anteMainnetTxAuthAccountStoreKey(address []byte) []byte {
+	key := []byte{0x01}
+	return append(key, address...)
+}
+
+func anteMainnetTxBankBalanceStoreKey(address []byte, denom string) []byte {
+	key := []byte{0x02}
+	key = append(key, anteMainnetTxLengthPrefix(address)...)
+	return append(key, []byte(denom)...)
+}
+
+func anteMainnetTxLengthPrefix(value []byte) []byte {
+	if len(value) > 255 {
+		panic(fmt.Sprintf("length-prefix value is too long: %d", len(value)))
+	}
+	out := make([]byte, 0, len(value)+1)
+	out = append(out, byte(len(value)))
+	return append(out, value...)
 }
 
 func anteMainnetTxCorpusFixtureMeta(

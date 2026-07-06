@@ -98,9 +98,10 @@ fixture runner rather than silently ignoring the field.
 The runner can decode the compressed corpus and validate its metadata sidecar
 once generated. `fixturegen ante-mainnet-tx-corpus` has validated
 configuration, deterministic RPC transaction sampling, sampled `TxRaw`
-signer/fee decoding, and metadata scaffolding, but account/bank state hydration
-and Go ante replay are still pending. The current `ante` fixtures are still
-explicit unit-scale vectors, not a broad mainnet corpus.
+signer/fee decoding, SDK auth/bank hydration-key planning, and metadata
+scaffolding, but live account/bank state hydration and Go ante replay are still
+pending. The current `ante` fixtures are still explicit unit-scale vectors, not
+a broad mainnet corpus.
 
 ## Definition Of Done
 
