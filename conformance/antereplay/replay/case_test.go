@@ -95,6 +95,11 @@ func TestReplayCaseAcceptsSignedTxWithCelestiaChainID(t *testing.T) {
 	if len(outcome.Balances) != 1 || outcome.Balances[0].Amount != "980000" {
 		t.Fatalf("fee balances = %+v, want 980000 after fee", outcome.Balances)
 	}
+	for _, event := range outcome.Events {
+		if event.Type == "coinbase" {
+			t.Fatalf("captured a coinbase (mint) event from state injection; ante events must be isolated from injection: %+v", outcome.Events)
+		}
+	}
 }
 
 func TestReplayCaseRejectsInsufficientMinGasPrice(t *testing.T) {

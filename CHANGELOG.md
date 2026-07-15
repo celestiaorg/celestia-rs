@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Isolated `antereplay` captured ante events from state injection: `ReplayCase`
+  now resets the event manager after injecting account/balance state, so bank
+  minting events emitted while funding balances no longer leak into the
+  captured ante events. Found by replaying a real mainnet PayForBlobs tx, which
+  the oracle correctly accepted but whose events were polluted by the injection.
+
 - Propagated custom initial versions into IAVL, KV store, and multistore child
   commits so high-height roots are hashed with the intended first commit
   version instead of version one.
