@@ -29,6 +29,11 @@
 
 ### Added
 
+- Added the `conformance/antereplay` Go module scaffold: an isolated module
+  (separate from `fixturegen` so celestia-app's cosmos-sdk fork replaces do not
+  leak into the other generators) that builds an in-memory celestia-app v6
+  instance to serve as the M3 mainnet-tx-corpus Go ante replay oracle, with a
+  smoke test and a `1.25` CI build job.
 - Made `fixturegen ante-mainnet-tx-corpus` unwrap Celestia `BlobTx`
   (PayForBlobs) wrappers to their inner Cosmos SDK `TxRaw` before decoding, so
   real mainnet blocks (which are dominated by blob transactions) can be
