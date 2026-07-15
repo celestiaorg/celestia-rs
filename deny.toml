@@ -27,4 +27,8 @@ confidence-threshold = 0.93
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Internal workspace crates depend on each other by path without a version
+# requirement, which resolves to `*`. Allow wildcards for those path
+# dependencies while still denying wildcard requirements on registry crates.
+allow-wildcard-paths = true
 deny = []
