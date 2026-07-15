@@ -32,6 +32,10 @@
 - Added `ante::Error::abci_code` and `ante::Error::codespace` so each ante
   rejection exposes the Cosmos SDK v0.50 ABCI `(code, codespace)` pair the M3
   mainnet corpus runner needs to compare Rust rejections against Go results.
+- Wired the M3 mainnet-tx-corpus runner to compare the Go ABCI `code` and
+  `codespace` for rejected transactions against the Rust ante error, replacing
+  the previous "uncompared Go ABCI fields" guard; the free-form Go `log` plus
+  rejected-tx gas/events/signer fields remain explicitly uncompared.
 - Added the M3 transaction-and-ante milestone index plus the first `ante`
   crate spec, defining the transaction validation, signature, gas, fee, and
   account-state trait boundary for the next implementation section.
