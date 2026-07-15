@@ -3,6 +3,7 @@ module github.com/rootulp/celestia-rs/conformance/antereplay
 go 1.25.5
 
 require (
+	cosmossdk.io/errors v1.0.2
 	cosmossdk.io/math v1.5.3
 	github.com/celestiaorg/celestia-app/v6 v6.4.10
 	github.com/cosmos/cosmos-sdk v0.50.13
@@ -23,7 +24,6 @@ require (
 	cosmossdk.io/collections v0.4.0 // indirect
 	cosmossdk.io/core v0.11.1 // indirect
 	cosmossdk.io/depinject v1.1.0 // indirect
-	cosmossdk.io/errors v1.0.2 // indirect
 	cosmossdk.io/log v1.6.0 // indirect
 	cosmossdk.io/store v1.1.2 // indirect
 	cosmossdk.io/x/circuit v0.1.1 // indirect
