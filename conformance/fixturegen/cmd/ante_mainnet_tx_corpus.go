@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	blobtx "github.com/celestiaorg/go-square/blob"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdksecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdkbech32 "github.com/cosmos/cosmos-sdk/types/bech32"
@@ -312,13 +313,15 @@ func sampleAnteMainnetTxs(
 			if err != nil {
 				return nil, fmt.Errorf("block height %d tx %d is not base64: %w", height, txIndex, err)
 			}
+			// CometBFT indexes the on-chain tx by the hash of the wire bytes,
+			// including the BlobTx wrapper for PayForBlobs transactions.
 			txHash := sha256.Sum256(txBytes)
 			samples = append(samples, anteMainnetTxSample{
 				Label:      fmt.Sprintf("height-%d-tx-%d", height, txIndex),
 				Height:     height,
 				TxIndex:    txIndex,
 				AppVersion: block.AppVersion,
-				TxRawHex:   hex.EncodeToString(txBytes),
+				TxRawHex:   hex.EncodeToString(anteMainnetTxInnerTxBytes(txBytes)),
 				TxHash:     strings.ToUpper(hex.EncodeToString(txHash[:])),
 			})
 		}
@@ -334,6 +337,17 @@ func sampleAnteMainnetTxs(
 		)
 	}
 	return samples, nil
+}
+
+// anteMainnetTxInnerTxBytes returns the Cosmos SDK transaction bytes to run
+// through the ante handler. Celestia mainnet blocks carry PayForBlobs
+// transactions as BlobTx wrappers, so unwrap those to the inner `TxRaw`;
+// non-blob transactions are returned unchanged.
+func anteMainnetTxInnerTxBytes(txBytes []byte) []byte {
+	if blobTx, isBlobTx := blobtx.UnmarshalBlobTx(txBytes); isBlobTx {
+		return blobTx.Tx
+	}
+	return txBytes
 }
 
 func decodeAnteMainnetTxSamples(samples []anteMainnetTxSample) ([]anteMainnetTxDecoded, error) {

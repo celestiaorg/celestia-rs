@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -14,6 +15,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	sqblob "github.com/celestiaorg/go-square/blob"
+	goshares "github.com/celestiaorg/go-square/shares"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/mem"
@@ -494,6 +498,21 @@ func TestHydrateAnteMainnetTxStateFromStoresSkipsMissingBalances(t *testing.T) {
 	}
 	if len(state.Balances) != 0 {
 		t.Fatalf("balances = %#v, want missing balance omitted", state.Balances)
+	}
+}
+
+func TestAnteMainnetTxInnerTxBytesUnwrapsBlobTx(t *testing.T) {
+	innerTx := []byte{0x0a, 0x03, 0x01, 0x02, 0x03}
+	blob := squareBlob(squareNamespace([]byte{7}), []byte("corpus blob data"), goshares.ShareVersionZero)
+	wire := mustSquareBlobTxBytes(innerTx, []*sqblob.Blob{blob})
+
+	if got := anteMainnetTxInnerTxBytes(wire); !bytes.Equal(got, innerTx) {
+		t.Fatalf("blob tx unwrap = %x, want inner tx %x", got, innerTx)
+	}
+
+	regular := []byte("this is not a blob tx")
+	if got := anteMainnetTxInnerTxBytes(regular); !bytes.Equal(got, regular) {
+		t.Fatalf("non-blob passthrough = %x, want %x", got, regular)
 	}
 }
 

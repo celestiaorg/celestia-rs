@@ -29,6 +29,10 @@
 
 ### Added
 
+- Made `fixturegen ante-mainnet-tx-corpus` unwrap Celestia `BlobTx`
+  (PayForBlobs) wrappers to their inner Cosmos SDK `TxRaw` before decoding, so
+  real mainnet blocks (which are dominated by blob transactions) can be
+  sampled. The recorded `tx_hash` remains the on-chain hash of the wire bytes.
 - Added an RPC `abci_query` state-hydration path to
   `fixturegen ante-mainnet-tx-corpus`: when `--db-dir` is omitted, pre-block
   account and fee-balance state is loaded from the CometBFT RPC endpoint via
