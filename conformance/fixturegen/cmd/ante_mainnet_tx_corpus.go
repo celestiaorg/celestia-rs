@@ -49,6 +49,7 @@ type anteMainnetTxCorpusConfig struct {
 	cosmosSDKVersion  string
 	rpcEndpointLabel  string
 	stateSourceLabel  string
+	anteReplayBin     string
 	timeout           time.Duration
 }
 
@@ -122,7 +123,7 @@ func runAnteMainnetTxCorpus(args []string) error {
 }
 
 func runAnteMainnetTxCorpusWithClient(args []string, client *http.Client) error {
-	return runAnteMainnetTxCorpusWithClientAndReplay(args, client, pendingAnteMainnetTxReplay)
+	return runAnteMainnetTxCorpusWithClientAndReplay(args, client, nil)
 }
 
 func runAnteMainnetTxCorpusWithClientAndReplay(
@@ -133,6 +134,9 @@ func runAnteMainnetTxCorpusWithClientAndReplay(
 	cfg, err := parseAnteMainnetTxCorpusConfig(args)
 	if err != nil {
 		return err
+	}
+	if replay == nil {
+		replay = anteMainnetTxSubprocessReplay(cfg.anteReplayBin, cfg.chainID)
 	}
 	if client == nil {
 		client = &http.Client{Timeout: cfg.timeout}
@@ -201,6 +205,7 @@ func parseAnteMainnetTxCorpusConfig(args []string) (anteMainnetTxCorpusConfig, e
 	cosmosSDKVersion := fs.String("cosmos-sdk-version", goModuleVersion("github.com/cosmos/cosmos-sdk"), "Source Cosmos SDK version label.")
 	rpcEndpointLabel := fs.String("rpc-endpoint", "", "Stable label for the RPC endpoint recorded in metadata.")
 	stateSourceLabel := fs.String("state-source", "", "Stable label for the local state source recorded in metadata.")
+	anteReplayBin := fs.String("ante-replay-bin", "", "Path to the built antereplay binary that computes the Go ante outcome for each case.")
 	timeout := fs.Duration("timeout", 15*time.Second, "Per-request HTTP timeout.")
 	if err := fs.Parse(args); err != nil {
 		return anteMainnetTxCorpusConfig{}, err
@@ -221,6 +226,7 @@ func parseAnteMainnetTxCorpusConfig(args []string) (anteMainnetTxCorpusConfig, e
 		cosmosSDKVersion:  strings.TrimSpace(*cosmosSDKVersion),
 		rpcEndpointLabel:  strings.TrimSpace(*rpcEndpointLabel),
 		stateSourceLabel:  strings.TrimSpace(*stateSourceLabel),
+		anteReplayBin:     strings.TrimSpace(*anteReplayBin),
 		timeout:           *timeout,
 	}
 	if cfg.rpcEndpointLabel == "" {
@@ -681,6 +687,8 @@ func anteMainnetTxCorpusRegenCommand(cfg anteMainnetTxCorpusConfig) string {
 		cfg.rpcEndpointLabel,
 		"--state-source",
 		cfg.stateSourceLabel,
+		"--ante-replay-bin",
+		cfg.anteReplayBin,
 		"--out",
 		cfg.out,
 	})

@@ -64,7 +64,7 @@ type anteMainnetTxReplayInput struct {
 	Balances []anteMainnetTxHydratedBalance
 }
 
-type anteMainnetTxReplayFunc func(anteMainnetTxReplayInput) (anteMainnetTxExpected, error)
+type anteMainnetTxReplayFunc func([]anteMainnetTxReplayInput) ([]anteMainnetTxExpected, error)
 
 type anteMainnetTxHydratedStateIndex struct {
 	accounts map[string]anteMainnetTxHydratedAccount
@@ -89,7 +89,12 @@ func buildAnteMainnetTxCorpusFixture(
 	if err != nil {
 		return anteMainnetTxCorpusFixture{}, err
 	}
-	cases := make([]anteMainnetTxCorpusCase, 0, len(samples)*len(anteMainnetTxCorpusModes))
+
+	// First pass: build every case's replay input and skeleton. Replay runs as
+	// a single batch so the (expensive to build) in-memory app is reused across
+	// all cases rather than rebuilt per case.
+	inputs := make([]anteMainnetTxReplayInput, 0, len(samples)*len(anteMainnetTxCorpusModes))
+	skeletons := make([]anteMainnetTxCaseSkeleton, 0, cap(inputs))
 	for i, sample := range samples {
 		tx := decoded[i]
 		if sample.Label != tx.Label {
@@ -104,30 +109,44 @@ func buildAnteMainnetTxCorpusFixture(
 			return anteMainnetTxCorpusFixture{}, err
 		}
 		for _, mode := range anteMainnetTxCorpusModes {
-			input := anteMainnetTxReplayInput{
+			inputs = append(inputs, anteMainnetTxReplayInput{
 				Sample:   sample,
 				Tx:       tx,
 				Mode:     mode,
 				Accounts: accounts,
 				Balances: balances,
-			}
-			expected, err := replay(input)
-			if err != nil {
-				return anteMainnetTxCorpusFixture{}, fmt.Errorf("%s %s: %w", sample.Label, mode, err)
-			}
-			cases = append(cases, anteMainnetTxCorpusCase{
-				Label:        fmt.Sprintf("%s-%s", sample.Label, mode),
-				Network:      anteMainnetTxCorpusCaseNetwork(cfg.network),
-				Height:       sample.Height,
-				TxIndex:      sample.TxIndex,
-				Mode:         mode,
-				TxRawHex:     sample.TxRawHex,
-				MinGasPrices: []anteFixtureCoin{},
-				Accounts:     accounts,
-				Balances:     balances,
-				Expected:     expected.withDefaults(),
+			})
+			skeletons = append(skeletons, anteMainnetTxCaseSkeleton{
+				sample:   sample,
+				mode:     mode,
+				accounts: accounts,
+				balances: balances,
 			})
 		}
+	}
+
+	expecteds, err := replay(inputs)
+	if err != nil {
+		return anteMainnetTxCorpusFixture{}, err
+	}
+	if len(expecteds) != len(inputs) {
+		return anteMainnetTxCorpusFixture{}, fmt.Errorf("ante replay returned %d results for %d cases", len(expecteds), len(inputs))
+	}
+
+	cases := make([]anteMainnetTxCorpusCase, 0, len(skeletons))
+	for i, skeleton := range skeletons {
+		cases = append(cases, anteMainnetTxCorpusCase{
+			Label:        fmt.Sprintf("%s-%s", skeleton.sample.Label, skeleton.mode),
+			Network:      anteMainnetTxCorpusCaseNetwork(cfg.network),
+			Height:       skeleton.sample.Height,
+			TxIndex:      skeleton.sample.TxIndex,
+			Mode:         skeleton.mode,
+			TxRawHex:     skeleton.sample.TxRawHex,
+			MinGasPrices: []anteFixtureCoin{},
+			Accounts:     skeleton.accounts,
+			Balances:     skeleton.balances,
+			Expected:     expecteds[i].withDefaults(),
+		})
 	}
 
 	return anteMainnetTxCorpusFixture{
@@ -139,8 +158,13 @@ func buildAnteMainnetTxCorpusFixture(
 	}, nil
 }
 
-func pendingAnteMainnetTxReplay(anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
-	return anteMainnetTxExpected{}, fmt.Errorf("Go ante replay is not implemented yet")
+// anteMainnetTxCaseSkeleton carries the per-case fields needed to assemble a
+// corpus case after the batch replay returns the expected outcomes.
+type anteMainnetTxCaseSkeleton struct {
+	sample   anteMainnetTxSample
+	mode     string
+	accounts []anteMainnetTxHydratedAccount
+	balances []anteMainnetTxHydratedBalance
 }
 
 func indexAnteMainnetTxHydratedState(state anteMainnetTxHydratedState) (anteMainnetTxHydratedStateIndex, error) {

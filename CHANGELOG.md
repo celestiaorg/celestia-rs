@@ -35,6 +35,12 @@
 
 ### Added
 
+- Wired `fixturegen ante-mainnet-tx-corpus` to compute real Go ante outcomes by
+  invoking the `antereplay` binary (`--ante-replay-bin`) as a subprocess: the
+  replay boundary now runs as a single batch (reusing one in-memory app across
+  all cases), maps the results into each case's `expected` envelope, and derives
+  the stable `error` code from the ABCI code. Replaces the pending-replay stub.
+  Verified end-to-end against a mainnet archive.
 - Added the `antereplay` command: a JSON stdin/stdout CLI that reads a batch of
   transaction-validation cases, replays each through the celestia-app v6 ante
   handler, and writes the outcome envelopes (ok, code, codespace, gas, events,
