@@ -100,6 +100,27 @@ func anteMainnetTxSubprocessReplay(binary, chainID string) anteMainnetTxReplayFu
 	}
 }
 
+// filterAnteMainnetTxAcceptedCases keeps only the cases the replay accepted and
+// returns a "label(code=N)" descriptor for each dropped case.
+//
+// The corpus samples committed mainnet transactions, all of which Go accepted
+// on-chain, so a replay rejection means the replay could not reproduce Go's
+// outcome for that tx (for example an unhydrated feegrant allowance or a
+// same-block sequence bump). Recording ok=false for such a tx would be wrong,
+// so it is dropped rather than emitted.
+func filterAnteMainnetTxAcceptedCases(cases []anteMainnetTxCorpusCase) ([]anteMainnetTxCorpusCase, []string) {
+	kept := make([]anteMainnetTxCorpusCase, 0, len(cases))
+	var dropped []string
+	for _, c := range cases {
+		if c.Expected.OK {
+			kept = append(kept, c)
+			continue
+		}
+		dropped = append(dropped, fmt.Sprintf("%s(code=%d)", c.Label, c.Expected.Code))
+	}
+	return kept, dropped
+}
+
 func anteReplayResultToExpected(result anteReplayResult) anteMainnetTxExpected {
 	expected := anteMainnetTxExpected{
 		OK:              result.OK,

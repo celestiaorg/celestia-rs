@@ -50,6 +50,7 @@ type anteMainnetTxCorpusConfig struct {
 	rpcEndpointLabel  string
 	stateSourceLabel  string
 	anteReplayBin     string
+	minAcceptedCases  int
 	timeout           time.Duration
 }
 
@@ -178,6 +179,26 @@ func runAnteMainnetTxCorpusWithClientAndReplay(
 			err,
 		)
 	}
+	accepted, dropped := filterAnteMainnetTxAcceptedCases(fixture.Cases)
+	if len(dropped) > 0 {
+		fmt.Printf(
+			"%s: dropped %d replay-rejected committed-tx cases (the replay could not reproduce Go's on-chain acceptance, e.g. unhydrated feegrant allowances or same-block sequence bumps): %s\n",
+			anteMainnetTxCorpusScenario,
+			len(dropped),
+			strings.Join(dropped, ", "),
+		)
+	}
+	fixture.Cases = accepted
+	if cfg.minAcceptedCases > 0 && len(fixture.Cases) < cfg.minAcceptedCases {
+		return fmt.Errorf(
+			"%s: %d accepted cases after dropping %d replay rejections, below --min-accepted-cases %d; sample a wider height window",
+			anteMainnetTxCorpusScenario,
+			len(fixture.Cases),
+			len(dropped),
+			cfg.minAcceptedCases,
+		)
+	}
+
 	if err := writeJSON(cfg.out, fixture); err != nil {
 		return err
 	}
@@ -206,6 +227,7 @@ func parseAnteMainnetTxCorpusConfig(args []string) (anteMainnetTxCorpusConfig, e
 	rpcEndpointLabel := fs.String("rpc-endpoint", "", "Stable label for the RPC endpoint recorded in metadata.")
 	stateSourceLabel := fs.String("state-source", "", "Stable label for the local state source recorded in metadata.")
 	anteReplayBin := fs.String("ante-replay-bin", "", "Path to the built antereplay binary that computes the Go ante outcome for each case.")
+	minAcceptedCases := fs.Int("min-accepted-cases", 0, "Minimum number of replay-accepted cases required after dropping replay rejections (0 disables the check).")
 	timeout := fs.Duration("timeout", 15*time.Second, "Per-request HTTP timeout.")
 	if err := fs.Parse(args); err != nil {
 		return anteMainnetTxCorpusConfig{}, err
@@ -227,6 +249,7 @@ func parseAnteMainnetTxCorpusConfig(args []string) (anteMainnetTxCorpusConfig, e
 		rpcEndpointLabel:  strings.TrimSpace(*rpcEndpointLabel),
 		stateSourceLabel:  strings.TrimSpace(*stateSourceLabel),
 		anteReplayBin:     strings.TrimSpace(*anteReplayBin),
+		minAcceptedCases:  *minAcceptedCases,
 		timeout:           *timeout,
 	}
 	if cfg.rpcEndpointLabel == "" {
@@ -689,6 +712,8 @@ func anteMainnetTxCorpusRegenCommand(cfg anteMainnetTxCorpusConfig) string {
 		cfg.stateSourceLabel,
 		"--ante-replay-bin",
 		cfg.anteReplayBin,
+		"--min-accepted-cases",
+		strconv.Itoa(cfg.minAcceptedCases),
 		"--out",
 		cfg.out,
 	})
