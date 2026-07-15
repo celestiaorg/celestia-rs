@@ -29,6 +29,11 @@
 
 ### Added
 
+- Added the `antereplay` command: a JSON stdin/stdout CLI that reads a batch of
+  transaction-validation cases, replays each through the celestia-app v6 ante
+  handler, and writes the outcome envelopes (ok, code, codespace, gas, events,
+  signer sequences, balances). This is the subprocess boundary `fixturegen`
+  invokes to produce the corpus `expected` outcomes.
 - Added the `antereplay` per-case replay engine (`Replayer` / `ReplayCase`):
   reuses one in-memory app across cases via isolated cache-branched contexts and
   builds each run context from the case's chain ID, block height, run mode, and
