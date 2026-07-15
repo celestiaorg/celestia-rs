@@ -40,6 +40,9 @@
   identifier the M3 corpus records per rejection, and switched the
   `m3-integration` runner to it so the runner and Go generator share one
   spelling per variant.
+- Added `ante` API tests for previously-untested rejection surfaces: a fee
+  payer with no spendable balance, deliver-mode account writer failures, and a
+  non-secp256k1 signer public key.
 - Added the M3 transaction-and-ante milestone index plus the first `ante`
   crate spec, defining the transaction validation, signature, gas, fee, and
   account-state trait boundary for the next implementation section.
