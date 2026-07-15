@@ -43,11 +43,14 @@ func DecodeTx(txRawBytes []byte) (sdk.Tx, error) {
 // current ante API surfaces; events, signer-sequence, and fee-balance deltas
 // are added on top of this.
 type Outcome struct {
-	OK        bool
-	ABCICode  uint32
-	Codespace string
-	GasWanted uint64
-	GasUsed   uint64
+	OK              bool
+	ABCICode        uint32
+	Codespace       string
+	GasWanted       uint64
+	GasUsed         uint64
+	Events          []Event
+	SignerSequences []SignerSequence
+	Balances        []Balance
 }
 
 // RunAnte runs a decoded transaction through the ante handler and captures the
