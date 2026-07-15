@@ -199,16 +199,27 @@ mod tests {
     }
 
     #[test]
-    fn mainnet_tx_runner_rejects_uncompared_go_abci_fields() -> TestResult<()> {
+    fn mainnet_tx_runner_rejects_go_abci_code_mismatch() -> TestResult<()> {
+        let mut fixture = synthetic_fee_rejection_fixture()?;
+        fixture.cases[0].expected.code = 99;
+
+        assert_error_contains(run_mainnet_tx_fixture(&fixture, 1), "ABCI code")
+    }
+
+    #[test]
+    fn mainnet_tx_runner_rejects_go_codespace_mismatch() -> TestResult<()> {
+        let mut fixture = synthetic_fee_rejection_fixture()?;
+        fixture.cases[0].expected.codespace = "bank".to_owned();
+
+        assert_error_contains(run_mainnet_tx_fixture(&fixture, 1), "codespace")
+    }
+
+    #[test]
+    fn mainnet_tx_runner_rejects_uncompared_go_log_field() -> TestResult<()> {
         let mut fixture = synthetic_success_fixture()?;
-        fixture.cases[0].expected.code = 1;
-        fixture.cases[0].expected.codespace = "sdk".to_owned();
         fixture.cases[0].expected.log = "go ante log".to_owned();
 
-        assert_error_contains(
-            run_mainnet_tx_fixture(&fixture, 1),
-            "Go ABCI code/codespace/log fields",
-        )
+        assert_error_contains(run_mainnet_tx_fixture(&fixture, 1), "Go ABCI log field")
     }
 
     #[test]
@@ -535,8 +546,10 @@ mod tests {
                 expected: ExpectedEnvelope {
                     ok: false,
                     error: case.expected_error.clone(),
-                    code: 0,
-                    codespace: String::new(),
+                    // Go rejects an insufficient min-gas-price fee with
+                    // ErrInsufficientFee (code 13, codespace "sdk").
+                    code: 13,
+                    codespace: "sdk".to_owned(),
                     log: String::new(),
                     gas_wanted: 0,
                     gas_used: 0,
@@ -633,7 +646,7 @@ mod tests {
     ) -> TestResult<()> {
         match (case.expected.ok, result) {
             (true, Ok(outcome)) => {
-                require_supported_go_result_fields(&case.expected, name)?;
+                require_accepted_go_result_fields(&case.expected, name)?;
                 assert_eq!(outcome.gas_wanted, case.expected.gas_wanted, "{name}");
                 assert_eq!(outcome.gas_used, case.expected.gas_used, "{name}");
                 assert_eq!(
@@ -660,7 +673,8 @@ mod tests {
             }
             (false, Err(error)) => {
                 assert_eq!(error_code(&error), case.expected.error, "{name}");
-                require_supported_rejection_fields(&case.expected, name)?;
+                compare_go_abci_result_code(&case.expected, &error, name)?;
+                require_uncompared_rejection_detail_fields(&case.expected, name)?;
                 assert_eq!(
                     fees.snapshot(),
                     balances_from_fixture(&case.expected.balances, name)?,
@@ -677,24 +691,55 @@ mod tests {
         Ok(())
     }
 
-    fn require_supported_go_result_fields(
+    /// A transaction Go accepted always reports ABCI code 0 with an empty
+    /// codespace. The free-form Go log is not reproduced by the Rust ante, so
+    /// it is left explicitly uncompared.
+    fn require_accepted_go_result_fields(
         expected: &ExpectedEnvelope,
         name: &str,
     ) -> TestResult<()> {
-        if expected.code == 0 && expected.codespace.is_empty() && expected.log.is_empty() {
-            return Ok(());
+        if expected.code != 0 || !expected.codespace.is_empty() {
+            return Err(invalid_data(format!(
+                "{name}: accepted tx fixture reports Go ABCI code {} codespace {:?}; an accepted tx must report code 0 and an empty codespace",
+                expected.code, expected.codespace
+            ))
+            .into());
         }
-        Err(invalid_data(format!(
-            "{name}: fixture includes Go ABCI code/codespace/log fields; extend the Rust ante outcome comparison before enabling this corpus"
-        ))
-        .into())
+        require_uncompared_go_log_field(expected, name)
     }
 
-    fn require_supported_rejection_fields(
+    /// Compare the Rust ante rejection's Cosmos SDK ABCI code and codespace
+    /// against the Go result envelope.
+    fn compare_go_abci_result_code(
+        expected: &ExpectedEnvelope,
+        error: &Error,
+        name: &str,
+    ) -> TestResult<()> {
+        if error.abci_code() != expected.code {
+            return Err(invalid_data(format!(
+                "{name}: Rust ante ABCI code {} does not match Go ABCI code {}",
+                error.abci_code(),
+                expected.code
+            ))
+            .into());
+        }
+        if error.codespace() != expected.codespace.as_str() {
+            return Err(invalid_data(format!(
+                "{name}: Rust ante codespace {:?} does not match Go codespace {:?}",
+                error.codespace(),
+                expected.codespace
+            ))
+            .into());
+        }
+        require_uncompared_go_log_field(expected, name)
+    }
+
+    /// Rejected transactions do not yet compare gas, events, or signer state:
+    /// the Rust ante reports those fields only for accepted txs.
+    fn require_uncompared_rejection_detail_fields(
         expected: &ExpectedEnvelope,
         name: &str,
     ) -> TestResult<()> {
-        require_supported_go_result_fields(expected, name)?;
         if expected.gas_wanted == 0
             && expected.gas_used == 0
             && expected.events.is_empty()
@@ -704,6 +749,19 @@ mod tests {
         }
         Err(invalid_data(format!(
             "{name}: fixture includes rejected-tx gas, events, or signer state fields; extend the Rust ante error comparison before enabling this corpus"
+        ))
+        .into())
+    }
+
+    /// The Go ABCI log is free-form text the Rust ante does not reproduce, so a
+    /// non-empty log is left explicitly uncompared until the runner can model
+    /// it.
+    fn require_uncompared_go_log_field(expected: &ExpectedEnvelope, name: &str) -> TestResult<()> {
+        if expected.log.is_empty() {
+            return Ok(());
+        }
+        Err(invalid_data(format!(
+            "{name}: fixture includes a Go ABCI log field; the Rust ante does not reproduce Go log text, so log comparison is not implemented"
         ))
         .into())
     }
