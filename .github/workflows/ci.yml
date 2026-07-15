@@ -65,3 +65,20 @@ jobs:
           else
             echo "fixturegen not yet present; skipping (Task 8 adds it)."
           fi
+
+  antereplay-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+      - run: |
+          set -euo pipefail
+          if [ -f conformance/antereplay/go.mod ]; then
+            cd conformance/antereplay
+            go build ./...
+            go test ./...
+          else
+            echo "antereplay not present; skipping."
+          fi
