@@ -29,6 +29,10 @@
 
 ### Added
 
+- Added `antereplay` snapshot state injection (`InjectState`): sets the per-case
+  account snapshot (address, number, sequence, public key) and funds spendable
+  fee balances into the in-memory celestia-app keepers so the ante handler
+  observes the pre-ante on-chain state. `NewCorpusApp` is now genesis-initialized.
 - Added the `conformance/antereplay` Go module scaffold: an isolated module
   (separate from `fixturegen` so celestia-app's cosmos-sdk fork replaces do not
   leak into the other generators) that builds an in-memory celestia-app v6

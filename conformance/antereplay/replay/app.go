@@ -15,10 +15,12 @@ import (
 	testutil "github.com/celestiaorg/celestia-app/v6/test/util"
 )
 
-// NewCorpusApp builds a fresh in-memory celestia-app whose keepers and app-v6
-// ante handler drive corpus replay. Each call returns an isolated app with
-// empty state; callers inject the per-case account and balance snapshot before
+// NewCorpusApp builds a fresh, genesis-initialized in-memory celestia-app whose
+// keepers and app-v6 ante handler drive corpus replay. Genesis initialization
+// gives the app its module accounts and auth/bank/min-fee params; callers then
+// inject the per-case account and balance snapshot with InjectState before
 // running a transaction through the ante handler.
 func NewCorpusApp() *app.App {
-	return testutil.NewTestApp()
+	testApp, _, _ := testutil.NewTestAppWithGenesisSet(app.DefaultConsensusParams())
+	return testApp
 }
