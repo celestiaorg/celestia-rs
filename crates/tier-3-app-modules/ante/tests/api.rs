@@ -560,3 +560,33 @@ impl FeeKeeper for Fees {
 fn parse_amount(input: &str) -> u128 {
     input.parse().expect("valid integer amount")
 }
+
+/// Every ante error must expose the Cosmos SDK ABCI `(code, codespace)` pair
+/// that celestia-app / cosmos-sdk v0.50 returns for the equivalent rejection,
+/// so the M3 mainnet corpus runner can compare Rust rejections against Go
+/// ABCI result fields.
+#[test]
+fn error_exposes_cosmos_sdk_abci_code_and_codespace() {
+    // Grounded in cosmos-sdk v0.50.10 `types/errors/errors.go` (RootCodespace
+    // "sdk") and the `x/auth/ante` decorators that return each error.
+    let cases = [
+        (Error::MalformedTx, 2u32),            // ErrTxDecode
+        (Error::UnsupportedSignMode, 37),      // ErrNotSupported
+        (Error::MissingSigner, 15),            // ErrNoSignatures
+        (Error::SignatureVerification, 4),     // ErrUnauthorized
+        (Error::AccountNotFound, 9),           // ErrUnknownAddress
+        (Error::AccountNumberMismatch, 4),     // ErrUnauthorized
+        (Error::SequenceMismatch, 32),         // ErrWrongSequence
+        (Error::InsufficientFee, 13),          // ErrInsufficientFee
+        (Error::InsufficientFunds, 5),         // ErrInsufficientFunds
+        (Error::OutOfGas, 11),                 // ErrOutOfGas
+        (Error::GasOverflow, 11),              // ErrOutOfGas
+        (Error::InvalidMemo, 12),              // ErrMemoTooLarge
+        (Error::InvalidPublicKey, 8),          // ErrInvalidPubKey
+        (Error::State("boom".to_owned()), 35), // ErrLogic
+    ];
+    for (error, code) in cases {
+        assert_eq!(error.abci_code(), code, "abci_code for {error:?}");
+        assert_eq!(error.codespace(), "sdk", "codespace for {error:?}");
+    }
+}
