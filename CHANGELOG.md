@@ -29,6 +29,13 @@
 
 ### Added
 
+- Added the `antereplay` per-case replay engine (`Replayer` / `ReplayCase`):
+  reuses one in-memory app across cases via isolated cache-branched contexts and
+  builds each run context from the case's chain ID, block height, run mode, and
+  minimum gas prices, then injects the case state and replays. A tx that fails
+  to decode is reported as a Cosmos SDK tx-decode rejection. Verified that a
+  `celestia`-chain-id signed tx is accepted, an insufficient min gas price is
+  rejected, and malformed bytes report ABCI code 2.
 - Added `antereplay` full envelope capture (`Replay`): on a successful ante run
   it records ante gas, ABCI events, post-run signer sequences, and post-run
   fee-payer balances; on failure it records the ABCI code and codespace. Also
