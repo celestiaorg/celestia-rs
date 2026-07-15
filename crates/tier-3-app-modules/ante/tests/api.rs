@@ -314,6 +314,125 @@ fn run_accepts_missing_fee_when_min_gas_prices_are_zero() {
     assert_eq!(account.public_key, Some(public_key));
 }
 
+#[test]
+fn run_rejects_fee_when_payer_has_no_spendable_balance() {
+    let handler = handler();
+    let fee = Fee {
+        amount: vec![Coin::new("utia", "100").expect("valid coin")],
+        gas_limit: 500_000,
+        payer: String::new(),
+        granter: String::new(),
+    };
+    let (tx_bytes, address, _public_key) = signed_tx_with_fee(7, 9, fee);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    let mut fees = Fees::default();
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::InsufficientFunds)
+    );
+    assert_eq!(
+        accounts
+            .account(&address)
+            .expect("account lookup")
+            .expect("account exists")
+            .sequence,
+        9
+    );
+}
+
+#[test]
+fn deliver_run_propagates_public_key_write_failure() {
+    let handler = handler();
+    let (tx_bytes, address, _public_key) = signed_tx(7, 9);
+    let mut accounts = FailingWriter::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    accounts.fail_public_key = true;
+    let mut fees = NoFees;
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::State("set public key failed".to_owned()))
+    );
+}
+
+#[test]
+fn deliver_run_propagates_sequence_write_failure() {
+    let handler = handler();
+    let (tx_bytes, address, _public_key) = signed_tx(7, 9);
+    let mut accounts = FailingWriter::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    accounts.fail_sequence = true;
+    let mut fees = NoFees;
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::State("set sequence failed".to_owned()))
+    );
+}
+
+#[test]
+fn run_rejects_non_secp256k1_public_key() {
+    let handler = handler();
+    let auth_info_bytes = AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(Any {
+                type_url: "/cosmos.crypto.ed25519.PubKey".to_owned(),
+                value: vec![0u8; 32],
+            }),
+            mode_info: ModeInfo::Single {
+                mode: SignMode::Direct,
+            },
+            sequence: 0,
+        }],
+        fee: Some(Fee {
+            amount: Vec::new(),
+            gas_limit: 200_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .to_proto()
+    .encode_to_vec();
+    let body_bytes = TxBody {
+        messages: vec![message_any()],
+        memo: String::new(),
+        timeout_height: 0,
+        extension_options: Vec::new(),
+        non_critical_extension_options: Vec::new(),
+    }
+    .to_proto()
+    .encode_to_vec();
+    let tx_bytes = TxRaw {
+        body_bytes,
+        auth_info_bytes,
+        signatures: vec![vec![0xab; 64]],
+    }
+    .encode_to_vec()
+    .expect("valid tx raw");
+    let mut accounts = Accounts::default();
+    let mut fees = NoFees;
+
+    assert_eq!(
+        handler.run(deliver_context(), &tx_bytes, &mut accounts, &mut fees),
+        Err(Error::InvalidPublicKey)
+    );
+}
+
 fn handler() -> AnteHandler {
     AnteHandler::new(AnteConfig::celestia_mainnet_app_v6("celestia"))
 }
@@ -483,6 +602,63 @@ impl AccountWriter for Accounts {
         address: &cosmos_types::AccountAddress,
         public_key: Any,
     ) -> ante::Result<()> {
+        let account = self
+            .accounts
+            .get_mut(address)
+            .ok_or(Error::AccountNotFound)?;
+        account.public_key = Some(public_key);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+struct FailingWriter {
+    accounts: BTreeMap<cosmos_types::AccountAddress, Account>,
+    fail_public_key: bool,
+    fail_sequence: bool,
+}
+
+impl FailingWriter {
+    fn from_account(account: Account) -> Self {
+        Self {
+            accounts: BTreeMap::from([(account.address, account)]),
+            fail_public_key: false,
+            fail_sequence: false,
+        }
+    }
+}
+
+impl AccountReader for FailingWriter {
+    fn account(&self, address: &cosmos_types::AccountAddress) -> ante::Result<Option<Account>> {
+        Ok(self.accounts.get(address).cloned())
+    }
+}
+
+impl AccountWriter for FailingWriter {
+    fn set_sequence(
+        &mut self,
+        address: &cosmos_types::AccountAddress,
+        sequence: u64,
+    ) -> ante::Result<()> {
+        if self.fail_sequence {
+            return Err(Error::State("set sequence failed".to_owned()));
+        }
+        let account = self
+            .accounts
+            .get_mut(address)
+            .ok_or(Error::AccountNotFound)?;
+        account.sequence = sequence;
+        Ok(())
+    }
+
+    fn set_public_key(
+        &mut self,
+        address: &cosmos_types::AccountAddress,
+        public_key: Any,
+    ) -> ante::Result<()> {
+        if self.fail_public_key {
+            return Err(Error::State("set public key failed".to_owned()));
+        }
         let account = self
             .accounts
             .get_mut(address)
