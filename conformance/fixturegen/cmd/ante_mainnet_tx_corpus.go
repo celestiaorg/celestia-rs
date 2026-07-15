@@ -149,7 +149,12 @@ func runAnteMainnetTxCorpusWithClientAndReplay(
 		return err
 	}
 	preBlockStateHeight := cfg.start - 1
-	state, err := hydrateAnteMainnetTxState(cfg, preBlockStateHeight, plan)
+	var state anteMainnetTxHydratedState
+	if cfg.dbDir == "" {
+		state, err = hydrateAnteMainnetTxStateViaRPC(context.Background(), client, cfg, preBlockStateHeight, plan)
+	} else {
+		state, err = hydrateAnteMainnetTxState(cfg, preBlockStateHeight, plan)
+	}
 	if err != nil {
 		return err
 	}
@@ -221,7 +226,11 @@ func parseAnteMainnetTxCorpusConfig(args []string) (anteMainnetTxCorpusConfig, e
 		cfg.rpcEndpointLabel = cfg.rpc
 	}
 	if cfg.stateSourceLabel == "" {
-		cfg.stateSourceLabel = cfg.dbDir
+		if cfg.dbDir != "" {
+			cfg.stateSourceLabel = cfg.dbDir
+		} else {
+			cfg.stateSourceLabel = cfg.rpc + " (abci_query)"
+		}
 	}
 	if err := cfg.validate(); err != nil {
 		return anteMainnetTxCorpusConfig{}, err
@@ -237,14 +246,16 @@ func (cfg anteMainnetTxCorpusConfig) validate() error {
 	if cfg.rpc == "" {
 		problems = append(problems, "--rpc is required")
 	}
-	if cfg.dbDir == "" {
-		problems = append(problems, "--db-dir is required")
-	}
-	if cfg.dbName == "" {
-		problems = append(problems, "--db-name is required")
-	}
-	if cfg.dbBackend == "" {
-		problems = append(problems, "--db-backend is required")
+	// --db-dir is optional: when omitted, pre-block account and fee-balance
+	// state is hydrated from the RPC endpoint via abci_query instead of a local
+	// application DB. --db-name and --db-backend only apply to DB hydration.
+	if cfg.dbDir != "" {
+		if cfg.dbName == "" {
+			problems = append(problems, "--db-name is required")
+		}
+		if cfg.dbBackend == "" {
+			problems = append(problems, "--db-backend is required")
+		}
 	}
 	if cfg.start <= 0 {
 		problems = append(problems, "--start must be positive")

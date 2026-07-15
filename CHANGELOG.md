@@ -29,6 +29,12 @@
 
 ### Added
 
+- Added an RPC `abci_query` state-hydration path to
+  `fixturegen ante-mainnet-tx-corpus`: when `--db-dir` is omitted, pre-block
+  account and fee-balance state is loaded from the CometBFT RPC endpoint via
+  `/store/{acc,bank}/key` queries instead of a local application DB, so the
+  corpus can be generated against a Celestia archive node. Verified live
+  against a mainnet archive at an app-v6 height.
 - Added `ante::Error::abci_code` and `ante::Error::codespace` so each ante
   rejection exposes the Cosmos SDK v0.50 ABCI `(code, codespace)` pair the M3
   mainnet corpus runner needs to compare Rust rejections against Go results.

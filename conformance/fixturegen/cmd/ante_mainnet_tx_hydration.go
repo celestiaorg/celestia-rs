@@ -165,7 +165,24 @@ func hydrateAnteMainnetTxStateFromStores(
 	if bankStore == nil {
 		return anteMainnetTxHydratedState{}, fmt.Errorf("bank store is nil at height %d", height)
 	}
+	return hydrateAnteMainnetTxStateFromValues(
+		height,
+		plan,
+		func(key []byte) ([]byte, error) { return accountStore.Get(key), nil },
+		func(key []byte) ([]byte, error) { return bankStore.Get(key), nil },
+	)
+}
 
+// hydrateAnteMainnetTxStateFromValues decodes the planned account and balance
+// snapshot from raw store values fetched by the supplied getters. The getters
+// return nil for a key that does not exist; a missing account is an error while
+// a missing balance is skipped, matching the on-chain zero-balance convention.
+func hydrateAnteMainnetTxStateFromValues(
+	height int64,
+	plan anteMainnetTxHydrationPlan,
+	getAccountValue func(key []byte) ([]byte, error),
+	getBalanceValue func(key []byte) ([]byte, error),
+) (anteMainnetTxHydratedState, error) {
 	state := anteMainnetTxHydratedState{
 		Accounts: []anteMainnetTxHydratedAccount{},
 		Balances: []anteMainnetTxHydratedBalance{},
@@ -175,7 +192,10 @@ func hydrateAnteMainnetTxStateFromStores(
 		if err != nil {
 			return anteMainnetTxHydratedState{}, err
 		}
-		value := accountStore.Get(key)
+		value, err := getAccountValue(key)
+		if err != nil {
+			return anteMainnetTxHydratedState{}, fmt.Errorf("load account %s at height %d: %w", ref.AddressHex, height, err)
+		}
 		if value == nil {
 			return anteMainnetTxHydratedState{}, fmt.Errorf("missing account %s at height %d", ref.AddressHex, height)
 		}
@@ -190,7 +210,10 @@ func hydrateAnteMainnetTxStateFromStores(
 		if err != nil {
 			return anteMainnetTxHydratedState{}, err
 		}
-		value := bankStore.Get(key)
+		value, err := getBalanceValue(key)
+		if err != nil {
+			return anteMainnetTxHydratedState{}, fmt.Errorf("load balance %s/%s at height %d: %w", ref.AddressHex, ref.Denom, height, err)
+		}
 		if value == nil {
 			continue
 		}

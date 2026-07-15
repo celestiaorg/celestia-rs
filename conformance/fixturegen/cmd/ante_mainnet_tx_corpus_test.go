@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,8 +27,8 @@ import (
 
 func TestAnteMainnetTxCorpusConfigValidationAndDefaults(t *testing.T) {
 	_, err := parseAnteMainnetTxCorpusConfig([]string{"--start", "10", "--count", "2"})
-	if err == nil || !strings.Contains(err.Error(), "--rpc is required") || !strings.Contains(err.Error(), "--db-dir is required") {
-		t.Fatalf("error = %v, want missing rpc and db-dir", err)
+	if err == nil || !strings.Contains(err.Error(), "--rpc is required") {
+		t.Fatalf("error = %v, want missing rpc", err)
 	}
 
 	cfg, err := parseAnteMainnetTxCorpusConfig([]string{
@@ -49,6 +52,22 @@ func TestAnteMainnetTxCorpusConfigValidationAndDefaults(t *testing.T) {
 	}
 	if cfg.stateSourceLabel != cfg.dbDir {
 		t.Fatalf("state source label = %q, want db dir", cfg.stateSourceLabel)
+	}
+
+	rpcCfg, err := parseAnteMainnetTxCorpusConfig([]string{
+		"--rpc", "https://rpc.example.test",
+		"--start", "10",
+		"--count", "2",
+		"--min-txs", "3",
+	})
+	if err != nil {
+		t.Fatalf("rpc-mode parse config returned error: %v", err)
+	}
+	if rpcCfg.dbDir != "" {
+		t.Fatalf("rpc-mode db dir = %q, want empty", rpcCfg.dbDir)
+	}
+	if rpcCfg.stateSourceLabel != "https://rpc.example.test (abci_query)" {
+		t.Fatalf("rpc-mode state source label = %q, want abci_query label", rpcCfg.stateSourceLabel)
 	}
 }
 
@@ -475,6 +494,92 @@ func TestHydrateAnteMainnetTxStateFromStoresSkipsMissingBalances(t *testing.T) {
 	}
 	if len(state.Balances) != 0 {
 		t.Fatalf("balances = %#v, want missing balance omitted", state.Balances)
+	}
+}
+
+func TestHydrateAnteMainnetTxStateViaRPCReadsAccountsAndBalances(t *testing.T) {
+	address := repeatByte(0x06, 20)
+	addressHex := hex.EncodeToString(address)
+	publicKey := antePublicKeyAny([]byte("ante rpc hydrated account"))
+	publicKeyHex, err := anteAnyHex(publicKey)
+	if err != nil {
+		t.Fatalf("marshal public key any: %v", err)
+	}
+	accountKey := anteMainnetTxAuthAccountStoreKey(address)
+	balanceKey := anteMainnetTxBankBalanceStoreKey(address, "utia")
+	accountValue := anteMainnetTxTestAccountValue(t, address, 42, 24, publicKey)
+
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/abci_query" {
+			return nil, fmt.Errorf("unexpected path %q", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if got := q.Get("height"); got != "9" {
+			return nil, fmt.Errorf("height = %q, want 9", got)
+		}
+		if got := q.Get("prove"); got != "false" {
+			return nil, fmt.Errorf("prove = %q, want false", got)
+		}
+		keyHex := strings.TrimPrefix(q.Get("data"), "0x")
+		var value []byte
+		switch keyHex {
+		case hex.EncodeToString(accountKey):
+			if q.Get("path") != `"/store/acc/key"` {
+				return nil, fmt.Errorf("account path = %q", q.Get("path"))
+			}
+			value = accountValue
+		case hex.EncodeToString(balanceKey):
+			if q.Get("path") != `"/store/bank/key"` {
+				return nil, fmt.Errorf("balance path = %q", q.Get("path"))
+			}
+			value = []byte("789")
+		default:
+			return nil, fmt.Errorf("unexpected key %q", keyHex)
+		}
+		body := fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":-1,"result":{"response":{"code":0,"log":"","height":"9","value":%q}}}`,
+			base64.StdEncoding.EncodeToString(value),
+		)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	plan := anteMainnetTxHydrationPlan{
+		Accounts: []anteMainnetTxAccountRef{{
+			AddressHex:  addressHex,
+			StoreKeyHex: hex.EncodeToString(accountKey),
+		}},
+		Balances: []anteMainnetTxBalanceRef{{
+			AddressHex:  addressHex,
+			Denom:       "utia",
+			StoreKeyHex: hex.EncodeToString(balanceKey),
+		}},
+	}
+
+	cfg := anteMainnetTxCorpusConfig{rpc: "https://rpc.example.test"}
+	state, err := hydrateAnteMainnetTxStateViaRPC(context.Background(), client, cfg, 9, plan)
+	if err != nil {
+		t.Fatalf("hydrate state via rpc: %v", err)
+	}
+
+	want := anteMainnetTxHydratedState{
+		Accounts: []anteMainnetTxHydratedAccount{{
+			AddressHex:      addressHex,
+			AccountNumber:   42,
+			Sequence:        24,
+			PublicKeyAnyHex: publicKeyHex,
+		}},
+		Balances: []anteMainnetTxHydratedBalance{{
+			AddressHex: addressHex,
+			Denom:      "utia",
+			Amount:     "789",
+		}},
+	}
+	if !reflect.DeepEqual(state, want) {
+		t.Fatalf("rpc-hydrated state = %#v, want %#v", state, want)
 	}
 }
 
