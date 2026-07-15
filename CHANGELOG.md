@@ -29,6 +29,10 @@
 
 ### Added
 
+- Added `antereplay` ante execution: `NewAnteHandler` builds the celestia-app
+  v6 ante decorator chain from the app keepers (mirroring `app.New`), `DecodeTx`
+  decodes corpus `TxRaw` bytes, and `RunAnte` runs a decoded tx and captures the
+  `Outcome` (ok, ABCI code, codespace, gas wanted/used).
 - Added `antereplay` snapshot state injection (`InjectState`): sets the per-case
   account snapshot (address, number, sequence, public key) and funds spendable
   fee balances into the in-memory celestia-app keepers so the ante handler
