@@ -29,6 +29,9 @@
 
 ### Added
 
+- Added `ante::Error::abci_code` and `ante::Error::codespace` so each ante
+  rejection exposes the Cosmos SDK v0.50 ABCI `(code, codespace)` pair the M3
+  mainnet corpus runner needs to compare Rust rejections against Go results.
 - Added the M3 transaction-and-ante milestone index plus the first `ante`
   crate spec, defining the transaction validation, signature, gas, fee, and
   account-state trait boundary for the next implementation section.

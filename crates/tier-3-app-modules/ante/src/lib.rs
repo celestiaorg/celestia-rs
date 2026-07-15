@@ -484,6 +484,57 @@ pub enum Error {
     State(String),
 }
 
+/// Cosmos SDK root error codespace (`sdk`) shared by every registered
+/// `types/errors` code.
+const SDK_CODESPACE: &str = "sdk";
+
+impl Error {
+    /// Cosmos SDK ABCI result code for this rejection.
+    ///
+    /// Codes are grounded in cosmos-sdk v0.50.10 `types/errors/errors.go` and
+    /// the `x/auth/ante` decorator that returns each error, so the M3 mainnet
+    /// corpus runner can compare Rust rejections against Go ABCI result fields.
+    #[must_use]
+    pub const fn abci_code(&self) -> u32 {
+        match self {
+            // ErrTxDecode: transaction bytes or fields could not be parsed.
+            Self::MalformedTx => 2,
+            // ErrNotSupported: sign mode celestia-app does not accept.
+            Self::UnsupportedSignMode => 37,
+            // ErrNoSignatures: signer/signature data was missing.
+            Self::MissingSigner => 15,
+            // ErrUnauthorized: signature or account-number check failed
+            // (`SigVerificationDecorator`).
+            Self::SignatureVerification | Self::AccountNumberMismatch => 4,
+            // ErrUnknownAddress: signer account does not exist.
+            Self::AccountNotFound => 9,
+            // ErrWrongSequence: signer sequence did not match account state.
+            Self::SequenceMismatch => 32,
+            // ErrInsufficientFee: fee did not satisfy minimum gas prices.
+            Self::InsufficientFee => 13,
+            // ErrInsufficientFunds: fee payer could not cover the fee.
+            Self::InsufficientFunds => 5,
+            // ErrOutOfGas: gas limit exceeded or gas arithmetic overflowed.
+            Self::OutOfGas | Self::GasOverflow => 11,
+            // ErrMemoTooLarge: memo exceeded the configured maximum.
+            Self::InvalidMemo => 12,
+            // ErrInvalidPubKey: public key bytes or type URL were invalid.
+            Self::InvalidPublicKey => 8,
+            // ErrLogic: internal state-adapter failure with no direct Go path.
+            Self::State(_) => 35,
+        }
+    }
+
+    /// Cosmos SDK codespace for this rejection.
+    ///
+    /// Every ante rejection maps onto a `types/errors` code, so the codespace
+    /// is always the SDK root codespace `sdk`.
+    #[must_use]
+    pub const fn codespace(&self) -> &'static str {
+        SDK_CODESPACE
+    }
+}
+
 /// Result alias for this crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
