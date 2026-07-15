@@ -29,6 +29,13 @@
 
 ### Added
 
+- Added `antereplay` full envelope capture (`Replay`): on a successful ante run
+  it records ante gas, ABCI events, post-run signer sequences, and post-run
+  fee-payer balances; on failure it records the ABCI code and codespace. Also
+  established the two context requirements for faithful replay — the run context
+  must carry the signing chain ID (`WithChainID`) and a positive block height
+  (`WithBlockHeight`), since at height 0 the ante verifies against account
+  number 0.
 - Added `antereplay` ante execution: `NewAnteHandler` builds the celestia-app
   v6 ante decorator chain from the app keepers (mirroring `app.New`), `DecodeTx`
   decodes corpus `TxRaw` bytes, and `RunAnte` runs a decoded tx and captures the
