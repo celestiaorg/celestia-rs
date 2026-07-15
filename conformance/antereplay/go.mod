@@ -2,7 +2,12 @@ module github.com/rootulp/celestia-rs/conformance/antereplay
 
 go 1.25.5
 
-require github.com/celestiaorg/celestia-app/v6 v6.4.10
+require (
+	cosmossdk.io/math v1.5.3
+	github.com/celestiaorg/celestia-app/v6 v6.4.10
+	github.com/cosmos/cosmos-sdk v0.50.13
+	github.com/cosmos/gogoproto v1.7.2
+)
 
 require (
 	cel.dev/expr v0.24.0 // indirect
@@ -20,7 +25,6 @@ require (
 	cosmossdk.io/depinject v1.1.0 // indirect
 	cosmossdk.io/errors v1.0.2 // indirect
 	cosmossdk.io/log v1.6.0 // indirect
-	cosmossdk.io/math v1.5.3 // indirect
 	cosmossdk.io/store v1.1.2 // indirect
 	cosmossdk.io/x/circuit v0.1.1 // indirect
 	cosmossdk.io/x/evidence v0.1.1 // indirect
@@ -82,10 +86,8 @@ require (
 	github.com/cosmos/btcutil v1.0.5 // indirect
 	github.com/cosmos/cosmos-db v1.1.1 // indirect
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
-	github.com/cosmos/cosmos-sdk v0.50.13 // indirect
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
 	github.com/cosmos/gogogateway v1.2.0 // indirect
-	github.com/cosmos/gogoproto v1.7.2 // indirect
 	github.com/cosmos/iavl v1.2.6 // indirect
 	github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.0 // indirect
 	github.com/cosmos/ibc-go/modules/capability v1.0.1 // indirect
