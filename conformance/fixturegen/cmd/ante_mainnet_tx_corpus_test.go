@@ -710,17 +710,21 @@ func TestBuildAnteMainnetTxCorpusFixtureAssemblesHydratedDeliverCases(t *testing
 		[]anteMainnetTxSample{sample},
 		[]anteMainnetTxDecoded{decoded},
 		state,
-		func(input anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
-			replayInput = input
-			return anteMainnetTxExpected{
-				OK:        true,
-				GasWanted: input.Tx.Fee.GasLimit,
-				GasUsed:   2_950,
-				SignerSequences: []anteMainnetTxSignerSequence{
-					{AddressHex: signed.AddressHex, Sequence: 10},
-				},
-				Balances: input.Balances,
-			}, nil
+		func(inputs []anteMainnetTxReplayInput) ([]anteMainnetTxExpected, error) {
+			replayInput = inputs[0]
+			expecteds := make([]anteMainnetTxExpected, 0, len(inputs))
+			for _, input := range inputs {
+				expecteds = append(expecteds, anteMainnetTxExpected{
+					OK:        true,
+					GasWanted: input.Tx.Fee.GasLimit,
+					GasUsed:   2_950,
+					SignerSequences: []anteMainnetTxSignerSequence{
+						{AddressHex: signed.AddressHex, Sequence: 10},
+					},
+					Balances: input.Balances,
+				})
+			}
+			return expecteds, nil
 		},
 	)
 	if err != nil {
@@ -791,9 +795,9 @@ func TestBuildAnteMainnetTxCorpusFixtureRequiresHydratedSignerAccount(t *testing
 		[]anteMainnetTxSample{sample},
 		[]anteMainnetTxDecoded{decoded},
 		anteMainnetTxHydratedState{},
-		func(anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
+		func([]anteMainnetTxReplayInput) ([]anteMainnetTxExpected, error) {
 			t.Fatal("replay should not run when hydrated signer state is missing")
-			return anteMainnetTxExpected{}, nil
+			return nil, nil
 		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "missing hydrated account") {
@@ -861,19 +865,23 @@ func TestRunAnteMainnetTxCorpusWritesFixtureWithReplay(t *testing.T) {
 		"--count", "1",
 		"--min-txs", "1",
 		"--out", out,
-	}, client, func(input anteMainnetTxReplayInput) (anteMainnetTxExpected, error) {
-		if input.Mode != "deliver" {
-			t.Fatalf("replay mode = %q, want deliver", input.Mode)
+	}, client, func(inputs []anteMainnetTxReplayInput) ([]anteMainnetTxExpected, error) {
+		expecteds := make([]anteMainnetTxExpected, 0, len(inputs))
+		for _, input := range inputs {
+			if input.Mode != "deliver" {
+				t.Fatalf("replay mode = %q, want deliver", input.Mode)
+			}
+			expecteds = append(expecteds, anteMainnetTxExpected{
+				OK:        true,
+				GasWanted: input.Tx.Fee.GasLimit,
+				GasUsed:   2_950,
+				SignerSequences: []anteMainnetTxSignerSequence{
+					{AddressHex: signed.AddressHex, Sequence: 10},
+				},
+				Balances: input.Balances,
+			})
 		}
-		return anteMainnetTxExpected{
-			OK:        true,
-			GasWanted: input.Tx.Fee.GasLimit,
-			GasUsed:   2_950,
-			SignerSequences: []anteMainnetTxSignerSequence{
-				{AddressHex: signed.AddressHex, Sequence: 10},
-			},
-			Balances: input.Balances,
-		}, nil
+		return expecteds, nil
 	})
 	if err != nil {
 		t.Fatalf("run corpus with replay: %v", err)
@@ -901,7 +909,7 @@ func TestRunAnteMainnetTxCorpusWritesFixtureWithReplay(t *testing.T) {
 	}
 }
 
-func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
+func TestRunAnteMainnetTxCorpusRequiresReplayBinary(t *testing.T) {
 	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
 		label:              "pending-replay-sample",
 		secret:             []byte("ante mainnet pending"),
@@ -961,11 +969,70 @@ func TestRunAnteMainnetTxCorpusStopsAtPendingReplay(t *testing.T) {
 		"--count", "1",
 		"--min-txs", "1",
 	}, client)
-	if err == nil || !strings.Contains(err.Error(), "Go ante replay is not implemented yet") {
-		t.Fatalf("error = %v, want pending replay error", err)
+	if err == nil || !strings.Contains(err.Error(), "ante replay binary path is required") {
+		t.Fatalf("error = %v, want missing replay binary error", err)
 	}
 	if !strings.Contains(err.Error(), "hydrated 1 accounts/0 balances from height 9") {
 		t.Fatalf("error = %v, want hydrated state counts", err)
+	}
+}
+
+func TestAnteMainnetTxSubprocessReplayInvokesBinary(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-antereplay.sh")
+	body := "#!/bin/sh\ncat > /dev/null\ncat <<'EOF'\n" +
+		`{"results":[{"label":"height-10-tx-0","ok":true,"gas_wanted":500000,"gas_used":2950,` +
+		`"signer_sequences":[{"address_hex":"aa","sequence":10}],"balances":[],"events":[]}]}` +
+		"\nEOF\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fake binary: %v", err)
+	}
+
+	replay := anteMainnetTxSubprocessReplay(script, "celestia")
+	inputs := []anteMainnetTxReplayInput{{
+		Sample: anteMainnetTxSample{Label: "height-10-tx-0", Height: 10, TxRawHex: "0a"},
+		Mode:   "deliver",
+	}}
+	expecteds, err := replay(inputs)
+	if err != nil {
+		t.Fatalf("subprocess replay: %v", err)
+	}
+	if len(expecteds) != 1 {
+		t.Fatalf("expecteds = %#v, want one", expecteds)
+	}
+	got := expecteds[0]
+	if !got.OK || got.GasWanted != 500_000 || got.GasUsed != 2_950 {
+		t.Fatalf("expected = %#v, want accepted with gas 500000/2950", got)
+	}
+	if len(got.SignerSequences) != 1 || got.SignerSequences[0].Sequence != 10 {
+		t.Fatalf("signer sequences = %#v, want sequence 10", got.SignerSequences)
+	}
+}
+
+func TestAnteMainnetTxSubprocessReplayRequiresBinary(t *testing.T) {
+	_, err := anteMainnetTxSubprocessReplay("", "celestia")([]anteMainnetTxReplayInput{{
+		Sample: anteMainnetTxSample{Label: "x"},
+	}})
+	if err == nil || !strings.Contains(err.Error(), "ante replay binary path is required") {
+		t.Fatalf("error = %v, want missing binary error", err)
+	}
+}
+
+func TestAnteMainnetTxStableError(t *testing.T) {
+	cases := map[uint32]string{
+		2:  "malformed_tx",
+		4:  "signature_verification",
+		5:  "insufficient_funds",
+		9:  "account_not_found",
+		13: "insufficient_fee",
+		32: "sequence_mismatch",
+	}
+	for code, want := range cases {
+		if got := anteMainnetTxStableError(code); got != want {
+			t.Fatalf("stable error for code %d = %q, want %q", code, got, want)
+		}
+	}
+	if got := anteMainnetTxStableError(99); got != "go_sdk_code_99" {
+		t.Fatalf("stable error for unknown code = %q, want go_sdk_code_99", got)
 	}
 }
 
