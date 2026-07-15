@@ -60,6 +60,9 @@ func (r *Replayer) ReplayCase(c Case) (Outcome, error) {
 	if err := InjectState(r.app, ctx, c.Accounts, c.Balances); err != nil {
 		return Outcome{}, fmt.Errorf("inject state: %w", err)
 	}
+	// Discard events emitted while injecting state (e.g. bank minting from
+	// funding balances) so the captured events reflect only the ante run.
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
 	txBytes, err := hex.DecodeString(c.TxRawHex)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("decode tx raw hex: %w", err)
