@@ -672,7 +672,7 @@ mod tests {
                 .into());
             }
             (false, Err(error)) => {
-                assert_eq!(error_code(&error), case.expected.error, "{name}");
+                assert_eq!(error.stable_code(), case.expected.error, "{name}");
                 compare_go_abci_result_code(&case.expected, &error, name)?;
                 require_uncompared_rejection_detail_fields(&case.expected, name)?;
                 assert_eq!(
@@ -880,25 +880,6 @@ mod tests {
         cosmos_types::Any::from_proto(any)
             .map(Some)
             .map_err(|error| invalid_data(format!("convert {field} for {label}: {error}")).into())
-    }
-
-    fn error_code(error: &Error) -> &'static str {
-        match error {
-            Error::MalformedTx => "malformed_tx",
-            Error::UnsupportedSignMode => "unsupported_sign_mode",
-            Error::MissingSigner => "missing_signer",
-            Error::SignatureVerification => "signature_verification",
-            Error::AccountNotFound => "account_not_found",
-            Error::AccountNumberMismatch => "account_number_mismatch",
-            Error::SequenceMismatch => "sequence_mismatch",
-            Error::InsufficientFee => "insufficient_fee",
-            Error::InsufficientFunds => "insufficient_funds",
-            Error::OutOfGas => "out_of_gas",
-            Error::GasOverflow => "gas_overflow",
-            Error::InvalidMemo => "invalid_memo",
-            Error::InvalidPublicKey => "invalid_public_key",
-            Error::State(_) => "state",
-        }
     }
 
     fn case_name(case: &MainnetTxCase) -> String {

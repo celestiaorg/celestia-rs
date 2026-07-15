@@ -590,3 +590,30 @@ fn error_exposes_cosmos_sdk_abci_code_and_codespace() {
         assert_eq!(error.codespace(), "sdk", "codespace for {error:?}");
     }
 }
+
+/// Every ante error must expose a stable `snake_case` code. This is the canonical
+/// `expected.error` contract the Go corpus generator emits for rejected
+/// transactions, so it lives in the `ante` crate rather than being duplicated
+/// by each consumer.
+#[test]
+fn error_exposes_stable_code() {
+    let cases = [
+        (Error::MalformedTx, "malformed_tx"),
+        (Error::UnsupportedSignMode, "unsupported_sign_mode"),
+        (Error::MissingSigner, "missing_signer"),
+        (Error::SignatureVerification, "signature_verification"),
+        (Error::AccountNotFound, "account_not_found"),
+        (Error::AccountNumberMismatch, "account_number_mismatch"),
+        (Error::SequenceMismatch, "sequence_mismatch"),
+        (Error::InsufficientFee, "insufficient_fee"),
+        (Error::InsufficientFunds, "insufficient_funds"),
+        (Error::OutOfGas, "out_of_gas"),
+        (Error::GasOverflow, "gas_overflow"),
+        (Error::InvalidMemo, "invalid_memo"),
+        (Error::InvalidPublicKey, "invalid_public_key"),
+        (Error::State("boom".to_owned()), "state"),
+    ];
+    for (error, code) in cases {
+        assert_eq!(error.stable_code(), code, "stable_code for {error:?}");
+    }
+}

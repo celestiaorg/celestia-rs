@@ -533,6 +533,31 @@ impl Error {
     pub const fn codespace(&self) -> &'static str {
         SDK_CODESPACE
     }
+
+    /// Stable `snake_case` error code for this rejection.
+    ///
+    /// This is the canonical `expected.error` identifier the M3 mainnet corpus
+    /// records for rejected transactions, so both the fixture runner and the
+    /// Go corpus generator agree on a single spelling per variant.
+    #[must_use]
+    pub const fn stable_code(&self) -> &'static str {
+        match self {
+            Self::MalformedTx => "malformed_tx",
+            Self::UnsupportedSignMode => "unsupported_sign_mode",
+            Self::MissingSigner => "missing_signer",
+            Self::SignatureVerification => "signature_verification",
+            Self::AccountNotFound => "account_not_found",
+            Self::AccountNumberMismatch => "account_number_mismatch",
+            Self::SequenceMismatch => "sequence_mismatch",
+            Self::InsufficientFee => "insufficient_fee",
+            Self::InsufficientFunds => "insufficient_funds",
+            Self::OutOfGas => "out_of_gas",
+            Self::GasOverflow => "gas_overflow",
+            Self::InvalidMemo => "invalid_memo",
+            Self::InvalidPublicKey => "invalid_public_key",
+            Self::State(_) => "state",
+        }
+    }
 }
 
 /// Result alias for this crate.

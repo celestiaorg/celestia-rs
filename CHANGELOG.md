@@ -36,6 +36,10 @@
   `codespace` for rejected transactions against the Rust ante error, replacing
   the previous "uncompared Go ABCI fields" guard; the free-form Go `log` plus
   rejected-tx gas/events/signer fields remain explicitly uncompared.
+- Added `ante::Error::stable_code`, the canonical snake_case `expected.error`
+  identifier the M3 corpus records per rejection, and switched the
+  `m3-integration` runner to it so the runner and Go generator share one
+  spelling per variant.
 - Added the M3 transaction-and-ante milestone index plus the first `ante`
   crate spec, defining the transaction validation, signature, gas, fee, and
   account-state trait boundary for the next implementation section.
