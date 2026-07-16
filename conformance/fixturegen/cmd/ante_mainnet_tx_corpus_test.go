@@ -1017,6 +1017,86 @@ func TestAnteMainnetTxSubprocessReplayRequiresBinary(t *testing.T) {
 	}
 }
 
+func TestRunAnteMainnetTxCorpusDropsReplayRejectionsBelowMinimum(t *testing.T) {
+	signed, err := anteSignatureFixtureCase(anteSignatureConfig{
+		label:              "drop-rejected-sample",
+		secret:             []byte("ante mainnet drop rejected"),
+		signAccountNumber:  7,
+		accountNumber:      7,
+		txSequence:         9,
+		accountSequence:    9,
+		accountPresent:     true,
+		includeTxPublicKey: true,
+		expectedOK:         true,
+	})
+	if err != nil {
+		t.Fatalf("create signed tx: %v", err)
+	}
+	txBytes, err := hex.DecodeString(signed.TxRawHex)
+	if err != nil {
+		t.Fatalf("decode signed tx: %v", err)
+	}
+	txBase64 := base64.StdEncoding.EncodeToString(txBytes)
+	address, err := hex.DecodeString(signed.AddressHex)
+	if err != nil {
+		t.Fatalf("decode signer address: %v", err)
+	}
+	dbDir := t.TempDir()
+	writeAnteMainnetTxTestDB(
+		t,
+		dbDir,
+		9,
+		[]anteMainnetTxTestStoreEntry{{
+			key:   anteMainnetTxAuthAccountStoreKey(address),
+			value: anteMainnetTxTestAccountValue(t, address, 7, 9, anteMainnetTxTestAnyFromHex(t, signed.PublicKeyAnyHex)),
+		}},
+		nil,
+	)
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return jsonResponse(`{"jsonrpc":"2.0","id":"","result":{"block":{"header":{"version":{"block":"11","app":"6"},"height":"10","data_hash":"abcd"},"data":{"txs":["` + txBase64 + `"],"square_size":8}}}}`), nil
+	})}
+	out := filepath.Join(t.TempDir(), "mainnet-tx-corpus.json")
+
+	// The only sampled tx replays as rejected, so it is dropped and the
+	// accepted count (0) falls below --min-accepted-cases.
+	err = runAnteMainnetTxCorpusWithClientAndReplay([]string{
+		"--rpc", "https://rpc.example.test",
+		"--db-dir", dbDir,
+		"--start", "10",
+		"--count", "1",
+		"--min-txs", "1",
+		"--min-accepted-cases", "1",
+		"--out", out,
+	}, client, func(inputs []anteMainnetTxReplayInput) ([]anteMainnetTxExpected, error) {
+		expecteds := make([]anteMainnetTxExpected, 0, len(inputs))
+		for range inputs {
+			expecteds = append(expecteds, anteMainnetTxExpected{OK: false, Code: 38, Codespace: "sdk", Error: "go_sdk_code_38"})
+		}
+		return expecteds, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "below --min-accepted-cases 1") {
+		t.Fatalf("error = %v, want min-accepted-cases failure", err)
+	}
+	if !strings.Contains(err.Error(), "dropping 1 replay rejections") {
+		t.Fatalf("error = %v, want dropped-count context", err)
+	}
+}
+
+func TestFilterAnteMainnetTxAcceptedCases(t *testing.T) {
+	cases := []anteMainnetTxCorpusCase{
+		{Label: "a-deliver", Expected: anteMainnetTxExpected{OK: true}},
+		{Label: "b-deliver", Expected: anteMainnetTxExpected{OK: false, Code: 38}},
+		{Label: "c-deliver", Expected: anteMainnetTxExpected{OK: true}},
+	}
+	kept, dropped := filterAnteMainnetTxAcceptedCases(cases)
+	if len(kept) != 2 || kept[0].Label != "a-deliver" || kept[1].Label != "c-deliver" {
+		t.Fatalf("kept = %#v, want the two accepted cases", kept)
+	}
+	if len(dropped) != 1 || dropped[0] != "b-deliver(code=38)" {
+		t.Fatalf("dropped = %#v, want b-deliver(code=38)", dropped)
+	}
+}
+
 func TestAnteMainnetTxStableError(t *testing.T) {
 	cases := map[uint32]string{
 		2:  "malformed_tx",
