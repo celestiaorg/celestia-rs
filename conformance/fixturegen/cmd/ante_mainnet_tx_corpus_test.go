@@ -1082,6 +1082,35 @@ func TestRunAnteMainnetTxCorpusDropsReplayRejectionsBelowMinimum(t *testing.T) {
 	}
 }
 
+func TestAnteMainnetTxCaseAccountsOverridesSignerSequence(t *testing.T) {
+	addressHex := hex.EncodeToString(repeatByte(0x0a, 20))
+	tx := anteMainnetTxDecoded{
+		Label:   "seq-override",
+		Signers: []anteMainnetTxDecodedSigner{{Index: 0, AddressHex: addressHex, Sequence: 8}},
+	}
+	index := anteMainnetTxHydratedStateIndex{
+		accounts: map[string]anteMainnetTxHydratedAccount{
+			addressHex: {AddressHex: addressHex, AccountNumber: 42, Sequence: 3, PublicKeyAnyHex: "pk"},
+		},
+		balances: map[string]anteMainnetTxHydratedBalance{},
+	}
+
+	accounts, err := anteMainnetTxCaseAccounts(tx, index)
+	if err != nil {
+		t.Fatalf("case accounts: %v", err)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("accounts = %#v, want one", accounts)
+	}
+	got := accounts[0]
+	if got.Sequence != 8 {
+		t.Fatalf("sequence = %d, want 8 (overridden from the tx's declared signer sequence)", got.Sequence)
+	}
+	if got.AccountNumber != 42 || got.PublicKeyAnyHex != "pk" {
+		t.Fatalf("account = %#v, want number/pubkey preserved from hydration", got)
+	}
+}
+
 func TestFilterAnteMainnetTxAcceptedCases(t *testing.T) {
 	cases := []anteMainnetTxCorpusCase{
 		{Label: "a-deliver", Expected: anteMainnetTxExpected{OK: true}},

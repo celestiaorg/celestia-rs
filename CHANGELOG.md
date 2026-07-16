@@ -35,6 +35,13 @@
 
 ### Added
 
+- Fixed cross-block/same-block sequence drift in the `ante-mainnet-tx-corpus`
+  hydrated state: each signer account's sequence is now set to the
+  transaction's own declared signer sequence (its correct pre-ante value for a
+  committed tx) instead of the single start-1 snapshot sequence, while keeping
+  the hydrated account number and public key. Against a mainnet archive this
+  cut replay rejections across five blocks from 18 to 1 (the remaining drop is
+  an unhydrated feegrant tx).
 - Made `fixturegen ante-mainnet-tx-corpus` drop replay-rejected committed-tx
   cases: because every sampled tx was accepted on-chain, a replay rejection
   means the replay could not reproduce Go's outcome (e.g. an unhydrated feegrant

@@ -227,9 +227,26 @@ func anteMainnetTxCaseAccounts(tx anteMainnetTxDecoded, index anteMainnetTxHydra
 		}
 	}
 
+	// A signer's on-chain account sequence right before a committed transaction
+	// equals the sequence the transaction was signed with. The pre-block state
+	// snapshot is hydrated once at start-1, so its sequence drifts for signers
+	// that also transacted in earlier sampled blocks (or earlier in the same
+	// block). Override each signer account's sequence with the transaction's own
+	// declared signer sequence, which reproduces the correct pre-ante state
+	// while keeping the hydrated account number and public key. The fee payer's
+	// sequence, when it is not also a signer, is not checked by the ante.
+	signerSequences := make(map[string]uint64, len(tx.Signers))
+	for _, signer := range tx.Signers {
+		signerSequences[signer.AddressHex] = signer.Sequence
+	}
+
 	accounts := make([]anteMainnetTxHydratedAccount, 0, len(addresses))
 	for _, addressHex := range addresses {
-		accounts = append(accounts, index.accounts[addressHex])
+		account := index.accounts[addressHex]
+		if sequence, ok := signerSequences[addressHex]; ok {
+			account.Sequence = sequence
+		}
+		accounts = append(accounts, account)
 	}
 	return accounts, nil
 }
