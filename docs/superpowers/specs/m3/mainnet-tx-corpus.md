@@ -105,6 +105,12 @@ comparison remains a red implementation gate: Rust does not yet model the
 storage gas emitted by circuit, minfee, auth, and bank keeper access, and five
 cases use legacy Amino JSON signing.
 
+The Go `antereplay` input accepts diagnostic `gas_profile` values that isolate
+one persistent or transient KV gas coefficient at a time. This makes the
+remaining storage-gas work measurable as operation counts and byte totals. For
+the first corpus case the profiles account exactly for the 44,018-gas gap: 3
+has calls, 1 delete, 13 reads over 1,546 bytes, and 6 writes over 346 bytes.
+
 ## Definition Of Done
 
 - [x] Add DB-backed pre-block account and fee-balance hydration to

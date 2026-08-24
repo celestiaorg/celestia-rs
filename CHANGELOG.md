@@ -44,6 +44,11 @@
 
 ### Added
 
+- Added optional KV gas-isolation profiles to the Go `antereplay` oracle so M3
+  can measure persistent and transient keeper operation counts and byte totals
+  independently. The first mainnet case's 44,018 storage gas now decomposes
+  exactly into the SDK gas schedule instead of being treated as an opaque
+  fixture delta.
 - Added Cosmos SDK-compatible ordered ante events for fee transfers, fee payer,
   account sequence, and signature indexing. A non-ignored M3 integration test
   now byte-matches those events for all 1,057 direct-sign transactions in the

@@ -36,3 +36,10 @@ func TestRunReplaysDecodeErrorCaseThroughJSON(t *testing.T) {
 		t.Fatalf("result = %+v, want labelled decode rejection (code 2, sdk)", got)
 	}
 }
+
+func TestToCasePreservesGasProfile(t *testing.T) {
+	got := toCase(caseJSON{GasProfile: "kv_read_per_byte"})
+	if got.GasProfile != "kv_read_per_byte" {
+		t.Fatalf("gas profile = %q, want kv_read_per_byte", got.GasProfile)
+	}
+}

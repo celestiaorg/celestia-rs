@@ -148,6 +148,52 @@ func TestReplayCaseIncludesTransactionSizeGas(t *testing.T) {
 	}
 }
 
+func TestReplayCaseGasProfilesIsolateKVCharges(t *testing.T) {
+	txHex, account := buildSignedTxForInjection(t, "celestia", injectedAccountNumber, 0)
+	balance := Balance{AddressHex: account.AddressHex, Denom: "utia", Amount: "1000000"}
+	outcome, err := NewReplayer().ReplayCase(Case{
+		TxRawHex:   txHex,
+		Mode:       ModeDeliver,
+		ChainID:    "celestia",
+		Height:     10_126_900,
+		Accounts:   []Account{account},
+		Balances:   []Balance{balance},
+		GasProfile: "zero",
+	})
+	if err != nil || !outcome.OK {
+		t.Fatalf("replay zero-gas profile: outcome=%+v err=%v", outcome, err)
+	}
+	txBytes, err := hex.DecodeString(txHex)
+	if err != nil {
+		t.Fatalf("decode tx hex: %v", err)
+	}
+	want := uint64(len(txBytes))*uint64(appconsts.TxSizeCostPerByte) + 1_000
+	if outcome.GasUsed != want {
+		t.Fatalf("zero-profile gas = %d, want tx-size plus signature gas %d", outcome.GasUsed, want)
+	}
+
+	_, err = NewReplayer().ReplayCase(Case{GasProfile: "unknown"})
+	if err == nil {
+		t.Fatal("expected unknown gas profile to fail")
+	}
+}
+
+func TestWithGasProfileAcceptsEveryDiagnosticCoefficient(t *testing.T) {
+	profiles := []string{
+		"default", "zero",
+		"kv_has", "kv_delete", "kv_read_flat", "kv_read_per_byte",
+		"kv_write_flat", "kv_write_per_byte", "kv_iter_next_flat",
+		"transient_has", "transient_delete", "transient_read_flat",
+		"transient_read_per_byte", "transient_write_flat",
+		"transient_write_per_byte", "transient_iter_next_flat",
+	}
+	for _, profile := range profiles {
+		if _, err := withGasProfile(sdk.Context{}, profile); err != nil {
+			t.Fatalf("gas profile %q: %v", profile, err)
+		}
+	}
+}
+
 func TestReplayCaseRejectsInsufficientMinGasPrice(t *testing.T) {
 	txHex, account := buildSignedTxForInjection(t, "celestia", injectedAccountNumber, 0)
 	balance := Balance{AddressHex: account.AddressHex, Denom: "utia", Amount: "1000000"}
