@@ -54,7 +54,10 @@ The first M3 implementation checkpoint has started with
 `crates/tier-3-app-modules/ante/`: public ante skeleton, gas-meter behavior,
 stateless transaction validation, direct secp256k1 signer execution, fee and
 gas conformance fixtures, malformed transaction fixtures, and state-mutation
-hardening. The `m3-integration` crate now contains the ignored
-`mainnet_tx_validation_matches_go` acceptance entry point; the next hard gate
-is committing the Go-generated mainnet transaction corpus and enabling that
-test.
+hardening. A Go-generated corpus of 1,062 replay-accepted app-v6 mainnet
+transactions is now committed, with per-transaction RPC state hydration and
+production tx-size gas in its expected envelopes. The `m3-integration`
+acceptance entry point remains ignored: its first real comparison shows that
+the Rust fixture-backed ante path does not yet model the Cosmos SDK storage gas
+and events produced by circuit, minfee, auth, and bank keeper access. Modeling
+those effects is the next hard gate before enabling the test.

@@ -6,6 +6,7 @@ import (
 
 	"cosmossdk.io/math"
 	celestiaapp "github.com/celestiaorg/celestia-app/v6/app"
+	"github.com/celestiaorg/celestia-app/v6/pkg/appconsts"
 	"github.com/celestiaorg/celestia-app/v6/pkg/user"
 	testutil "github.com/celestiaorg/celestia-app/v6/test/util"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -99,6 +100,51 @@ func TestReplayCaseAcceptsSignedTxWithCelestiaChainID(t *testing.T) {
 		if event.Type == "coinbase" {
 			t.Fatalf("captured a coinbase (mint) event from state injection; ante events must be isolated from injection: %+v", outcome.Events)
 		}
+	}
+}
+
+func TestReplayCaseIncludesTransactionSizeGas(t *testing.T) {
+	txHex, account := buildSignedTxForInjection(t, "celestia", injectedAccountNumber, 0)
+	balance := Balance{AddressHex: account.AddressHex, Denom: "utia", Amount: "1000000"}
+	c := Case{
+		TxRawHex: txHex,
+		Mode:     ModeDeliver,
+		ChainID:  "celestia",
+		Height:   10_126_900,
+		Accounts: []Account{account},
+		Balances: []Balance{balance},
+	}
+
+	withTxBytes, err := NewReplayer().ReplayCase(c)
+	if err != nil || !withTxBytes.OK {
+		t.Fatalf("replay case with tx bytes: outcome=%+v err=%v", withTxBytes, err)
+	}
+
+	without := NewReplayer()
+	ctx, err := without.caseContext(c)
+	if err != nil {
+		t.Fatalf("case context: %v", err)
+	}
+	if err := InjectState(without.app, ctx, c.Accounts, c.Balances); err != nil {
+		t.Fatalf("inject state: %v", err)
+	}
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	txBytes, err := hex.DecodeString(txHex)
+	if err != nil {
+		t.Fatalf("decode tx hex: %v", err)
+	}
+	tx, err := DecodeTx(txBytes)
+	if err != nil {
+		t.Fatalf("decode tx: %v", err)
+	}
+	withoutTxBytes := Replay(without.app, ctx, tx, false)
+	if !withoutTxBytes.OK {
+		t.Fatalf("replay without tx bytes: %+v", withoutTxBytes)
+	}
+
+	wantDelta := uint64(len(txBytes)) * uint64(appconsts.TxSizeCostPerByte)
+	if got := withTxBytes.GasUsed - withoutTxBytes.GasUsed; got != wantDelta {
+		t.Fatalf("tx-size gas delta = %d, want %d", got, wantDelta)
 	}
 }
 

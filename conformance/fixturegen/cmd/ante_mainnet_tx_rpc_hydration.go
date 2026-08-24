@@ -12,6 +12,73 @@ import (
 	"strings"
 )
 
+type anteMainnetTxRPCStateCacheEntry struct {
+	value []byte
+	err   error
+}
+
+// hydrateAnteMainnetTxStatesViaRPC resolves each transaction against the state
+// committed immediately before its block. A corpus-wide start-1 snapshot is
+// insufficient for accounts created or funded later in a multi-block sample.
+// Requests are cached per height/store/key so transactions in the same block
+// do not repeat identical archive queries.
+func hydrateAnteMainnetTxStatesViaRPC(
+	ctx context.Context,
+	client *http.Client,
+	cfg anteMainnetTxCorpusConfig,
+	samples []anteMainnetTxSample,
+	decoded []anteMainnetTxDecoded,
+) ([]anteMainnetTxHydratedState, error) {
+	if len(samples) != len(decoded) {
+		return nil, fmt.Errorf("sample count %d does not match decoded tx count %d", len(samples), len(decoded))
+	}
+	cache := make(map[string]anteMainnetTxRPCStateCacheEntry)
+	fetch := func(storeName string, key []byte, height int64) ([]byte, error) {
+		cacheKey := fmt.Sprintf("%d/%s/%x", height, storeName, key)
+		if entry, ok := cache[cacheKey]; ok {
+			return entry.value, entry.err
+		}
+		value, err := fetchAnteMainnetTxABCIStoreValue(ctx, client, cfg.rpc, storeName, key, height)
+		cache[cacheKey] = anteMainnetTxRPCStateCacheEntry{value: value, err: err}
+		return value, err
+	}
+
+	states := make([]anteMainnetTxHydratedState, 0, len(samples))
+	for i, sample := range samples {
+		if sample.Height <= 1 {
+			return nil, fmt.Errorf("%s: block height must be greater than 1", sample.Label)
+		}
+		plan, err := planAnteMainnetTxHydration([]anteMainnetTxDecoded{decoded[i]})
+		if err != nil {
+			return nil, err
+		}
+		preHeight := sample.Height - 1
+		state, err := hydrateAnteMainnetTxStateFromValues(
+			preHeight,
+			plan,
+			func(key []byte) ([]byte, error) {
+				value, err := fetch(anteMainnetTxAuthStoreMount, key, preHeight)
+				if err != nil || value != nil {
+					return value, err
+				}
+				// An account created by an earlier transaction in this block is
+				// absent at preHeight. Its account number and public key are stable,
+				// while its sequence is replaced with the tx-declared pre-ante value
+				// during case assembly, so the post-block account is a safe fallback.
+				return fetch(anteMainnetTxAuthStoreMount, key, sample.Height)
+			},
+			func(key []byte) ([]byte, error) {
+				return fetch(anteMainnetTxBankStoreMount, key, preHeight)
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: hydrate state: %w", sample.Label, err)
+		}
+		states = append(states, state)
+	}
+	return states, nil
+}
+
 // hydrateAnteMainnetTxStateViaRPC loads the pre-block account and fee-balance
 // snapshot for a hydration plan from a CometBFT RPC endpoint using
 // `abci_query /store/<name>/key` requests, so the corpus can be generated
@@ -57,11 +124,7 @@ func fetchAnteMainnetTxABCIStoreValue(
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create abci_query request for %s store: %w", storeName, err)
-	}
-	resp, err := client.Do(req)
+	resp, err := doRPCGET(ctx, client, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("abci_query %s store at height %d: %w", storeName, height, err)
 	}

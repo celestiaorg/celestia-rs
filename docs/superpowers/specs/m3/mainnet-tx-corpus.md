@@ -93,17 +93,15 @@ fixture runner rather than silently ignoring the field.
 
 ## Current Status
 
-`crates/m3-integration/` contains the ignored acceptance entry point, but
-`conformance/fixtures/ante/mainnet-tx-corpus.json.zst` is not committed yet.
-The runner can decode the compressed corpus and validate its metadata sidecar
-once generated. `fixturegen ante-mainnet-tx-corpus` has validated
-configuration, deterministic RPC transaction sampling, sampled `TxRaw`
-signer/fee decoding, SDK auth/bank hydration-key planning, DB-backed pre-block
-account and fee-balance hydration, deterministic corpus case assembly, and
-fixture/metadata writing behind the replay adapter boundary. Per-transaction
-state replay through earlier transactions in the same block and the real Go
-ante replay adapter are still pending. The current `ante` fixtures are still
-explicit unit-scale vectors, not a broad mainnet corpus.
+`conformance/fixtures/ante/mainnet-tx-corpus.json.zst` and its metadata sidecar
+contain 1,062 replay-accepted transactions sampled from app-v6 mainnet heights
+10,126,900 through 10,127,119. The generator samples deterministically,
+hydrates each case from its own pre-block RPC state (with a same-block-created
+account fallback), retries transient archive failures, and obtains the expected
+envelope from the real celestia-app Go ante handler. The runner decodes and
+validates the corpus, but its first comparison remains a red implementation
+gate: Rust does not yet model the storage gas and ordered SDK events emitted by
+the circuit, minfee, auth, and bank keeper-backed Go decorators.
 
 ## Definition Of Done
 
@@ -113,12 +111,13 @@ explicit unit-scale vectors, not a broad mainnet corpus.
       hydrated account/balance state.
 - [x] Write `mainnet-tx-corpus` fixture and metadata when replay supplies
       expected Go ante outcomes.
-- [ ] Complete per-transaction same-block state replay and Go ante replay in
+- [x] Add per-transaction RPC state hydration and Go ante replay in
       `fixturegen ante-mainnet-tx-corpus`.
-- [ ] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
+- [x] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
       `.meta.json`.
-- [ ] Implement the full fixture runner in `m3-integration`.
+- [x] Implement the full fixture runner in `m3-integration`.
+- [ ] Match Go storage gas and ordered ante events in the Rust runner.
 - [ ] Remove the ignore from `mainnet_tx_validation_matches_go`.
-- [ ] Run `cargo xtask repo-health --offline`.
+- [x] Run `cargo xtask repo-health --offline`.
 - [ ] Mark M3 complete once the acceptance test passes for at least 1000
       mainnet transactions.

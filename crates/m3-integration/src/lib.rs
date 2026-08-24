@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pending Go-generated ante/mainnet-tx-corpus.json.zst fixture"]
+    #[ignore = "pending Rust storage-gas and ordered keeper-event parity"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
         let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
         validate_mainnet_tx_corpus_meta(&fixture, &meta)?;

@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- Populated the standalone Go ante replay context's transaction bytes so
+  celestia-app charges its production transaction-size gas in generated corpus
+  outcomes.
+- Hydrated RPC-backed ante corpus cases from each transaction's own pre-block
+  state instead of a single corpus-wide snapshot, with a post-block account
+  fallback for accounts created earlier in the same block.
+- Retried transient CometBFT RPC failures in fixture generation, honoring
+  `Retry-After` for rate limits and using bounded backoff for archive-node
+  `429`, `502`, `503`, and `504` responses.
 - Isolated `antereplay` captured ante events from state injection: `ReplayCase`
   now resets the event manager after injecting account/balance state, so bank
   minting events emitted while funding balances no longer leak into the

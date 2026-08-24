@@ -78,16 +78,37 @@ func buildAnteMainnetTxCorpusFixture(
 	state anteMainnetTxHydratedState,
 	replay anteMainnetTxReplayFunc,
 ) (anteMainnetTxCorpusFixture, error) {
+	states := make([]anteMainnetTxHydratedState, len(samples))
+	for i := range states {
+		states[i] = state
+	}
+	return buildAnteMainnetTxCorpusFixtureWithStates(cfg, samples, decoded, states, replay)
+}
+
+func buildAnteMainnetTxCorpusFixtureWithStates(
+	cfg anteMainnetTxCorpusConfig,
+	samples []anteMainnetTxSample,
+	decoded []anteMainnetTxDecoded,
+	states []anteMainnetTxHydratedState,
+	replay anteMainnetTxReplayFunc,
+) (anteMainnetTxCorpusFixture, error) {
 	if len(samples) != len(decoded) {
 		return anteMainnetTxCorpusFixture{}, fmt.Errorf("sample count %d does not match decoded tx count %d", len(samples), len(decoded))
+	}
+	if len(samples) != len(states) {
+		return anteMainnetTxCorpusFixture{}, fmt.Errorf("sample count %d does not match hydrated state count %d", len(samples), len(states))
 	}
 	if replay == nil {
 		return anteMainnetTxCorpusFixture{}, fmt.Errorf("ante mainnet tx replay function is nil")
 	}
 
-	index, err := indexAnteMainnetTxHydratedState(state)
-	if err != nil {
-		return anteMainnetTxCorpusFixture{}, err
+	indexes := make([]anteMainnetTxHydratedStateIndex, 0, len(states))
+	for i, state := range states {
+		index, err := indexAnteMainnetTxHydratedState(state)
+		if err != nil {
+			return anteMainnetTxCorpusFixture{}, fmt.Errorf("index hydrated state %d: %w", i, err)
+		}
+		indexes = append(indexes, index)
 	}
 
 	// First pass: build every case's replay input and skeleton. Replay runs as
@@ -97,6 +118,7 @@ func buildAnteMainnetTxCorpusFixture(
 	skeletons := make([]anteMainnetTxCaseSkeleton, 0, cap(inputs))
 	for i, sample := range samples {
 		tx := decoded[i]
+		index := indexes[i]
 		if sample.Label != tx.Label {
 			return anteMainnetTxCorpusFixture{}, fmt.Errorf("sample label %q does not match decoded label %q", sample.Label, tx.Label)
 		}

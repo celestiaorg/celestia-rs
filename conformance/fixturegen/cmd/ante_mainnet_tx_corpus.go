@@ -150,34 +150,48 @@ func runAnteMainnetTxCorpusWithClientAndReplay(
 	if err != nil {
 		return err
 	}
-	plan, err := planAnteMainnetTxHydration(decoded)
-	if err != nil {
-		return err
-	}
 	preBlockStateHeight := cfg.start - 1
+	var states []anteMainnetTxHydratedState
+	var plan anteMainnetTxHydrationPlan
 	var state anteMainnetTxHydratedState
 	if cfg.dbDir == "" {
-		state, err = hydrateAnteMainnetTxStateViaRPC(context.Background(), client, cfg, preBlockStateHeight, plan)
+		states, err = hydrateAnteMainnetTxStatesViaRPC(context.Background(), client, cfg, samples, decoded)
 	} else {
-		state, err = hydrateAnteMainnetTxState(cfg, preBlockStateHeight, plan)
+		var planErr error
+		plan, planErr = planAnteMainnetTxHydration(decoded)
+		if planErr != nil {
+			return planErr
+		}
+		var hydrateErr error
+		state, hydrateErr = hydrateAnteMainnetTxState(cfg, preBlockStateHeight, plan)
+		if hydrateErr != nil {
+			return hydrateErr
+		}
+		states = make([]anteMainnetTxHydratedState, len(samples))
+		for i := range states {
+			states[i] = state
+		}
 	}
 	if err != nil {
 		return err
 	}
-	fixture, err := buildAnteMainnetTxCorpusFixture(cfg, samples, decoded, state, replay)
+	fixture, err := buildAnteMainnetTxCorpusFixtureWithStates(cfg, samples, decoded, states, replay)
 	if err != nil {
-		return fmt.Errorf(
-			"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, and hydrated %d accounts/%d balances from height %d; %w",
-			anteMainnetTxCorpusScenario,
-			len(samples),
-			len(decoded),
-			len(plan.Accounts),
-			len(plan.Balances),
-			len(state.Accounts),
-			len(state.Balances),
-			preBlockStateHeight,
-			err,
-		)
+		if cfg.dbDir != "" {
+			return fmt.Errorf(
+				"%s sampled %d transactions, decoded %d txs, planned %d account/%d balance lookups, and hydrated %d accounts/%d balances from height %d; %w",
+				anteMainnetTxCorpusScenario,
+				len(samples),
+				len(decoded),
+				len(plan.Accounts),
+				len(plan.Balances),
+				len(state.Accounts),
+				len(state.Balances),
+				preBlockStateHeight,
+				err,
+			)
+		}
+		return fmt.Errorf("%s sampled and hydrated %d transactions; %w", anteMainnetTxCorpusScenario, len(samples), err)
 	}
 	accepted, dropped := filterAnteMainnetTxAcceptedCases(fixture.Cases)
 	if len(dropped) > 0 {
