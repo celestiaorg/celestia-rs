@@ -3,8 +3,10 @@ package replay
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/celestiaorg/celestia-app/v6/app"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -34,6 +36,9 @@ type Case struct {
 	MinGasPrices []Coin
 	Accounts     []Account
 	Balances     []Balance
+	// GasProfile optionally replaces the persistent and transient KV gas
+	// schedules with a one-coefficient diagnostic profile.
+	GasProfile string
 }
 
 // Replayer holds a single in-memory celestia-app v6 instance and replays corpus
@@ -86,6 +91,10 @@ func (r *Replayer) caseContext(c Case) (sdk.Context, error) {
 	isCheck := c.Mode == ModeCheck || c.Mode == ModeRecheck
 	base, _ := r.app.NewContext(isCheck).CacheContext()
 	ctx := base.WithChainID(c.ChainID).WithBlockHeight(c.Height)
+	ctx, err := withGasProfile(ctx, c.GasProfile)
+	if err != nil {
+		return sdk.Context{}, err
+	}
 	if isCheck {
 		minGasPrices, err := decodeMinGasPrices(c.MinGasPrices)
 		if err != nil {
@@ -97,6 +106,49 @@ func (r *Replayer) caseContext(c Case) (sdk.Context, error) {
 		ctx = ctx.WithIsReCheckTx(true)
 	}
 	return ctx, nil
+}
+
+func withGasProfile(ctx sdk.Context, profile string) (sdk.Context, error) {
+	if profile == "" || profile == "default" {
+		return ctx, nil
+	}
+
+	kv := storetypes.GasConfig{}
+	transient := storetypes.GasConfig{}
+	var target *storetypes.GasConfig
+	field := profile
+	if suffix, ok := strings.CutPrefix(profile, "transient_"); ok && suffix != "" {
+		target = &transient
+		field = suffix
+	} else if suffix, ok := strings.CutPrefix(profile, "kv_"); ok && suffix != "" {
+		target = &kv
+		field = suffix
+	} else if profile == "zero" {
+		return ctx.WithKVGasConfig(kv).WithTransientKVGasConfig(transient), nil
+	} else {
+		return sdk.Context{}, fmt.Errorf("unknown gas profile %q", profile)
+	}
+
+	switch field {
+	case "has":
+		target.HasCost = 1
+	case "delete":
+		target.DeleteCost = 1
+	case "read_flat":
+		target.ReadCostFlat = 1
+	case "read_per_byte":
+		target.ReadCostPerByte = 1
+	case "write_flat":
+		target.WriteCostFlat = 1
+	case "write_per_byte":
+		target.WriteCostPerByte = 1
+	case "iter_next_flat":
+		target.IterNextCostFlat = 1
+	default:
+		return sdk.Context{}, fmt.Errorf("unknown gas profile %q", profile)
+	}
+
+	return ctx.WithKVGasConfig(kv).WithTransientKVGasConfig(transient), nil
 }
 
 func decodeMinGasPrices(coins []Coin) (sdk.DecCoins, error) {

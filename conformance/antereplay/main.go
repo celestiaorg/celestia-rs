@@ -27,6 +27,7 @@ type caseJSON struct {
 	MinGasPrices []coinJSON    `json:"min_gas_prices"`
 	Accounts     []accountJSON `json:"accounts"`
 	Balances     []balanceJSON `json:"balances"`
+	GasProfile   string        `json:"gas_profile,omitempty"`
 }
 
 type coinJSON struct {
@@ -146,6 +147,7 @@ func toCase(c caseJSON) replay.Case {
 		MinGasPrices: minGasPrices,
 		Accounts:     accounts,
 		Balances:     balances,
+		GasProfile:   c.GasProfile,
 	}
 }
 
