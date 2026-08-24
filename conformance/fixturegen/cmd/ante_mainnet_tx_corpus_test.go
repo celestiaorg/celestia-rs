@@ -602,6 +602,52 @@ func TestHydrateAnteMainnetTxStateViaRPCReadsAccountsAndBalances(t *testing.T) {
 	}
 }
 
+func TestHydrateAnteMainnetTxStatesViaRPCUsesPerTransactionHeightAndCachesFallback(t *testing.T) {
+	address := repeatByte(0x16, 20)
+	addressHex := hex.EncodeToString(address)
+	accountValue := anteMainnetTxTestAccountValue(t, address, 42, 1, nil)
+	requests := make(map[string]int)
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		height := r.URL.Query().Get("height")
+		requests[height]++
+		value := ""
+		if height == "10" {
+			value = base64.StdEncoding.EncodeToString(accountValue)
+		}
+		body := fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":-1,"result":{"response":{"code":0,"log":"","height":%q,"value":%q}}}`,
+			height,
+			value,
+		)
+		return jsonResponse(body), nil
+	})}
+	samples := []anteMainnetTxSample{
+		{Label: "height-10-tx-0", Height: 10},
+		{Label: "height-10-tx-1", Height: 10},
+	}
+	decoded := []anteMainnetTxDecoded{
+		{Label: samples[0].Label, Signers: []anteMainnetTxDecodedSigner{{AddressHex: addressHex, Sequence: 1}}},
+		{Label: samples[1].Label, Signers: []anteMainnetTxDecodedSigner{{AddressHex: addressHex, Sequence: 2}}},
+	}
+
+	states, err := hydrateAnteMainnetTxStatesViaRPC(
+		context.Background(),
+		client,
+		anteMainnetTxCorpusConfig{rpc: "https://rpc.example.test"},
+		samples,
+		decoded,
+	)
+	if err != nil {
+		t.Fatalf("hydrate per-transaction state: %v", err)
+	}
+	if len(states) != 2 || len(states[0].Accounts) != 1 || states[0].Accounts[0].AccountNumber != 42 {
+		t.Fatalf("states = %#v, want two states with account number 42", states)
+	}
+	if requests["9"] != 1 || requests["10"] != 1 {
+		t.Fatalf("requests = %#v, want one cached pre-block and one post-block fallback query", requests)
+	}
+}
+
 func TestHydrateAnteMainnetTxStateReadsVersionedDB(t *testing.T) {
 	address := repeatByte(0x05, 20)
 	addressHex := hex.EncodeToString(address)

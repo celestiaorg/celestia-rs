@@ -67,6 +67,10 @@ func (r *Replayer) ReplayCase(c Case) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, fmt.Errorf("decode tx raw hex: %w", err)
 	}
+	// ConsumeTxSizeGasDecorator charges len(ctx.TxBytes()). BaseApp normally
+	// supplies these bytes before ante execution; the standalone replay oracle
+	// must do the same or its Go gas result silently omits transaction-size gas.
+	ctx = ctx.WithTxBytes(txBytes)
 	tx, err := DecodeTx(txBytes)
 	if err != nil {
 		codespace, code, _ := sdkTxDecodeError()

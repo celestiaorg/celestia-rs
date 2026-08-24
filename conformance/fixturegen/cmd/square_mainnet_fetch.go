@@ -95,11 +95,7 @@ func fetchSquareRawMainnetBlock(
 	if err != nil {
 		return squareRawMainnetBlock{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return squareRawMainnetBlock{}, fmt.Errorf("create block request for height %d: %w", height, err)
-	}
-	resp, err := client.Do(req)
+	resp, err := doRPCGET(ctx, client, endpoint)
 	if err != nil {
 		return squareRawMainnetBlock{}, fmt.Errorf("fetch block height %d: %w", height, err)
 	}

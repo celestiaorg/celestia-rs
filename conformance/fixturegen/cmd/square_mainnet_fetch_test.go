@@ -96,6 +96,48 @@ func TestFetchSquareRawMainnetBlockRejectsRPCError(t *testing.T) {
 	}
 }
 
+func TestFetchSquareRawMainnetBlockRetriesRateLimit(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Status:     "429 Too Many Requests",
+				Header:     http.Header{"Retry-After": []string{"0"}},
+				Body:       io.NopCloser(strings.NewReader("rate limited")),
+			}, nil
+		}
+		return jsonResponse(`{
+			"jsonrpc": "2.0",
+			"id": "",
+			"result": {
+				"block": {
+					"header": {
+						"version": { "block": "11", "app": "6" },
+						"height": "99",
+						"data_hash": "abcd"
+					},
+					"data": { "txs": [], "square_size": 8 }
+				}
+			}
+		}`), nil
+	})}
+
+	block, err := fetchSquareRawMainnetBlock(context.Background(), client, "https://rpc.example.test", 99)
+	if err != nil {
+		t.Fatalf("fetch block after rate limit: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if block.Height != 99 {
+		t.Fatalf("height = %d, want 99", block.Height)
+	}
+}
+
 func TestSquareFetchHeights(t *testing.T) {
 	t.Parallel()
 
