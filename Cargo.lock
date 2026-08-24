@@ -70,6 +70,7 @@ name = "ante"
 version = "0.0.1"
 dependencies = [
  "abci-types",
+ "base64 0.22.1",
  "cosmos-types",
  "crypto",
  "hash",
@@ -864,6 +865,7 @@ version = "0.0.1"
 dependencies = [
  "abci-types",
  "ante",
+ "base64 0.22.1",
  "cosmos-types",
  "hex",
  "prost",

@@ -44,6 +44,11 @@
 
 ### Added
 
+- Added Cosmos SDK-compatible ordered ante events for fee transfers, fee payer,
+  account sequence, and signature indexing. A non-ignored M3 integration test
+  now byte-matches those events for all 1,057 direct-sign transactions in the
+  committed mainnet corpus and identifies the five remaining legacy Amino JSON
+  cases explicitly.
 - Fixed cross-block/same-block sequence drift in the `ante-mainnet-tx-corpus`
   hydrated state: each signer account's sequence is now set to the
   transaction's own declared signer sequence (its correct pre-ante value for a

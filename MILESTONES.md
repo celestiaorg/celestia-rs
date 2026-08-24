@@ -56,8 +56,10 @@ stateless transaction validation, direct secp256k1 signer execution, fee and
 gas conformance fixtures, malformed transaction fixtures, and state-mutation
 hardening. A Go-generated corpus of 1,062 replay-accepted app-v6 mainnet
 transactions is now committed, with per-transaction RPC state hydration and
-production tx-size gas in its expected envelopes. The `m3-integration`
-acceptance entry point remains ignored: its first real comparison shows that
-the Rust fixture-backed ante path does not yet model the Cosmos SDK storage gas
-and events produced by circuit, minfee, auth, and bank keeper access. Modeling
-those effects is the next hard gate before enabling the test.
+production tx-size gas in its expected envelopes. The fixture-backed ante path
+now reproduces the exact ordered fee-transfer, fee, account-sequence, and
+signature events for all 1,057 direct-sign cases in the corpus. The
+`m3-integration` acceptance entry point remains ignored because Rust does not
+yet model Cosmos SDK storage gas, and five replayed transactions use legacy
+Amino JSON signing that the direct-sign handler rejects. Those two effects are
+the next hard gates before enabling the full test.

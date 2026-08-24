@@ -99,9 +99,11 @@ contain 1,062 replay-accepted transactions sampled from app-v6 mainnet heights
 hydrates each case from its own pre-block RPC state (with a same-block-created
 account fallback), retries transient archive failures, and obtains the expected
 envelope from the real celestia-app Go ante handler. The runner decodes and
-validates the corpus, but its first comparison remains a red implementation
-gate: Rust does not yet model the storage gas and ordered SDK events emitted by
-the circuit, minfee, auth, and bank keeper-backed Go decorators.
+validates the corpus. Rust now byte-matches the ordered SDK events emitted by
+the fee, bank, and signer decorators for all 1,057 direct-sign cases. The full
+comparison remains a red implementation gate: Rust does not yet model the
+storage gas emitted by circuit, minfee, auth, and bank keeper access, and five
+cases use legacy Amino JSON signing.
 
 ## Definition Of Done
 
@@ -116,7 +118,9 @@ the circuit, minfee, auth, and bank keeper-backed Go decorators.
 - [x] Commit `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` plus
       `.meta.json`.
 - [x] Implement the full fixture runner in `m3-integration`.
-- [ ] Match Go storage gas and ordered ante events in the Rust runner.
+- [x] Match ordered Go ante events for at least 1000 direct-sign transactions.
+- [ ] Match Go storage gas in the Rust runner.
+- [ ] Support the five legacy Amino JSON cases in the committed corpus.
 - [ ] Remove the ignore from `mainnet_tx_validation_matches_go`.
 - [x] Run `cargo xtask repo-health --offline`.
 - [ ] Mark M3 complete once the acceptance test passes for at least 1000

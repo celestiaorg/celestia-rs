@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use base64::Engine as _;
 use prost::Message;
 
 pub use cosmos_types::tx::{AuthInfo, Fee, ModeInfo, SignDoc, SignMode, SignerInfo, Tx, TxRaw};
@@ -17,6 +18,7 @@ const DEFAULT_TX_SIZE_COST_PER_BYTE: Gas = 10;
 const DEFAULT_SIG_VERIFY_COST_SECP256K1: Gas = 1000;
 const DEFAULT_MAX_MEMO_CHARACTERS: usize = 256;
 const SECP256K1_PUBLIC_KEY_TYPE_URL: &str = "/cosmos.crypto.secp256k1.PubKey";
+const FEE_COLLECTOR_MODULE_NAME: &[u8] = b"fee_collector";
 
 /// Cosmos SDK transaction execution mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -337,8 +339,11 @@ impl AnteHandler {
             }
             if let Some(fee) = fee {
                 deduct_fees(fee, &signers, fees)?;
+                append_fee_events(&mut ctx.events, fee, &signers)?;
             }
         }
+
+        append_signer_events(&mut ctx.events, &signers);
 
         let signer_sequences = signers
             .iter()
@@ -375,10 +380,10 @@ impl AnteHandler {
         fees: &F,
     ) -> Result<()> {
         self.validate_minimum_fees(&fee.amount, fee.gas_limit)?;
+        let payer = fee_payer(fee, signers)?;
         if fee.amount.is_empty() {
             return Ok(());
         }
-        let payer = fee_payer(fee, signers)?;
         for coin in &fee.amount {
             let Some(balance) = fees.spendable_balance(&payer, &coin.denom)? else {
                 return Err(Error::InsufficientFunds);
@@ -424,6 +429,91 @@ fn deduct_fees<F: FeeKeeper>(fee: &Fee, signers: &[SignerData], fees: &mut F) ->
     }
     let payer = fee_payer(fee, signers)?;
     fees.deduct_fees(&payer, &fee.amount)
+}
+
+fn append_fee_events(
+    events: &mut Vec<abci_types::Event>,
+    fee: &Fee,
+    signers: &[SignerData],
+) -> Result<()> {
+    let payer = fee_payer(fee, signers)?;
+    let payer = cosmos_types::account_address_to_bech32(&payer);
+    let amount = coins_string(&fee.amount);
+
+    if !fee.amount.is_empty() {
+        let collector = cosmos_types::account_address_to_bech32(&fee_collector_address());
+        events.extend([
+            event(
+                "coin_spent",
+                [("spender", payer.as_str()), ("amount", amount.as_str())],
+            ),
+            event(
+                "coin_received",
+                [
+                    ("receiver", collector.as_str()),
+                    ("amount", amount.as_str()),
+                ],
+            ),
+            event(
+                "transfer",
+                [
+                    ("recipient", collector.as_str()),
+                    ("sender", payer.as_str()),
+                    ("amount", amount.as_str()),
+                ],
+            ),
+            event("message", [("sender", payer.as_str())]),
+        ]);
+    }
+
+    events.push(event(
+        "tx",
+        [("fee", amount.as_str()), ("fee_payer", payer.as_str())],
+    ));
+    Ok(())
+}
+
+fn fee_collector_address() -> cosmos_types::AccountAddress {
+    let digest = hash::sha256(FEE_COLLECTOR_MODULE_NAME);
+    let mut address = [0_u8; cosmos_types::ADDRESS_LENGTH];
+    address.copy_from_slice(&digest[..cosmos_types::ADDRESS_LENGTH]);
+    address
+}
+
+fn append_signer_events(events: &mut Vec<abci_types::Event>, signers: &[SignerData]) {
+    for signer in signers {
+        let address = cosmos_types::account_address_to_bech32(&signer.address);
+        let sequence = format!("{address}/{}", signer.sequence);
+        let signature = base64::engine::general_purpose::STANDARD.encode(&signer.signature);
+        events.extend([
+            event("tx", [("acc_seq", sequence.as_str())]),
+            event("tx", [("signature", signature.as_str())]),
+        ]);
+    }
+}
+
+fn coins_string(coins: &[cosmos_types::Coin]) -> String {
+    let mut coins = coins.iter().collect::<Vec<_>>();
+    coins.sort_by(|left, right| left.denom.cmp(&right.denom));
+    coins
+        .into_iter()
+        .map(|coin| format!("{}{}", coin.amount, coin.denom))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn event<const N: usize>(ty: &str, attributes: [(&str, &str); N]) -> abci_types::Event {
+    abci_types::Event {
+        ty: ty.to_owned(),
+        attributes: attributes
+            .into_iter()
+            .map(|(key, value)| abci_types::EventAttribute {
+                key: key.to_owned(),
+                value: value.to_owned(),
+                index: false,
+            })
+            .collect(),
+    }
 }
 
 fn fee_payer(fee: &Fee, signers: &[SignerData]) -> Result<cosmos_types::AccountAddress> {

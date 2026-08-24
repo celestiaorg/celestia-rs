@@ -17,6 +17,7 @@ ante = { path = "../tier-3-app-modules/ante" }
 
 [dev-dependencies]
 abci-types = { path = "../tier-1-protocol-types/abci-types" }
+base64 = "0.22"
 cosmos-types = { path = "../tier-1-protocol-types/cosmos-types" }
 hex = "0.4"
 prost = "0.13"

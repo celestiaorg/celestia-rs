@@ -10,9 +10,10 @@ trait boundary that later `x/auth` and `x/bank` keepers will implement.
 
 The current checkpoint provides the crate skeleton, gas-meter behavior,
 stateless `TxRaw` validation, direct secp256k1 deliver execution, and fee-path
-coverage. The stateless and signature/account-state fixture groups are
-Go-generated, as are the first fee deduction, gas-accounting, and malformed
-transaction fixtures; the mainnet transaction corpus is next.
+coverage. It also emits the Cosmos SDK fee-transfer, fee, account-sequence, and
+signature events in Go order. The stateless and signature/account-state fixture
+groups are Go-generated, as are the fee deduction, gas-accounting, malformed
+transaction, and 1,062-case mainnet transaction fixtures.
 
 ## Depends On
 
