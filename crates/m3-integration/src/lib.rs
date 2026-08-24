@@ -12,6 +12,7 @@ mod tests {
         Account, AccountReader, AccountWriter, AnteConfig, AnteContext, AnteHandler, Error,
         FeeKeeper, GasMeter, RunTxMode,
     };
+    use base64::Engine as _;
     use cosmos_types::Coin;
     use prost::Message;
     use serde::Deserialize;
@@ -179,11 +180,56 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pending Rust storage-gas and ordered keeper-event parity"]
+    #[ignore = "pending Rust storage-gas and legacy Amino sign-mode parity"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
         let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
         validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
         run_mainnet_tx_fixture(&fixture, MIN_MAINNET_TX_CASES)
+    }
+
+    #[test]
+    fn direct_sign_mainnet_tx_keeper_events_match_go() -> TestResult<()> {
+        let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
+        validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
+        assert!(
+            fixture.cases.len() >= MIN_MAINNET_TX_CASES,
+            "mainnet tx corpus must contain at least {MIN_MAINNET_TX_CASES} cases"
+        );
+
+        let mut matched = 0_usize;
+        let mut unsupported = 0_usize;
+        for case in &fixture.cases {
+            let name = case_name(case);
+            let (result, _) = execute_mainnet_tx_case(&fixture, case, &name)?;
+            let outcome = match result {
+                Ok(outcome) => outcome,
+                Err(Error::UnsupportedSignMode) => {
+                    unsupported += 1;
+                    continue;
+                }
+                Err(error) => {
+                    return Err(invalid_data(format!(
+                        "{name}: Rust ante unexpectedly rejected tx with {error}"
+                    ))
+                    .into());
+                }
+            };
+            assert_eq!(
+                events_from_outcome(&outcome.events),
+                case.expected.events,
+                "{name}"
+            );
+            matched += 1;
+        }
+
+        assert!(
+            matched >= MIN_MAINNET_TX_CASES,
+            "ordered keeper events must match for at least {MIN_MAINNET_TX_CASES} direct-sign mainnet transactions"
+        );
+        assert_eq!(matched + unsupported, fixture.cases.len());
+        assert_eq!(unsupported, 5, "unexpected legacy Amino corpus count");
+
+        Ok(())
     }
 
     #[test]
@@ -327,27 +373,35 @@ mod tests {
             let name = case_name(case);
             assert_eq!(case.network, "mainnet", "{name}");
 
-            let mut config = AnteConfig::celestia_mainnet_app_v6(&fixture.chain_id);
-            config.min_gas_prices = case
-                .min_gas_prices
-                .iter()
-                .map(coin_from_fixture)
-                .collect::<TestResult<Vec<_>>>()?;
-            let handler = AnteHandler::new(config);
-            let tx_bytes = decode_hex(&case.tx_raw_hex, &name, "tx raw")?;
-            let mut accounts = CorpusAccounts::from_fixture(&case.accounts, &name)?;
-            let mut fees = CorpusFees::from_fixture(&case.balances, &name)?;
-
-            let result = handler.run(
-                run_context(&case.mode, case.height)?,
-                &tx_bytes,
-                &mut accounts,
-                &mut fees,
-            );
+            let (result, fees) = execute_mainnet_tx_case(fixture, case, &name)?;
             compare_result(case, &name, result, &fees)?;
         }
 
         Ok(())
+    }
+
+    fn execute_mainnet_tx_case(
+        fixture: &MainnetTxCorpusFixture,
+        case: &MainnetTxCase,
+        name: &str,
+    ) -> TestResult<(ante::Result<ante::AnteOutcome>, CorpusFees)> {
+        let mut config = AnteConfig::celestia_mainnet_app_v6(&fixture.chain_id);
+        config.min_gas_prices = case
+            .min_gas_prices
+            .iter()
+            .map(coin_from_fixture)
+            .collect::<TestResult<Vec<_>>>()?;
+        let handler = AnteHandler::new(config);
+        let tx_bytes = decode_hex(&case.tx_raw_hex, name, "tx raw")?;
+        let mut accounts = CorpusAccounts::from_fixture(&case.accounts, name)?;
+        let mut fees = CorpusFees::from_fixture(&case.balances, name)?;
+        let result = handler.run(
+            run_context(&case.mode, case.height)?,
+            &tx_bytes,
+            &mut accounts,
+            &mut fees,
+        );
+        Ok((result, fees))
     }
 
     fn load_mainnet_tx_corpus_fixture() -> TestResult<MainnetTxCorpusArtifact> {
@@ -469,6 +523,7 @@ mod tests {
             .into());
         }
 
+        let events = synthetic_success_events(case)?;
         Ok(MainnetTxCorpusFixture {
             scenario: "ante-mainnet-tx-corpus".to_owned(),
             source: "synthetic smoke case translated from ante/gas.json".to_owned(),
@@ -497,7 +552,7 @@ mod tests {
                     log: String::new(),
                     gas_wanted: case.expected_gas_wanted,
                     gas_used: case.expected_gas_used,
-                    events: Vec::new(),
+                    events,
                     signer_sequences: vec![FixtureSignerSequence {
                         address_hex: case.address_hex.clone(),
                         sequence: case.expected_final_sequence,
@@ -506,6 +561,44 @@ mod tests {
                 },
             }],
         })
+    }
+
+    fn synthetic_success_events(case: &GasCase) -> TestResult<Vec<FixtureEvent>> {
+        let address = decode_address(&case.address_hex, &case.label)?;
+        let signer = cosmos_types::account_address_to_bech32(&address);
+        let tx_bytes = decode_hex(&case.tx_raw_hex, &case.label, "tx raw")?;
+        let tx = ante::TxRaw::decode(tx_bytes.as_slice())?;
+        let signature = tx
+            .signatures
+            .first()
+            .ok_or_else(|| invalid_data(format!("{}: missing signature", case.label)))?;
+        let signature = base64::engine::general_purpose::STANDARD.encode(signature);
+
+        Ok(vec![
+            fixture_event("tx", &[("fee", ""), ("fee_payer", signer.as_str())]),
+            fixture_event(
+                "tx",
+                &[(
+                    "acc_seq",
+                    format!("{signer}/{}", case.account_sequence).as_str(),
+                )],
+            ),
+            fixture_event("tx", &[("signature", signature.as_str())]),
+        ])
+    }
+
+    fn fixture_event(ty: &str, attributes: &[(&str, &str)]) -> FixtureEvent {
+        FixtureEvent {
+            ty: ty.to_owned(),
+            attributes: attributes
+                .iter()
+                .map(|(key, value)| FixtureEventAttribute {
+                    key: (*key).to_owned(),
+                    value: (*value).to_owned(),
+                    index: false,
+                })
+                .collect(),
+        }
     }
 
     fn synthetic_fee_rejection_fixture() -> TestResult<MainnetTxCorpusFixture> {

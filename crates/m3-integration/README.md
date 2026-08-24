@@ -4,9 +4,10 @@ M3 acceptance tests for `celestia-rs` transaction and ante validation.
 
 This crate is the milestone-level harness for comparing Rust ante outcomes
 against Go celestia-app transaction validation results. The 1,062-case app-v6
-mainnet corpus is committed. The acceptance entry point remains ignored while
-the Rust fixture-backed ante path adds Cosmos SDK storage gas and ordered keeper
-events exposed by the first real comparison.
+mainnet corpus is committed. Ordered keeper events now match Go for its 1,057
+direct-sign transactions. The acceptance entry point remains ignored while the
+Rust fixture-backed ante path adds Cosmos SDK storage gas and support for the
+remaining five legacy Amino JSON transactions.
 
 ## Depends On
 
@@ -28,4 +29,10 @@ red acceptance gate with:
 
 ```bash
 cargo test -p m3-integration -- --ignored mainnet_tx_validation_matches_go
+```
+
+The green corpus-wide event checkpoint runs normally with:
+
+```bash
+cargo test -p m3-integration direct_sign_mainnet_tx_keeper_events_match_go
 ```
