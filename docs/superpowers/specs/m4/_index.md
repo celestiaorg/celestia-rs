@@ -17,7 +17,7 @@ Section 3.
 |---|---|---|---|---|
 | 1 | `auth` | 3 | [auth.md](auth.md) | in progress |
 | 2 | `bank` | 3 | [bank.md](bank.md) | in progress |
-| 3 | `staking` | 3 | _to be written_ | pending |
+| 3 | `staking` | 3 | [staking.md](staking.md) | in progress |
 
 ## Acceptance Scaffold
 
