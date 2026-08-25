@@ -44,6 +44,12 @@
 
 ### Added
 
+- Added SDK-compatible `x/auth` module accounts for the fee collector and
+  staking pools, preserving interface wrappers across sequence updates and
+  matching Go account/index bytes.
+- Added `MsgDelegate` execution across staking and bank stores with exact SDK
+  share arithmetic, validator power-index updates, module-pool transfers,
+  events, and Go-generated conformance vectors.
 - Started the M4 `x/staking` keeper with SDK v0.50-compatible validator and
   delegation primary storage, reverse indexes, and Go-generated state vectors.
 - Added SDK-compatible `MsgSend` and single-input `MsgMultiSend` routing to

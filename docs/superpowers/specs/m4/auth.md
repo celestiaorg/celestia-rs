@@ -15,8 +15,10 @@ and the account read/write adapter consumed by the M3 ante handler.
 ## Public API
 
 - `BaseAccount`: address, optional public key, account number, and sequence.
+- `ModuleAccount`: embedded base account, module name, and permissions.
 - `Keeper::get_account`, `has_account`, `set_account`, `remove_account`, and
   `all_accounts`.
+- `Keeper::get_module_account` and `set_module_account`.
 - `Keeper::peek_next_account_number`, `next_account_number`, and
   `create_account`.
 - `ante::AccountReader` and `ante::AccountWriter` implementations.
@@ -33,8 +35,9 @@ and the account read/write adapter consumed by the M3 ante handler.
   `/cosmos.auth.v1beta1.BaseAccount`; its value is the protobuf `BaseAccount`.
 - The address inside `BaseAccount` uses the `celestia` bech32 prefix and must
   match the raw address in the store key.
-- Unsupported account interface variants return a typed error. Module and
-  vesting account support is deferred until their execution paths need it.
+- Module accounts use `/cosmos.auth.v1beta1.ModuleAccount`, preserve their
+  wrapper across sequence updates, and require an address derived from the
+  module name. Unsupported account interface variants return a typed error.
 - The unique account-number index uses the `accountNumber` prefix followed by
   an eight-byte big-endian account number and stores the raw account address.
 
@@ -68,6 +71,8 @@ and interface codecs to emit:
 
 - account collection keys and interface-wrapped values for accounts with and
   without public keys, including large counters;
+- module-account values and indexes for the fee collector and both staking
+  pools;
 - the global account-number key and value encoding.
 
 The committed fixture is `conformance/fixtures/auth/accounts.json` with a
@@ -85,15 +90,15 @@ cargo xtask refresh-fixtures --crate-name auth
   tests pass.
 - [x] The unique account-number secondary index is maintained and byte-matches
   Go vectors.
-- [ ] Module account variants are implemented when required by M4 message
+- [x] Module account variants are implemented when required by M4 message
   execution.
 - [ ] `auth` subtree roots match Go during the M4 block-replay acceptance test.
-- [x] Focused line coverage is at least 90% (98.42% lines).
+- [x] Focused line coverage is at least 90% (97.64% lines).
 - [x] Repository health is green.
 
 ## Out Of Scope For This Checkpoint
 
-- Module and vesting account variants.
+- Vesting account variants.
 - Auth parameters and genesis import/export.
 - Transaction decoding and signature checks, which remain owned by `ante`.
 - gRPC/query services.

@@ -38,5 +38,47 @@
       "account_number_index_key_hex": "6163636f756e744e756d6265720000000100000000",
       "account_number_index_value_hex": "b11ac0a664b41f593e62a8525fd73e2f9f75e343"
     }
+  ],
+  "module_cases": [
+    {
+      "label": "fee-collector",
+      "name": "fee_collector",
+      "permissions": [],
+      "address_hex": "f1829676db577682e944fc3493d451b67ff3e29f",
+      "account_number": 8,
+      "sequence": 0,
+      "store_key_hex": "01f1829676db577682e944fc3493d451b67ff3e29f",
+      "store_value_hex": "0a222f636f736d6f732e617574682e763162657461312e4d6f64756c654163636f756e7412440a330a2f63656c6573746961313778706676616b6d32616d67393632796c73366638347a336b656c6c3863356c706e6a7333731808120d6665655f636f6c6c6563746f72",
+      "account_number_index_key_hex": "6163636f756e744e756d6265720000000000000008",
+      "account_number_index_value_hex": "f1829676db577682e944fc3493d451b67ff3e29f"
+    },
+    {
+      "label": "bonded-pool",
+      "name": "bonded_tokens_pool",
+      "permissions": [
+        "staking"
+      ],
+      "address_hex": "4fea76427b8345861e80a3540a8a9d936fd39391",
+      "account_number": 9,
+      "sequence": 0,
+      "store_key_hex": "014fea76427b8345861e80a3540a8a9d936fd39391",
+      "store_value_hex": "0a222f636f736d6f732e617574682e763162657461312e4d6f64756c654163636f756e7412520a330a2f63656c657374696131666c343876736e6d73647a637638357135643271347a35616a646861387975337933636c723618091212626f6e6465645f746f6b656e735f706f6f6c1a077374616b696e67",
+      "account_number_index_key_hex": "6163636f756e744e756d6265720000000000000009",
+      "account_number_index_value_hex": "4fea76427b8345861e80a3540a8a9d936fd39391"
+    },
+    {
+      "label": "not-bonded-pool",
+      "name": "not_bonded_tokens_pool",
+      "permissions": [
+        "staking"
+      ],
+      "address_hex": "5911b844d7bc224654fe0dcd16babd2d253f2fdf",
+      "account_number": 10,
+      "sequence": 0,
+      "store_key_hex": "015911b844d7bc224654fe0dcd16babd2d253f2fdf",
+      "store_value_hex": "0a222f636f736d6f732e617574682e763162657461312e4d6f64756c654163636f756e7412560a330a2f63656c6573746961317479676d733378686873337976343837706878336477346139356a6e3774376c733379773477180a12166e6f745f626f6e6465645f746f6b656e735f706f6f6c1a077374616b696e67",
+      "account_number_index_key_hex": "6163636f756e744e756d626572000000000000000a",
+      "account_number_index_value_hex": "5911b844d7bc224654fe0dcd16babd2d253f2fdf"
+    }
   ]
 }

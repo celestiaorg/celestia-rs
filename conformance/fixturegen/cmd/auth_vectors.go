@@ -31,6 +31,20 @@ type authAccountsFixture struct {
 	AccountNumber         uint64            `json:"account_number"`
 	AccountNumberValueHex string            `json:"account_number_value_hex"`
 	Cases                 []authAccountCase `json:"cases"`
+	ModuleCases           []authModuleCase  `json:"module_cases"`
+}
+
+type authModuleCase struct {
+	Label                      string   `json:"label"`
+	Name                       string   `json:"name"`
+	Permissions                []string `json:"permissions"`
+	AddressHex                 string   `json:"address_hex"`
+	AccountNumber              uint64   `json:"account_number"`
+	Sequence                   uint64   `json:"sequence"`
+	StoreKeyHex                string   `json:"store_key_hex"`
+	StoreValueHex              string   `json:"store_value_hex"`
+	AccountNumberIndexKeyHex   string   `json:"account_number_index_key_hex"`
+	AccountNumberIndexValueHex string   `json:"account_number_index_value_hex"`
 }
 
 type authAccountCase struct {
@@ -155,6 +169,58 @@ func buildAuthAccountsFixture() (authAccountsFixture, error) {
 		})
 	}
 
+	moduleInputs := []struct {
+		label         string
+		name          string
+		permissions   []string
+		accountNumber uint64
+	}{
+		{label: "fee-collector", name: "fee_collector", permissions: []string{}, accountNumber: 8},
+		{label: "bonded-pool", name: "bonded_tokens_pool", permissions: []string{authtypes.Staking}, accountNumber: 9},
+		{label: "not-bonded-pool", name: "not_bonded_tokens_pool", permissions: []string{authtypes.Staking}, accountNumber: 10},
+	}
+	moduleCases := make([]authModuleCase, 0, len(moduleInputs))
+	for _, input := range moduleInputs {
+		address := authtypes.NewModuleAddress(input.name)
+		base := authtypes.NewBaseAccount(address, nil, input.accountNumber, 0)
+		account := authtypes.NewModuleAccount(base, input.name, input.permissions...)
+		storeKey, err := collections.EncodeKeyWithPrefix(
+			authtypes.AddressStoreKeyPrefix,
+			sdk.AccAddressKey,
+			address,
+		)
+		if err != nil {
+			return authAccountsFixture{}, err
+		}
+		storeValue, err := cdc.MarshalInterface(account)
+		if err != nil {
+			return authAccountsFixture{}, err
+		}
+		indexKey, err := collections.EncodeKeyWithPrefix(
+			authtypes.AccountNumberStoreKeyPrefix,
+			collections.Uint64Key,
+			input.accountNumber,
+		)
+		if err != nil {
+			return authAccountsFixture{}, err
+		}
+		indexValue, err := collections.BytesValue.Encode([]byte(address))
+		if err != nil {
+			return authAccountsFixture{}, err
+		}
+		moduleCases = append(moduleCases, authModuleCase{
+			Label:                      input.label,
+			Name:                       input.name,
+			Permissions:                input.permissions,
+			AddressHex:                 hex.EncodeToString(address),
+			AccountNumber:              input.accountNumber,
+			StoreKeyHex:                hex.EncodeToString(storeKey),
+			StoreValueHex:              hex.EncodeToString(storeValue),
+			AccountNumberIndexKeyHex:   hex.EncodeToString(indexKey),
+			AccountNumberIndexValueHex: hex.EncodeToString(indexValue),
+		})
+	}
+
 	const accountNumber = uint64(42)
 	accountNumberValue, err := collections.Uint64Value.Encode(accountNumber)
 	if err != nil {
@@ -168,6 +234,7 @@ func buildAuthAccountsFixture() (authAccountsFixture, error) {
 		AccountNumber:         accountNumber,
 		AccountNumberValueHex: hex.EncodeToString(accountNumberValue),
 		Cases:                 cases,
+		ModuleCases:           moduleCases,
 	}, nil
 }
 
