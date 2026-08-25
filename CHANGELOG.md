@@ -44,6 +44,8 @@
 
 ### Added
 
+- Added SDK-compatible `MsgSend` and single-input `MsgMultiSend` routing to
+  `bank`, including atomic output aggregation and Go-matched transfer events.
 - Added the first M4 `x/bank` checkpoint with exact SDK v0.50 balance, reverse
   denomination index, and supply encodings; 256-bit transfers and mint/burn
   accounting; ante fee deduction; and Go-generated conformance vectors.

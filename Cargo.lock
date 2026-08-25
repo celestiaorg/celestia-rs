@@ -123,10 +123,12 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "bank"
 version = "0.0.1"
 dependencies = [
+ "abci-types",
  "ante",
  "cosmos-types",
  "hex",
  "kvstore",
+ "prost",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

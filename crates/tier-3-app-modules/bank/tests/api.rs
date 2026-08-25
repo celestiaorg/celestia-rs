@@ -3,8 +3,9 @@
 #![allow(clippy::expect_used)]
 
 use ante::FeeKeeper;
-use bank::{Error, Keeper};
-use cosmos_types::Coin;
+use bank::{Error, Keeper, MSG_MULTI_SEND_TYPE_URL, MSG_SEND_TYPE_URL, SendOutput};
+use cosmos_types::{Any, Coin, proto};
+use prost::Message;
 
 #[test]
 fn balances_are_canonical_ordered_and_zero_is_deleted() {
@@ -127,6 +128,155 @@ fn mint_and_burn_update_balance_and_supply() {
 }
 
 #[test]
+fn multi_send_aggregates_recipients_and_preflights_totals() {
+    let from = [8; 20];
+    let recipient = [9; 20];
+    let mut store = kvstore::Store::new();
+    let mut keeper = Keeper::new(&mut store);
+    keeper
+        .set_balance(&from, &coin("utia", "100"))
+        .expect("sender balance");
+    keeper
+        .multi_send(
+            &from,
+            &[coin("utia", "100")],
+            &[
+                SendOutput {
+                    address: from,
+                    coins: vec![coin("utia", "10")],
+                },
+                SendOutput {
+                    address: recipient,
+                    coins: vec![coin("utia", "30")],
+                },
+                SendOutput {
+                    address: recipient,
+                    coins: vec![coin("utia", "60")],
+                },
+            ],
+        )
+        .expect("multi-send");
+    assert_eq!(keeper.balance(&from, "utia").expect("sender").amount, "10");
+    assert_eq!(
+        keeper
+            .balance(&recipient, "utia")
+            .expect("recipient")
+            .amount,
+        "90"
+    );
+
+    assert!(matches!(
+        keeper.multi_send(
+            &from,
+            &[coin("utia", "10")],
+            &[SendOutput {
+                address: recipient,
+                coins: vec![coin("utia", "11")],
+            }],
+        ),
+        Err(Error::InvalidInputOutput)
+    ));
+    assert!(matches!(
+        keeper.multi_send(
+            &from,
+            &[],
+            &[SendOutput {
+                address: recipient,
+                coins: Vec::new(),
+            }],
+        ),
+        Err(Error::InvalidInputOutput)
+    ));
+    assert_eq!(
+        keeper.balance(&from, "utia").expect("unchanged").amount,
+        "10"
+    );
+}
+
+#[test]
+fn message_router_rejects_unsupported_and_malformed_messages() {
+    let address = cosmos_types::account_address_to_bech32(&[10; 20]);
+    let mut store = kvstore::Store::new();
+    let mut keeper = Keeper::new(&mut store);
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: "/test.Msg".to_owned(),
+            value: Vec::new(),
+        }),
+        Err(Error::UnsupportedMessage(value)) if value == "/test.Msg"
+    ));
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: MSG_SEND_TYPE_URL.to_owned(),
+            value: vec![0xff],
+        }),
+        Err(Error::MalformedMessage)
+    ));
+
+    let empty_send = proto::bank::MsgSend {
+        from_address: address.clone(),
+        to_address: address.clone(),
+        amount: Vec::new(),
+    };
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: MSG_SEND_TYPE_URL.to_owned(),
+            value: empty_send.encode_to_vec(),
+        }),
+        Err(Error::InvalidCoin)
+    ));
+
+    let invalid_address = proto::bank::MsgSend {
+        from_address: "cosmos1invalid".to_owned(),
+        to_address: address.clone(),
+        amount: vec![proto_coin("utia", "1")],
+    };
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: MSG_SEND_TYPE_URL.to_owned(),
+            value: invalid_address.encode_to_vec(),
+        }),
+        Err(Error::InvalidAddress)
+    ));
+
+    let no_inputs = proto::bank::MsgMultiSend {
+        inputs: Vec::new(),
+        outputs: vec![proto::bank::Output {
+            address: address.clone(),
+            coins: vec![proto_coin("utia", "1")],
+        }],
+    };
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: MSG_MULTI_SEND_TYPE_URL.to_owned(),
+            value: no_inputs.encode_to_vec(),
+        }),
+        Err(Error::InvalidInputOutput)
+    ));
+
+    let multiple_inputs = proto::bank::MsgMultiSend {
+        inputs: vec![
+            proto::bank::Input {
+                address: address.clone(),
+                coins: vec![proto_coin("utia", "1")],
+            },
+            proto::bank::Input {
+                address: address.clone(),
+                coins: vec![proto_coin("utia", "1")],
+            },
+        ],
+        outputs: Vec::new(),
+    };
+    assert!(matches!(
+        keeper.execute_message(&Any {
+            type_url: MSG_MULTI_SEND_TYPE_URL.to_owned(),
+            value: multiple_inputs.encode_to_vec(),
+        }),
+        Err(Error::InvalidInputOutput)
+    ));
+}
+
+#[test]
 fn fee_keeper_moves_fees_to_module_collector() {
     let payer = [5; 20];
     let collector = Keeper::fee_collector_address();
@@ -190,4 +340,11 @@ fn rejects_invalid_coin_sets_overflow_and_malformed_state() {
 
 fn coin(denom: &str, amount: &str) -> Coin {
     Coin::new(denom, amount).expect("valid test coin")
+}
+
+fn proto_coin(denom: &str, amount: &str) -> proto::base::Coin {
+    proto::base::Coin {
+        denom: denom.to_owned(),
+        amount: amount.to_owned(),
+    }
 }

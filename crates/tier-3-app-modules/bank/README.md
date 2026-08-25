@@ -6,11 +6,13 @@ Cosmos SDK `x/bank` balance storage for `celestia-rs`.
 
 This crate is the second M4 core-module checkpoint. It provides SDK v0.50
 balance and supply storage, denomination/address reverse indexing, transfers,
-mint/burn arithmetic, and the `ante::FeeKeeper` implementation that moves fees
-to the fee collector module account.
+mint/burn arithmetic, SDK protobuf routing for `MsgSend` and `MsgMultiSend`,
+Go-compatible transfer events, and the `ante::FeeKeeper` implementation that
+moves fees to the fee collector module account.
 
 ## Depends On
 
+- `abci-types`
 - `ante`
 - `cosmos-types`
 - `kvstore`

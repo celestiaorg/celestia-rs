@@ -15,7 +15,8 @@ Celestia app-v6, including the fee deduction adapter consumed by M3 ante.
 
 - `Keeper::balance`, `all_balances`, and `set_balance`.
 - `Keeper::supply` and `set_supply`.
-- `Keeper::send_coins`, `mint_coins`, and `burn_coins`.
+- `Keeper::send_coins`, `multi_send`, `mint_coins`, and `burn_coins`.
+- `Keeper::execute_message` for `MsgSend` and single-input `MsgMultiSend`.
 - `ante::FeeKeeper` implementation and fee collector address derivation.
 
 ## Behavioral Requirements
@@ -57,11 +58,24 @@ Celestia app-v6, including the fee deduction adapter consumed by M3 ante.
 - Insufficient bank funds map to `ante::Error::InsufficientFunds`; other keeper
   failures cross the trait boundary as `ante::Error::State`.
 
+### BANK-REQ-5: Message execution
+
+- The router accepts the canonical `/cosmos.bank.v1beta1.MsgSend` and
+  `/cosmos.bank.v1beta1.MsgMultiSend` type URLs and rejects other messages.
+- Multi-send requires exactly one positive input, one or more positive outputs,
+  and equal input/output denomination totals.
+- All balance changes are preflighted before any write, including repeated
+  recipients and outputs returning coins to the sender.
+- Event type, attribute order, canonical address/coin strings, and event order
+  match the SDK v0.50 bank keeper.
+
 ## Conformance Fixtures
 
 `fixturegen bank-balances` uses Cosmos SDK v0.50.10 collection, bank, and
 `math.Int` codecs to emit balance, reverse-index, and supply bytes for native,
-IBC, and maximum-width amounts. Regenerate with:
+IBC, and maximum-width amounts. `fixturegen bank-messages` emits canonical
+protobuf payloads plus the SDK event stream and expected state for send and
+multi-send execution. Regenerate with:
 
 ```bash
 cargo xtask refresh-fixtures --crate-name bank
@@ -72,9 +86,9 @@ cargo xtask refresh-fixtures --crate-name bank
 - [x] Balance, reverse-index, and supply bytes match Go vectors.
 - [x] Transfers, mint, burn, zero deletion, and 256-bit arithmetic are tested.
 - [x] Ante fee deduction credits the fee collector.
-- [ ] `MsgSend` and `MsgMultiSend` routing emits Go-compatible events.
+- [x] `MsgSend` and `MsgMultiSend` routing emits Go-compatible events.
 - [ ] Bank subtree roots match Go during M4 block replay.
-- [x] Focused line coverage is at least 90% (97.00%).
+- [x] Focused line coverage is at least 90% (97.36%).
 - [x] Repository health is green.
 
 ## Out Of Scope For This Checkpoint

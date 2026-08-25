@@ -10,6 +10,11 @@ pub mod auth {
     pub use cosmos_sdk_proto::cosmos::auth::v1beta1::*;
 }
 
+/// Cosmos bank protobuf types.
+pub mod bank {
+    pub use cosmos_sdk_proto::cosmos::bank::v1beta1::*;
+}
+
 /// Cosmos crypto protobuf types.
 pub mod crypto {
     /// Cosmos secp256k1 protobuf types.
