@@ -415,6 +415,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "ante",
         output_path: "conformance/fixtures/ante/malformed.json",
     },
+    Scenario {
+        name: "auth-accounts",
+        crate_name: "auth",
+        output_path: "conformance/fixtures/auth/accounts.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

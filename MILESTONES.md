@@ -9,8 +9,8 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 | M0  | completed   | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
 | M1  | completed   | Foundational libraries               | `m1-integration::parse_real_mainnet_block_produces_matching_dah` passes |
 | M2  | pending     | State & storage                      | `m2-integration::apply_mainnet_block_diff_produces_matching_kv_root` passes |
-| M3  | pending     | Tx & ante machinery                  | Tx-validation outcome matches Go for ≥ 1000 mainnet txs |
-| M4  | pending     | Core SDK modules (auth, bank, staking) | Per-module subtree roots match Go after replaying mainnet blocks |
+| M3  | completed   | Tx & ante machinery                  | Tx-validation outcome matches Go for ≥ 1000 mainnet txs |
+| M4  | in progress | Core SDK modules (auth, bank, staking) | Per-module subtree roots match Go after replaying mainnet blocks |
 | M5  | pending     | Remaining SDK modules                | Per-module state roots match Go |
 | M6  | pending     | Celestia-specific modules            | App hash matches Go for blob-tx mainnet blocks |
 | M7  | pending     | IBC                                  | IBC-touching mainnet blocks replay; LC verifies headers |
@@ -23,43 +23,15 @@ See `docs/superpowers/specs/2026-05-14-celestia-rs-design.md` for full descripti
 | M14 | pending     | Mainnet validator                    | Signs blocks on mainnet without double-signs |
 
 ## Current focus
-**M2** — state & storage. M1 is complete: tier-0 crates 1-4 (`hash`,
-`encoding`, `crypto`, and `merkle`) and tier-1 crates 5-10
-(`tendermint-types`, `cosmos-types`, `abci-types`, `nmt`, `shares`, and
-`square`) are implemented, and the `m1-integration` DAH acceptance test passes
-against 100 cached mainnet app-v6 blocks. The M2 index and first crate spec
-(`iavl`) are under `docs/superpowers/specs/m2/`; `crates/tier-2-state-and-store/iavl/`
-has an in-memory API checkpoint with Go-compatible roots, iterators, proof op
-bytes, malformed proof coverage, and private node-shape checks. The `kvstore`
-crate is complete with IAVL-backed state, cache, prefix, gas, SDK helper
-coverage, Go-generated conformance fixtures, and `xtask` fixture refresh
-registration. The M2 `ics23-proofs` crate is complete with SDK proof-op
-wrappers, IAVL and simple Merkle membership verification, non-membership
-verification, batch and compressed proof handling, CometBFT `ProofOp` protobuf
-compatibility, Go-generated conformance fixtures, and focused coverage above
-the M2 threshold. The M2 `multistore` crate is complete with in-memory store
-mounting, commit-info protobuf compatibility, deterministic app-hash
-composition, store-root proof ops, commit history, cache multi-store behavior,
-Go-generated conformance fixtures, and focused coverage above the M2
-threshold. The `m2-integration` acceptance scaffold exists and
-`apply_mainnet_block_diff_produces_matching_kv_root` passes against a
-Go-generated, mainnet-height synthetic state-diff window. `fixturegen
-replay-state` is specified and scaffolded for local Celestia app DBs; the
-remaining M2 hardening step is committing a real mainnet replay-state fixture
-when a retained mainnet application DB is available locally. M3 planning has
-started with the transaction-and-ante milestone index and first `ante` crate
-spec.
 
-The first M3 implementation checkpoint has started with
-`crates/tier-3-app-modules/ante/`: public ante skeleton, gas-meter behavior,
-stateless transaction validation, direct secp256k1 signer execution, fee and
-gas conformance fixtures, malformed transaction fixtures, and state-mutation
-hardening. A Go-generated corpus of 1,062 replay-accepted app-v6 mainnet
-transactions is now committed, with per-transaction RPC state hydration and
-production tx-size gas in its expected envelopes. The fixture-backed ante path
-now reproduces the exact ordered fee-transfer, fee, account-sequence, and
-signature events for all 1,057 direct-sign cases in the corpus. The
-`m3-integration` acceptance entry point remains ignored because Rust does not
-yet model Cosmos SDK storage gas, and five replayed transactions use legacy
-Amino JSON signing that the direct-sign handler rejects. Those two effects are
-the next hard gates before enabling the full test.
+**M4** — core SDK modules. M3 is complete: the non-ignored
+`m3-integration::mainnet_tx_validation_matches_go` acceptance test matches Go
+gas, events, signatures, sequence changes, and fee movement for all 1,062
+committed mainnet transactions. M4 starts with the `x/auth` account store and
+its ante trait adapter, followed by `x/bank`, `x/staking`, and block-replay
+subtree-root acceptance.
+
+M2's crate-level implementation and DB-backed empty-store replay shard remain
+green. Its separate non-empty historical-state import hardening item remains
+pending because arbitrary IAVL snapshots need preserved node-version metadata;
+that does not block the focused M4 keeper conformance work.

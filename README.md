@@ -2,9 +2,10 @@
 
 A Rust port of [celestia-app](https://github.com/celestiaorg/celestia-app) — a wire-compatible Celestia consensus node implementation.
 
-**Status:** M2 state-and-storage hardening. M1 is complete; M2 crates are
-implemented and the current work is replacing the synthetic M2 acceptance
-fixture with real replay-state mainnet state diffs.
+**Status:** M4 core SDK modules. M1 and M3 are complete, the M2 storage crates
+and replay scaffold are implemented, and current work is replacing M3's
+fixture-backed state adapters with real `x/auth`, `x/bank`, and `x/staking`
+keepers.
 
 ## Design
 
