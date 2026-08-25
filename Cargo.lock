@@ -1383,6 +1383,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "staking"
+version = "0.0.1"
+dependencies = [
+ "cosmos-types",
+ "hex",
+ "kvstore",
+ "prost",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

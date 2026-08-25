@@ -44,6 +44,8 @@
 
 ### Added
 
+- Started the M4 `x/staking` keeper with SDK v0.50-compatible validator and
+  delegation primary storage, reverse indexes, and Go-generated state vectors.
 - Added SDK-compatible `MsgSend` and single-input `MsgMultiSend` routing to
   `bank`, including atomic output aggregation and Go-matched transfer events.
 - Added the first M4 `x/bank` checkpoint with exact SDK v0.50 balance, reverse

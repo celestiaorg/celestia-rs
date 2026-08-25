@@ -38,6 +38,11 @@ pub mod signing {
     pub use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::*;
 }
 
+/// Cosmos staking protobuf types.
+pub mod staking {
+    pub use cosmos_sdk_proto::cosmos::staking::v1beta1::*;
+}
+
 /// Cosmos transaction protobuf types.
 pub mod tx {
     pub use cosmos_sdk_proto::cosmos::tx::v1beta1::*;
