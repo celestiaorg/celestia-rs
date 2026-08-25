@@ -425,6 +425,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "bank",
         output_path: "conformance/fixtures/bank/balances.json",
     },
+    Scenario {
+        name: "bank-messages",
+        crate_name: "bank",
+        output_path: "conformance/fixtures/bank/messages.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

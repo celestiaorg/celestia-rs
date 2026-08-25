@@ -13,9 +13,11 @@ publish = false
 workspace = true
 
 [dependencies]
+abci-types = { path = "../../tier-1-protocol-types/abci-types" }
 ante = { path = "../ante" }
 cosmos-types = { path = "../../tier-1-protocol-types/cosmos-types" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
+prost = "0.13"
 thiserror = "2"
 
 [dev-dependencies]

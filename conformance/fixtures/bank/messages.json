@@ -1,0 +1,262 @@
+{
+  "scenario": "bank-messages",
+  "cases": [
+    {
+      "label": "send-two-denoms",
+      "type_url": "/cosmos.bank.v1beta1.MsgSend",
+      "value_hex": "0a2f63656c6573746961316b796c7764726c72663232393039736e353834766c38766c347472396164647779756b6a6378122f63656c657374696131616e6c323472797233677373783366793664386b3879747a6e3330346a326c37363437616b641a0b0a057561746f6d120234301a0a0a047574696112023530",
+      "initial_balances": [
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "uatom",
+          "amount": "100"
+        },
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "utia",
+          "amount": "200"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "uatom",
+          "amount": "7"
+        }
+      ],
+      "expected_balances": [
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "uatom",
+          "amount": "60"
+        },
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "utia",
+          "amount": "150"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "uatom",
+          "amount": "47"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "utia",
+          "amount": "50"
+        }
+      ],
+      "events": [
+        {
+          "type": "coin_spent",
+          "attributes": [
+            {
+              "key": "spender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "40uatom,50utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "coin_received",
+          "attributes": [
+            {
+              "key": "receiver",
+              "value": "celestia1anl24ryr3gssx3fy6d8k8ytzn304j2l7647akd",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "40uatom,50utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "transfer",
+          "attributes": [
+            {
+              "key": "recipient",
+              "value": "celestia1anl24ryr3gssx3fy6d8k8ytzn304j2l7647akd",
+              "index": false
+            },
+            {
+              "key": "sender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "40uatom,50utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "sender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "multi-send-two-recipients",
+      "type_url": "/cosmos.bank.v1beta1.MsgMultiSend",
+      "value_hex": "0a4c0a2f63656c6573746961316b796c7764726c72663232393039736e353834766c38766c347472396164647779756b6a6378120c0a057561746f6d1203313030120b0a04757469611203313030124a0a2f63656c657374696131616e6c323472797233677373783366793664386b3879747a6e3330346a326c37363437616b64120b0a057561746f6d12023430120a0a047574696112023330124a0a2f63656c6573746961316a3371766668726b6e3375736437343034346139676835306a7a727066346e6e68663634326a120b0a057561746f6d12023630120a0a047574696112023730",
+      "initial_balances": [
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "uatom",
+          "amount": "200"
+        },
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "utia",
+          "amount": "300"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "uatom",
+          "amount": "5"
+        }
+      ],
+      "expected_balances": [
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "uatom",
+          "amount": "100"
+        },
+        {
+          "address_hex": "b13ee68fe34a94579613a1eacf9d9faac65eb5ae",
+          "denom": "utia",
+          "amount": "200"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "uatom",
+          "amount": "45"
+        },
+        {
+          "address_hex": "ecfeaa8c838a21034524d34f6391629c5f592bfe",
+          "denom": "utia",
+          "amount": "30"
+        },
+        {
+          "address_hex": "9440c4dc769c7906faafad7a545e8f908614d673",
+          "denom": "uatom",
+          "amount": "60"
+        },
+        {
+          "address_hex": "9440c4dc769c7906faafad7a545e8f908614d673",
+          "denom": "utia",
+          "amount": "70"
+        }
+      ],
+      "events": [
+        {
+          "type": "coin_spent",
+          "attributes": [
+            {
+              "key": "spender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "100uatom,100utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "sender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "coin_received",
+          "attributes": [
+            {
+              "key": "receiver",
+              "value": "celestia1anl24ryr3gssx3fy6d8k8ytzn304j2l7647akd",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "40uatom,30utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "transfer",
+          "attributes": [
+            {
+              "key": "recipient",
+              "value": "celestia1anl24ryr3gssx3fy6d8k8ytzn304j2l7647akd",
+              "index": false
+            },
+            {
+              "key": "sender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "40uatom,30utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "coin_received",
+          "attributes": [
+            {
+              "key": "receiver",
+              "value": "celestia1j3qvfhrkn3usd74044a9gh50jzrpf4nnhf642j",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "60uatom,70utia",
+              "index": false
+            }
+          ]
+        },
+        {
+          "type": "transfer",
+          "attributes": [
+            {
+              "key": "recipient",
+              "value": "celestia1j3qvfhrkn3usd74044a9gh50jzrpf4nnhf642j",
+              "index": false
+            },
+            {
+              "key": "sender",
+              "value": "celestia1kylwdrlrf22909sn584vl8vl4tr9addwyukjcx",
+              "index": false
+            },
+            {
+              "key": "amount",
+              "value": "60uatom,70utia",
+              "index": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
