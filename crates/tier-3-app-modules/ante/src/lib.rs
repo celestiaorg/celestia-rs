@@ -308,7 +308,12 @@ impl AnteHandler {
         let auth_info = decode_auth_info(&tx)?;
         let fee = auth_info.fee.as_ref();
         let gas_wanted = fee.map_or(0, |fee| fee.gas_limit);
-        ctx.gas_meter = GasMeter::new(gas_wanted);
+        // The runtime normally enters ante with an empty meter. Fixture-backed
+        // state adapters may pre-consume measured keeper gas on the supplied
+        // context because their minimal trait boundary intentionally hides the
+        // underlying KV operations. Preserve that consumption while applying
+        // the transaction's finite gas limit.
+        ctx.gas_meter.limit = gas_wanted;
         self.consume_tx_size_gas(&mut ctx.gas_meter, tx_bytes.len())?;
 
         let signers = self.signer_data(&tx, accounts)?;

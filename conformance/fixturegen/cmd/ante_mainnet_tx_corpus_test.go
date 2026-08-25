@@ -1027,7 +1027,8 @@ func TestAnteMainnetTxSubprocessReplayInvokesBinary(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "fake-antereplay.sh")
 	body := "#!/bin/sh\ncat > /dev/null\ncat <<'EOF'\n" +
 		`{"results":[{"label":"height-10-tx-0","ok":true,"gas_wanted":500000,"gas_used":2950,` +
-		`"signer_sequences":[{"address_hex":"aa","sequence":10}],"balances":[],"events":[]}]}` +
+		`"signer_sequences":[{"address_hex":"aa","sequence":10}],"balances":[],"events":[],` +
+		`"storage_gas":{"kv_has":3,"kv_read_flat":13,"kv_write_per_byte":346}}]}` +
 		"\nEOF\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatalf("write fake binary: %v", err)
@@ -1051,6 +1052,9 @@ func TestAnteMainnetTxSubprocessReplayInvokesBinary(t *testing.T) {
 	}
 	if len(got.SignerSequences) != 1 || got.SignerSequences[0].Sequence != 10 {
 		t.Fatalf("signer sequences = %#v, want sequence 10", got.SignerSequences)
+	}
+	if got.StorageGas == nil || got.StorageGas.KVHas != 3 || got.StorageGas.KVReadFlat != 13 || got.StorageGas.KVWritePerByte != 346 {
+		t.Fatalf("storage gas = %#v, want subprocess trace fields", got.StorageGas)
 	}
 }
 

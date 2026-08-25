@@ -15,6 +15,11 @@ signature events in Go order. The stateless and signature/account-state fixture
 groups are Go-generated, as are the fee deduction, gas-accounting, malformed
 transaction, and 1,062-case mainnet transaction fixtures.
 
+The mainnet runner supplies measured fixture-backed keeper gas as pre-consumed
+context gas. `AnteHandler::run` preserves that consumption when it applies the
+transaction gas limit, allowing complete Go gas parity without leaking fixture
+or store implementation details into the account and fee traits.
+
 ## Depends On
 
 - `abci-types`

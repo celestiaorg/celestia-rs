@@ -62,6 +62,24 @@ type resultJSON struct {
 	Events          []eventJSON     `json:"events"`
 	SignerSequences []signerSeqJSON `json:"signer_sequences"`
 	Balances        []balanceJSON   `json:"balances"`
+	StorageGas      *storageGasJSON `json:"storage_gas,omitempty"`
+}
+
+type storageGasJSON struct {
+	KVHas                 uint64 `json:"kv_has"`
+	KVDelete              uint64 `json:"kv_delete"`
+	KVReadFlat            uint64 `json:"kv_read_flat"`
+	KVReadPerByte         uint64 `json:"kv_read_per_byte"`
+	KVWriteFlat           uint64 `json:"kv_write_flat"`
+	KVWritePerByte        uint64 `json:"kv_write_per_byte"`
+	KVIterNextFlat        uint64 `json:"kv_iter_next_flat"`
+	TransientHas          uint64 `json:"transient_has"`
+	TransientDelete       uint64 `json:"transient_delete"`
+	TransientReadFlat     uint64 `json:"transient_read_flat"`
+	TransientReadPerByte  uint64 `json:"transient_read_per_byte"`
+	TransientWriteFlat    uint64 `json:"transient_write_flat"`
+	TransientWritePerByte uint64 `json:"transient_write_per_byte"`
+	TransientIterNextFlat uint64 `json:"transient_iter_next_flat"`
 }
 
 type eventJSON struct {
@@ -100,7 +118,20 @@ func run(stdin io.Reader, stdout io.Writer) error {
 	replayer := replay.NewReplayer()
 	results := make([]resultJSON, 0, len(req.Cases))
 	for _, c := range req.Cases {
-		outcome, err := replayer.ReplayCase(toCase(c))
+		replayCase := toCase(c)
+		var outcome replay.Outcome
+		if replayCase.GasProfile == "" || replayCase.GasProfile == "default" {
+			var storageGas replay.StorageGasTrace
+			outcome, storageGas, err = replayer.ReplayCaseWithStorageGas(replayCase)
+			if outcome.OK {
+				result := toResult(c.Label, outcome)
+				result.StorageGas = toStorageGas(storageGas)
+				results = append(results, result)
+				continue
+			}
+		} else {
+			outcome, err = replayer.ReplayCase(replayCase)
+		}
 		if err != nil {
 			return fmt.Errorf("replay case %q: %w", c.Label, err)
 		}
@@ -115,6 +146,25 @@ func run(stdin io.Reader, stdout io.Writer) error {
 		return fmt.Errorf("write response: %w", err)
 	}
 	return nil
+}
+
+func toStorageGas(trace replay.StorageGasTrace) *storageGasJSON {
+	return &storageGasJSON{
+		KVHas:                 trace.KVHas,
+		KVDelete:              trace.KVDelete,
+		KVReadFlat:            trace.KVReadFlat,
+		KVReadPerByte:         trace.KVReadPerByte,
+		KVWriteFlat:           trace.KVWriteFlat,
+		KVWritePerByte:        trace.KVWritePerByte,
+		KVIterNextFlat:        trace.KVIterNextFlat,
+		TransientHas:          trace.TransientHas,
+		TransientDelete:       trace.TransientDelete,
+		TransientReadFlat:     trace.TransientReadFlat,
+		TransientReadPerByte:  trace.TransientReadPerByte,
+		TransientWriteFlat:    trace.TransientWriteFlat,
+		TransientWritePerByte: trace.TransientWritePerByte,
+		TransientIterNextFlat: trace.TransientIterNextFlat,
+	}
 }
 
 func toCase(c caseJSON) replay.Case {

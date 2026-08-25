@@ -38,6 +38,11 @@ operation count or byte total charged by that coefficient. For the first
 committed mainnet case this decomposes the 44,018 storage gas into 3 has calls,
 1 delete, 13 reads covering 1,546 bytes, and 6 writes covering 346 bytes.
 
+For a default-profile accepted case, the JSON response performs those
+diagnostic replays automatically and includes the resulting `storage_gas`
+trace. Rejected cases omit the trace because changing the gas schedule may move
+their rejection point.
+
 ## Build
 
 Requires Go 1.25+.

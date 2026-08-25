@@ -178,6 +178,57 @@ func TestReplayCaseGasProfilesIsolateKVCharges(t *testing.T) {
 	}
 }
 
+func TestReplayCaseWithStorageGasReconstructsDefaultGas(t *testing.T) {
+	txHex, account := buildSignedTxForInjection(t, "celestia", injectedAccountNumber, 0)
+	balance := Balance{AddressHex: account.AddressHex, Denom: "utia", Amount: "1000000"}
+	c := Case{
+		TxRawHex: txHex,
+		Mode:     ModeDeliver,
+		ChainID:  "celestia",
+		Height:   10_126_900,
+		Accounts: []Account{account},
+		Balances: []Balance{balance},
+	}
+
+	outcome, trace, err := NewReplayer().ReplayCaseWithStorageGas(c)
+	if err != nil || !outcome.OK {
+		t.Fatalf("replay case with storage gas: outcome=%+v trace=%+v err=%v", outcome, trace, err)
+	}
+	zeroCase := c
+	zeroCase.GasProfile = "zero"
+	zero, err := NewReplayer().ReplayCase(zeroCase)
+	if err != nil || !zero.OK {
+		t.Fatalf("replay zero profile: outcome=%+v err=%v", zero, err)
+	}
+	storageGas :=
+		trace.KVHas*1_000 +
+			trace.KVDelete*1_000 +
+			trace.KVReadFlat*1_000 +
+			trace.KVReadPerByte*3 +
+			trace.KVWriteFlat*2_000 +
+			trace.KVWritePerByte*30 +
+			trace.KVIterNextFlat*30 +
+			trace.TransientHas*100 +
+			trace.TransientDelete*100 +
+			trace.TransientReadFlat*100 +
+			trace.TransientWriteFlat*200 +
+			trace.TransientWritePerByte*3 +
+			trace.TransientIterNextFlat*3
+	if got, want := zero.GasUsed+storageGas, outcome.GasUsed; got != want {
+		t.Fatalf("reconstructed gas = %d, want default gas %d (trace=%+v)", got, want, trace)
+	}
+	if trace.KVReadFlat == 0 || trace.KVWriteFlat == 0 {
+		t.Fatalf("storage trace must include reads and writes: %+v", trace)
+	}
+}
+
+func TestReplayCaseWithStorageGasRejectsDiagnosticInput(t *testing.T) {
+	_, _, err := NewReplayer().ReplayCaseWithStorageGas(Case{GasProfile: "kv_has"})
+	if err == nil {
+		t.Fatal("expected diagnostic gas input to be rejected by storage tracing")
+	}
+}
+
 func TestWithGasProfileAcceptsEveryDiagnosticCoefficient(t *testing.T) {
 	profiles := []string{
 		"default", "zero",

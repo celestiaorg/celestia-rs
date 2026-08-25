@@ -41,6 +41,43 @@ type Case struct {
 	GasProfile string
 }
 
+// StorageGasTrace records the number of persistent and transient KV gas units
+// consumed by each independently configurable Cosmos SDK gas coefficient.
+// Flat-cost fields count operations; per-byte fields count bytes.
+type StorageGasTrace struct {
+	KVHas                 uint64
+	KVDelete              uint64
+	KVReadFlat            uint64
+	KVReadPerByte         uint64
+	KVWriteFlat           uint64
+	KVWritePerByte        uint64
+	KVIterNextFlat        uint64
+	TransientHas          uint64
+	TransientDelete       uint64
+	TransientReadFlat     uint64
+	TransientReadPerByte  uint64
+	TransientWriteFlat    uint64
+	TransientWritePerByte uint64
+	TransientIterNextFlat uint64
+}
+
+var storageGasProfiles = []string{
+	"kv_has",
+	"kv_delete",
+	"kv_read_flat",
+	"kv_read_per_byte",
+	"kv_write_flat",
+	"kv_write_per_byte",
+	"kv_iter_next_flat",
+	"transient_has",
+	"transient_delete",
+	"transient_read_flat",
+	"transient_read_per_byte",
+	"transient_write_flat",
+	"transient_write_per_byte",
+	"transient_iter_next_flat",
+}
+
 // Replayer holds a single in-memory celestia-app v6 instance and replays corpus
 // cases against it. Each case runs in an isolated cache-branched context so
 // state injected for one case never leaks into another, letting one (expensive
@@ -82,6 +119,87 @@ func (r *Replayer) ReplayCase(c Case) (Outcome, error) {
 		return Outcome{OK: false, ABCICode: code, Codespace: codespace}, nil
 	}
 	return Replay(r.app, ctx, tx, c.Mode == ModeSimulate), nil
+}
+
+// ReplayCaseWithStorageGas replays an accepted case under zero-cost and
+// one-coefficient KV schedules to recover the exact storage operation trace.
+// Rejected cases return an empty trace because a coefficient profile may move
+// the rejection point and therefore does not describe the default execution.
+func (r *Replayer) ReplayCaseWithStorageGas(c Case) (Outcome, StorageGasTrace, error) {
+	if c.GasProfile != "" && c.GasProfile != "default" {
+		return Outcome{}, StorageGasTrace{}, fmt.Errorf("storage gas tracing requires the default gas profile")
+	}
+
+	outcome, err := r.ReplayCase(c)
+	if err != nil || !outcome.OK {
+		return outcome, StorageGasTrace{}, err
+	}
+
+	profileCase := c
+	profileCase.GasProfile = "zero"
+	zero, err := r.ReplayCase(profileCase)
+	if err != nil {
+		return Outcome{}, StorageGasTrace{}, fmt.Errorf("replay zero gas profile: %w", err)
+	}
+	if !zero.OK {
+		return Outcome{}, StorageGasTrace{}, fmt.Errorf("zero gas profile rejected a default-accepted case")
+	}
+
+	var trace StorageGasTrace
+	for _, profile := range storageGasProfiles {
+		profileCase.GasProfile = profile
+		profileOutcome, err := r.ReplayCase(profileCase)
+		if err != nil {
+			return Outcome{}, StorageGasTrace{}, fmt.Errorf("replay gas profile %q: %w", profile, err)
+		}
+		if !profileOutcome.OK {
+			return Outcome{}, StorageGasTrace{}, fmt.Errorf("gas profile %q rejected a default-accepted case", profile)
+		}
+		if profileOutcome.GasUsed < zero.GasUsed {
+			return Outcome{}, StorageGasTrace{}, fmt.Errorf(
+				"gas profile %q used %d gas, below zero profile %d",
+				profile,
+				profileOutcome.GasUsed,
+				zero.GasUsed,
+			)
+		}
+		trace.set(profile, profileOutcome.GasUsed-zero.GasUsed)
+	}
+
+	return outcome, trace, nil
+}
+
+func (t *StorageGasTrace) set(profile string, value uint64) {
+	switch profile {
+	case "kv_has":
+		t.KVHas = value
+	case "kv_delete":
+		t.KVDelete = value
+	case "kv_read_flat":
+		t.KVReadFlat = value
+	case "kv_read_per_byte":
+		t.KVReadPerByte = value
+	case "kv_write_flat":
+		t.KVWriteFlat = value
+	case "kv_write_per_byte":
+		t.KVWritePerByte = value
+	case "kv_iter_next_flat":
+		t.KVIterNextFlat = value
+	case "transient_has":
+		t.TransientHas = value
+	case "transient_delete":
+		t.TransientDelete = value
+	case "transient_read_flat":
+		t.TransientReadFlat = value
+	case "transient_read_per_byte":
+		t.TransientReadPerByte = value
+	case "transient_write_flat":
+		t.TransientWriteFlat = value
+	case "transient_write_per_byte":
+		t.TransientWritePerByte = value
+	case "transient_iter_next_flat":
+		t.TransientIterNextFlat = value
+	}
 }
 
 // caseContext builds the run context for a case: an isolated cache branch with

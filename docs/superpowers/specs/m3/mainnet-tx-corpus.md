@@ -67,6 +67,9 @@ The `expected` envelope records:
 - `error`: stable Rust-facing error code for rejected transactions.
 - `code`, `codespace`, and `log`: Go ABCI result fields.
 - `gas_wanted` and `gas_used`.
+- `storage_gas`: persistent and transient KV operation counts and byte totals,
+  measured by replaying each accepted case with one SDK gas coefficient enabled
+  at a time.
 - `events`: ordered ABCI events with ordered attributes.
 - `signer_sequences`: final signer sequence summary.
 - `balances`: final fee-balance summary.
@@ -99,17 +102,16 @@ contain 1,062 replay-accepted transactions sampled from app-v6 mainnet heights
 hydrates each case from its own pre-block RPC state (with a same-block-created
 account fallback), retries transient archive failures, and obtains the expected
 envelope from the real celestia-app Go ante handler. The runner decodes and
-validates the corpus. Rust now byte-matches the ordered SDK events emitted by
-the fee, bank, and signer decorators for all 1,057 direct-sign cases. The full
-comparison remains a red implementation gate: Rust does not yet model the
-storage gas emitted by circuit, minfee, auth, and bank keeper access, and five
-cases use legacy Amino JSON signing.
+validates the corpus. Rust prices the measured storage traces with the app-v6
+Cosmos SDK schedules and now matches the complete Go outcome for all 1,057
+direct-sign cases. The full comparison remains a red implementation gate only
+because five cases use legacy Amino JSON signing.
 
 The Go `antereplay` input accepts diagnostic `gas_profile` values that isolate
-one persistent or transient KV gas coefficient at a time. This makes the
-remaining storage-gas work measurable as operation counts and byte totals. For
-the first corpus case the profiles account exactly for the 44,018-gas gap: 3
-has calls, 1 delete, 13 reads over 1,546 bytes, and 6 writes over 346 bytes.
+one persistent or transient KV gas coefficient at a time. The committed corpus
+records those operation counts and byte totals in each accepted result. For the
+first corpus case they account exactly for 44,018 storage gas: 3 has calls, 1
+delete, 13 reads over 1,546 bytes, and 6 writes over 346 bytes.
 
 ## Definition Of Done
 
@@ -125,7 +127,7 @@ has calls, 1 delete, 13 reads over 1,546 bytes, and 6 writes over 346 bytes.
       `.meta.json`.
 - [x] Implement the full fixture runner in `m3-integration`.
 - [x] Match ordered Go ante events for at least 1000 direct-sign transactions.
-- [ ] Match Go storage gas in the Rust runner.
+- [x] Match Go storage gas in the Rust runner.
 - [ ] Support the five legacy Amino JSON cases in the committed corpus.
 - [ ] Remove the ignore from `mainnet_tx_validation_matches_go`.
 - [x] Run `cargo xtask repo-health --offline`.

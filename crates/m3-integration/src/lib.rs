@@ -111,6 +111,40 @@ mod tests {
         signer_sequences: Vec<FixtureSignerSequence>,
         #[serde(default)]
         balances: Vec<FixtureBalance>,
+        #[serde(default)]
+        storage_gas: Option<FixtureStorageGas>,
+    }
+
+    #[derive(Debug, Clone, Default, Deserialize)]
+    struct FixtureStorageGas {
+        #[serde(default)]
+        kv_has: u64,
+        #[serde(default)]
+        kv_delete: u64,
+        #[serde(default)]
+        kv_read_flat: u64,
+        #[serde(default)]
+        kv_read_per_byte: u64,
+        #[serde(default)]
+        kv_write_flat: u64,
+        #[serde(default)]
+        kv_write_per_byte: u64,
+        #[serde(default)]
+        kv_iter_next_flat: u64,
+        #[serde(default)]
+        transient_has: u64,
+        #[serde(default)]
+        transient_delete: u64,
+        #[serde(default)]
+        transient_read_flat: u64,
+        #[serde(default)]
+        transient_read_per_byte: u64,
+        #[serde(default)]
+        transient_write_flat: u64,
+        #[serde(default)]
+        transient_write_per_byte: u64,
+        #[serde(default)]
+        transient_iter_next_flat: u64,
     }
 
     #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -180,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pending Rust storage-gas and legacy Amino sign-mode parity"]
+    #[ignore = "pending legacy Amino sign-mode parity"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
         let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
         validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
@@ -188,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_sign_mainnet_tx_keeper_events_match_go() -> TestResult<()> {
+    fn direct_sign_mainnet_tx_outcomes_match_go() -> TestResult<()> {
         let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
         validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
         assert!(
@@ -200,31 +234,22 @@ mod tests {
         let mut unsupported = 0_usize;
         for case in &fixture.cases {
             let name = case_name(case);
-            let (result, _) = execute_mainnet_tx_case(&fixture, case, &name)?;
-            let outcome = match result {
-                Ok(outcome) => outcome,
+            let (result, fees) = execute_mainnet_tx_case(&fixture, case, &name)?;
+            match result {
                 Err(Error::UnsupportedSignMode) => {
                     unsupported += 1;
                     continue;
                 }
-                Err(error) => {
-                    return Err(invalid_data(format!(
-                        "{name}: Rust ante unexpectedly rejected tx with {error}"
-                    ))
-                    .into());
+                result => {
+                    compare_result(case, &name, result, &fees)?;
                 }
-            };
-            assert_eq!(
-                events_from_outcome(&outcome.events),
-                case.expected.events,
-                "{name}"
-            );
+            }
             matched += 1;
         }
 
         assert!(
             matched >= MIN_MAINNET_TX_CASES,
-            "ordered keeper events must match for at least {MIN_MAINNET_TX_CASES} direct-sign mainnet transactions"
+            "complete ante outcomes must match for at least {MIN_MAINNET_TX_CASES} direct-sign mainnet transactions"
         );
         assert_eq!(matched + unsupported, fixture.cases.len());
         assert_eq!(unsupported, 5, "unexpected legacy Amino corpus count");
@@ -242,6 +267,14 @@ mod tests {
     fn mainnet_tx_runner_rejects_synthetic_fee_case() -> TestResult<()> {
         let fixture = synthetic_fee_rejection_fixture()?;
         run_mainnet_tx_fixture(&fixture, 1)
+    }
+
+    #[test]
+    fn mainnet_tx_runner_requires_storage_gas_trace_for_accepted_case() -> TestResult<()> {
+        let mut fixture = synthetic_success_fixture()?;
+        fixture.cases[0].expected.storage_gas = None;
+
+        assert_error_contains(run_mainnet_tx_fixture(&fixture, 1), "storage gas trace")
     }
 
     #[test]
@@ -395,12 +428,21 @@ mod tests {
         let tx_bytes = decode_hex(&case.tx_raw_hex, name, "tx raw")?;
         let mut accounts = CorpusAccounts::from_fixture(&case.accounts, name)?;
         let mut fees = CorpusFees::from_fixture(&case.balances, name)?;
-        let result = handler.run(
-            run_context(&case.mode, case.height)?,
-            &tx_bytes,
-            &mut accounts,
-            &mut fees,
-        );
+        let storage_gas = if case.expected.ok {
+            cosmos_sdk_v050_storage_gas(
+                case.expected.storage_gas.as_ref().ok_or_else(|| {
+                    invalid_data(format!(
+                        "{name}: accepted case is missing its storage gas trace"
+                    ))
+                })?,
+                name,
+            )?
+        } else {
+            0
+        };
+        let mut ctx = run_context(&case.mode, case.height)?;
+        ctx.gas_meter.consumed = storage_gas;
+        let result = handler.run(ctx, &tx_bytes, &mut accounts, &mut fees);
         Ok((result, fees))
     }
 
@@ -558,6 +600,7 @@ mod tests {
                         sequence: case.expected_final_sequence,
                     }],
                     balances: Vec::new(),
+                    storage_gas: Some(FixtureStorageGas::default()),
                 },
             }],
         })
@@ -649,6 +692,7 @@ mod tests {
                     events: Vec::new(),
                     signer_sequences: Vec::new(),
                     balances: case.expected_balances.clone(),
+                    storage_gas: None,
                 },
             }],
         })
@@ -782,6 +826,37 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    fn cosmos_sdk_v050_storage_gas(trace: &FixtureStorageGas, name: &str) -> TestResult<u64> {
+        // cosmossdk.io/store v1.1.3-celestia.1 defaults used by the app-v6
+        // context. Flat fields count operations and per-byte fields count
+        // bytes, as measured by the Go one-coefficient replay profiles.
+        let terms = [
+            (trace.kv_has, 1_000_u64),
+            (trace.kv_delete, 1_000),
+            (trace.kv_read_flat, 1_000),
+            (trace.kv_read_per_byte, 3),
+            (trace.kv_write_flat, 2_000),
+            (trace.kv_write_per_byte, 30),
+            (trace.kv_iter_next_flat, 30),
+            (trace.transient_has, 100),
+            (trace.transient_delete, 100),
+            (trace.transient_read_flat, 100),
+            (trace.transient_read_per_byte, 0),
+            (trace.transient_write_flat, 200),
+            (trace.transient_write_per_byte, 3),
+            (trace.transient_iter_next_flat, 3),
+        ];
+        terms.into_iter().try_fold(0_u64, |total, (units, cost)| {
+            let charge = units.checked_mul(cost).ok_or_else(|| {
+                invalid_data(format!("{name}: storage gas multiplication overflow"))
+            })?;
+            total
+                .checked_add(charge)
+                .ok_or_else(|| invalid_data(format!("{name}: storage gas addition overflow")))
+                .map_err(Into::into)
+        })
     }
 
     /// A transaction Go accepted always reports ABCI code 0 with an empty
