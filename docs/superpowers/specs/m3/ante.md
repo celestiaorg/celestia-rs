@@ -202,18 +202,21 @@ info bytes, mismatched signature counts, empty messages, unsupported extension
 options, and memos longer than `AnteConfig::max_memo_characters`.
 
 **REQ-2.** The ante handler supports `SIGN_MODE_DIRECT` for single secp256k1
-signers. It rejects `Unspecified`, `Textual`, `DirectAux`,
-`LegacyAminoJson`, `Eip191`, and all multisig mode infos until fixtures prove
-the exact Go behavior needed by Celestia mainnet.
+signers and `SIGN_MODE_LEGACY_AMINO_JSON` for the delegate and withdraw
+delegator reward message shapes present in the mainnet corpus. It rejects
+`Unspecified`, `Textual`, `DirectAux`, `Eip191`, other legacy Amino message
+types, and all multisig mode infos until fixtures prove the exact Go behavior
+needed by Celestia mainnet.
 
 **REQ-3.** Signer addresses are derived from compressed secp256k1 public keys
 using the `crypto` and `cosmos-types` address helpers. If an account already
 has a public key, the transaction public key must match it. If the account has
 no public key and the signature verifies, `run` stores the public key.
 
-**REQ-4.** `signer_data` constructs one `SignDoc` per signer with the original
-body bytes, auth-info bytes, configured chain ID, and account number from
-state. Its `sign_bytes` must byte-match Cosmos SDK `SIGN_MODE_DIRECT`.
+**REQ-4.** `signer_data` constructs one sign document per signer. Direct sign
+bytes use the original body bytes, auth-info bytes, configured chain ID, and
+account number from state. Legacy Amino JSON sign bytes use the SDK canonical
+JSON document and message names. Both forms must byte-match Cosmos SDK.
 
 **REQ-5.** Signature verification uses Cosmos SDK secp256k1 lower-S semantics
 from the local `crypto` crate. Invalid public keys, malformed signatures, and
@@ -303,21 +306,21 @@ only once it can produce the committed corpus fixture from explicit inputs.
 - [x] Crate created at `crates/tier-3-app-modules/ante/` with a `Cargo.toml`
       inheriting workspace metadata, and the crate path is added to root
       `Cargo.toml` `[workspace]` members.
-- [ ] Public API above implemented with documented modules and
+- [x] Public API above implemented with documented modules and
       `#![forbid(unsafe_code)]`.
-- [ ] All REQ-1..REQ-14 covered by unit, property, or conformance tests.
-- [ ] All six conformance fixture files committed with `.meta.json` sidecars
-      (`stateless.json`, `signatures.json`, `fees.json`, `gas.json`, and
-      `malformed.json` committed; mainnet transaction corpus pending).
-- [ ] `m3-integration::mainnet_tx_validation_matches_go` passes for at least
+- [x] All REQ-1..REQ-14 covered by unit, property, or conformance tests.
+- [x] All six conformance fixture files committed with `.meta.json` sidecars
+      (`stateless.json`, `signatures.json`, `fees.json`, `gas.json`,
+      `malformed.json`, and the mainnet transaction corpus).
+- [x] `m3-integration::mainnet_tx_validation_matches_go` passes for at least
       1000 mainnet transactions.
-- [ ] `cargo test -p ante` green.
-- [ ] `cargo clippy -p ante --all-targets -- -D warnings` green.
-- [ ] `cargo fmt --check` green.
-- [ ] `cargo llvm-cov -p ante --summary-only` reports >= 90 % line coverage.
-- [ ] `crates/tier-3-app-modules/ante/README.md` present with purpose /
+- [x] `cargo test -p ante` green.
+- [x] `cargo clippy -p ante --all-targets -- -D warnings` green.
+- [x] `cargo fmt --check` green.
+- [x] `cargo llvm-cov -p ante --summary-only` reports >= 90 % line coverage.
+- [x] `crates/tier-3-app-modules/ante/README.md` present with purpose /
       consumers / conformance.
-- [ ] Ante fixturegen scenarios registered in BOTH the Go fixturegen and the
+- [x] Ante fixturegen scenarios registered in BOTH the Go fixturegen and the
       Rust `SCENARIOS` const.
 
 ## Out Of Scope
@@ -325,8 +328,8 @@ only once it can produce the committed corpus fixture from explicit inputs.
 - `x/auth` account store encoding and genesis initialization.
 - `x/bank` balances, supply, sends, blocked addresses, and metadata.
 - Message service routing, keeper execution, and module state transitions.
-- Legacy Amino JSON signing, textual signing, SIGN_MODE_DIRECT_AUX, multisig,
-  and feegrant/authz semantics.
+- Legacy Amino JSON message shapes outside the committed corpus, textual
+  signing, SIGN_MODE_DIRECT_AUX, multisig, and feegrant/authz semantics.
 - Mempool priority, replacement policy, peer scoring, and gossip.
 - Persistent stores, snapshots, pruning, and ABCI server integration.
 

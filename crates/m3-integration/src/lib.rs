@@ -214,47 +214,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pending legacy Amino sign-mode parity"]
     fn mainnet_tx_validation_matches_go() -> TestResult<()> {
         let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
         validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
         run_mainnet_tx_fixture(&fixture, MIN_MAINNET_TX_CASES)
-    }
-
-    #[test]
-    fn direct_sign_mainnet_tx_outcomes_match_go() -> TestResult<()> {
-        let (fixture, meta, _) = load_mainnet_tx_corpus_fixture()?;
-        validate_mainnet_tx_corpus_meta(&fixture, &meta)?;
-        assert!(
-            fixture.cases.len() >= MIN_MAINNET_TX_CASES,
-            "mainnet tx corpus must contain at least {MIN_MAINNET_TX_CASES} cases"
-        );
-
-        let mut matched = 0_usize;
-        let mut unsupported = 0_usize;
-        for case in &fixture.cases {
-            let name = case_name(case);
-            let (result, fees) = execute_mainnet_tx_case(&fixture, case, &name)?;
-            match result {
-                Err(Error::UnsupportedSignMode) => {
-                    unsupported += 1;
-                    continue;
-                }
-                result => {
-                    compare_result(case, &name, result, &fees)?;
-                }
-            }
-            matched += 1;
-        }
-
-        assert!(
-            matched >= MIN_MAINNET_TX_CASES,
-            "complete ante outcomes must match for at least {MIN_MAINNET_TX_CASES} direct-sign mainnet transactions"
-        );
-        assert_eq!(matched + unsupported, fixture.cases.len());
-        assert_eq!(unsupported, 5, "unexpected legacy Amino corpus count");
-
-        Ok(())
     }
 
     #[test]

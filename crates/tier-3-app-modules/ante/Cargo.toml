@@ -20,9 +20,9 @@ crypto = { path = "../../tier-0-primitives/crypto" }
 hash = { path = "../../tier-0-primitives/hash" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 prost = "0.13"
+serde_json = "1"
 thiserror = "2"
 
 [dev-dependencies]
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"

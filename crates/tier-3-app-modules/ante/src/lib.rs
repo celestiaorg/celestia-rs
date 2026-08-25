@@ -18,6 +18,9 @@ const DEFAULT_TX_SIZE_COST_PER_BYTE: Gas = 10;
 const DEFAULT_SIG_VERIFY_COST_SECP256K1: Gas = 1000;
 const DEFAULT_MAX_MEMO_CHARACTERS: usize = 256;
 const SECP256K1_PUBLIC_KEY_TYPE_URL: &str = "/cosmos.crypto.secp256k1.PubKey";
+const MSG_DELEGATE_TYPE_URL: &str = "/cosmos.staking.v1beta1.MsgDelegate";
+const MSG_WITHDRAW_DELEGATOR_REWARD_TYPE_URL: &str =
+    "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward";
 const FEE_COLLECTOR_MODULE_NAME: &[u8] = b"fee_collector";
 
 /// Cosmos SDK transaction execution mode.
@@ -243,7 +246,10 @@ impl AnteHandler {
 
         let auth_info = decode_auth_info(&tx)?;
         for signer_info in &auth_info.signer_infos {
-            direct_sign_mode(&signer_info.mode_info)?;
+            let mode = single_sign_mode(&signer_info.mode_info)?;
+            if mode == SignMode::LegacyAminoJson {
+                validate_legacy_amino_messages(&body.messages)?;
+            }
         }
         Ok(tx)
     }
@@ -255,9 +261,10 @@ impl AnteHandler {
         accounts: &A,
     ) -> Result<Vec<SignerData>> {
         let auth_info = decode_auth_info(tx)?;
+        let body = decode_tx_body(tx)?;
         let mut out = Vec::with_capacity(auth_info.signer_infos.len());
         for (signer_info, signature) in auth_info.signer_infos.iter().zip(&tx.signatures) {
-            let mode = direct_sign_mode(&signer_info.mode_info)?;
+            let mode = single_sign_mode(&signer_info.mode_info)?;
             let public_key = signer_info.public_key.clone().ok_or(Error::MissingSigner)?;
             let public_key_bytes = secp256k1_public_key_bytes(&public_key)?;
             let address = crypto::secp256k1::address(&public_key_bytes);
@@ -270,14 +277,24 @@ impl AnteHandler {
                     return Err(Error::InvalidPublicKey);
                 }
             }
-            let sign_bytes = SignDoc {
-                body_bytes: tx.body_bytes.clone(),
-                auth_info_bytes: tx.auth_info_bytes.clone(),
-                chain_id: self.config.chain_id.clone(),
-                account_number: account.account_number,
-            }
-            .sign_bytes()
-            .map_err(map_cosmos_error)?;
+            let sign_bytes = match mode {
+                SignMode::Direct => SignDoc {
+                    body_bytes: tx.body_bytes.clone(),
+                    auth_info_bytes: tx.auth_info_bytes.clone(),
+                    chain_id: self.config.chain_id.clone(),
+                    account_number: account.account_number,
+                }
+                .sign_bytes()
+                .map_err(map_cosmos_error)?,
+                SignMode::LegacyAminoJson => legacy_amino_sign_bytes(
+                    &self.config.chain_id,
+                    account.account_number,
+                    account.sequence,
+                    &body,
+                    auth_info.fee.as_ref(),
+                )?,
+                _ => return Err(Error::UnsupportedSignMode),
+            };
 
             out.push(SignerData {
                 address,
@@ -670,13 +687,158 @@ fn decode_auth_info(tx: &TxRaw) -> Result<AuthInfo> {
     AuthInfo::from_proto(proto).map_err(map_cosmos_error)
 }
 
-fn direct_sign_mode(mode_info: &ModeInfo) -> Result<SignMode> {
+fn single_sign_mode(mode_info: &ModeInfo) -> Result<SignMode> {
     match mode_info {
         ModeInfo::Single {
             mode: SignMode::Direct,
         } => Ok(SignMode::Direct),
+        ModeInfo::Single {
+            mode: SignMode::LegacyAminoJson,
+        } => Ok(SignMode::LegacyAminoJson),
         ModeInfo::Single { .. } | ModeInfo::Multi { .. } => Err(Error::UnsupportedSignMode),
     }
+}
+
+fn validate_legacy_amino_messages(messages: &[cosmos_types::Any]) -> Result<()> {
+    if messages.iter().all(|message| {
+        matches!(
+            message.type_url.as_str(),
+            MSG_DELEGATE_TYPE_URL | MSG_WITHDRAW_DELEGATOR_REWARD_TYPE_URL
+        )
+    }) {
+        Ok(())
+    } else {
+        Err(Error::UnsupportedSignMode)
+    }
+}
+
+fn legacy_amino_sign_bytes(
+    chain_id: &str,
+    account_number: u64,
+    sequence: u64,
+    body: &cosmos_types::TxBody,
+    fee: Option<&Fee>,
+) -> Result<Vec<u8>> {
+    validate_legacy_amino_messages(&body.messages)?;
+    let messages = body
+        .messages
+        .iter()
+        .map(legacy_amino_message_json)
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut fee_json = serde_json::Map::new();
+    let amount = fee.map_or(&[][..], |fee| fee.amount.as_slice());
+    fee_json.insert(
+        "amount".to_owned(),
+        serde_json::Value::Array(
+            amount
+                .iter()
+                .map(|coin| {
+                    serde_json::json!({
+                        "amount": coin.amount,
+                        "denom": coin.denom,
+                    })
+                })
+                .collect(),
+        ),
+    );
+    fee_json.insert(
+        "gas".to_owned(),
+        serde_json::Value::String(fee.map_or(0, |fee| fee.gas_limit).to_string()),
+    );
+    if let Some(fee) = fee {
+        if !fee.granter.is_empty() {
+            fee_json.insert(
+                "granter".to_owned(),
+                serde_json::Value::String(fee.granter.clone()),
+            );
+        }
+        if !fee.payer.is_empty() {
+            fee_json.insert(
+                "payer".to_owned(),
+                serde_json::Value::String(fee.payer.clone()),
+            );
+        }
+    }
+
+    let mut sign_doc = serde_json::Map::new();
+    sign_doc.insert(
+        "account_number".to_owned(),
+        serde_json::Value::String(account_number.to_string()),
+    );
+    sign_doc.insert(
+        "chain_id".to_owned(),
+        serde_json::Value::String(chain_id.to_owned()),
+    );
+    sign_doc.insert("fee".to_owned(), serde_json::Value::Object(fee_json));
+    sign_doc.insert(
+        "memo".to_owned(),
+        serde_json::Value::String(body.memo.clone()),
+    );
+    sign_doc.insert("msgs".to_owned(), serde_json::Value::Array(messages));
+    sign_doc.insert(
+        "sequence".to_owned(),
+        serde_json::Value::String(sequence.to_string()),
+    );
+    if body.timeout_height != 0 {
+        sign_doc.insert(
+            "timeout_height".to_owned(),
+            serde_json::Value::String(body.timeout_height.to_string()),
+        );
+    }
+    serde_json::to_vec(&serde_json::Value::Object(sign_doc)).map_err(|_| Error::MalformedTx)
+}
+
+fn legacy_amino_message_json(message: &cosmos_types::Any) -> Result<serde_json::Value> {
+    let (message_type, value) = match message.type_url.as_str() {
+        MSG_WITHDRAW_DELEGATOR_REWARD_TYPE_URL => {
+            let message = MsgWithdrawDelegatorReward::decode(message.value.as_slice())
+                .map_err(|_| Error::MalformedTx)?;
+            (
+                "cosmos-sdk/MsgWithdrawDelegationReward",
+                serde_json::json!({
+                    "delegator_address": message.delegator_address,
+                    "validator_address": message.validator_address,
+                }),
+            )
+        }
+        MSG_DELEGATE_TYPE_URL => {
+            let message =
+                MsgDelegate::decode(message.value.as_slice()).map_err(|_| Error::MalformedTx)?;
+            let amount = message.amount.ok_or(Error::MalformedTx)?;
+            (
+                "cosmos-sdk/MsgDelegate",
+                serde_json::json!({
+                    "amount": {
+                        "amount": amount.amount,
+                        "denom": amount.denom,
+                    },
+                    "delegator_address": message.delegator_address,
+                    "validator_address": message.validator_address,
+                }),
+            )
+        }
+        _ => return Err(Error::UnsupportedSignMode),
+    };
+    Ok(serde_json::json!({"type": message_type, "value": value}))
+}
+
+#[derive(Clone, PartialEq, Message)]
+struct MsgWithdrawDelegatorReward {
+    #[prost(string, tag = "1")]
+    delegator_address: String,
+    #[prost(string, tag = "2")]
+    validator_address: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+struct MsgDelegate {
+    #[prost(string, tag = "1")]
+    delegator_address: String,
+    #[prost(string, tag = "2")]
+    validator_address: String,
+    #[prost(message, optional, tag = "3")]
+    amount: Option<cosmos_types::proto::base::Coin>,
 }
 
 fn secp256k1_public_key_bytes(
@@ -733,5 +895,73 @@ fn map_cosmos_error(error: cosmos_types::Error) -> Error {
             drop(actual);
             Error::MalformedTx
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_amino_withdraw_reward_sign_bytes_match_go() {
+        let message = MsgWithdrawDelegatorReward {
+            delegator_address: "celestia1zj2vpvjp2cr2950r350zp67py5wsnn6em9j8p2".to_owned(),
+            validator_address: "celestiavaloper1c9ye54e3pzwm3e0zpdlel6pnavrj9qqvjeqh0m".to_owned(),
+        };
+        let body = cosmos_types::TxBody {
+            messages: vec![cosmos_types::Any {
+                type_url: MSG_WITHDRAW_DELEGATOR_REWARD_TYPE_URL.to_owned(),
+                value: message.encode_to_vec(),
+            }],
+            memo: String::new(),
+            timeout_height: 0,
+            extension_options: Vec::new(),
+            non_critical_extension_options: Vec::new(),
+        };
+        let fee = Fee {
+            amount: vec![cosmos_types::Coin::new("utia", "15593").expect("valid fee")],
+            gas_limit: 155_929,
+            payer: String::new(),
+            granter: String::new(),
+        };
+
+        let got = legacy_amino_sign_bytes("celestia", 1_133_911, 138, &body, Some(&fee))
+            .expect("legacy amino sign bytes");
+        let expected = r#"{"account_number":"1133911","chain_id":"celestia","fee":{"amount":[{"amount":"15593","denom":"utia"}],"gas":"155929"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgWithdrawDelegationReward","value":{"delegator_address":"celestia1zj2vpvjp2cr2950r350zp67py5wsnn6em9j8p2","validator_address":"celestiavaloper1c9ye54e3pzwm3e0zpdlel6pnavrj9qqvjeqh0m"}}],"sequence":"138"}"#;
+        assert_eq!(got, expected.as_bytes());
+    }
+
+    #[test]
+    fn legacy_amino_delegate_sign_bytes_match_go() {
+        let message = MsgDelegate {
+            delegator_address: "celestia15mc6j6cklfpel640rp5864cegjnr7n02vr89l3".to_owned(),
+            validator_address: "celestiavaloper1qe8uuf5x69c526h4nzxwv4ltftr73v7q5qhs58".to_owned(),
+            amount: Some(cosmos_types::proto::base::Coin {
+                denom: "utia".to_owned(),
+                amount: "130000000".to_owned(),
+            }),
+        };
+        let body = cosmos_types::TxBody {
+            messages: vec![cosmos_types::Any {
+                type_url: MSG_DELEGATE_TYPE_URL.to_owned(),
+                value: message.encode_to_vec(),
+            }],
+            memo: String::new(),
+            timeout_height: 0,
+            extension_options: Vec::new(),
+            non_critical_extension_options: Vec::new(),
+        };
+        let fee = Fee {
+            amount: vec![cosmos_types::Coin::new("utia", "4009").expect("valid fee")],
+            gas_limit: 200_450,
+            payer: String::new(),
+            granter: String::new(),
+        };
+
+        let got = legacy_amino_sign_bytes("celestia", 27_785, 157, &body, Some(&fee))
+            .expect("legacy amino sign bytes");
+        let expected = r#"{"account_number":"27785","chain_id":"celestia","fee":{"amount":[{"amount":"4009","denom":"utia"}],"gas":"200450"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgDelegate","value":{"amount":{"amount":"130000000","denom":"utia"},"delegator_address":"celestia15mc6j6cklfpel640rp5864cegjnr7n02vr89l3","validator_address":"celestiavaloper1qe8uuf5x69c526h4nzxwv4ltftr73v7q5qhs58"}}],"sequence":"157"}"#;
+        assert_eq!(got, expected.as_bytes());
     }
 }

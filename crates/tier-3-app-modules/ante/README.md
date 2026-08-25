@@ -15,6 +15,10 @@ signature events in Go order. The stateless and signature/account-state fixture
 groups are Go-generated, as are the fee deduction, gas-accounting, malformed
 transaction, and 1,062-case mainnet transaction fixtures.
 
+In addition to direct signing, the ante handler reproduces canonical legacy
+Amino JSON sign bytes for the delegate and withdraw-delegator-reward message
+shapes exercised by the mainnet corpus.
+
 The mainnet runner supplies measured fixture-backed keeper gas as pre-consumed
 context gas. `AnteHandler::run` preserves that consumption when it applies the
 transaction gas limit, allowing complete Go gas parity without leaking fixture

@@ -44,6 +44,10 @@
 
 ### Added
 
+- Added canonical `SIGN_MODE_LEGACY_AMINO_JSON` sign-byte generation for the
+  staking delegate and distribution reward message shapes in the M3 mainnet
+  corpus. The full, non-ignored acceptance test now matches Go gas, events,
+  signatures, sequences, and fee movement for all 1,062 transactions.
 - Added per-case persistent and transient KV operation traces to the M3
   mainnet ante corpus. The Rust runner prices those measured operations with
   the app-v6 Cosmos SDK gas schedules and now matches the complete Go outcome
