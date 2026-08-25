@@ -435,6 +435,11 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "staking",
         output_path: "conformance/fixtures/staking/state.json",
     },
+    Scenario {
+        name: "staking-delegate",
+        crate_name: "staking",
+        output_path: "conformance/fixtures/staking/delegate.json",
+    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).
