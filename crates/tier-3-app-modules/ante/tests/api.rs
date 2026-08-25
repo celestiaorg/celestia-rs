@@ -123,6 +123,38 @@ fn deliver_run_verifies_signature_sets_public_key_and_increments_sequence() {
 }
 
 #[test]
+fn run_preserves_preconsumed_context_gas() {
+    let handler = handler();
+    let (tx_bytes, address, public_key) = signed_tx(7, 9);
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: Some(public_key),
+    });
+    let mut fees = NoFees;
+
+    let baseline = handler
+        .run(deliver_context(), &tx_bytes, &mut accounts, &mut fees)
+        .expect("baseline ante run");
+
+    let mut accounts = Accounts::from_account(Account {
+        address,
+        account_number: 7,
+        sequence: 9,
+        public_key: None,
+    });
+    let mut ctx = deliver_context();
+    ctx.gas_meter.consumed = 44_018;
+    let with_storage = handler
+        .run(ctx, &tx_bytes, &mut accounts, &mut fees)
+        .expect("ante run with preconsumed storage gas");
+
+    assert_eq!(with_storage.gas_used, baseline.gas_used + 44_018);
+    assert_eq!(with_storage.gas_wanted, baseline.gas_wanted);
+}
+
+#[test]
 fn run_rejects_sequence_mismatch_and_bad_signature_without_state_mutation() {
     let handler = handler();
     let (tx_bytes, address, public_key) = signed_tx(7, 9);

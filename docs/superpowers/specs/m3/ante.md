@@ -227,9 +227,10 @@ transaction; successful `Deliver` mode increments every signer sequence by one.
 `OutOfGas` after recording consumed gas; overflow returns `GasOverflow`;
 infinite meters never return `OutOfGas`.
 
-**REQ-8.** `run` initializes gas wanted from `AuthInfo.fee.gas_limit`, consumes
-transaction-size gas using `tx_size_cost_per_byte`, and consumes configured
-signature verification gas for each verified signer when enabled.
+**REQ-8.** `run` initializes gas wanted from `AuthInfo.fee.gas_limit`, preserves
+gas already consumed on the supplied context by fixture-backed keeper access,
+consumes transaction-size gas using `tx_size_cost_per_byte`, and consumes
+configured signature verification gas for each verified signer when enabled.
 
 **REQ-9.** Fee validation compares fee amount against `min_gas_prices *
 gas_limit` using SDK coin semantics. Missing fees are valid only when all

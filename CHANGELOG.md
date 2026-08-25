@@ -44,6 +44,11 @@
 
 ### Added
 
+- Added per-case persistent and transient KV operation traces to the M3
+  mainnet ante corpus. The Rust runner prices those measured operations with
+  the app-v6 Cosmos SDK gas schedules and now matches the complete Go outcome
+  for all 1,057 direct-sign transactions; only five legacy Amino JSON cases
+  remain before the full acceptance test can be enabled.
 - Added optional KV gas-isolation profiles to the Go `antereplay` oracle so M3
   can measure persistent and transient keeper operation counts and byte totals
   independently. The first mainnet case's 44,018 storage gas now decomposes

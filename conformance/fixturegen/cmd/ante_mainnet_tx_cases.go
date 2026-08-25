@@ -38,6 +38,24 @@ type anteMainnetTxExpected struct {
 	Events          []anteMainnetTxEvent           `json:"events"`
 	SignerSequences []anteMainnetTxSignerSequence  `json:"signer_sequences"`
 	Balances        []anteMainnetTxHydratedBalance `json:"balances"`
+	StorageGas      *anteMainnetTxStorageGas       `json:"storage_gas,omitempty"`
+}
+
+type anteMainnetTxStorageGas struct {
+	KVHas                 uint64 `json:"kv_has"`
+	KVDelete              uint64 `json:"kv_delete"`
+	KVReadFlat            uint64 `json:"kv_read_flat"`
+	KVReadPerByte         uint64 `json:"kv_read_per_byte"`
+	KVWriteFlat           uint64 `json:"kv_write_flat"`
+	KVWritePerByte        uint64 `json:"kv_write_per_byte"`
+	KVIterNextFlat        uint64 `json:"kv_iter_next_flat"`
+	TransientHas          uint64 `json:"transient_has"`
+	TransientDelete       uint64 `json:"transient_delete"`
+	TransientReadFlat     uint64 `json:"transient_read_flat"`
+	TransientReadPerByte  uint64 `json:"transient_read_per_byte"`
+	TransientWriteFlat    uint64 `json:"transient_write_flat"`
+	TransientWritePerByte uint64 `json:"transient_write_per_byte"`
+	TransientIterNextFlat uint64 `json:"transient_iter_next_flat"`
 }
 
 type anteMainnetTxEvent struct {

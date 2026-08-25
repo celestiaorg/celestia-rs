@@ -39,6 +39,7 @@ type anteReplayResult struct {
 	Events          []anteMainnetTxEvent           `json:"events"`
 	SignerSequences []anteMainnetTxSignerSequence  `json:"signer_sequences"`
 	Balances        []anteMainnetTxHydratedBalance `json:"balances"`
+	StorageGas      *anteMainnetTxStorageGas       `json:"storage_gas,omitempty"`
 }
 
 // anteMainnetTxSubprocessReplay returns a batch replay function that computes
@@ -131,6 +132,7 @@ func anteReplayResultToExpected(result anteReplayResult) anteMainnetTxExpected {
 		Events:          result.Events,
 		SignerSequences: result.SignerSequences,
 		Balances:        result.Balances,
+		StorageGas:      result.StorageGas,
 	}
 	if !result.OK {
 		expected.Error = anteMainnetTxStableError(result.Code)
