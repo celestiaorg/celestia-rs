@@ -11,6 +11,8 @@ import (
 	sdked25519 "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	sdksecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -19,6 +21,10 @@ func init() {
 		Name:        "staking-state",
 		Description: "Emit Cosmos SDK x/staking validator and delegation store vectors.",
 		Run:         runStakingState,
+	}, Subcommand{
+		Name:        "staking-delegate",
+		Description: "Emit a Cosmos SDK MsgDelegate state-transition vector.",
+		Run:         runStakingDelegate,
 	})
 }
 
@@ -53,6 +59,33 @@ type stakingDelegationCase struct {
 	IndexValueHex       string `json:"index_value_hex"`
 }
 
+type stakingDelegateFixture struct {
+	Scenario                   string             `json:"scenario"`
+	TypeURL                    string             `json:"type_url"`
+	ValueHex                   string             `json:"value_hex"`
+	DelegatorAddressHex        string             `json:"delegator_address_hex"`
+	ValidatorAddressHex        string             `json:"validator_address_hex"`
+	PoolAddressHex             string             `json:"pool_address_hex"`
+	Amount                     string             `json:"amount"`
+	InitialDelegatorBalance    string             `json:"initial_delegator_balance"`
+	ExpectedDelegatorBalance   string             `json:"expected_delegator_balance"`
+	InitialPoolBalance         string             `json:"initial_pool_balance"`
+	ExpectedPoolBalance        string             `json:"expected_pool_balance"`
+	IssuedShares               string             `json:"issued_shares"`
+	IssuedSharesAtomic         string             `json:"issued_shares_atomics"`
+	ValidatorKeyHex            string             `json:"validator_key_hex"`
+	InitialValidatorValueHex   string             `json:"initial_validator_value_hex"`
+	ExpectedValidatorValueHex  string             `json:"expected_validator_value_hex"`
+	DelegationKeyHex           string             `json:"delegation_key_hex"`
+	InitialDelegationValueHex  string             `json:"initial_delegation_value_hex"`
+	ExpectedDelegationValueHex string             `json:"expected_delegation_value_hex"`
+	DelegationIndexKeyHex      string             `json:"delegation_index_key_hex"`
+	OldPowerKeyHex             string             `json:"old_power_key_hex"`
+	NewPowerKeyHex             string             `json:"new_power_key_hex"`
+	PowerValueHex              string             `json:"power_value_hex"`
+	Events                     []bankMessageEvent `json:"events"`
+}
+
 func runStakingState(args []string) error {
 	fs := flag.NewFlagSet("staking-state", flag.ContinueOnError)
 	out := fs.String("out", "conformance/fixtures/staking/state.json", "Output file path.")
@@ -81,6 +114,141 @@ func runStakingState(args []string) error {
 	}
 	fmt.Printf("wrote %s\n", *out)
 	return nil
+}
+
+func runStakingDelegate(args []string) error {
+	fs := flag.NewFlagSet("staking-delegate", flag.ContinueOnError)
+	out := fs.String("out", "conformance/fixtures/staking/delegate.json", "Output file path.")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	fixture, err := buildStakingDelegateFixture()
+	if err != nil {
+		return err
+	}
+	if err := writeJSON(*out, fixture); err != nil {
+		return err
+	}
+	if err := writeJSON(metaPath(*out), authFixtureMetaInfo{
+		Scenario:    "staking-delegate",
+		SourceChain: "celestia-mainnet",
+		AppVersion:  "app-v6",
+		GoVersion:   runtime.Version(),
+		CryptoPackages: []string{
+			"cosmossdk.io/math",
+			"github.com/cosmos/cosmos-sdk/x/bank/types",
+			"github.com/cosmos/cosmos-sdk/x/staking/types",
+		},
+		RegenCommand: "cargo xtask refresh-fixtures --scenario staking-delegate",
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %s\n", *out)
+	return nil
+}
+
+func buildStakingDelegateFixture() (stakingDelegateFixture, error) {
+	config := sdk.GetConfig()
+	config.SetBech32PrefixForAccount("celestia", "celestiapub")
+	config.SetBech32PrefixForValidator("celestiavaloper", "celestiavaloperpub")
+
+	operator := sdk.ValAddress(sdksecp256k1.GenPrivKeyFromSecret([]byte("celestia-rs-delegate-validator")).PubKey().Address())
+	delegator := sdk.AccAddress(sdksecp256k1.GenPrivKeyFromSecret([]byte("celestia-rs-delegate-account")).PubKey().Address())
+	consensusKey := sdked25519.GenPrivKeyFromSecret([]byte("celestia-rs-delegate-consensus")).PubKey()
+	validator, err := stakingtypes.NewValidator(operator.String(), consensusKey, stakingtypes.Description{Moniker: "delegate fixture"})
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+	validator.Status = stakingtypes.Bonded
+	validator.Tokens = sdkmath.NewInt(1_500_000)
+	validator.DelegatorShares = sdkmath.LegacyMustNewDecFromStr("2000000.000000000000000001")
+	validator.MinSelfDelegation = sdkmath.OneInt()
+	initialValidatorValue, err := validator.Marshal()
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+
+	delegation := stakingtypes.NewDelegation(
+		delegator.String(),
+		operator.String(),
+		sdkmath.LegacyMustNewDecFromStr("750000.000000000000000000"),
+	)
+	initialDelegationValue, err := delegation.Marshal()
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+	amount := sdkmath.NewInt(777_778)
+	coin := sdk.NewCoin("utia", amount)
+	message := stakingtypes.NewMsgDelegate(delegator.String(), operator.String(), coin)
+	messageValue, err := message.Marshal()
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+
+	oldPowerKey := stakingtypes.GetValidatorsByPowerIndexKey(validator, sdk.DefaultPowerReduction, nilAddressCodec{})
+	validator, issuedShares := validator.AddTokensFromDel(amount)
+	delegation.Shares = delegation.Shares.Add(issuedShares)
+	expectedValidatorValue, err := validator.Marshal()
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+	expectedDelegationValue, err := delegation.Marshal()
+	if err != nil {
+		return stakingDelegateFixture{}, err
+	}
+	newPowerKey := stakingtypes.GetValidatorsByPowerIndexKey(validator, sdk.DefaultPowerReduction, nilAddressCodec{})
+	pool := authtypes.NewModuleAddress(stakingtypes.BondedPoolName)
+	coins := sdk.NewCoins(coin)
+	events := sdk.Events{
+		banktypes.NewCoinSpentEvent(delegator, coins),
+		banktypes.NewCoinReceivedEvent(pool, coins),
+		sdk.NewEvent(
+			stakingtypes.EventTypeDelegate,
+			sdk.NewAttribute(stakingtypes.AttributeKeyValidator, operator.String()),
+			sdk.NewAttribute(stakingtypes.AttributeKeyDelegator, delegator.String()),
+			sdk.NewAttribute(sdk.AttributeKeyAmount, coin.String()),
+			sdk.NewAttribute(stakingtypes.AttributeKeyNewShares, issuedShares.String()),
+		),
+	}
+
+	return stakingDelegateFixture{
+		Scenario:                   "staking-delegate",
+		TypeURL:                    sdk.MsgTypeURL(message),
+		ValueHex:                   hex.EncodeToString(messageValue),
+		DelegatorAddressHex:        hex.EncodeToString(delegator),
+		ValidatorAddressHex:        hex.EncodeToString(operator),
+		PoolAddressHex:             hex.EncodeToString(pool),
+		Amount:                     amount.String(),
+		InitialDelegatorBalance:    "2000000",
+		ExpectedDelegatorBalance:   sdkmath.NewInt(2_000_000).Sub(amount).String(),
+		InitialPoolBalance:         "4000000",
+		ExpectedPoolBalance:        sdkmath.NewInt(4_000_000).Add(amount).String(),
+		IssuedShares:               issuedShares.String(),
+		IssuedSharesAtomic:         issuedShares.BigInt().String(),
+		ValidatorKeyHex:            hex.EncodeToString(stakingtypes.GetValidatorKey(operator)),
+		InitialValidatorValueHex:   hex.EncodeToString(initialValidatorValue),
+		ExpectedValidatorValueHex:  hex.EncodeToString(expectedValidatorValue),
+		DelegationKeyHex:           hex.EncodeToString(stakingtypes.GetDelegationKey(delegator, operator)),
+		InitialDelegationValueHex:  hex.EncodeToString(initialDelegationValue),
+		ExpectedDelegationValueHex: hex.EncodeToString(expectedDelegationValue),
+		DelegationIndexKeyHex:      hex.EncodeToString(stakingtypes.GetDelegationsByValKey(operator, delegator)),
+		OldPowerKeyHex:             hex.EncodeToString(oldPowerKey),
+		NewPowerKeyHex:             hex.EncodeToString(newPowerKey),
+		PowerValueHex:              hex.EncodeToString(operator),
+		Events:                     bankEvents(events),
+	}, nil
+}
+
+// nilAddressCodec supplies the already-configured validator Bech32 conversion
+// expected by the SDK power-key helper without introducing app wiring.
+type nilAddressCodec struct{}
+
+func (nilAddressCodec) StringToBytes(text string) ([]byte, error) {
+	return sdk.ValAddressFromBech32(text)
+}
+
+func (nilAddressCodec) BytesToString(bytes []byte) (string, error) {
+	return sdk.ValAddress(bytes).String(), nil
 }
 
 func buildStakingStateFixture() (stakingStateFixture, error) {

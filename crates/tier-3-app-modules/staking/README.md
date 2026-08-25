@@ -4,14 +4,17 @@ Cosmos SDK `x/staking` state for `celestia-rs`.
 
 ## Purpose
 
-This crate is the third M4 core-module checkpoint. Its first slice provides
-SDK v0.50 validator and delegation primary storage plus the validator-to-
-delegator reverse index needed by later delegation execution.
+This crate provides SDK v0.50 validator and delegation storage plus exact
+`MsgDelegate` execution. Delegations move bank balances into the appropriate
+staking pool, update fixed-precision shares and validator power indexes, and
+emit SDK-compatible events.
 
 ## Depends On
 
 - `cosmos-types`
 - `kvstore`
+- `bank`
+- `abci-types`
 
 ## Consumers
 

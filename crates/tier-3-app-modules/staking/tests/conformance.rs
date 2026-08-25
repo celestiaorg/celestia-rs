@@ -1,8 +1,9 @@
 //! Conformance tests for staking storage against Go-generated SDK fixtures.
 
-#![allow(clippy::expect_used, clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, clippy::too_many_lines)]
 
 use cosmos_types::proto::staking::{Delegation, Validator};
+use cosmos_types::{Any, Coin};
 use prost::Message;
 use serde::Deserialize;
 use staking::{Keeper, STORE_KEY};
@@ -38,6 +39,45 @@ struct DelegationCase {
     value_hex: String,
     index_key_hex: String,
     index_value_hex: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DelegateFixture {
+    scenario: String,
+    type_url: String,
+    value_hex: String,
+    delegator_address_hex: String,
+    validator_address_hex: String,
+    pool_address_hex: String,
+    initial_delegator_balance: String,
+    expected_delegator_balance: String,
+    initial_pool_balance: String,
+    expected_pool_balance: String,
+    validator_key_hex: String,
+    initial_validator_value_hex: String,
+    expected_validator_value_hex: String,
+    delegation_key_hex: String,
+    initial_delegation_value_hex: String,
+    expected_delegation_value_hex: String,
+    delegation_index_key_hex: String,
+    old_power_key_hex: String,
+    new_power_key_hex: String,
+    power_value_hex: String,
+    events: Vec<ExpectedEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExpectedEvent {
+    #[serde(rename = "type")]
+    ty: String,
+    attributes: Vec<ExpectedAttribute>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExpectedAttribute {
+    key: String,
+    value: String,
+    index: bool,
 }
 
 #[test]
@@ -118,6 +158,135 @@ fn validator_and_delegation_bytes_match_go() {
     }
 }
 
+#[test]
+fn msg_delegate_matches_go_state_balances_power_index_and_events() {
+    let fixture: DelegateFixture = load_named_fixture("delegate.json");
+    assert_eq!(fixture.scenario, "staking-delegate");
+    let delegator = decode_account(&fixture.delegator_address_hex);
+    let validator_address = decode_valoper(&fixture.validator_address_hex);
+    let pool = decode_account(&fixture.pool_address_hex);
+    let validator = Validator::decode(
+        hex::decode(&fixture.initial_validator_value_hex)
+            .expect("validator hex")
+            .as_slice(),
+    )
+    .expect("initial validator");
+    let delegation = Delegation::decode(
+        hex::decode(&fixture.initial_delegation_value_hex)
+            .expect("delegation hex")
+            .as_slice(),
+    )
+    .expect("initial delegation");
+
+    let mut staking_store = kvstore::Store::new();
+    let mut bank_store = kvstore::Store::new();
+    {
+        let mut staking = Keeper::new(&mut staking_store);
+        staking.set_validator(&validator).expect("seed validator");
+        staking
+            .set_validator_by_power_index(&validator)
+            .expect("seed power index");
+        staking
+            .set_delegation(&delegation)
+            .expect("seed delegation");
+    }
+    assert_raw_value(
+        &staking_store,
+        &fixture.validator_key_hex,
+        &fixture.initial_validator_value_hex,
+    );
+    assert_raw_value(
+        &staking_store,
+        &fixture.delegation_key_hex,
+        &fixture.initial_delegation_value_hex,
+    );
+    assert_raw_value(&staking_store, &fixture.delegation_index_key_hex, "");
+    assert_raw_value(
+        &staking_store,
+        &fixture.old_power_key_hex,
+        &fixture.power_value_hex,
+    );
+
+    let result = {
+        let mut bank = bank::Keeper::new(&mut bank_store);
+        bank.set_balance(
+            &delegator,
+            &Coin::new("utia", &fixture.initial_delegator_balance).expect("delegator balance"),
+        )
+        .expect("seed delegator balance");
+        bank.set_balance(
+            &pool,
+            &Coin::new("utia", &fixture.initial_pool_balance).expect("pool balance"),
+        )
+        .expect("seed pool balance");
+        Keeper::new(&mut staking_store)
+            .execute_message(
+                &mut bank,
+                &Any {
+                    type_url: fixture.type_url.clone(),
+                    value: hex::decode(&fixture.value_hex).expect("message hex"),
+                },
+            )
+            .expect("execute MsgDelegate")
+    };
+
+    assert_events(&result.events, &fixture.events);
+    assert_raw_value(
+        &staking_store,
+        &fixture.validator_key_hex,
+        &fixture.expected_validator_value_hex,
+    );
+    assert_raw_value(
+        &staking_store,
+        &fixture.delegation_key_hex,
+        &fixture.expected_delegation_value_hex,
+    );
+    assert_eq!(
+        staking_store
+            .get(&hex::decode(&fixture.old_power_key_hex).expect("old power key"))
+            .expect("read old power key"),
+        None
+    );
+    assert_raw_value(
+        &staking_store,
+        &fixture.new_power_key_hex,
+        &fixture.power_value_hex,
+    );
+
+    let bank = bank::Keeper::new(&mut bank_store);
+    assert_eq!(
+        bank.balance(&delegator, "utia")
+            .expect("delegator balance")
+            .amount,
+        fixture.expected_delegator_balance
+    );
+    assert_eq!(
+        bank.balance(&pool, "utia").expect("pool balance").amount,
+        fixture.expected_pool_balance
+    );
+    assert_eq!(
+        Keeper::new(&mut staking_store)
+            .validator(&validator_address)
+            .expect("updated validator")
+            .expect("validator exists")
+            .encode_to_vec(),
+        hex::decode(&fixture.expected_validator_value_hex).expect("expected validator hex")
+    );
+}
+
+fn assert_events(actual: &[abci_types::Event], expected: &[ExpectedEvent]) {
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.iter().zip(expected) {
+        assert_eq!(actual.ty, expected.ty);
+        assert_eq!(actual.attributes.len(), expected.attributes.len());
+        for (actual, expected) in actual.attributes.iter().zip(&expected.attributes) {
+            assert_eq!(actual.key, expected.key);
+            assert_eq!(actual.value, expected.value);
+            assert_eq!(actual.index, expected.index);
+        }
+    }
+}
+
 fn assert_raw_value(store: &kvstore::Store, key_hex: &str, value_hex: &str) {
     assert_eq!(
         store
@@ -128,8 +297,13 @@ fn assert_raw_value(store: &kvstore::Store, key_hex: &str, value_hex: &str) {
 }
 
 fn load_fixture() -> Fixture {
+    load_named_fixture("state.json")
+}
+
+fn load_named_fixture<T: serde::de::DeserializeOwned>(name: &str) -> T {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../conformance/fixtures/staking/state.json");
+        .join("../../../conformance/fixtures/staking")
+        .join(name);
     let bytes = std::fs::read(path).expect("read staking fixture");
     serde_json::from_slice(&bytes).expect("decode staking fixture")
 }
