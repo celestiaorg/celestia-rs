@@ -17,7 +17,6 @@ abci-types = { path = "../../tier-1-protocol-types/abci-types" }
 base64 = "0.22"
 cosmos-types = { path = "../../tier-1-protocol-types/cosmos-types" }
 crypto = { path = "../../tier-0-primitives/crypto" }
-hash = { path = "../../tier-0-primitives/hash" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 prost = "0.13"
 serde_json = "1"

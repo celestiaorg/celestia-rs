@@ -126,6 +126,14 @@ fn address_helpers_round_trip_and_reject_wrong_prefix() {
 }
 
 #[test]
+fn module_address_matches_cosmos_sdk_legacy_derivation() {
+    assert_eq!(
+        hex::encode(cosmos_types::module_address("fee_collector")),
+        "f1829676db577682e944fc3493d451b67ff3e29f"
+    );
+}
+
+#[test]
 fn coin_validates_and_round_trips_proto() {
     let coin = Coin::new("transfer/channel-0/utia", "123").expect("valid coin");
     assert_eq!(

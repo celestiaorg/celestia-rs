@@ -1,0 +1,12 @@
+{
+  "scenario": "bank-balances",
+  "source_chain": "celestia-mainnet",
+  "app_version": "app-v6",
+  "go_version": "go1.24.11",
+  "crypto_packages": [
+    "cosmossdk.io/collections",
+    "cosmossdk.io/math",
+    "github.com/cosmos/cosmos-sdk/x/bank/types"
+  ],
+  "regen_command": "cargo xtask refresh-fixtures --scenario bank-balances"
+}

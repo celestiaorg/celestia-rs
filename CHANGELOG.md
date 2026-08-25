@@ -44,6 +44,9 @@
 
 ### Added
 
+- Added the first M4 `x/bank` checkpoint with exact SDK v0.50 balance, reverse
+  denomination index, and supply encodings; 256-bit transfers and mint/burn
+  accounting; ante fee deduction; and Go-generated conformance vectors.
 - Started M4 with a Cosmos SDK v0.50-compatible `x/auth` base-account keeper:
   exact account collection and global account-number encodings, CRUD and
   allocation behavior, ordered iteration, ante account-trait integration, and

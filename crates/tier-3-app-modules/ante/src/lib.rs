@@ -21,7 +21,7 @@ const SECP256K1_PUBLIC_KEY_TYPE_URL: &str = "/cosmos.crypto.secp256k1.PubKey";
 const MSG_DELEGATE_TYPE_URL: &str = "/cosmos.staking.v1beta1.MsgDelegate";
 const MSG_WITHDRAW_DELEGATOR_REWARD_TYPE_URL: &str =
     "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward";
-const FEE_COLLECTOR_MODULE_NAME: &[u8] = b"fee_collector";
+const FEE_COLLECTOR_MODULE_NAME: &str = "fee_collector";
 
 /// Cosmos SDK transaction execution mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -496,10 +496,7 @@ fn append_fee_events(
 }
 
 fn fee_collector_address() -> cosmos_types::AccountAddress {
-    let digest = hash::sha256(FEE_COLLECTOR_MODULE_NAME);
-    let mut address = [0_u8; cosmos_types::ADDRESS_LENGTH];
-    address.copy_from_slice(&digest[..cosmos_types::ADDRESS_LENGTH]);
-    address
+    cosmos_types::module_address(FEE_COLLECTOR_MODULE_NAME)
 }
 
 fn append_signer_events(events: &mut Vec<abci_types::Event>, signers: &[SignerData]) {

@@ -73,7 +73,6 @@ dependencies = [
  "base64 0.22.1",
  "cosmos-types",
  "crypto",
- "hash",
  "hex",
  "kvstore",
  "prost",
@@ -119,6 +118,19 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "bank"
+version = "0.0.1"
+dependencies = [
+ "ante",
+ "cosmos-types",
+ "hex",
+ "kvstore",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "base16ct"

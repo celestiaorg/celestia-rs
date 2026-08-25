@@ -16,7 +16,7 @@ Section 3.
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
 | 1 | `auth` | 3 | [auth.md](auth.md) | in progress |
-| 2 | `bank` | 3 | _to be written_ | pending |
+| 2 | `bank` | 3 | [bank.md](bank.md) | in progress |
 | 3 | `staking` | 3 | _to be written_ | pending |
 
 ## Acceptance Scaffold
