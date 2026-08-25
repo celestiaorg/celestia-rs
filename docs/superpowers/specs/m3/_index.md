@@ -16,13 +16,13 @@ Section 3.
 
 | # | Crate | Tier | Spec | Status |
 |---|---|---|---|---|
-| 1 | `ante` | 3 | [ante.md](ante.md) | started |
+| 1 | `ante` | 3 | [ante.md](ante.md) | complete |
 
 ## Acceptance Scaffold
 
-M3 has added `crates/m3-integration/` with the ignored
-`mainnet_tx_validation_matches_go` acceptance entry point. Once the committed
-transaction corpus exists, the test loads the corpus emitted by
+M3 includes `crates/m3-integration/` with the non-ignored
+`mainnet_tx_validation_matches_go` acceptance entry point. The test loads the
+committed corpus emitted by
 `fixturegen ante-mainnet-tx-corpus`, runs every transaction through the Rust
 ante pipeline, and compares the resulting code, codespace, gas wanted, gas
 used, events, signer sequence updates, and fee movement summary to the Go

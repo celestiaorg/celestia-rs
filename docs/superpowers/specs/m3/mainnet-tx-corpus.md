@@ -104,8 +104,9 @@ account fallback), retries transient archive failures, and obtains the expected
 envelope from the real celestia-app Go ante handler. The runner decodes and
 validates the corpus. Rust prices the measured storage traces with the app-v6
 Cosmos SDK schedules and now matches the complete Go outcome for all 1,057
-direct-sign cases. The full comparison remains a red implementation gate only
-because five cases use legacy Amino JSON signing.
+direct-sign cases. Rust also reproduces the canonical sign bytes for the five
+legacy Amino JSON delegate/reward cases, so the non-ignored acceptance test now
+matches all 1,062 transactions.
 
 The Go `antereplay` input accepts diagnostic `gas_profile` values that isolate
 one persistent or transient KV gas coefficient at a time. The committed corpus
@@ -128,8 +129,8 @@ delete, 13 reads over 1,546 bytes, and 6 writes over 346 bytes.
 - [x] Implement the full fixture runner in `m3-integration`.
 - [x] Match ordered Go ante events for at least 1000 direct-sign transactions.
 - [x] Match Go storage gas in the Rust runner.
-- [ ] Support the five legacy Amino JSON cases in the committed corpus.
-- [ ] Remove the ignore from `mainnet_tx_validation_matches_go`.
+- [x] Support the five legacy Amino JSON cases in the committed corpus.
+- [x] Remove the ignore from `mainnet_tx_validation_matches_go`.
 - [x] Run `cargo xtask repo-health --offline`.
-- [ ] Mark M3 complete once the acceptance test passes for at least 1000
+- [x] Mark M3 complete once the acceptance test passes for at least 1000
       mainnet transactions.
