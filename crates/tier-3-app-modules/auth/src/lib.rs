@@ -13,6 +13,8 @@ use prost::Message;
 pub const STORE_KEY: &str = "acc";
 /// Protobuf type URL used for base accounts in the account interface store.
 pub const BASE_ACCOUNT_TYPE_URL: &str = "/cosmos.auth.v1beta1.BaseAccount";
+/// Protobuf type URL used for module accounts in the account interface store.
+pub const MODULE_ACCOUNT_TYPE_URL: &str = "/cosmos.auth.v1beta1.ModuleAccount";
 
 const ACCOUNT_KEY_PREFIX: u8 = 1;
 const GLOBAL_ACCOUNT_NUMBER_KEY: [u8; 1] = [2];
@@ -53,6 +55,58 @@ impl BaseAccount {
     }
 }
 
+/// A Cosmos SDK module account and its embedded base account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleAccount {
+    /// Base account fields shared by every auth account variant.
+    pub base_account: BaseAccount,
+    /// Registered module name used to derive the account address.
+    pub name: String,
+    /// Module permissions such as `staking`, `minter`, or `burner`.
+    pub permissions: Vec<String>,
+}
+
+impl ModuleAccount {
+    /// Construct a module account with an address derived from `name`.
+    #[must_use]
+    pub fn new(name: impl Into<String>, permissions: Vec<String>, account_number: u64) -> Self {
+        let name = name.into();
+        Self {
+            base_account: BaseAccount::new(cosmos_types::module_address(&name), account_number),
+            name,
+            permissions,
+        }
+    }
+
+    /// Return whether this account has a named module permission.
+    #[must_use]
+    pub fn has_permission(&self, permission: &str) -> bool {
+        self.permissions.iter().any(|value| value == permission)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StoredAccount {
+    Base(BaseAccount),
+    Module(ModuleAccount),
+}
+
+impl StoredAccount {
+    fn base(&self) -> &BaseAccount {
+        match self {
+            Self::Base(account) => account,
+            Self::Module(account) => &account.base_account,
+        }
+    }
+
+    fn base_mut(&mut self) -> &mut BaseAccount {
+        match self {
+            Self::Base(account) => account,
+            Self::Module(account) => &mut account.base_account,
+        }
+    }
+}
+
 /// Store-backed `x/auth` account keeper.
 #[derive(Debug)]
 pub struct Keeper<'a> {
@@ -71,7 +125,18 @@ impl<'a> Keeper<'a> {
         let Some(bytes) = self.store.get(&account_store_key(address))? else {
             return Ok(None);
         };
-        decode_account(address, &bytes).map(Some)
+        decode_stored_account(address, &bytes).map(|account| Some(account.base().clone()))
+    }
+
+    /// Return a module account by address, rejecting other account variants.
+    pub fn get_module_account(&self, address: &AccountAddress) -> Result<Option<ModuleAccount>> {
+        let Some(bytes) = self.store.get(&account_store_key(address))? else {
+            return Ok(None);
+        };
+        match decode_stored_account(address, &bytes)? {
+            StoredAccount::Module(account) => Ok(Some(account)),
+            StoredAccount::Base(_) => Err(Error::NotModuleAccount),
+        }
     }
 
     /// Return whether an account exists at `address`.
@@ -83,20 +148,37 @@ impl<'a> Keeper<'a> {
 
     /// Persist a base account in the SDK account interface encoding.
     pub fn set_account(&mut self, account: &BaseAccount) -> Result<()> {
-        let previous = self.get_account(&account.address)?;
-        let index_key = account_number_index_key(account.account_number);
+        self.set_stored_account(&StoredAccount::Base(account.clone()))
+    }
+
+    /// Persist a module account in the SDK account interface encoding.
+    pub fn set_module_account(&mut self, account: &ModuleAccount) -> Result<()> {
+        validate_module_account(account)?;
+        self.set_stored_account(&StoredAccount::Module(account.clone()))
+    }
+
+    fn set_stored_account(&mut self, account: &StoredAccount) -> Result<()> {
+        let base = account.base();
+        let previous = self
+            .store
+            .get(&account_store_key(&base.address))?
+            .map(|bytes| decode_stored_account(&base.address, &bytes))
+            .transpose()?;
+        let index_key = account_number_index_key(base.account_number);
         if let Some(indexed_address) = self.store.get(&index_key)?
-            && indexed_address != account.address
+            && indexed_address != base.address
         {
             return Err(Error::AccountNumberAlreadyExists);
         }
         if let Some(previous) = previous {
             self.store
-                .delete(&account_number_index_key(previous.account_number))?;
+                .delete(&account_number_index_key(previous.base().account_number))?;
         }
-        self.store.set(index_key, account.address.to_vec())?;
-        let value = encode_account(account);
-        self.store.set(account_store_key(&account.address), value)?;
+        self.store.set(index_key, base.address.to_vec())?;
+        self.store.set(
+            account_store_key(&base.address),
+            encode_stored_account(account),
+        )?;
         Ok(())
     }
 
@@ -130,7 +212,7 @@ impl<'a> Keeper<'a> {
             .iter(Some(&[ACCOUNT_KEY_PREFIX]), Some(&end))?
             .map(|entry| {
                 let address = address_from_store_key(&entry.key)?;
-                decode_account(&address, &entry.value)
+                decode_stored_account(&address, &entry.value).map(|account| account.base().clone())
             })
             .collect()
     }
@@ -175,9 +257,13 @@ impl<'a> Keeper<'a> {
         address: &AccountAddress,
         update: impl FnOnce(&mut BaseAccount),
     ) -> Result<()> {
-        let mut account = self.get_account(address)?.ok_or(Error::AccountNotFound)?;
-        update(&mut account);
-        self.set_account(&account)
+        let bytes = self
+            .store
+            .get(&account_store_key(address))?
+            .ok_or(Error::AccountNotFound)?;
+        let mut account = decode_stored_account(address, &bytes)?;
+        update(account.base_mut());
+        self.set_stored_account(&account)
     }
 }
 
@@ -196,6 +282,17 @@ impl AccountWriter for Keeper<'_> {
     }
 
     fn set_public_key(&mut self, address: &AccountAddress, public_key: Any) -> ante::Result<()> {
+        let bytes = self
+            .store
+            .get(&account_store_key(address))
+            .map_err(|error| ante_state_error(&Error::from(error)))?
+            .ok_or_else(|| ante_state_error(&Error::AccountNotFound))?;
+        if matches!(
+            decode_stored_account(address, &bytes).map_err(|error| ante_state_error(&error))?,
+            StoredAccount::Module(_)
+        ) {
+            return Err(ante_state_error(&Error::ModulePublicKeyUnsupported));
+        }
         self.update_account(address, |account| account.public_key = Some(public_key))
             .map_err(|error| ante_state_error(&error))
     }
@@ -234,6 +331,15 @@ pub enum Error {
     /// An account-number index contained an invalid address.
     #[error("malformed account number index")]
     MalformedAccountNumberIndex,
+    /// A base account was requested as a module account.
+    #[error("account is not a module account")]
+    NotModuleAccount,
+    /// Module accounts cannot be assigned public keys.
+    #[error("module accounts do not support public keys")]
+    ModulePublicKeyUnsupported,
+    /// Module account name, address, or permissions were invalid.
+    #[error("invalid module account")]
+    InvalidModuleAccount,
 }
 
 /// Result alias for auth keeper operations.
@@ -259,28 +365,42 @@ fn address_from_store_key(key: &[u8]) -> Result<AccountAddress> {
         .ok_or(Error::MalformedAccount)
 }
 
-fn encode_account(account: &BaseAccount) -> Vec<u8> {
-    let base_account = cosmos_types::proto::auth::BaseAccount {
+fn encode_base_account(account: &BaseAccount) -> cosmos_types::proto::auth::BaseAccount {
+    cosmos_types::proto::auth::BaseAccount {
         address: cosmos_types::account_address_to_bech32(&account.address),
         pub_key: account.public_key.as_ref().map(Any::to_proto),
         account_number: account.account_number,
         sequence: account.sequence,
+    }
+}
+
+fn encode_stored_account(account: &StoredAccount) -> Vec<u8> {
+    let (type_url, value) = match account {
+        StoredAccount::Base(account) => (
+            BASE_ACCOUNT_TYPE_URL,
+            encode_base_account(account).encode_to_vec(),
+        ),
+        StoredAccount::Module(account) => (
+            MODULE_ACCOUNT_TYPE_URL,
+            cosmos_types::proto::auth::ModuleAccount {
+                base_account: Some(encode_base_account(&account.base_account)),
+                name: account.name.clone(),
+                permissions: account.permissions.clone(),
+            }
+            .encode_to_vec(),
+        ),
     };
     cosmos_types::proto::google::Any {
-        type_url: BASE_ACCOUNT_TYPE_URL.to_owned(),
-        value: base_account.encode_to_vec(),
+        type_url: type_url.to_owned(),
+        value,
     }
     .encode_to_vec()
 }
 
-fn decode_account(address: &AccountAddress, bytes: &[u8]) -> Result<BaseAccount> {
-    let outer =
-        cosmos_types::proto::google::Any::decode(bytes).map_err(|_| Error::MalformedAccount)?;
-    if outer.type_url != BASE_ACCOUNT_TYPE_URL {
-        return Err(Error::UnsupportedAccountType(outer.type_url));
-    }
-    let proto = cosmos_types::proto::auth::BaseAccount::decode(outer.value.as_slice())
-        .map_err(|_| Error::MalformedAccount)?;
+fn decode_base_account(
+    address: &AccountAddress,
+    proto: cosmos_types::proto::auth::BaseAccount,
+) -> Result<BaseAccount> {
     let stored_address = cosmos_types::account_address_from_bech32(&proto.address)
         .map_err(|_| Error::MalformedAccount)?;
     if stored_address != *address {
@@ -297,6 +417,45 @@ fn decode_account(address: &AccountAddress, bytes: &[u8]) -> Result<BaseAccount>
         account_number: proto.account_number,
         sequence: proto.sequence,
     })
+}
+
+fn decode_stored_account(address: &AccountAddress, bytes: &[u8]) -> Result<StoredAccount> {
+    let outer =
+        cosmos_types::proto::google::Any::decode(bytes).map_err(|_| Error::MalformedAccount)?;
+    match outer.type_url.as_str() {
+        BASE_ACCOUNT_TYPE_URL => {
+            let proto = cosmos_types::proto::auth::BaseAccount::decode(outer.value.as_slice())
+                .map_err(|_| Error::MalformedAccount)?;
+            decode_base_account(address, proto).map(StoredAccount::Base)
+        }
+        MODULE_ACCOUNT_TYPE_URL => {
+            let proto = cosmos_types::proto::auth::ModuleAccount::decode(outer.value.as_slice())
+                .map_err(|_| Error::MalformedAccount)?;
+            let base = proto.base_account.ok_or(Error::MalformedAccount)?;
+            let account = ModuleAccount {
+                base_account: decode_base_account(address, base)?,
+                name: proto.name,
+                permissions: proto.permissions,
+            };
+            validate_module_account(&account)?;
+            Ok(StoredAccount::Module(account))
+        }
+        _ => Err(Error::UnsupportedAccountType(outer.type_url)),
+    }
+}
+
+fn validate_module_account(account: &ModuleAccount) -> Result<()> {
+    if account.name.trim().is_empty()
+        || account.base_account.address != cosmos_types::module_address(&account.name)
+        || account.base_account.public_key.is_some()
+        || account
+            .permissions
+            .iter()
+            .any(|permission| permission.trim().is_empty())
+    {
+        return Err(Error::InvalidModuleAccount);
+    }
+    Ok(())
 }
 
 fn ante_state_error(error: &Error) -> ante::Error {

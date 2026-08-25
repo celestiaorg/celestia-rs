@@ -4,14 +4,12 @@ Cosmos SDK `x/auth` account storage for `celestia-rs`.
 
 ## Purpose
 
-This crate is the first M4 core-module checkpoint. It provides the base-account
-keeper, Cosmos SDK v0.50 account key/value encoding, global account-number
-allocation, unique account-number indexing, ordered account iteration, and the `ante::AccountReader` /
-`ante::AccountWriter` implementation used by transaction validation.
-
-This checkpoint intentionally supports `BaseAccount` only. Module and vesting
-account variants will be added when their owning M4/M5 execution paths require
-them.
+This crate provides base and module account persistence, Cosmos SDK v0.50
+account key/value encoding, global account-number allocation, unique
+account-number indexing, ordered account iteration, and the
+`ante::AccountReader` / `ante::AccountWriter` implementation used by transaction
+validation. Module wrappers are preserved when ante updates account sequences;
+module public keys remain forbidden by SDK semantics.
 
 ## Depends On
 
@@ -35,5 +33,5 @@ cargo xtask refresh-fixtures --crate-name auth
 ```
 
 `accounts.json` fixes the SDK v0.50 account store keys, interface-wrapped base
-account bytes, unique account-number index, and global account-number sequence
-encoding.
+and module account bytes, unique account-number index, and global
+account-number sequence encoding.

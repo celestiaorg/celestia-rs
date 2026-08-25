@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use ante::{AccountReader, AccountWriter};
-use auth::{BaseAccount, Error, Keeper};
+use auth::{BaseAccount, Error, Keeper, ModuleAccount};
 use cosmos_types::Any;
 
 #[test]
@@ -115,7 +115,7 @@ fn rejects_malformed_account_state() {
         .set(
             key,
             prost::Message::encode_to_vec(&cosmos_types::proto::google::Any {
-                type_url: "/cosmos.auth.v1beta1.ModuleAccount".to_owned(),
+                type_url: "/cosmos.vesting.v1beta1.BaseVestingAccount".to_owned(),
                 value: Vec::new(),
             }),
         )
@@ -123,7 +123,66 @@ fn rejects_malformed_account_state() {
     assert!(matches!(
         Keeper::new(&mut unsupported_store).get_account(&address),
         Err(Error::UnsupportedAccountType(type_url))
-            if type_url == "/cosmos.auth.v1beta1.ModuleAccount"
+            if type_url == "/cosmos.vesting.v1beta1.BaseVestingAccount"
+    ));
+}
+
+#[test]
+fn module_accounts_validate_preserve_wrappers_and_reject_public_keys() {
+    let mut store = kvstore::Store::new();
+    let module = ModuleAccount::new("bonded_tokens_pool", vec!["staking".to_owned()], 12);
+    let address = module.base_account.address;
+    let mut keeper = Keeper::new(&mut store);
+    keeper
+        .set_module_account(&module)
+        .expect("set module account");
+    assert!(
+        keeper
+            .get_module_account(&address)
+            .expect("module account")
+            .expect("present")
+            .has_permission("staking")
+    );
+    assert!(matches!(keeper.get_module_account(&[1; 20]), Ok(None)));
+    let base = [2; 20];
+    keeper
+        .set_account(&BaseAccount::new(base, 13))
+        .expect("set base");
+    assert!(matches!(
+        keeper.get_module_account(&base),
+        Err(Error::NotModuleAccount)
+    ));
+
+    keeper
+        .set_sequence(&address, 7)
+        .expect("module sequence update");
+    assert_eq!(
+        keeper
+            .get_module_account(&address)
+            .expect("updated module")
+            .expect("present")
+            .base_account
+            .sequence,
+        7
+    );
+    assert_eq!(
+        keeper
+            .set_public_key(
+                &address,
+                Any {
+                    type_url: "/cosmos.crypto.secp256k1.PubKey".to_owned(),
+                    value: vec![1],
+                }
+            )
+            .expect_err("module public key must fail"),
+        ante::Error::State("module accounts do not support public keys".to_owned())
+    );
+
+    let mut invalid = module;
+    invalid.name = "other".to_owned();
+    assert!(matches!(
+        keeper.set_module_account(&invalid),
+        Err(Error::InvalidModuleAccount)
     ));
 }
 

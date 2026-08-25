@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use auth::{BaseAccount, Keeper, STORE_KEY};
+use auth::{BaseAccount, Keeper, ModuleAccount, STORE_KEY};
 use prost::Message;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -16,6 +16,21 @@ struct Fixture {
     account_number: u64,
     account_number_value_hex: String,
     cases: Vec<Case>,
+    module_cases: Vec<ModuleCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModuleCase {
+    label: String,
+    name: String,
+    permissions: Vec<String>,
+    address_hex: String,
+    account_number: u64,
+    sequence: u64,
+    store_key_hex: String,
+    store_value_hex: String,
+    account_number_index_key_hex: String,
+    account_number_index_value_hex: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +138,62 @@ fn global_account_number_encoding_matches_go() {
     assert_eq!(
         store.get(&key).expect("read incremented sequence"),
         Some((fixture.account_number + 1).to_be_bytes().to_vec())
+    );
+}
+
+#[test]
+fn module_account_store_bytes_match_go() {
+    let fixture: Fixture = load_fixture();
+    for case in fixture.module_cases {
+        let address = decode_address(&case.address_hex);
+        let expected = ModuleAccount {
+            base_account: BaseAccount {
+                address,
+                public_key: None,
+                account_number: case.account_number,
+                sequence: case.sequence,
+            },
+            name: case.name,
+            permissions: case.permissions,
+        };
+        let mut store = kvstore::Store::new();
+        Keeper::new(&mut store)
+            .set_module_account(&expected)
+            .unwrap_or_else(|error| panic!("{}: set module account: {error}", case.label));
+        assert_raw_value(&store, &case.store_key_hex, &case.store_value_hex);
+        assert_raw_value(
+            &store,
+            &case.account_number_index_key_hex,
+            &case.account_number_index_value_hex,
+        );
+
+        let mut go_store = kvstore::Store::new();
+        go_store
+            .set(
+                hex::decode(&case.store_key_hex).expect("module key hex"),
+                hex::decode(&case.store_value_hex).expect("module value hex"),
+            )
+            .expect("seed Go module account");
+        let keeper = Keeper::new(&mut go_store);
+        assert_eq!(
+            keeper
+                .get_module_account(&address)
+                .unwrap_or_else(|error| panic!("{}: decode module: {error}", case.label)),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            keeper.get_account(&address).expect("base projection"),
+            Some(expected.base_account)
+        );
+    }
+}
+
+fn assert_raw_value(store: &kvstore::Store, key_hex: &str, value_hex: &str) {
+    assert_eq!(
+        store
+            .get(&hex::decode(key_hex).expect("key hex"))
+            .expect("read value"),
+        Some(hex::decode(value_hex).expect("value hex"))
     );
 }
 
