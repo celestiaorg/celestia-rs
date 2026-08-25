@@ -27,6 +27,15 @@ pub fn account_address_from_bech32(value: &str) -> Result<AccountAddress> {
     decode_address(value, bech32::ACCOUNT_PREFIX)
 }
 
+/// Derive the legacy Cosmos SDK address for a module account name.
+#[must_use]
+pub fn module_address(module_name: &str) -> AccountAddress {
+    let digest = hash::sha256(module_name.as_bytes());
+    let mut address = [0_u8; ADDRESS_LENGTH];
+    address.copy_from_slice(&digest[..ADDRESS_LENGTH]);
+    address
+}
+
 /// Encode a validator-operator address with the `celestiavaloper` prefix.
 #[must_use]
 #[allow(clippy::expect_used)]

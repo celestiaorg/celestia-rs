@@ -17,6 +17,7 @@ members = [
     "crates/tier-2-state-and-store/multistore",
     "crates/tier-3-app-modules/ante",
     "crates/tier-3-app-modules/auth",
+    "crates/tier-3-app-modules/bank",
     "crates/m1-integration",
     "crates/m2-integration",
     "crates/m3-integration",

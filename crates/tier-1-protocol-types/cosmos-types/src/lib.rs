@@ -21,8 +21,8 @@ pub mod tx;
 
 pub use address::{
     ADDRESS_LENGTH, AccountAddress, ValconsAddress, ValoperAddress, account_address_from_bech32,
-    account_address_to_bech32, valcons_address_from_bech32, valcons_address_to_bech32,
-    valoper_address_from_bech32, valoper_address_to_bech32,
+    account_address_to_bech32, module_address, valcons_address_from_bech32,
+    valcons_address_to_bech32, valoper_address_from_bech32, valoper_address_to_bech32,
 };
 pub use any::Any;
 pub use coin::Coin;
