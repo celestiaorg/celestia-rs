@@ -44,6 +44,10 @@
 
 ### Added
 
+- Started M4 with a Cosmos SDK v0.50-compatible `x/auth` base-account keeper:
+  exact account collection and global account-number encodings, CRUD and
+  allocation behavior, ordered iteration, ante account-trait integration, and
+  Go-generated conformance vectors.
 - Added canonical `SIGN_MODE_LEGACY_AMINO_JSON` sign-byte generation for the
   staking delegate and distribution reward message shapes in the M3 mainnet
   corpus. The full, non-ignored acceptance test now matches Go gas, events,
