@@ -10,6 +10,7 @@ members = [
     "crates/tier-1-protocol-types/celestia-core-proto",
     "crates/tier-1-protocol-types/celestia-proto",
     "crates/tier-1-protocol-types/cosmos-types",
+    "crates/tier-1-protocol-types/ctypes",
     "crates/tier-1-protocol-types/nmt",
     "crates/tier-1-protocol-types/shares",
     "crates/tier-1-protocol-types/square",

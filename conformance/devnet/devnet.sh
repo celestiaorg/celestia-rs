@@ -145,6 +145,18 @@ print(n)
 PY
 )
 
+
+# CTYPES_BLOCKS=1 also dumps the block store (blocks, commits, validator
+# sets, params) as ctypes vectors; CTYPES_ONLY=1 skips the devnet fixture.
+if [ -n "${CTYPES_BLOCKS:-}${CTYPES_ONLY:-}" ]; then
+  (cd "$ROOT/conformance/ctypesvectors" && GOFLAGS=-mod=mod go run . \
+    -out "$ROOT/conformance/fixtures/ctypes" -blockstore "$H/core/data" -scenario "$SCENARIO")
+fi
+if [ -n "${CTYPES_ONLY:-}" ]; then
+  rm -rf "$WORK"
+  exit 0
+fi
+
 rm -rf "$OUT" && mkdir -p "$OUT/state"
 cp "$H/config/genesis.json" "$OUT/genesis.json"
 cp "$WORK/abci.rec" "$OUT/abci.rec"

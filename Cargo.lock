@@ -545,6 +545,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctypes"
+version = "0.0.1"
+dependencies = [
+ "celestia-core-proto",
+ "crypto",
+ "hash",
+ "hex",
+ "merkle",
+ "pbjson-types",
+ "prost",
+ "serde",
+ "serde_json",
+ "zstd",
+]
+
+[[package]]
 name = "curve25519-dalek-ng"
 version = "4.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
