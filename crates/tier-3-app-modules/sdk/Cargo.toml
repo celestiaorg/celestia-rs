@@ -1,0 +1,23 @@
+[package]
+name = "sdk"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK runtime for celestia-rs: layered multistore, context, gas, events, errors, collections codecs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+hash = { path = "../../tier-0-primitives/hash" }
+kvstore = { path = "../../tier-2-state-and-store/kvstore" }
+multistore = { path = "../../tier-2-state-and-store/multistore" }
+prost = "0.13"
+prost-types = "0.13"
+thiserror = "2"

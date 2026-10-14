@@ -1483,6 +1483,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdk"
+version = "0.0.1"
+dependencies = [
+ "celestia-core-proto",
+ "celestia-proto",
+ "hash",
+ "kvstore",
+ "multistore",
+ "prost",
+ "prost-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sec1"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
