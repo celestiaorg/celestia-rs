@@ -44,11 +44,12 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 | Area | State |
 |---|---|
 | Runtime & tx pipeline | sdk runtime, math (12,446 vectors), txdecode (4,968 vectors), x-ante (4,144 vectors), phased runTx, router, genutil |
-| Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
+| Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc (all msgs: 07-tendermint light client incl. misbehaviour, connection / channel handshakes and close, packets, timeouts, redundant-relay ante), transfer, icahost (handshake, tx execution), pfm (forwarding, refunds, retries), hyperlane + warp (all msgs) |
 | At parity (blocks) | PrepareProposal / ProcessProposal (go-square v4 builder, DAH) and CheckTx, replayed for every scenario incl. `devnet/blob`; Rust-proposed blocks accepted by a Go full node (`rust-proposer.sh`) |
 | Deferred | Pay-for-fibre settlement in proposals (x/fibre Msg server not routed); ProcessProposal blob-tx cache (behavior-neutral) |
 | Storage (ADR 0002) | Persistent IAVL on redb (lazy nodes, LRU cache, history, pruning), atomic multistore commits, restart/handshake (`celestia-rs abci --home`), SDK snapshots + ABCI state sync; every scenario replays on redb, incl. restart-halfway and snapshot-restore replays; Go↔Rust state sync both ways (`conformance/devnet/statesync.sh`) |
-| In progress | IBC msgs + relaying |
+| IBC differential | `devnet/ibc` (two Go chains + cosmos/relayer) and `devnet/ibc-edge` (ibc-go testing package, `conformance/ibcvectors`) at full parity incl. CheckTx |
+| Deferred (IBC) | 06-solomachine verification, channel upgrades, IBCSoftwareUpgrade scheduling, ICA `proto3json` txs and `MsgModuleQuerySafe` |
 | Not started | queries/gRPC/REST (M11), testnet state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's disk-backed IAVL and non-empty historical import landed with ADR 0002

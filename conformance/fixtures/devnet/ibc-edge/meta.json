@@ -1,0 +1,8 @@
+{
+  "celestia_app": "v10.4.0",
+  "chain_id": "testchain1-1",
+  "committed_heights": 171,
+  "generated_at": "2026-10-14T09:31:52Z",
+  "scenario": "ibc-edge",
+  "workload": "conformance/ibcvectors (ibc-go testing package)"
+}

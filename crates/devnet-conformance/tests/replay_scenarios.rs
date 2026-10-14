@@ -97,3 +97,29 @@ fn blob_parity() -> anyhow::Result<()> {
 fn ibc_parity() -> anyhow::Result<()> {
     assert_parity("ibc")
 }
+
+/// IBC edge cases from ibc-go's testing package driving a recorded
+/// celestia-app against simapp chains (conformance/ibcvectors): handshake
+/// Try/Confirm, redundant and invalid relays, timeouts by height and time,
+/// timeout-on-close and close confirm, PFM forwards / refunds / retries and
+/// invalid forward metadata, the ICA host (account creation, executed and
+/// rejected txs), misbehaviour freezing a client, a wrong-valset header and
+/// an expired client.
+/// ibctesting drives FinalizeBlock and Commit directly (no proposals or
+/// CheckTx), so only the block-level parity applies.
+#[test]
+fn ibc_edge_parity() -> anyhow::Result<()> {
+    let r = replay("ibc-edge")?;
+    assert!(r.errors.is_empty(), "ibc-edge: {:?}", r.errors);
+    assert_eq!(
+        r.first_mismatch, None,
+        "ibc-edge: stores {:#?}",
+        r.store_diffs
+    );
+    assert!(
+        r.matched_heights.len() > 150,
+        "ibc-edge: {:?}",
+        r.matched_heights.len()
+    );
+    Ok(())
+}

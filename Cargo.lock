@@ -2717,10 +2717,13 @@ name = "x-icahost"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "encoding",
+ "hash",
  "hex",
  "prost",
  "sdk",
  "serde_json",
+ "x-auth",
  "x-capability",
  "x-ibc",
 ]

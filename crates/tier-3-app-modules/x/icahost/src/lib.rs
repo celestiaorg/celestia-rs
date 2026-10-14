@@ -20,6 +20,8 @@ use prost::Message;
 use sdk::{Context, Result};
 use x_capability::ScopedKeeper;
 
+pub mod host;
+
 /// Module name (`interchainaccounts`).
 pub const MODULE_NAME: &str = "interchainaccounts";
 /// Host sub-module name, also its store key and capability scope.

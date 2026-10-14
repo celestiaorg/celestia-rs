@@ -98,6 +98,8 @@ pub enum Account {
     PeriodicVesting(vpb::PeriodicVestingAccount),
     /// `PermanentLockedAccount`.
     PermanentLocked(vpb::PermanentLockedAccount),
+    /// ICS-27 `InterchainAccount` (created by the ICA host).
+    Interchain(celestia_proto::ibc::applications::interchain_accounts::v1::InterchainAccount),
 }
 
 fn decode<M: Message + Default>(b: &[u8]) -> Result<M> {
@@ -117,6 +119,11 @@ impl Account {
             u if u == vpb::DelayedVestingAccount::type_url() => Self::DelayedVesting(decode(v)?),
             u if u == vpb::PeriodicVestingAccount::type_url() => Self::PeriodicVesting(decode(v)?),
             u if u == vpb::PermanentLockedAccount::type_url() => Self::PermanentLocked(decode(v)?),
+            u if u
+                == celestia_proto::ibc::applications::interchain_accounts::v1::InterchainAccount::type_url() =>
+            {
+                Self::Interchain(decode(v)?)
+            }
             other => return Err(errs::unpack_any(format!("unknown account type {other}"))),
         })
     }
@@ -131,6 +138,7 @@ impl Account {
             Self::DelayedVesting(a) => Any::pack(a),
             Self::PeriodicVesting(a) => Any::pack(a),
             Self::PermanentLocked(a) => Any::pack(a),
+            Self::Interchain(a) => Any::pack(a),
         }
     }
 
@@ -144,6 +152,7 @@ impl Account {
             Self::DelayedVesting(a) => a.base_vesting_account.as_ref()?.base_account.as_ref(),
             Self::PeriodicVesting(a) => a.base_vesting_account.as_ref()?.base_account.as_ref(),
             Self::PermanentLocked(a) => a.base_vesting_account.as_ref()?.base_account.as_ref(),
+            Self::Interchain(a) => a.base_account.as_ref(),
         }
     }
 
@@ -172,6 +181,7 @@ impl Account {
                 .get_or_insert_with(Default::default)
                 .base_account
                 .get_or_insert_with(Default::default),
+            Self::Interchain(a) => a.base_account.get_or_insert_with(Default::default),
         }
     }
 

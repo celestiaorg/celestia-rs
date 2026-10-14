@@ -1,0 +1,846 @@
+//! The ICS-27 host `IBCModule` (`host/ibc_module.go`), its keeper logic
+//! (`host/keeper/handshake.go`, `relay.go`, `account.go`) and message
+//! server (`MsgUpdateParams`).
+//!
+//! Deferred: `proto3json`-encoded `CosmosTx` packets (decoding arbitrary
+//! messages from JSON) and `MsgModuleQuerySafe` (needs the gRPC query
+//! router); both fail with `ErrNotSupported`.
+
+use celestia_proto::Any;
+use celestia_proto::capability::v1::Capability;
+use celestia_proto::cosmos::auth::v1beta1::BaseAccount;
+use celestia_proto::cosmos::base::abci::v1beta1::TxMsgData;
+use celestia_proto::ibc::applications::interchain_accounts::host::v1::{
+    MsgModuleQuerySafe, MsgUpdateParams, MsgUpdateParamsResponse,
+};
+use celestia_proto::ibc::applications::interchain_accounts::v1::{
+    CosmosTx, InterchainAccount, Metadata,
+};
+use celestia_proto::ibc::core::channel::v1::{Counterparty, Order, Packet, State};
+use prost::{Message, Name};
+use sdk::event::event;
+use sdk::router::MsgRouter;
+use sdk::{Context, Result, SdkError};
+use x_ibc::errors::{channel as cherr, connection as conerr, ibc as ierr};
+use x_ibc::gojson::escape_string;
+use x_ibc::router::{Acknowledgement, IbcModule};
+
+use crate::{HOST_PORT_ID, MODULE_NAME, SCOPED_KEEPER, STORE_KEY, VERSION};
+
+/// `interchainaccounts` codespace errors (`types/errors.go`).
+pub mod errors {
+    use sdk::SdkError;
+
+    fn e(code: u32, desc: &str, log: &str) -> SdkError {
+        SdkError::new(
+            super::MODULE_NAME,
+            code,
+            if log.is_empty() {
+                desc.to_owned()
+            } else {
+                format!("{log}: {desc}")
+            },
+        )
+    }
+
+    macro_rules! ica_errors {
+        ($($name:ident = $code:expr, $desc:expr;)*) => {
+            $(
+                #[doc = $desc]
+                #[must_use]
+                pub fn $name(log: &str) -> SdkError {
+                    e($code, $desc, log)
+                }
+            )*
+        };
+    }
+
+    ica_errors! {
+        unknown_data_type = 2, "unknown data type";
+        account_already_exist = 3, "account already exist";
+        invalid_channel_flow = 5, "invalid message sent to channel end";
+        invalid_route = 7, "invalid route";
+        interchain_account_not_found = 8, "interchain account not found";
+        active_channel_already_set = 10, "active channel already set for this owner";
+        invalid_version = 12, "invalid interchain accounts version";
+        invalid_account_address = 13, "invalid account address";
+        invalid_host_port = 16, "invalid host port";
+        invalid_codec = 18, "codec is not supported";
+        invalid_account_reopening = 19, "invalid account reopening";
+    }
+
+    /// `ErrHostSubModuleDisabled` (`icahost` codespace, 2).
+    #[must_use]
+    pub fn host_sub_module_disabled() -> SdkError {
+        SdkError::new("icahost", 2, "host submodule is disabled")
+    }
+}
+
+/// `EncodingProtobuf`.
+pub const ENCODING_PROTOBUF: &str = "proto3";
+/// `EncodingProto3JSON`.
+pub const ENCODING_PROTO3_JSON: &str = "proto3json";
+/// `TxTypeSDKMultiMsg`.
+pub const TX_TYPE_SDK_MULTI_MSG: &str = "sdk_multi_msg";
+/// `DefaultMaxAddrLength`.
+const MAX_ADDR_LENGTH: usize = 128;
+
+// ---------------------------------------------------------------------------
+// Metadata (`types/metadata.go`)
+// ---------------------------------------------------------------------------
+
+const METADATA_FIELDS: [(&str, &str); 6] = [
+    ("version", "version"),
+    ("controller_connection_id", "controllerConnectionId"),
+    ("host_connection_id", "hostConnectionId"),
+    ("address", "address"),
+    ("encoding", "encoding"),
+    ("tx_type", "txType"),
+];
+
+/// `MetadataFromVersion` (`ModuleCdc.UnmarshalJSON`, jsonpb).
+pub fn metadata_from_version(version: &str) -> Result<Metadata> {
+    let bad = || errors::unknown_data_type("cannot unmarshal ICS-27 interchain accounts metadata");
+    let v = x_ibc::gojson::first_value(version.as_bytes()).map_err(|_| bad())?;
+    let mut f: [String; 6] = Default::default();
+    match v {
+        serde_json::Value::Null => {}
+        serde_json::Value::Object(map) => {
+            for (k, val) in map {
+                let Some(i) = METADATA_FIELDS
+                    .iter()
+                    .position(|(orig, camel)| *orig == k || *camel == k)
+                else {
+                    return Err(bad());
+                };
+                match val {
+                    serde_json::Value::Null => {}
+                    serde_json::Value::String(s) => f[i] = s,
+                    _ => return Err(bad()),
+                }
+            }
+        }
+        _ => return Err(bad()),
+    }
+    let [
+        version,
+        controller_connection_id,
+        host_connection_id,
+        address,
+        encoding,
+        tx_type,
+    ] = f;
+    Ok(Metadata {
+        version,
+        controller_connection_id,
+        host_connection_id,
+        address,
+        encoding,
+        tx_type,
+    })
+}
+
+/// `ModuleCdc.MarshalJSON(&metadata)` (jsonpb, defaults emitted).
+#[must_use]
+pub fn metadata_json(m: &Metadata) -> String {
+    let values = [
+        &m.version,
+        &m.controller_connection_id,
+        &m.host_connection_id,
+        &m.address,
+        &m.encoding,
+        &m.tx_type,
+    ];
+    let parts: Vec<String> = METADATA_FIELDS
+        .iter()
+        .zip(values)
+        .map(|((k, _), v)| format!("\"{k}\":{}", escape_string(v)))
+        .collect();
+    format!("{{{}}}", parts.join(","))
+}
+
+/// `ValidateAccountAddress`.
+fn validate_account_address(addr: &str) -> Result<()> {
+    if addr.is_empty()
+        || !addr.bytes().all(|b| b.is_ascii_alphanumeric())
+        || addr.len() > MAX_ADDR_LENGTH
+    {
+        return Err(errors::invalid_account_address(&format!(
+            "address must contain strictly alphanumeric characters, not exceeding {MAX_ADDR_LENGTH} characters in length"
+        )));
+    }
+    Ok(())
+}
+
+/// `channelKeeper.GetConnection` (an error when missing).
+fn get_connection(
+    ctx: &mut Context<'_>,
+    id: &str,
+) -> Result<celestia_proto::ibc::core::connection::v1::ConnectionEnd> {
+    x_ibc::connection::get_connection(ctx, id)?.ok_or_else(|| conerr::connection_not_found(id))
+}
+
+/// `ValidateHostMetadata`.
+fn validate_host_metadata(ctx: &mut Context<'_>, hops: &[String], m: &Metadata) -> Result<()> {
+    if m.encoding != ENCODING_PROTOBUF && m.encoding != ENCODING_PROTO3_JSON {
+        return Err(errors::invalid_codec(&format!(
+            "unsupported encoding format {}",
+            m.encoding
+        )));
+    }
+    if m.tx_type != TX_TYPE_SDK_MULTI_MSG {
+        return Err(errors::unknown_data_type(&format!(
+            "unsupported transaction type {}",
+            m.tx_type
+        )));
+    }
+    let hop = hops.first().cloned().unwrap_or_default();
+    let conn = get_connection(ctx, &hop)?;
+    let cp_conn = conn.counterparty.unwrap_or_default().connection_id;
+    if m.controller_connection_id != cp_conn {
+        return Err(conerr::invalid_connection(format!(
+            "expected {cp_conn}, got {}",
+            m.controller_connection_id
+        )));
+    }
+    if m.host_connection_id != hop {
+        return Err(conerr::invalid_connection(format!(
+            "expected {hop}, got {}",
+            m.host_connection_id
+        )));
+    }
+    if !m.address.is_empty() {
+        validate_account_address(&m.address)?;
+    }
+    if m.version != VERSION {
+        return Err(errors::invalid_version(&format!(
+            "expected {VERSION}, got {}",
+            m.version
+        )));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Keeper
+// ---------------------------------------------------------------------------
+
+/// `GetParams` (Go panics when unset).
+fn params(
+    ctx: &mut Context<'_>,
+) -> Result<celestia_proto::ibc::applications::interchain_accounts::host::v1::Params> {
+    crate::get_params(ctx).map_err(|e| sdk::error::go_panic(e.log))
+}
+
+/// `GetActiveChannelID` (`Has` then `Get`).
+pub fn active_channel_id(
+    ctx: &mut Context<'_>,
+    connection_id: &str,
+    port_id: &str,
+) -> Result<Option<String>> {
+    let key = crate::key_active_channel(port_id, connection_id);
+    if !ctx.has(STORE_KEY, &key)? {
+        return Ok(None);
+    }
+    let bz = ctx.get(STORE_KEY, &key)?.unwrap_or_default();
+    Ok(Some(String::from_utf8_lossy(&bz).into_owned()))
+}
+
+/// `GetInterchainAccountAddress` (`Has` then `Get`).
+pub fn interchain_account_address(
+    ctx: &mut Context<'_>,
+    connection_id: &str,
+    port_id: &str,
+) -> Result<Option<String>> {
+    let key = crate::key_owner_account(port_id, connection_id);
+    if !ctx.has(STORE_KEY, &key)? {
+        return Ok(None);
+    }
+    let bz = ctx.get(STORE_KEY, &key)?.unwrap_or_default();
+    Ok(Some(String::from_utf8_lossy(&bz).into_owned()))
+}
+
+/// `address.Hash(typ, key)`.
+fn address_hash(typ: &[u8], key: &[u8]) -> [u8; 32] {
+    let th = hash::sha256(typ);
+    let mut pre = th.to_vec();
+    pre.extend_from_slice(key);
+    hash::sha256(&pre)
+}
+
+/// `GenerateAddress`: `Derive(Module("interchainaccounts",
+/// "icahost-accounts"), connectionID + portID + header.AppHash +
+/// header.DataHash)` (the SDK sets no data hash in the block header).
+#[must_use]
+pub fn generate_address(ctx: &Context<'_>, connection_id: &str, port_id: &str) -> Vec<u8> {
+    let mut mkey = MODULE_NAME.as_bytes().to_vec();
+    mkey.push(0);
+    mkey.extend_from_slice(b"icahost-accounts");
+    let module = address_hash(b"module", &mkey);
+    let mut buf = format!("{connection_id}{port_id}").into_bytes();
+    buf.extend_from_slice(&ctx.header.app_hash);
+    address_hash(&module, &buf).to_vec()
+}
+
+/// `createInterchainAccount`.
+fn create_interchain_account(
+    ctx: &mut Context<'_>,
+    connection_id: &str,
+    controller_port: &str,
+) -> Result<Vec<u8>> {
+    let addr = generate_address(ctx, connection_id, controller_port);
+    if x_auth::get_account(ctx, &addr)?.is_some() {
+        return Err(errors::account_already_exist(&format!(
+            "existing account for newly generated interchain account address {}",
+            x_auth::bech32(&addr)?
+        )));
+    }
+    let number = x_auth::next_account_number(ctx)?;
+    let acc = x_auth::Account::Interchain(InterchainAccount {
+        base_account: Some(BaseAccount {
+            address: x_auth::bech32(&addr)?,
+            pub_key: None,
+            account_number: number,
+            sequence: 0,
+        }),
+        account_owner: controller_port.to_owned(),
+    });
+    x_auth::set_account(ctx, &acc)?;
+    crate::set_interchain_account_address(ctx, connection_id, controller_port, acc.address_str())?;
+    Ok(addr)
+}
+
+/// Keeper `OnChanOpenTry`.
+#[allow(clippy::trivially_copy_pass_by_ref, clippy::single_match_else)]
+fn keeper_on_chan_open_try(
+    ctx: &mut Context<'_>,
+    hops: &[String],
+    port_id: &str,
+    channel_id: &str,
+    cap: &Capability,
+    counterparty: &Counterparty,
+    counterparty_version: &str,
+) -> Result<String> {
+    if port_id != HOST_PORT_ID {
+        return Err(errors::invalid_host_port(&format!(
+            "expected {HOST_PORT_ID}, got {port_id}"
+        )));
+    }
+    let hop = hops.first().cloned().unwrap_or_default();
+    let mut metadata = match metadata_from_version(counterparty_version) {
+        Ok(m) => m,
+        Err(_) => {
+            let conn = get_connection(ctx, &hop)
+                .map_err(|e| e.wrap(format!("failed to retrieve connection {hop}")))?;
+            Metadata {
+                version: VERSION.to_owned(),
+                controller_connection_id: conn.counterparty.unwrap_or_default().connection_id,
+                host_connection_id: hop.clone(),
+                address: String::new(),
+                encoding: ENCODING_PROTOBUF.to_owned(),
+                tx_type: TX_TYPE_SDK_MULTI_MSG.to_owned(),
+            }
+        }
+    };
+    validate_host_metadata(ctx, hops, &metadata)?;
+    if let Some(active) = active_channel_id(ctx, &hop, &counterparty.port_id)? {
+        let Some(ch) = x_ibc::channel::get_channel(ctx, port_id, &active)? else {
+            return Err(sdk::error::go_panic(format!(
+                "active channel mapping set for {active} but channel does not exist in channel store"
+            )));
+        };
+        if ch.state != State::Closed as i32 {
+            return Err(errors::active_channel_already_set(&format!(
+                "existing active channel {active} for portID {port_id} must be {}",
+                x_ibc::channel::state_name(State::Closed as i32)
+            )));
+        }
+    }
+    SCOPED_KEEPER
+        .claim_capability(
+            ctx,
+            cap,
+            &x_ibc::host::channel_capability_path(port_id, channel_id),
+        )
+        .map_err(|e| {
+            e.wrap(format!(
+                "failed to claim capability for channel {channel_id} on port {port_id}"
+            ))
+        })?;
+    let addr = if let Some(existing) =
+        interchain_account_address(ctx, &metadata.host_connection_id, &counterparty.port_id)?
+    {
+        let addr = x_auth::parse_bech32(&existing).map_err(|e| sdk::error::go_panic(e.log))?;
+        if !matches!(
+            x_auth::get_account(ctx, &addr)?,
+            Some(x_auth::Account::Interchain(_))
+        ) {
+            return Err(errors::invalid_account_reopening(&format!(
+                "existing account address {existing}, does not have interchain account type"
+            )));
+        }
+        addr
+    } else {
+        create_interchain_account(ctx, &metadata.host_connection_id, &counterparty.port_id)?
+    };
+    metadata.address = x_auth::bech32(&addr)?;
+    Ok(metadata_json(&metadata))
+}
+
+/// `getAppMetadata`.
+fn app_metadata(ctx: &mut Context<'_>, port_id: &str, channel_id: &str) -> Result<Metadata> {
+    let Some(ch) = x_ibc::channel::get_channel(ctx, port_id, channel_id)? else {
+        return Err(ierr::not_found(format!(
+            "app version not found for port {port_id} and channel {channel_id}"
+        )));
+    };
+    metadata_from_version(&ch.version)
+}
+
+/// `InterchainAccountPacketData` (`ModuleCdc.UnmarshalJSON`, jsonpb).
+fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
+    let v = x_ibc::gojson::first_value(bz).map_err(|_| ())?;
+    let (mut ty, mut data) = (0i32, Vec::new());
+    match v {
+        serde_json::Value::Null => {}
+        serde_json::Value::Object(map) => {
+            for (k, val) in map {
+                match (k.as_str(), val) {
+                    (_, serde_json::Value::Null)
+                        if matches!(k.as_str(), "type" | "data" | "memo") => {}
+                    ("type", serde_json::Value::String(s)) => {
+                        ty = match s.as_str() {
+                            "TYPE_UNSPECIFIED" => 0,
+                            "TYPE_EXECUTE_TX" => 1,
+                            _ => return Err(()),
+                        };
+                    }
+                    ("type", serde_json::Value::Number(n)) => {
+                        ty = n.as_i64().and_then(|n| i32::try_from(n).ok()).ok_or(())?;
+                    }
+                    ("data", serde_json::Value::String(s)) => {
+                        data = x_ibc::gojson::decode_base64_std(&s).ok_or(())?;
+                    }
+                    ("memo", serde_json::Value::String(_)) => {}
+                    _ => return Err(()),
+                }
+            }
+        }
+        _ => return Err(()),
+    }
+    Ok((ty, data))
+}
+
+/// Keeper `OnRecvPacket`: the `TxMsgData` result bytes.
+fn keeper_on_recv_packet(
+    ctx: &mut Context<'_>,
+    router: &dyn MsgRouter,
+    is_msg: fn(&str) -> bool,
+    p: &Packet,
+) -> Result<Vec<u8>> {
+    let (ty, data) = decode_packet_data(&p.data).map_err(|()| {
+        errors::unknown_data_type("cannot unmarshal ICS-27 interchain account packet data")
+    })?;
+    let metadata = app_metadata(ctx, &p.destination_port, &p.destination_channel)?;
+    if ty != 1 {
+        return Err(errors::unknown_data_type(""));
+    }
+    let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, is_msg)
+        .map_err(|e| e.wrap("failed to deserialize interchain account transaction"))?;
+    execute_tx(
+        ctx,
+        router,
+        &p.source_port,
+        &p.destination_port,
+        &p.destination_channel,
+        &msgs,
+    )
+    .map_err(|e| e.wrap("failed to execute interchain account transaction"))
+}
+
+/// `DeserializeCosmosTx`.
+fn deserialize_cosmos_tx(
+    data: &[u8],
+    encoding: &str,
+    is_msg: fn(&str) -> bool,
+) -> Result<Vec<Any>> {
+    let tx = match encoding {
+        ENCODING_PROTOBUF => CosmosTx::decode(data).map_err(|e| {
+            x_ibc::errors::unregistered(format!("cannot unmarshal CosmosTx with protobuf: {e}"))
+        })?,
+        ENCODING_PROTO3_JSON => {
+            return Err(sdk::error::sdk::not_supported(
+                "proto3json interchain account transactions are not ported yet",
+            ));
+        }
+        other => {
+            return Err(errors::invalid_codec(&format!(
+                "unsupported encoding format {other}"
+            )));
+        }
+    };
+    for m in &tx.messages {
+        // `UnpackAny` into `sdk.Msg`: the type must be registered.
+        if !is_msg(&m.type_url) {
+            return Err(x_ibc::errors::unregistered(format!(
+                "no concrete type registered for type URL {} against interface *types.Msg",
+                m.type_url
+            )));
+        }
+    }
+    Ok(tx.messages)
+}
+
+/// `authenticateTx`.
+fn authenticate_tx(
+    ctx: &mut Context<'_>,
+    msgs: &[Any],
+    connection_id: &str,
+    port_id: &str,
+) -> Result<()> {
+    let Some(ica) = interchain_account_address(ctx, connection_id, port_id)? else {
+        return Err(errors::interchain_account_not_found(&format!(
+            "failed to retrieve interchain account on port {port_id}"
+        )));
+    };
+    let allow = params(ctx)?.allow_messages;
+    for m in msgs {
+        if !crate::contains_msg_type(&allow, &m.type_url) {
+            return Err(ierr::unauthorized(format!(
+                "message type not allowed: {}",
+                m.type_url
+            )));
+        }
+        let signers = match celestia_proto::signers::get_signers(&m.type_url, &m.value) {
+            Some(Ok(s)) => s,
+            Some(Err(e)) => {
+                return Err(x_ibc::errors::unregistered(format!(
+                    "failed to obtain message signers for message type {}: {e}",
+                    m.type_url
+                )));
+            }
+            None => Vec::new(),
+        };
+        for s in signers {
+            let bytes = match s {
+                celestia_proto::signers::Signer::Raw(b) => b,
+                celestia_proto::signers::Signer::Str(s) => match encoding::bech32::decode(&s) {
+                    Ok((_, b)) => b,
+                    Err(e) => {
+                        return Err(x_ibc::errors::unregistered(format!(
+                            "failed to obtain message signers for message type {}: {e}",
+                            m.type_url
+                        )));
+                    }
+                },
+            };
+            let got = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &bytes);
+            if got != ica {
+                return Err(ierr::unauthorized(format!(
+                    "unexpected signer address: expected {ica}, got {got}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `executeTx`.
+fn execute_tx(
+    ctx: &mut Context<'_>,
+    router: &dyn MsgRouter,
+    source_port: &str,
+    dest_port: &str,
+    dest_channel: &str,
+    msgs: &[Any],
+) -> Result<Vec<u8>> {
+    let Some(ch) = x_ibc::channel::get_channel(ctx, dest_port, dest_channel)? else {
+        return Err(cherr::channel_not_found(""));
+    };
+    let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+    authenticate_tx(ctx, msgs, &hop, source_port)?;
+    let cp = ctx.branch();
+    let mut responses = Vec::with_capacity(msgs.len());
+    for m in msgs {
+        let res = router.validate_basic(m).and_then(|()| {
+            if !router.has_handler(&m.type_url) {
+                return Err(errors::invalid_route(""));
+            }
+            router.handle(ctx, m)
+        });
+        match res {
+            Ok(r) => responses.push(r),
+            Err(e) => {
+                ctx.discard(cp);
+                return Err(e);
+            }
+        }
+    }
+    ctx.write(cp);
+    #[allow(deprecated)]
+    let data = TxMsgData {
+        data: Vec::new(),
+        msg_responses: responses,
+    };
+    Ok(data.encode_to_vec())
+}
+
+fn packet_event(
+    p: &Packet,
+    success: bool,
+    err: Option<&SdkError>,
+) -> celestia_proto::celestia_core_proto::abci::Event {
+    let mut attrs = vec![
+        ("module", MODULE_NAME.to_owned()),
+        ("host_channel_id", p.destination_channel.clone()),
+        ("success", success.to_string()),
+    ];
+    if let Some(e) = err {
+        attrs.push(("error", e.log.clone()));
+    }
+    event("ics27_packet", attrs)
+}
+
+// ---------------------------------------------------------------------------
+// IBC module
+// ---------------------------------------------------------------------------
+
+/// The host `IBCModule`, executing packet messages through `router`.
+#[derive(Debug, Clone)]
+pub struct HostModule<R> {
+    /// The app's message router (`baseapp.MsgServiceRouter`).
+    pub router: R,
+    /// Whether a type URL is registered as `sdk.Msg` in the interface
+    /// registry.
+    pub is_msg: fn(&str) -> bool,
+}
+
+fn flow(msg: &str) -> SdkError {
+    errors::invalid_channel_flow(msg)
+}
+
+impl<R: MsgRouter> IbcModule for HostModule<R> {
+    fn on_chan_open_init(
+        &self,
+        _ctx: &mut Context<'_>,
+        _order: Order,
+        _hops: &[String],
+        _port_id: &str,
+        _channel_id: &str,
+        _cap: &Capability,
+        _cp: &Counterparty,
+        _version: &str,
+    ) -> Result<String> {
+        Err(flow(
+            "channel handshake must be initiated by controller chain",
+        ))
+    }
+
+    fn on_chan_open_try(
+        &self,
+        ctx: &mut Context<'_>,
+        _order: Order,
+        hops: &[String],
+        port_id: &str,
+        channel_id: &str,
+        cap: &Capability,
+        cp: &Counterparty,
+        cp_version: &str,
+    ) -> Result<String> {
+        if !params(ctx)?.host_enabled {
+            return Err(errors::host_sub_module_disabled());
+        }
+        keeper_on_chan_open_try(ctx, hops, port_id, channel_id, cap, cp, cp_version)
+    }
+
+    fn on_chan_open_ack(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _cp_channel_id: &str,
+        _cp_version: &str,
+    ) -> Result<()> {
+        Err(flow(
+            "channel handshake must be initiated by controller chain",
+        ))
+    }
+
+    fn on_chan_open_confirm(
+        &self,
+        ctx: &mut Context<'_>,
+        port_id: &str,
+        channel_id: &str,
+    ) -> Result<()> {
+        if !params(ctx)?.host_enabled {
+            return Err(errors::host_sub_module_disabled());
+        }
+        let Some(ch) = x_ibc::channel::get_channel(ctx, port_id, channel_id)? else {
+            return Err(cherr::channel_not_found(format!(
+                "failed to retrieve channel {channel_id} on port {port_id}"
+            )));
+        };
+        let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+        let cp_port = ch.counterparty.unwrap_or_default().port_id;
+        crate::set_active_channel_id(ctx, &hop, &cp_port, channel_id)
+    }
+
+    fn on_chan_close_init(&self, _ctx: &mut Context<'_>, _p: &str, _c: &str) -> Result<()> {
+        Err(ierr::invalid_request("user cannot close channel"))
+    }
+
+    fn on_chan_close_confirm(&self, _ctx: &mut Context<'_>, _p: &str, _c: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_recv_packet(
+        &self,
+        ctx: &mut Context<'_>,
+        p: &Packet,
+        _relayer: &[u8],
+    ) -> Result<Option<Acknowledgement>> {
+        if !params(ctx)?.host_enabled {
+            let e = errors::host_sub_module_disabled();
+            ctx.events.emit(event(
+                "ics27_packet",
+                [
+                    ("module", MODULE_NAME.to_owned()),
+                    ("host_channel_id", p.destination_channel.clone()),
+                    ("error", e.log.clone()),
+                    ("success", "false".to_owned()),
+                ],
+            ));
+            return Ok(Some(Acknowledgement::error(&e)));
+        }
+        match keeper_on_recv_packet(ctx, &self.router, self.is_msg, p) {
+            Ok(res) => {
+                ctx.events.emit(packet_event(p, true, None));
+                Ok(Some(Acknowledgement::result(&res)))
+            }
+            Err(e) if e.codespace == "undefined" && e.code == 111_222 => Err(e),
+            Err(e) => {
+                ctx.events.emit(packet_event(p, false, Some(&e)));
+                Ok(Some(Acknowledgement::error(&e)))
+            }
+        }
+    }
+
+    fn on_acknowledgement_packet(
+        &self,
+        _ctx: &mut Context<'_>,
+        _p: &Packet,
+        _ack: &[u8],
+        _relayer: &[u8],
+    ) -> Result<()> {
+        Err(flow(
+            "cannot receive acknowledgement on a host channel end, a host chain does not send a packet over the channel",
+        ))
+    }
+
+    fn on_timeout_packet(
+        &self,
+        _ctx: &mut Context<'_>,
+        _p: &Packet,
+        _relayer: &[u8],
+    ) -> Result<()> {
+        Err(flow(
+            "cannot cause a packet timeout on a host channel end, a host chain does not send a packet over the channel",
+        ))
+    }
+
+    fn upgradable(&self) -> bool {
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+/// Whether `type_url` is an ICA host message.
+#[must_use]
+pub fn is_host_msg(type_url: &str) -> bool {
+    type_url == MsgUpdateParams::type_url() || type_url == MsgModuleQuerySafe::type_url()
+}
+
+fn signer_check(signer: &str) -> Result<()> {
+    x_auth::parse_bech32(signer).map(|_| ()).map_err(|e| {
+        ierr::invalid_address(format!("string could not be parsed as address: {}", e.log))
+    })
+}
+
+/// `ValidateBasic` of the host messages (`None` for other messages).
+#[must_use]
+pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
+    if msg.type_url == MsgUpdateParams::type_url() {
+        return Some(decode::<MsgUpdateParams>(msg).and_then(|m| {
+            signer_check(&m.signer)?;
+            crate::validate_params(&m.params.unwrap_or_default())
+        }));
+    }
+    if msg.type_url == MsgModuleQuerySafe::type_url() {
+        return Some(decode::<MsgModuleQuerySafe>(msg).and_then(|m| {
+            signer_check(&m.signer)?;
+            if m.requests.is_empty() {
+                return Err(ierr::invalid_request("no queries provided"));
+            }
+            Ok(())
+        }));
+    }
+    None
+}
+
+fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
+    M::decode(msg.value.as_slice()).map_err(|e| sdk::error::sdk::tx_decode(e.to_string()))
+}
+
+/// The host message server (`None` for other messages).
+pub fn handle(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
+    if msg.type_url == MsgUpdateParams::type_url() {
+        return Some(decode::<MsgUpdateParams>(msg).and_then(|m| {
+            let auth = x_ibc::msgs::authority();
+            if auth != m.signer {
+                return Err(ierr::unauthorized(format!(
+                    "expected {auth}, got {}",
+                    m.signer
+                )));
+            }
+            crate::set_params(ctx, &m.params.unwrap_or_default())?;
+            Ok(Any::pack(&MsgUpdateParamsResponse {}))
+        }));
+    }
+    if msg.type_url == MsgModuleQuerySafe::type_url() {
+        return Some(Err(sdk::error::sdk::not_supported(
+            "MsgModuleQuerySafe (gRPC query router) is not ported yet",
+        )));
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_roundtrip() {
+        let m = metadata_from_version(
+            r#"{"version":"ics27-1","controllerConnectionId":"connection-0","host_connection_id":"connection-1","address":"","encoding":"proto3","tx_type":"sdk_multi_msg"}"#,
+        )
+        .unwrap();
+        assert_eq!(m.controller_connection_id, "connection-0");
+        assert_eq!(
+            metadata_json(&m),
+            r#"{"version":"ics27-1","controller_connection_id":"connection-0","host_connection_id":"connection-1","address":"","encoding":"proto3","tx_type":"sdk_multi_msg"}"#
+        );
+        assert!(metadata_from_version("ics27-1").is_err());
+        assert!(metadata_from_version(r#"{"bogus":"x"}"#).is_err());
+        assert!(validate_account_address("celestia1abc").is_ok());
+        assert!(validate_account_address("a-b").is_err());
+        assert_eq!(
+            decode_packet_data(br#"{"type":"TYPE_EXECUTE_TX","data":"AQ==","memo":""}"#),
+            Ok((1, vec![1]))
+        );
+        assert_eq!(decode_packet_data(br#"{"type":1}"#), Ok((1, vec![])));
+        assert!(decode_packet_data(br#"{"type":"NOPE"}"#).is_err());
+    }
+}

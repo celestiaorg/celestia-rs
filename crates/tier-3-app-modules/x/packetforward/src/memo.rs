@@ -715,11 +715,43 @@ pub fn validate(m: &ForwardMetadata) -> Result<(), String> {
     if m.receiver.is_empty() {
         return Err("failed to validate metadata. receiver cannot be empty".into());
     }
-    x_ibc::host::port_identifier_validator(&m.port)
-        .map_err(|e| format!("failed to validate metadata: {}", e.log))?;
-    x_ibc::host::channel_identifier_validator(&m.channel)
-        .map_err(|e| format!("failed to validate metadata: {}", e.log))?;
+    identifier(&m.port, 2, x_ibc::host::DEFAULT_MAX_PORT_CHARACTER_LENGTH)?;
+    identifier(&m.channel, 8, x_ibc::host::DEFAULT_MAX_CHARACTER_LENGTH)?;
     Ok(())
+}
+
+/// `fmt.Errorf("failed to validate metadata: %w", err)` of a 24-host
+/// identifier error. `%w` formats the `errorsmod` error with `%v`, which
+/// appends the source location of its innermost `Wrap` (`[file:line]`, the
+/// path cut after `github.com/`); that string ends up in the committed
+/// error acknowledgement.
+fn identifier(id: &str, min: usize, max: usize) -> Result<(), String> {
+    const FILE: &str = "celestiaorg/ibc-go/v8@v8.7.2/modules/core/24-host/validate.go";
+    let (msg, line) = if id.trim().is_empty() {
+        ("identifier cannot be blank".to_owned(), 41)
+    } else if id.contains('/') {
+        (format!("identifier {id} cannot contain separator '/'"), 45)
+    } else if id.len() < min || id.len() > max {
+        (
+            format!(
+                "identifier {id} has invalid length: {}, must be between {min}-{max} characters",
+                id.len()
+            ),
+            49,
+        )
+    } else if !x_ibc::host::is_valid_id(id) {
+        (
+            format!(
+                "identifier {id} must contain only alphanumeric or the following characters: '.', '_', '+', '-', '#', '[', ']', '<', '>'"
+            ),
+            53,
+        )
+    } else {
+        return Ok(());
+    };
+    Err(format!(
+        "failed to validate metadata: {msg}: invalid identifier [{FILE}:{line}]"
+    ))
 }
 
 #[cfg(test)]

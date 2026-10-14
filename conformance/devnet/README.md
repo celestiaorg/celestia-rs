@@ -41,6 +41,19 @@ CHAIN_ID=test ALLOW_HALT=1 conformance/devnet/devnet.sh upgrade 10 conformance/d
 conformance/devnet/inject-evidence.sh staking evidence 20 30
 ```
 
+The `ibc` workload starts a second Go chain at port offset
+`DEVNET_PORT_OFFSET + 500` and links the two with cosmos/relayer v2.6.0
+(`build-rly.sh` builds it into `$DEVNET_BIN`, patched to use a fixed gas
+limit since celestia-app does not serve `Simulate`); the relayer needs tx
+indexing on the recorded chain (`DEVNET_TX_INDEX=kv`). IBC edge cases a
+relayer does not produce come from `../ibcvectors` (ibc-go testing
+package; fixture `ibc-edge`).
+
+```bash
+conformance/devnet/build-rly.sh
+DEVNET_TX_INDEX=kv conformance/devnet/devnet.sh ibc 10 conformance/devnet/workloads/ibc.sh
+```
+
 ## Live mixed network
 
 `mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a

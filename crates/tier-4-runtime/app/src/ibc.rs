@@ -15,6 +15,15 @@ use x_transfer::relay::TransferModule;
 #[derive(Debug, Clone)]
 pub struct IbcRouter {
     transfer: PacketForwardMiddleware<TransferModule>,
+    icahost: x_icahost::host::HostModule<crate::router::AppRouter>,
+}
+
+/// Whether `type_url` is registered as `sdk.Msg` in the app's interface
+/// registry.
+fn is_registered_msg(type_url: &str) -> bool {
+    txdecode::testing::type_urls()
+        .iter()
+        .any(|(u, _, bits)| *u == type_url && bits & 1 != 0)
 }
 
 impl Default for IbcRouter {
@@ -25,6 +34,10 @@ impl Default for IbcRouter {
                 retries_on_timeout: 0,
                 forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
             },
+            icahost: x_icahost::host::HostModule {
+                router: crate::router::AppRouter,
+                is_msg: is_registered_msg,
+            },
         }
     }
 }
@@ -33,6 +46,7 @@ impl Router for IbcRouter {
     fn get_route(&self, module: &str) -> Option<&dyn IbcModule> {
         match module {
             x_transfer::MODULE_NAME => Some(&self.transfer),
+            x_icahost::SUB_MODULE_NAME => Some(&self.icahost),
             _ => None,
         }
     }
@@ -48,6 +62,7 @@ pub fn has_handler(type_url: &str) -> bool {
     x_ibc::msgs::is_ibc_msg(type_url)
         || type_url == transfer::MsgTransfer::type_url()
         || type_url == transfer::MsgUpdateParams::type_url()
+        || x_icahost::host::is_host_msg(type_url)
 }
 
 /// `ValidateBasic` of the IBC messages (`None` for other messages).
@@ -62,7 +77,7 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
     if msg.type_url == transfer::MsgUpdateParams::type_url() {
         return Some(decode(msg).and_then(|m| x_transfer::relay::validate_msg_update_params(&m)));
     }
-    None
+    x_icahost::host::validate_basic(msg)
 }
 
 /// Executes an IBC message (`None` for other messages).
@@ -91,6 +106,9 @@ fn route_inner(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if msg.type_url == transfer::MsgUpdateParams::type_url() {
         let resp = x_transfer::relay::update_params(ctx, &decode(msg)?)?;
         return Ok(Any::pack(&resp));
+    }
+    if let Some(r) = x_icahost::host::handle(ctx, msg) {
+        return r;
     }
     let router = IbcRouter::default();
     x_ibc::msgs::handle(ctx, &router, msg).unwrap_or_else(|| {

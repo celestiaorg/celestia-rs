@@ -20,9 +20,24 @@ fn show(label: &str, go: &[Event], rs: &[Event]) {
     for i in 0..n {
         let g = go.get(i).map(fmt).unwrap_or_default();
         let r = rs.get(i).map(fmt).unwrap_or_default();
-        if g != r {
-            println!("{label} #{i}\n  go:   {g}\n  rust: {r}");
+        if g == r {
+            continue;
         }
+        if let (Some(ge), Some(re)) = (go.get(i), rs.get(i)) {
+            if ge.r#type == re.r#type && ge.attributes.len() == re.attributes.len() {
+                // Same shape: only the attributes that differ.
+                for (ga, ra) in ge.attributes.iter().zip(&re.attributes) {
+                    if ga != ra {
+                        println!(
+                            "{label} #{i} {}\n  go:   {}={}\n  rust: {}={}",
+                            ge.r#type, ga.key, ga.value, ra.key, ra.value
+                        );
+                    }
+                }
+                continue;
+            }
+        }
+        println!("{label} #{i}\n  go:   {g}\n  rust: {r}");
     }
 }
 

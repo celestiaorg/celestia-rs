@@ -64,7 +64,7 @@ fn base_vesting(acc: &Account) -> Option<&pb::BaseVestingAccount> {
         Account::DelayedVesting(a) => a.base_vesting_account.as_ref(),
         Account::PeriodicVesting(a) => a.base_vesting_account.as_ref(),
         Account::PermanentLocked(a) => a.base_vesting_account.as_ref(),
-        Account::Base(_) | Account::Module(_) => None,
+        Account::Base(_) | Account::Module(_) | Account::Interchain(_) => None,
     }
 }
 
@@ -82,7 +82,7 @@ fn base_vesting_mut(acc: &mut Account) -> Option<&mut pb::BaseVestingAccount> {
         Account::PermanentLocked(a) => {
             Some(a.base_vesting_account.get_or_insert_with(Default::default))
         }
-        Account::Base(_) | Account::Module(_) => None,
+        Account::Base(_) | Account::Module(_) | Account::Interchain(_) => None,
     }
 }
 
