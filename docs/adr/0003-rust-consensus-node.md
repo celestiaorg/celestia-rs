@@ -52,3 +52,16 @@ Every component interoperates with Go before it is trusted:
 local mixed devnet → Arabica/Mocha full node → Mocha validator → mainnet
 full node → mainnet validator. Public network access for the cloud dev
 environment is still blocked (`OPEN_QUESTIONS.md` #1).
+
+## Implementation (2026-10-14)
+
+| Piece | Where | Checked by |
+|---|---|---|
+| File signer, Go key/state files, double-sign guard (state fsynced before a signature is released) | `crates/tier-4-runtime/privval` | Go-recorded sign sequence (`conformance/consensusvectors/privval`) |
+| Block store, state store (validator checkpointing, params, FinalizeBlock responses), `State`, MakeBlock / validation / ApplyBlock, evidence pool (duplicate votes), `Handshaker` replay matrix | `crates/tier-4-runtime/nodestore` | store / execution / crash-point handshake tests |
+| Round state machine, vote sets, timeouts from `TimeoutInfo` + delayed precommit, WAL (Go format) + catch-up replay, wire messages, gossip over an abstract `Network` | `crates/tier-4-runtime/consensus` | Go-ported unit tests; deterministic multi-validator simulation (`tests/sim.rs`: drops, delays, partitions, crash-restart, double-signer, valset changes) checking safety, liveness and no double signing |
+| `celestia-rs start` (single validator, in-process app, local tx inbox), `export-blocks` | `crates/tier-5-node/celestia-rs` | `tests/node.rs`; `conformance/consensusvectors/verify/run.sh` (Go celestia-core verifies every block/commit/hash, Go celestia-appd accepts every proposal and reproduces every app hash, Go decodes the WAL) |
+
+Next: wire the consensus reactor (peer round states, `HasVote`, catch-up)
+to the `p2p` crate and the propagation reactor, then the mixed Rust+Go
+devnet.

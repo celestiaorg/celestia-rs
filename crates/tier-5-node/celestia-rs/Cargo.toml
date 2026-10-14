@@ -17,6 +17,15 @@ abci-server = { path = "../../tier-4-runtime/abci-server" }
 anyhow.workspace = true
 api-server = { path = "../../tier-4-runtime/api-server" }
 app = { path = "../../tier-4-runtime/app" }
+consensus = { path = "../../tier-4-runtime/consensus" }
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+nodestore = { path = "../../tier-4-runtime/nodestore" }
+privval = { path = "../../tier-4-runtime/privval" }
+prost = "0.13"
+sdk = { path = "../../tier-3-app-modules/sdk" }
+serde_json = "1"
 multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 tracing = "0.1"
@@ -24,3 +33,6 @@ clap.workspace = true
 math = { path = "../../tier-0-primitives/math" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"

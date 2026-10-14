@@ -1,7 +1,9 @@
 //! `celestia-rs`: the celestia-rs node.
 //!
-//! For now the only mode is `abci`: serve the Rust state machine over the
-//! ABCI socket protocol to a Go celestia-core process (`proxy_app`), plus
+//! `start` runs the Rust consensus engine on the in-process state machine
+//! (single validator for now, see [`node`]); `export-blocks` dumps its
+//! block store for the Go verifier. `abci` serves the Rust state machine
+//! over the ABCI socket protocol to a Go celestia-core process (`proxy_app`), plus
 //! the app's gRPC query server (`--grpc-address`, default port 9090) and
 //! REST API (`--api-address`, default port 1317). With
 //! `--home <dir>` state is persisted in `<dir>/data/application.redb`
@@ -11,6 +13,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use celestia_rs::node;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
@@ -22,6 +25,32 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
+    /// Run a node: Rust consensus on top of the in-process state machine
+    /// (single validator, no P2P yet).
+    Start {
+        /// Node home (as created by `celestia-appd init` / `collect-gentxs`).
+        #[arg(long)]
+        home: PathBuf,
+        /// Stop after committing this height (0 = run forever).
+        #[arg(long, default_value_t = 0)]
+        halt_height: i64,
+        /// Transactions taken from `<home>/data/tx-inbox` per block.
+        #[arg(long, default_value_t = 2)]
+        txs_per_block: usize,
+        /// Fallback `timeout_commit` in ms when the app sets none.
+        #[arg(long, default_value_t = 1000)]
+        timeout_commit_ms: i64,
+    },
+    /// Dump the block store (blocks, commits, validator sets, params,
+    /// FinalizeBlock responses) as JSON for the Go verifier.
+    ExportBlocks {
+        /// Node home.
+        #[arg(long)]
+        home: PathBuf,
+        /// Output file.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Serve the state machine to celestia-core over ABCI (socket).
     Abci {
         /// Listen address.
@@ -77,6 +106,24 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     match Cli::parse().command {
+        Cmd::Start {
+            home,
+            halt_height,
+            txs_per_block,
+            timeout_commit_ms,
+        } => {
+            let opts = node::StartOptions {
+                home,
+                halt_height,
+                txs_per_block,
+                config: consensus::ConsensusConfig {
+                    timeout_commit: timeout_commit_ms * 1_000_000,
+                    ..consensus::ConsensusConfig::default()
+                },
+            };
+            tokio::task::spawn_blocking(move || node::start(&opts)).await?
+        }
+        Cmd::ExportBlocks { home, out } => node::export_blocks(&home, &out),
         Cmd::Abci {
             addr,
             home,
