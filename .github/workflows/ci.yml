@@ -82,3 +82,12 @@ jobs:
           else
             echo "antereplay not present; skipping."
           fi
+
+  devnet-oracle-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+      - run: cd conformance/devnet-oracle && go build ./... && go vet ./...

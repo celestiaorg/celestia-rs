@@ -20,6 +20,7 @@ members = [
     "crates/tier-3-app-modules/auth",
     "crates/tier-3-app-modules/bank",
     "crates/tier-3-app-modules/staking",
+    "crates/tier-4-runtime/abci-server",
     "crates/m1-integration",
     "crates/m2-integration",
     "crates/m3-integration",
