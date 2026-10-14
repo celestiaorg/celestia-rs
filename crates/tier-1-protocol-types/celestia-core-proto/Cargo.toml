@@ -1,0 +1,14 @@
+[package]
+name = "celestia-core-proto"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Prost bindings for celestia-core v0.42 protobufs (ABCI++, consensus, p2p, types)."
+publish = false
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13"

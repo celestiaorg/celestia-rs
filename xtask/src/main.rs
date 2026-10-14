@@ -4,10 +4,12 @@
 //! - `refresh-fixtures` — regenerate conformance fixtures by shelling out to
 //!   the Go program in `conformance/fixturegen/`.
 //! - `repo-health` — run the local repository health gates.
+//! - `gen-proto` — regenerate committed prost bindings from `proto/`.
 
 // xtask is an internal CLI tool, not a library — stdout is its primary output.
 #![allow(clippy::print_stdout)]
 
+mod gen_proto;
 mod refresh_fixtures;
 mod repo_health;
 
@@ -47,6 +49,12 @@ enum Cmd {
         #[arg(long)]
         skip_go: bool,
     },
+    /// Regenerate committed prost bindings from the vendored `.proto` files.
+    GenProto {
+        /// Print what would be generated without writing files.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -62,5 +70,6 @@ fn main() -> Result<()> {
             offline,
             skip_go,
         } => repo_health::run(dry_run, offline, skip_go),
+        Cmd::GenProto { dry_run } => gen_proto::run(dry_run),
     }
 }

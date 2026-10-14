@@ -14,3 +14,5 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+prost-build = "0.13"
+protox = "0.7"
