@@ -51,6 +51,8 @@ print_stderr = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
+# New in clippy 1.99; `assert!(x.is_empty())` reads fine in tests.
+assert_is_empty = "allow"
 
 [workspace.dependencies]
 anyhow = "1"
