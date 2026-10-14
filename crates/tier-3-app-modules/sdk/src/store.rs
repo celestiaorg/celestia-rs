@@ -119,6 +119,20 @@ impl MultiStore {
         Ok(self.root.load_latest_version()?)
     }
 
+    /// A read-only branch of committed `version` for queries (Go
+    /// `CacheMultiStoreWithVersion`): IAVL stores at `version`, transient
+    /// and memory stores as they are now. Writes go to cache layers that
+    /// are dropped with the view.
+    pub fn view_at(&self, version: i64) -> Result<Self, StoreError> {
+        Ok(Self {
+            root: self.root.view_at(version)?,
+            kinds: self.kinds.clone(),
+            volatile: self.volatile.clone(),
+            stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
+            active: 0,
+        })
+    }
+
     /// Mounts a store.
     pub fn mount(&mut self, name: &str, kind: Kind) -> Result<(), StoreError> {
         if kind == Kind::Iavl {

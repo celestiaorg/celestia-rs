@@ -20,6 +20,7 @@ include!("gen/mod.rs");
 
 pub mod any;
 pub mod registry;
+pub mod services;
 pub mod signers;
 pub mod wire_table;
 

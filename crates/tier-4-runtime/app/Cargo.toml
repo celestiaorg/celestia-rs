@@ -15,11 +15,14 @@ workspace = true
 [dependencies]
 abci-server = { path = "../abci-server" }
 encoding = { path = "../../tier-0-primitives/encoding" }
+grpc-query = { path = "../grpc-query" }
+ics23-proofs = { path = "../../tier-2-state-and-store/ics23-proofs" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 pbjson-types = "0.7"
+prost-types = "0.13"
 math = { path = "../../tier-0-primitives/math" }
 prost = "0.13"
 square = { path = "../../tier-1-protocol-types/square" }

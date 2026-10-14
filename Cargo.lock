@@ -121,12 +121,15 @@ dependencies = [
  "abci-server",
  "celestia-proto",
  "encoding",
+ "grpc-query",
  "hex",
+ "ics23-proofs",
  "kvstore",
  "math",
  "multistore",
  "pbjson-types",
  "prost",
+ "prost-types",
  "sdk",
  "serde_json",
  "shares",
@@ -582,6 +585,8 @@ dependencies = [
  "anyhow",
  "app",
  "celestia-proto",
+ "encoding",
+ "hash",
  "hex",
  "iavl",
  "multistore",
@@ -822,6 +827,34 @@ dependencies = [
  "ff",
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "grpc-query"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "x-auth",
+ "x-authz",
+ "x-bank",
+ "x-blob",
+ "x-circuit",
+ "x-consensus",
+ "x-distribution",
+ "x-feegrant",
+ "x-fibre",
+ "x-gov",
+ "x-minfee",
+ "x-mint",
+ "x-signal",
+ "x-slashing",
+ "x-staking",
+ "x-upgrade",
+ "x-valaddr",
 ]
 
 [[package]]

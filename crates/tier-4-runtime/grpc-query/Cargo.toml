@@ -1,0 +1,37 @@
+[package]
+name = "grpc-query"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia-app v10 gRPC query services (GRPCQueryRouter handlers) with Go-exact pagination and errors."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+math = { path = "../../tier-0-primitives/math" }
+prost = "0.13"
+sdk = { path = "../../tier-3-app-modules/sdk" }
+x-auth = { path = "../../tier-3-app-modules/x/auth" }
+x-authz = { path = "../../tier-3-app-modules/x/authz" }
+x-bank = { path = "../../tier-3-app-modules/x/bank" }
+x-blob = { path = "../../tier-3-app-modules/x/blob" }
+x-circuit = { path = "../../tier-3-app-modules/x/circuit" }
+x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
+x-feegrant = { path = "../../tier-3-app-modules/x/feegrant" }
+x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
+x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
+x-mint = { path = "../../tier-3-app-modules/x/mint" }
+x-signal = { path = "../../tier-3-app-modules/x/signal" }
+x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
+x-valaddr = { path = "../../tier-3-app-modules/x/valaddr" }
+x-distribution = { path = "../../tier-3-app-modules/x/distribution" }
+x-gov = { path = "../../tier-3-app-modules/x/gov" }
+x-slashing = { path = "../../tier-3-app-modules/x/slashing" }
+x-staking = { path = "../../tier-3-app-modules/x/staking" }
+pbjson-types = "0.7"

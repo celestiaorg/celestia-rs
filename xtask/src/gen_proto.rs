@@ -150,6 +150,7 @@ pub fn run(dry_run: bool) -> Result<()> {
             write_registry(&out, &messages)?;
             write_signers(&out, &pool, &packages)?;
             write_wire_table(&out, &pool)?;
+            write_services(&out, &pool, &packages)?;
         }
     }
     Ok(())
@@ -387,6 +388,139 @@ fn write_wire_table(out: &Path, pool: &prost_reflect::DescriptorPool) -> Result<
          pub static MESSAGES: &[MessageInfo] = &[\n{body}];\n"
     );
     std::fs::write(out.join("wire_table.rs"), src)?;
+    Ok(())
+}
+
+/// Writes `services.rs`: every unary query service method of the target's
+/// packages (Msg services and streaming methods excluded) with its
+/// `google.api.http` bindings, and a field-name schema of every message
+/// (for the REST gateway's request parsing and JSON rendering).
+#[allow(clippy::too_many_lines)]
+fn write_services(
+    out: &Path,
+    pool: &prost_reflect::DescriptorPool,
+    packages: &std::collections::BTreeSet<String>,
+) -> Result<()> {
+    use prost_reflect::{Kind, Value};
+    use std::fmt::Write as _;
+    let http = pool
+        .get_extension_by_name("google.api.http")
+        .ok_or_else(|| anyhow::anyhow!("google.api.http extension not found"))?;
+    let msg_service = pool
+        .get_extension_by_name("cosmos.msg.v1.service")
+        .ok_or_else(|| anyhow::anyhow!("cosmos.msg.v1.service extension not found"))?;
+    let rule_of = |m: &prost_reflect::DynamicMessage| -> Option<(String, String, String)> {
+        for verb in ["get", "put", "post", "delete", "patch"] {
+            if m.has_field_by_name(verb) {
+                let v = m.get_field_by_name(verb)?;
+                return Some((
+                    verb.to_uppercase(),
+                    v.as_str()?.to_owned(),
+                    m.get_field_by_name("body")?.as_str()?.to_owned(),
+                ));
+            }
+        }
+        None
+    };
+    let mut methods = Vec::new();
+    for svc in pool.services() {
+        if !packages.contains(svc.package_name()) {
+            continue;
+        }
+        let opts = svc.options();
+        if opts.has_extension(&msg_service)
+            && matches!(opts.get_extension(&msg_service).as_ref(), Value::Bool(true))
+        {
+            continue;
+        }
+        for m in svc.methods() {
+            if m.is_client_streaming() || m.is_server_streaming() {
+                continue;
+            }
+            let mut rules = Vec::new();
+            let mopts = m.options();
+            if mopts.has_extension(&http) {
+                if let Value::Message(rule) = mopts.get_extension(&http).as_ref() {
+                    if let Some(r) = rule_of(rule) {
+                        rules.push(r);
+                    }
+                    if let Some(Value::List(extra)) =
+                        rule.get_field_by_name("additional_bindings").as_deref()
+                    {
+                        for e in extra {
+                            if let Value::Message(e) = e {
+                                if let Some(r) = rule_of(e) {
+                                    rules.push(r);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            methods.push((
+                format!("/{}/{}", svc.full_name(), m.name()),
+                m.input().full_name().to_owned(),
+                m.output().full_name().to_owned(),
+                rules,
+            ));
+        }
+    }
+    methods.sort();
+    let mut body = String::new();
+    for (path, input, output, rules) in &methods {
+        let mut rs = String::new();
+        for (verb, pattern, b) in rules {
+            write!(rs, "H{{method:{verb:?},pattern:{pattern:?},body:{b:?}}},")?;
+        }
+        writeln!(
+            body,
+            "Method{{path:{path:?},input:{input:?},output:{output:?},http:&[{rs}]}},"
+        )?;
+    }
+    let mut messages: Vec<prost_reflect::MessageDescriptor> = pool.all_messages().collect();
+    messages.sort_by(|a, b| a.full_name().cmp(b.full_name()));
+    let mut schema = String::new();
+    for m in &messages {
+        let mut fs = String::new();
+        let mut fields: Vec<prost_reflect::FieldDescriptor> = m.fields().collect();
+        fields.sort_by_key(prost_reflect::FieldDescriptor::number);
+        for f in &fields {
+            let proto = f.field_descriptor_proto();
+            let ty = proto.r#type.unwrap_or_default();
+            let type_name = match f.kind() {
+                Kind::Message(inner) => inner.full_name().to_owned(),
+                Kind::Enum(inner) => inner.full_name().to_owned(),
+                _ => String::new(),
+            };
+            let oneof = match proto.oneof_index {
+                Some(_) if proto.proto3_optional() => 1,
+                Some(_) => 2,
+                None => 0,
+            };
+            write!(
+                fs,
+                "F{{name:{:?},json_name:{:?},number:{},ty:{ty},repeated:{},type_name:{type_name:?},oneof:{oneof}}},",
+                f.name(),
+                f.json_name(),
+                f.number(),
+                f.is_list() || f.is_map(),
+            )?;
+        }
+        writeln!(
+            schema,
+            "Msg{{name:{:?},map_entry:{},fields:&[{fs}]}},",
+            m.full_name(),
+            m.is_map_entry()
+        )?;
+    }
+    let src = format!(
+        "// @generated by `cargo xtask gen-proto`. Do not edit.\n\
+         /// Unary query methods, sorted by path.\n\
+         pub static METHODS: &[Method] = &[\n{body}];\n\n\
+         /// Field schema of every message, sorted by full name.\n\
+         pub static SCHEMA: &[Msg] = &[\n{schema}];\n"
+    );
+    std::fs::write(out.join("services.rs"), src)?;
     Ok(())
 }
 

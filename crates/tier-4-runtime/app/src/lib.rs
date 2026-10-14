@@ -13,6 +13,9 @@ pub mod ibc;
 pub mod modules;
 pub mod msg_count;
 pub mod proposal;
+pub mod query;
+pub use multistore::PruningOptions;
+pub mod query_services;
 pub mod router;
 pub mod stores;
 pub mod tx;
@@ -408,6 +411,9 @@ impl App {
         // InitChain writes are flushed with the first block; flushing again
         // here is a no-op for already-flushed state.
         self.ms.flush()?;
+        self.ms
+            .root_mut()
+            .set_commit_timestamp(multistore_timestamp(&header.time));
         let id = self.ms.commit()?;
         // setState(execModeCheck): mempool validation restarts from the new state.
         self.ms.reset_check();
@@ -587,6 +593,13 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
     results.into_iter().map(Option::unwrap_or_default).collect()
 }
 
+fn multistore_timestamp(t: &pbjson_types::Timestamp) -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: t.seconds,
+        nanos: t.nanos,
+    }
+}
+
 fn sdk_empty_hash() -> Vec<u8> {
     // sha256 of the empty commit info (version 0).
     vec![
@@ -649,12 +662,7 @@ impl Application for AbciApp {
                 |error| response::Value::Exception(ResponseException { error }),
                 response::Value::CheckTx,
             ),
-            request::Value::Query(_) => response::Value::Query(abci::ResponseQuery {
-                code: sdk::error::sdk::not_supported("").code,
-                codespace: "sdk".into(),
-                log: "Query not ported yet".into(),
-                ..Default::default()
-            }),
+            request::Value::Query(r) => response::Value::Query(app.query(&r)),
             request::Value::QuerySequence(r) => {
                 response::Value::QuerySequence(app.query_sequence(&r.signer))
             }

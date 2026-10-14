@@ -377,6 +377,30 @@ impl Tree {
         })
     }
 
+    /// A read-only tree positioned at committed `version` (versions after
+    /// it are hidden). Used for historical queries; the result must never
+    /// be committed.
+    pub fn at_version(&self, version: Version) -> Result<Tree> {
+        let root = self
+            .versions
+            .get(&version)
+            .ok_or(Error::VersionNotFound { version })?
+            .clone();
+        Ok(Tree {
+            ndb: self.ndb.clone(),
+            initial_version: self.initial_version,
+            version,
+            root,
+            dirty: false,
+            orphans: Vec::new(),
+            versions: self
+                .versions
+                .range(..=version)
+                .map(|(v, r)| (*v, r.clone()))
+                .collect(),
+        })
+    }
+
     /// Export committed `version` as IAVL export nodes in post-order.
     pub fn export(&self, version: Version) -> Result<Exporter> {
         self.get_immutable(version)?.export()

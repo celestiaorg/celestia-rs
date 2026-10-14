@@ -272,6 +272,8 @@ pub struct Store {
     /// Metadata staged for the next commit batch (storage) or kept (memory).
     metadata: BTreeMap<Vec<u8>, Vec<u8>>,
     pending_metadata: Vec<(Vec<u8>, Vec<u8>)>,
+    /// Block time recorded in the next commit info (Go `SetCommitHeader`).
+    commit_timestamp: Option<prost_types::Timestamp>,
 }
 
 impl Store {
@@ -289,6 +291,7 @@ impl Store {
             pruning: PruningOptions::latest_only(),
             metadata: BTreeMap::new(),
             pending_metadata: Vec::new(),
+            commit_timestamp: None,
         }
     }
 
@@ -536,7 +539,10 @@ impl Store {
             });
         }
 
-        let commit_info = CommitInfo::new(next_version, store_infos)?;
+        let mut commit_info = CommitInfo::new(next_version, store_infos)?;
+        if let Some(ts) = self.commit_timestamp.take() {
+            commit_info.timestamp = Some(ts);
+        }
         let commit_id = commit_info.commit_id()?;
         if let Some(db) = &self.db {
             batch.put(commit_info_key(next_version), commit_info.to_proto_bytes()?);
@@ -596,6 +602,46 @@ impl Store {
             versions.retain(|v| other.contains(v));
         }
         versions.into_iter().collect()
+    }
+
+    /// Sets the block time recorded in the next commit's commit info (Go
+    /// `rootmulti.Store.SetCommitHeader`). Not part of the app hash; read
+    /// back by historical queries as the block time.
+    pub fn set_commit_timestamp(&mut self, timestamp: prost_types::Timestamp) {
+        self.commit_timestamp = Some(timestamp);
+    }
+
+    /// A read-only view of committed `version` (Go
+    /// `CacheMultiStoreWithVersion`): every store positioned at `version`;
+    /// stores that did not exist yet at `version` are empty. Fails when the
+    /// version is unknown or pruned. The view must never be committed.
+    pub fn view_at(&self, version: Version) -> Result<Store> {
+        let info = self.read_commit_info(version)?;
+        let mut stores = BTreeMap::new();
+        for (name, store) in &self.stores {
+            let tree = store.tree();
+            let view = if tree.version_exists(version) {
+                tree.at_version(version)?
+            } else if info.store_info(name).is_some() {
+                return Err(Error::VersionNotFound { version });
+            } else {
+                iavl::Tree::new()
+            };
+            stores.insert(name.clone(), KvStore::from_tree(view));
+        }
+        Ok(Store {
+            initial_version: self.initial_version,
+            version,
+            stores,
+            last_commit_info: Some(info),
+            history: BTreeMap::new(),
+            db: self.db.clone(),
+            cache: Arc::clone(&self.cache),
+            pruning: PruningOptions::nothing(),
+            metadata: BTreeMap::new(),
+            pending_metadata: Vec::new(),
+            commit_timestamp: None,
+        })
     }
 
     /// Return historical commit info by version.
