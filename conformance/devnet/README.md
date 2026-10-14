@@ -139,3 +139,28 @@ MConnection wire bytes, NodeInfo, NetAddress, PEX, `node_key.json`,
 cd conformance/p2pvectors
 GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/p2p/go-vectors.json
 ```
+
+## Mempool interop (M10)
+
+`mempool-interop.sh` checks the Rust CAT mempool and reactor (crate
+`mempool`) against a Go celestia-core v0.42.3 validator. The Rust node
+(`cargo run -p mempool --example mempool_interop`) runs the Rust state
+machine in process with the Rust mempool calling it (CheckTx New/Recheck,
+QuerySequence), dials the Go validator with the CAT reactor, advertises its
+height with a consensus stub, and serves a small RPC (`broadcast_tx_sync`;
+other requests are proxied to the Go node). A Go celestia-core follower only
+drives block execution of the Rust app (the Rust node has no consensus yet).
+
+- Phase A: the blob workload (`workloads/blob.sh`) and a burst of
+  consecutive-sequence bank sends go to the Go node; every tx Go includes in
+  a block must have reached the Rust mempool by gossip and passed the Rust
+  CheckTx first.
+- Phase B: a bank-send burst (JSON-RPC) and PFBs (`celestia-appd` CLI with
+  `--node` at the Rust node) go to the Rust node only; each must be included
+  in a Go-produced block.
+
+Both mempools must drain, and the Go node must keep the Rust peer:
+
+```bash
+DEVNET_BIN=<dir with celestia-appd, cometbft> DEVNET_PORT_OFFSET=13000 conformance/devnet/mempool-interop.sh
+```

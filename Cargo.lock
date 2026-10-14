@@ -1823,6 +1823,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "mempool"
+version = "0.0.1"
+dependencies = [
+ "abci-server",
+ "app",
+ "base64 0.22.1",
+ "celestia-core-proto",
+ "ctypes",
+ "hash",
+ "hex",
+ "p2p",
+ "prost",
+ "rand 0.9.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "merkle"
 version = "0.0.1"
 dependencies = [

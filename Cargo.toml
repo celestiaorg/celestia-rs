@@ -64,6 +64,7 @@ members = [
     "crates/tier-4-runtime/consensus",
     "crates/tier-4-runtime/grpc-query",
     "crates/tier-4-runtime/p2p",
+    "crates/tier-4-runtime/mempool",
     "crates/devnet-conformance",
     "crates/tier-5-node/celestia-rs",
     "crates/m1-integration",

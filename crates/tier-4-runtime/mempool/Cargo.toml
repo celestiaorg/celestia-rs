@@ -1,0 +1,33 @@
+[package]
+name = "mempool"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Exact port of celestia-core v0.42.3 `mempool/` and `mempool/cat`: the content-addressable tx pool and its SeenTx/WantTx/Txs reactor."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hash = { path = "../../tier-0-primitives/hash" }
+hex = "0.4"
+p2p = { path = "../p2p" }
+prost = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+abci-server = { path = "../abci-server" }
+app = { path = "../app" }
+base64 = "0.22"
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread", "net", "io-util"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
