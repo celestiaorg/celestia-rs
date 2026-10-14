@@ -19,8 +19,8 @@ open question 2).
 | M4  | in progress | Core SDK modules (auth, bank, staking) | Keeper state matches Go vectors |
 | D1  | completed   | Devnet differential oracle: Go `celestia-appd` v10 devnet in-container, exported blocks + per-block app hashes + genesis as fixtures | `cargo xtask devnet-fixtures` regenerates a committed corpus |
 | R1  | pending     | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Existing conformance suites pass against v10-generated fixtures |
-| S1  | in progress | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
-| S2  | pending     | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
+| S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
+| S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
 | S3  | pending     | State sync client + snapshot import; follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
 | M9  | pending     | Rust consensus engine (Tendermint BFT, celestia-core semantics) | Mixed Rust+Go private devnet reaches consensus |
 | M10 | pending     | Rust P2P (secret connection, MConn, PEX), mempool, block sync | Rust node peers with Go nodes and gossips blocks/txs |
@@ -32,17 +32,19 @@ open question 2).
 
 ## Current focus
 
-**S1/S2** — the Rust app runs the full ABCI lifecycle (`app` crate, `celestia-rs abci`
-binary) and `devnet-conformance::replay` diffs it against the Go devnet oracle
-store-by-store. Status at height 1 of `devnet/empty` (`cargo run -p devnet-conformance --example replay -- empty`):
+**S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
+exactly — app hash, every tx result's code/data/gas, validator updates — for
+every height of the `empty` (20), `staking` (40), `staking-lifecycle` (60) and
+`hyperlane` (60) devnet scenarios, and runs live: Go celestia-core over
+`celestia-rs abci` produces blocks, and a Rust follower tracks a Go validator
+through a staking workload (`conformance/devnet/mixed.sh`).
 
 | Area | State |
 |---|---|
-| Runtime | `sdk` (layered multistore, gaskv metering, events, coins), `math` (12,446 Go vectors), proto + proto3-JSON + signer extraction for all v10 messages |
-| At parity | upgrade, consensus, params, authz, evidence, feegrant, signal, valaddr, zkism, packetfowardmiddleware, capability, ibc, icahost, transfer, blob/minfee/circuit (genesis) |
-| In progress | ante chain, tx decoding (unknownproto, BlobTx), staking/distribution/slashing, gov/mint/fibre/signal, hyperlane/warp |
-| Blocker for height 1 | genesis tx delivery (needs ante + `MsgCreateValidator`) |
-| Not started | PrepareProposal/ProcessProposal square construction, CheckTx/mempool, queries/gRPC, persistent (disk-backed) IAVL + pruning, state sync |
+| Runtime & tx pipeline | sdk runtime, math (12,446 vectors), txdecode (4,968 vectors), x-ante (4,144 vectors), phased runTx, router, genutil |
+| Modules at parity | auth, bank, staking, distribution, slashing, mint, gov (genesis/queues), upgrade, consensus, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
+| In progress | Prepare/ProcessProposal + CheckTx + blob scenario; persistent storage (ADR 0002); gov msgs/tally, upgrade execution, authz, feegrant, evidence, vesting; IBC msgs + relaying |
+| Not started | queries/gRPC/REST (M11), state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's non-empty historical-state import hardening remains pending; S3 (state
 sync) will revisit it together with a disk-backed IAVL.
