@@ -142,7 +142,8 @@ pub fn init_genesis(
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
         // Go's module manager skips modules whose genesis section is null.
-        "blob" | "circuit" | "fibre" | "gov" | "hyperlane" | "minfee" | "mint" | "warp"
+        "blob" | "circuit" | "fibre" | "gov" | "hyperlane" | "minfee" | "mint" | "valaddr"
+        | "warp"
             if genesis.is_null() => {}
         "blob" => x_blob::init_genesis_json(ctx, genesis)?,
         "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
@@ -150,6 +151,7 @@ pub fn init_genesis(
         "mint" => x_mint::init_genesis_json(ctx, genesis)?,
         "fibre" => x_fibre::init_genesis_json(ctx, genesis)?,
         "gov" => x_gov::init_genesis_json(ctx, genesis)?,
+        "valaddr" => x_valaddr::init_genesis_json(ctx, genesis)?,
         // x/params has no genesis state.
         "params" => x_params::init_genesis(ctx)?,
         "capability" => x_capability::init_genesis_json(ctx, genesis)?,
@@ -215,7 +217,26 @@ impl x_transfer::BankKeeper for TransferBank {
 pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
     match module {
         "gov" => x_gov::end_block(ctx)?,
+        "valaddr" => x_valaddr::end_block(ctx, &mut ValaddrStaking)?,
         _ => tracing::trace!(module, "end_block not ported"),
     }
     Ok(Vec::new())
+}
+
+/// `x/staking` as the valaddr module's expected staking keeper.
+///
+/// TODO(staking): look the validator up once x/staking is ported; until then
+/// a stored fibre provider makes the EndBlocker fail loudly.
+struct ValaddrStaking;
+
+impl x_valaddr::StakingKeeper for ValaddrStaking {
+    fn validator_by_cons_addr(
+        &mut self,
+        _ctx: &mut Context<'_>,
+        _cons_addr: &[u8],
+    ) -> Result<Option<x_valaddr::ValidatorInfo>> {
+        Err(sdk::error::sdk::not_supported(
+            "valaddr: GetValidatorByConsAddr requires x/staking",
+        ))
+    }
 }

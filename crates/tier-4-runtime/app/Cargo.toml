@@ -41,6 +41,7 @@ x-params = { path = "../../tier-3-app-modules/x/params" }
 x-hyperlane = { path = "../../tier-3-app-modules/x/hyperlane" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
 x-warp = { path = "../../tier-3-app-modules/x/warp" }
+x-valaddr = { path = "../../tier-3-app-modules/x/valaddr" }
 
 [dev-dependencies]
 hex = "0.4"

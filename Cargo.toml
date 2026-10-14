@@ -42,6 +42,7 @@ members = [
     "crates/tier-3-app-modules/x/hyperlane",
     "crates/tier-3-app-modules/x/warp",
     "crates/tier-3-app-modules/x/gov",
+    "crates/tier-3-app-modules/x/valaddr",
     "crates/tier-4-runtime/abci-server",
     "crates/tier-4-runtime/app",
     "crates/devnet-conformance",
