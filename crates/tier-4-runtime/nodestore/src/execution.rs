@@ -622,6 +622,31 @@ impl BlockExecutor {
         self.evpool.check_evidence(state, &block.evidence.evidence)
     }
 
+    /// `ValidateBlockSkipLastCommit`: as [`Self::validate_block`] without
+    /// verifying `LastCommit` (block sync already verified it as the
+    /// previous block's successor commit).
+    pub fn validate_block_skip_last_commit(
+        &mut self,
+        state: &State,
+        block: &mut Block,
+        now: Time,
+    ) -> Result<()> {
+        validate_block_opts(state, block, now, true)?;
+        self.evpool.check_evidence(state, &block.evidence.evidence)
+    }
+
+    /// The state store.
+    #[must_use]
+    pub fn state_store(&self) -> &StateStore {
+        &self.state_store
+    }
+
+    /// The block store.
+    #[must_use]
+    pub fn block_store(&self) -> &BlockStore {
+        &self.block_store
+    }
+
     /// `ApplyBlock`: validates, then executes.
     pub fn apply_block(
         &mut self,

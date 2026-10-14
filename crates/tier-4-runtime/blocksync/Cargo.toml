@@ -1,0 +1,30 @@
+[package]
+name = "blocksync"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Exact port of celestia-core v0.42.3 `blocksync/`: the block pool (requesters, peer timeouts and bans) and the block sync reactor (channel 0x40)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+nodestore = { path = "../nodestore" }
+p2p = { path = "../p2p" }
+prost = "0.13"
+tracing = "0.1"
+
+[dev-dependencies]
+celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
+crypto = { path = "../../tier-0-primitives/crypto" }
+hash = { path = "../../tier-0-primitives/hash" }
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+mempool = { path = "../mempool" }
+pbjson-types = "0.7"

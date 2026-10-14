@@ -595,6 +595,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "blocksync"
+version = "0.0.1"
+dependencies = [
+ "celestia-core-proto",
+ "crypto",
+ "ctypes",
+ "hash",
+ "hex",
+ "kvdb",
+ "mempool",
+ "nodestore",
+ "p2p",
+ "pbjson-types",
+ "prost",
+ "tracing",
+]
+
+[[package]]
 name = "blst"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -675,20 +693,25 @@ dependencies = [
  "anyhow",
  "api-server",
  "app",
+ "blocksync",
  "clap",
  "consensus",
  "ctypes",
+ "evidence",
  "hex",
  "kvdb",
+ "light",
  "math",
  "mempool",
  "multistore",
  "nodestore",
+ "p2p",
  "privval",
  "prost",
  "sdk",
  "serde_json",
  "snapshots",
+ "statesync",
  "tempfile",
  "tokio",
  "tracing",
@@ -1161,6 +1184,25 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "evidence"
+version = "0.0.1"
+dependencies = [
+ "crypto",
+ "ctypes",
+ "hash",
+ "hex",
+ "kvdb",
+ "mempool",
+ "nodestore",
+ "p2p",
+ "prost",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zstd",
 ]
 
 [[package]]

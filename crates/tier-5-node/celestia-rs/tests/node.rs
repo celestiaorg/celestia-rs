@@ -36,11 +36,11 @@ fn copy_fixture(home: &Path) {
 }
 
 fn opts(home: &Path, halt: i64) -> StartOptions {
-    StartOptions {
-        home: home.to_path_buf(),
-        halt_height: halt,
-        config: consensus::ConsensusConfig::default(),
-    }
+    StartOptions::new(
+        home.to_path_buf(),
+        halt,
+        consensus::ConsensusConfig::default(),
+    )
 }
 
 #[test]

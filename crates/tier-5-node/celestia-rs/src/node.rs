@@ -24,9 +24,7 @@ use anyhow::{Context as _, anyhow};
 use consensus::{ConsensusConfig, ConsensusState, Event, FileWal, SystemClock};
 use ctypes::proto::abci;
 use kvdb::{DbOptions, KvBackend};
-use nodestore::{
-    AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, StateStore,
-};
+use nodestore::{AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, StateStore};
 use privval::FilePv;
 use prost::Message as _;
 
@@ -141,11 +139,37 @@ pub struct StartOptions {
     pub halt_height: i64,
     /// Consensus config overrides.
     pub config: ConsensusConfig,
+    /// P2P (None: no networking, a lone validator).
+    pub p2p: Option<crate::net::P2pOptions>,
+    /// `block_sync`: catch up from peers before consensus (Go default).
+    pub block_sync: bool,
+    /// `[statesync]` (fresh nodes only).
+    pub state_sync: Option<crate::sync::StateSyncOptions>,
 }
+
+impl StartOptions {
+    /// A node without networking.
+    #[must_use]
+    pub fn new(home: PathBuf, halt_height: i64, config: ConsensusConfig) -> Self {
+        Self {
+            home,
+            halt_height,
+            config,
+            p2p: None,
+            block_sync: true,
+            state_sync: None,
+        }
+    }
+}
+
+/// Whether consensus messages are gossiped over P2P. Until the consensus
+/// reactor is wired, a non-validator node never hands over to consensus
+/// and follows the chain by block sync instead.
+pub const CONSENSUS_GOSSIP: bool = false;
 
 /// Opens node database `name` in `data` on the default backend (ADR 0002)
 /// with a 64 MiB cache: block and state store reads are mostly recent.
-fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBackend>> {
+pub(crate) fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBackend>> {
     let options = DbOptions {
         cache_size: 64 << 20,
         ..DbOptions::default()
@@ -172,6 +196,7 @@ pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
 }
 
 /// `celestia-rs start`.
+#[allow(clippy::too_many_lines)]
 pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let home = &opts.home;
     let genesis = load_genesis(home)?;
@@ -208,27 +233,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .with_pre_check(nodestore::execution::tx_pre_check(&state))
         .with_post_check(nodestore::execution::tx_post_check(&state)),
     );
+    let evpool = crate::sync::open_evidence_pool(home, &ss, &bs, &state)?;
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
-        Box::new(AppAdapter(app)),
+        Box::new(AppAdapter(app.clone())),
         pool.clone(),
-        Box::new(MemEvidencePool::new(ss.clone(), bs.clone())),
+        evpool.executor_handle(),
     );
-    let mut hs = Handshaker::new(ss, state, bs, &genesis, consensus::ticker::system_now());
-    let state = hs
-        .handshake(&mut exec)
-        .map_err(|e| anyhow!("handshake: {e}"))?;
-    tracing::info!(
-        height = state.last_block_height,
-        app_hash = %hex::encode_upper(&state.app_hash),
-        replayed = hs.n_blocks(),
-        "handshake complete"
-    );
-    if opts.halt_height > 0 && state.last_block_height >= opts.halt_height {
-        tracing::info!(height = state.last_block_height, "halt height reached");
-        return Ok(());
-    }
     let key_path = home.join("config").join("priv_validator_key.json");
     let state_path = home.join("data").join("priv_validator_state.json");
     let pv = if state_path.exists() {
@@ -241,6 +253,104 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         })
     }
     .map_err(|e| anyhow!("privval: {e}"))?;
+    let local_addr = pv.address().to_vec();
+    // Go: a fresh node with state sync enabled skips the handshake; the
+    // state comes from the snapshot.
+    let state_sync_mode = opts.state_sync.is_some() && state.last_block_height == 0;
+    if opts.state_sync.is_some() && !state_sync_mode {
+        tracing::info!("found local state with non-zero height, skipping state sync");
+    }
+    let mut state = if state_sync_mode {
+        state
+    } else {
+        let mut hs = Handshaker::new(
+            ss.clone(),
+            state,
+            bs.clone(),
+            &genesis,
+            consensus::ticker::system_now(),
+        );
+        let state = hs
+            .handshake(&mut exec)
+            .map_err(|e| anyhow!("handshake: {e}"))?;
+        tracing::info!(
+            height = state.last_block_height,
+            app_hash = %hex::encode_upper(&state.app_hash),
+            replayed = hs.n_blocks(),
+            "handshake complete"
+        );
+        state
+    };
+    if opts.halt_height > 0 && state.last_block_height >= opts.halt_height {
+        tracing::info!(height = state.last_block_height, "halt height reached");
+        return Ok(());
+    }
+    let net = match &opts.p2p {
+        None => None,
+        Some(p2p_opts) => Some(start_network(
+            home,
+            &genesis.chain_id,
+            p2p_opts,
+            &state,
+            &bs,
+            &ss,
+            &evpool,
+            &app,
+            &pool,
+            &local_addr,
+        )?),
+    };
+    let result = (|| {
+        let mut state_synced = false;
+        if let (true, Some((_, reactors)), Some(ss_opts)) =
+            (state_sync_mode, &net, &opts.state_sync)
+        {
+            state = crate::sync::state_sync(&reactors.statesync, ss_opts, &state, &ss, &bs)?;
+            state_synced = true;
+        }
+        let only_validator_is_us =
+            state.validators.size() == 1 && state.validators.has_address(&local_addr);
+        if let Some((_, reactors)) = &net {
+            if (opts.block_sync && !only_validator_is_us) || state_synced {
+                let is_validator = state.validators.has_address(&local_addr);
+                let out = crate::sync::block_sync(
+                    &reactors.blocksync,
+                    state.clone(),
+                    &mut exec,
+                    state_synced,
+                    CONSENSUS_GOSSIP || is_validator,
+                    opts.halt_height,
+                )?;
+                state = out.state;
+                tracing::info!(
+                    height = state.last_block_height,
+                    blocks_synced = out.blocks_synced,
+                    reason = ?out.reason,
+                    "block sync finished"
+                );
+                if out.reason == blocksync::SwitchToConsensus::Stopped {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok::<bool, anyhow::Error>(false)
+    })();
+    match result {
+        Ok(true) => {
+            tracing::info!(height = state.last_block_height, "halt height reached");
+            if let Some((sw, _)) = &net {
+                sw.stop();
+            }
+            return Ok(());
+        }
+        Ok(false) => {}
+        Err(e) => {
+            if let Some((sw, _)) = &net {
+                sw.stop();
+            }
+            return Err(e);
+        }
+    }
     let wal = FileWal::open(
         home.join("data").join("cs.wal").join("wal"),
         consensus::ticker::system_now(),
@@ -256,7 +366,57 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     )
     .map_err(|e| anyhow!("consensus: {e}"))?;
     cs.start().map_err(|e| anyhow!("consensus start: {e}"))?;
-    run(&mut cs, &pool, &inbox, opts.halt_height)
+    let res = run(&mut cs, &pool, &inbox, opts.halt_height);
+    if let Some((sw, _)) = &net {
+        sw.stop();
+    }
+    res
+}
+
+/// Creates and starts the P2P switch with the mempool, block sync,
+/// evidence and state sync reactors (`createSwitch` + reactor setup).
+#[allow(clippy::too_many_arguments)]
+fn start_network(
+    home: &Path,
+    chain_id: &str,
+    p2p_opts: &crate::net::P2pOptions,
+    state: &nodestore::State,
+    bs: &BlockStore,
+    ss: &StateStore,
+    evpool: &evidence::Pool,
+    app: &Arc<Mutex<app::App>>,
+    pool: &Arc<mempool::TxPool>,
+    local_addr: &[u8],
+) -> anyhow::Result<(p2p::Switch, crate::sync::SyncReactors)> {
+    let sw = crate::net::new_switch(home, chain_id, p2p_opts)?;
+    let cfg = mempool::MempoolConfig::celestia_app();
+    let mreactor = mempool::cat::Reactor::new(
+        pool.clone(),
+        mempool::cat::ReactorOptions {
+            listen_only: !cfg.broadcast,
+            max_tx_size: i64::try_from(cfg.max_tx_bytes).unwrap_or(i64::MAX),
+            max_gossip_delay: cfg.max_gossip_delay,
+            max_persistent_sticky_peers: cfg.max_persistent_sticky_peers,
+            ..mempool::cat::ReactorOptions::default()
+        },
+    )
+    .map_err(|e| anyhow!("mempool reactor: {e}"))?;
+    sw.add_reactor(mempool::cat::P2pReactor::new(mreactor))
+        .map_err(|e| anyhow!("{e}"))?;
+    sw.add_reactor(Arc::new(crate::net::PropagationSink))
+        .map_err(|e| anyhow!("{e}"))?;
+    let reactors = crate::sync::add_sync_reactors(
+        &sw,
+        home,
+        state,
+        bs,
+        ss,
+        evpool,
+        app,
+        Some(local_addr.to_vec()),
+    )?;
+    crate::net::start_switch(&tokio::runtime::Handle::current(), &sw)?;
+    Ok((sw, reactors))
 }
 
 /// The node loop: fire due timeouts, report commits, stop at the halt

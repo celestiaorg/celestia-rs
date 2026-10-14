@@ -39,6 +39,40 @@ enum Cmd {
         /// Fallback `timeout_commit` in ms when the app sets none.
         #[arg(long, default_value_t = 1000)]
         timeout_commit_ms: i64,
+        /// P2P listen address (`host:port`); empty disables networking.
+        #[arg(long, default_value = "")]
+        p2p_laddr: String,
+        /// Comma-separated `ID@host:port` persistent peers.
+        #[arg(long, default_value = "")]
+        persistent_peers: String,
+        /// Address advertised to peers (`host:port`).
+        #[arg(long)]
+        p2p_external_address: Option<String>,
+        /// Allow several peers from one IP (local networks).
+        #[arg(long)]
+        allow_duplicate_ip: bool,
+        /// Node moniker.
+        #[arg(long, default_value = "celestia-rs")]
+        moniker: String,
+        /// Disable block sync (Go `block_sync = false`).
+        #[arg(long)]
+        no_block_sync: bool,
+        /// State sync: comma-separated RPC servers (enables state sync on
+        /// a fresh node).
+        #[arg(long, default_value = "")]
+        statesync_rpc_servers: String,
+        /// State sync trusted height.
+        #[arg(long, default_value_t = 0)]
+        statesync_trust_height: i64,
+        /// State sync trusted header hash (hex).
+        #[arg(long, default_value = "")]
+        statesync_trust_hash: String,
+        /// State sync trusting period in hours.
+        #[arg(long, default_value_t = 168)]
+        statesync_trust_period_hours: i64,
+        /// State sync snapshot discovery time in seconds.
+        #[arg(long, default_value_t = 15)]
+        statesync_discovery_secs: u64,
     },
     /// Dump the block store (blocks, commits, validator sets, params,
     /// FinalizeBlock responses) as JSON for the Go verifier.
@@ -110,6 +144,7 @@ enum Cmd {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -122,15 +157,54 @@ async fn main() -> anyhow::Result<()> {
             home,
             halt_height,
             timeout_commit_ms,
+            p2p_laddr,
+            persistent_peers,
+            p2p_external_address,
+            allow_duplicate_ip,
+            moniker,
+            no_block_sync,
+            statesync_rpc_servers,
+            statesync_trust_height,
+            statesync_trust_hash,
+            statesync_trust_period_hours,
+            statesync_discovery_secs,
         } => {
-            let opts = node::StartOptions {
+            let split = |s: &str| -> Vec<String> {
+                s.split(',')
+                    .map(str::trim)
+                    .filter(|x| !x.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            };
+            let mut opts = node::StartOptions::new(
                 home,
                 halt_height,
-                config: consensus::ConsensusConfig {
+                consensus::ConsensusConfig {
                     timeout_commit: timeout_commit_ms * 1_000_000,
                     ..consensus::ConsensusConfig::default()
                 },
-            };
+            );
+            opts.block_sync = !no_block_sync;
+            if !p2p_laddr.is_empty() {
+                opts.p2p = Some(celestia_rs::net::P2pOptions {
+                    laddr: p2p_laddr,
+                    persistent_peers: split(&persistent_peers),
+                    external_address: p2p_external_address,
+                    moniker,
+                    allow_duplicate_ip,
+                });
+            }
+            let rpc_servers = split(&statesync_rpc_servers);
+            if !rpc_servers.is_empty() {
+                opts.state_sync = Some(celestia_rs::sync::StateSyncOptions {
+                    rpc_servers,
+                    trust_height: statesync_trust_height,
+                    trust_hash: ::hex::decode(&statesync_trust_hash)
+                        .map_err(|e| anyhow::anyhow!("statesync trust hash: {e}"))?,
+                    trust_period: statesync_trust_period_hours * 3600 * 1_000_000_000,
+                    discovery_time: std::time::Duration::from_secs(statesync_discovery_secs),
+                });
+            }
             tokio::task::spawn_blocking(move || node::start(&opts)).await?
         }
         Cmd::ExportBlocks { home, out } => node::export_blocks(&home, &out),

@@ -85,3 +85,24 @@ devnet.
   `stateStore.Bootstrap` + `blockStore.SaveSeenCommit`), implemented by
   `statesync::NodeStores` over `nodestore`'s `StateStore` and `BlockStore`.
   Live interop: `conformance/devnet/statesync-rust.sh`.
+- `blocksync` (2026-10-14): channel 0x40 messages incl. the `SigCount`
+  precheck, `BlockPool` (requesters, adaptive request limits / retry
+  timeouts, peer timeouts and receive-rate checks, 60 s bans, max peer
+  height excluding pruned-ahead peers) driven by an explicit clock, and the
+  reactor: serving blocks + extended commits from `nodestore`, the sync
+  routine (verify with the next commit, `ValidateBlock`, `ProcessProposal`,
+  extended-commit checks, save + `ApplyVerifiedBlock`, switch to consensus
+  when caught up or when we hold 1/3+ of the power).
+- `evidence` (2026-10-14): persistent pool on `KvBackend` (Go key layout,
+  pending/committed, consensus buffer, expiry by blocks *and* duration,
+  recovery after restart) implementing `nodestore::EvidencePool`; full
+  verification (duplicate votes, light client attacks with common/trusted
+  headers via `ctypes` commit verification, ABCI byzantine validators);
+  reactor on 0x38 gossiping by peer consensus height. Conformance:
+  `conformance/evidencevectors` (40 scenarios).
+- `celestia-rs start` (2026-10-14): P2P switch (`--p2p-laddr`,
+  `--persistent-peers`) with the CAT mempool, block sync, evidence and
+  state sync reactors; Go's start-up flow state sync → block sync →
+  consensus. Until the consensus reactor is wired, a non-validator node
+  follows the chain by block sync. Live interop:
+  `conformance/devnet/blocksync-interop.sh`.

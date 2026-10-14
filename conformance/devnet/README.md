@@ -194,3 +194,37 @@ with vectors from `conformance/lightvectors` (fixtures
 cd conformance/lightvectors
 GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/light
 ```
+
+## Block sync, state sync and the node (ADR 0003: `blocksync`, `evidence`)
+
+`blocksync-interop.sh` runs `celestia-rs start` with P2P against a Go
+`celestia-appd` validator producing `$BLOCKS` (default 200) blocks with the
+blob workload and taking snapshots every `$INTERVAL` (50) blocks:
+
+- **A. Go → Rust block sync:** a fresh Rust full node (only peer: the
+  validator) block-syncs every block over 0x40 — each block verified with
+  the next block's commit, `ProcessProposal` and executed by the in-process
+  Rust app — then keeps following the chain. The script compares the
+  node's app hash and block ID after every height with the validator's.
+- **B. Rust → Go block sync:** a fresh Go node whose only peer is the Rust
+  node block-syncs the whole chain from the Rust block store and must hold
+  the validator's block hashes.
+- **C. State sync → block sync → follow:** a fresh Rust node with
+  `--statesync-rpc-servers` restores the validator's snapshot (light client
+  against its RPC), bootstraps its stores, block-syncs from the snapshot
+  height and follows; app hashes are checked as in A.
+
+```bash
+DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=16000 conformance/devnet/blocksync-interop.sh
+```
+
+Evidence verification outcomes (duplicate votes against historical
+validator sets, lunatic / forward-lunatic / equivocation / amnesia light
+client attacks, expiry, timestamps) are checked against celestia-core's
+`evidence` package with vectors from `conformance/evidencevectors`
+(fixture `conformance/fixtures/evidence/vectors.json`):
+
+```bash
+cd conformance/evidencevectors
+GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/evidence/vectors.json
+```

@@ -1,0 +1,30 @@
+[package]
+name = "evidence"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Exact port of celestia-core v0.42.3 `evidence/`: persistent evidence pool, duplicate-vote and light-client-attack verification, and the evidence reactor (channel 0x38)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+mempool = { path = "../mempool" }
+nodestore = { path = "../nodestore" }
+p2p = { path = "../p2p" }
+prost = "0.13"
+tracing = "0.1"
+
+[dev-dependencies]
+crypto = { path = "../../tier-0-primitives/crypto" }
+hash = { path = "../../tier-0-primitives/hash" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zstd = "0.13"
