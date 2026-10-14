@@ -114,6 +114,8 @@ version = "0.0.1"
 dependencies = [
  "abci-server",
  "celestia-proto",
+ "encoding",
+ "kvstore",
  "pbjson-types",
  "prost",
  "sdk",

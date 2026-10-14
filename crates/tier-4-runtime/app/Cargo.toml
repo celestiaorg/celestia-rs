@@ -14,6 +14,8 @@ workspace = true
 
 [dependencies]
 abci-server = { path = "../abci-server" }
+encoding = { path = "../../tier-0-primitives/encoding" }
+kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 pbjson-types = "0.7"
 prost = "0.13"

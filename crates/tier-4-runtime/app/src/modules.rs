@@ -153,6 +153,15 @@ pub fn init_genesis(
         "transfer" => x_transfer::init_genesis_json(ctx, genesis, &mut TransferBank)?,
         "interchainaccounts" => x_icahost::init_genesis_json(ctx, genesis)?,
         "packetfowardmiddleware" => x_packetforward::init_genesis_json(ctx, genesis)?,
+        "genutil" => {
+            return crate::genutil::init_genesis(
+                ctx,
+                genesis,
+                crate::txpipe::decode_tx,
+                crate::txpipe::ante,
+                crate::txpipe::apply_validator_set,
+            );
+        }
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
     let _ = ctx;

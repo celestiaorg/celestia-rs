@@ -8,6 +8,8 @@
 //! - `0x04 || denom` send-enabled (`BoolValue`),
 //! - `0x05` params.
 
+pub mod msgs;
+
 use celestia_proto::cosmos::bank::v1beta1::{GenesisState, Metadata, Params};
 use prost::Message;
 use sdk::coins::{Amount, Coin, Coins, math_err};
