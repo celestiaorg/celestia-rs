@@ -1,0 +1,42 @@
+[package]
+name = "x-ante"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia-app v10 ante handler (app/ante NewAnteHandler), decorator by decorator."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+celestia-core-proto = { path = "../../../tier-1-protocol-types/celestia-core-proto" }
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+encoding = { path = "../../../tier-0-primitives/encoding" }
+hash = { path = "../../../tier-0-primitives/hash" }
+kvstore = { path = "../../../tier-2-state-and-store/kvstore" }
+k256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+ed25519-consensus = "2.1"
+math = { path = "../../../tier-0-primitives/math" }
+pbjson-types = "0.7"
+prost = "0.13"
+prost-reflect = "0.14"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-auth = { path = "../auth" }
+x-bank = { path = "../bank" }
+
+[build-dependencies]
+prost = "0.13"
+protox = "0.7"
+
+[dev-dependencies]
+crypto = { path = "../../../tier-0-primitives/crypto" }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+zstd = "0.13"
