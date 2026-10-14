@@ -6,6 +6,16 @@ pub struct SignatureDescriptors {
     #[prost(message, repeated, tag = "1")]
     pub signatures: ::prost::alloc::vec::Vec<SignatureDescriptor>,
 }
+impl ::prost::Name for SignatureDescriptors {
+    const NAME: &'static str = "SignatureDescriptors";
+    const PACKAGE: &'static str = "cosmos.tx.signing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.signing.v1beta1.SignatureDescriptors".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.signing.v1beta1.SignatureDescriptors".into()
+    }
+}
 /// SignatureDescriptor is a convenience type which represents the full data for
 /// a signature including the public key of the signer, signing modes and the
 /// signature itself. It is primarily used for coordinating signatures between
@@ -14,7 +24,7 @@ pub struct SignatureDescriptors {
 pub struct SignatureDescriptor {
     /// public_key is the public key of the signer
     #[prost(message, optional, tag = "1")]
-    pub public_key: ::core::option::Option<::prost_types::Any>,
+    pub public_key: ::core::option::Option<crate::any::Any>,
     #[prost(message, optional, tag = "2")]
     pub data: ::core::option::Option<signature_descriptor::Data>,
     /// sequence is the sequence of the account, which describes the
@@ -44,6 +54,16 @@ pub mod signature_descriptor {
             #[prost(bytes = "vec", tag = "2")]
             pub signature: ::prost::alloc::vec::Vec<u8>,
         }
+        impl ::prost::Name for Single {
+            const NAME: &'static str = "Single";
+            const PACKAGE: &'static str = "cosmos.tx.signing.v1beta1";
+            fn full_name() -> ::prost::alloc::string::String {
+                "cosmos.tx.signing.v1beta1.SignatureDescriptor.Data.Single".into()
+            }
+            fn type_url() -> ::prost::alloc::string::String {
+                "/cosmos.tx.signing.v1beta1.SignatureDescriptor.Data.Single".into()
+            }
+        }
         /// Multi is the signature data for a multisig public key
         #[derive(Clone, PartialEq, ::prost::Message)]
         pub struct Multi {
@@ -56,6 +76,16 @@ pub mod signature_descriptor {
             #[prost(message, repeated, tag = "2")]
             pub signatures: ::prost::alloc::vec::Vec<super::Data>,
         }
+        impl ::prost::Name for Multi {
+            const NAME: &'static str = "Multi";
+            const PACKAGE: &'static str = "cosmos.tx.signing.v1beta1";
+            fn full_name() -> ::prost::alloc::string::String {
+                "cosmos.tx.signing.v1beta1.SignatureDescriptor.Data.Multi".into()
+            }
+            fn type_url() -> ::prost::alloc::string::String {
+                "/cosmos.tx.signing.v1beta1.SignatureDescriptor.Data.Multi".into()
+            }
+        }
         /// sum is the oneof that specifies whether this represents single or multi-signature data
         #[derive(Clone, PartialEq, ::prost::Oneof)]
         pub enum Sum {
@@ -66,6 +96,26 @@ pub mod signature_descriptor {
             #[prost(message, tag = "2")]
             Multi(Multi),
         }
+    }
+    impl ::prost::Name for Data {
+        const NAME: &'static str = "Data";
+        const PACKAGE: &'static str = "cosmos.tx.signing.v1beta1";
+        fn full_name() -> ::prost::alloc::string::String {
+            "cosmos.tx.signing.v1beta1.SignatureDescriptor.Data".into()
+        }
+        fn type_url() -> ::prost::alloc::string::String {
+            "/cosmos.tx.signing.v1beta1.SignatureDescriptor.Data".into()
+        }
+    }
+}
+impl ::prost::Name for SignatureDescriptor {
+    const NAME: &'static str = "SignatureDescriptor";
+    const PACKAGE: &'static str = "cosmos.tx.signing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.signing.v1beta1.SignatureDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.signing.v1beta1.SignatureDescriptor".into()
     }
 }
 /// SignMode represents a signing mode with its own security guarantees.
@@ -140,3 +190,4 @@ impl SignMode {
         }
     }
 }
+include!("cosmos.tx.signing.v1beta1.serde.rs");

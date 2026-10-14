@@ -14,6 +14,16 @@ pub struct ShareProof {
     #[prost(uint32, tag = "5")]
     pub namespace_version: u32,
 }
+impl ::prost::Name for ShareProof {
+    const NAME: &'static str = "ShareProof";
+    const PACKAGE: &'static str = "celestia.core.v1.proof";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.proof.ShareProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.proof.ShareProof".into()
+    }
+}
 /// RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
 /// given data root.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -28,6 +38,16 @@ pub struct RowProof {
     pub start_row: u32,
     #[prost(uint32, tag = "5")]
     pub end_row: u32,
+}
+impl ::prost::Name for RowProof {
+    const NAME: &'static str = "RowProof";
+    const PACKAGE: &'static str = "celestia.core.v1.proof";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.proof.RowProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.proof.RowProof".into()
+    }
 }
 /// NMTProof is a proof of a namespace.ID in an NMT.
 /// In case this proof proves the absence of a namespace.ID
@@ -55,6 +75,16 @@ pub struct NmtProof {
     #[prost(bytes = "vec", tag = "4")]
     pub leaf_hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for NmtProof {
+    const NAME: &'static str = "NMTProof";
+    const PACKAGE: &'static str = "celestia.core.v1.proof";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.proof.NMTProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.proof.NMTProof".into()
+    }
+}
 /// Proof is taken from the merkle package
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Proof {
@@ -67,3 +97,14 @@ pub struct Proof {
     #[prost(bytes = "vec", repeated, tag = "4")]
     pub aunts: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for Proof {
+    const NAME: &'static str = "Proof";
+    const PACKAGE: &'static str = "celestia.core.v1.proof";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.proof.Proof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.proof.Proof".into()
+    }
+}
+include!("celestia.core.v1.proof.serde.rs");

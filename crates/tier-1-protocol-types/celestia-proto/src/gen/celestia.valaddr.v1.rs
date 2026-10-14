@@ -9,12 +9,32 @@ pub struct EventSetFibreProviderInfo {
     #[prost(string, tag = "2")]
     pub host: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventSetFibreProviderInfo {
+    const NAME: &'static str = "EventSetFibreProviderInfo";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.EventSetFibreProviderInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.EventSetFibreProviderInfo".into()
+    }
+}
 /// QueryFibreProviderInfoRequest is the request type for the Query/FibreProviderInfo RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryFibreProviderInfoRequest {
     /// validator_consensus_address is the validator consensus address (celestiavalcons...)
     #[prost(string, tag = "1")]
     pub validator_consensus_address: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryFibreProviderInfoRequest {
+    const NAME: &'static str = "QueryFibreProviderInfoRequest";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.QueryFibreProviderInfoRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.QueryFibreProviderInfoRequest".into()
+    }
 }
 /// QueryFibreProviderInfoResponse is the response type for the Query/FibreProviderInfo RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -26,15 +46,45 @@ pub struct QueryFibreProviderInfoResponse {
     #[prost(bool, tag = "2")]
     pub found: bool,
 }
+impl ::prost::Name for QueryFibreProviderInfoResponse {
+    const NAME: &'static str = "QueryFibreProviderInfoResponse";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.QueryFibreProviderInfoResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.QueryFibreProviderInfoResponse".into()
+    }
+}
 /// QueryAllBondedFibreProvidersRequest is the request type for the Query/AllBondedFibreProviders RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryAllBondedFibreProvidersRequest {}
+impl ::prost::Name for QueryAllBondedFibreProvidersRequest {
+    const NAME: &'static str = "QueryAllBondedFibreProvidersRequest";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.QueryAllBondedFibreProvidersRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.QueryAllBondedFibreProvidersRequest".into()
+    }
+}
 /// QueryAllBondedFibreProvidersResponse is the response type for the Query/AllBondedFibreProviders RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryAllBondedFibreProvidersResponse {
     /// providers contains the fibre providers of all currently bonded validators
     #[prost(message, repeated, tag = "1")]
     pub providers: ::prost::alloc::vec::Vec<FibreProvider>,
+}
+impl ::prost::Name for QueryAllBondedFibreProvidersResponse {
+    const NAME: &'static str = "QueryAllBondedFibreProvidersResponse";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.QueryAllBondedFibreProvidersResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.QueryAllBondedFibreProvidersResponse".into()
+    }
 }
 /// FibreProvider represents a validator and their fibre provider information.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -46,6 +96,16 @@ pub struct FibreProvider {
     #[prost(message, optional, tag = "2")]
     pub info: ::core::option::Option<FibreProviderInfo>,
 }
+impl ::prost::Name for FibreProvider {
+    const NAME: &'static str = "FibreProvider";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.FibreProvider".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.FibreProvider".into()
+    }
+}
 /// FibreProviderInfo contains the service details for a fibre provider.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FibreProviderInfo {
@@ -53,12 +113,32 @@ pub struct FibreProviderInfo {
     #[prost(string, tag = "1")]
     pub host: ::prost::alloc::string::String,
 }
+impl ::prost::Name for FibreProviderInfo {
+    const NAME: &'static str = "FibreProviderInfo";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.FibreProviderInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.FibreProviderInfo".into()
+    }
+}
 /// GenesisState defines the valaddr module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
     /// fibre_providers contains all stored validator to fibre host registrations.
     #[prost(message, repeated, tag = "1")]
     pub fibre_providers: ::prost::alloc::vec::Vec<FibreProvider>,
+}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.GenesisState".into()
+    }
 }
 /// MsgSetFibreProviderInfo allows a validator to set or update their fibre provider information.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -70,6 +150,27 @@ pub struct MsgSetFibreProviderInfo {
     #[prost(string, tag = "2")]
     pub host: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgSetFibreProviderInfo {
+    const NAME: &'static str = "MsgSetFibreProviderInfo";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.MsgSetFibreProviderInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.MsgSetFibreProviderInfo".into()
+    }
+}
 /// MsgSetFibreProviderInfoResponse describes the response returned after setting fibre provider info.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetFibreProviderInfoResponse {}
+impl ::prost::Name for MsgSetFibreProviderInfoResponse {
+    const NAME: &'static str = "MsgSetFibreProviderInfoResponse";
+    const PACKAGE: &'static str = "celestia.valaddr.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.valaddr.v1.MsgSetFibreProviderInfoResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.valaddr.v1.MsgSetFibreProviderInfoResponse".into()
+    }
+}
+include!("celestia.valaddr.v1.serde.rs");

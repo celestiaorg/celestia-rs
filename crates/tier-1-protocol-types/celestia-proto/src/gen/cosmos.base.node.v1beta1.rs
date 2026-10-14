@@ -2,6 +2,16 @@
 /// ConfigRequest defines the request structure for the Config gRPC query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ConfigRequest {}
+impl ::prost::Name for ConfigRequest {
+    const NAME: &'static str = "ConfigRequest";
+    const PACKAGE: &'static str = "cosmos.base.node.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.node.v1beta1.ConfigRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.node.v1beta1.ConfigRequest".into()
+    }
+}
 /// ConfigResponse defines the response structure for the Config gRPC query.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigResponse {
@@ -14,9 +24,29 @@ pub struct ConfigResponse {
     #[prost(uint64, tag = "4")]
     pub halt_height: u64,
 }
+impl ::prost::Name for ConfigResponse {
+    const NAME: &'static str = "ConfigResponse";
+    const PACKAGE: &'static str = "cosmos.base.node.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.node.v1beta1.ConfigResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.node.v1beta1.ConfigResponse".into()
+    }
+}
 /// StateRequest defines the request structure for the status of a node.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct StatusRequest {}
+impl ::prost::Name for StatusRequest {
+    const NAME: &'static str = "StatusRequest";
+    const PACKAGE: &'static str = "cosmos.base.node.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.node.v1beta1.StatusRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.node.v1beta1.StatusRequest".into()
+    }
+}
 /// StateResponse defines the response structure for the status of a node.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StatusResponse {
@@ -28,7 +58,7 @@ pub struct StatusResponse {
     pub height: u64,
     /// block height timestamp
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     /// app hash of the current block
     #[prost(bytes = "vec", tag = "4")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
@@ -36,3 +66,14 @@ pub struct StatusResponse {
     #[prost(bytes = "vec", tag = "5")]
     pub validator_hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for StatusResponse {
+    const NAME: &'static str = "StatusResponse";
+    const PACKAGE: &'static str = "cosmos.base.node.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.node.v1beta1.StatusResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.node.v1beta1.StatusResponse".into()
+    }
+}
+include!("cosmos.base.node.v1beta1.serde.rs");

@@ -6,6 +6,16 @@ pub struct Capability {
     #[prost(uint64, tag = "1")]
     pub index: u64,
 }
+impl ::prost::Name for Capability {
+    const NAME: &'static str = "Capability";
+    const PACKAGE: &'static str = "capability.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "capability.v1.Capability".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/capability.v1.Capability".into()
+    }
+}
 /// Owner defines a single capability owner. An owner is defined by the name of
 /// capability and the module name.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -15,12 +25,32 @@ pub struct Owner {
     #[prost(string, tag = "2")]
     pub name: ::prost::alloc::string::String,
 }
+impl ::prost::Name for Owner {
+    const NAME: &'static str = "Owner";
+    const PACKAGE: &'static str = "capability.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "capability.v1.Owner".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/capability.v1.Owner".into()
+    }
+}
 /// CapabilityOwners defines a set of owners of a single Capability. The set of
 /// owners must be unique.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CapabilityOwners {
     #[prost(message, repeated, tag = "1")]
     pub owners: ::prost::alloc::vec::Vec<Owner>,
+}
+impl ::prost::Name for CapabilityOwners {
+    const NAME: &'static str = "CapabilityOwners";
+    const PACKAGE: &'static str = "capability.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "capability.v1.CapabilityOwners".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/capability.v1.CapabilityOwners".into()
+    }
 }
 /// GenesisOwners defines the capability owners with their corresponding index.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -31,6 +61,16 @@ pub struct GenesisOwners {
     /// index_owners are the owners at the given index.
     #[prost(message, optional, tag = "2")]
     pub index_owners: ::core::option::Option<CapabilityOwners>,
+}
+impl ::prost::Name for GenesisOwners {
+    const NAME: &'static str = "GenesisOwners";
+    const PACKAGE: &'static str = "capability.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "capability.v1.GenesisOwners".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/capability.v1.GenesisOwners".into()
+    }
 }
 /// GenesisState defines the capability module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -43,3 +83,14 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "2")]
     pub owners: ::prost::alloc::vec::Vec<GenesisOwners>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "capability.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "capability.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/capability.v1.GenesisState".into()
+    }
+}
+include!("capability.v1.serde.rs");

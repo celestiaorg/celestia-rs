@@ -16,3 +16,6 @@ anyhow.workspace = true
 clap.workspace = true
 prost-build = "0.13"
 protox = "0.7"
+pbjson-build = "0.7"
+prost = "0.13"
+heck = "0.5"

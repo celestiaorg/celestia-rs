@@ -9,11 +9,31 @@ pub struct InterchainAccountPacketData {
     #[prost(string, tag = "3")]
     pub memo: ::prost::alloc::string::String,
 }
+impl ::prost::Name for InterchainAccountPacketData {
+    const NAME: &'static str = "InterchainAccountPacketData";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.v1.InterchainAccountPacketData".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.v1.InterchainAccountPacketData".into()
+    }
+}
 /// CosmosTx contains a list of sdk.Msg's. It should be used when sending transactions to an SDK host chain.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CosmosTx {
     #[prost(message, repeated, tag = "1")]
-    pub messages: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub messages: ::prost::alloc::vec::Vec<crate::any::Any>,
+}
+impl ::prost::Name for CosmosTx {
+    const NAME: &'static str = "CosmosTx";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.v1.CosmosTx".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.v1.CosmosTx".into()
+    }
 }
 /// Type defines a classification of message issued from a controller chain to its associated interchain accounts
 /// host
@@ -55,6 +75,16 @@ pub struct InterchainAccount {
     #[prost(string, tag = "2")]
     pub account_owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for InterchainAccount {
+    const NAME: &'static str = "InterchainAccount";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.v1.InterchainAccount".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.v1.InterchainAccount".into()
+    }
+}
 /// Metadata defines a set of protocol specific data encoded into the ICS27 channel version bytestring
 /// See ICS004: <https://github.com/cosmos/ibc/tree/master/spec/core/ics-004-channel-and-packet-semantics#Versioning>
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -79,3 +109,14 @@ pub struct Metadata {
     #[prost(string, tag = "6")]
     pub tx_type: ::prost::alloc::string::String,
 }
+impl ::prost::Name for Metadata {
+    const NAME: &'static str = "Metadata";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.v1.Metadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.v1.Metadata".into()
+    }
+}
+include!("ibc.applications.interchain_accounts.v1.serde.rs");

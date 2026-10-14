@@ -34,6 +34,16 @@ pub struct PageRequest {
     #[prost(bool, tag = "5")]
     pub reverse: bool,
 }
+impl ::prost::Name for PageRequest {
+    const NAME: &'static str = "PageRequest";
+    const PACKAGE: &'static str = "cosmos.base.query.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.query.v1beta1.PageRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.query.v1beta1.PageRequest".into()
+    }
+}
 /// PageResponse is to be embedded in gRPC response messages where the
 /// corresponding request message has used PageRequest.
 ///
@@ -53,3 +63,14 @@ pub struct PageResponse {
     #[prost(uint64, tag = "2")]
     pub total: u64,
 }
+impl ::prost::Name for PageResponse {
+    const NAME: &'static str = "PageResponse";
+    const PACKAGE: &'static str = "cosmos.base.query.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.query.v1beta1.PageResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.query.v1beta1.PageResponse".into()
+    }
+}
+include!("cosmos.base.query.v1beta1.serde.rs");

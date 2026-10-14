@@ -7,6 +7,16 @@ pub struct GenesisState {
     #[prost(message, optional, tag = "3")]
     pub constant_fee: ::core::option::Option<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "cosmos.crisis.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crisis.v1beta1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crisis.v1beta1.GenesisState".into()
+    }
+}
 /// MsgVerifyInvariant represents a message to verify a particular invariance.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgVerifyInvariant {
@@ -20,9 +30,29 @@ pub struct MsgVerifyInvariant {
     #[prost(string, tag = "3")]
     pub invariant_route: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgVerifyInvariant {
+    const NAME: &'static str = "MsgVerifyInvariant";
+    const PACKAGE: &'static str = "cosmos.crisis.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crisis.v1beta1.MsgVerifyInvariant".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crisis.v1beta1.MsgVerifyInvariant".into()
+    }
+}
 /// MsgVerifyInvariantResponse defines the Msg/VerifyInvariant response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgVerifyInvariantResponse {}
+impl ::prost::Name for MsgVerifyInvariantResponse {
+    const NAME: &'static str = "MsgVerifyInvariantResponse";
+    const PACKAGE: &'static str = "cosmos.crisis.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crisis.v1beta1.MsgVerifyInvariantResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crisis.v1beta1.MsgVerifyInvariantResponse".into()
+    }
+}
 /// MsgUpdateParams is the Msg/UpdateParams request type.
 ///
 /// Since: cosmos-sdk 0.47
@@ -35,9 +65,30 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub constant_fee: ::core::option::Option<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "cosmos.crisis.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crisis.v1beta1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crisis.v1beta1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the response structure for executing a
 /// MsgUpdateParams message.
 ///
 /// Since: cosmos-sdk 0.47
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "cosmos.crisis.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crisis.v1beta1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crisis.v1beta1.MsgUpdateParamsResponse".into()
+    }
+}
+include!("cosmos.crisis.v1beta1.serde.rs");

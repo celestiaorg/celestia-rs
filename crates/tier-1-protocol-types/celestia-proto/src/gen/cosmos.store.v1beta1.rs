@@ -17,6 +17,16 @@ pub struct StoreKvPair {
     #[prost(bytes = "vec", tag = "4")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for StoreKvPair {
+    const NAME: &'static str = "StoreKVPair";
+    const PACKAGE: &'static str = "cosmos.store.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.store.v1beta1.StoreKVPair".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.store.v1beta1.StoreKVPair".into()
+    }
+}
 /// BlockMetadata contains all the abci event data of a block
 /// the file streamer dump them into files together with the state changes.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -35,6 +45,16 @@ pub struct BlockMetadata {
         ::celestia_core_proto::tendermint::abci::ResponseFinalizeBlock,
     >,
 }
+impl ::prost::Name for BlockMetadata {
+    const NAME: &'static str = "BlockMetadata";
+    const PACKAGE: &'static str = "cosmos.store.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.store.v1beta1.BlockMetadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.store.v1beta1.BlockMetadata".into()
+    }
+}
 /// CommitInfo defines commit information used by the multi-store when committing
 /// a version/height.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -44,7 +64,17 @@ pub struct CommitInfo {
     #[prost(message, repeated, tag = "2")]
     pub store_infos: ::prost::alloc::vec::Vec<StoreInfo>,
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for CommitInfo {
+    const NAME: &'static str = "CommitInfo";
+    const PACKAGE: &'static str = "cosmos.store.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.store.v1beta1.CommitInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.store.v1beta1.CommitInfo".into()
+    }
 }
 /// StoreInfo defines store-specific commit information. It contains a reference
 /// between a store name and the commit ID.
@@ -55,6 +85,16 @@ pub struct StoreInfo {
     #[prost(message, optional, tag = "2")]
     pub commit_id: ::core::option::Option<CommitId>,
 }
+impl ::prost::Name for StoreInfo {
+    const NAME: &'static str = "StoreInfo";
+    const PACKAGE: &'static str = "cosmos.store.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.store.v1beta1.StoreInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.store.v1beta1.StoreInfo".into()
+    }
+}
 /// CommitID defines the commitment information when a specific store is
 /// committed.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -64,3 +104,14 @@ pub struct CommitId {
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for CommitId {
+    const NAME: &'static str = "CommitID";
+    const PACKAGE: &'static str = "cosmos.store.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.store.v1beta1.CommitID".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.store.v1beta1.CommitID".into()
+    }
+}
+include!("cosmos.store.v1beta1.serde.rs");

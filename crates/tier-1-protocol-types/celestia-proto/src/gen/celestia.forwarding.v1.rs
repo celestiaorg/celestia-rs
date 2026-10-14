@@ -18,12 +18,32 @@ pub struct EventTokenForwarded {
     #[prost(string, tag = "5")]
     pub message_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventTokenForwarded {
+    const NAME: &'static str = "EventTokenForwarded";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.EventTokenForwarded".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.EventTokenForwarded".into()
+    }
+}
 /// GenesisState defines the forwarding module's genesis state.
 /// The module is stateless - funds are tracked by the bank module at derived addresses.
 ///
 /// Empty - module has no persistent state beyond what bank tracks.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GenesisState {}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.GenesisState".into()
+    }
+}
 /// QueryDeriveForwardingAddressRequest is the request for DeriveForwardingAddress.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryDeriveForwardingAddressRequest {
@@ -50,12 +70,32 @@ pub struct QueryDeriveForwardingAddressRequest {
     #[prost(string, tag = "5")]
     pub custom_hook_metadata: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryDeriveForwardingAddressRequest {
+    const NAME: &'static str = "QueryDeriveForwardingAddressRequest";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.QueryDeriveForwardingAddressRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.QueryDeriveForwardingAddressRequest".into()
+    }
+}
 /// QueryDeriveForwardingAddressResponse is the response for DeriveForwardingAddress.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryDeriveForwardingAddressResponse {
     /// address is the derived forwarding address (bech32).
     #[prost(string, tag = "1")]
     pub address: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryDeriveForwardingAddressResponse {
+    const NAME: &'static str = "QueryDeriveForwardingAddressResponse";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.QueryDeriveForwardingAddressResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.QueryDeriveForwardingAddressResponse".into()
+    }
 }
 /// QueryQuoteForwardingFeeRequest is the request for QuoteForwardingFee.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -80,6 +120,16 @@ pub struct QueryQuoteForwardingFeeRequest {
     #[prost(string, tag = "4")]
     pub custom_hook_metadata: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryQuoteForwardingFeeRequest {
+    const NAME: &'static str = "QueryQuoteForwardingFeeRequest";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.QueryQuoteForwardingFeeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.QueryQuoteForwardingFeeRequest".into()
+    }
+}
 /// QueryQuoteForwardingFeeResponse is the response for QuoteForwardingFee.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryQuoteForwardingFeeResponse {
@@ -87,6 +137,16 @@ pub struct QueryQuoteForwardingFeeResponse {
     /// Relayers should set max_igp_fee >= this value (with some buffer for price changes).
     #[prost(message, optional, tag = "1")]
     pub fee: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
+}
+impl ::prost::Name for QueryQuoteForwardingFeeResponse {
+    const NAME: &'static str = "QueryQuoteForwardingFeeResponse";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.QueryQuoteForwardingFeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.QueryQuoteForwardingFeeResponse".into()
+    }
 }
 /// MsgForward is a permissionless message to trigger token forwarding.
 /// Anyone can submit this message to forward tokens at the derived address.
@@ -127,6 +187,16 @@ pub struct MsgForward {
     #[prost(string, tag = "8")]
     pub custom_hook_metadata: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgForward {
+    const NAME: &'static str = "MsgForward";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.MsgForward".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.MsgForward".into()
+    }
+}
 /// MsgForwardResponse is the response for MsgForward.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgForwardResponse {
@@ -140,3 +210,14 @@ pub struct MsgForwardResponse {
     #[prost(string, tag = "3")]
     pub message_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgForwardResponse {
+    const NAME: &'static str = "MsgForwardResponse";
+    const PACKAGE: &'static str = "celestia.forwarding.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.forwarding.v1.MsgForwardResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.forwarding.v1.MsgForwardResponse".into()
+    }
+}
+include!("celestia.forwarding.v1.serde.rs");

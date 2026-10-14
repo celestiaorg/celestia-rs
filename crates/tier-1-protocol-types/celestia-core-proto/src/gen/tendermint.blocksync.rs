@@ -8,12 +8,32 @@ pub struct SigCountMessage {
     #[prost(message, optional, tag = "3")]
     pub block_response: ::core::option::Option<SigCountBlockResponse>,
 }
+impl ::prost::Name for SigCountMessage {
+    const NAME: &'static str = "SigCountMessage";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountMessage".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountMessage".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountBlockResponse {
     #[prost(message, optional, tag = "1")]
     pub block: ::core::option::Option<SigCountBlock>,
     #[prost(message, optional, tag = "2")]
     pub ext_commit: ::core::option::Option<SigCountExtendedCommit>,
+}
+impl ::prost::Name for SigCountBlockResponse {
+    const NAME: &'static str = "SigCountBlockResponse";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountBlockResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountBlockResponse".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountBlock {
@@ -22,6 +42,16 @@ pub struct SigCountBlock {
     #[prost(message, optional, tag = "4")]
     pub last_commit: ::core::option::Option<SigCountCommit>,
 }
+impl ::prost::Name for SigCountBlock {
+    const NAME: &'static str = "SigCountBlock";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountBlock".into()
+    }
+}
 /// SigCountEvidenceList models Block.evidence down to every repeated signature
 /// and validator list a Commit can be reached through, so that signatures nested
 /// inside evidence are subject to the same count cap as last_commit.
@@ -29,6 +59,16 @@ pub struct SigCountBlock {
 pub struct SigCountEvidenceList {
     #[prost(message, repeated, tag = "1")]
     pub evidence: ::prost::alloc::vec::Vec<SigCountEvidence>,
+}
+impl ::prost::Name for SigCountEvidenceList {
+    const NAME: &'static str = "SigCountEvidenceList";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountEvidenceList".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountEvidenceList".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountEvidence {
@@ -39,12 +79,32 @@ pub struct SigCountEvidence {
         SigCountLightClientAttackEvidence,
     >,
 }
+impl ::prost::Name for SigCountEvidence {
+    const NAME: &'static str = "SigCountEvidence";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountEvidence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountEvidence".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountLightClientAttackEvidence {
     #[prost(message, optional, tag = "1")]
     pub conflicting_block: ::core::option::Option<SigCountLightBlock>,
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub byzantine_validators: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for SigCountLightClientAttackEvidence {
+    const NAME: &'static str = "SigCountLightClientAttackEvidence";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountLightClientAttackEvidence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountLightClientAttackEvidence".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountLightBlock {
@@ -53,25 +113,75 @@ pub struct SigCountLightBlock {
     #[prost(message, optional, tag = "2")]
     pub validator_set: ::core::option::Option<SigCountValidatorSet>,
 }
+impl ::prost::Name for SigCountLightBlock {
+    const NAME: &'static str = "SigCountLightBlock";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountLightBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountLightBlock".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountSignedHeader {
     #[prost(message, optional, tag = "2")]
     pub commit: ::core::option::Option<SigCountCommit>,
+}
+impl ::prost::Name for SigCountSignedHeader {
+    const NAME: &'static str = "SigCountSignedHeader";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountSignedHeader".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountSignedHeader".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountValidatorSet {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub validators: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for SigCountValidatorSet {
+    const NAME: &'static str = "SigCountValidatorSet";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountValidatorSet".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountValidatorSet".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountCommit {
     #[prost(bytes = "vec", repeated, tag = "4")]
     pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for SigCountCommit {
+    const NAME: &'static str = "SigCountCommit";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountCommit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountCommit".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigCountExtendedCommit {
     #[prost(bytes = "vec", repeated, tag = "4")]
     pub extended_signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for SigCountExtendedCommit {
+    const NAME: &'static str = "SigCountExtendedCommit";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.SigCountExtendedCommit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.SigCountExtendedCommit".into()
+    }
 }
 /// BlockRequest requests a block for a specific height
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -79,11 +189,31 @@ pub struct BlockRequest {
     #[prost(int64, tag = "1")]
     pub height: i64,
 }
+impl ::prost::Name for BlockRequest {
+    const NAME: &'static str = "BlockRequest";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.BlockRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.BlockRequest".into()
+    }
+}
 /// NoBlockResponse informs the node that the peer does not have block at the requested height
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct NoBlockResponse {
     #[prost(int64, tag = "1")]
     pub height: i64,
+}
+impl ::prost::Name for NoBlockResponse {
+    const NAME: &'static str = "NoBlockResponse";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.NoBlockResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.NoBlockResponse".into()
+    }
 }
 /// BlockResponse returns block to the requested
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -93,9 +223,29 @@ pub struct BlockResponse {
     #[prost(message, optional, tag = "2")]
     pub ext_commit: ::core::option::Option<super::types::ExtendedCommit>,
 }
+impl ::prost::Name for BlockResponse {
+    const NAME: &'static str = "BlockResponse";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.BlockResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.BlockResponse".into()
+    }
+}
 /// StatusRequest requests the status of a peer.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct StatusRequest {}
+impl ::prost::Name for StatusRequest {
+    const NAME: &'static str = "StatusRequest";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.StatusRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.StatusRequest".into()
+    }
+}
 /// StatusResponse is a peer response to inform their status.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct StatusResponse {
@@ -103,6 +253,16 @@ pub struct StatusResponse {
     pub height: i64,
     #[prost(int64, tag = "2")]
     pub base: i64,
+}
+impl ::prost::Name for StatusResponse {
+    const NAME: &'static str = "StatusResponse";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.StatusResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.StatusResponse".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
@@ -125,3 +285,14 @@ pub mod message {
         StatusResponse(super::StatusResponse),
     }
 }
+impl ::prost::Name for Message {
+    const NAME: &'static str = "Message";
+    const PACKAGE: &'static str = "tendermint.blocksync";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.blocksync.Message".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.blocksync.Message".into()
+    }
+}
+include!("tendermint.blocksync.serde.rs");

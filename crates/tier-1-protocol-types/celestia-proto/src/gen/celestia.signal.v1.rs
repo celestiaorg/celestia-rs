@@ -11,11 +11,31 @@ pub struct Upgrade {
     #[prost(int64, tag = "2")]
     pub upgrade_height: i64,
 }
+impl ::prost::Name for Upgrade {
+    const NAME: &'static str = "Upgrade";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.Upgrade".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.Upgrade".into()
+    }
+}
 /// QueryVersionTallyRequest is the request type for the VersionTally query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryVersionTallyRequest {
     #[prost(uint64, tag = "1")]
     pub version: u64,
+}
+impl ::prost::Name for QueryVersionTallyRequest {
+    const NAME: &'static str = "QueryVersionTallyRequest";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryVersionTallyRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryVersionTallyRequest".into()
+    }
 }
 /// QueryVersionTallyResponse is the response type for the VersionTally query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -27,14 +47,44 @@ pub struct QueryVersionTallyResponse {
     #[prost(uint64, tag = "3")]
     pub total_voting_power: u64,
 }
+impl ::prost::Name for QueryVersionTallyResponse {
+    const NAME: &'static str = "QueryVersionTallyResponse";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryVersionTallyResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryVersionTallyResponse".into()
+    }
+}
 /// QueryGetUpgradeRequest is the request type for the GetUpgrade query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryGetUpgradeRequest {}
+impl ::prost::Name for QueryGetUpgradeRequest {
+    const NAME: &'static str = "QueryGetUpgradeRequest";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryGetUpgradeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryGetUpgradeRequest".into()
+    }
+}
 /// QueryGetUpgradeResponse is the response type for the GetUpgrade query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryGetUpgradeResponse {
     #[prost(message, optional, tag = "1")]
     pub upgrade: ::core::option::Option<Upgrade>,
+}
+impl ::prost::Name for QueryGetUpgradeResponse {
+    const NAME: &'static str = "QueryGetUpgradeResponse";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryGetUpgradeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryGetUpgradeResponse".into()
+    }
 }
 /// QueryGetMissingValidatorsRequest is the request type for the MissingValidators query.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -42,12 +92,32 @@ pub struct QueryGetMissingValidatorsRequest {
     #[prost(uint64, tag = "1")]
     pub version: u64,
 }
+impl ::prost::Name for QueryGetMissingValidatorsRequest {
+    const NAME: &'static str = "QueryGetMissingValidatorsRequest";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryGetMissingValidatorsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryGetMissingValidatorsRequest".into()
+    }
+}
 /// QueryGetMissingValidatorsResponse is the response type for the MissingValidators query.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryGetMissingValidatorsResponse {
     /// MissingValidators is a string of validator monikers
     #[prost(string, repeated, tag = "1")]
     pub missing_validators: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for QueryGetMissingValidatorsResponse {
+    const NAME: &'static str = "QueryGetMissingValidatorsResponse";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.QueryGetMissingValidatorsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.QueryGetMissingValidatorsResponse".into()
+    }
 }
 /// MsgSignalVersion signals for an upgrade.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -57,15 +127,56 @@ pub struct MsgSignalVersion {
     #[prost(uint64, tag = "2")]
     pub version: u64,
 }
+impl ::prost::Name for MsgSignalVersion {
+    const NAME: &'static str = "MsgSignalVersion";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.MsgSignalVersion".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.MsgSignalVersion".into()
+    }
+}
 /// MsgSignalVersionResponse is the response type for the SignalVersion method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSignalVersionResponse {}
+impl ::prost::Name for MsgSignalVersionResponse {
+    const NAME: &'static str = "MsgSignalVersionResponse";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.MsgSignalVersionResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.MsgSignalVersionResponse".into()
+    }
+}
 /// MsgTryUpgrade tries to upgrade the chain.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgTryUpgrade {
     #[prost(string, tag = "1")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgTryUpgrade {
+    const NAME: &'static str = "MsgTryUpgrade";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.MsgTryUpgrade".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.MsgTryUpgrade".into()
+    }
+}
 /// MsgTryUpgradeResponse is the response type for the TryUpgrade method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgTryUpgradeResponse {}
+impl ::prost::Name for MsgTryUpgradeResponse {
+    const NAME: &'static str = "MsgTryUpgradeResponse";
+    const PACKAGE: &'static str = "celestia.signal.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.signal.v1.MsgTryUpgradeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.signal.v1.MsgTryUpgradeResponse".into()
+    }
+}
+include!("celestia.signal.v1.serde.rs");

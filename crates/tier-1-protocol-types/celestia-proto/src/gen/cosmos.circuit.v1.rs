@@ -68,6 +68,16 @@ pub mod permissions {
         }
     }
 }
+impl ::prost::Name for Permissions {
+    const NAME: &'static str = "Permissions";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.Permissions".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.Permissions".into()
+    }
+}
 /// GenesisAccountPermissions is the account permissions for the circuit breaker in genesis
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisAccountPermissions {
@@ -75,6 +85,16 @@ pub struct GenesisAccountPermissions {
     pub address: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub permissions: ::core::option::Option<Permissions>,
+}
+impl ::prost::Name for GenesisAccountPermissions {
+    const NAME: &'static str = "GenesisAccountPermissions";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.GenesisAccountPermissions".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.GenesisAccountPermissions".into()
+    }
 }
 /// GenesisState is the state that must be provided at genesis.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -84,17 +104,47 @@ pub struct GenesisState {
     #[prost(string, repeated, tag = "2")]
     pub disabled_type_urls: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.GenesisState".into()
+    }
+}
 /// QueryAccountRequest is the request type for the Query/Account RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryAccountRequest {
     #[prost(string, tag = "1")]
     pub address: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryAccountRequest {
+    const NAME: &'static str = "QueryAccountRequest";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.QueryAccountRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.QueryAccountRequest".into()
+    }
+}
 /// AccountResponse is the response type for the Query/Account RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AccountResponse {
     #[prost(message, optional, tag = "1")]
     pub permission: ::core::option::Option<Permissions>,
+}
+impl ::prost::Name for AccountResponse {
+    const NAME: &'static str = "AccountResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.AccountResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.AccountResponse".into()
+    }
 }
 /// QueryAccountsRequest is the request type for the Query/Accounts RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -104,6 +154,16 @@ pub struct QueryAccountsRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryAccountsRequest {
+    const NAME: &'static str = "QueryAccountsRequest";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.QueryAccountsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.QueryAccountsRequest".into()
+    }
 }
 /// AccountsResponse is the response type for the Query/Accounts RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -116,14 +176,44 @@ pub struct AccountsResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for AccountsResponse {
+    const NAME: &'static str = "AccountsResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.AccountsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.AccountsResponse".into()
+    }
+}
 /// QueryDisableListRequest is the request type for the Query/DisabledList RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryDisabledListRequest {}
+impl ::prost::Name for QueryDisabledListRequest {
+    const NAME: &'static str = "QueryDisabledListRequest";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.QueryDisabledListRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.QueryDisabledListRequest".into()
+    }
+}
 /// DisabledListResponse is the response type for the Query/DisabledList RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisabledListResponse {
     #[prost(string, repeated, tag = "1")]
     pub disabled_list: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for DisabledListResponse {
+    const NAME: &'static str = "DisabledListResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.DisabledListResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.DisabledListResponse".into()
+    }
 }
 /// MsgAuthorizeCircuitBreaker defines the Msg/AuthorizeCircuitBreaker request type.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -141,11 +231,31 @@ pub struct MsgAuthorizeCircuitBreaker {
     #[prost(message, optional, tag = "3")]
     pub permissions: ::core::option::Option<Permissions>,
 }
+impl ::prost::Name for MsgAuthorizeCircuitBreaker {
+    const NAME: &'static str = "MsgAuthorizeCircuitBreaker";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgAuthorizeCircuitBreaker".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgAuthorizeCircuitBreaker".into()
+    }
+}
 /// MsgAuthorizeCircuitBreakerResponse defines the Msg/AuthorizeCircuitBreaker response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgAuthorizeCircuitBreakerResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
+}
+impl ::prost::Name for MsgAuthorizeCircuitBreakerResponse {
+    const NAME: &'static str = "MsgAuthorizeCircuitBreakerResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgAuthorizeCircuitBreakerResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgAuthorizeCircuitBreakerResponse".into()
+    }
 }
 /// MsgTripCircuitBreaker defines the Msg/TripCircuitBreaker request type.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -161,11 +271,31 @@ pub struct MsgTripCircuitBreaker {
     #[prost(string, repeated, tag = "2")]
     pub msg_type_urls: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for MsgTripCircuitBreaker {
+    const NAME: &'static str = "MsgTripCircuitBreaker";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgTripCircuitBreaker".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgTripCircuitBreaker".into()
+    }
+}
 /// MsgTripCircuitBreakerResponse defines the Msg/TripCircuitBreaker response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgTripCircuitBreakerResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
+}
+impl ::prost::Name for MsgTripCircuitBreakerResponse {
+    const NAME: &'static str = "MsgTripCircuitBreakerResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgTripCircuitBreakerResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgTripCircuitBreakerResponse".into()
+    }
 }
 /// MsgResetCircuitBreaker defines the Msg/ResetCircuitBreaker request type.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -179,9 +309,30 @@ pub struct MsgResetCircuitBreaker {
     #[prost(string, repeated, tag = "3")]
     pub msg_type_urls: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for MsgResetCircuitBreaker {
+    const NAME: &'static str = "MsgResetCircuitBreaker";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgResetCircuitBreaker".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgResetCircuitBreaker".into()
+    }
+}
 /// MsgResetCircuitBreakerResponse defines the Msg/ResetCircuitBreaker response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgResetCircuitBreakerResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
 }
+impl ::prost::Name for MsgResetCircuitBreakerResponse {
+    const NAME: &'static str = "MsgResetCircuitBreakerResponse";
+    const PACKAGE: &'static str = "cosmos.circuit.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.circuit.v1.MsgResetCircuitBreakerResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.circuit.v1.MsgResetCircuitBreakerResponse".into()
+    }
+}
+include!("cosmos.circuit.v1.serde.rs");

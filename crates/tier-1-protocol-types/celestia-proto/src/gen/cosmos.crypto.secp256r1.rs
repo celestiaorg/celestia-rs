@@ -7,6 +7,16 @@ pub struct PubKey {
     #[prost(bytes = "vec", tag = "1")]
     pub key: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PubKey {
+    const NAME: &'static str = "PubKey";
+    const PACKAGE: &'static str = "cosmos.crypto.secp256r1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crypto.secp256r1.PubKey".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crypto.secp256r1.PubKey".into()
+    }
+}
 /// PrivKey defines a secp256r1 ECDSA private key.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PrivKey {
@@ -14,3 +24,14 @@ pub struct PrivKey {
     #[prost(bytes = "vec", tag = "1")]
     pub secret: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PrivKey {
+    const NAME: &'static str = "PrivKey";
+    const PACKAGE: &'static str = "cosmos.crypto.secp256r1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crypto.secp256r1.PrivKey".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crypto.secp256r1.PrivKey".into()
+    }
+}
+include!("cosmos.crypto.secp256r1.serde.rs");

@@ -12,11 +12,31 @@ pub struct LegacyAbciResponses {
     #[prost(message, optional, tag = "3")]
     pub begin_block: ::core::option::Option<ResponseBeginBlock>,
 }
+impl ::prost::Name for LegacyAbciResponses {
+    const NAME: &'static str = "LegacyABCIResponses";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.LegacyABCIResponses".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.LegacyABCIResponses".into()
+    }
+}
 /// ResponseBeginBlock is kept for backwards compatibility for versions prior to v0.38
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseBeginBlock {
     #[prost(message, repeated, tag = "1")]
     pub events: ::prost::alloc::vec::Vec<super::abci::Event>,
+}
+impl ::prost::Name for ResponseBeginBlock {
+    const NAME: &'static str = "ResponseBeginBlock";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.ResponseBeginBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.ResponseBeginBlock".into()
+    }
 }
 /// ResponseEndBlock is kept for backwards compatibility for versions prior to v0.38
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -28,6 +48,16 @@ pub struct ResponseEndBlock {
     #[prost(message, repeated, tag = "3")]
     pub events: ::prost::alloc::vec::Vec<super::abci::Event>,
 }
+impl ::prost::Name for ResponseEndBlock {
+    const NAME: &'static str = "ResponseEndBlock";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.ResponseEndBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.ResponseEndBlock".into()
+    }
+}
 /// ValidatorsInfo represents the latest validator set, or the last height it changed
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorsInfo {
@@ -36,6 +66,16 @@ pub struct ValidatorsInfo {
     #[prost(int64, tag = "2")]
     pub last_height_changed: i64,
 }
+impl ::prost::Name for ValidatorsInfo {
+    const NAME: &'static str = "ValidatorsInfo";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.ValidatorsInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.ValidatorsInfo".into()
+    }
+}
 /// ConsensusParamsInfo represents the latest consensus params, or the last height it changed
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConsensusParamsInfo {
@@ -43,6 +83,16 @@ pub struct ConsensusParamsInfo {
     pub consensus_params: ::core::option::Option<super::types::ConsensusParams>,
     #[prost(int64, tag = "2")]
     pub last_height_changed: i64,
+}
+impl ::prost::Name for ConsensusParamsInfo {
+    const NAME: &'static str = "ConsensusParamsInfo";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.ConsensusParamsInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.ConsensusParamsInfo".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AbciResponsesInfo {
@@ -55,12 +105,32 @@ pub struct AbciResponsesInfo {
         super::abci::ResponseFinalizeBlock,
     >,
 }
+impl ::prost::Name for AbciResponsesInfo {
+    const NAME: &'static str = "ABCIResponsesInfo";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.ABCIResponsesInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.ABCIResponsesInfo".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Version {
     #[prost(message, optional, tag = "1")]
     pub consensus: ::core::option::Option<super::version::Consensus>,
     #[prost(string, tag = "2")]
     pub software: ::prost::alloc::string::String,
+}
+impl ::prost::Name for Version {
+    const NAME: &'static str = "Version";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.Version".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.Version".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct State {
@@ -77,7 +147,7 @@ pub struct State {
     #[prost(message, optional, tag = "4")]
     pub last_block_id: ::core::option::Option<super::types::BlockId>,
     #[prost(message, optional, tag = "5")]
-    pub last_block_time: ::core::option::Option<::prost_types::Timestamp>,
+    pub last_block_time: ::core::option::Option<::pbjson_types::Timestamp>,
     /// LastValidators is used to validate block.LastCommit.
     /// Validators are persisted to the database separately every time they change,
     /// so we can query for historical validator sets.
@@ -108,24 +178,45 @@ pub struct State {
     #[prost(message, optional, tag = "15")]
     pub timeout_info: ::core::option::Option<TimeoutInfo>,
 }
+impl ::prost::Name for State {
+    const NAME: &'static str = "State";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.State".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.State".into()
+    }
+}
 /// TimeoutInfo represents the timeout info for the next block height
 /// this is recreated from ABCI here as we had a proto merged registry issue in the app.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TimeoutInfo {
     #[prost(message, optional, tag = "1")]
-    pub timeout_propose: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_propose: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "2")]
-    pub timeout_commit: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_commit: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "3")]
-    pub timeout_propose_delta: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_propose_delta: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "4")]
-    pub timeout_prevote: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_prevote: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "5")]
-    pub timeout_prevote_delta: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_prevote_delta: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "6")]
-    pub timeout_precommit: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_precommit: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "7")]
-    pub timeout_precommit_delta: ::core::option::Option<::prost_types::Duration>,
+    pub timeout_precommit_delta: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "8")]
-    pub delayed_precommit_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub delayed_precommit_timeout: ::core::option::Option<::pbjson_types::Duration>,
 }
+impl ::prost::Name for TimeoutInfo {
+    const NAME: &'static str = "TimeoutInfo";
+    const PACKAGE: &'static str = "tendermint.state";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.state.TimeoutInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.state.TimeoutInfo".into()
+    }
+}
+include!("tendermint.state.serde.rs");

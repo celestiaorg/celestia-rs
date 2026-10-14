@@ -9,6 +9,16 @@ pub struct PubKey {
     #[prost(bytes = "vec", tag = "1")]
     pub key: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PubKey {
+    const NAME: &'static str = "PubKey";
+    const PACKAGE: &'static str = "cosmos.crypto.ed25519";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crypto.ed25519.PubKey".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crypto.ed25519.PubKey".into()
+    }
+}
 /// PrivKey defines a ed25519 private key.
 /// NOTE: ed25519 keys must not be used in SDK apps except in a tendermint validator context.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -16,3 +26,14 @@ pub struct PrivKey {
     #[prost(bytes = "vec", tag = "1")]
     pub key: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PrivKey {
+    const NAME: &'static str = "PrivKey";
+    const PACKAGE: &'static str = "cosmos.crypto.ed25519";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.crypto.ed25519.PrivKey".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.crypto.ed25519.PrivKey".into()
+    }
+}
+include!("cosmos.crypto.ed25519.serde.rs");

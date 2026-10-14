@@ -11,6 +11,16 @@ pub struct TxMetaData {
     #[prost(uint32, tag = "3")]
     pub end: u32,
 }
+impl ::prost::Name for TxMetaData {
+    const NAME: &'static str = "TxMetaData";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.TxMetaData".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.TxMetaData".into()
+    }
+}
 /// CompactBlock commits to the transaction included in a proposal. It enalbes
 /// clients to reuse already downloaded blobs instead of gossiping them all again
 /// during the block propagation.
@@ -29,6 +39,16 @@ pub struct CompactBlock {
     #[prost(bytes = "vec", repeated, tag = "6")]
     pub parts_hashes: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for CompactBlock {
+    const NAME: &'static str = "CompactBlock";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.CompactBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.CompactBlock".into()
+    }
+}
 /// PartMetaData proves the inclusion of a part to the block.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PartMetaData {
@@ -36,6 +56,16 @@ pub struct PartMetaData {
     pub index: u32,
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for PartMetaData {
+    const NAME: &'static str = "PartMetaData";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.PartMetaData".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.PartMetaData".into()
+    }
 }
 /// HaveParts is a message sent by a peer to inform that it has or will receive a
 /// part of a block.
@@ -47,6 +77,16 @@ pub struct HaveParts {
     pub round: i32,
     #[prost(message, repeated, tag = "3")]
     pub parts: ::prost::alloc::vec::Vec<PartMetaData>,
+}
+impl ::prost::Name for HaveParts {
+    const NAME: &'static str = "HaveParts";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.HaveParts".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.HaveParts".into()
+    }
 }
 /// WantParts is a wire message sent by peers to indicate that they wish to
 /// download a specific portion of the block.
@@ -63,6 +103,16 @@ pub struct WantParts {
     #[prost(int32, tag = "5")]
     pub missing_parts_count: i32,
 }
+impl ::prost::Name for WantParts {
+    const NAME: &'static str = "WantParts";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.WantParts".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.WantParts".into()
+    }
+}
 /// RecoveryPart is a wire message for sending a portion of the block to a peer.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RecoveryPart {
@@ -76,6 +126,16 @@ pub struct RecoveryPart {
     pub data: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "5")]
     pub proof: ::core::option::Option<super::crypto::Proof>,
+}
+impl ::prost::Name for RecoveryPart {
+    const NAME: &'static str = "RecoveryPart";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.RecoveryPart".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.RecoveryPart".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
@@ -96,3 +156,14 @@ pub mod message {
         RecoveryPart(super::RecoveryPart),
     }
 }
+impl ::prost::Name for Message {
+    const NAME: &'static str = "Message";
+    const PACKAGE: &'static str = "tendermint.propagation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.propagation.Message".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.propagation.Message".into()
+    }
+}
+include!("tendermint.propagation.serde.rs");

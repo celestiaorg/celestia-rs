@@ -8,7 +8,17 @@ pub struct IdentifiedClientState {
     pub client_id: ::prost::alloc::string::String,
     /// client state
     #[prost(message, optional, tag = "2")]
-    pub client_state: ::core::option::Option<::prost_types::Any>,
+    pub client_state: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for IdentifiedClientState {
+    const NAME: &'static str = "IdentifiedClientState";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.IdentifiedClientState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.IdentifiedClientState".into()
+    }
 }
 /// ConsensusStateWithHeight defines a consensus state with an additional height
 /// field.
@@ -19,7 +29,17 @@ pub struct ConsensusStateWithHeight {
     pub height: ::core::option::Option<Height>,
     /// consensus state
     #[prost(message, optional, tag = "2")]
-    pub consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub consensus_state: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for ConsensusStateWithHeight {
+    const NAME: &'static str = "ConsensusStateWithHeight";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.ConsensusStateWithHeight".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.ConsensusStateWithHeight".into()
+    }
 }
 /// ClientConsensusStates defines all the stored consensus states for a given
 /// client.
@@ -31,6 +51,16 @@ pub struct ClientConsensusStates {
     /// consensus states and their heights associated with the client
     #[prost(message, repeated, tag = "2")]
     pub consensus_states: ::prost::alloc::vec::Vec<ConsensusStateWithHeight>,
+}
+impl ::prost::Name for ClientConsensusStates {
+    const NAME: &'static str = "ClientConsensusStates";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.ClientConsensusStates".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.ClientConsensusStates".into()
+    }
 }
 /// Height is a monotonically increasing data type
 /// that can be compared against another Height for the purposes of updating and
@@ -51,6 +81,16 @@ pub struct Height {
     #[prost(uint64, tag = "2")]
     pub revision_height: u64,
 }
+impl ::prost::Name for Height {
+    const NAME: &'static str = "Height";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.Height".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.Height".into()
+    }
+}
 /// Params defines the set of IBC light client parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
@@ -59,6 +99,16 @@ pub struct Params {
     /// of this client will be disabled until it is added again to the list.
     #[prost(string, repeated, tag = "1")]
     pub allowed_clients: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.Params".into()
+    }
 }
 /// ClientUpdateProposal is a legacy governance proposal. If it passes, the substitute
 /// client's latest consensus state is copied over to the subject client. The proposal
@@ -82,6 +132,16 @@ pub struct ClientUpdateProposal {
     #[prost(string, tag = "4")]
     pub substitute_client_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for ClientUpdateProposal {
+    const NAME: &'static str = "ClientUpdateProposal";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.ClientUpdateProposal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.ClientUpdateProposal".into()
+    }
+}
 /// UpgradeProposal is a gov Content type for initiating an IBC breaking
 /// upgrade.
 ///
@@ -103,7 +163,17 @@ pub struct UpgradeProposal {
     /// of the chain. This will allow IBC connections to persist smoothly across
     /// planned chain upgrades
     #[prost(message, optional, tag = "4")]
-    pub upgraded_client_state: ::core::option::Option<::prost_types::Any>,
+    pub upgraded_client_state: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for UpgradeProposal {
+    const NAME: &'static str = "UpgradeProposal";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.UpgradeProposal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.UpgradeProposal".into()
+    }
 }
 /// GenesisState defines the ibc client submodule's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -128,6 +198,16 @@ pub struct GenesisState {
     #[prost(uint64, tag = "6")]
     pub next_client_sequence: u64,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.GenesisState".into()
+    }
+}
 /// GenesisMetadata defines the genesis type for metadata that clients may return
 /// with ExportMetadata
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -139,6 +219,16 @@ pub struct GenesisMetadata {
     #[prost(bytes = "vec", tag = "2")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for GenesisMetadata {
+    const NAME: &'static str = "GenesisMetadata";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.GenesisMetadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.GenesisMetadata".into()
+    }
+}
 /// IdentifiedGenesisMetadata has the client metadata with the corresponding
 /// client id.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -148,6 +238,16 @@ pub struct IdentifiedGenesisMetadata {
     #[prost(message, repeated, tag = "2")]
     pub client_metadata: ::prost::alloc::vec::Vec<GenesisMetadata>,
 }
+impl ::prost::Name for IdentifiedGenesisMetadata {
+    const NAME: &'static str = "IdentifiedGenesisMetadata";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.IdentifiedGenesisMetadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.IdentifiedGenesisMetadata".into()
+    }
+}
 /// QueryClientStateRequest is the request type for the Query/ClientState RPC
 /// method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -156,6 +256,16 @@ pub struct QueryClientStateRequest {
     #[prost(string, tag = "1")]
     pub client_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryClientStateRequest {
+    const NAME: &'static str = "QueryClientStateRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStateRequest".into()
+    }
+}
 /// QueryClientStateResponse is the response type for the Query/ClientState RPC
 /// method. Besides the client state, it includes a proof and the height from
 /// which the proof was retrieved.
@@ -163,13 +273,23 @@ pub struct QueryClientStateRequest {
 pub struct QueryClientStateResponse {
     /// client state associated with the request identifier
     #[prost(message, optional, tag = "1")]
-    pub client_state: ::core::option::Option<::prost_types::Any>,
+    pub client_state: ::core::option::Option<crate::any::Any>,
     /// merkle proof of existence
     #[prost(bytes = "vec", tag = "2")]
     pub proof: ::prost::alloc::vec::Vec<u8>,
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<Height>,
+}
+impl ::prost::Name for QueryClientStateResponse {
+    const NAME: &'static str = "QueryClientStateResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStateResponse".into()
+    }
 }
 /// QueryClientStatesRequest is the request type for the Query/ClientStates RPC
 /// method
@@ -180,6 +300,16 @@ pub struct QueryClientStatesRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryClientStatesRequest {
+    const NAME: &'static str = "QueryClientStatesRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStatesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStatesRequest".into()
+    }
 }
 /// QueryClientStatesResponse is the response type for the Query/ClientStates RPC
 /// method.
@@ -193,6 +323,16 @@ pub struct QueryClientStatesResponse {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryClientStatesResponse {
+    const NAME: &'static str = "QueryClientStatesResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStatesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStatesResponse".into()
+    }
 }
 /// QueryConsensusStateRequest is the request type for the Query/ConsensusState
 /// RPC method. Besides the consensus state, it includes a proof and the height
@@ -213,19 +353,39 @@ pub struct QueryConsensusStateRequest {
     #[prost(bool, tag = "4")]
     pub latest_height: bool,
 }
+impl ::prost::Name for QueryConsensusStateRequest {
+    const NAME: &'static str = "QueryConsensusStateRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStateRequest".into()
+    }
+}
 /// QueryConsensusStateResponse is the response type for the Query/ConsensusState
 /// RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryConsensusStateResponse {
     /// consensus state associated with the client identifier at the given height
     #[prost(message, optional, tag = "1")]
-    pub consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub consensus_state: ::core::option::Option<crate::any::Any>,
     /// merkle proof of existence
     #[prost(bytes = "vec", tag = "2")]
     pub proof: ::prost::alloc::vec::Vec<u8>,
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<Height>,
+}
+impl ::prost::Name for QueryConsensusStateResponse {
+    const NAME: &'static str = "QueryConsensusStateResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStateResponse".into()
+    }
 }
 /// QueryConsensusStatesRequest is the request type for the Query/ConsensusStates
 /// RPC method.
@@ -240,6 +400,16 @@ pub struct QueryConsensusStatesRequest {
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryConsensusStatesRequest {
+    const NAME: &'static str = "QueryConsensusStatesRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStatesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStatesRequest".into()
+    }
+}
 /// QueryConsensusStatesResponse is the response type for the
 /// Query/ConsensusStates RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -252,6 +422,16 @@ pub struct QueryConsensusStatesResponse {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryConsensusStatesResponse {
+    const NAME: &'static str = "QueryConsensusStatesResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStatesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStatesResponse".into()
+    }
 }
 /// QueryConsensusStateHeightsRequest is the request type for Query/ConsensusStateHeights
 /// RPC method.
@@ -266,6 +446,16 @@ pub struct QueryConsensusStateHeightsRequest {
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryConsensusStateHeightsRequest {
+    const NAME: &'static str = "QueryConsensusStateHeightsRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStateHeightsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStateHeightsRequest".into()
+    }
+}
 /// QueryConsensusStateHeightsResponse is the response type for the
 /// Query/ConsensusStateHeights RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -279,6 +469,16 @@ pub struct QueryConsensusStateHeightsResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryConsensusStateHeightsResponse {
+    const NAME: &'static str = "QueryConsensusStateHeightsResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryConsensusStateHeightsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryConsensusStateHeightsResponse".into()
+    }
+}
 /// QueryClientStatusRequest is the request type for the Query/ClientStatus RPC
 /// method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -287,6 +487,16 @@ pub struct QueryClientStatusRequest {
     #[prost(string, tag = "1")]
     pub client_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryClientStatusRequest {
+    const NAME: &'static str = "QueryClientStatusRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStatusRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStatusRequest".into()
+    }
+}
 /// QueryClientStatusResponse is the response type for the Query/ClientStatus RPC
 /// method. It returns the current status of the IBC client.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -294,10 +504,30 @@ pub struct QueryClientStatusResponse {
     #[prost(string, tag = "1")]
     pub status: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryClientStatusResponse {
+    const NAME: &'static str = "QueryClientStatusResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientStatusResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientStatusResponse".into()
+    }
+}
 /// QueryClientParamsRequest is the request type for the Query/ClientParams RPC
 /// method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryClientParamsRequest {}
+impl ::prost::Name for QueryClientParamsRequest {
+    const NAME: &'static str = "QueryClientParamsRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientParamsRequest".into()
+    }
+}
 /// QueryClientParamsResponse is the response type for the Query/ClientParams RPC
 /// method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -306,29 +536,79 @@ pub struct QueryClientParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for QueryClientParamsResponse {
+    const NAME: &'static str = "QueryClientParamsResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryClientParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryClientParamsResponse".into()
+    }
+}
 /// QueryUpgradedClientStateRequest is the request type for the
 /// Query/UpgradedClientState RPC method
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryUpgradedClientStateRequest {}
+impl ::prost::Name for QueryUpgradedClientStateRequest {
+    const NAME: &'static str = "QueryUpgradedClientStateRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryUpgradedClientStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryUpgradedClientStateRequest".into()
+    }
+}
 /// QueryUpgradedClientStateResponse is the response type for the
 /// Query/UpgradedClientState RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryUpgradedClientStateResponse {
     /// client state associated with the request identifier
     #[prost(message, optional, tag = "1")]
-    pub upgraded_client_state: ::core::option::Option<::prost_types::Any>,
+    pub upgraded_client_state: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for QueryUpgradedClientStateResponse {
+    const NAME: &'static str = "QueryUpgradedClientStateResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryUpgradedClientStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryUpgradedClientStateResponse".into()
+    }
 }
 /// QueryUpgradedConsensusStateRequest is the request type for the
 /// Query/UpgradedConsensusState RPC method
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryUpgradedConsensusStateRequest {}
+impl ::prost::Name for QueryUpgradedConsensusStateRequest {
+    const NAME: &'static str = "QueryUpgradedConsensusStateRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryUpgradedConsensusStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryUpgradedConsensusStateRequest".into()
+    }
+}
 /// QueryUpgradedConsensusStateResponse is the response type for the
 /// Query/UpgradedConsensusState RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryUpgradedConsensusStateResponse {
     /// Consensus state associated with the request identifier
     #[prost(message, optional, tag = "1")]
-    pub upgraded_consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub upgraded_consensus_state: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for QueryUpgradedConsensusStateResponse {
+    const NAME: &'static str = "QueryUpgradedConsensusStateResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryUpgradedConsensusStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryUpgradedConsensusStateResponse".into()
+    }
 }
 /// QueryVerifyMembershipRequest is the request type for the Query/VerifyMembership RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -355,6 +635,16 @@ pub struct QueryVerifyMembershipRequest {
     #[prost(uint64, tag = "7")]
     pub block_delay: u64,
 }
+impl ::prost::Name for QueryVerifyMembershipRequest {
+    const NAME: &'static str = "QueryVerifyMembershipRequest";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryVerifyMembershipRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryVerifyMembershipRequest".into()
+    }
+}
 /// QueryVerifyMembershipResponse is the response type for the Query/VerifyMembership RPC method
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryVerifyMembershipResponse {
@@ -362,23 +652,53 @@ pub struct QueryVerifyMembershipResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
 }
+impl ::prost::Name for QueryVerifyMembershipResponse {
+    const NAME: &'static str = "QueryVerifyMembershipResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.QueryVerifyMembershipResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.QueryVerifyMembershipResponse".into()
+    }
+}
 /// MsgCreateClient defines a message to create an IBC client
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateClient {
     /// light client state
     #[prost(message, optional, tag = "1")]
-    pub client_state: ::core::option::Option<::prost_types::Any>,
+    pub client_state: ::core::option::Option<crate::any::Any>,
     /// consensus state associated with the client that corresponds to a given
     /// height.
     #[prost(message, optional, tag = "2")]
-    pub consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub consensus_state: ::core::option::Option<crate::any::Any>,
     /// signer address
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateClient {
+    const NAME: &'static str = "MsgCreateClient";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgCreateClient".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgCreateClient".into()
+    }
+}
 /// MsgCreateClientResponse defines the Msg/CreateClient response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgCreateClientResponse {}
+impl ::prost::Name for MsgCreateClientResponse {
+    const NAME: &'static str = "MsgCreateClientResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgCreateClientResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgCreateClientResponse".into()
+    }
+}
 /// MsgUpdateClient defines an sdk.Msg to update a IBC client state using
 /// the given client message.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -388,14 +708,34 @@ pub struct MsgUpdateClient {
     pub client_id: ::prost::alloc::string::String,
     /// client message to update the light client
     #[prost(message, optional, tag = "2")]
-    pub client_message: ::core::option::Option<::prost_types::Any>,
+    pub client_message: ::core::option::Option<crate::any::Any>,
     /// signer address
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgUpdateClient {
+    const NAME: &'static str = "MsgUpdateClient";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpdateClient".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpdateClient".into()
+    }
+}
 /// MsgUpdateClientResponse defines the Msg/UpdateClient response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateClientResponse {}
+impl ::prost::Name for MsgUpdateClientResponse {
+    const NAME: &'static str = "MsgUpdateClientResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpdateClientResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpdateClientResponse".into()
+    }
+}
 /// MsgUpgradeClient defines an sdk.Msg to upgrade an IBC client to a new client
 /// state
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -405,11 +745,11 @@ pub struct MsgUpgradeClient {
     pub client_id: ::prost::alloc::string::String,
     /// upgraded client state
     #[prost(message, optional, tag = "2")]
-    pub client_state: ::core::option::Option<::prost_types::Any>,
+    pub client_state: ::core::option::Option<crate::any::Any>,
     /// upgraded consensus state, only contains enough information to serve as a
     /// basis of trust in update logic
     #[prost(message, optional, tag = "3")]
-    pub consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub consensus_state: ::core::option::Option<crate::any::Any>,
     /// proof that old chain committed to new client
     #[prost(bytes = "vec", tag = "4")]
     pub proof_upgrade_client: ::prost::alloc::vec::Vec<u8>,
@@ -420,9 +760,29 @@ pub struct MsgUpgradeClient {
     #[prost(string, tag = "6")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgUpgradeClient {
+    const NAME: &'static str = "MsgUpgradeClient";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpgradeClient".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpgradeClient".into()
+    }
+}
 /// MsgUpgradeClientResponse defines the Msg/UpgradeClient response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpgradeClientResponse {}
+impl ::prost::Name for MsgUpgradeClientResponse {
+    const NAME: &'static str = "MsgUpgradeClientResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpgradeClientResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpgradeClientResponse".into()
+    }
+}
 /// MsgSubmitMisbehaviour defines an sdk.Msg type that submits Evidence for
 /// light client misbehaviour.
 /// This message has been deprecated. Use MsgUpdateClient instead.
@@ -433,15 +793,35 @@ pub struct MsgSubmitMisbehaviour {
     pub client_id: ::prost::alloc::string::String,
     /// misbehaviour used for freezing the light client
     #[prost(message, optional, tag = "2")]
-    pub misbehaviour: ::core::option::Option<::prost_types::Any>,
+    pub misbehaviour: ::core::option::Option<crate::any::Any>,
     /// signer address
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgSubmitMisbehaviour {
+    const NAME: &'static str = "MsgSubmitMisbehaviour";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgSubmitMisbehaviour".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgSubmitMisbehaviour".into()
+    }
 }
 /// MsgSubmitMisbehaviourResponse defines the Msg/SubmitMisbehaviour response
 /// type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSubmitMisbehaviourResponse {}
+impl ::prost::Name for MsgSubmitMisbehaviourResponse {
+    const NAME: &'static str = "MsgSubmitMisbehaviourResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgSubmitMisbehaviourResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgSubmitMisbehaviourResponse".into()
+    }
+}
 /// MsgRecoverClient defines the message used to recover a frozen or expired client.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRecoverClient {
@@ -456,9 +836,29 @@ pub struct MsgRecoverClient {
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRecoverClient {
+    const NAME: &'static str = "MsgRecoverClient";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgRecoverClient".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgRecoverClient".into()
+    }
+}
 /// MsgRecoverClientResponse defines the Msg/RecoverClient response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRecoverClientResponse {}
+impl ::prost::Name for MsgRecoverClientResponse {
+    const NAME: &'static str = "MsgRecoverClientResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgRecoverClientResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgRecoverClientResponse".into()
+    }
+}
 /// MsgIBCSoftwareUpgrade defines the message used to schedule an upgrade of an IBC client using a v1 governance proposal
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgIbcSoftwareUpgrade {
@@ -475,14 +875,34 @@ pub struct MsgIbcSoftwareUpgrade {
     /// deprecated in the Cosmos SDK to allow for this logic to exist solely in
     /// the 02-client module.
     #[prost(message, optional, tag = "2")]
-    pub upgraded_client_state: ::core::option::Option<::prost_types::Any>,
+    pub upgraded_client_state: ::core::option::Option<crate::any::Any>,
     /// signer address
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgIbcSoftwareUpgrade {
+    const NAME: &'static str = "MsgIBCSoftwareUpgrade";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgIBCSoftwareUpgrade".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgIBCSoftwareUpgrade".into()
+    }
+}
 /// MsgIBCSoftwareUpgradeResponse defines the Msg/IBCSoftwareUpgrade response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgIbcSoftwareUpgradeResponse {}
+impl ::prost::Name for MsgIbcSoftwareUpgradeResponse {
+    const NAME: &'static str = "MsgIBCSoftwareUpgradeResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgIBCSoftwareUpgradeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgIBCSoftwareUpgradeResponse".into()
+    }
+}
 /// MsgUpdateParams defines the sdk.Msg type to update the client parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParams {
@@ -495,6 +915,27 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the MsgUpdateParams response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "ibc.core.client.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.client.v1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.client.v1.MsgUpdateParamsResponse".into()
+    }
+}
+include!("ibc.core.client.v1.serde.rs");

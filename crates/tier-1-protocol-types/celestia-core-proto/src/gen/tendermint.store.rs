@@ -6,6 +6,16 @@ pub struct BlockStoreState {
     #[prost(int64, tag = "2")]
     pub height: i64,
 }
+impl ::prost::Name for BlockStoreState {
+    const NAME: &'static str = "BlockStoreState";
+    const PACKAGE: &'static str = "tendermint.store";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.store.BlockStoreState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.store.BlockStoreState".into()
+    }
+}
 /// TxInfo describes the location of a tx inside a committed block
 /// as well as the result of executing the transaction and the error log output.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -34,3 +44,14 @@ pub struct TxInfo {
     #[prost(string, repeated, tag = "8")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for TxInfo {
+    const NAME: &'static str = "TxInfo";
+    const PACKAGE: &'static str = "tendermint.store";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.store.TxInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.store.TxInfo".into()
+    }
+}
+include!("tendermint.store.serde.rs");

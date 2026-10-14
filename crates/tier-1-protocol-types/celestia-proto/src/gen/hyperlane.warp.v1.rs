@@ -11,6 +11,16 @@ pub struct EventCreateSyntheticToken {
     #[prost(string, tag = "4")]
     pub origin_denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateSyntheticToken {
+    const NAME: &'static str = "EventCreateSyntheticToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventCreateSyntheticToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventCreateSyntheticToken".into()
+    }
+}
 /// EventCreateCollateralToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventCreateCollateralToken {
@@ -22,6 +32,16 @@ pub struct EventCreateCollateralToken {
     pub origin_mailbox: ::prost::alloc::string::String,
     #[prost(string, tag = "4")]
     pub origin_denom: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventCreateCollateralToken {
+    const NAME: &'static str = "EventCreateCollateralToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventCreateCollateralToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventCreateCollateralToken".into()
+    }
 }
 /// EventSetToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -37,6 +57,16 @@ pub struct EventSetToken {
     #[prost(bool, tag = "5")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for EventSetToken {
+    const NAME: &'static str = "EventSetToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventSetToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventSetToken".into()
+    }
+}
 /// EventEnrollRemoteRouter ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventEnrollRemoteRouter {
@@ -51,6 +81,16 @@ pub struct EventEnrollRemoteRouter {
     #[prost(string, tag = "5")]
     pub gas: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventEnrollRemoteRouter {
+    const NAME: &'static str = "EventEnrollRemoteRouter";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventEnrollRemoteRouter".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventEnrollRemoteRouter".into()
+    }
+}
 /// EventUnrollRemoteRouter ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventUnrollRemoteRouter {
@@ -60,6 +100,16 @@ pub struct EventUnrollRemoteRouter {
     pub owner: ::prost::alloc::string::String,
     #[prost(uint32, tag = "3")]
     pub receiver_domain: u32,
+}
+impl ::prost::Name for EventUnrollRemoteRouter {
+    const NAME: &'static str = "EventUnrollRemoteRouter";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventUnrollRemoteRouter".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventUnrollRemoteRouter".into()
+    }
 }
 /// EventSendRemoteTransfer ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -75,6 +125,16 @@ pub struct EventSendRemoteTransfer {
     #[prost(string, tag = "5")]
     pub amount: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventSendRemoteTransfer {
+    const NAME: &'static str = "EventSendRemoteTransfer";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventSendRemoteTransfer".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventSendRemoteTransfer".into()
+    }
+}
 /// EventReceiveRemoteTransfer ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventReceiveRemoteTransfer {
@@ -89,9 +149,29 @@ pub struct EventReceiveRemoteTransfer {
     #[prost(string, tag = "5")]
     pub amount: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventReceiveRemoteTransfer {
+    const NAME: &'static str = "EventReceiveRemoteTransfer";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.EventReceiveRemoteTransfer".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.EventReceiveRemoteTransfer".into()
+    }
+}
 /// Params
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Params {}
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.Params".into()
+    }
+}
 /// HypToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HypToken {
@@ -110,6 +190,16 @@ pub struct HypToken {
     #[prost(string, tag = "7")]
     pub ism_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for HypToken {
+    const NAME: &'static str = "HypToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.HypToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.HypToken".into()
+    }
+}
 /// RemoteRouter ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoteRouter {
@@ -119,6 +209,16 @@ pub struct RemoteRouter {
     pub receiver_contract: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub gas: ::prost::alloc::string::String,
+}
+impl ::prost::Name for RemoteRouter {
+    const NAME: &'static str = "RemoteRouter";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.RemoteRouter".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.RemoteRouter".into()
+    }
 }
 /// HypTokenType ...
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -163,6 +263,16 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "3")]
     pub remote_routers: ::prost::alloc::vec::Vec<GenesisRemoteRouterWrapper>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.GenesisState".into()
+    }
+}
 /// GenesisRemoteRouterWrapper ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisRemoteRouterWrapper {
@@ -171,6 +281,16 @@ pub struct GenesisRemoteRouterWrapper {
     #[prost(message, optional, tag = "2")]
     pub remote_router: ::core::option::Option<RemoteRouter>,
 }
+impl ::prost::Name for GenesisRemoteRouterWrapper {
+    const NAME: &'static str = "GenesisRemoteRouterWrapper";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.GenesisRemoteRouterWrapper".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.GenesisRemoteRouterWrapper".into()
+    }
+}
 /// QueryTokensRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTokensRequest {
@@ -178,6 +298,16 @@ pub struct QueryTokensRequest {
     pub pagination: ::core::option::Option<
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryTokensRequest {
+    const NAME: &'static str = "QueryTokensRequest";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryTokensRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryTokensRequest".into()
+    }
 }
 /// QueryTokensResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -191,17 +321,47 @@ pub struct QueryTokensResponse {
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryTokensResponse {
+    const NAME: &'static str = "QueryTokensResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryTokensResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryTokensResponse".into()
+    }
+}
 /// QueryTokenRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTokenRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryTokenRequest {
+    const NAME: &'static str = "QueryTokenRequest";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryTokenRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryTokenRequest".into()
+    }
+}
 /// QueryTokenResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTokenResponse {
     #[prost(message, optional, tag = "1")]
     pub token: ::core::option::Option<WrappedHypToken>,
+}
+impl ::prost::Name for QueryTokenResponse {
+    const NAME: &'static str = "QueryTokenResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryTokenResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryTokenResponse".into()
+    }
 }
 /// WrappedHypToken
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -219,11 +379,31 @@ pub struct WrappedHypToken {
     #[prost(string, tag = "7")]
     pub ism_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for WrappedHypToken {
+    const NAME: &'static str = "WrappedHypToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.WrappedHypToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.WrappedHypToken".into()
+    }
+}
 /// QueryBridgedSupplyRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryBridgedSupplyRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryBridgedSupplyRequest {
+    const NAME: &'static str = "QueryBridgedSupplyRequest";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryBridgedSupplyRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryBridgedSupplyRequest".into()
+    }
 }
 /// QueryBridgedSupplyResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -232,6 +412,16 @@ pub struct QueryBridgedSupplyResponse {
     pub bridged_supply: ::core::option::Option<
         super::super::super::cosmos::base::v1beta1::Coin,
     >,
+}
+impl ::prost::Name for QueryBridgedSupplyResponse {
+    const NAME: &'static str = "QueryBridgedSupplyResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryBridgedSupplyResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryBridgedSupplyResponse".into()
+    }
 }
 /// QueryRemoteRoutersRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -242,6 +432,16 @@ pub struct QueryRemoteRoutersRequest {
     pub pagination: ::core::option::Option<
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryRemoteRoutersRequest {
+    const NAME: &'static str = "QueryRemoteRoutersRequest";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryRemoteRoutersRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryRemoteRoutersRequest".into()
+    }
 }
 /// QueryRemoteRoutersResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -255,6 +455,16 @@ pub struct QueryRemoteRoutersResponse {
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryRemoteRoutersResponse {
+    const NAME: &'static str = "QueryRemoteRoutersResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryRemoteRoutersResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryRemoteRoutersResponse".into()
+    }
+}
 /// QueryQuoteRemoteTransferRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryQuoteRemoteTransferRequest {
@@ -267,6 +477,16 @@ pub struct QueryQuoteRemoteTransferRequest {
     #[prost(string, tag = "4")]
     pub custom_hook_metadata: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryQuoteRemoteTransferRequest {
+    const NAME: &'static str = "QueryQuoteRemoteTransferRequest";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryQuoteRemoteTransferRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryQuoteRemoteTransferRequest".into()
+    }
+}
 /// QueryQuoteRemoteTransferResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryQuoteRemoteTransferResponse {
@@ -274,6 +494,16 @@ pub struct QueryQuoteRemoteTransferResponse {
     pub gas_payment: ::prost::alloc::vec::Vec<
         super::super::super::cosmos::base::v1beta1::Coin,
     >,
+}
+impl ::prost::Name for QueryQuoteRemoteTransferResponse {
+    const NAME: &'static str = "QueryQuoteRemoteTransferResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.QueryQuoteRemoteTransferResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.QueryQuoteRemoteTransferResponse".into()
+    }
 }
 /// MsgCreateCollateralToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -286,11 +516,31 @@ pub struct MsgCreateCollateralToken {
     #[prost(string, tag = "3")]
     pub origin_denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateCollateralToken {
+    const NAME: &'static str = "MsgCreateCollateralToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgCreateCollateralToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgCreateCollateralToken".into()
+    }
+}
 /// MsgCreateCollateralTokenResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateCollateralTokenResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateCollateralTokenResponse {
+    const NAME: &'static str = "MsgCreateCollateralTokenResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgCreateCollateralTokenResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgCreateCollateralTokenResponse".into()
+    }
 }
 /// MsgCreateSyntheticToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -300,6 +550,16 @@ pub struct MsgCreateSyntheticToken {
     pub owner: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub origin_mailbox: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateSyntheticToken {
+    const NAME: &'static str = "MsgCreateSyntheticToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgCreateSyntheticToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgCreateSyntheticToken".into()
+    }
 }
 /// MsgCreateNativeSyntheticToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -311,11 +571,31 @@ pub struct MsgCreateNativeSyntheticToken {
     #[prost(string, tag = "3")]
     pub origin_denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateNativeSyntheticToken {
+    const NAME: &'static str = "MsgCreateNativeSyntheticToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgCreateNativeSyntheticToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgCreateNativeSyntheticToken".into()
+    }
+}
 /// MsgCreateSyntheticTokenResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateSyntheticTokenResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateSyntheticTokenResponse {
+    const NAME: &'static str = "MsgCreateSyntheticTokenResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgCreateSyntheticTokenResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgCreateSyntheticTokenResponse".into()
+    }
 }
 /// MsgSetToken ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -332,9 +612,29 @@ pub struct MsgSetToken {
     #[prost(bool, tag = "7")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for MsgSetToken {
+    const NAME: &'static str = "MsgSetToken";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgSetToken".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgSetToken".into()
+    }
+}
 /// MsgSetTokenResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetTokenResponse {}
+impl ::prost::Name for MsgSetTokenResponse {
+    const NAME: &'static str = "MsgSetTokenResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgSetTokenResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgSetTokenResponse".into()
+    }
+}
 /// MsgEnrollRemoteRouter ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgEnrollRemoteRouter {
@@ -346,9 +646,29 @@ pub struct MsgEnrollRemoteRouter {
     #[prost(message, optional, tag = "3")]
     pub remote_router: ::core::option::Option<RemoteRouter>,
 }
+impl ::prost::Name for MsgEnrollRemoteRouter {
+    const NAME: &'static str = "MsgEnrollRemoteRouter";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgEnrollRemoteRouter".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgEnrollRemoteRouter".into()
+    }
+}
 /// MsgEnrollRemoteRouterResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgEnrollRemoteRouterResponse {}
+impl ::prost::Name for MsgEnrollRemoteRouterResponse {
+    const NAME: &'static str = "MsgEnrollRemoteRouterResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgEnrollRemoteRouterResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgEnrollRemoteRouterResponse".into()
+    }
+}
 /// MsgUnrollRemoteRouter ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUnrollRemoteRouter {
@@ -360,9 +680,29 @@ pub struct MsgUnrollRemoteRouter {
     #[prost(uint32, tag = "3")]
     pub receiver_domain: u32,
 }
+impl ::prost::Name for MsgUnrollRemoteRouter {
+    const NAME: &'static str = "MsgUnrollRemoteRouter";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgUnrollRemoteRouter".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgUnrollRemoteRouter".into()
+    }
+}
 /// MsgUnrollRemoteRouterResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUnrollRemoteRouterResponse {}
+impl ::prost::Name for MsgUnrollRemoteRouterResponse {
+    const NAME: &'static str = "MsgUnrollRemoteRouterResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgUnrollRemoteRouterResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgUnrollRemoteRouterResponse".into()
+    }
+}
 /// MsgRemoteTransfer ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRemoteTransfer {
@@ -388,9 +728,30 @@ pub struct MsgRemoteTransfer {
     #[prost(string, tag = "9")]
     pub custom_hook_metadata: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRemoteTransfer {
+    const NAME: &'static str = "MsgRemoteTransfer";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgRemoteTransfer".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgRemoteTransfer".into()
+    }
+}
 /// MsgRemoteTransferResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRemoteTransferResponse {
     #[prost(string, tag = "1")]
     pub message_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRemoteTransferResponse {
+    const NAME: &'static str = "MsgRemoteTransferResponse";
+    const PACKAGE: &'static str = "hyperlane.warp.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.warp.v1.MsgRemoteTransferResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.warp.v1.MsgRemoteTransferResponse".into()
+    }
+}
+include!("hyperlane.warp.v1.serde.rs");

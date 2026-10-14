@@ -9,6 +9,16 @@ pub struct EventCreateNoopIsm {
     #[prost(string, tag = "2")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateNoopIsm {
+    const NAME: &'static str = "EventCreateNoopIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventCreateNoopIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventCreateNoopIsm".into()
+    }
+}
 /// EventCreateMerkleRootMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventCreateMerkleRootMultisigIsm {
@@ -20,6 +30,16 @@ pub struct EventCreateMerkleRootMultisigIsm {
     pub validators: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(uint32, tag = "4")]
     pub threshold: u32,
+}
+impl ::prost::Name for EventCreateMerkleRootMultisigIsm {
+    const NAME: &'static str = "EventCreateMerkleRootMultisigIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventCreateMerkleRootMultisigIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventCreateMerkleRootMultisigIsm".into()
+    }
 }
 /// EventCreateMessageIdMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -33,6 +53,16 @@ pub struct EventCreateMessageIdMultisigIsm {
     #[prost(uint32, tag = "4")]
     pub threshold: u32,
 }
+impl ::prost::Name for EventCreateMessageIdMultisigIsm {
+    const NAME: &'static str = "EventCreateMessageIdMultisigIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventCreateMessageIdMultisigIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventCreateMessageIdMultisigIsm".into()
+    }
+}
 /// EventCreateMessageIdMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventAnnounceStorageLocation {
@@ -44,6 +74,16 @@ pub struct EventAnnounceStorageLocation {
     pub validator: ::prost::alloc::string::String,
     #[prost(string, tag = "4")]
     pub storage_location: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventAnnounceStorageLocation {
+    const NAME: &'static str = "EventAnnounceStorageLocation";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventAnnounceStorageLocation".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventAnnounceStorageLocation".into()
+    }
 }
 /// EventSetRoutingIsmDomain ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -57,6 +97,16 @@ pub struct EventSetRoutingIsmDomain {
     #[prost(uint32, tag = "4")]
     pub route_domain: u32,
 }
+impl ::prost::Name for EventSetRoutingIsmDomain {
+    const NAME: &'static str = "EventSetRoutingIsmDomain";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventSetRoutingIsmDomain".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventSetRoutingIsmDomain".into()
+    }
+}
 /// EventRemoveRoutingIsmDomain ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventRemoveRoutingIsmDomain {
@@ -66,6 +116,16 @@ pub struct EventRemoveRoutingIsmDomain {
     pub owner: ::prost::alloc::string::String,
     #[prost(uint32, tag = "3")]
     pub route_domain: u32,
+}
+impl ::prost::Name for EventRemoveRoutingIsmDomain {
+    const NAME: &'static str = "EventRemoveRoutingIsmDomain";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventRemoveRoutingIsmDomain".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventRemoveRoutingIsmDomain".into()
+    }
 }
 /// EventRemoveRoutingIsmDomain ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -79,6 +139,16 @@ pub struct EventSetRoutingIsm {
     #[prost(bool, tag = "4")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for EventSetRoutingIsm {
+    const NAME: &'static str = "EventSetRoutingIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventSetRoutingIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventSetRoutingIsm".into()
+    }
+}
 /// EventCreateMessageIdMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventCreateRoutingIsm {
@@ -87,16 +157,36 @@ pub struct EventCreateRoutingIsm {
     #[prost(string, tag = "2")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateRoutingIsm {
+    const NAME: &'static str = "EventCreateRoutingIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.EventCreateRoutingIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.EventCreateRoutingIsm".into()
+    }
+}
 /// GenesisState defines the 01_interchain_security submodule's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
     /// accounts are the accounts present at genesis.
     #[prost(message, repeated, tag = "1")]
-    pub isms: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub isms: ::prost::alloc::vec::Vec<crate::any::Any>,
     #[prost(message, repeated, tag = "2")]
     pub validator_storage_locations: ::prost::alloc::vec::Vec<
         GenesisValidatorStorageLocationWrapper,
     >,
+}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.GenesisState".into()
+    }
 }
 /// GenesisValidatorStorageLocationWrapper stores the information for
 /// validator, mailbox and storage-location which validators have announced
@@ -111,6 +201,18 @@ pub struct GenesisValidatorStorageLocationWrapper {
     #[prost(string, tag = "4")]
     pub storage_location: ::prost::alloc::string::String,
 }
+impl ::prost::Name for GenesisValidatorStorageLocationWrapper {
+    const NAME: &'static str = "GenesisValidatorStorageLocationWrapper";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.GenesisValidatorStorageLocationWrapper"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.GenesisValidatorStorageLocationWrapper"
+            .into()
+    }
+}
 /// QueryIsmsRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsmsRequest {
@@ -120,16 +222,36 @@ pub struct QueryIsmsRequest {
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryIsmsRequest {
+    const NAME: &'static str = "QueryIsmsRequest";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryIsmsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryIsmsRequest".into()
+    }
+}
 /// QueryIsmsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsmsResponse {
     #[prost(message, repeated, tag = "1")]
-    pub isms: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub isms: ::prost::alloc::vec::Vec<crate::any::Any>,
     /// pagination defines the pagination in the response.
     #[prost(message, optional, tag = "2")]
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryIsmsResponse {
+    const NAME: &'static str = "QueryIsmsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryIsmsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryIsmsResponse".into()
+    }
 }
 /// QueryIsmRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -137,11 +259,31 @@ pub struct QueryIsmRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryIsmRequest {
+    const NAME: &'static str = "QueryIsmRequest";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryIsmRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryIsmRequest".into()
+    }
+}
 /// QueryIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsmResponse {
     #[prost(message, optional, tag = "1")]
-    pub ism: ::core::option::Option<::prost_types::Any>,
+    pub ism: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for QueryIsmResponse {
+    const NAME: &'static str = "QueryIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryIsmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryIsmResponse".into()
+    }
 }
 /// QueryAnnouncedStorageLocationsRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -151,11 +293,35 @@ pub struct QueryAnnouncedStorageLocationsRequest {
     #[prost(string, tag = "2")]
     pub validator_address: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryAnnouncedStorageLocationsRequest {
+    const NAME: &'static str = "QueryAnnouncedStorageLocationsRequest";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryAnnouncedStorageLocationsRequest"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryAnnouncedStorageLocationsRequest"
+            .into()
+    }
+}
 /// QueryAnnouncedStorageLocationsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryAnnouncedStorageLocationsResponse {
     #[prost(string, repeated, tag = "1")]
     pub storage_locations: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for QueryAnnouncedStorageLocationsResponse {
+    const NAME: &'static str = "QueryAnnouncedStorageLocationsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryAnnouncedStorageLocationsResponse"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryAnnouncedStorageLocationsResponse"
+            .into()
+    }
 }
 /// QueryLatestAnnouncedStorageLocationRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -165,11 +331,35 @@ pub struct QueryLatestAnnouncedStorageLocationRequest {
     #[prost(string, tag = "2")]
     pub validator_address: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryLatestAnnouncedStorageLocationRequest {
+    const NAME: &'static str = "QueryLatestAnnouncedStorageLocationRequest";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryLatestAnnouncedStorageLocationRequest"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryLatestAnnouncedStorageLocationRequest"
+            .into()
+    }
+}
 /// QueryLatestAnnouncedStorageLocationResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryLatestAnnouncedStorageLocationResponse {
     #[prost(string, tag = "1")]
     pub storage_location: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryLatestAnnouncedStorageLocationResponse {
+    const NAME: &'static str = "QueryLatestAnnouncedStorageLocationResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.QueryLatestAnnouncedStorageLocationResponse"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.QueryLatestAnnouncedStorageLocationResponse"
+            .into()
+    }
 }
 /// Route
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -180,6 +370,16 @@ pub struct Route {
     /// domain ...
     #[prost(uint32, tag = "2")]
     pub domain: u32,
+}
+impl ::prost::Name for Route {
+    const NAME: &'static str = "Route";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.Route".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.Route".into()
+    }
 }
 /// Routing ISM ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -198,6 +398,16 @@ pub struct RoutingIsm {
     #[prost(message, repeated, tag = "3")]
     pub routes: ::prost::alloc::vec::Vec<Route>,
 }
+impl ::prost::Name for RoutingIsm {
+    const NAME: &'static str = "RoutingISM";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.RoutingISM".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.RoutingISM".into()
+    }
+}
 /// MessageIdMultisigISM ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MessageIdMultisigIsm {
@@ -214,6 +424,16 @@ pub struct MessageIdMultisigIsm {
     /// threshold ...
     #[prost(uint32, tag = "4")]
     pub threshold: u32,
+}
+impl ::prost::Name for MessageIdMultisigIsm {
+    const NAME: &'static str = "MessageIdMultisigISM";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MessageIdMultisigISM".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MessageIdMultisigISM".into()
+    }
 }
 /// MerkleRootMultisigISM ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -232,6 +452,16 @@ pub struct MerkleRootMultisigIsm {
     #[prost(uint32, tag = "4")]
     pub threshold: u32,
 }
+impl ::prost::Name for MerkleRootMultisigIsm {
+    const NAME: &'static str = "MerkleRootMultisigISM";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MerkleRootMultisigISM".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MerkleRootMultisigISM".into()
+    }
+}
 /// NoopISM ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NoopIsm {
@@ -241,6 +471,16 @@ pub struct NoopIsm {
     /// owner ...
     #[prost(string, tag = "2")]
     pub owner: ::prost::alloc::string::String,
+}
+impl ::prost::Name for NoopIsm {
+    const NAME: &'static str = "NoopISM";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.NoopISM".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.NoopISM".into()
+    }
 }
 /// MsgCreateMessageIdMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -256,11 +496,33 @@ pub struct MsgCreateMessageIdMultisigIsm {
     #[prost(uint32, tag = "3")]
     pub threshold: u32,
 }
+impl ::prost::Name for MsgCreateMessageIdMultisigIsm {
+    const NAME: &'static str = "MsgCreateMessageIdMultisigIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsm".into()
+    }
+}
 /// MsgCreateMessageIdMultisigIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateMessageIdMultisigIsmResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateMessageIdMultisigIsmResponse {
+    const NAME: &'static str = "MsgCreateMessageIdMultisigIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsmResponse"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsmResponse"
+            .into()
+    }
 }
 /// MsgCreateMerkleRootMultisigIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -276,11 +538,33 @@ pub struct MsgCreateMerkleRootMultisigIsm {
     #[prost(uint32, tag = "3")]
     pub threshold: u32,
 }
+impl ::prost::Name for MsgCreateMerkleRootMultisigIsm {
+    const NAME: &'static str = "MsgCreateMerkleRootMultisigIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm".into()
+    }
+}
 /// MsgCreateMerkleRootMultisigIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateMerkleRootMultisigIsmResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateMerkleRootMultisigIsmResponse {
+    const NAME: &'static str = "MsgCreateMerkleRootMultisigIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsmResponse"
+            .into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsmResponse"
+            .into()
+    }
 }
 /// MsgCreateNoopIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -289,11 +573,31 @@ pub struct MsgCreateNoopIsm {
     #[prost(string, tag = "1")]
     pub creator: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateNoopIsm {
+    const NAME: &'static str = "MsgCreateNoopIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateNoopIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateNoopIsm".into()
+    }
+}
 /// MsgCreateNoopIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateNoopIsmResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateNoopIsmResponse {
+    const NAME: &'static str = "MsgCreateNoopIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateNoopIsmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateNoopIsmResponse".into()
+    }
 }
 /// MsgAnnounceValidator ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -314,9 +618,29 @@ pub struct MsgAnnounceValidator {
     #[prost(string, tag = "5")]
     pub creator: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgAnnounceValidator {
+    const NAME: &'static str = "MsgAnnounceValidator";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgAnnounceValidator".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgAnnounceValidator".into()
+    }
+}
 /// MsgAnnounceValidatorResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgAnnounceValidatorResponse {}
+impl ::prost::Name for MsgAnnounceValidatorResponse {
+    const NAME: &'static str = "MsgAnnounceValidatorResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgAnnounceValidatorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgAnnounceValidatorResponse".into()
+    }
+}
 /// MsgCreateRoutingIsm ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateRoutingIsm {
@@ -327,11 +651,31 @@ pub struct MsgCreateRoutingIsm {
     #[prost(message, repeated, tag = "2")]
     pub routes: ::prost::alloc::vec::Vec<Route>,
 }
+impl ::prost::Name for MsgCreateRoutingIsm {
+    const NAME: &'static str = "MsgCreateRoutingIsm";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateRoutingIsm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateRoutingIsm".into()
+    }
+}
 /// MsgCreateRoutingIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateRoutingIsmResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateRoutingIsmResponse {
+    const NAME: &'static str = "MsgCreateRoutingIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgCreateRoutingIsmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgCreateRoutingIsmResponse".into()
+    }
 }
 /// MsgSetRoutingIsmDomain ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -346,9 +690,29 @@ pub struct MsgSetRoutingIsmDomain {
     #[prost(string, tag = "3")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgSetRoutingIsmDomain {
+    const NAME: &'static str = "MsgSetRoutingIsmDomain";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomain".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomain".into()
+    }
+}
 /// MsgSetRoutingIsmDomainResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetRoutingIsmDomainResponse {}
+impl ::prost::Name for MsgSetRoutingIsmDomainResponse {
+    const NAME: &'static str = "MsgSetRoutingIsmDomainResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomainResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomainResponse".into()
+    }
+}
 /// MsgRemoveRoutingIsmDomain ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRemoveRoutingIsmDomain {
@@ -362,9 +726,29 @@ pub struct MsgRemoveRoutingIsmDomain {
     #[prost(string, tag = "3")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRemoveRoutingIsmDomain {
+    const NAME: &'static str = "MsgRemoveRoutingIsmDomain";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomain".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomain".into()
+    }
+}
 /// MsgRemoveRoutingIsmDomainResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRemoveRoutingIsmDomainResponse {}
+impl ::prost::Name for MsgRemoveRoutingIsmDomainResponse {
+    const NAME: &'static str = "MsgRemoveRoutingIsmDomainResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomainResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomainResponse".into()
+    }
+}
 /// MsgUpdateRoutingIsmOwner ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateRoutingIsmOwner {
@@ -381,6 +765,27 @@ pub struct MsgUpdateRoutingIsmOwner {
     #[prost(bool, tag = "4")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for MsgUpdateRoutingIsmOwner {
+    const NAME: &'static str = "MsgUpdateRoutingIsmOwner";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner".into()
+    }
+}
 /// MsgUpdateRoutingIsmOwnerResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateRoutingIsmOwnerResponse {}
+impl ::prost::Name for MsgUpdateRoutingIsmOwnerResponse {
+    const NAME: &'static str = "MsgUpdateRoutingIsmOwnerResponse";
+    const PACKAGE: &'static str = "hyperlane.core.interchain_security.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwnerResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwnerResponse".into()
+    }
+}
+include!("hyperlane.core.interchain_security.v1.serde.rs");

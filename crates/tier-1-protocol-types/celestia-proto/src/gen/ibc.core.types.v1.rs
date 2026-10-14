@@ -14,3 +14,14 @@ pub struct GenesisState {
     #[prost(message, optional, tag = "3")]
     pub channel_genesis: ::core::option::Option<super::super::channel::v1::GenesisState>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "ibc.core.types.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.types.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.types.v1.GenesisState".into()
+    }
+}
+include!("ibc.core.types.v1.serde.rs");

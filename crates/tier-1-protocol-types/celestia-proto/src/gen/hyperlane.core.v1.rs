@@ -18,6 +18,16 @@ pub struct EventDispatch {
     #[prost(string, tag = "5")]
     pub message: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventDispatch {
+    const NAME: &'static str = "EventDispatch";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.EventDispatch".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.EventDispatch".into()
+    }
+}
 /// EventProcess ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventProcess {
@@ -39,6 +49,16 @@ pub struct EventProcess {
     /// message ...
     #[prost(string, tag = "6")]
     pub message: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventProcess {
+    const NAME: &'static str = "EventProcess";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.EventProcess".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.EventProcess".into()
+    }
 }
 /// EventCreateMailbox ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -62,6 +82,16 @@ pub struct EventCreateMailbox {
     #[prost(uint32, tag = "6")]
     pub local_domain: u32,
 }
+impl ::prost::Name for EventCreateMailbox {
+    const NAME: &'static str = "EventCreateMailbox";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.EventCreateMailbox".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.EventCreateMailbox".into()
+    }
+}
 /// EventSetMailbox ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventSetMailbox {
@@ -83,6 +113,16 @@ pub struct EventSetMailbox {
     /// renounce_ownership ...
     #[prost(bool, tag = "6")]
     pub renounce_ownership: bool,
+}
+impl ::prost::Name for EventSetMailbox {
+    const NAME: &'static str = "EventSetMailbox";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.EventSetMailbox".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.EventSetMailbox".into()
+    }
 }
 /// Mailbox ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -111,6 +151,16 @@ pub struct Mailbox {
     #[prost(uint32, tag = "8")]
     pub local_domain: u32,
 }
+impl ::prost::Name for Mailbox {
+    const NAME: &'static str = "Mailbox";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.Mailbox".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.Mailbox".into()
+    }
+}
 /// GenesisState is the state that must be provided at genesis.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
@@ -135,6 +185,16 @@ pub struct GenesisState {
     #[prost(uint64, tag = "7")]
     pub app_sequence: u64,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.GenesisState".into()
+    }
+}
 /// GenesisMailboxMessageWrapper ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisMailboxMessageWrapper {
@@ -142,6 +202,16 @@ pub struct GenesisMailboxMessageWrapper {
     pub mailbox_id: u64,
     #[prost(string, tag = "2")]
     pub message_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for GenesisMailboxMessageWrapper {
+    const NAME: &'static str = "GenesisMailboxMessageWrapper";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.GenesisMailboxMessageWrapper".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.GenesisMailboxMessageWrapper".into()
+    }
 }
 /// QueryMailboxesRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -151,6 +221,16 @@ pub struct QueryMailboxesRequest {
     pub pagination: ::core::option::Option<
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryMailboxesRequest {
+    const NAME: &'static str = "QueryMailboxesRequest";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryMailboxesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryMailboxesRequest".into()
+    }
 }
 /// QueryMailboxesResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -163,17 +243,47 @@ pub struct QueryMailboxesResponse {
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryMailboxesResponse {
+    const NAME: &'static str = "QueryMailboxesResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryMailboxesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryMailboxesResponse".into()
+    }
+}
 /// QueryMailboxRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMailboxRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryMailboxRequest {
+    const NAME: &'static str = "QueryMailboxRequest";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryMailboxRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryMailboxRequest".into()
+    }
+}
 /// QueryMailboxResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMailboxResponse {
     #[prost(message, optional, tag = "1")]
     pub mailbox: ::core::option::Option<Mailbox>,
+}
+impl ::prost::Name for QueryMailboxResponse {
+    const NAME: &'static str = "QueryMailboxResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryMailboxResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryMailboxResponse".into()
+    }
 }
 /// QueryDeliveredRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -183,11 +293,31 @@ pub struct QueryDeliveredRequest {
     #[prost(string, tag = "2")]
     pub message_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryDeliveredRequest {
+    const NAME: &'static str = "QueryDeliveredRequest";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryDeliveredRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryDeliveredRequest".into()
+    }
+}
 /// QueryDeliveredResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryDeliveredResponse {
     #[prost(bool, tag = "1")]
     pub delivered: bool,
+}
+impl ::prost::Name for QueryDeliveredResponse {
+    const NAME: &'static str = "QueryDeliveredResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryDeliveredResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryDeliveredResponse".into()
+    }
 }
 /// QueryRecipientIsmRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -195,11 +325,31 @@ pub struct QueryRecipientIsmRequest {
     #[prost(string, tag = "1")]
     pub recipient: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryRecipientIsmRequest {
+    const NAME: &'static str = "QueryRecipientIsmRequest";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRecipientIsmRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRecipientIsmRequest".into()
+    }
+}
 /// QueryRecipientIsmResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRecipientIsmResponse {
     #[prost(string, tag = "1")]
     pub ism_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryRecipientIsmResponse {
+    const NAME: &'static str = "QueryRecipientIsmResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRecipientIsmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRecipientIsmResponse".into()
+    }
 }
 /// QueryVerifyDryRunRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -213,38 +363,118 @@ pub struct QueryVerifyDryRunRequest {
     #[prost(string, tag = "4")]
     pub gas_limit: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryVerifyDryRunRequest {
+    const NAME: &'static str = "QueryVerifyDryRunRequest";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryVerifyDryRunRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryVerifyDryRunRequest".into()
+    }
+}
 /// QueryVerifyDryRunResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryVerifyDryRunResponse {
     #[prost(bool, tag = "1")]
     pub verified: bool,
 }
+impl ::prost::Name for QueryVerifyDryRunResponse {
+    const NAME: &'static str = "QueryVerifyDryRunResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryVerifyDryRunResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryVerifyDryRunResponse".into()
+    }
+}
 /// QueryRegisteredISMs ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredIsMs {}
+impl ::prost::Name for QueryRegisteredIsMs {
+    const NAME: &'static str = "QueryRegisteredISMs";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredISMs".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredISMs".into()
+    }
+}
 /// QueryRegisteredISMsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredIsMsResponse {
     #[prost(uint32, repeated, tag = "1")]
     pub ids: ::prost::alloc::vec::Vec<u32>,
 }
+impl ::prost::Name for QueryRegisteredIsMsResponse {
+    const NAME: &'static str = "QueryRegisteredISMsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredISMsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredISMsResponse".into()
+    }
+}
 /// QueryRegisteredHooks ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredHooks {}
+impl ::prost::Name for QueryRegisteredHooks {
+    const NAME: &'static str = "QueryRegisteredHooks";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredHooks".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredHooks".into()
+    }
+}
 /// QueryRegisteredHooksResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredHooksResponse {
     #[prost(uint32, repeated, tag = "1")]
     pub ids: ::prost::alloc::vec::Vec<u32>,
 }
+impl ::prost::Name for QueryRegisteredHooksResponse {
+    const NAME: &'static str = "QueryRegisteredHooksResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredHooksResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredHooksResponse".into()
+    }
+}
 /// QueryRegisteredApps ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredApps {}
+impl ::prost::Name for QueryRegisteredApps {
+    const NAME: &'static str = "QueryRegisteredApps";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredApps".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredApps".into()
+    }
+}
 /// QueryRegisteredAppsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRegisteredAppsResponse {
     #[prost(uint32, repeated, tag = "1")]
     pub ids: ::prost::alloc::vec::Vec<u32>,
+}
+impl ::prost::Name for QueryRegisteredAppsResponse {
+    const NAME: &'static str = "QueryRegisteredAppsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.QueryRegisteredAppsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.QueryRegisteredAppsResponse".into()
+    }
 }
 /// MsgCreateMailbox ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -264,11 +494,31 @@ pub struct MsgCreateMailbox {
     #[prost(string, tag = "5")]
     pub required_hook: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateMailbox {
+    const NAME: &'static str = "MsgCreateMailbox";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgCreateMailbox".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgCreateMailbox".into()
+    }
+}
 /// MsgCreateMailboxResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateMailboxResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateMailboxResponse {
+    const NAME: &'static str = "MsgCreateMailboxResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgCreateMailboxResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgCreateMailboxResponse".into()
+    }
 }
 /// MsgSetMailbox ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -295,9 +545,29 @@ pub struct MsgSetMailbox {
     #[prost(bool, tag = "7")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for MsgSetMailbox {
+    const NAME: &'static str = "MsgSetMailbox";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgSetMailbox".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgSetMailbox".into()
+    }
+}
 /// MsgSetMailboxResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetMailboxResponse {}
+impl ::prost::Name for MsgSetMailboxResponse {
+    const NAME: &'static str = "MsgSetMailboxResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgSetMailboxResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgSetMailboxResponse".into()
+    }
+}
 /// MsgProcessMessage ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgProcessMessage {
@@ -314,6 +584,27 @@ pub struct MsgProcessMessage {
     #[prost(string, tag = "4")]
     pub message: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgProcessMessage {
+    const NAME: &'static str = "MsgProcessMessage";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgProcessMessage".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgProcessMessage".into()
+    }
+}
 /// MsgProcessMessageResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgProcessMessageResponse {}
+impl ::prost::Name for MsgProcessMessageResponse {
+    const NAME: &'static str = "MsgProcessMessageResponse";
+    const PACKAGE: &'static str = "hyperlane.core.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.v1.MsgProcessMessageResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.v1.MsgProcessMessageResponse".into()
+    }
+}
+include!("hyperlane.core.v1.serde.rs");

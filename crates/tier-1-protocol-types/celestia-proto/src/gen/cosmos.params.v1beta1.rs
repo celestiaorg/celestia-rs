@@ -9,6 +9,16 @@ pub struct ParameterChangeProposal {
     #[prost(message, repeated, tag = "3")]
     pub changes: ::prost::alloc::vec::Vec<ParamChange>,
 }
+impl ::prost::Name for ParameterChangeProposal {
+    const NAME: &'static str = "ParameterChangeProposal";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.ParameterChangeProposal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.ParameterChangeProposal".into()
+    }
+}
 /// ParamChange defines an individual parameter change, for use in
 /// ParameterChangeProposal.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -20,6 +30,16 @@ pub struct ParamChange {
     #[prost(string, tag = "3")]
     pub value: ::prost::alloc::string::String,
 }
+impl ::prost::Name for ParamChange {
+    const NAME: &'static str = "ParamChange";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.ParamChange".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.ParamChange".into()
+    }
+}
 /// QueryParamsRequest is request type for the Query/Params RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {
@@ -30,6 +50,16 @@ pub struct QueryParamsRequest {
     #[prost(string, tag = "2")]
     pub key: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is response type for the Query/Params RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
@@ -37,12 +67,32 @@ pub struct QueryParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub param: ::core::option::Option<ParamChange>,
 }
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.QueryParamsResponse".into()
+    }
+}
 /// QuerySubspacesRequest defines a request type for querying for all registered
 /// subspaces and all keys for a subspace.
 ///
 /// Since: cosmos-sdk 0.46
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QuerySubspacesRequest {}
+impl ::prost::Name for QuerySubspacesRequest {
+    const NAME: &'static str = "QuerySubspacesRequest";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.QuerySubspacesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.QuerySubspacesRequest".into()
+    }
+}
 /// QuerySubspacesResponse defines the response types for querying for all
 /// registered subspaces and all keys for a subspace.
 ///
@@ -51,6 +101,16 @@ pub struct QuerySubspacesRequest {}
 pub struct QuerySubspacesResponse {
     #[prost(message, repeated, tag = "1")]
     pub subspaces: ::prost::alloc::vec::Vec<Subspace>,
+}
+impl ::prost::Name for QuerySubspacesResponse {
+    const NAME: &'static str = "QuerySubspacesResponse";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.QuerySubspacesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.QuerySubspacesResponse".into()
+    }
 }
 /// Subspace defines a parameter subspace name and all the keys that exist for
 /// the subspace.
@@ -63,3 +123,14 @@ pub struct Subspace {
     #[prost(string, repeated, tag = "2")]
     pub keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for Subspace {
+    const NAME: &'static str = "Subspace";
+    const PACKAGE: &'static str = "cosmos.params.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.params.v1beta1.Subspace".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.params.v1beta1.Subspace".into()
+    }
+}
+include!("cosmos.params.v1beta1.serde.rs");

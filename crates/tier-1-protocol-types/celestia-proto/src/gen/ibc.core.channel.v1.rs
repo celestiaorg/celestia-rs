@@ -25,6 +25,16 @@ pub struct Channel {
     #[prost(uint64, tag = "6")]
     pub upgrade_sequence: u64,
 }
+impl ::prost::Name for Channel {
+    const NAME: &'static str = "Channel";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Channel".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Channel".into()
+    }
+}
 /// IdentifiedChannel defines a channel with additional port and channel
 /// identifier fields.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -56,6 +66,16 @@ pub struct IdentifiedChannel {
     #[prost(uint64, tag = "8")]
     pub upgrade_sequence: u64,
 }
+impl ::prost::Name for IdentifiedChannel {
+    const NAME: &'static str = "IdentifiedChannel";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.IdentifiedChannel".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.IdentifiedChannel".into()
+    }
+}
 /// Counterparty defines a channel end counterparty
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Counterparty {
@@ -65,6 +85,16 @@ pub struct Counterparty {
     /// channel end on the counterparty chain
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for Counterparty {
+    const NAME: &'static str = "Counterparty";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Counterparty".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Counterparty".into()
+    }
 }
 /// Packet defines a type that carries data across different chains through IBC
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -96,6 +126,16 @@ pub struct Packet {
     #[prost(uint64, tag = "8")]
     pub timeout_timestamp: u64,
 }
+impl ::prost::Name for Packet {
+    const NAME: &'static str = "Packet";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Packet".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Packet".into()
+    }
+}
 /// PacketState defines the generic type necessary to retrieve and store
 /// packet commitments, acknowledgements, and receipts.
 /// Caller is responsible for knowing the context necessary to interpret this
@@ -115,6 +155,16 @@ pub struct PacketState {
     #[prost(bytes = "vec", tag = "4")]
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PacketState {
+    const NAME: &'static str = "PacketState";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.PacketState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.PacketState".into()
+    }
+}
 /// PacketId is an identifer for a unique Packet
 /// Source chains refer to packets by source port/channel
 /// Destination chains refer to packets by destination port/channel
@@ -129,6 +179,16 @@ pub struct PacketId {
     /// packet sequence
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
+}
+impl ::prost::Name for PacketId {
+    const NAME: &'static str = "PacketId";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.PacketId".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.PacketId".into()
+    }
 }
 /// Acknowledgement is the recommended acknowledgement format to be used by
 /// app-specific protocols.
@@ -154,6 +214,16 @@ pub mod acknowledgement {
         Error(::prost::alloc::string::String),
     }
 }
+impl ::prost::Name for Acknowledgement {
+    const NAME: &'static str = "Acknowledgement";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Acknowledgement".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Acknowledgement".into()
+    }
+}
 /// Timeout defines an execution deadline structure for 04-channel handlers.
 /// This includes packet lifecycle handlers as well as the upgrade handshake handlers.
 /// A valid Timeout contains either one or both of a timestamp and block height (sequence).
@@ -166,12 +236,32 @@ pub struct Timeout {
     #[prost(uint64, tag = "2")]
     pub timestamp: u64,
 }
+impl ::prost::Name for Timeout {
+    const NAME: &'static str = "Timeout";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Timeout".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Timeout".into()
+    }
+}
 /// Params defines the set of IBC channel parameters.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Params {
     /// the relative timeout after which channel upgrades will time out.
     #[prost(message, optional, tag = "1")]
     pub upgrade_timeout: ::core::option::Option<Timeout>,
+}
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Params".into()
+    }
 }
 /// State defines if a channel is in one of the following states:
 /// CLOSED, INIT, TRYOPEN, OPEN, FLUSHING, FLUSHCOMPLETE or UNINITIALIZED.
@@ -282,6 +372,16 @@ pub struct GenesisState {
     #[prost(message, optional, tag = "9")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.GenesisState".into()
+    }
+}
 /// PacketSequence defines the genesis type necessary to retrieve and store
 /// next send and receive sequences.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -292,6 +392,16 @@ pub struct PacketSequence {
     pub channel_id: ::prost::alloc::string::String,
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
+}
+impl ::prost::Name for PacketSequence {
+    const NAME: &'static str = "PacketSequence";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.PacketSequence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.PacketSequence".into()
+    }
 }
 /// Upgrade is a verifiable type which contains the relevant information
 /// for an attempted upgrade. It provides the proposed changes to the channel
@@ -307,6 +417,16 @@ pub struct Upgrade {
     #[prost(uint64, tag = "3")]
     pub next_sequence_send: u64,
 }
+impl ::prost::Name for Upgrade {
+    const NAME: &'static str = "Upgrade";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.Upgrade".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.Upgrade".into()
+    }
+}
 /// UpgradeFields are the fields in a channel end which may be changed
 /// during a channel upgrade.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -317,6 +437,16 @@ pub struct UpgradeFields {
     pub connection_hops: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, tag = "3")]
     pub version: ::prost::alloc::string::String,
+}
+impl ::prost::Name for UpgradeFields {
+    const NAME: &'static str = "UpgradeFields";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.UpgradeFields".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.UpgradeFields".into()
+    }
 }
 /// ErrorReceipt defines a type which encapsulates the upgrade sequence and error associated with the
 /// upgrade handshake failure. When a channel upgrade handshake is aborted both chains are expected to increment to the
@@ -330,6 +460,16 @@ pub struct ErrorReceipt {
     #[prost(string, tag = "2")]
     pub message: ::prost::alloc::string::String,
 }
+impl ::prost::Name for ErrorReceipt {
+    const NAME: &'static str = "ErrorReceipt";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.ErrorReceipt".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.ErrorReceipt".into()
+    }
+}
 /// QueryChannelRequest is the request type for the Query/Channel RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryChannelRequest {
@@ -339,6 +479,16 @@ pub struct QueryChannelRequest {
     /// channel unique identifier
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryChannelRequest {
+    const NAME: &'static str = "QueryChannelRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelRequest".into()
+    }
 }
 /// QueryChannelResponse is the response type for the Query/Channel RPC method.
 /// Besides the Channel end, it includes a proof and the height from which the
@@ -355,6 +505,16 @@ pub struct QueryChannelResponse {
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryChannelResponse {
+    const NAME: &'static str = "QueryChannelResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelResponse".into()
+    }
+}
 /// QueryChannelsRequest is the request type for the Query/Channels RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryChannelsRequest {
@@ -363,6 +523,16 @@ pub struct QueryChannelsRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryChannelsRequest {
+    const NAME: &'static str = "QueryChannelsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelsRequest".into()
+    }
 }
 /// QueryChannelsResponse is the response type for the Query/Channels RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -379,6 +549,16 @@ pub struct QueryChannelsResponse {
     #[prost(message, optional, tag = "3")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryChannelsResponse {
+    const NAME: &'static str = "QueryChannelsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelsResponse".into()
+    }
+}
 /// QueryConnectionChannelsRequest is the request type for the
 /// Query/QueryConnectionChannels RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -391,6 +571,16 @@ pub struct QueryConnectionChannelsRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryConnectionChannelsRequest {
+    const NAME: &'static str = "QueryConnectionChannelsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryConnectionChannelsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryConnectionChannelsRequest".into()
+    }
 }
 /// QueryConnectionChannelsResponse is the Response type for the
 /// Query/QueryConnectionChannels RPC method
@@ -408,6 +598,16 @@ pub struct QueryConnectionChannelsResponse {
     #[prost(message, optional, tag = "3")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryConnectionChannelsResponse {
+    const NAME: &'static str = "QueryConnectionChannelsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryConnectionChannelsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryConnectionChannelsResponse".into()
+    }
+}
 /// QueryChannelClientStateRequest is the request type for the Query/ClientState
 /// RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -418,6 +618,16 @@ pub struct QueryChannelClientStateRequest {
     /// channel unique identifier
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryChannelClientStateRequest {
+    const NAME: &'static str = "QueryChannelClientStateRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelClientStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelClientStateRequest".into()
+    }
 }
 /// QueryChannelClientStateResponse is the Response type for the
 /// Query/QueryChannelClientState RPC method
@@ -434,6 +644,16 @@ pub struct QueryChannelClientStateResponse {
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
+}
+impl ::prost::Name for QueryChannelClientStateResponse {
+    const NAME: &'static str = "QueryChannelClientStateResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelClientStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelClientStateResponse".into()
+    }
 }
 /// QueryChannelConsensusStateRequest is the request type for the
 /// Query/ConsensusState RPC method
@@ -452,13 +672,23 @@ pub struct QueryChannelConsensusStateRequest {
     #[prost(uint64, tag = "4")]
     pub revision_height: u64,
 }
+impl ::prost::Name for QueryChannelConsensusStateRequest {
+    const NAME: &'static str = "QueryChannelConsensusStateRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelConsensusStateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelConsensusStateRequest".into()
+    }
+}
 /// QueryChannelClientStateResponse is the Response type for the
 /// Query/QueryChannelClientState RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryChannelConsensusStateResponse {
     /// consensus state associated with the channel
     #[prost(message, optional, tag = "1")]
-    pub consensus_state: ::core::option::Option<::prost_types::Any>,
+    pub consensus_state: ::core::option::Option<crate::any::Any>,
     /// client ID associated with the consensus state
     #[prost(string, tag = "2")]
     pub client_id: ::prost::alloc::string::String,
@@ -468,6 +698,16 @@ pub struct QueryChannelConsensusStateResponse {
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "4")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
+}
+impl ::prost::Name for QueryChannelConsensusStateResponse {
+    const NAME: &'static str = "QueryChannelConsensusStateResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelConsensusStateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelConsensusStateResponse".into()
+    }
 }
 /// QueryPacketCommitmentRequest is the request type for the
 /// Query/PacketCommitment RPC method
@@ -483,6 +723,16 @@ pub struct QueryPacketCommitmentRequest {
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
 }
+impl ::prost::Name for QueryPacketCommitmentRequest {
+    const NAME: &'static str = "QueryPacketCommitmentRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketCommitmentRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketCommitmentRequest".into()
+    }
+}
 /// QueryPacketCommitmentResponse defines the client query response for a packet
 /// which also includes a proof and the height from which the proof was
 /// retrieved
@@ -497,6 +747,16 @@ pub struct QueryPacketCommitmentResponse {
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
+}
+impl ::prost::Name for QueryPacketCommitmentResponse {
+    const NAME: &'static str = "QueryPacketCommitmentResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketCommitmentResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketCommitmentResponse".into()
+    }
 }
 /// QueryPacketCommitmentsRequest is the request type for the
 /// Query/QueryPacketCommitments RPC method
@@ -514,6 +774,16 @@ pub struct QueryPacketCommitmentsRequest {
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryPacketCommitmentsRequest {
+    const NAME: &'static str = "QueryPacketCommitmentsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketCommitmentsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketCommitmentsRequest".into()
+    }
+}
 /// QueryPacketCommitmentsResponse is the request type for the
 /// Query/QueryPacketCommitments RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -529,6 +799,16 @@ pub struct QueryPacketCommitmentsResponse {
     #[prost(message, optional, tag = "3")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryPacketCommitmentsResponse {
+    const NAME: &'static str = "QueryPacketCommitmentsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketCommitmentsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketCommitmentsResponse".into()
+    }
+}
 /// QueryPacketReceiptRequest is the request type for the
 /// Query/PacketReceipt RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -542,6 +822,16 @@ pub struct QueryPacketReceiptRequest {
     /// packet sequence
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
+}
+impl ::prost::Name for QueryPacketReceiptRequest {
+    const NAME: &'static str = "QueryPacketReceiptRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketReceiptRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketReceiptRequest".into()
+    }
 }
 /// QueryPacketReceiptResponse defines the client query response for a packet
 /// receipt which also includes a proof, and the height from which the proof was
@@ -558,6 +848,16 @@ pub struct QueryPacketReceiptResponse {
     #[prost(message, optional, tag = "4")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryPacketReceiptResponse {
+    const NAME: &'static str = "QueryPacketReceiptResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketReceiptResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketReceiptResponse".into()
+    }
+}
 /// QueryPacketAcknowledgementRequest is the request type for the
 /// Query/PacketAcknowledgement RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -571,6 +871,16 @@ pub struct QueryPacketAcknowledgementRequest {
     /// packet sequence
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
+}
+impl ::prost::Name for QueryPacketAcknowledgementRequest {
+    const NAME: &'static str = "QueryPacketAcknowledgementRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketAcknowledgementRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketAcknowledgementRequest".into()
+    }
 }
 /// QueryPacketAcknowledgementResponse defines the client query response for a
 /// packet which also includes a proof and the height from which the
@@ -586,6 +896,16 @@ pub struct QueryPacketAcknowledgementResponse {
     /// height at which the proof was retrieved
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
+}
+impl ::prost::Name for QueryPacketAcknowledgementResponse {
+    const NAME: &'static str = "QueryPacketAcknowledgementResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketAcknowledgementResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketAcknowledgementResponse".into()
+    }
 }
 /// QueryPacketAcknowledgementsRequest is the request type for the
 /// Query/QueryPacketCommitments RPC method
@@ -606,6 +926,16 @@ pub struct QueryPacketAcknowledgementsRequest {
     #[prost(uint64, repeated, tag = "4")]
     pub packet_commitment_sequences: ::prost::alloc::vec::Vec<u64>,
 }
+impl ::prost::Name for QueryPacketAcknowledgementsRequest {
+    const NAME: &'static str = "QueryPacketAcknowledgementsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketAcknowledgementsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketAcknowledgementsRequest".into()
+    }
+}
 /// QueryPacketAcknowledgemetsResponse is the request type for the
 /// Query/QueryPacketAcknowledgements RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -621,6 +951,16 @@ pub struct QueryPacketAcknowledgementsResponse {
     #[prost(message, optional, tag = "3")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryPacketAcknowledgementsResponse {
+    const NAME: &'static str = "QueryPacketAcknowledgementsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryPacketAcknowledgementsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryPacketAcknowledgementsResponse".into()
+    }
+}
 /// QueryUnreceivedPacketsRequest is the request type for the
 /// Query/UnreceivedPackets RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -635,6 +975,16 @@ pub struct QueryUnreceivedPacketsRequest {
     #[prost(uint64, repeated, tag = "3")]
     pub packet_commitment_sequences: ::prost::alloc::vec::Vec<u64>,
 }
+impl ::prost::Name for QueryUnreceivedPacketsRequest {
+    const NAME: &'static str = "QueryUnreceivedPacketsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUnreceivedPacketsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUnreceivedPacketsRequest".into()
+    }
+}
 /// QueryUnreceivedPacketsResponse is the response type for the
 /// Query/UnreceivedPacketCommitments RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -645,6 +995,16 @@ pub struct QueryUnreceivedPacketsResponse {
     /// query block height
     #[prost(message, optional, tag = "2")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
+}
+impl ::prost::Name for QueryUnreceivedPacketsResponse {
+    const NAME: &'static str = "QueryUnreceivedPacketsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUnreceivedPacketsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUnreceivedPacketsResponse".into()
+    }
 }
 /// QueryUnreceivedAcks is the request type for the
 /// Query/UnreceivedAcks RPC method
@@ -660,6 +1020,16 @@ pub struct QueryUnreceivedAcksRequest {
     #[prost(uint64, repeated, tag = "3")]
     pub packet_ack_sequences: ::prost::alloc::vec::Vec<u64>,
 }
+impl ::prost::Name for QueryUnreceivedAcksRequest {
+    const NAME: &'static str = "QueryUnreceivedAcksRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUnreceivedAcksRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUnreceivedAcksRequest".into()
+    }
+}
 /// QueryUnreceivedAcksResponse is the response type for the
 /// Query/UnreceivedAcks RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -671,6 +1041,16 @@ pub struct QueryUnreceivedAcksResponse {
     #[prost(message, optional, tag = "2")]
     pub height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryUnreceivedAcksResponse {
+    const NAME: &'static str = "QueryUnreceivedAcksResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUnreceivedAcksResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUnreceivedAcksResponse".into()
+    }
+}
 /// QueryNextSequenceReceiveRequest is the request type for the
 /// Query/QueryNextSequenceReceiveRequest RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -681,6 +1061,16 @@ pub struct QueryNextSequenceReceiveRequest {
     /// channel unique identifier
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryNextSequenceReceiveRequest {
+    const NAME: &'static str = "QueryNextSequenceReceiveRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryNextSequenceReceiveRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryNextSequenceReceiveRequest".into()
+    }
 }
 /// QuerySequenceResponse is the response type for the
 /// Query/QueryNextSequenceReceiveResponse RPC method
@@ -696,6 +1086,16 @@ pub struct QueryNextSequenceReceiveResponse {
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryNextSequenceReceiveResponse {
+    const NAME: &'static str = "QueryNextSequenceReceiveResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryNextSequenceReceiveResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryNextSequenceReceiveResponse".into()
+    }
+}
 /// QueryNextSequenceSendRequest is the request type for the
 /// Query/QueryNextSequenceSend RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -706,6 +1106,16 @@ pub struct QueryNextSequenceSendRequest {
     /// channel unique identifier
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryNextSequenceSendRequest {
+    const NAME: &'static str = "QueryNextSequenceSendRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryNextSequenceSendRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryNextSequenceSendRequest".into()
+    }
 }
 /// QueryNextSequenceSendResponse is the request type for the
 /// Query/QueryNextSequenceSend RPC method
@@ -721,6 +1131,16 @@ pub struct QueryNextSequenceSendResponse {
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryNextSequenceSendResponse {
+    const NAME: &'static str = "QueryNextSequenceSendResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryNextSequenceSendResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryNextSequenceSendResponse".into()
+    }
+}
 /// QueryUpgradeErrorRequest is the request type for the Query/QueryUpgradeError RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryUpgradeErrorRequest {
@@ -728,6 +1148,16 @@ pub struct QueryUpgradeErrorRequest {
     pub port_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryUpgradeErrorRequest {
+    const NAME: &'static str = "QueryUpgradeErrorRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUpgradeErrorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUpgradeErrorRequest".into()
+    }
 }
 /// QueryUpgradeErrorResponse is the response type for the Query/QueryUpgradeError RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -741,6 +1171,16 @@ pub struct QueryUpgradeErrorResponse {
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryUpgradeErrorResponse {
+    const NAME: &'static str = "QueryUpgradeErrorResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUpgradeErrorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUpgradeErrorResponse".into()
+    }
+}
 /// QueryUpgradeRequest is the request type for the QueryUpgradeRequest RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryUpgradeRequest {
@@ -748,6 +1188,16 @@ pub struct QueryUpgradeRequest {
     pub port_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryUpgradeRequest {
+    const NAME: &'static str = "QueryUpgradeRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUpgradeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUpgradeRequest".into()
+    }
 }
 /// QueryUpgradeResponse is the response type for the QueryUpgradeResponse RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -761,15 +1211,45 @@ pub struct QueryUpgradeResponse {
     #[prost(message, optional, tag = "3")]
     pub proof_height: ::core::option::Option<super::super::client::v1::Height>,
 }
+impl ::prost::Name for QueryUpgradeResponse {
+    const NAME: &'static str = "QueryUpgradeResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryUpgradeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryUpgradeResponse".into()
+    }
+}
 /// QueryChannelParamsRequest is the request type for the Query/ChannelParams RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryChannelParamsRequest {}
+impl ::prost::Name for QueryChannelParamsRequest {
+    const NAME: &'static str = "QueryChannelParamsRequest";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelParamsRequest".into()
+    }
+}
 /// QueryChannelParamsResponse is the response type for the Query/ChannelParams RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryChannelParamsResponse {
     /// params defines the parameters of the module.
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryChannelParamsResponse {
+    const NAME: &'static str = "QueryChannelParamsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.QueryChannelParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.QueryChannelParamsResponse".into()
+    }
 }
 /// MsgChannelOpenInit defines an sdk.Msg to initialize a channel handshake. It
 /// is called by a relayer on Chain A.
@@ -782,6 +1262,16 @@ pub struct MsgChannelOpenInit {
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelOpenInit {
+    const NAME: &'static str = "MsgChannelOpenInit";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenInit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenInit".into()
+    }
+}
 /// MsgChannelOpenInitResponse defines the Msg/ChannelOpenInit response type.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelOpenInitResponse {
@@ -789,6 +1279,16 @@ pub struct MsgChannelOpenInitResponse {
     pub channel_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub version: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgChannelOpenInitResponse {
+    const NAME: &'static str = "MsgChannelOpenInitResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenInitResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenInitResponse".into()
+    }
 }
 /// MsgChannelOpenInit defines a msg sent by a Relayer to try to open a channel
 /// on Chain B. The version field within the Channel field has been deprecated. Its
@@ -813,6 +1313,16 @@ pub struct MsgChannelOpenTry {
     #[prost(string, tag = "7")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelOpenTry {
+    const NAME: &'static str = "MsgChannelOpenTry";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenTry".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenTry".into()
+    }
+}
 /// MsgChannelOpenTryResponse defines the Msg/ChannelOpenTry response type.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelOpenTryResponse {
@@ -820,6 +1330,16 @@ pub struct MsgChannelOpenTryResponse {
     pub version: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgChannelOpenTryResponse {
+    const NAME: &'static str = "MsgChannelOpenTryResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenTryResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenTryResponse".into()
+    }
 }
 /// MsgChannelOpenAck defines a msg sent by a Relayer to Chain A to acknowledge
 /// the change of channel state to TRYOPEN on Chain B.
@@ -843,9 +1363,29 @@ pub struct MsgChannelOpenAck {
     #[prost(string, tag = "7")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelOpenAck {
+    const NAME: &'static str = "MsgChannelOpenAck";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenAck".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenAck".into()
+    }
+}
 /// MsgChannelOpenAckResponse defines the Msg/ChannelOpenAck response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelOpenAckResponse {}
+impl ::prost::Name for MsgChannelOpenAckResponse {
+    const NAME: &'static str = "MsgChannelOpenAckResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenAckResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenAckResponse".into()
+    }
+}
 /// MsgChannelOpenConfirm defines a msg sent by a Relayer to Chain B to
 /// acknowledge the change of channel state to OPEN on Chain A.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -861,10 +1401,30 @@ pub struct MsgChannelOpenConfirm {
     #[prost(string, tag = "5")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelOpenConfirm {
+    const NAME: &'static str = "MsgChannelOpenConfirm";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenConfirm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenConfirm".into()
+    }
+}
 /// MsgChannelOpenConfirmResponse defines the Msg/ChannelOpenConfirm response
 /// type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelOpenConfirmResponse {}
+impl ::prost::Name for MsgChannelOpenConfirmResponse {
+    const NAME: &'static str = "MsgChannelOpenConfirmResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelOpenConfirmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelOpenConfirmResponse".into()
+    }
+}
 /// MsgChannelCloseInit defines a msg sent by a Relayer to Chain A
 /// to close a channel with Chain B.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -876,9 +1436,29 @@ pub struct MsgChannelCloseInit {
     #[prost(string, tag = "3")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelCloseInit {
+    const NAME: &'static str = "MsgChannelCloseInit";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelCloseInit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelCloseInit".into()
+    }
+}
 /// MsgChannelCloseInitResponse defines the Msg/ChannelCloseInit response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelCloseInitResponse {}
+impl ::prost::Name for MsgChannelCloseInitResponse {
+    const NAME: &'static str = "MsgChannelCloseInitResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelCloseInitResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelCloseInitResponse".into()
+    }
+}
 /// MsgChannelCloseConfirm defines a msg sent by a Relayer to Chain B
 /// to acknowledge the change of channel state to CLOSED on Chain A.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -896,10 +1476,30 @@ pub struct MsgChannelCloseConfirm {
     #[prost(uint64, tag = "6")]
     pub counterparty_upgrade_sequence: u64,
 }
+impl ::prost::Name for MsgChannelCloseConfirm {
+    const NAME: &'static str = "MsgChannelCloseConfirm";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelCloseConfirm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelCloseConfirm".into()
+    }
+}
 /// MsgChannelCloseConfirmResponse defines the Msg/ChannelCloseConfirm response
 /// type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelCloseConfirmResponse {}
+impl ::prost::Name for MsgChannelCloseConfirmResponse {
+    const NAME: &'static str = "MsgChannelCloseConfirmResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelCloseConfirmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelCloseConfirmResponse".into()
+    }
+}
 /// MsgRecvPacket receives incoming IBC packet
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRecvPacket {
@@ -912,11 +1512,31 @@ pub struct MsgRecvPacket {
     #[prost(string, tag = "4")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRecvPacket {
+    const NAME: &'static str = "MsgRecvPacket";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgRecvPacket".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgRecvPacket".into()
+    }
+}
 /// MsgRecvPacketResponse defines the Msg/RecvPacket response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRecvPacketResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgRecvPacketResponse {
+    const NAME: &'static str = "MsgRecvPacketResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgRecvPacketResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgRecvPacketResponse".into()
+    }
 }
 /// MsgTimeout receives timed-out packet
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -932,11 +1552,31 @@ pub struct MsgTimeout {
     #[prost(string, tag = "5")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgTimeout {
+    const NAME: &'static str = "MsgTimeout";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgTimeout".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgTimeout".into()
+    }
+}
 /// MsgTimeoutResponse defines the Msg/Timeout response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgTimeoutResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgTimeoutResponse {
+    const NAME: &'static str = "MsgTimeoutResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgTimeoutResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgTimeoutResponse".into()
+    }
 }
 /// MsgTimeoutOnClose timed-out packet upon counterparty channel closure.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -956,11 +1596,31 @@ pub struct MsgTimeoutOnClose {
     #[prost(uint64, tag = "7")]
     pub counterparty_upgrade_sequence: u64,
 }
+impl ::prost::Name for MsgTimeoutOnClose {
+    const NAME: &'static str = "MsgTimeoutOnClose";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgTimeoutOnClose".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgTimeoutOnClose".into()
+    }
+}
 /// MsgTimeoutOnCloseResponse defines the Msg/TimeoutOnClose response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgTimeoutOnCloseResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgTimeoutOnCloseResponse {
+    const NAME: &'static str = "MsgTimeoutOnCloseResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgTimeoutOnCloseResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgTimeoutOnCloseResponse".into()
+    }
 }
 /// MsgAcknowledgement receives incoming IBC acknowledgement
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -976,11 +1636,31 @@ pub struct MsgAcknowledgement {
     #[prost(string, tag = "5")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgAcknowledgement {
+    const NAME: &'static str = "MsgAcknowledgement";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgAcknowledgement".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgAcknowledgement".into()
+    }
+}
 /// MsgAcknowledgementResponse defines the Msg/Acknowledgement response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgAcknowledgementResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgAcknowledgementResponse {
+    const NAME: &'static str = "MsgAcknowledgementResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgAcknowledgementResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgAcknowledgementResponse".into()
+    }
 }
 /// MsgChannelUpgradeInit defines the request type for the ChannelUpgradeInit rpc
 /// WARNING: Initializing a channel upgrade in the same block as opening the channel
@@ -996,6 +1676,16 @@ pub struct MsgChannelUpgradeInit {
     #[prost(string, tag = "4")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeInit {
+    const NAME: &'static str = "MsgChannelUpgradeInit";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeInit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeInit".into()
+    }
+}
 /// MsgChannelUpgradeInitResponse defines the MsgChannelUpgradeInit response type
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeInitResponse {
@@ -1003,6 +1693,16 @@ pub struct MsgChannelUpgradeInitResponse {
     pub upgrade: ::core::option::Option<Upgrade>,
     #[prost(uint64, tag = "2")]
     pub upgrade_sequence: u64,
+}
+impl ::prost::Name for MsgChannelUpgradeInitResponse {
+    const NAME: &'static str = "MsgChannelUpgradeInitResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeInitResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeInitResponse".into()
+    }
 }
 /// MsgChannelUpgradeTry defines the request type for the ChannelUpgradeTry rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1028,6 +1728,16 @@ pub struct MsgChannelUpgradeTry {
     #[prost(string, tag = "9")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeTry {
+    const NAME: &'static str = "MsgChannelUpgradeTry";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeTry".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeTry".into()
+    }
+}
 /// MsgChannelUpgradeTryResponse defines the MsgChannelUpgradeTry response type
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeTryResponse {
@@ -1037,6 +1747,16 @@ pub struct MsgChannelUpgradeTryResponse {
     pub upgrade_sequence: u64,
     #[prost(enumeration = "ResponseResultType", tag = "3")]
     pub result: i32,
+}
+impl ::prost::Name for MsgChannelUpgradeTryResponse {
+    const NAME: &'static str = "MsgChannelUpgradeTryResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeTryResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeTryResponse".into()
+    }
 }
 /// MsgChannelUpgradeAck defines the request type for the ChannelUpgradeAck rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1056,11 +1776,31 @@ pub struct MsgChannelUpgradeAck {
     #[prost(string, tag = "7")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeAck {
+    const NAME: &'static str = "MsgChannelUpgradeAck";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeAck".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeAck".into()
+    }
+}
 /// MsgChannelUpgradeAckResponse defines MsgChannelUpgradeAck response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeAckResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgChannelUpgradeAckResponse {
+    const NAME: &'static str = "MsgChannelUpgradeAckResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeAckResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeAckResponse".into()
+    }
 }
 /// MsgChannelUpgradeConfirm defines the request type for the ChannelUpgradeConfirm rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1082,11 +1822,31 @@ pub struct MsgChannelUpgradeConfirm {
     #[prost(string, tag = "8")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeConfirm {
+    const NAME: &'static str = "MsgChannelUpgradeConfirm";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeConfirm".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeConfirm".into()
+    }
+}
 /// MsgChannelUpgradeConfirmResponse defines MsgChannelUpgradeConfirm response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeConfirmResponse {
     #[prost(enumeration = "ResponseResultType", tag = "1")]
     pub result: i32,
+}
+impl ::prost::Name for MsgChannelUpgradeConfirmResponse {
+    const NAME: &'static str = "MsgChannelUpgradeConfirmResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeConfirmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeConfirmResponse".into()
+    }
 }
 /// MsgChannelUpgradeOpen defines the request type for the ChannelUpgradeOpen rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1106,9 +1866,29 @@ pub struct MsgChannelUpgradeOpen {
     #[prost(string, tag = "7")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeOpen {
+    const NAME: &'static str = "MsgChannelUpgradeOpen";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeOpen".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeOpen".into()
+    }
+}
 /// MsgChannelUpgradeOpenResponse defines the MsgChannelUpgradeOpen response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeOpenResponse {}
+impl ::prost::Name for MsgChannelUpgradeOpenResponse {
+    const NAME: &'static str = "MsgChannelUpgradeOpenResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeOpenResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeOpenResponse".into()
+    }
+}
 /// MsgChannelUpgradeTimeout defines the request type for the ChannelUpgradeTimeout rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeTimeout {
@@ -1125,9 +1905,29 @@ pub struct MsgChannelUpgradeTimeout {
     #[prost(string, tag = "6")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeTimeout {
+    const NAME: &'static str = "MsgChannelUpgradeTimeout";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeTimeout".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeTimeout".into()
+    }
+}
 /// MsgChannelUpgradeTimeoutRepsonse defines the MsgChannelUpgradeTimeout response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeTimeoutResponse {}
+impl ::prost::Name for MsgChannelUpgradeTimeoutResponse {
+    const NAME: &'static str = "MsgChannelUpgradeTimeoutResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeTimeoutResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeTimeoutResponse".into()
+    }
+}
 /// MsgChannelUpgradeCancel defines the request type for the ChannelUpgradeCancel rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeCancel {
@@ -1144,9 +1944,29 @@ pub struct MsgChannelUpgradeCancel {
     #[prost(string, tag = "6")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgChannelUpgradeCancel {
+    const NAME: &'static str = "MsgChannelUpgradeCancel";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeCancel".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeCancel".into()
+    }
+}
 /// MsgChannelUpgradeCancelResponse defines the MsgChannelUpgradeCancel response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgChannelUpgradeCancelResponse {}
+impl ::prost::Name for MsgChannelUpgradeCancelResponse {
+    const NAME: &'static str = "MsgChannelUpgradeCancelResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgChannelUpgradeCancelResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgChannelUpgradeCancelResponse".into()
+    }
+}
 /// MsgUpdateParams is the MsgUpdateParams request type.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParams {
@@ -1159,9 +1979,29 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the MsgUpdateParams response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgUpdateParamsResponse".into()
+    }
+}
 /// MsgPruneAcknowledgements defines the request type for the PruneAcknowledgements rpc.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgPruneAcknowledgements {
@@ -1174,6 +2014,16 @@ pub struct MsgPruneAcknowledgements {
     #[prost(string, tag = "4")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgPruneAcknowledgements {
+    const NAME: &'static str = "MsgPruneAcknowledgements";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgPruneAcknowledgements".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgPruneAcknowledgements".into()
+    }
+}
 /// MsgPruneAcknowledgementsResponse defines the response type for the PruneAcknowledgements rpc.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPruneAcknowledgementsResponse {
@@ -1183,6 +2033,16 @@ pub struct MsgPruneAcknowledgementsResponse {
     /// Number of sequences left after pruning.
     #[prost(uint64, tag = "2")]
     pub total_remaining_sequences: u64,
+}
+impl ::prost::Name for MsgPruneAcknowledgementsResponse {
+    const NAME: &'static str = "MsgPruneAcknowledgementsResponse";
+    const PACKAGE: &'static str = "ibc.core.channel.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.core.channel.v1.MsgPruneAcknowledgementsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.core.channel.v1.MsgPruneAcknowledgementsResponse".into()
+    }
 }
 /// ResponseResultType defines the possible outcomes of the execution of a message
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -1221,3 +2081,4 @@ impl ResponseResultType {
         }
     }
 }
+include!("ibc.core.channel.v1.serde.rs");

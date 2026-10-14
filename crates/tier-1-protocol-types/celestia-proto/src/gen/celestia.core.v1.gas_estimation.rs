@@ -6,11 +6,31 @@ pub struct EstimateGasPriceRequest {
     #[prost(enumeration = "TxPriority", tag = "1")]
     pub tx_priority: i32,
 }
+impl ::prost::Name for EstimateGasPriceRequest {
+    const NAME: &'static str = "EstimateGasPriceRequest";
+    const PACKAGE: &'static str = "celestia.core.v1.gas_estimation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.gas_estimation.EstimateGasPriceRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.gas_estimation.EstimateGasPriceRequest".into()
+    }
+}
 /// EstimateGasPriceResponse the response of the gas price estimation.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EstimateGasPriceResponse {
     #[prost(double, tag = "1")]
     pub estimated_gas_price: f64,
+}
+impl ::prost::Name for EstimateGasPriceResponse {
+    const NAME: &'static str = "EstimateGasPriceResponse";
+    const PACKAGE: &'static str = "celestia.core.v1.gas_estimation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.gas_estimation.EstimateGasPriceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.gas_estimation.EstimateGasPriceResponse".into()
+    }
 }
 /// EstimateGasPriceAndUsageRequest the request to estimate the gas price of the
 /// network and also the gas used for the provided transaction.
@@ -21,6 +41,16 @@ pub struct EstimateGasPriceAndUsageRequest {
     #[prost(bytes = "vec", tag = "2")]
     pub tx_bytes: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for EstimateGasPriceAndUsageRequest {
+    const NAME: &'static str = "EstimateGasPriceAndUsageRequest";
+    const PACKAGE: &'static str = "celestia.core.v1.gas_estimation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.gas_estimation.EstimateGasPriceAndUsageRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.gas_estimation.EstimateGasPriceAndUsageRequest".into()
+    }
+}
 /// EstimateGasPriceAndUsageResponse the response of the gas price and used
 /// estimation.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -29,6 +59,16 @@ pub struct EstimateGasPriceAndUsageResponse {
     pub estimated_gas_price: f64,
     #[prost(uint64, tag = "2")]
     pub estimated_gas_used: u64,
+}
+impl ::prost::Name for EstimateGasPriceAndUsageResponse {
+    const NAME: &'static str = "EstimateGasPriceAndUsageResponse";
+    const PACKAGE: &'static str = "celestia.core.v1.gas_estimation";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.gas_estimation.EstimateGasPriceAndUsageResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.gas_estimation.EstimateGasPriceAndUsageResponse".into()
+    }
 }
 /// TxPriority is the priority level of the requested gas price.
 /// The following priority levels are defined:
@@ -77,3 +117,4 @@ impl TxPriority {
         }
     }
 }
+include!("celestia.core.v1.gas_estimation.serde.rs");

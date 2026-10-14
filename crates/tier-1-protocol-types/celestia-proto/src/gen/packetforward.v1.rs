@@ -12,6 +12,16 @@ pub struct GenesisState {
         InFlightPacket,
     >,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "packetforward.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "packetforward.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/packetforward.v1.GenesisState".into()
+    }
+}
 /// InFlightPacket contains information about original packet for
 /// writing the acknowledgement and refunding if necessary.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -41,3 +51,14 @@ pub struct InFlightPacket {
     #[prost(bool, tag = "12")]
     pub nonrefundable: bool,
 }
+impl ::prost::Name for InFlightPacket {
+    const NAME: &'static str = "InFlightPacket";
+    const PACKAGE: &'static str = "packetforward.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "packetforward.v1.InFlightPacket".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/packetforward.v1.InFlightPacket".into()
+    }
+}
+include!("packetforward.v1.serde.rs");

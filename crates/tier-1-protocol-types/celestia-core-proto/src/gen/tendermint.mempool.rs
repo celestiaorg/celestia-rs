@@ -8,6 +8,16 @@ pub struct TxCountMessage {
     #[prost(message, optional, tag = "1")]
     pub txs: ::core::option::Option<TxCountTxs>,
 }
+impl ::prost::Name for TxCountMessage {
+    const NAME: &'static str = "TxCountMessage";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.TxCountMessage".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.TxCountMessage".into()
+    }
+}
 /// TxCountTxs mirrors Txs, but each entry decodes into a zero-size NoTx rather
 /// than a freshly allocated byte slice, so the entry count can be read off the
 /// wire without the allocation that counting them via Txs would require.
@@ -16,10 +26,30 @@ pub struct TxCountTxs {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for TxCountTxs {
+    const NAME: &'static str = "TxCountTxs";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.TxCountTxs".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.TxCountTxs".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Txs {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for Txs {
+    const NAME: &'static str = "Txs";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.Txs".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.Txs".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SeenTx {
@@ -30,10 +60,30 @@ pub struct SeenTx {
     #[prost(bytes = "vec", tag = "3")]
     pub signer: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for SeenTx {
+    const NAME: &'static str = "SeenTx";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.SeenTx".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.SeenTx".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WantTx {
     #[prost(bytes = "vec", tag = "1")]
     pub tx_key: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for WantTx {
+    const NAME: &'static str = "WantTx";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.WantTx".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.WantTx".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
@@ -52,3 +102,14 @@ pub mod message {
         WantTx(super::WantTx),
     }
 }
+impl ::prost::Name for Message {
+    const NAME: &'static str = "Message";
+    const PACKAGE: &'static str = "tendermint.mempool";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.mempool.Message".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.mempool.Message".into()
+    }
+}
+include!("tendermint.mempool.serde.rs");

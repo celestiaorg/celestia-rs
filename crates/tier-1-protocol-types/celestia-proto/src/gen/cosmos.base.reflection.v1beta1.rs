@@ -2,12 +2,32 @@
 /// ListAllInterfacesRequest is the request type of the ListAllInterfaces RPC.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ListAllInterfacesRequest {}
+impl ::prost::Name for ListAllInterfacesRequest {
+    const NAME: &'static str = "ListAllInterfacesRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v1beta1.ListAllInterfacesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v1beta1.ListAllInterfacesRequest".into()
+    }
+}
 /// ListAllInterfacesResponse is the response type of the ListAllInterfaces RPC.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListAllInterfacesResponse {
     /// interface_names is an array of all the registered interfaces.
     #[prost(string, repeated, tag = "1")]
     pub interface_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for ListAllInterfacesResponse {
+    const NAME: &'static str = "ListAllInterfacesResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v1beta1.ListAllInterfacesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v1beta1.ListAllInterfacesResponse".into()
+    }
 }
 /// ListImplementationsRequest is the request type of the ListImplementations
 /// RPC.
@@ -16,6 +36,16 @@ pub struct ListImplementationsRequest {
     /// interface_name defines the interface to query the implementations for.
     #[prost(string, tag = "1")]
     pub interface_name: ::prost::alloc::string::String,
+}
+impl ::prost::Name for ListImplementationsRequest {
+    const NAME: &'static str = "ListImplementationsRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v1beta1.ListImplementationsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v1beta1.ListImplementationsRequest".into()
+    }
 }
 /// ListImplementationsResponse is the response type of the ListImplementations
 /// RPC.
@@ -26,3 +56,14 @@ pub struct ListImplementationsResponse {
         ::prost::alloc::string::String,
     >,
 }
+impl ::prost::Name for ListImplementationsResponse {
+    const NAME: &'static str = "ListImplementationsResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v1beta1.ListImplementationsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v1beta1.ListImplementationsResponse".into()
+    }
+}
+include!("cosmos.base.reflection.v1beta1.serde.rs");

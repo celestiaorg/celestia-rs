@@ -15,7 +15,7 @@ pub struct ValidatorSigningInfo {
     pub index_offset: i64,
     /// Timestamp until which the validator is jailed due to liveness downtime.
     #[prost(message, optional, tag = "4")]
-    pub jailed_until: ::core::option::Option<::prost_types::Timestamp>,
+    pub jailed_until: ::core::option::Option<::pbjson_types::Timestamp>,
     /// Whether or not a validator has been tombstoned (killed out of validator
     /// set). It is set once the validator commits an equivocation or for any other
     /// configured misbehavior.
@@ -26,6 +26,16 @@ pub struct ValidatorSigningInfo {
     #[prost(int64, tag = "6")]
     pub missed_blocks_counter: i64,
 }
+impl ::prost::Name for ValidatorSigningInfo {
+    const NAME: &'static str = "ValidatorSigningInfo";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.ValidatorSigningInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.ValidatorSigningInfo".into()
+    }
+}
 /// Params represents the parameters used for by the slashing module.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
@@ -34,11 +44,21 @@ pub struct Params {
     #[prost(bytes = "vec", tag = "2")]
     pub min_signed_per_window: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub downtime_jail_duration: ::core::option::Option<::prost_types::Duration>,
+    pub downtime_jail_duration: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(bytes = "vec", tag = "4")]
     pub slash_fraction_double_sign: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "5")]
     pub slash_fraction_downtime: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.Params".into()
+    }
 }
 /// GenesisState defines the slashing module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -55,6 +75,16 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "3")]
     pub missed_blocks: ::prost::alloc::vec::Vec<ValidatorMissedBlocks>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.GenesisState".into()
+    }
+}
 /// SigningInfo stores validator signing info of corresponding address.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigningInfo {
@@ -64,6 +94,16 @@ pub struct SigningInfo {
     /// validator_signing_info represents the signing info of this validator.
     #[prost(message, optional, tag = "2")]
     pub validator_signing_info: ::core::option::Option<ValidatorSigningInfo>,
+}
+impl ::prost::Name for SigningInfo {
+    const NAME: &'static str = "SigningInfo";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.SigningInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.SigningInfo".into()
+    }
 }
 /// ValidatorMissedBlocks contains array of missed blocks of corresponding
 /// address.
@@ -76,6 +116,16 @@ pub struct ValidatorMissedBlocks {
     #[prost(message, repeated, tag = "2")]
     pub missed_blocks: ::prost::alloc::vec::Vec<MissedBlock>,
 }
+impl ::prost::Name for ValidatorMissedBlocks {
+    const NAME: &'static str = "ValidatorMissedBlocks";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.ValidatorMissedBlocks".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.ValidatorMissedBlocks".into()
+    }
+}
 /// MissedBlock contains height and missed status as boolean.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MissedBlock {
@@ -86,14 +136,44 @@ pub struct MissedBlock {
     #[prost(bool, tag = "2")]
     pub missed: bool,
 }
+impl ::prost::Name for MissedBlock {
+    const NAME: &'static str = "MissedBlock";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.MissedBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.MissedBlock".into()
+    }
+}
 /// QueryParamsRequest is the request type for the Query/Params RPC method
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is the response type for the Query/Params RPC method
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QueryParamsResponse".into()
+    }
 }
 /// QuerySigningInfoRequest is the request type for the Query/SigningInfo RPC
 /// method
@@ -103,6 +183,16 @@ pub struct QuerySigningInfoRequest {
     #[prost(string, tag = "1")]
     pub cons_address: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QuerySigningInfoRequest {
+    const NAME: &'static str = "QuerySigningInfoRequest";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QuerySigningInfoRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QuerySigningInfoRequest".into()
+    }
+}
 /// QuerySigningInfoResponse is the response type for the Query/SigningInfo RPC
 /// method
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -110,6 +200,16 @@ pub struct QuerySigningInfoResponse {
     /// val_signing_info is the signing info of requested val cons address
     #[prost(message, optional, tag = "1")]
     pub val_signing_info: ::core::option::Option<ValidatorSigningInfo>,
+}
+impl ::prost::Name for QuerySigningInfoResponse {
+    const NAME: &'static str = "QuerySigningInfoResponse";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QuerySigningInfoResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QuerySigningInfoResponse".into()
+    }
 }
 /// QuerySigningInfosRequest is the request type for the Query/SigningInfos RPC
 /// method
@@ -119,6 +219,16 @@ pub struct QuerySigningInfosRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QuerySigningInfosRequest {
+    const NAME: &'static str = "QuerySigningInfosRequest";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QuerySigningInfosRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QuerySigningInfosRequest".into()
+    }
 }
 /// QuerySigningInfosResponse is the response type for the Query/SigningInfos RPC
 /// method
@@ -132,15 +242,45 @@ pub struct QuerySigningInfosResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QuerySigningInfosResponse {
+    const NAME: &'static str = "QuerySigningInfosResponse";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.QuerySigningInfosResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.QuerySigningInfosResponse".into()
+    }
+}
 /// MsgUnjail defines the Msg/Unjail request type
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUnjail {
     #[prost(string, tag = "1")]
     pub validator_addr: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgUnjail {
+    const NAME: &'static str = "MsgUnjail";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.MsgUnjail".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.MsgUnjail".into()
+    }
+}
 /// MsgUnjailResponse defines the Msg/Unjail response type
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUnjailResponse {}
+impl ::prost::Name for MsgUnjailResponse {
+    const NAME: &'static str = "MsgUnjailResponse";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.MsgUnjailResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.MsgUnjailResponse".into()
+    }
+}
 /// MsgUpdateParams is the Msg/UpdateParams request type.
 ///
 /// Since: cosmos-sdk 0.47
@@ -155,9 +295,30 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the response structure for executing a
 /// MsgUpdateParams message.
 ///
 /// Since: cosmos-sdk 0.47
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "cosmos.slashing.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.slashing.v1beta1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.slashing.v1beta1.MsgUpdateParamsResponse".into()
+    }
+}
+include!("cosmos.slashing.v1beta1.serde.rs");

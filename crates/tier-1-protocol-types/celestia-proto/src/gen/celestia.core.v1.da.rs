@@ -18,3 +18,14 @@ pub struct DataAvailabilityHeader {
     #[prost(bytes = "vec", repeated, tag = "2")]
     pub column_roots: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for DataAvailabilityHeader {
+    const NAME: &'static str = "DataAvailabilityHeader";
+    const PACKAGE: &'static str = "celestia.core.v1.da";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.da.DataAvailabilityHeader".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.da.DataAvailabilityHeader".into()
+    }
+}
+include!("celestia.core.v1.da.serde.rs");

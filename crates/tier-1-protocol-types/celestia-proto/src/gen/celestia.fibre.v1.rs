@@ -3,15 +3,25 @@
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Params {
     #[prost(message, optional, tag = "1")]
-    pub withdrawal_delay: ::core::option::Option<::prost_types::Duration>,
+    pub withdrawal_delay: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "2")]
-    pub payment_promise_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub payment_promise_timeout: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(uint64, tag = "3")]
     pub payment_promise_height_window: u64,
     #[prost(message, optional, tag = "4")]
-    pub shard_retention: ::core::option::Option<::prost_types::Duration>,
+    pub shard_retention: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(uint64, tag = "5")]
     pub full_stake_storage_budget: u64,
+}
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.Params".into()
+    }
 }
 /// EventDepositToEscrow is emitted when a deposit is made to an escrow account.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -21,6 +31,16 @@ pub struct EventDepositToEscrow {
     #[prost(message, optional, tag = "2")]
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
 }
+impl ::prost::Name for EventDepositToEscrow {
+    const NAME: &'static str = "EventDepositToEscrow";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventDepositToEscrow".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventDepositToEscrow".into()
+    }
+}
 /// EventWithdrawFromEscrowRequest is emitted when a withdrawal is requested from an escrow account.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventWithdrawFromEscrowRequest {
@@ -29,9 +49,19 @@ pub struct EventWithdrawFromEscrowRequest {
     #[prost(message, optional, tag = "2")]
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
     #[prost(message, optional, tag = "3")]
-    pub requested_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub requested_at: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(message, optional, tag = "4")]
-    pub available_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub available_at: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for EventWithdrawFromEscrowRequest {
+    const NAME: &'static str = "EventWithdrawFromEscrowRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventWithdrawFromEscrowRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventWithdrawFromEscrowRequest".into()
+    }
 }
 /// EventWithdrawFromEscrowExecuted is emitted when a withdrawal is processed.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -40,6 +70,16 @@ pub struct EventWithdrawFromEscrowExecuted {
     pub signer: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
+}
+impl ::prost::Name for EventWithdrawFromEscrowExecuted {
+    const NAME: &'static str = "EventWithdrawFromEscrowExecuted";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventWithdrawFromEscrowExecuted".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventWithdrawFromEscrowExecuted".into()
+    }
 }
 /// EventPayForFibre is emitted when a payment for fibre is processed.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -53,6 +93,16 @@ pub struct EventPayForFibre {
     #[prost(uint32, tag = "4")]
     pub validator_count: u32,
 }
+impl ::prost::Name for EventPayForFibre {
+    const NAME: &'static str = "EventPayForFibre";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventPayForFibre".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventPayForFibre".into()
+    }
+}
 /// EventPaymentPromiseTimeout is emitted when a PaymentPromise timeout is processed.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventPaymentPromiseTimeout {
@@ -63,6 +113,16 @@ pub struct EventPaymentPromiseTimeout {
     #[prost(bytes = "vec", tag = "3")]
     pub payment_promise_hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for EventPaymentPromiseTimeout {
+    const NAME: &'static str = "EventPaymentPromiseTimeout";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventPaymentPromiseTimeout".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventPaymentPromiseTimeout".into()
+    }
+}
 /// EventUpdateFibreParams is emitted when fibre parameters are updated.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventUpdateFibreParams {
@@ -71,6 +131,16 @@ pub struct EventUpdateFibreParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for EventUpdateFibreParams {
+    const NAME: &'static str = "EventUpdateFibreParams";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventUpdateFibreParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventUpdateFibreParams".into()
+    }
+}
 /// EventProcessedPaymentPruned is emitted when a processed payment is pruned
 /// from the state machine due to being outside the retention window.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -78,7 +148,17 @@ pub struct EventProcessedPaymentPruned {
     #[prost(bytes = "vec", tag = "1")]
     pub payment_promise_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "2")]
-    pub processed_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub processed_at: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for EventProcessedPaymentPruned {
+    const NAME: &'static str = "EventProcessedPaymentPruned";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EventProcessedPaymentPruned".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EventProcessedPaymentPruned".into()
+    }
 }
 /// EscrowAccount helps guarantee payment for a signed PaymentPromise by ensuring
 /// that a user does not remove funds directly after validators sign over and
@@ -101,6 +181,16 @@ pub struct EscrowAccount {
     pub available_balance: ::core::option::Option<
         super::super::super::cosmos::base::v1beta1::Coin,
     >,
+}
+impl ::prost::Name for EscrowAccount {
+    const NAME: &'static str = "EscrowAccount";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.EscrowAccount".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.EscrowAccount".into()
+    }
 }
 /// PaymentPromise is a promise to pay for a fibre blob. It contains the
 /// commitment and payment details for the fibre blob.
@@ -129,7 +219,7 @@ pub struct PaymentPromise {
     /// is critical for determining which validators sign the commitment and
     /// determining when service stops for this blob.
     #[prost(message, optional, tag = "7")]
-    pub creation_timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub creation_timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     /// signer_public_key is the public key of the owner of the escrow account to charge
     #[prost(message, optional, tag = "8")]
     pub signer_public_key: ::core::option::Option<
@@ -138,6 +228,16 @@ pub struct PaymentPromise {
     /// signature is the signer (escrow account owner) signature over the sign bytes
     #[prost(bytes = "vec", tag = "9")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for PaymentPromise {
+    const NAME: &'static str = "PaymentPromise";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.PaymentPromise".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.PaymentPromise".into()
+    }
 }
 /// Withdrawal tracks requests to withdraw funds from an escrow account. It is
 /// needed to implement a delay mechanism between when a withdrawal is requested
@@ -152,11 +252,21 @@ pub struct Withdrawal {
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
     /// requested_timestamp is the timestamp when withdrawal was requested
     #[prost(message, optional, tag = "3")]
-    pub requested_timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub requested_timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     /// available_timestamp is the timestamp when withdrawal becomes available for processing
     /// This is calculated as requested_timestamp + withdrawal_delay at creation time
     #[prost(message, optional, tag = "4")]
-    pub available_timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub available_timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for Withdrawal {
+    const NAME: &'static str = "Withdrawal";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.Withdrawal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.Withdrawal".into()
+    }
 }
 /// GenesisState defines the fibre module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -170,7 +280,17 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "4")]
     pub processed_payments: ::prost::alloc::vec::Vec<ProcessedPayment>,
     #[prost(message, optional, tag = "5")]
-    pub promise_freshness_floor: ::core::option::Option<::prost_types::Timestamp>,
+    pub promise_freshness_floor: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.GenesisState".into()
+    }
 }
 /// ProcessedPayment represents a PaymentPromise that has been processed and
 /// stored in genesis state. ProcessedPayment intentionally omits many fields
@@ -181,22 +301,62 @@ pub struct ProcessedPayment {
     #[prost(bytes = "vec", tag = "1")]
     pub payment_promise_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "2")]
-    pub processed_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub processed_at: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for ProcessedPayment {
+    const NAME: &'static str = "ProcessedPayment";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.ProcessedPayment".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.ProcessedPayment".into()
+    }
 }
 /// QueryParamsRequest is the request type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is the response type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryParamsResponse".into()
+    }
+}
 /// QueryEscrowAccountRequest is the request type for the Query/EscrowAccount RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryEscrowAccountRequest {
     #[prost(string, tag = "1")]
     pub signer: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryEscrowAccountRequest {
+    const NAME: &'static str = "QueryEscrowAccountRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryEscrowAccountRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryEscrowAccountRequest".into()
+    }
 }
 /// QueryEscrowAccountResponse is the response type for the Query/EscrowAccount RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -205,6 +365,16 @@ pub struct QueryEscrowAccountResponse {
     pub escrow_account: ::core::option::Option<EscrowAccount>,
     #[prost(bool, tag = "2")]
     pub found: bool,
+}
+impl ::prost::Name for QueryEscrowAccountResponse {
+    const NAME: &'static str = "QueryEscrowAccountResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryEscrowAccountResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryEscrowAccountResponse".into()
+    }
 }
 /// QueryWithdrawalsRequest is the request type for the Query/Withdrawals RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -216,6 +386,16 @@ pub struct QueryWithdrawalsRequest {
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryWithdrawalsRequest {
+    const NAME: &'static str = "QueryWithdrawalsRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryWithdrawalsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryWithdrawalsRequest".into()
+    }
+}
 /// QueryWithdrawalsResponse is the response type for the Query/Withdrawals RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryWithdrawalsResponse {
@@ -226,19 +406,49 @@ pub struct QueryWithdrawalsResponse {
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryWithdrawalsResponse {
+    const NAME: &'static str = "QueryWithdrawalsResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryWithdrawalsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryWithdrawalsResponse".into()
+    }
+}
 /// QueryIsPaymentProcessedRequest is the request type for the Query/IsPaymentProcessed RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsPaymentProcessedRequest {
     #[prost(bytes = "vec", tag = "1")]
     pub promise_hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for QueryIsPaymentProcessedRequest {
+    const NAME: &'static str = "QueryIsPaymentProcessedRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryIsPaymentProcessedRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryIsPaymentProcessedRequest".into()
+    }
+}
 /// QueryIsPaymentProcessedResponse is the response type for the Query/IsPaymentProcessed RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryIsPaymentProcessedResponse {
     #[prost(message, optional, tag = "1")]
-    pub processed_at: ::core::option::Option<::prost_types::Timestamp>,
+    pub processed_at: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bool, tag = "2")]
     pub found: bool,
+}
+impl ::prost::Name for QueryIsPaymentProcessedResponse {
+    const NAME: &'static str = "QueryIsPaymentProcessedResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryIsPaymentProcessedResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryIsPaymentProcessedResponse".into()
+    }
 }
 /// QueryValidatePaymentPromiseRequest is the request type for the Query/ValidatePaymentPromise RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -246,17 +456,37 @@ pub struct QueryValidatePaymentPromiseRequest {
     #[prost(message, optional, tag = "1")]
     pub promise: ::core::option::Option<PaymentPromise>,
 }
+impl ::prost::Name for QueryValidatePaymentPromiseRequest {
+    const NAME: &'static str = "QueryValidatePaymentPromiseRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryValidatePaymentPromiseRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryValidatePaymentPromiseRequest".into()
+    }
+}
 /// QueryValidatePaymentPromiseResponse is the response type for the Query/ValidatePaymentPromise RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryValidatePaymentPromiseResponse {
     #[prost(bool, tag = "1")]
     pub is_valid: bool,
     #[prost(message, optional, tag = "2")]
-    pub expiration_time: ::core::option::Option<::prost_types::Timestamp>,
+    pub expiration_time: ::core::option::Option<::pbjson_types::Timestamp>,
     /// shard_retention is the on-chain local retention floor for uploaded shards;
     /// the server computes pruneAt = max(expiration_time, creation_timestamp + shard_retention).
     #[prost(message, optional, tag = "3")]
-    pub shard_retention: ::core::option::Option<::prost_types::Duration>,
+    pub shard_retention: ::core::option::Option<::pbjson_types::Duration>,
+}
+impl ::prost::Name for QueryValidatePaymentPromiseResponse {
+    const NAME: &'static str = "QueryValidatePaymentPromiseResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.QueryValidatePaymentPromiseResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.QueryValidatePaymentPromiseResponse".into()
+    }
 }
 /// BlobRow represents a row of data in a Fibre blob.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -267,6 +497,16 @@ pub struct BlobRow {
     pub data: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub proof: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for BlobRow {
+    const NAME: &'static str = "BlobRow";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.BlobRow".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.BlobRow".into()
+    }
 }
 /// BlobShard represents a subset of rows of a Fibre blob.
 /// Contains row data along with the RLC (random linear combination) vector
@@ -279,6 +519,16 @@ pub struct BlobShard {
     #[prost(bytes = "vec", tag = "2")]
     pub rlcs: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for BlobShard {
+    const NAME: &'static str = "BlobShard";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.BlobShard".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.BlobShard".into()
+    }
+}
 /// UploadShardRequest is the request message for the UploadShard RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UploadShardRequest {
@@ -287,12 +537,32 @@ pub struct UploadShardRequest {
     #[prost(message, optional, tag = "2")]
     pub shard: ::core::option::Option<BlobShard>,
 }
+impl ::prost::Name for UploadShardRequest {
+    const NAME: &'static str = "UploadShardRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.UploadShardRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.UploadShardRequest".into()
+    }
+}
 /// UploadShardResponse is the response message for the UploadShard RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UploadShardResponse {
     /// const len == 32
     #[prost(bytes = "vec", tag = "1")]
     pub validator_signature: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for UploadShardResponse {
+    const NAME: &'static str = "UploadShardResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.UploadShardResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.UploadShardResponse".into()
+    }
 }
 /// DownloadShardRequest is the request message for the DownloadShard RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -301,11 +571,31 @@ pub struct DownloadShardRequest {
     #[prost(bytes = "vec", tag = "1")]
     pub blob_id: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for DownloadShardRequest {
+    const NAME: &'static str = "DownloadShardRequest";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.DownloadShardRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.DownloadShardRequest".into()
+    }
+}
 /// DownloadShardResponse is the response message for the DownloadShard RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DownloadShardResponse {
     #[prost(message, optional, tag = "1")]
     pub shard: ::core::option::Option<BlobShard>,
+}
+impl ::prost::Name for DownloadShardResponse {
+    const NAME: &'static str = "DownloadShardResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.DownloadShardResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.DownloadShardResponse".into()
+    }
 }
 /// RowCountUploadShard protects against a shard with too many
 /// empty rows in one message. It reads only the shard rows
@@ -317,6 +607,16 @@ pub struct RowCountUploadShard {
     #[prost(message, optional, tag = "2")]
     pub shard: ::core::option::Option<RowCountBlobShard>,
 }
+impl ::prost::Name for RowCountUploadShard {
+    const NAME: &'static str = "RowCountUploadShard";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.RowCountUploadShard".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.RowCountUploadShard".into()
+    }
+}
 /// RowCountBlobShard mirrors BlobShard but decodes rows into zero-size
 /// entries so counting them does not allocate.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -324,6 +624,16 @@ pub struct RowCountBlobShard {
     /// Mirrors BlobShard.rows.
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub rows: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for RowCountBlobShard {
+    const NAME: &'static str = "RowCountBlobShard";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.RowCountBlobShard".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.RowCountBlobShard".into()
+    }
 }
 /// ProofCountUploadShard protects against a row with too many proofs in
 /// one row, which passes the row check. It allocates one slice header
@@ -334,6 +644,16 @@ pub struct ProofCountUploadShard {
     #[prost(message, optional, tag = "2")]
     pub shard: ::core::option::Option<ProofCountBlobShard>,
 }
+impl ::prost::Name for ProofCountUploadShard {
+    const NAME: &'static str = "ProofCountUploadShard";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.ProofCountUploadShard".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.ProofCountUploadShard".into()
+    }
+}
 /// ProofCountBlobShard mirrors BlobShard but decodes each row only as its
 /// proof-segment count.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -342,6 +662,16 @@ pub struct ProofCountBlobShard {
     #[prost(message, repeated, tag = "1")]
     pub rows: ::prost::alloc::vec::Vec<ProofCountBlobRow>,
 }
+impl ::prost::Name for ProofCountBlobShard {
+    const NAME: &'static str = "ProofCountBlobShard";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.ProofCountBlobShard".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.ProofCountBlobShard".into()
+    }
+}
 /// ProofCountBlobRow mirrors BlobRow but decodes proof segments into
 /// zero-size entries so counting them does not allocate.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -349,6 +679,16 @@ pub struct ProofCountBlobRow {
     /// Mirrors BlobRow.proof.
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub proof: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+impl ::prost::Name for ProofCountBlobRow {
+    const NAME: &'static str = "ProofCountBlobRow";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.ProofCountBlobRow".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.ProofCountBlobRow".into()
+    }
 }
 /// MsgDepositToEscrow deposits funds to the signer's escrow account.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -360,9 +700,29 @@ pub struct MsgDepositToEscrow {
     #[prost(message, optional, tag = "2")]
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
 }
+impl ::prost::Name for MsgDepositToEscrow {
+    const NAME: &'static str = "MsgDepositToEscrow";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgDepositToEscrow".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgDepositToEscrow".into()
+    }
+}
 /// MsgDepositToEscrowResponse describes the response returned after depositing to escrow.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgDepositToEscrowResponse {}
+impl ::prost::Name for MsgDepositToEscrowResponse {
+    const NAME: &'static str = "MsgDepositToEscrowResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgDepositToEscrowResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgDepositToEscrowResponse".into()
+    }
+}
 /// MsgRequestWithdrawal requests withdrawal from the signer's escrow account.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRequestWithdrawal {
@@ -373,9 +733,29 @@ pub struct MsgRequestWithdrawal {
     #[prost(message, optional, tag = "2")]
     pub amount: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
 }
+impl ::prost::Name for MsgRequestWithdrawal {
+    const NAME: &'static str = "MsgRequestWithdrawal";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgRequestWithdrawal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgRequestWithdrawal".into()
+    }
+}
 /// MsgRequestWithdrawalResponse describes the response returned after requesting withdrawal.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRequestWithdrawalResponse {}
+impl ::prost::Name for MsgRequestWithdrawalResponse {
+    const NAME: &'static str = "MsgRequestWithdrawalResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgRequestWithdrawalResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgRequestWithdrawalResponse".into()
+    }
+}
 /// MsgPayForFibre contains the original payment promise with validator signatures.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgPayForFibre {
@@ -389,9 +769,29 @@ pub struct MsgPayForFibre {
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub validator_signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for MsgPayForFibre {
+    const NAME: &'static str = "MsgPayForFibre";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgPayForFibre".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgPayForFibre".into()
+    }
+}
 /// MsgPayForFibreResponse describes the response returned after paying for fibre.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPayForFibreResponse {}
+impl ::prost::Name for MsgPayForFibreResponse {
+    const NAME: &'static str = "MsgPayForFibreResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgPayForFibreResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgPayForFibreResponse".into()
+    }
+}
 /// MsgPaymentPromiseTimeout processes a payment promise after the timeout period.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgPaymentPromiseTimeout {
@@ -402,10 +802,30 @@ pub struct MsgPaymentPromiseTimeout {
     #[prost(message, optional, tag = "2")]
     pub payment_promise: ::core::option::Option<PaymentPromise>,
 }
+impl ::prost::Name for MsgPaymentPromiseTimeout {
+    const NAME: &'static str = "MsgPaymentPromiseTimeout";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgPaymentPromiseTimeout".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgPaymentPromiseTimeout".into()
+    }
+}
 /// MsgPaymentPromiseTimeoutResponse describes the response returned after
 /// processing a payment promise timeout.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPaymentPromiseTimeoutResponse {}
+impl ::prost::Name for MsgPaymentPromiseTimeoutResponse {
+    const NAME: &'static str = "MsgPaymentPromiseTimeoutResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgPaymentPromiseTimeoutResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgPaymentPromiseTimeoutResponse".into()
+    }
+}
 /// MsgUpdateFibreParams defines the sdk.Msg type to update the fibre parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateFibreParams {
@@ -418,6 +838,27 @@ pub struct MsgUpdateFibreParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateFibreParams {
+    const NAME: &'static str = "MsgUpdateFibreParams";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgUpdateFibreParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgUpdateFibreParams".into()
+    }
+}
 /// MsgUpdateFibreParamsResponse defines the MsgUpdateFibreParams response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateFibreParamsResponse {}
+impl ::prost::Name for MsgUpdateFibreParamsResponse {
+    const NAME: &'static str = "MsgUpdateFibreParamsResponse";
+    const PACKAGE: &'static str = "celestia.fibre.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.fibre.v1.MsgUpdateFibreParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.fibre.v1.MsgUpdateFibreParamsResponse".into()
+    }
+}
+include!("celestia.fibre.v1.serde.rs");

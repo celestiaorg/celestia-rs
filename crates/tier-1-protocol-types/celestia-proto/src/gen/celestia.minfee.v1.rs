@@ -5,6 +5,16 @@ pub struct Params {
     #[prost(string, tag = "1")]
     pub network_min_gas_price: ::prost::alloc::string::String,
 }
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.Params".into()
+    }
+}
 /// EventUpdateMinfeeParams defines an event that is emitted when minfee parameters are
 /// updated. It is triggered after a successful execution of a parameter update proposal.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -14,6 +24,16 @@ pub struct EventUpdateMinfeeParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for EventUpdateMinfeeParams {
+    const NAME: &'static str = "EventUpdateMinfeeParams";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.EventUpdateMinfeeParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.EventUpdateMinfeeParams".into()
+    }
+}
 /// GenesisState defines the minfee module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
@@ -22,10 +42,30 @@ pub struct GenesisState {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.GenesisState".into()
+    }
+}
 /// QueryNetworkMinGasPrice is the request type for the Query/NetworkMinGasPrice
 /// RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryNetworkMinGasPrice {}
+impl ::prost::Name for QueryNetworkMinGasPrice {
+    const NAME: &'static str = "QueryNetworkMinGasPrice";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.QueryNetworkMinGasPrice".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.QueryNetworkMinGasPrice".into()
+    }
+}
 /// QueryNetworkMinGasPriceResponse is the response type for
 /// Query/NetworkMinGasPrice RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -33,14 +73,44 @@ pub struct QueryNetworkMinGasPriceResponse {
     #[prost(string, tag = "1")]
     pub network_min_gas_price: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryNetworkMinGasPriceResponse {
+    const NAME: &'static str = "QueryNetworkMinGasPriceResponse";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.QueryNetworkMinGasPriceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.QueryNetworkMinGasPriceResponse".into()
+    }
+}
 /// QueryParamsRequest is the request type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is the response type for the Query/Params RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.QueryParamsResponse".into()
+    }
 }
 /// MsgUpdateMinfeeParams defines a message for updating the minimum fee parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -54,6 +124,27 @@ pub struct MsgUpdateMinfeeParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateMinfeeParams {
+    const NAME: &'static str = "MsgUpdateMinfeeParams";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.MsgUpdateMinfeeParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.MsgUpdateMinfeeParams".into()
+    }
+}
 /// MsgUpdateMinfeeParamsResponse is the UpdateMinfeeParams response.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateMinfeeParamsResponse {}
+impl ::prost::Name for MsgUpdateMinfeeParamsResponse {
+    const NAME: &'static str = "MsgUpdateMinfeeParamsResponse";
+    const PACKAGE: &'static str = "celestia.minfee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.minfee.v1.MsgUpdateMinfeeParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.minfee.v1.MsgUpdateMinfeeParamsResponse".into()
+    }
+}
+include!("celestia.minfee.v1.serde.rs");

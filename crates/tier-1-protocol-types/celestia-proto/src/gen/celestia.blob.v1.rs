@@ -7,6 +7,16 @@ pub struct Params {
     #[prost(uint64, tag = "2")]
     pub gov_max_square_size: u64,
 }
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.Params".into()
+    }
+}
 /// EventPayForBlobs defines an event that is emitted after a pay for blob has
 /// been processed.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -21,6 +31,16 @@ pub struct EventPayForBlobs {
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub namespaces: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for EventPayForBlobs {
+    const NAME: &'static str = "EventPayForBlobs";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.EventPayForBlobs".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.EventPayForBlobs".into()
+    }
+}
 /// EventUpdateBlobParams defines an event that is emitted when blob parameters are
 /// updated. It is triggered after a successful execution of a parameter update proposal.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -30,20 +50,60 @@ pub struct EventUpdateBlobParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for EventUpdateBlobParams {
+    const NAME: &'static str = "EventUpdateBlobParams";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.EventUpdateBlobParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.EventUpdateBlobParams".into()
+    }
+}
 /// GenesisState defines the capability module's genesis state.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GenesisState {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.GenesisState".into()
+    }
+}
 /// QueryParamsRequest is the request type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is the response type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.QueryParamsResponse".into()
+    }
 }
 /// MsgPayForBlobs pays for the inclusion of a blob in the block.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -70,10 +130,30 @@ pub struct MsgPayForBlobs {
     #[prost(uint32, repeated, tag = "8")]
     pub share_versions: ::prost::alloc::vec::Vec<u32>,
 }
+impl ::prost::Name for MsgPayForBlobs {
+    const NAME: &'static str = "MsgPayForBlobs";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.MsgPayForBlobs".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.MsgPayForBlobs".into()
+    }
+}
 /// MsgPayForBlobsResponse describes the response returned after the submission
 /// of a PayForBlobs
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPayForBlobsResponse {}
+impl ::prost::Name for MsgPayForBlobsResponse {
+    const NAME: &'static str = "MsgPayForBlobsResponse";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.MsgPayForBlobsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.MsgPayForBlobsResponse".into()
+    }
+}
 /// MsgUpdateBlobParams defines the sdk.Msg type to update the client parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateBlobParams {
@@ -86,6 +166,27 @@ pub struct MsgUpdateBlobParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateBlobParams {
+    const NAME: &'static str = "MsgUpdateBlobParams";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.MsgUpdateBlobParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.MsgUpdateBlobParams".into()
+    }
+}
 /// MsgUpdateBlobParamsResponse defines the MsgUpdateBlobParams response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateBlobParamsResponse {}
+impl ::prost::Name for MsgUpdateBlobParamsResponse {
+    const NAME: &'static str = "MsgUpdateBlobParamsResponse";
+    const PACKAGE: &'static str = "celestia.blob.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.blob.v1.MsgUpdateBlobParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.blob.v1.MsgUpdateBlobParamsResponse".into()
+    }
+}
+include!("celestia.blob.v1.serde.rs");

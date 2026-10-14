@@ -15,6 +15,16 @@ pub struct Tx {
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for Tx {
+    const NAME: &'static str = "Tx";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.Tx".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.Tx".into()
+    }
+}
 /// TxRaw is a variant of Tx that pins the signer's exact binary representation
 /// of body and auth_info. This is used for signing, broadcasting and
 /// verification. The binary `serialize(tx: TxRaw)` is stored in Tendermint and
@@ -36,6 +46,16 @@ pub struct TxRaw {
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for TxRaw {
+    const NAME: &'static str = "TxRaw";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxRaw".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxRaw".into()
+    }
+}
 /// SignDoc is the type used for generating sign bytes for SIGN_MODE_DIRECT.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignDoc {
@@ -56,6 +76,16 @@ pub struct SignDoc {
     #[prost(uint64, tag = "4")]
     pub account_number: u64,
 }
+impl ::prost::Name for SignDoc {
+    const NAME: &'static str = "SignDoc";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.SignDoc".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.SignDoc".into()
+    }
+}
 /// SignDocDirectAux is the type used for generating sign bytes for
 /// SIGN_MODE_DIRECT_AUX.
 ///
@@ -68,7 +98,7 @@ pub struct SignDocDirectAux {
     pub body_bytes: ::prost::alloc::vec::Vec<u8>,
     /// public_key is the public key of the signing account.
     #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<::prost_types::Any>,
+    pub public_key: ::core::option::Option<crate::any::Any>,
     /// chain_id is the identifier of the chain this transaction targets.
     /// It prevents signed transactions from being used on another chain by an
     /// attacker.
@@ -85,6 +115,16 @@ pub struct SignDocDirectAux {
     #[prost(message, optional, tag = "6")]
     pub tip: ::core::option::Option<Tip>,
 }
+impl ::prost::Name for SignDocDirectAux {
+    const NAME: &'static str = "SignDocDirectAux";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.SignDocDirectAux".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.SignDocDirectAux".into()
+    }
+}
 /// TxBody is the body of a transaction that all signers sign over.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxBody {
@@ -96,7 +136,7 @@ pub struct TxBody {
     /// is referred to as the primary signer and pays the fee for the whole
     /// transaction.
     #[prost(message, repeated, tag = "1")]
-    pub messages: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub messages: ::prost::alloc::vec::Vec<crate::any::Any>,
     /// memo is any arbitrary note/comment to be added to the transaction.
     /// WARNING: in clients, any publicly exposed text should not be called memo,
     /// but should be called `note` instead (see <https://github.com/cosmos/cosmos-sdk/issues/9122>).
@@ -110,12 +150,22 @@ pub struct TxBody {
     /// when the default options are not sufficient. If any of these are present
     /// and can't be handled, the transaction will be rejected
     #[prost(message, repeated, tag = "1023")]
-    pub extension_options: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub extension_options: ::prost::alloc::vec::Vec<crate::any::Any>,
     /// extension_options are arbitrary options that can be added by chains
     /// when the default options are not sufficient. If any of these are present
     /// and can't be handled, they will be ignored
     #[prost(message, repeated, tag = "2047")]
-    pub non_critical_extension_options: ::prost::alloc::vec::Vec<::prost_types::Any>,
+    pub non_critical_extension_options: ::prost::alloc::vec::Vec<crate::any::Any>,
+}
+impl ::prost::Name for TxBody {
+    const NAME: &'static str = "TxBody";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxBody".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxBody".into()
+    }
 }
 /// AuthInfo describes the fee and signer modes that are used to sign a
 /// transaction.
@@ -143,6 +193,16 @@ pub struct AuthInfo {
     #[prost(message, optional, tag = "3")]
     pub tip: ::core::option::Option<Tip>,
 }
+impl ::prost::Name for AuthInfo {
+    const NAME: &'static str = "AuthInfo";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.AuthInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.AuthInfo".into()
+    }
+}
 /// SignerInfo describes the public key and signing mode of a single top-level
 /// signer.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -151,7 +211,7 @@ pub struct SignerInfo {
     /// that already exist in state. If unset, the verifier can use the required \
     /// signer address for this position and lookup the public key.
     #[prost(message, optional, tag = "1")]
-    pub public_key: ::core::option::Option<::prost_types::Any>,
+    pub public_key: ::core::option::Option<crate::any::Any>,
     /// mode_info describes the signing mode of the signer and is a nested
     /// structure to support nested multisig pubkey's
     #[prost(message, optional, tag = "2")]
@@ -161,6 +221,16 @@ pub struct SignerInfo {
     /// prevent replay attacks.
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
+}
+impl ::prost::Name for SignerInfo {
+    const NAME: &'static str = "SignerInfo";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.SignerInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.SignerInfo".into()
+    }
 }
 /// ModeInfo describes the signing mode of a single or nested multisig signer.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -181,6 +251,16 @@ pub mod mode_info {
         #[prost(enumeration = "super::super::signing::v1beta1::SignMode", tag = "1")]
         pub mode: i32,
     }
+    impl ::prost::Name for Single {
+        const NAME: &'static str = "Single";
+        const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+        fn full_name() -> ::prost::alloc::string::String {
+            "cosmos.tx.v1beta1.ModeInfo.Single".into()
+        }
+        fn type_url() -> ::prost::alloc::string::String {
+            "/cosmos.tx.v1beta1.ModeInfo.Single".into()
+        }
+    }
     /// Multi is the mode info for a multisig public key
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct Multi {
@@ -194,6 +274,16 @@ pub mod mode_info {
         #[prost(message, repeated, tag = "2")]
         pub mode_infos: ::prost::alloc::vec::Vec<super::ModeInfo>,
     }
+    impl ::prost::Name for Multi {
+        const NAME: &'static str = "Multi";
+        const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+        fn full_name() -> ::prost::alloc::string::String {
+            "cosmos.tx.v1beta1.ModeInfo.Multi".into()
+        }
+        fn type_url() -> ::prost::alloc::string::String {
+            "/cosmos.tx.v1beta1.ModeInfo.Multi".into()
+        }
+    }
     /// sum is the oneof that specifies whether this represents a single or nested
     /// multisig signer
     #[derive(Clone, PartialEq, ::prost::Oneof)]
@@ -204,6 +294,16 @@ pub mod mode_info {
         /// multi represents a nested multisig signer
         #[prost(message, tag = "2")]
         Multi(Multi),
+    }
+}
+impl ::prost::Name for ModeInfo {
+    const NAME: &'static str = "ModeInfo";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.ModeInfo".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.ModeInfo".into()
     }
 }
 /// Fee includes the amount of coins paid in fees and the maximum
@@ -229,6 +329,16 @@ pub struct Fee {
     #[prost(string, tag = "4")]
     pub granter: ::prost::alloc::string::String,
 }
+impl ::prost::Name for Fee {
+    const NAME: &'static str = "Fee";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.Fee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.Fee".into()
+    }
+}
 /// Tip is the tip used for meta-transactions.
 ///
 /// Since: cosmos-sdk 0.46
@@ -240,6 +350,16 @@ pub struct Tip {
     /// tipper is the address of the account paying for the tip
     #[prost(string, tag = "2")]
     pub tipper: ::prost::alloc::string::String,
+}
+impl ::prost::Name for Tip {
+    const NAME: &'static str = "Tip";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.Tip".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.Tip".into()
+    }
 }
 /// AuxSignerData is the intermediary format that an auxiliary signer (e.g. a
 /// tipper) builds and sends to the fee payer (who will build and broadcast the
@@ -265,6 +385,16 @@ pub struct AuxSignerData {
     /// sig is the signature of the sign doc.
     #[prost(bytes = "vec", tag = "4")]
     pub sig: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for AuxSignerData {
+    const NAME: &'static str = "AuxSignerData";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.AuxSignerData".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.AuxSignerData".into()
+    }
 }
 /// GetTxsEventRequest is the request type for the Service.TxsByEvents
 /// RPC method.
@@ -300,6 +430,16 @@ pub struct GetTxsEventRequest {
     #[prost(string, tag = "6")]
     pub query: ::prost::alloc::string::String,
 }
+impl ::prost::Name for GetTxsEventRequest {
+    const NAME: &'static str = "GetTxsEventRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetTxsEventRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetTxsEventRequest".into()
+    }
+}
 /// GetTxsEventResponse is the response type for the Service.TxsByEvents
 /// RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -323,6 +463,16 @@ pub struct GetTxsEventResponse {
     #[prost(uint64, tag = "4")]
     pub total: u64,
 }
+impl ::prost::Name for GetTxsEventResponse {
+    const NAME: &'static str = "GetTxsEventResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetTxsEventResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetTxsEventResponse".into()
+    }
+}
 /// BroadcastTxRequest is the request type for the Service.BroadcastTxRequest
 /// RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -333,6 +483,16 @@ pub struct BroadcastTxRequest {
     #[prost(enumeration = "BroadcastMode", tag = "2")]
     pub mode: i32,
 }
+impl ::prost::Name for BroadcastTxRequest {
+    const NAME: &'static str = "BroadcastTxRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.BroadcastTxRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.BroadcastTxRequest".into()
+    }
+}
 /// BroadcastTxResponse is the response type for the
 /// Service.BroadcastTx method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -342,6 +502,16 @@ pub struct BroadcastTxResponse {
     pub tx_response: ::core::option::Option<
         super::super::base::abci::v1beta1::TxResponse,
     >,
+}
+impl ::prost::Name for BroadcastTxResponse {
+    const NAME: &'static str = "BroadcastTxResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.BroadcastTxResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.BroadcastTxResponse".into()
+    }
 }
 /// SimulateRequest is the request type for the Service.Simulate
 /// RPC method.
@@ -358,6 +528,16 @@ pub struct SimulateRequest {
     #[prost(bytes = "vec", tag = "2")]
     pub tx_bytes: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for SimulateRequest {
+    const NAME: &'static str = "SimulateRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.SimulateRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.SimulateRequest".into()
+    }
+}
 /// SimulateResponse is the response type for the
 /// Service.SimulateRPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -369,6 +549,16 @@ pub struct SimulateResponse {
     #[prost(message, optional, tag = "2")]
     pub result: ::core::option::Option<super::super::base::abci::v1beta1::Result>,
 }
+impl ::prost::Name for SimulateResponse {
+    const NAME: &'static str = "SimulateResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.SimulateResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.SimulateResponse".into()
+    }
+}
 /// GetTxRequest is the request type for the Service.GetTx
 /// RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -376,6 +566,16 @@ pub struct GetTxRequest {
     /// hash is the tx hash to query, encoded as a hex string.
     #[prost(string, tag = "1")]
     pub hash: ::prost::alloc::string::String,
+}
+impl ::prost::Name for GetTxRequest {
+    const NAME: &'static str = "GetTxRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetTxRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetTxRequest".into()
+    }
 }
 /// GetTxResponse is the response type for the Service.GetTx method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -388,6 +588,16 @@ pub struct GetTxResponse {
     pub tx_response: ::core::option::Option<
         super::super::base::abci::v1beta1::TxResponse,
     >,
+}
+impl ::prost::Name for GetTxResponse {
+    const NAME: &'static str = "GetTxResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetTxResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetTxResponse".into()
+    }
 }
 /// GetBlockWithTxsRequest is the request type for the Service.GetBlockWithTxs
 /// RPC method.
@@ -403,6 +613,16 @@ pub struct GetBlockWithTxsRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for GetBlockWithTxsRequest {
+    const NAME: &'static str = "GetBlockWithTxsRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetBlockWithTxsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetBlockWithTxsRequest".into()
+    }
 }
 /// GetBlockWithTxsResponse is the response type for the Service.GetBlockWithTxs
 /// method.
@@ -425,6 +645,16 @@ pub struct GetBlockWithTxsResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for GetBlockWithTxsResponse {
+    const NAME: &'static str = "GetBlockWithTxsResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.GetBlockWithTxsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.GetBlockWithTxsResponse".into()
+    }
+}
 /// TxDecodeRequest is the request type for the Service.TxDecode
 /// RPC method.
 ///
@@ -434,6 +664,16 @@ pub struct TxDecodeRequest {
     /// tx_bytes is the raw transaction.
     #[prost(bytes = "vec", tag = "1")]
     pub tx_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for TxDecodeRequest {
+    const NAME: &'static str = "TxDecodeRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxDecodeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxDecodeRequest".into()
+    }
 }
 /// TxDecodeResponse is the response type for the
 /// Service.TxDecode method.
@@ -445,6 +685,16 @@ pub struct TxDecodeResponse {
     #[prost(message, optional, tag = "1")]
     pub tx: ::core::option::Option<Tx>,
 }
+impl ::prost::Name for TxDecodeResponse {
+    const NAME: &'static str = "TxDecodeResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxDecodeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxDecodeResponse".into()
+    }
+}
 /// TxEncodeRequest is the request type for the Service.TxEncode
 /// RPC method.
 ///
@@ -454,6 +704,16 @@ pub struct TxEncodeRequest {
     /// tx is the transaction to encode.
     #[prost(message, optional, tag = "1")]
     pub tx: ::core::option::Option<Tx>,
+}
+impl ::prost::Name for TxEncodeRequest {
+    const NAME: &'static str = "TxEncodeRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxEncodeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxEncodeRequest".into()
+    }
 }
 /// TxEncodeResponse is the response type for the
 /// Service.TxEncode method.
@@ -465,6 +725,16 @@ pub struct TxEncodeResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub tx_bytes: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for TxEncodeResponse {
+    const NAME: &'static str = "TxEncodeResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxEncodeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxEncodeResponse".into()
+    }
+}
 /// TxEncodeAminoRequest is the request type for the Service.TxEncodeAmino
 /// RPC method.
 ///
@@ -473,6 +743,16 @@ pub struct TxEncodeResponse {
 pub struct TxEncodeAminoRequest {
     #[prost(string, tag = "1")]
     pub amino_json: ::prost::alloc::string::String,
+}
+impl ::prost::Name for TxEncodeAminoRequest {
+    const NAME: &'static str = "TxEncodeAminoRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxEncodeAminoRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxEncodeAminoRequest".into()
+    }
 }
 /// TxEncodeAminoResponse is the response type for the Service.TxEncodeAmino
 /// RPC method.
@@ -483,6 +763,16 @@ pub struct TxEncodeAminoResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub amino_binary: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for TxEncodeAminoResponse {
+    const NAME: &'static str = "TxEncodeAminoResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxEncodeAminoResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxEncodeAminoResponse".into()
+    }
+}
 /// TxDecodeAminoRequest is the request type for the Service.TxDecodeAmino
 /// RPC method.
 ///
@@ -492,6 +782,16 @@ pub struct TxDecodeAminoRequest {
     #[prost(bytes = "vec", tag = "1")]
     pub amino_binary: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for TxDecodeAminoRequest {
+    const NAME: &'static str = "TxDecodeAminoRequest";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxDecodeAminoRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxDecodeAminoRequest".into()
+    }
+}
 /// TxDecodeAminoResponse is the response type for the Service.TxDecodeAmino
 /// RPC method.
 ///
@@ -500,6 +800,16 @@ pub struct TxDecodeAminoRequest {
 pub struct TxDecodeAminoResponse {
     #[prost(string, tag = "1")]
     pub amino_json: ::prost::alloc::string::String,
+}
+impl ::prost::Name for TxDecodeAminoResponse {
+    const NAME: &'static str = "TxDecodeAminoResponse";
+    const PACKAGE: &'static str = "cosmos.tx.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.tx.v1beta1.TxDecodeAminoResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.tx.v1beta1.TxDecodeAminoResponse".into()
+    }
 }
 /// OrderBy defines the sorting order
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -576,3 +886,4 @@ impl BroadcastMode {
         }
     }
 }
+include!("cosmos.tx.v1beta1.serde.rs");

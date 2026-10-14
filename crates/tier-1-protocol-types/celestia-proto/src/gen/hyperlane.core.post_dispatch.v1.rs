@@ -11,6 +11,16 @@ pub struct EventCreateMerkleTreeHook {
     #[prost(string, tag = "3")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateMerkleTreeHook {
+    const NAME: &'static str = "EventCreateMerkleTreeHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventCreateMerkleTreeHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventCreateMerkleTreeHook".into()
+    }
+}
 /// EventInsertedIntoTree ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventInsertedIntoTree {
@@ -23,6 +33,16 @@ pub struct EventInsertedIntoTree {
     /// merkle_tree_hook_id ...
     #[prost(string, tag = "3")]
     pub merkle_tree_hook_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventInsertedIntoTree {
+    const NAME: &'static str = "EventInsertedIntoTree";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventInsertedIntoTree".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventInsertedIntoTree".into()
+    }
 }
 /// EventGasPayment ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -43,6 +63,16 @@ pub struct EventGasPayment {
     #[prost(string, tag = "5")]
     pub igp_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventGasPayment {
+    const NAME: &'static str = "EventGasPayment";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventGasPayment".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventGasPayment".into()
+    }
+}
 /// EventCreateNoopHook ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventCreateNoopHook {
@@ -53,6 +83,16 @@ pub struct EventCreateNoopHook {
     #[prost(string, tag = "2")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateNoopHook {
+    const NAME: &'static str = "EventCreateNoopHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventCreateNoopHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventCreateNoopHook".into()
+    }
+}
 /// EventCreateIgp ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventCreateIgp {
@@ -62,6 +102,16 @@ pub struct EventCreateIgp {
     pub owner: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub denom: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventCreateIgp {
+    const NAME: &'static str = "EventCreateIgp";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventCreateIgp".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventCreateIgp".into()
+    }
 }
 /// EventSetIgp ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -74,6 +124,16 @@ pub struct EventSetIgp {
     pub new_owner: ::prost::alloc::string::String,
     #[prost(bool, tag = "4")]
     pub renounce_ownership: bool,
+}
+impl ::prost::Name for EventSetIgp {
+    const NAME: &'static str = "EventSetIgp";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventSetIgp".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventSetIgp".into()
+    }
 }
 /// EventSetDestinationGasConfig ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -91,6 +151,16 @@ pub struct EventSetDestinationGasConfig {
     #[prost(string, tag = "7")]
     pub token_exchange_rate: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventSetDestinationGasConfig {
+    const NAME: &'static str = "EventSetDestinationGasConfig";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventSetDestinationGasConfig".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventSetDestinationGasConfig".into()
+    }
+}
 /// EventClaimIgp ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventClaimIgp {
@@ -100,6 +170,16 @@ pub struct EventClaimIgp {
     pub owner: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub amount: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventClaimIgp {
+    const NAME: &'static str = "EventClaimIgp";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.EventClaimIgp".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.EventClaimIgp".into()
+    }
 }
 /// InterchainGasPaymaster ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -119,6 +199,16 @@ pub struct InterchainGasPaymaster {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for InterchainGasPaymaster {
+    const NAME: &'static str = "InterchainGasPaymaster";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.InterchainGasPaymaster".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.InterchainGasPaymaster".into()
+    }
+}
 /// DestinationGasConfig ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DestinationGasConfig {
@@ -132,6 +222,16 @@ pub struct DestinationGasConfig {
     #[prost(string, tag = "3")]
     pub gas_overhead: ::prost::alloc::string::String,
 }
+impl ::prost::Name for DestinationGasConfig {
+    const NAME: &'static str = "DestinationGasConfig";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.DestinationGasConfig".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.DestinationGasConfig".into()
+    }
+}
 /// GasOracle ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GasOracle {
@@ -141,6 +241,16 @@ pub struct GasOracle {
     /// gas_price ...
     #[prost(string, tag = "2")]
     pub gas_price: ::prost::alloc::string::String,
+}
+impl ::prost::Name for GasOracle {
+    const NAME: &'static str = "GasOracle";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.GasOracle".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.GasOracle".into()
+    }
 }
 /// MerkleTreeHook ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -156,6 +266,16 @@ pub struct MerkleTreeHook {
     #[prost(message, optional, tag = "4")]
     pub tree: ::core::option::Option<Tree>,
 }
+impl ::prost::Name for MerkleTreeHook {
+    const NAME: &'static str = "MerkleTreeHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MerkleTreeHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MerkleTreeHook".into()
+    }
+}
 /// Tree represents an incremental merkle tree.
 /// Contains current branch and the number of inserted leaves in the tree.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -167,6 +287,16 @@ pub struct Tree {
     #[prost(uint32, tag = "2")]
     pub count: u32,
 }
+impl ::prost::Name for Tree {
+    const NAME: &'static str = "Tree";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.Tree".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.Tree".into()
+    }
+}
 /// NoopHook ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NoopHook {
@@ -176,6 +306,16 @@ pub struct NoopHook {
     /// owner ...
     #[prost(string, tag = "2")]
     pub owner: ::prost::alloc::string::String,
+}
+impl ::prost::Name for NoopHook {
+    const NAME: &'static str = "NoopHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.NoopHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.NoopHook".into()
+    }
 }
 /// GenesisState defines the post dispatch submodule's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -188,6 +328,16 @@ pub struct GenesisState {
     pub merkle_tree_hooks: ::prost::alloc::vec::Vec<MerkleTreeHook>,
     #[prost(message, repeated, tag = "4")]
     pub noop_hooks: ::prost::alloc::vec::Vec<NoopHook>,
+}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.GenesisState".into()
+    }
 }
 /// GenesisDestinationGasConfigWrapper ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -205,6 +355,16 @@ pub struct GenesisDestinationGasConfigWrapper {
     #[prost(uint64, tag = "4")]
     pub igp_id: u64,
 }
+impl ::prost::Name for GenesisDestinationGasConfigWrapper {
+    const NAME: &'static str = "GenesisDestinationGasConfigWrapper";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.GenesisDestinationGasConfigWrapper".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.GenesisDestinationGasConfigWrapper".into()
+    }
+}
 /// QueryIgpsRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIgpsRequest {
@@ -213,6 +373,16 @@ pub struct QueryIgpsRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryIgpsRequest {
+    const NAME: &'static str = "QueryIgpsRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryIgpsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryIgpsRequest".into()
+    }
 }
 /// QueryIgpsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -225,17 +395,47 @@ pub struct QueryIgpsResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryIgpsResponse {
+    const NAME: &'static str = "QueryIgpsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryIgpsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryIgpsResponse".into()
+    }
+}
 /// QueryIgpRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIgpRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryIgpRequest {
+    const NAME: &'static str = "QueryIgpRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryIgpRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryIgpRequest".into()
+    }
+}
 /// QueryIgpResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIgpResponse {
     #[prost(message, optional, tag = "1")]
     pub igp: ::core::option::Option<InterchainGasPaymaster>,
+}
+impl ::prost::Name for QueryIgpResponse {
+    const NAME: &'static str = "QueryIgpResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryIgpResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryIgpResponse".into()
+    }
 }
 /// QueryDestinationGasConfigsRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -248,6 +448,16 @@ pub struct QueryDestinationGasConfigsRequest {
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryDestinationGasConfigsRequest {
+    const NAME: &'static str = "QueryDestinationGasConfigsRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryDestinationGasConfigsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryDestinationGasConfigsRequest".into()
+    }
+}
 /// QueryDestinationGasConfigsResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryDestinationGasConfigsResponse {
@@ -259,6 +469,16 @@ pub struct QueryDestinationGasConfigsResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryDestinationGasConfigsResponse {
+    const NAME: &'static str = "QueryDestinationGasConfigsResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryDestinationGasConfigsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryDestinationGasConfigsResponse".into()
+    }
+}
 /// QueryQuoteGasPaymentRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryQuoteGasPaymentRequest {
@@ -269,6 +489,16 @@ pub struct QueryQuoteGasPaymentRequest {
     #[prost(string, tag = "3")]
     pub gas_limit: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryQuoteGasPaymentRequest {
+    const NAME: &'static str = "QueryQuoteGasPaymentRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryQuoteGasPaymentRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryQuoteGasPaymentRequest".into()
+    }
+}
 /// QueryQuoteGasPaymentResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryQuoteGasPaymentResponse {
@@ -277,6 +507,16 @@ pub struct QueryQuoteGasPaymentResponse {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for QueryQuoteGasPaymentResponse {
+    const NAME: &'static str = "QueryQuoteGasPaymentResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryQuoteGasPaymentResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryQuoteGasPaymentResponse".into()
+    }
+}
 /// QueryMerkleTreeHooksRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMerkleTreeHooksRequest {
@@ -284,6 +524,16 @@ pub struct QueryMerkleTreeHooksRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryMerkleTreeHooksRequest {
+    const NAME: &'static str = "QueryMerkleTreeHooksRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryMerkleTreeHooksRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryMerkleTreeHooksRequest".into()
+    }
 }
 /// QueryMerkleTreeHooksResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -295,17 +545,47 @@ pub struct QueryMerkleTreeHooksResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryMerkleTreeHooksResponse {
+    const NAME: &'static str = "QueryMerkleTreeHooksResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryMerkleTreeHooksResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryMerkleTreeHooksResponse".into()
+    }
+}
 /// QueryMerkleTreeHookRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMerkleTreeHookRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryMerkleTreeHookRequest {
+    const NAME: &'static str = "QueryMerkleTreeHookRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryMerkleTreeHookRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryMerkleTreeHookRequest".into()
+    }
+}
 /// QueryMerkleTreeHookResponse
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMerkleTreeHookResponse {
     #[prost(message, optional, tag = "1")]
     pub merkle_tree_hook: ::core::option::Option<WrappedMerkleTreeHookResponse>,
+}
+impl ::prost::Name for QueryMerkleTreeHookResponse {
+    const NAME: &'static str = "QueryMerkleTreeHookResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryMerkleTreeHookResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryMerkleTreeHookResponse".into()
+    }
 }
 /// WrappedMerkleTreeHookResponse
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -318,6 +598,16 @@ pub struct WrappedMerkleTreeHookResponse {
     pub mailbox_id: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "4")]
     pub merkle_tree: ::core::option::Option<TreeResponse>,
+}
+impl ::prost::Name for WrappedMerkleTreeHookResponse {
+    const NAME: &'static str = "WrappedMerkleTreeHookResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.WrappedMerkleTreeHookResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.WrappedMerkleTreeHookResponse".into()
+    }
 }
 /// TreeResponse
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -332,17 +622,47 @@ pub struct TreeResponse {
     #[prost(bytes = "vec", tag = "3")]
     pub root: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for TreeResponse {
+    const NAME: &'static str = "TreeResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.TreeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.TreeResponse".into()
+    }
+}
 /// QueryNoopHookRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryNoopHookRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryNoopHookRequest {
+    const NAME: &'static str = "QueryNoopHookRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryNoopHookRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryNoopHookRequest".into()
+    }
+}
 /// QueryNoopHookResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryNoopHookResponse {
     #[prost(message, optional, tag = "1")]
     pub noop_hook: ::core::option::Option<NoopHook>,
+}
+impl ::prost::Name for QueryNoopHookResponse {
+    const NAME: &'static str = "QueryNoopHookResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryNoopHookResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryNoopHookResponse".into()
+    }
 }
 /// QueryNoopHooksRequest ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -351,6 +671,16 @@ pub struct QueryNoopHooksRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryNoopHooksRequest {
+    const NAME: &'static str = "QueryNoopHooksRequest";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryNoopHooksRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryNoopHooksRequest".into()
+    }
 }
 /// QueryNoopHooksResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -362,6 +692,16 @@ pub struct QueryNoopHooksResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryNoopHooksResponse {
+    const NAME: &'static str = "QueryNoopHooksResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.QueryNoopHooksResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.QueryNoopHooksResponse".into()
+    }
+}
 /// MsgCreateIgp ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateIgp {
@@ -372,11 +712,31 @@ pub struct MsgCreateIgp {
     #[prost(string, tag = "2")]
     pub denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateIgp {
+    const NAME: &'static str = "MsgCreateIgp";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateIgp".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateIgp".into()
+    }
+}
 /// MsgCreateIgpResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateIgpResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateIgpResponse {
+    const NAME: &'static str = "MsgCreateIgpResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateIgpResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateIgpResponse".into()
+    }
 }
 /// MsgSetIgpOwner ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -394,9 +754,29 @@ pub struct MsgSetIgpOwner {
     #[prost(bool, tag = "4")]
     pub renounce_ownership: bool,
 }
+impl ::prost::Name for MsgSetIgpOwner {
+    const NAME: &'static str = "MsgSetIgpOwner";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgSetIgpOwner".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgSetIgpOwner".into()
+    }
+}
 /// MsgSetIgpOwnerResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetIgpOwnerResponse {}
+impl ::prost::Name for MsgSetIgpOwnerResponse {
+    const NAME: &'static str = "MsgSetIgpOwnerResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgSetIgpOwnerResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgSetIgpOwnerResponse".into()
+    }
+}
 /// MsgSetDestinationGasConfig ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgSetDestinationGasConfig {
@@ -410,9 +790,29 @@ pub struct MsgSetDestinationGasConfig {
     #[prost(message, optional, tag = "3")]
     pub destination_gas_config: ::core::option::Option<DestinationGasConfig>,
 }
+impl ::prost::Name for MsgSetDestinationGasConfig {
+    const NAME: &'static str = "MsgSetDestinationGasConfig";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig".into()
+    }
+}
 /// MsgSetDestinationGasConfigResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetDestinationGasConfigResponse {}
+impl ::prost::Name for MsgSetDestinationGasConfigResponse {
+    const NAME: &'static str = "MsgSetDestinationGasConfigResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfigResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfigResponse".into()
+    }
+}
 /// MsgPayForGas ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgPayForGas {
@@ -437,9 +837,29 @@ pub struct MsgPayForGas {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for MsgPayForGas {
+    const NAME: &'static str = "MsgPayForGas";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgPayForGas".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgPayForGas".into()
+    }
+}
 /// MsgPayForGasResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPayForGasResponse {}
+impl ::prost::Name for MsgPayForGasResponse {
+    const NAME: &'static str = "MsgPayForGasResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgPayForGasResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgPayForGasResponse".into()
+    }
+}
 /// MsgClaim ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgClaim {
@@ -450,9 +870,29 @@ pub struct MsgClaim {
     #[prost(string, tag = "2")]
     pub igp_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgClaim {
+    const NAME: &'static str = "MsgClaim";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgClaim".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgClaim".into()
+    }
+}
 /// MsgClaimResponse ...
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgClaimResponse {}
+impl ::prost::Name for MsgClaimResponse {
+    const NAME: &'static str = "MsgClaimResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgClaimResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgClaimResponse".into()
+    }
+}
 /// MsgCreateMerkleTreeHook ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateMerkleTreeHook {
@@ -462,11 +902,31 @@ pub struct MsgCreateMerkleTreeHook {
     #[prost(string, tag = "2")]
     pub mailbox_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateMerkleTreeHook {
+    const NAME: &'static str = "MsgCreateMerkleTreeHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHook".into()
+    }
+}
 /// MsgCreateMerkleTreeHookResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateMerkleTreeHookResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateMerkleTreeHookResponse {
+    const NAME: &'static str = "MsgCreateMerkleTreeHookResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHookResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHookResponse".into()
+    }
 }
 /// MsgCreateNoopHook ...
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -475,9 +935,30 @@ pub struct MsgCreateNoopHook {
     #[prost(string, tag = "1")]
     pub owner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateNoopHook {
+    const NAME: &'static str = "MsgCreateNoopHook";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateNoopHook".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateNoopHook".into()
+    }
+}
 /// MsgCreateNoopHookResponse ...
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateNoopHookResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgCreateNoopHookResponse {
+    const NAME: &'static str = "MsgCreateNoopHookResponse";
+    const PACKAGE: &'static str = "hyperlane.core.post_dispatch.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "hyperlane.core.post_dispatch.v1.MsgCreateNoopHookResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/hyperlane.core.post_dispatch.v1.MsgCreateNoopHookResponse".into()
+    }
+}
+include!("hyperlane.core.post_dispatch.v1.serde.rs");

@@ -10,7 +10,17 @@ pub struct BasicAllowance {
     pub spend_limit: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
     /// expiration specifies an optional time when this allowance expires
     #[prost(message, optional, tag = "2")]
-    pub expiration: ::core::option::Option<::prost_types::Timestamp>,
+    pub expiration: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for BasicAllowance {
+    const NAME: &'static str = "BasicAllowance";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.BasicAllowance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.BasicAllowance".into()
+    }
 }
 /// PeriodicAllowance extends Allowance to allow for both a maximum cap,
 /// as well as a limit per time period.
@@ -22,7 +32,7 @@ pub struct PeriodicAllowance {
     /// period specifies the time duration in which period_spend_limit coins can
     /// be spent before that allowance is reset
     #[prost(message, optional, tag = "2")]
-    pub period: ::core::option::Option<::prost_types::Duration>,
+    pub period: ::core::option::Option<::pbjson_types::Duration>,
     /// period_spend_limit specifies the maximum number of coins that can be spent
     /// in the period
     #[prost(message, repeated, tag = "3")]
@@ -34,17 +44,37 @@ pub struct PeriodicAllowance {
     /// it is calculated from the start time of the first transaction after the
     /// last period ended
     #[prost(message, optional, tag = "5")]
-    pub period_reset: ::core::option::Option<::prost_types::Timestamp>,
+    pub period_reset: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for PeriodicAllowance {
+    const NAME: &'static str = "PeriodicAllowance";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.PeriodicAllowance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.PeriodicAllowance".into()
+    }
 }
 /// AllowedMsgAllowance creates allowance only for specified message types.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AllowedMsgAllowance {
     /// allowance can be any of basic and periodic fee allowance.
     #[prost(message, optional, tag = "1")]
-    pub allowance: ::core::option::Option<::prost_types::Any>,
+    pub allowance: ::core::option::Option<crate::any::Any>,
     /// allowed_messages are the messages for which the grantee has the access.
     #[prost(string, repeated, tag = "2")]
     pub allowed_messages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for AllowedMsgAllowance {
+    const NAME: &'static str = "AllowedMsgAllowance";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.AllowedMsgAllowance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.AllowedMsgAllowance".into()
+    }
 }
 /// Grant is stored in the KVStore to record a grant with full context
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -57,13 +87,33 @@ pub struct Grant {
     pub grantee: ::prost::alloc::string::String,
     /// allowance can be any of basic, periodic, allowed fee allowance.
     #[prost(message, optional, tag = "3")]
-    pub allowance: ::core::option::Option<::prost_types::Any>,
+    pub allowance: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for Grant {
+    const NAME: &'static str = "Grant";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.Grant".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.Grant".into()
+    }
 }
 /// GenesisState contains a set of fee allowances, persisted from the store
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
     #[prost(message, repeated, tag = "1")]
     pub allowances: ::prost::alloc::vec::Vec<Grant>,
+}
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.GenesisState".into()
+    }
 }
 /// QueryAllowanceRequest is the request type for the Query/Allowance RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -75,12 +125,32 @@ pub struct QueryAllowanceRequest {
     #[prost(string, tag = "2")]
     pub grantee: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryAllowanceRequest {
+    const NAME: &'static str = "QueryAllowanceRequest";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowanceRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowanceRequest".into()
+    }
+}
 /// QueryAllowanceResponse is the response type for the Query/Allowance RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryAllowanceResponse {
     /// allowance is a allowance granted for grantee by granter.
     #[prost(message, optional, tag = "1")]
     pub allowance: ::core::option::Option<Grant>,
+}
+impl ::prost::Name for QueryAllowanceResponse {
+    const NAME: &'static str = "QueryAllowanceResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowanceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowanceResponse".into()
+    }
 }
 /// QueryAllowancesRequest is the request type for the Query/Allowances RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -92,6 +162,16 @@ pub struct QueryAllowancesRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryAllowancesRequest {
+    const NAME: &'static str = "QueryAllowancesRequest";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowancesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowancesRequest".into()
+    }
 }
 /// QueryAllowancesResponse is the response type for the Query/Allowances RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -105,6 +185,16 @@ pub struct QueryAllowancesResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryAllowancesResponse {
+    const NAME: &'static str = "QueryAllowancesResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowancesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowancesResponse".into()
+    }
+}
 /// QueryAllowancesByGranterRequest is the request type for the Query/AllowancesByGranter RPC method.
 ///
 /// Since: cosmos-sdk 0.46
@@ -117,6 +207,16 @@ pub struct QueryAllowancesByGranterRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryAllowancesByGranterRequest {
+    const NAME: &'static str = "QueryAllowancesByGranterRequest";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowancesByGranterRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowancesByGranterRequest".into()
+    }
 }
 /// QueryAllowancesByGranterResponse is the response type for the Query/AllowancesByGranter RPC method.
 ///
@@ -132,6 +232,16 @@ pub struct QueryAllowancesByGranterResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryAllowancesByGranterResponse {
+    const NAME: &'static str = "QueryAllowancesByGranterResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.QueryAllowancesByGranterResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.QueryAllowancesByGranterResponse".into()
+    }
+}
 /// MsgGrantAllowance adds permission for Grantee to spend up to Allowance
 /// of fees from the account of Granter.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -144,11 +254,31 @@ pub struct MsgGrantAllowance {
     pub grantee: ::prost::alloc::string::String,
     /// allowance can be any of basic, periodic, allowed fee allowance.
     #[prost(message, optional, tag = "3")]
-    pub allowance: ::core::option::Option<::prost_types::Any>,
+    pub allowance: ::core::option::Option<crate::any::Any>,
+}
+impl ::prost::Name for MsgGrantAllowance {
+    const NAME: &'static str = "MsgGrantAllowance";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgGrantAllowance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgGrantAllowance".into()
+    }
 }
 /// MsgGrantAllowanceResponse defines the Msg/GrantAllowanceResponse response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgGrantAllowanceResponse {}
+impl ::prost::Name for MsgGrantAllowanceResponse {
+    const NAME: &'static str = "MsgGrantAllowanceResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgGrantAllowanceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgGrantAllowanceResponse".into()
+    }
+}
 /// MsgRevokeAllowance removes any existing Allowance from Granter to Grantee.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRevokeAllowance {
@@ -159,9 +289,29 @@ pub struct MsgRevokeAllowance {
     #[prost(string, tag = "2")]
     pub grantee: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRevokeAllowance {
+    const NAME: &'static str = "MsgRevokeAllowance";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgRevokeAllowance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgRevokeAllowance".into()
+    }
+}
 /// MsgRevokeAllowanceResponse defines the Msg/RevokeAllowanceResponse response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRevokeAllowanceResponse {}
+impl ::prost::Name for MsgRevokeAllowanceResponse {
+    const NAME: &'static str = "MsgRevokeAllowanceResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgRevokeAllowanceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgRevokeAllowanceResponse".into()
+    }
+}
 /// MsgPruneAllowances prunes expired fee allowances.
 ///
 /// Since cosmos-sdk 0.50
@@ -171,8 +321,29 @@ pub struct MsgPruneAllowances {
     #[prost(string, tag = "1")]
     pub pruner: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgPruneAllowances {
+    const NAME: &'static str = "MsgPruneAllowances";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgPruneAllowances".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgPruneAllowances".into()
+    }
+}
 /// MsgPruneAllowancesResponse defines the Msg/PruneAllowancesResponse response type.
 ///
 /// Since cosmos-sdk 0.50
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPruneAllowancesResponse {}
+impl ::prost::Name for MsgPruneAllowancesResponse {
+    const NAME: &'static str = "MsgPruneAllowancesResponse";
+    const PACKAGE: &'static str = "cosmos.feegrant.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.feegrant.v1beta1.MsgPruneAllowancesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.feegrant.v1beta1.MsgPruneAllowancesResponse".into()
+    }
+}
+include!("cosmos.feegrant.v1beta1.serde.rs");

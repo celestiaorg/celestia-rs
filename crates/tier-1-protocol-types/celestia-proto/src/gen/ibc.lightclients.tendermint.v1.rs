@@ -10,13 +10,13 @@ pub struct ClientState {
     /// duration of the period since the LastestTimestamp during which the
     /// submitted headers are valid for upgrade
     #[prost(message, optional, tag = "3")]
-    pub trusting_period: ::core::option::Option<::prost_types::Duration>,
+    pub trusting_period: ::core::option::Option<::pbjson_types::Duration>,
     /// duration of the staking unbonding period
     #[prost(message, optional, tag = "4")]
-    pub unbonding_period: ::core::option::Option<::prost_types::Duration>,
+    pub unbonding_period: ::core::option::Option<::pbjson_types::Duration>,
     /// defines how much new (untrusted) header's Time can drift into the future.
     #[prost(message, optional, tag = "5")]
-    pub max_clock_drift: ::core::option::Option<::prost_types::Duration>,
+    pub max_clock_drift: ::core::option::Option<::pbjson_types::Duration>,
     /// Block height when the client was frozen due to a misbehaviour
     #[prost(message, optional, tag = "6")]
     pub frozen_height: ::core::option::Option<
@@ -48,13 +48,23 @@ pub struct ClientState {
     #[prost(bool, tag = "11")]
     pub allow_update_after_misbehaviour: bool,
 }
+impl ::prost::Name for ClientState {
+    const NAME: &'static str = "ClientState";
+    const PACKAGE: &'static str = "ibc.lightclients.tendermint.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.tendermint.v1.ClientState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.tendermint.v1.ClientState".into()
+    }
+}
 /// ConsensusState defines the consensus state from Tendermint.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConsensusState {
     /// timestamp that corresponds to the block height in which the ConsensusState
     /// was stored.
     #[prost(message, optional, tag = "1")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     /// commitment root (i.e app hash)
     #[prost(message, optional, tag = "2")]
     pub root: ::core::option::Option<
@@ -62,6 +72,16 @@ pub struct ConsensusState {
     >,
     #[prost(bytes = "vec", tag = "3")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for ConsensusState {
+    const NAME: &'static str = "ConsensusState";
+    const PACKAGE: &'static str = "ibc.lightclients.tendermint.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.tendermint.v1.ConsensusState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.tendermint.v1.ConsensusState".into()
+    }
 }
 /// Misbehaviour is a wrapper over two conflicting Headers
 /// that implements Misbehaviour interface expected by ICS-02
@@ -75,6 +95,16 @@ pub struct Misbehaviour {
     pub header_1: ::core::option::Option<Header>,
     #[prost(message, optional, tag = "3")]
     pub header_2: ::core::option::Option<Header>,
+}
+impl ::prost::Name for Misbehaviour {
+    const NAME: &'static str = "Misbehaviour";
+    const PACKAGE: &'static str = "ibc.lightclients.tendermint.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.tendermint.v1.Misbehaviour".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.tendermint.v1.Misbehaviour".into()
+    }
 }
 /// Header defines the Tendermint client consensus Header.
 /// It encapsulates all the information necessary to update from a trusted
@@ -107,6 +137,16 @@ pub struct Header {
         ::celestia_core_proto::tendermint::types::ValidatorSet,
     >,
 }
+impl ::prost::Name for Header {
+    const NAME: &'static str = "Header";
+    const PACKAGE: &'static str = "ibc.lightclients.tendermint.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.tendermint.v1.Header".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.tendermint.v1.Header".into()
+    }
+}
 /// Fraction defines the protobuf message type for tmmath.Fraction that only
 /// supports positive values.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -116,3 +156,14 @@ pub struct Fraction {
     #[prost(uint64, tag = "2")]
     pub denominator: u64,
 }
+impl ::prost::Name for Fraction {
+    const NAME: &'static str = "Fraction";
+    const PACKAGE: &'static str = "ibc.lightclients.tendermint.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.tendermint.v1.Fraction".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.tendermint.v1.Fraction".into()
+    }
+}
+include!("ibc.lightclients.tendermint.v1.serde.rs");

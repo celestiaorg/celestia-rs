@@ -12,6 +12,16 @@ pub struct IncentivizedAcknowledgement {
     #[prost(bool, tag = "3")]
     pub underlying_app_success: bool,
 }
+impl ::prost::Name for IncentivizedAcknowledgement {
+    const NAME: &'static str = "IncentivizedAcknowledgement";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.IncentivizedAcknowledgement".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.IncentivizedAcknowledgement".into()
+    }
+}
 /// Fee defines the ICS29 receive, acknowledgement and timeout fees
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Fee {
@@ -31,6 +41,16 @@ pub struct Fee {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for Fee {
+    const NAME: &'static str = "Fee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.Fee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.Fee".into()
+    }
+}
 /// PacketFee contains ICS29 relayer fees, refund address and optional list of permitted relayers
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PacketFee {
@@ -44,12 +64,32 @@ pub struct PacketFee {
     #[prost(string, repeated, tag = "3")]
     pub relayers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for PacketFee {
+    const NAME: &'static str = "PacketFee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.PacketFee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.PacketFee".into()
+    }
+}
 /// PacketFees contains a list of type PacketFee
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PacketFees {
     /// list of packet fees
     #[prost(message, repeated, tag = "1")]
     pub packet_fees: ::prost::alloc::vec::Vec<PacketFee>,
+}
+impl ::prost::Name for PacketFees {
+    const NAME: &'static str = "PacketFees";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.PacketFees".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.PacketFees".into()
+    }
 }
 /// IdentifiedPacketFees contains a list of type PacketFee and associated PacketId
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -62,6 +102,16 @@ pub struct IdentifiedPacketFees {
     /// list of packet fees
     #[prost(message, repeated, tag = "2")]
     pub packet_fees: ::prost::alloc::vec::Vec<PacketFee>,
+}
+impl ::prost::Name for IdentifiedPacketFees {
+    const NAME: &'static str = "IdentifiedPacketFees";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.IdentifiedPacketFees".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.IdentifiedPacketFees".into()
+    }
 }
 /// GenesisState defines the ICS29 fee middleware genesis state
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -84,6 +134,16 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "5")]
     pub forward_relayers: ::prost::alloc::vec::Vec<ForwardRelayerAddress>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.GenesisState".into()
+    }
+}
 /// FeeEnabledChannel contains the PortID & ChannelID for a fee enabled channel
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FeeEnabledChannel {
@@ -93,6 +153,16 @@ pub struct FeeEnabledChannel {
     /// unique channel identifier
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for FeeEnabledChannel {
+    const NAME: &'static str = "FeeEnabledChannel";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.FeeEnabledChannel".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.FeeEnabledChannel".into()
+    }
 }
 /// RegisteredPayee contains the relayer address and payee address for a specific channel
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -106,6 +176,16 @@ pub struct RegisteredPayee {
     /// the payee address
     #[prost(string, tag = "3")]
     pub payee: ::prost::alloc::string::String,
+}
+impl ::prost::Name for RegisteredPayee {
+    const NAME: &'static str = "RegisteredPayee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.RegisteredPayee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.RegisteredPayee".into()
+    }
 }
 /// RegisteredCounterpartyPayee contains the relayer address and counterparty payee address for a specific channel (used
 /// for recv fee distribution)
@@ -121,6 +201,16 @@ pub struct RegisteredCounterpartyPayee {
     #[prost(string, tag = "3")]
     pub counterparty_payee: ::prost::alloc::string::String,
 }
+impl ::prost::Name for RegisteredCounterpartyPayee {
+    const NAME: &'static str = "RegisteredCounterpartyPayee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.RegisteredCounterpartyPayee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.RegisteredCounterpartyPayee".into()
+    }
+}
 /// ForwardRelayerAddress contains the forward relayer address and PacketId used for async acknowledgements
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForwardRelayerAddress {
@@ -133,6 +223,16 @@ pub struct ForwardRelayerAddress {
         super::super::super::core::channel::v1::PacketId,
     >,
 }
+impl ::prost::Name for ForwardRelayerAddress {
+    const NAME: &'static str = "ForwardRelayerAddress";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.ForwardRelayerAddress".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.ForwardRelayerAddress".into()
+    }
+}
 /// Metadata defines the ICS29 channel specific metadata encoded into the channel version bytestring
 /// See ICS004: <https://github.com/cosmos/ibc/tree/master/spec/core/ics-004-channel-and-packet-semantics#Versioning>
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -143,6 +243,16 @@ pub struct Metadata {
     /// app_version defines the underlying application version, which may or may not be a JSON encoded bytestring
     #[prost(string, tag = "2")]
     pub app_version: ::prost::alloc::string::String,
+}
+impl ::prost::Name for Metadata {
+    const NAME: &'static str = "Metadata";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.Metadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.Metadata".into()
+    }
 }
 /// QueryIncentivizedPacketsRequest defines the request type for the IncentivizedPackets rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -156,6 +266,16 @@ pub struct QueryIncentivizedPacketsRequest {
     #[prost(uint64, tag = "2")]
     pub query_height: u64,
 }
+impl ::prost::Name for QueryIncentivizedPacketsRequest {
+    const NAME: &'static str = "QueryIncentivizedPacketsRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketsRequest".into()
+    }
+}
 /// QueryIncentivizedPacketsResponse defines the response type for the IncentivizedPackets rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIncentivizedPacketsResponse {
@@ -167,6 +287,16 @@ pub struct QueryIncentivizedPacketsResponse {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryIncentivizedPacketsResponse {
+    const NAME: &'static str = "QueryIncentivizedPacketsResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketsResponse".into()
+    }
 }
 /// QueryIncentivizedPacketRequest defines the request type for the IncentivizedPacket rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -180,12 +310,32 @@ pub struct QueryIncentivizedPacketRequest {
     #[prost(uint64, tag = "2")]
     pub query_height: u64,
 }
+impl ::prost::Name for QueryIncentivizedPacketRequest {
+    const NAME: &'static str = "QueryIncentivizedPacketRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketRequest".into()
+    }
+}
 /// QueryIncentivizedPacketsResponse defines the response type for the IncentivizedPacket rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIncentivizedPacketResponse {
     /// the identified fees for the incentivized packet
     #[prost(message, optional, tag = "1")]
     pub incentivized_packet: ::core::option::Option<IdentifiedPacketFees>,
+}
+impl ::prost::Name for QueryIncentivizedPacketResponse {
+    const NAME: &'static str = "QueryIncentivizedPacketResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketResponse".into()
+    }
 }
 /// QueryIncentivizedPacketsForChannelRequest defines the request type for querying for all incentivized packets
 /// for a specific channel
@@ -204,6 +354,16 @@ pub struct QueryIncentivizedPacketsForChannelRequest {
     #[prost(uint64, tag = "4")]
     pub query_height: u64,
 }
+impl ::prost::Name for QueryIncentivizedPacketsForChannelRequest {
+    const NAME: &'static str = "QueryIncentivizedPacketsForChannelRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketsForChannelRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketsForChannelRequest".into()
+    }
+}
 /// QueryIncentivizedPacketsResponse defines the response type for the incentivized packets RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIncentivizedPacketsForChannelResponse {
@@ -216,6 +376,16 @@ pub struct QueryIncentivizedPacketsForChannelResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryIncentivizedPacketsForChannelResponse {
+    const NAME: &'static str = "QueryIncentivizedPacketsForChannelResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryIncentivizedPacketsForChannelResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryIncentivizedPacketsForChannelResponse".into()
+    }
+}
 /// QueryTotalRecvFeesRequest defines the request type for the TotalRecvFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTotalRecvFeesRequest {
@@ -224,6 +394,16 @@ pub struct QueryTotalRecvFeesRequest {
     pub packet_id: ::core::option::Option<
         super::super::super::core::channel::v1::PacketId,
     >,
+}
+impl ::prost::Name for QueryTotalRecvFeesRequest {
+    const NAME: &'static str = "QueryTotalRecvFeesRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalRecvFeesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalRecvFeesRequest".into()
+    }
 }
 /// QueryTotalRecvFeesResponse defines the response type for the TotalRecvFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -234,6 +414,16 @@ pub struct QueryTotalRecvFeesResponse {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for QueryTotalRecvFeesResponse {
+    const NAME: &'static str = "QueryTotalRecvFeesResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalRecvFeesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalRecvFeesResponse".into()
+    }
+}
 /// QueryTotalAckFeesRequest defines the request type for the TotalAckFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTotalAckFeesRequest {
@@ -242,6 +432,16 @@ pub struct QueryTotalAckFeesRequest {
     pub packet_id: ::core::option::Option<
         super::super::super::core::channel::v1::PacketId,
     >,
+}
+impl ::prost::Name for QueryTotalAckFeesRequest {
+    const NAME: &'static str = "QueryTotalAckFeesRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalAckFeesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalAckFeesRequest".into()
+    }
 }
 /// QueryTotalAckFeesResponse defines the response type for the TotalAckFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -252,6 +452,16 @@ pub struct QueryTotalAckFeesResponse {
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
 }
+impl ::prost::Name for QueryTotalAckFeesResponse {
+    const NAME: &'static str = "QueryTotalAckFeesResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalAckFeesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalAckFeesResponse".into()
+    }
+}
 /// QueryTotalTimeoutFeesRequest defines the request type for the TotalTimeoutFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTotalTimeoutFeesRequest {
@@ -261,6 +471,16 @@ pub struct QueryTotalTimeoutFeesRequest {
         super::super::super::core::channel::v1::PacketId,
     >,
 }
+impl ::prost::Name for QueryTotalTimeoutFeesRequest {
+    const NAME: &'static str = "QueryTotalTimeoutFeesRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalTimeoutFeesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalTimeoutFeesRequest".into()
+    }
+}
 /// QueryTotalTimeoutFeesResponse defines the response type for the TotalTimeoutFees rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTotalTimeoutFeesResponse {
@@ -269,6 +489,16 @@ pub struct QueryTotalTimeoutFeesResponse {
     pub timeout_fees: ::prost::alloc::vec::Vec<
         super::super::super::super::cosmos::base::v1beta1::Coin,
     >,
+}
+impl ::prost::Name for QueryTotalTimeoutFeesResponse {
+    const NAME: &'static str = "QueryTotalTimeoutFeesResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryTotalTimeoutFeesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryTotalTimeoutFeesResponse".into()
+    }
 }
 /// QueryPayeeRequest defines the request type for the Payee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -280,12 +510,32 @@ pub struct QueryPayeeRequest {
     #[prost(string, tag = "2")]
     pub relayer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryPayeeRequest {
+    const NAME: &'static str = "QueryPayeeRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryPayeeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryPayeeRequest".into()
+    }
+}
 /// QueryPayeeResponse defines the response type for the Payee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryPayeeResponse {
     /// the payee address to which packet fees are paid out
     #[prost(string, tag = "1")]
     pub payee_address: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryPayeeResponse {
+    const NAME: &'static str = "QueryPayeeResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryPayeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryPayeeResponse".into()
+    }
 }
 /// QueryCounterpartyPayeeRequest defines the request type for the CounterpartyPayee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -297,12 +547,32 @@ pub struct QueryCounterpartyPayeeRequest {
     #[prost(string, tag = "2")]
     pub relayer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryCounterpartyPayeeRequest {
+    const NAME: &'static str = "QueryCounterpartyPayeeRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryCounterpartyPayeeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryCounterpartyPayeeRequest".into()
+    }
+}
 /// QueryCounterpartyPayeeResponse defines the response type for the CounterpartyPayee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryCounterpartyPayeeResponse {
     /// the counterparty payee address used to compensate forward relaying
     #[prost(string, tag = "1")]
     pub counterparty_payee: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryCounterpartyPayeeResponse {
+    const NAME: &'static str = "QueryCounterpartyPayeeResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryCounterpartyPayeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryCounterpartyPayeeResponse".into()
+    }
 }
 /// QueryFeeEnabledChannelsRequest defines the request type for the FeeEnabledChannels rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -316,6 +586,16 @@ pub struct QueryFeeEnabledChannelsRequest {
     #[prost(uint64, tag = "2")]
     pub query_height: u64,
 }
+impl ::prost::Name for QueryFeeEnabledChannelsRequest {
+    const NAME: &'static str = "QueryFeeEnabledChannelsRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryFeeEnabledChannelsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryFeeEnabledChannelsRequest".into()
+    }
+}
 /// QueryFeeEnabledChannelsResponse defines the response type for the FeeEnabledChannels rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryFeeEnabledChannelsResponse {
@@ -328,6 +608,16 @@ pub struct QueryFeeEnabledChannelsResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryFeeEnabledChannelsResponse {
+    const NAME: &'static str = "QueryFeeEnabledChannelsResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryFeeEnabledChannelsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryFeeEnabledChannelsResponse".into()
+    }
+}
 /// QueryFeeEnabledChannelRequest defines the request type for the FeeEnabledChannel rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryFeeEnabledChannelRequest {
@@ -338,12 +628,32 @@ pub struct QueryFeeEnabledChannelRequest {
     #[prost(string, tag = "2")]
     pub channel_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryFeeEnabledChannelRequest {
+    const NAME: &'static str = "QueryFeeEnabledChannelRequest";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryFeeEnabledChannelRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryFeeEnabledChannelRequest".into()
+    }
+}
 /// QueryFeeEnabledChannelResponse defines the response type for the FeeEnabledChannel rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryFeeEnabledChannelResponse {
     /// boolean flag representing the fee enabled channel status
     #[prost(bool, tag = "1")]
     pub fee_enabled: bool,
+}
+impl ::prost::Name for QueryFeeEnabledChannelResponse {
+    const NAME: &'static str = "QueryFeeEnabledChannelResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.QueryFeeEnabledChannelResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.QueryFeeEnabledChannelResponse".into()
+    }
 }
 /// MsgRegisterPayee defines the request type for the RegisterPayee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -361,9 +671,29 @@ pub struct MsgRegisterPayee {
     #[prost(string, tag = "4")]
     pub payee: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRegisterPayee {
+    const NAME: &'static str = "MsgRegisterPayee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgRegisterPayee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgRegisterPayee".into()
+    }
+}
 /// MsgRegisterPayeeResponse defines the response type for the RegisterPayee rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRegisterPayeeResponse {}
+impl ::prost::Name for MsgRegisterPayeeResponse {
+    const NAME: &'static str = "MsgRegisterPayeeResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgRegisterPayeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgRegisterPayeeResponse".into()
+    }
+}
 /// MsgRegisterCounterpartyPayee defines the request type for the RegisterCounterpartyPayee rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgRegisterCounterpartyPayee {
@@ -380,9 +710,29 @@ pub struct MsgRegisterCounterpartyPayee {
     #[prost(string, tag = "4")]
     pub counterparty_payee: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgRegisterCounterpartyPayee {
+    const NAME: &'static str = "MsgRegisterCounterpartyPayee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgRegisterCounterpartyPayee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgRegisterCounterpartyPayee".into()
+    }
+}
 /// MsgRegisterCounterpartyPayeeResponse defines the response type for the RegisterCounterpartyPayee rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRegisterCounterpartyPayeeResponse {}
+impl ::prost::Name for MsgRegisterCounterpartyPayeeResponse {
+    const NAME: &'static str = "MsgRegisterCounterpartyPayeeResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgRegisterCounterpartyPayeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgRegisterCounterpartyPayeeResponse".into()
+    }
+}
 /// MsgPayPacketFee defines the request type for the PayPacketFee rpc
 /// This Msg can be used to pay for a packet at the next sequence send & should be combined with the Msg that will be
 /// paid for
@@ -404,9 +754,29 @@ pub struct MsgPayPacketFee {
     #[prost(string, repeated, tag = "5")]
     pub relayers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for MsgPayPacketFee {
+    const NAME: &'static str = "MsgPayPacketFee";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgPayPacketFee".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgPayPacketFee".into()
+    }
+}
 /// MsgPayPacketFeeResponse defines the response type for the PayPacketFee rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPayPacketFeeResponse {}
+impl ::prost::Name for MsgPayPacketFeeResponse {
+    const NAME: &'static str = "MsgPayPacketFeeResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgPayPacketFeeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgPayPacketFeeResponse".into()
+    }
+}
 /// MsgPayPacketFeeAsync defines the request type for the PayPacketFeeAsync rpc
 /// This Msg can be used to pay for a packet at a specified sequence (instead of the next sequence send)
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -420,6 +790,27 @@ pub struct MsgPayPacketFeeAsync {
     #[prost(message, optional, tag = "2")]
     pub packet_fee: ::core::option::Option<PacketFee>,
 }
+impl ::prost::Name for MsgPayPacketFeeAsync {
+    const NAME: &'static str = "MsgPayPacketFeeAsync";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgPayPacketFeeAsync".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgPayPacketFeeAsync".into()
+    }
+}
 /// MsgPayPacketFeeAsyncResponse defines the response type for the PayPacketFeeAsync rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgPayPacketFeeAsyncResponse {}
+impl ::prost::Name for MsgPayPacketFeeAsyncResponse {
+    const NAME: &'static str = "MsgPayPacketFeeAsyncResponse";
+    const PACKAGE: &'static str = "ibc.applications.fee.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.fee.v1.MsgPayPacketFeeAsyncResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.fee.v1.MsgPayPacketFeeAsyncResponse".into()
+    }
+}
+include!("ibc.applications.fee.v1.serde.rs");

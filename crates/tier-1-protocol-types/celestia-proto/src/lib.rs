@@ -18,8 +18,11 @@
 
 include!("gen/mod.rs");
 
+pub mod any;
+pub mod registry;
+
+pub use any::Any;
 pub use celestia_core_proto;
-pub use prost_types::Any;
 
 #[cfg(test)]
 mod tests {
@@ -39,5 +42,27 @@ mod tests {
         let _ = super::cosmos::bank::v1beta1::MsgSend::default();
         let _ = super::hyperlane::warp::v1::HypToken::default();
         let _ = super::ibc::core::client::v1::Params::default();
+    }
+
+    #[test]
+    fn any_jsonpb_roundtrip() {
+        use super::cosmos::bank::v1beta1::MsgSend;
+        use super::cosmos::base::v1beta1::Coin;
+        let msg = MsgSend {
+            from_address: "celestia1a".into(),
+            to_address: "celestia1b".into(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "5".into(),
+            }],
+        };
+        let any = super::Any::pack(&msg);
+        assert_eq!(any.type_url, "/cosmos.bank.v1beta1.MsgSend");
+        let json = serde_json::to_value(&any).unwrap();
+        assert_eq!(json["@type"], "/cosmos.bank.v1beta1.MsgSend");
+        assert_eq!(json["from_address"], "celestia1a");
+        let back: super::Any = serde_json::from_value(json).unwrap();
+        assert_eq!(back, any);
+        assert_eq!(back.unpack::<MsgSend>().unwrap().unwrap(), msg);
     }
 }

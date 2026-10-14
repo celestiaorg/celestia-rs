@@ -22,6 +22,16 @@ pub struct AppDescriptor {
     #[prost(message, optional, tag = "6")]
     pub tx: ::core::option::Option<TxDescriptor>,
 }
+impl ::prost::Name for AppDescriptor {
+    const NAME: &'static str = "AppDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.AppDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.AppDescriptor".into()
+    }
+}
 /// TxDescriptor describes the accepted transaction type
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxDescriptor {
@@ -34,6 +44,16 @@ pub struct TxDescriptor {
     #[prost(message, repeated, tag = "2")]
     pub msgs: ::prost::alloc::vec::Vec<MsgDescriptor>,
 }
+impl ::prost::Name for TxDescriptor {
+    const NAME: &'static str = "TxDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.TxDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.TxDescriptor".into()
+    }
+}
 /// AuthnDescriptor provides information on how to sign transactions without relying
 /// on the online RPCs GetTxMetadata and CombineUnsignedTxAndSignatures
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -41,6 +61,16 @@ pub struct AuthnDescriptor {
     /// sign_modes defines the supported signature algorithm
     #[prost(message, repeated, tag = "1")]
     pub sign_modes: ::prost::alloc::vec::Vec<SigningModeDescriptor>,
+}
+impl ::prost::Name for AuthnDescriptor {
+    const NAME: &'static str = "AuthnDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.AuthnDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.AuthnDescriptor".into()
+    }
 }
 /// SigningModeDescriptor provides information on a signing flow of the application
 /// NOTE(fdymylja): here we could go as far as providing an entire flow on how
@@ -59,6 +89,16 @@ pub struct SigningModeDescriptor {
     #[prost(string, tag = "3")]
     pub authn_info_provider_method_fullname: ::prost::alloc::string::String,
 }
+impl ::prost::Name for SigningModeDescriptor {
+    const NAME: &'static str = "SigningModeDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.SigningModeDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.SigningModeDescriptor".into()
+    }
+}
 /// ChainDescriptor describes chain information of the application
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ChainDescriptor {
@@ -66,12 +106,32 @@ pub struct ChainDescriptor {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for ChainDescriptor {
+    const NAME: &'static str = "ChainDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.ChainDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.ChainDescriptor".into()
+    }
+}
 /// CodecDescriptor describes the registered interfaces and provides metadata information on the types
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CodecDescriptor {
     /// interfaces is a list of the registerted interfaces descriptors
     #[prost(message, repeated, tag = "1")]
     pub interfaces: ::prost::alloc::vec::Vec<InterfaceDescriptor>,
+}
+impl ::prost::Name for CodecDescriptor {
+    const NAME: &'static str = "CodecDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.CodecDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.CodecDescriptor".into()
+    }
 }
 /// InterfaceDescriptor describes the implementation of an interface
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -89,6 +149,16 @@ pub struct InterfaceDescriptor {
     #[prost(message, repeated, tag = "3")]
     pub interface_implementers: ::prost::alloc::vec::Vec<InterfaceImplementerDescriptor>,
 }
+impl ::prost::Name for InterfaceDescriptor {
+    const NAME: &'static str = "InterfaceDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.InterfaceDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.InterfaceDescriptor".into()
+    }
+}
 /// InterfaceImplementerDescriptor describes an interface implementer
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InterfaceImplementerDescriptor {
@@ -101,6 +171,16 @@ pub struct InterfaceImplementerDescriptor {
     /// in our interface fields
     #[prost(string, tag = "2")]
     pub type_url: ::prost::alloc::string::String,
+}
+impl ::prost::Name for InterfaceImplementerDescriptor {
+    const NAME: &'static str = "InterfaceImplementerDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.InterfaceImplementerDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.InterfaceImplementerDescriptor".into()
+    }
 }
 /// InterfaceAcceptingMessageDescriptor describes a protobuf message which contains
 /// an interface represented as a google.protobuf.Any
@@ -115,12 +195,32 @@ pub struct InterfaceAcceptingMessageDescriptor {
     #[prost(string, repeated, tag = "2")]
     pub field_descriptor_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for InterfaceAcceptingMessageDescriptor {
+    const NAME: &'static str = "InterfaceAcceptingMessageDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.InterfaceAcceptingMessageDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.InterfaceAcceptingMessageDescriptor".into()
+    }
+}
 /// ConfigurationDescriptor contains metadata information on the sdk.Config
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigurationDescriptor {
     /// bech32_account_address_prefix is the account address prefix
     #[prost(string, tag = "1")]
     pub bech32_account_address_prefix: ::prost::alloc::string::String,
+}
+impl ::prost::Name for ConfigurationDescriptor {
+    const NAME: &'static str = "ConfigurationDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.ConfigurationDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.ConfigurationDescriptor".into()
+    }
 }
 /// MsgDescriptor describes a cosmos-sdk message that can be delivered with a transaction
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -129,9 +229,29 @@ pub struct MsgDescriptor {
     #[prost(string, tag = "1")]
     pub msg_type_url: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgDescriptor {
+    const NAME: &'static str = "MsgDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.MsgDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.MsgDescriptor".into()
+    }
+}
 /// GetAuthnDescriptorRequest is the request used for the GetAuthnDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetAuthnDescriptorRequest {}
+impl ::prost::Name for GetAuthnDescriptorRequest {
+    const NAME: &'static str = "GetAuthnDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetAuthnDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetAuthnDescriptorRequest".into()
+    }
+}
 /// GetAuthnDescriptorResponse is the response returned by the GetAuthnDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetAuthnDescriptorResponse {
@@ -139,9 +259,29 @@ pub struct GetAuthnDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub authn: ::core::option::Option<AuthnDescriptor>,
 }
+impl ::prost::Name for GetAuthnDescriptorResponse {
+    const NAME: &'static str = "GetAuthnDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetAuthnDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetAuthnDescriptorResponse".into()
+    }
+}
 /// GetChainDescriptorRequest is the request used for the GetChainDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetChainDescriptorRequest {}
+impl ::prost::Name for GetChainDescriptorRequest {
+    const NAME: &'static str = "GetChainDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetChainDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetChainDescriptorRequest".into()
+    }
+}
 /// GetChainDescriptorResponse is the response returned by the GetChainDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetChainDescriptorResponse {
@@ -149,9 +289,29 @@ pub struct GetChainDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub chain: ::core::option::Option<ChainDescriptor>,
 }
+impl ::prost::Name for GetChainDescriptorResponse {
+    const NAME: &'static str = "GetChainDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetChainDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetChainDescriptorResponse".into()
+    }
+}
 /// GetCodecDescriptorRequest is the request used for the GetCodecDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetCodecDescriptorRequest {}
+impl ::prost::Name for GetCodecDescriptorRequest {
+    const NAME: &'static str = "GetCodecDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetCodecDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetCodecDescriptorRequest".into()
+    }
+}
 /// GetCodecDescriptorResponse is the response returned by the GetCodecDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetCodecDescriptorResponse {
@@ -159,9 +319,29 @@ pub struct GetCodecDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub codec: ::core::option::Option<CodecDescriptor>,
 }
+impl ::prost::Name for GetCodecDescriptorResponse {
+    const NAME: &'static str = "GetCodecDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetCodecDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetCodecDescriptorResponse".into()
+    }
+}
 /// GetConfigurationDescriptorRequest is the request used for the GetConfigurationDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetConfigurationDescriptorRequest {}
+impl ::prost::Name for GetConfigurationDescriptorRequest {
+    const NAME: &'static str = "GetConfigurationDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetConfigurationDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetConfigurationDescriptorRequest".into()
+    }
+}
 /// GetConfigurationDescriptorResponse is the response returned by the GetConfigurationDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetConfigurationDescriptorResponse {
@@ -169,9 +349,29 @@ pub struct GetConfigurationDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub config: ::core::option::Option<ConfigurationDescriptor>,
 }
+impl ::prost::Name for GetConfigurationDescriptorResponse {
+    const NAME: &'static str = "GetConfigurationDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetConfigurationDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetConfigurationDescriptorResponse".into()
+    }
+}
 /// GetQueryServicesDescriptorRequest is the request used for the GetQueryServicesDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetQueryServicesDescriptorRequest {}
+impl ::prost::Name for GetQueryServicesDescriptorRequest {
+    const NAME: &'static str = "GetQueryServicesDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetQueryServicesDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetQueryServicesDescriptorRequest".into()
+    }
+}
 /// GetQueryServicesDescriptorResponse is the response returned by the GetQueryServicesDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetQueryServicesDescriptorResponse {
@@ -179,9 +379,29 @@ pub struct GetQueryServicesDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub queries: ::core::option::Option<QueryServicesDescriptor>,
 }
+impl ::prost::Name for GetQueryServicesDescriptorResponse {
+    const NAME: &'static str = "GetQueryServicesDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetQueryServicesDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetQueryServicesDescriptorResponse".into()
+    }
+}
 /// GetTxDescriptorRequest is the request used for the GetTxDescriptor RPC
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetTxDescriptorRequest {}
+impl ::prost::Name for GetTxDescriptorRequest {
+    const NAME: &'static str = "GetTxDescriptorRequest";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetTxDescriptorRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetTxDescriptorRequest".into()
+    }
+}
 /// GetTxDescriptorResponse is the response returned by the GetTxDescriptor RPC
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetTxDescriptorResponse {
@@ -190,12 +410,32 @@ pub struct GetTxDescriptorResponse {
     #[prost(message, optional, tag = "1")]
     pub tx: ::core::option::Option<TxDescriptor>,
 }
+impl ::prost::Name for GetTxDescriptorResponse {
+    const NAME: &'static str = "GetTxDescriptorResponse";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.GetTxDescriptorResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.GetTxDescriptorResponse".into()
+    }
+}
 /// QueryServicesDescriptor contains the list of cosmos-sdk queriable services
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryServicesDescriptor {
     /// query_services is a list of cosmos-sdk QueryServiceDescriptor
     #[prost(message, repeated, tag = "1")]
     pub query_services: ::prost::alloc::vec::Vec<QueryServiceDescriptor>,
+}
+impl ::prost::Name for QueryServicesDescriptor {
+    const NAME: &'static str = "QueryServicesDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.QueryServicesDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.QueryServicesDescriptor".into()
+    }
 }
 /// QueryServiceDescriptor describes a cosmos-sdk queryable service
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -210,6 +450,16 @@ pub struct QueryServiceDescriptor {
     #[prost(message, repeated, tag = "3")]
     pub methods: ::prost::alloc::vec::Vec<QueryMethodDescriptor>,
 }
+impl ::prost::Name for QueryServiceDescriptor {
+    const NAME: &'static str = "QueryServiceDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.QueryServiceDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.QueryServiceDescriptor".into()
+    }
+}
 /// QueryMethodDescriptor describes a queryable method of a query service
 /// no other info is provided beside method name and tendermint queryable path
 /// because it would be redundant with the grpc reflection service
@@ -223,3 +473,14 @@ pub struct QueryMethodDescriptor {
     #[prost(string, tag = "2")]
     pub full_query_path: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryMethodDescriptor {
+    const NAME: &'static str = "QueryMethodDescriptor";
+    const PACKAGE: &'static str = "cosmos.base.reflection.v2alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.base.reflection.v2alpha1.QueryMethodDescriptor".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.base.reflection.v2alpha1.QueryMethodDescriptor".into()
+    }
+}
+include!("cosmos.base.reflection.v2alpha1.serde.rs");

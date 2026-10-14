@@ -8,7 +8,7 @@ into prost bindings by `cargo xtask gen-proto` (pure-Rust `protox`, no
 | Dir | Source |
 |---|---|
 | `celestia-core/` | `celestiaorg/celestia-core` v0.42.3 |
-| `cosmos-sdk/` | `celestiaorg/cosmos-sdk` v0.52.12 (minus orm/nft/group/app/autocli/reflection and depinject `module.proto`s) |
+| `cosmos-sdk/` | `celestiaorg/cosmos-sdk` v0.52.12 (minus orm/nft/group/app/autocli/reflection, depinject `module.proto`s, and its `tendermint/` copies — celestia-core's are authoritative) |
 | `ibc-go/` | `celestiaorg/ibc-go/v8` v8.7.2 |
 | `celestia-app/` | `celestiaorg/celestia-app/v10` v10.4.0 |
 | `hyperlane-cosmos/` | `celestiaorg/hyperlane-cosmos` v1.3.0 |

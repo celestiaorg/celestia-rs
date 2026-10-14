@@ -14,6 +14,16 @@ pub struct SendAuthorization {
     #[prost(string, repeated, tag = "2")]
     pub allow_list: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for SendAuthorization {
+    const NAME: &'static str = "SendAuthorization";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.SendAuthorization".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.SendAuthorization".into()
+    }
+}
 /// Params defines the parameters for the bank module.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
@@ -28,6 +38,16 @@ pub struct Params {
     #[prost(bool, tag = "2")]
     pub default_send_enabled: bool,
 }
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Params".into()
+    }
+}
 /// SendEnabled maps coin denom to a send_enabled status (whether a denom is
 /// sendable).
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -37,6 +57,16 @@ pub struct SendEnabled {
     #[prost(bool, tag = "2")]
     pub enabled: bool,
 }
+impl ::prost::Name for SendEnabled {
+    const NAME: &'static str = "SendEnabled";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.SendEnabled".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.SendEnabled".into()
+    }
+}
 /// Input models transaction input.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Input {
@@ -44,6 +74,16 @@ pub struct Input {
     pub address: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
     pub coins: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
+}
+impl ::prost::Name for Input {
+    const NAME: &'static str = "Input";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Input".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Input".into()
+    }
 }
 /// Output models transaction outputs.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -53,6 +93,16 @@ pub struct Output {
     #[prost(message, repeated, tag = "2")]
     pub coins: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for Output {
+    const NAME: &'static str = "Output";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Output".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Output".into()
+    }
+}
 /// Supply represents a struct that passively keeps track of the total supply
 /// amounts in the network.
 /// This message is deprecated now that supply is indexed by denom.
@@ -60,6 +110,16 @@ pub struct Output {
 pub struct Supply {
     #[prost(message, repeated, tag = "1")]
     pub total: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
+}
+impl ::prost::Name for Supply {
+    const NAME: &'static str = "Supply";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Supply".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Supply".into()
+    }
 }
 /// DenomUnit represents a struct that describes a given
 /// denomination unit of the basic token.
@@ -78,6 +138,16 @@ pub struct DenomUnit {
     /// aliases is a list of string aliases for the given denom
     #[prost(string, repeated, tag = "3")]
     pub aliases: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for DenomUnit {
+    const NAME: &'static str = "DenomUnit";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.DenomUnit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.DenomUnit".into()
+    }
 }
 /// Metadata represents a struct that describes
 /// a basic token.
@@ -118,6 +188,16 @@ pub struct Metadata {
     #[prost(string, tag = "8")]
     pub uri_hash: ::prost::alloc::string::String,
 }
+impl ::prost::Name for Metadata {
+    const NAME: &'static str = "Metadata";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Metadata".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Metadata".into()
+    }
+}
 /// GenesisState defines the bank module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
@@ -140,6 +220,16 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "5")]
     pub send_enabled: ::prost::alloc::vec::Vec<SendEnabled>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.GenesisState".into()
+    }
+}
 /// Balance defines an account address and balance pair used in the bank module's
 /// genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -151,6 +241,16 @@ pub struct Balance {
     #[prost(message, repeated, tag = "2")]
     pub coins: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for Balance {
+    const NAME: &'static str = "Balance";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.Balance".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.Balance".into()
+    }
+}
 /// QueryBalanceRequest is the request type for the Query/Balance RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryBalanceRequest {
@@ -161,12 +261,32 @@ pub struct QueryBalanceRequest {
     #[prost(string, tag = "2")]
     pub denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryBalanceRequest {
+    const NAME: &'static str = "QueryBalanceRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryBalanceRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryBalanceRequest".into()
+    }
+}
 /// QueryBalanceResponse is the response type for the Query/Balance RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryBalanceResponse {
     /// balance is the balance of the coin.
     #[prost(message, optional, tag = "1")]
     pub balance: ::core::option::Option<super::super::base::v1beta1::Coin>,
+}
+impl ::prost::Name for QueryBalanceResponse {
+    const NAME: &'static str = "QueryBalanceResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryBalanceResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryBalanceResponse".into()
+    }
 }
 /// QueryBalanceRequest is the request type for the Query/AllBalances RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -185,6 +305,16 @@ pub struct QueryAllBalancesRequest {
     #[prost(bool, tag = "3")]
     pub resolve_denom: bool,
 }
+impl ::prost::Name for QueryAllBalancesRequest {
+    const NAME: &'static str = "QueryAllBalancesRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryAllBalancesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryAllBalancesRequest".into()
+    }
+}
 /// QueryAllBalancesResponse is the response type for the Query/AllBalances RPC
 /// method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -197,6 +327,16 @@ pub struct QueryAllBalancesResponse {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryAllBalancesResponse {
+    const NAME: &'static str = "QueryAllBalancesResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryAllBalancesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryAllBalancesResponse".into()
+    }
 }
 /// QuerySpendableBalancesRequest defines the gRPC request structure for querying
 /// an account's spendable balances.
@@ -213,6 +353,16 @@ pub struct QuerySpendableBalancesRequest {
         super::super::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QuerySpendableBalancesRequest {
+    const NAME: &'static str = "QuerySpendableBalancesRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySpendableBalancesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySpendableBalancesRequest".into()
+    }
+}
 /// QuerySpendableBalancesResponse defines the gRPC response structure for querying
 /// an account's spendable balances.
 ///
@@ -228,6 +378,16 @@ pub struct QuerySpendableBalancesResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QuerySpendableBalancesResponse {
+    const NAME: &'static str = "QuerySpendableBalancesResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySpendableBalancesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySpendableBalancesResponse".into()
+    }
+}
 /// QuerySpendableBalanceByDenomRequest defines the gRPC request structure for
 /// querying an account's spendable balance for a specific denom.
 ///
@@ -241,6 +401,16 @@ pub struct QuerySpendableBalanceByDenomRequest {
     #[prost(string, tag = "2")]
     pub denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QuerySpendableBalanceByDenomRequest {
+    const NAME: &'static str = "QuerySpendableBalanceByDenomRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySpendableBalanceByDenomRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySpendableBalanceByDenomRequest".into()
+    }
+}
 /// QuerySpendableBalanceByDenomResponse defines the gRPC response structure for
 /// querying an account's spendable balance for a specific denom.
 ///
@@ -250,6 +420,16 @@ pub struct QuerySpendableBalanceByDenomResponse {
     /// balance is the balance of the coin.
     #[prost(message, optional, tag = "1")]
     pub balance: ::core::option::Option<super::super::base::v1beta1::Coin>,
+}
+impl ::prost::Name for QuerySpendableBalanceByDenomResponse {
+    const NAME: &'static str = "QuerySpendableBalanceByDenomResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySpendableBalanceByDenomResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySpendableBalanceByDenomResponse".into()
+    }
 }
 /// QueryTotalSupplyRequest is the request type for the Query/TotalSupply RPC
 /// method.
@@ -262,6 +442,16 @@ pub struct QueryTotalSupplyRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryTotalSupplyRequest {
+    const NAME: &'static str = "QueryTotalSupplyRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryTotalSupplyRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryTotalSupplyRequest".into()
+    }
 }
 /// QueryTotalSupplyResponse is the response type for the Query/TotalSupply RPC
 /// method
@@ -278,12 +468,32 @@ pub struct QueryTotalSupplyResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryTotalSupplyResponse {
+    const NAME: &'static str = "QueryTotalSupplyResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryTotalSupplyResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryTotalSupplyResponse".into()
+    }
+}
 /// QuerySupplyOfRequest is the request type for the Query/SupplyOf RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QuerySupplyOfRequest {
     /// denom is the coin denom to query balances for.
     #[prost(string, tag = "1")]
     pub denom: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QuerySupplyOfRequest {
+    const NAME: &'static str = "QuerySupplyOfRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySupplyOfRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySupplyOfRequest".into()
+    }
 }
 /// QuerySupplyOfResponse is the response type for the Query/SupplyOf RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -292,15 +502,45 @@ pub struct QuerySupplyOfResponse {
     #[prost(message, optional, tag = "1")]
     pub amount: ::core::option::Option<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for QuerySupplyOfResponse {
+    const NAME: &'static str = "QuerySupplyOfResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySupplyOfResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySupplyOfResponse".into()
+    }
+}
 /// QueryParamsRequest defines the request type for querying x/bank parameters.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse defines the response type for querying x/bank parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     /// params provides the parameters of the bank module.
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryParamsResponse".into()
+    }
 }
 /// QueryDenomsMetadataRequest is the request type for the Query/DenomsMetadata RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -310,6 +550,16 @@ pub struct QueryDenomsMetadataRequest {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryDenomsMetadataRequest {
+    const NAME: &'static str = "QueryDenomsMetadataRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomsMetadataRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomsMetadataRequest".into()
+    }
 }
 /// QueryDenomsMetadataResponse is the response type for the Query/DenomsMetadata RPC
 /// method.
@@ -324,12 +574,32 @@ pub struct QueryDenomsMetadataResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryDenomsMetadataResponse {
+    const NAME: &'static str = "QueryDenomsMetadataResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomsMetadataResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomsMetadataResponse".into()
+    }
+}
 /// QueryDenomMetadataRequest is the request type for the Query/DenomMetadata RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryDenomMetadataRequest {
     /// denom is the coin denom to query the metadata for.
     #[prost(string, tag = "1")]
     pub denom: ::prost::alloc::string::String,
+}
+impl ::prost::Name for QueryDenomMetadataRequest {
+    const NAME: &'static str = "QueryDenomMetadataRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomMetadataRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomMetadataRequest".into()
+    }
 }
 /// QueryDenomMetadataResponse is the response type for the Query/DenomMetadata RPC
 /// method.
@@ -339,6 +609,16 @@ pub struct QueryDenomMetadataResponse {
     #[prost(message, optional, tag = "1")]
     pub metadata: ::core::option::Option<Metadata>,
 }
+impl ::prost::Name for QueryDenomMetadataResponse {
+    const NAME: &'static str = "QueryDenomMetadataResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomMetadataResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomMetadataResponse".into()
+    }
+}
 /// QueryDenomMetadataByQueryStringRequest is the request type for the Query/DenomMetadata RPC method.
 /// Identical with QueryDenomMetadataRequest but receives denom as query string.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -347,6 +627,16 @@ pub struct QueryDenomMetadataByQueryStringRequest {
     #[prost(string, tag = "1")]
     pub denom: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryDenomMetadataByQueryStringRequest {
+    const NAME: &'static str = "QueryDenomMetadataByQueryStringRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomMetadataByQueryStringRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomMetadataByQueryStringRequest".into()
+    }
+}
 /// QueryDenomMetadataByQueryStringResponse is the response type for the Query/DenomMetadata RPC
 /// method. Identical with QueryDenomMetadataResponse but receives denom as query string in request.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -354,6 +644,16 @@ pub struct QueryDenomMetadataByQueryStringResponse {
     /// metadata describes and provides all the client information for the requested token.
     #[prost(message, optional, tag = "1")]
     pub metadata: ::core::option::Option<Metadata>,
+}
+impl ::prost::Name for QueryDenomMetadataByQueryStringResponse {
+    const NAME: &'static str = "QueryDenomMetadataByQueryStringResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomMetadataByQueryStringResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomMetadataByQueryStringResponse".into()
+    }
 }
 /// QueryDenomOwnersRequest defines the request type for the DenomOwners RPC query,
 /// which queries for a paginated set of all account holders of a particular
@@ -369,6 +669,16 @@ pub struct QueryDenomOwnersRequest {
         super::super::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryDenomOwnersRequest {
+    const NAME: &'static str = "QueryDenomOwnersRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomOwnersRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomOwnersRequest".into()
+    }
+}
 /// DenomOwner defines structure representing an account that owns or holds a
 /// particular denominated token. It contains the account address and account
 /// balance of the denominated token.
@@ -383,6 +693,16 @@ pub struct DenomOwner {
     #[prost(message, optional, tag = "2")]
     pub balance: ::core::option::Option<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for DenomOwner {
+    const NAME: &'static str = "DenomOwner";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.DenomOwner".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.DenomOwner".into()
+    }
+}
 /// QueryDenomOwnersResponse defines the RPC response of a DenomOwners RPC query.
 ///
 /// Since: cosmos-sdk 0.46
@@ -395,6 +715,16 @@ pub struct QueryDenomOwnersResponse {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryDenomOwnersResponse {
+    const NAME: &'static str = "QueryDenomOwnersResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomOwnersResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomOwnersResponse".into()
+    }
 }
 /// QueryDenomOwnersByQueryRequest defines the request type for the DenomOwnersByQuery RPC query,
 /// which queries for a paginated set of all account holders of a particular
@@ -412,6 +742,16 @@ pub struct QueryDenomOwnersByQueryRequest {
         super::super::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryDenomOwnersByQueryRequest {
+    const NAME: &'static str = "QueryDenomOwnersByQueryRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomOwnersByQueryRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomOwnersByQueryRequest".into()
+    }
+}
 /// QueryDenomOwnersByQueryResponse defines the RPC response of a DenomOwnersByQuery RPC query.
 ///
 /// Since: cosmos-sdk 0.50.3
@@ -424,6 +764,16 @@ pub struct QueryDenomOwnersByQueryResponse {
     pub pagination: ::core::option::Option<
         super::super::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryDenomOwnersByQueryResponse {
+    const NAME: &'static str = "QueryDenomOwnersByQueryResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QueryDenomOwnersByQueryResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QueryDenomOwnersByQueryResponse".into()
+    }
 }
 /// QuerySendEnabledRequest defines the RPC request for looking up SendEnabled entries.
 ///
@@ -440,6 +790,16 @@ pub struct QuerySendEnabledRequest {
         super::super::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QuerySendEnabledRequest {
+    const NAME: &'static str = "QuerySendEnabledRequest";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySendEnabledRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySendEnabledRequest".into()
+    }
+}
 /// QuerySendEnabledResponse defines the RPC response of a SendEnable query.
 ///
 /// Since: cosmos-sdk 0.47
@@ -454,6 +814,16 @@ pub struct QuerySendEnabledResponse {
         super::super::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QuerySendEnabledResponse {
+    const NAME: &'static str = "QuerySendEnabledResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.QuerySendEnabledResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.QuerySendEnabledResponse".into()
+    }
+}
 /// MsgSend represents a message to send coins from one account to another.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgSend {
@@ -464,9 +834,29 @@ pub struct MsgSend {
     #[prost(message, repeated, tag = "3")]
     pub amount: ::prost::alloc::vec::Vec<super::super::base::v1beta1::Coin>,
 }
+impl ::prost::Name for MsgSend {
+    const NAME: &'static str = "MsgSend";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgSend".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgSend".into()
+    }
+}
 /// MsgSendResponse defines the Msg/Send response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSendResponse {}
+impl ::prost::Name for MsgSendResponse {
+    const NAME: &'static str = "MsgSendResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgSendResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgSendResponse".into()
+    }
+}
 /// MsgMultiSend represents an arbitrary multi-in, multi-out send message.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgMultiSend {
@@ -477,9 +867,29 @@ pub struct MsgMultiSend {
     #[prost(message, repeated, tag = "2")]
     pub outputs: ::prost::alloc::vec::Vec<Output>,
 }
+impl ::prost::Name for MsgMultiSend {
+    const NAME: &'static str = "MsgMultiSend";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgMultiSend".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgMultiSend".into()
+    }
+}
 /// MsgMultiSendResponse defines the Msg/MultiSend response type.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgMultiSendResponse {}
+impl ::prost::Name for MsgMultiSendResponse {
+    const NAME: &'static str = "MsgMultiSendResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgMultiSendResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgMultiSendResponse".into()
+    }
+}
 /// MsgUpdateParams is the Msg/UpdateParams request type.
 ///
 /// Since: cosmos-sdk 0.47
@@ -494,12 +904,32 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the response structure for executing a
 /// MsgUpdateParams message.
 ///
 /// Since: cosmos-sdk 0.47
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgUpdateParamsResponse".into()
+    }
+}
 /// MsgSetSendEnabled is the Msg/SetSendEnabled request type.
 ///
 /// Only entries to add/update/delete need to be included.
@@ -522,8 +952,29 @@ pub struct MsgSetSendEnabled {
     #[prost(string, repeated, tag = "3")]
     pub use_default_for: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for MsgSetSendEnabled {
+    const NAME: &'static str = "MsgSetSendEnabled";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgSetSendEnabled".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgSetSendEnabled".into()
+    }
+}
 /// MsgSetSendEnabledResponse defines the Msg/SetSendEnabled response type.
 ///
 /// Since: cosmos-sdk 0.47
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgSetSendEnabledResponse {}
+impl ::prost::Name for MsgSetSendEnabledResponse {
+    const NAME: &'static str = "MsgSetSendEnabledResponse";
+    const PACKAGE: &'static str = "cosmos.bank.v1beta1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.bank.v1beta1.MsgSetSendEnabledResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.bank.v1beta1.MsgSetSendEnabledResponse".into()
+    }
+}
+include!("cosmos.bank.v1beta1.serde.rs");

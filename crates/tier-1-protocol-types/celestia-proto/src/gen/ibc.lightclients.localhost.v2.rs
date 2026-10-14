@@ -8,3 +8,14 @@ pub struct ClientState {
         super::super::super::core::client::v1::Height,
     >,
 }
+impl ::prost::Name for ClientState {
+    const NAME: &'static str = "ClientState";
+    const PACKAGE: &'static str = "ibc.lightclients.localhost.v2";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.localhost.v2.ClientState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.localhost.v2.ClientState".into()
+    }
+}
+include!("ibc.lightclients.localhost.v2.serde.rs");

@@ -6,12 +6,32 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "1")]
     pub contracts: ::prost::alloc::vec::Vec<Contract>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.GenesisState".into()
+    }
+}
 /// Contract stores contract code
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Contract {
     /// contract byte code
     #[prost(bytes = "vec", tag = "1")]
     pub code_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for Contract {
+    const NAME: &'static str = "Contract";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.Contract".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.Contract".into()
+    }
 }
 /// QueryChecksumsRequest is the request type for the Query/Checksums RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -21,6 +41,16 @@ pub struct QueryChecksumsRequest {
     pub pagination: ::core::option::Option<
         super::super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryChecksumsRequest {
+    const NAME: &'static str = "QueryChecksumsRequest";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.QueryChecksumsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.QueryChecksumsRequest".into()
+    }
 }
 /// QueryChecksumsResponse is the response type for the Query/Checksums RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -34,6 +64,16 @@ pub struct QueryChecksumsResponse {
         super::super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryChecksumsResponse {
+    const NAME: &'static str = "QueryChecksumsResponse";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.QueryChecksumsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.QueryChecksumsResponse".into()
+    }
+}
 /// QueryCodeRequest is the request type for the Query/Code RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryCodeRequest {
@@ -41,11 +81,31 @@ pub struct QueryCodeRequest {
     #[prost(string, tag = "1")]
     pub checksum: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryCodeRequest {
+    const NAME: &'static str = "QueryCodeRequest";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.QueryCodeRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.QueryCodeRequest".into()
+    }
+}
 /// QueryCodeResponse is the response type for the Query/Code RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryCodeResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub data: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for QueryCodeResponse {
+    const NAME: &'static str = "QueryCodeResponse";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.QueryCodeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.QueryCodeResponse".into()
+    }
 }
 /// MsgStoreCode defines the request type for the StoreCode rpc.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -57,12 +117,32 @@ pub struct MsgStoreCode {
     #[prost(bytes = "vec", tag = "2")]
     pub wasm_byte_code: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for MsgStoreCode {
+    const NAME: &'static str = "MsgStoreCode";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgStoreCode".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgStoreCode".into()
+    }
+}
 /// MsgStoreCodeResponse defines the response type for the StoreCode rpc
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgStoreCodeResponse {
     /// checksum is the sha256 hash of the stored code
     #[prost(bytes = "vec", tag = "1")]
     pub checksum: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for MsgStoreCodeResponse {
+    const NAME: &'static str = "MsgStoreCodeResponse";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgStoreCodeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgStoreCodeResponse".into()
+    }
 }
 /// MsgRemoveChecksum defines the request type for the MsgRemoveChecksum rpc.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -74,9 +154,29 @@ pub struct MsgRemoveChecksum {
     #[prost(bytes = "vec", tag = "2")]
     pub checksum: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for MsgRemoveChecksum {
+    const NAME: &'static str = "MsgRemoveChecksum";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgRemoveChecksum".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgRemoveChecksum".into()
+    }
+}
 /// MsgStoreChecksumResponse defines the response type for the StoreCode rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgRemoveChecksumResponse {}
+impl ::prost::Name for MsgRemoveChecksumResponse {
+    const NAME: &'static str = "MsgRemoveChecksumResponse";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgRemoveChecksumResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgRemoveChecksumResponse".into()
+    }
+}
 /// MsgMigrateContract defines the request type for the MigrateContract rpc.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgMigrateContract {
@@ -93,9 +193,29 @@ pub struct MsgMigrateContract {
     #[prost(bytes = "vec", tag = "4")]
     pub msg: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for MsgMigrateContract {
+    const NAME: &'static str = "MsgMigrateContract";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgMigrateContract".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgMigrateContract".into()
+    }
+}
 /// MsgMigrateContractResponse defines the response type for the MigrateContract rpc
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgMigrateContractResponse {}
+impl ::prost::Name for MsgMigrateContractResponse {
+    const NAME: &'static str = "MsgMigrateContractResponse";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.MsgMigrateContractResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.MsgMigrateContractResponse".into()
+    }
+}
 /// Wasm light client's Client state
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientState {
@@ -110,6 +230,16 @@ pub struct ClientState {
         super::super::super::core::client::v1::Height,
     >,
 }
+impl ::prost::Name for ClientState {
+    const NAME: &'static str = "ClientState";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.ClientState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.ClientState".into()
+    }
+}
 /// Wasm light client's ConsensusState
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConsensusState {
@@ -118,11 +248,31 @@ pub struct ConsensusState {
     #[prost(bytes = "vec", tag = "1")]
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for ConsensusState {
+    const NAME: &'static str = "ConsensusState";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.ConsensusState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.ConsensusState".into()
+    }
+}
 /// Wasm light client message (either header(s) or misbehaviour)
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientMessage {
     #[prost(bytes = "vec", tag = "1")]
     pub data: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for ClientMessage {
+    const NAME: &'static str = "ClientMessage";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.ClientMessage".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.ClientMessage".into()
+    }
 }
 /// Checksums defines a list of all checksums that are stored
 ///
@@ -133,3 +283,14 @@ pub struct Checksums {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub checksums: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for Checksums {
+    const NAME: &'static str = "Checksums";
+    const PACKAGE: &'static str = "ibc.lightclients.wasm.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.lightclients.wasm.v1.Checksums".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.lightclients.wasm.v1.Checksums".into()
+    }
+}
+include!("ibc.lightclients.wasm.v1.serde.rs");

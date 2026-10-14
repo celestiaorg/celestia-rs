@@ -6,11 +6,31 @@ pub struct RemoteSignerError {
     #[prost(string, tag = "2")]
     pub description: ::prost::alloc::string::String,
 }
+impl ::prost::Name for RemoteSignerError {
+    const NAME: &'static str = "RemoteSignerError";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.RemoteSignerError".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.RemoteSignerError".into()
+    }
+}
 /// PubKeyRequest requests the consensus public key from the remote signer.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PubKeyRequest {
     #[prost(string, tag = "1")]
     pub chain_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for PubKeyRequest {
+    const NAME: &'static str = "PubKeyRequest";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.PubKeyRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.PubKeyRequest".into()
+    }
 }
 /// PubKeyResponse is a response message containing the public key.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -20,6 +40,16 @@ pub struct PubKeyResponse {
     #[prost(message, optional, tag = "2")]
     pub error: ::core::option::Option<RemoteSignerError>,
 }
+impl ::prost::Name for PubKeyResponse {
+    const NAME: &'static str = "PubKeyResponse";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.PubKeyResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.PubKeyResponse".into()
+    }
+}
 /// SignVoteRequest is a request to sign a vote
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignVoteRequest {
@@ -27,6 +57,16 @@ pub struct SignVoteRequest {
     pub vote: ::core::option::Option<super::types::Vote>,
     #[prost(string, tag = "2")]
     pub chain_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for SignVoteRequest {
+    const NAME: &'static str = "SignVoteRequest";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignVoteRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignVoteRequest".into()
+    }
 }
 /// SignedVoteResponse is a response containing a signed vote or an error
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -36,6 +76,16 @@ pub struct SignedVoteResponse {
     #[prost(message, optional, tag = "2")]
     pub error: ::core::option::Option<RemoteSignerError>,
 }
+impl ::prost::Name for SignedVoteResponse {
+    const NAME: &'static str = "SignedVoteResponse";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignedVoteResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignedVoteResponse".into()
+    }
+}
 /// SignProposalRequest is a request to sign a proposal
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignProposalRequest {
@@ -44,6 +94,16 @@ pub struct SignProposalRequest {
     #[prost(string, tag = "2")]
     pub chain_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for SignProposalRequest {
+    const NAME: &'static str = "SignProposalRequest";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignProposalRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignProposalRequest".into()
+    }
+}
 /// SignedProposalResponse is response containing a signed proposal or an error
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedProposalResponse {
@@ -51,6 +111,16 @@ pub struct SignedProposalResponse {
     pub proposal: ::core::option::Option<super::types::Proposal>,
     #[prost(message, optional, tag = "2")]
     pub error: ::core::option::Option<RemoteSignerError>,
+}
+impl ::prost::Name for SignedProposalResponse {
+    const NAME: &'static str = "SignedProposalResponse";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignedProposalResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignedProposalResponse".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignRawBytesRequest {
@@ -61,6 +131,16 @@ pub struct SignRawBytesRequest {
     #[prost(string, tag = "3")]
     pub unique_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for SignRawBytesRequest {
+    const NAME: &'static str = "SignRawBytesRequest";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignRawBytesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignRawBytesRequest".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedRawBytesResponse {
     #[prost(bytes = "vec", tag = "1")]
@@ -68,12 +148,42 @@ pub struct SignedRawBytesResponse {
     #[prost(message, optional, tag = "2")]
     pub error: ::core::option::Option<RemoteSignerError>,
 }
+impl ::prost::Name for SignedRawBytesResponse {
+    const NAME: &'static str = "SignedRawBytesResponse";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.SignedRawBytesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.SignedRawBytesResponse".into()
+    }
+}
 /// PingRequest is a request to confirm that the connection is alive.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PingRequest {}
+impl ::prost::Name for PingRequest {
+    const NAME: &'static str = "PingRequest";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.PingRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.PingRequest".into()
+    }
+}
 /// PingResponse is a response to confirm that the connection is alive.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PingResponse {}
+impl ::prost::Name for PingResponse {
+    const NAME: &'static str = "PingResponse";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.PingResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.PingResponse".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
     #[prost(oneof = "message::Sum", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10")]
@@ -103,6 +213,16 @@ pub mod message {
         SignRawBytesRequest(super::SignRawBytesRequest),
         #[prost(message, tag = "10")]
         SignedRawBytesResponse(super::SignedRawBytesResponse),
+    }
+}
+impl ::prost::Name for Message {
+    const NAME: &'static str = "Message";
+    const PACKAGE: &'static str = "tendermint.privval";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.privval.Message".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.privval.Message".into()
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -143,3 +263,4 @@ impl Errors {
         }
     }
 }
+include!("tendermint.privval.serde.rs");

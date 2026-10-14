@@ -6,6 +6,16 @@ pub struct TxStatusRequest {
     #[prost(string, tag = "1")]
     pub tx_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for TxStatusRequest {
+    const NAME: &'static str = "TxStatusRequest";
+    const PACKAGE: &'static str = "celestia.core.v1.tx";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.tx.TxStatusRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.tx.TxStatusRequest".into()
+    }
+}
 /// TxStatusResponse is the response type for the TxStatus gRPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxStatusResponse {
@@ -37,12 +47,32 @@ pub struct TxStatusResponse {
     #[prost(string, repeated, tag = "9")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for TxStatusResponse {
+    const NAME: &'static str = "TxStatusResponse";
+    const PACKAGE: &'static str = "celestia.core.v1.tx";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.tx.TxStatusResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.tx.TxStatusResponse".into()
+    }
+}
 /// TxStatusBatchRequest is the request type for the batch TxStatus gRPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxStatusBatchRequest {
     /// array of hex encoded tx hashes (each hash should be 64 characters long representing 32 bytes)
     #[prost(string, repeated, tag = "1")]
     pub tx_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for TxStatusBatchRequest {
+    const NAME: &'static str = "TxStatusBatchRequest";
+    const PACKAGE: &'static str = "celestia.core.v1.tx";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.tx.TxStatusBatchRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.tx.TxStatusBatchRequest".into()
+    }
 }
 /// TxStatusResult represents a single transaction status result in a batch response.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -52,6 +82,16 @@ pub struct TxStatusResult {
     #[prost(message, optional, tag = "2")]
     pub status: ::core::option::Option<TxStatusResponse>,
 }
+impl ::prost::Name for TxStatusResult {
+    const NAME: &'static str = "TxStatusResult";
+    const PACKAGE: &'static str = "celestia.core.v1.tx";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.tx.TxStatusResult".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.tx.TxStatusResult".into()
+    }
+}
 /// TxStatusBatchResponse is a response type for batched TxStatus query. It contains an array of transaction status
 /// results.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -59,3 +99,14 @@ pub struct TxStatusBatchResponse {
     #[prost(message, repeated, tag = "1")]
     pub statuses: ::prost::alloc::vec::Vec<TxStatusResult>,
 }
+impl ::prost::Name for TxStatusBatchResponse {
+    const NAME: &'static str = "TxStatusBatchResponse";
+    const PACKAGE: &'static str = "celestia.core.v1.tx";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.core.v1.tx.TxStatusBatchResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.core.v1.tx.TxStatusBatchResponse".into()
+    }
+}
+include!("celestia.core.v1.tx.serde.rs");

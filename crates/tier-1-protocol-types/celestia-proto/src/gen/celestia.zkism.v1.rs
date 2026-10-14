@@ -24,6 +24,16 @@ pub struct EventCreateInterchainSecurityModule {
     #[prost(string, tag = "7")]
     pub state_membership_vkey: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventCreateInterchainSecurityModule {
+    const NAME: &'static str = "EventCreateInterchainSecurityModule";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.EventCreateInterchainSecurityModule".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.EventCreateInterchainSecurityModule".into()
+    }
+}
 /// EventUpdateInterchainSecurityModule defines the event type emitted when updating a InterchainSecurityModule.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventUpdateInterchainSecurityModule {
@@ -33,6 +43,16 @@ pub struct EventUpdateInterchainSecurityModule {
     /// new state
     #[prost(string, tag = "2")]
     pub state: ::prost::alloc::string::String,
+}
+impl ::prost::Name for EventUpdateInterchainSecurityModule {
+    const NAME: &'static str = "EventUpdateInterchainSecurityModule";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.EventUpdateInterchainSecurityModule".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.EventUpdateInterchainSecurityModule".into()
+    }
 }
 /// EventSubmitMessages defines the event type emitted after successful message submission.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -46,6 +66,16 @@ pub struct EventSubmitMessages {
     /// list of authorized messages ids
     #[prost(string, repeated, tag = "3")]
     pub messages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for EventSubmitMessages {
+    const NAME: &'static str = "EventSubmitMessages";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.EventSubmitMessages".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.EventSubmitMessages".into()
+    }
 }
 /// InterchainSecurityModule defines the Hyperlane interchain security module (ISM).
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -72,6 +102,16 @@ pub struct InterchainSecurityModule {
     #[prost(bytes = "vec", tag = "7")]
     pub state_membership_vkey: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for InterchainSecurityModule {
+    const NAME: &'static str = "InterchainSecurityModule";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.InterchainSecurityModule".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.InterchainSecurityModule".into()
+    }
+}
 /// GenesisState defines the zkism module's genesis state.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisState {
@@ -85,6 +125,16 @@ pub struct GenesisState {
     #[prost(message, repeated, tag = "3")]
     pub submissions: ::prost::alloc::vec::Vec<GenesisProofSubmission>,
 }
+impl ::prost::Name for GenesisState {
+    const NAME: &'static str = "GenesisState";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.GenesisState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.GenesisState".into()
+    }
+}
 /// GenesisMessages contains the authorized Hyperlane message IDs for a zk execution ism.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GenesisMessages {
@@ -94,6 +144,16 @@ pub struct GenesisMessages {
     /// list of authorized message ids
     #[prost(string, repeated, tag = "2")]
     pub messages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+impl ::prost::Name for GenesisMessages {
+    const NAME: &'static str = "GenesisMessages";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.GenesisMessages".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.GenesisMessages".into()
+    }
 }
 /// GenesisProofSubmission contains the proof submission state for a zk execution ism.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -105,6 +165,16 @@ pub struct GenesisProofSubmission {
     #[prost(bool, tag = "2")]
     pub submitted: bool,
 }
+impl ::prost::Name for GenesisProofSubmission {
+    const NAME: &'static str = "GenesisProofSubmission";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.GenesisProofSubmission".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.GenesisProofSubmission".into()
+    }
+}
 /// QueryIsmRequest is the request type for the Ism rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsmRequest {
@@ -112,12 +182,32 @@ pub struct QueryIsmRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for QueryIsmRequest {
+    const NAME: &'static str = "QueryIsmRequest";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryIsmRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryIsmRequest".into()
+    }
+}
 /// QueryIsmResponse is the response type for the Ism rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryIsmResponse {
     /// the ism associated with the provided identifier.
     #[prost(message, optional, tag = "1")]
     pub ism: ::core::option::Option<InterchainSecurityModule>,
+}
+impl ::prost::Name for QueryIsmResponse {
+    const NAME: &'static str = "QueryIsmResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryIsmResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryIsmResponse".into()
+    }
 }
 /// QueryIsmsRequest is the request type for the Isms rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -127,6 +217,16 @@ pub struct QueryIsmsRequest {
     pub pagination: ::core::option::Option<
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
+}
+impl ::prost::Name for QueryIsmsRequest {
+    const NAME: &'static str = "QueryIsmsRequest";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryIsmsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryIsmsRequest".into()
+    }
 }
 /// QueryIsmsResponse is the response type for the Isms rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -140,6 +240,16 @@ pub struct QueryIsmsResponse {
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
 }
+impl ::prost::Name for QueryIsmsResponse {
+    const NAME: &'static str = "QueryIsmsResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryIsmsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryIsmsResponse".into()
+    }
+}
 /// QueryMessagesRequest is the request type for the Messages rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMessagesRequest {
@@ -152,6 +262,16 @@ pub struct QueryMessagesRequest {
         super::super::super::cosmos::base::query::v1beta1::PageRequest,
     >,
 }
+impl ::prost::Name for QueryMessagesRequest {
+    const NAME: &'static str = "QueryMessagesRequest";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryMessagesRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryMessagesRequest".into()
+    }
+}
 /// QueryMessagesResponse is the response type for the Messages rpc method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryMessagesResponse {
@@ -163,6 +283,16 @@ pub struct QueryMessagesResponse {
     pub pagination: ::core::option::Option<
         super::super::super::cosmos::base::query::v1beta1::PageResponse,
     >,
+}
+impl ::prost::Name for QueryMessagesResponse {
+    const NAME: &'static str = "QueryMessagesResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.QueryMessagesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.QueryMessagesResponse".into()
+    }
 }
 /// MsgCreateInterchainSecurityModule is the request type for CreateInterchainSecurityModule.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -186,11 +316,31 @@ pub struct MsgCreateInterchainSecurityModule {
     #[prost(bytes = "vec", tag = "6")]
     pub state_membership_vkey: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for MsgCreateInterchainSecurityModule {
+    const NAME: &'static str = "MsgCreateInterchainSecurityModule";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgCreateInterchainSecurityModule".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgCreateInterchainSecurityModule".into()
+    }
+}
 /// MsgCreateInterchainSecurityModuleResponse is the response type for CreateInterchainSecurityModule.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgCreateInterchainSecurityModuleResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for MsgCreateInterchainSecurityModuleResponse {
+    const NAME: &'static str = "MsgCreateInterchainSecurityModuleResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgCreateInterchainSecurityModuleResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgCreateInterchainSecurityModuleResponse".into()
+    }
 }
 /// MsgUpdateInterchainSecurityModule is the request type for UpdateInterchainSecurityModule.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -208,12 +358,32 @@ pub struct MsgUpdateInterchainSecurityModule {
     #[prost(string, tag = "4")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgUpdateInterchainSecurityModule {
+    const NAME: &'static str = "MsgUpdateInterchainSecurityModule";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgUpdateInterchainSecurityModule".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgUpdateInterchainSecurityModule".into()
+    }
+}
 /// MsgUpdateInterchainSecurityModuleResponse is the response type for UpdateInterchainSecurityModule.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateInterchainSecurityModuleResponse {
     /// new ism state
     #[prost(bytes = "vec", tag = "1")]
     pub state: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for MsgUpdateInterchainSecurityModuleResponse {
+    const NAME: &'static str = "MsgUpdateInterchainSecurityModuleResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgUpdateInterchainSecurityModuleResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgUpdateInterchainSecurityModuleResponse".into()
+    }
 }
 /// MsgSubmitMessages is the request type for SubmitMessages.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -231,6 +401,16 @@ pub struct MsgSubmitMessages {
     #[prost(string, tag = "4")]
     pub signer: ::prost::alloc::string::String,
 }
+impl ::prost::Name for MsgSubmitMessages {
+    const NAME: &'static str = "MsgSubmitMessages";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgSubmitMessages".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgSubmitMessages".into()
+    }
+}
 /// MsgSubmitMessagesResponse is the response type for SubmitMessages.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgSubmitMessagesResponse {
@@ -241,3 +421,14 @@ pub struct MsgSubmitMessagesResponse {
     #[prost(string, repeated, tag = "2")]
     pub messages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for MsgSubmitMessagesResponse {
+    const NAME: &'static str = "MsgSubmitMessagesResponse";
+    const PACKAGE: &'static str = "celestia.zkism.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "celestia.zkism.v1.MsgSubmitMessagesResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/celestia.zkism.v1.MsgSubmitMessagesResponse".into()
+    }
+}
+include!("celestia.zkism.v1.serde.rs");

@@ -14,6 +14,16 @@ pub struct ConsensusParams {
     #[prost(message, optional, tag = "5")]
     pub abci: ::core::option::Option<AbciParams>,
 }
+impl ::prost::Name for ConsensusParams {
+    const NAME: &'static str = "ConsensusParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ConsensusParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ConsensusParams".into()
+    }
+}
 /// BlockParams contains limits on the block size.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BlockParams {
@@ -25,6 +35,16 @@ pub struct BlockParams {
     /// Note: must be greater or equal to -1
     #[prost(int64, tag = "2")]
     pub max_gas: i64,
+}
+impl ::prost::Name for BlockParams {
+    const NAME: &'static str = "BlockParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.BlockParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.BlockParams".into()
+    }
 }
 /// EvidenceParams determine how we handle evidence of malfeasance.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -41,12 +61,22 @@ pub struct EvidenceParams {
     /// mechanism for handling [Nothing-At-Stake
     /// attacks](<https://github.com/ethereum/wiki/wiki/Proof-of-Stake-FAQ#what-is-the-nothing-at-stake-problem-and-how-can-it-be-fixed>).
     #[prost(message, optional, tag = "2")]
-    pub max_age_duration: ::core::option::Option<::prost_types::Duration>,
+    pub max_age_duration: ::core::option::Option<::pbjson_types::Duration>,
     /// This sets the maximum size of total evidence in bytes that can be committed in a single block.
     /// and should fall comfortably under the max block bytes.
     /// Default is 1048576 or 1MB
     #[prost(int64, tag = "3")]
     pub max_bytes: i64,
+}
+impl ::prost::Name for EvidenceParams {
+    const NAME: &'static str = "EvidenceParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.EvidenceParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.EvidenceParams".into()
+    }
 }
 /// ValidatorParams restrict the public key types validators can use.
 /// NOTE: uses ABCI pubkey naming, not Amino names.
@@ -55,11 +85,31 @@ pub struct ValidatorParams {
     #[prost(string, repeated, tag = "1")]
     pub pub_key_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for ValidatorParams {
+    const NAME: &'static str = "ValidatorParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ValidatorParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ValidatorParams".into()
+    }
+}
 /// VersionParams contains the ABCI application version.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct VersionParams {
     #[prost(uint64, tag = "1")]
     pub app: u64,
+}
+impl ::prost::Name for VersionParams {
+    const NAME: &'static str = "VersionParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.VersionParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.VersionParams".into()
+    }
 }
 /// HashedParams is a subset of ConsensusParams.
 ///
@@ -70,6 +120,16 @@ pub struct HashedParams {
     pub block_max_bytes: i64,
     #[prost(int64, tag = "2")]
     pub block_max_gas: i64,
+}
+impl ::prost::Name for HashedParams {
+    const NAME: &'static str = "HashedParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.HashedParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.HashedParams".into()
+    }
 }
 /// ABCIParams configure functionality specific to the Application Blockchain Interface.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -86,6 +146,16 @@ pub struct AbciParams {
     #[prost(int64, tag = "1")]
     pub vote_extensions_enable_height: i64,
 }
+impl ::prost::Name for AbciParams {
+    const NAME: &'static str = "ABCIParams";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ABCIParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ABCIParams".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSet {
     #[prost(message, repeated, tag = "1")]
@@ -94,6 +164,16 @@ pub struct ValidatorSet {
     pub proposer: ::core::option::Option<Validator>,
     #[prost(int64, tag = "3")]
     pub total_voting_power: i64,
+}
+impl ::prost::Name for ValidatorSet {
+    const NAME: &'static str = "ValidatorSet";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ValidatorSet".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ValidatorSet".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Validator {
@@ -106,12 +186,32 @@ pub struct Validator {
     #[prost(int64, tag = "4")]
     pub proposer_priority: i64,
 }
+impl ::prost::Name for Validator {
+    const NAME: &'static str = "Validator";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Validator".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Validator".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SimpleValidator {
     #[prost(message, optional, tag = "1")]
     pub pub_key: ::core::option::Option<super::crypto::PublicKey>,
     #[prost(int64, tag = "2")]
     pub voting_power: i64,
+}
+impl ::prost::Name for SimpleValidator {
+    const NAME: &'static str = "SimpleValidator";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.SimpleValidator".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.SimpleValidator".into()
+    }
 }
 /// BlockIdFlag indicates which BlockID the signature is for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -158,6 +258,16 @@ pub struct PartSetHeader {
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for PartSetHeader {
+    const NAME: &'static str = "PartSetHeader";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.PartSetHeader".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.PartSetHeader".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Part {
     #[prost(uint32, tag = "1")]
@@ -167,6 +277,16 @@ pub struct Part {
     #[prost(message, optional, tag = "3")]
     pub proof: ::core::option::Option<super::crypto::Proof>,
 }
+impl ::prost::Name for Part {
+    const NAME: &'static str = "Part";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Part".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Part".into()
+    }
+}
 /// BlockID
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockId {
@@ -174,6 +294,16 @@ pub struct BlockId {
     pub hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "2")]
     pub part_set_header: ::core::option::Option<PartSetHeader>,
+}
+impl ::prost::Name for BlockId {
+    const NAME: &'static str = "BlockID";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.BlockID".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.BlockID".into()
+    }
 }
 /// Header defines the structure of a block header.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -186,7 +316,7 @@ pub struct Header {
     #[prost(int64, tag = "3")]
     pub height: i64,
     #[prost(message, optional, tag = "4")]
-    pub time: ::core::option::Option<::prost_types::Timestamp>,
+    pub time: ::core::option::Option<::pbjson_types::Timestamp>,
     /// prev block info
     #[prost(message, optional, tag = "5")]
     pub last_block_id: ::core::option::Option<BlockId>,
@@ -224,6 +354,16 @@ pub struct Header {
     #[prost(bytes = "vec", tag = "14")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for Header {
+    const NAME: &'static str = "Header";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Header".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Header".into()
+    }
+}
 /// Data contains the set of transactions included in the block
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Data {
@@ -241,6 +381,16 @@ pub struct Data {
     #[prost(bytes = "vec", tag = "6")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for Data {
+    const NAME: &'static str = "Data";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Data".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Data".into()
+    }
+}
 /// Blob (named after binary large object) is a chunk of data submitted by a user
 /// to be published to the Celestia blockchain. The data of a Blob is published
 /// to a namespace and is encoded into shares based on the format specified by
@@ -256,6 +406,16 @@ pub struct Blob {
     #[prost(uint32, tag = "4")]
     pub namespace_version: u32,
 }
+impl ::prost::Name for Blob {
+    const NAME: &'static str = "Blob";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Blob".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Blob".into()
+    }
+}
 /// Vote represents a prevote or precommit vote from validators for
 /// consensus.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -270,7 +430,7 @@ pub struct Vote {
     #[prost(message, optional, tag = "4")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "6")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, tag = "7")]
@@ -289,6 +449,16 @@ pub struct Vote {
     #[prost(bytes = "vec", tag = "10")]
     pub extension_signature: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for Vote {
+    const NAME: &'static str = "Vote";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Vote".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Vote".into()
+    }
+}
 /// Commit contains the evidence that a block was committed by a set of validators.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Commit {
@@ -301,6 +471,16 @@ pub struct Commit {
     #[prost(message, repeated, tag = "4")]
     pub signatures: ::prost::alloc::vec::Vec<CommitSig>,
 }
+impl ::prost::Name for Commit {
+    const NAME: &'static str = "Commit";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Commit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Commit".into()
+    }
+}
 /// CommitSig is a part of the Vote included in a Commit.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommitSig {
@@ -309,9 +489,19 @@ pub struct CommitSig {
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "4")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for CommitSig {
+    const NAME: &'static str = "CommitSig";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CommitSig".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CommitSig".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExtendedCommit {
@@ -324,6 +514,16 @@ pub struct ExtendedCommit {
     #[prost(message, repeated, tag = "4")]
     pub extended_signatures: ::prost::alloc::vec::Vec<ExtendedCommitSig>,
 }
+impl ::prost::Name for ExtendedCommit {
+    const NAME: &'static str = "ExtendedCommit";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ExtendedCommit".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ExtendedCommit".into()
+    }
+}
 /// ExtendedCommitSig retains all the same fields as CommitSig but adds vote
 /// extension-related fields. We use two signatures to ensure backwards compatibility.
 /// That is the digest of the original signature is still the same in prior versions
@@ -334,7 +534,7 @@ pub struct ExtendedCommitSig {
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "4")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
     /// Vote extension data
@@ -343,6 +543,16 @@ pub struct ExtendedCommitSig {
     /// Vote extension signature
     #[prost(bytes = "vec", tag = "6")]
     pub extension_signature: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for ExtendedCommitSig {
+    const NAME: &'static str = "ExtendedCommitSig";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ExtendedCommitSig".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ExtendedCommitSig".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Proposal {
@@ -357,9 +567,19 @@ pub struct Proposal {
     #[prost(message, optional, tag = "5")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "6")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "7")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for Proposal {
+    const NAME: &'static str = "Proposal";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Proposal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Proposal".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedHeader {
@@ -368,12 +588,32 @@ pub struct SignedHeader {
     #[prost(message, optional, tag = "2")]
     pub commit: ::core::option::Option<Commit>,
 }
+impl ::prost::Name for SignedHeader {
+    const NAME: &'static str = "SignedHeader";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.SignedHeader".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.SignedHeader".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightBlock {
     #[prost(message, optional, tag = "1")]
     pub signed_header: ::core::option::Option<SignedHeader>,
     #[prost(message, optional, tag = "2")]
     pub validator_set: ::core::option::Option<ValidatorSet>,
+}
+impl ::prost::Name for LightBlock {
+    const NAME: &'static str = "LightBlock";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.LightBlock".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.LightBlock".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockMeta {
@@ -386,6 +626,16 @@ pub struct BlockMeta {
     #[prost(int64, tag = "4")]
     pub num_txs: i64,
 }
+impl ::prost::Name for BlockMeta {
+    const NAME: &'static str = "BlockMeta";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.BlockMeta".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.BlockMeta".into()
+    }
+}
 /// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxProof {
@@ -395,6 +645,16 @@ pub struct TxProof {
     pub data: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
     pub proof: ::core::option::Option<super::crypto::Proof>,
+}
+impl ::prost::Name for TxProof {
+    const NAME: &'static str = "TxProof";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.TxProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.TxProof".into()
+    }
 }
 /// IndexWrapper adds index metadata to a transaction. This is used to track
 /// transactions that pay for blobs, and where the blobs start in the square.
@@ -407,6 +667,16 @@ pub struct IndexWrapper {
     #[prost(string, tag = "3")]
     pub type_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for IndexWrapper {
+    const NAME: &'static str = "IndexWrapper";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.IndexWrapper".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.IndexWrapper".into()
+    }
+}
 /// BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
 /// The raw bytes of the blobs are not signed over, instead we verify each blob
 /// using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
@@ -418,6 +688,16 @@ pub struct BlobTx {
     pub blobs: ::prost::alloc::vec::Vec<Blob>,
     #[prost(string, tag = "3")]
     pub type_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for BlobTx {
+    const NAME: &'static str = "BlobTx";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.BlobTx".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.BlobTx".into()
+    }
 }
 /// ShareProof is an NMT proof that a set of shares exist in a set of rows and a
 /// Merkle proof that those rows exist in a Merkle tree with a given data root.
@@ -434,6 +714,16 @@ pub struct ShareProof {
     #[prost(uint32, tag = "5")]
     pub namespace_version: u32,
 }
+impl ::prost::Name for ShareProof {
+    const NAME: &'static str = "ShareProof";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.ShareProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.ShareProof".into()
+    }
+}
 /// RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
 /// given data root.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -448,6 +738,16 @@ pub struct RowProof {
     pub start_row: u32,
     #[prost(uint32, tag = "5")]
     pub end_row: u32,
+}
+impl ::prost::Name for RowProof {
+    const NAME: &'static str = "RowProof";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.RowProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.RowProof".into()
+    }
 }
 /// NMTProof is a proof of a namespace.ID in an NMT.
 /// In case this proof proves the absence of a namespace.ID
@@ -474,6 +774,16 @@ pub struct NmtProof {
     /// resulting 40 bytes total.
     #[prost(bytes = "vec", tag = "4")]
     pub leaf_hash: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for NmtProof {
+    const NAME: &'static str = "NMTProof";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.NMTProof".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.NMTProof".into()
+    }
 }
 /// SignedMsgType is a type of signed message in the consensus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -525,6 +835,16 @@ pub mod evidence {
         LightClientAttackEvidence(super::LightClientAttackEvidence),
     }
 }
+impl ::prost::Name for Evidence {
+    const NAME: &'static str = "Evidence";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Evidence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Evidence".into()
+    }
+}
 /// DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DuplicateVoteEvidence {
@@ -537,7 +857,17 @@ pub struct DuplicateVoteEvidence {
     #[prost(int64, tag = "4")]
     pub validator_power: i64,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for DuplicateVoteEvidence {
+    const NAME: &'static str = "DuplicateVoteEvidence";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.DuplicateVoteEvidence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.DuplicateVoteEvidence".into()
+    }
 }
 /// LightClientAttackEvidence contains evidence of a set of validators attempting to mislead a light client.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -551,12 +881,32 @@ pub struct LightClientAttackEvidence {
     #[prost(int64, tag = "4")]
     pub total_voting_power: i64,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
+}
+impl ::prost::Name for LightClientAttackEvidence {
+    const NAME: &'static str = "LightClientAttackEvidence";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.LightClientAttackEvidence".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.LightClientAttackEvidence".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EvidenceList {
     #[prost(message, repeated, tag = "1")]
     pub evidence: ::prost::alloc::vec::Vec<Evidence>,
+}
+impl ::prost::Name for EvidenceList {
+    const NAME: &'static str = "EvidenceList";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.EvidenceList".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.EvidenceList".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
@@ -569,6 +919,16 @@ pub struct Block {
     #[prost(message, optional, tag = "4")]
     pub last_commit: ::core::option::Option<Commit>,
 }
+impl ::prost::Name for Block {
+    const NAME: &'static str = "Block";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.Block".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.Block".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataRoundState {
     #[prost(int64, tag = "1")]
@@ -578,6 +938,16 @@ pub struct EventDataRoundState {
     #[prost(string, tag = "3")]
     pub step: ::prost::alloc::string::String,
 }
+impl ::prost::Name for EventDataRoundState {
+    const NAME: &'static str = "EventDataRoundState";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.EventDataRoundState".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.EventDataRoundState".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CanonicalBlockId {
     #[prost(bytes = "vec", tag = "1")]
@@ -585,12 +955,32 @@ pub struct CanonicalBlockId {
     #[prost(message, optional, tag = "2")]
     pub part_set_header: ::core::option::Option<CanonicalPartSetHeader>,
 }
+impl ::prost::Name for CanonicalBlockId {
+    const NAME: &'static str = "CanonicalBlockID";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CanonicalBlockID".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CanonicalBlockID".into()
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CanonicalPartSetHeader {
     #[prost(uint32, tag = "1")]
     pub total: u32,
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
+}
+impl ::prost::Name for CanonicalPartSetHeader {
+    const NAME: &'static str = "CanonicalPartSetHeader";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CanonicalPartSetHeader".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CanonicalPartSetHeader".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CanonicalProposal {
@@ -608,9 +998,19 @@ pub struct CanonicalProposal {
     #[prost(message, optional, tag = "5")]
     pub block_id: ::core::option::Option<CanonicalBlockId>,
     #[prost(message, optional, tag = "6")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(string, tag = "7")]
     pub chain_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for CanonicalProposal {
+    const NAME: &'static str = "CanonicalProposal";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CanonicalProposal".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CanonicalProposal".into()
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CanonicalVote {
@@ -626,9 +1026,19 @@ pub struct CanonicalVote {
     #[prost(message, optional, tag = "4")]
     pub block_id: ::core::option::Option<CanonicalBlockId>,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(string, tag = "6")]
     pub chain_id: ::prost::alloc::string::String,
+}
+impl ::prost::Name for CanonicalVote {
+    const NAME: &'static str = "CanonicalVote";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CanonicalVote".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CanonicalVote".into()
+    }
 }
 /// CanonicalVoteExtension provides us a way to serialize a vote extension from
 /// a particular validator such that we can sign over those serialized bytes.
@@ -643,3 +1053,14 @@ pub struct CanonicalVoteExtension {
     #[prost(string, tag = "4")]
     pub chain_id: ::prost::alloc::string::String,
 }
+impl ::prost::Name for CanonicalVoteExtension {
+    const NAME: &'static str = "CanonicalVoteExtension";
+    const PACKAGE: &'static str = "tendermint.types";
+    fn full_name() -> ::prost::alloc::string::String {
+        "tendermint.types.CanonicalVoteExtension".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/tendermint.types.CanonicalVoteExtension".into()
+    }
+}
+include!("tendermint.types.serde.rs");

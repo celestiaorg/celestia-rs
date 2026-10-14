@@ -2,6 +2,16 @@
 /// QueryParamsRequest defines the request type for querying x/consensus parameters.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "cosmos.consensus.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.consensus.v1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.consensus.v1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse defines the response type for querying x/consensus parameters.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
@@ -12,6 +22,16 @@ pub struct QueryParamsResponse {
     pub params: ::core::option::Option<
         ::celestia_core_proto::tendermint::types::ConsensusParams,
     >,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "cosmos.consensus.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.consensus.v1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.consensus.v1.QueryParamsResponse".into()
+    }
 }
 /// MsgUpdateParams is the Msg/UpdateParams request type.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -42,7 +62,28 @@ pub struct MsgUpdateParams {
         ::celestia_core_proto::tendermint::types::AbciParams,
     >,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "cosmos.consensus.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.consensus.v1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.consensus.v1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the response structure for executing a
 /// MsgUpdateParams message.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "cosmos.consensus.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "cosmos.consensus.v1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/cosmos.consensus.v1.MsgUpdateParamsResponse".into()
+    }
+}
+include!("cosmos.consensus.v1.serde.rs");

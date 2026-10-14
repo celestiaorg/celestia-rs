@@ -10,6 +10,16 @@ pub struct Params {
     #[prost(string, repeated, tag = "2")]
     pub allow_messages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+impl ::prost::Name for Params {
+    const NAME: &'static str = "Params";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.Params".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.Params".into()
+    }
+}
 /// QueryRequest defines the parameters for a particular query request
 /// by an interchain account.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -23,15 +33,45 @@ pub struct QueryRequest {
     #[prost(bytes = "vec", tag = "2")]
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
+impl ::prost::Name for QueryRequest {
+    const NAME: &'static str = "QueryRequest";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.QueryRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.QueryRequest".into()
+    }
+}
 /// QueryParamsRequest is the request type for the Query/Params RPC method.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QueryParamsRequest {}
+impl ::prost::Name for QueryParamsRequest {
+    const NAME: &'static str = "QueryParamsRequest";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.QueryParamsRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.QueryParamsRequest".into()
+    }
+}
 /// QueryParamsResponse is the response type for the Query/Params RPC method.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryParamsResponse {
     /// params defines the parameters of the module.
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<Params>,
+}
+impl ::prost::Name for QueryParamsResponse {
+    const NAME: &'static str = "QueryParamsResponse";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.QueryParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.QueryParamsResponse".into()
+    }
 }
 /// MsgUpdateParams defines the payload for Msg/UpdateParams
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -45,9 +85,29 @@ pub struct MsgUpdateParams {
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
 }
+impl ::prost::Name for MsgUpdateParams {
+    const NAME: &'static str = "MsgUpdateParams";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.MsgUpdateParams".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams".into()
+    }
+}
 /// MsgUpdateParamsResponse defines the response for Msg/UpdateParams
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MsgUpdateParamsResponse {}
+impl ::prost::Name for MsgUpdateParamsResponse {
+    const NAME: &'static str = "MsgUpdateParamsResponse";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.MsgUpdateParamsResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParamsResponse".into()
+    }
+}
 /// MsgModuleQuerySafe defines the payload for Msg/ModuleQuerySafe
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgModuleQuerySafe {
@@ -57,6 +117,16 @@ pub struct MsgModuleQuerySafe {
     /// requests defines the module safe queries to execute.
     #[prost(message, repeated, tag = "2")]
     pub requests: ::prost::alloc::vec::Vec<QueryRequest>,
+}
+impl ::prost::Name for MsgModuleQuerySafe {
+    const NAME: &'static str = "MsgModuleQuerySafe";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafe".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafe".into()
+    }
 }
 /// MsgModuleQuerySafeResponse defines the response for Msg/ModuleQuerySafe
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -68,3 +138,14 @@ pub struct MsgModuleQuerySafeResponse {
     #[prost(bytes = "vec", repeated, tag = "2")]
     pub responses: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+impl ::prost::Name for MsgModuleQuerySafeResponse {
+    const NAME: &'static str = "MsgModuleQuerySafeResponse";
+    const PACKAGE: &'static str = "ibc.applications.interchain_accounts.host.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafeResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafeResponse".into()
+    }
+}
+include!("ibc.applications.interchain_accounts.host.v1.serde.rs");
