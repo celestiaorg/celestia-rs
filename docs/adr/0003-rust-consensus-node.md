@@ -83,6 +83,22 @@ peer round states).
 
 ## Implementation notes
 
+- M12 operator binary (2026-10-14): `celestia-rs start` reads config.toml /
+  app.toml (P2P incl. seeds + PEX, statesync, pruning, `min-retain-blocks`
+  → `ResponseCommit.retain_height`, `halt-height`/`halt-time` as Go's
+  `checkHalt`, Prometheus with celestia-core metric names), stops cleanly on
+  SIGINT/SIGTERM, and on a due upgrade without a handler writes
+  `data/upgrade-info.json` and halts consensus like Go. CLI: `init`
+  (Go templates), `keys` (new `keyring` crate: Go test/file keyrings, JWE
+  items, argon2 armor), `genesis`, `tx`, `query`, `status`, `config`,
+  `rollback` (state + `RollbackToVersion`), `export` (every module's
+  `ExportGenesis`, equal to Go's on 15 devnet scenarios:
+  `devnet-conformance/tests/export_genesis.rs`), `--network`. End-to-end:
+  `conformance/devnet/operator.sh`; guide: `docs/operator-guide.md`.
+  Deferred: `os` keyring backend, legacy amino keyrings and bcrypt armors,
+  `tx staking create-validator` and other tx/query commands, `--gas auto`,
+  network-dependent steps (genesis download, public seeds) untested.
+
 - `light` (2026-10-14): verifier, bisection client, backwards verification,
   detector with `LightClientAttackEvidence`, light store on `KvBackend`,
   JSON-RPC provider (`/commit`, `/validators`, `/status`,

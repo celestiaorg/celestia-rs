@@ -70,6 +70,31 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: account permissions and the disable list (store order).
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    let mut account_permissions = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[ACCOUNT_PERMISSION_PREFIX])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        account_permissions.push(
+            celestia_proto::cosmos::circuit::v1::GenesisAccountPermissions {
+                address: sdk::address::to_bech32(sdk::address::ACC_PREFIX, &k[1..]),
+                permissions: Some(
+                    Permissions::decode(v.as_slice()).map_err(|e| undefined(e.to_string()))?,
+                ),
+            },
+        );
+    }
+    let mut disabled_type_urls = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[DISABLE_LIST_PREFIX])?;
+    while let Some((k, _)) = it.next(ctx)? {
+        disabled_type_urls.push(String::from_utf8_lossy(&k[1..]).into_owned());
+    }
+    Ok(GenesisState {
+        account_permissions,
+        disabled_type_urls,
+    })
+}
+
 /// `InitGenesis` from the module's genesis JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())

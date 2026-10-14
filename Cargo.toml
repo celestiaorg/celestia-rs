@@ -73,6 +73,7 @@ members = [
     "crates/tier-4-runtime/propagation",
     "crates/devnet-conformance",
     "crates/tier-5-node/celestia-rs",
+    "crates/tier-5-node/keyring",
     "crates/m1-integration",
     "crates/m2-integration",
     "crates/m3-integration",

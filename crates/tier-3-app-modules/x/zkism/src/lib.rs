@@ -132,6 +132,70 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis` (`keeper/genesis.go`): ISMs in key order, their
+/// message ids (sorted `0x…` strings) and proof submissions, both sorted
+/// by ISM id.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    use celestia_proto::celestia::zkism::v1::{GenesisMessages, GenesisProofSubmission};
+    let mut isms = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[ISMS_PREFIX])?;
+    while let Some((_, v)) = it.next(ctx)? {
+        isms.push(
+            InterchainSecurityModule::decode(v.as_slice()).map_err(|e| undefined(e.to_string()))?,
+        );
+    }
+    let mut messages = Vec::new();
+    let mut by_internal = std::collections::BTreeMap::new();
+    for ism in &isms {
+        let id = decode_hex_address(&ism.id)?;
+        let internal = internal_id(&id);
+        by_internal.insert(internal, (id, ism.id.clone()));
+        let mut prefix = vec![MESSAGES_PREFIX];
+        prefix.extend_from_slice(&u64_key(internal));
+        let mut msgs = Vec::new();
+        let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
+        while let Some((k, _)) = it.next(ctx)? {
+            msgs.push(format!("0x{}", hex::encode(&k[prefix.len()..])));
+        }
+        if msgs.is_empty() {
+            continue;
+        }
+        msgs.sort();
+        messages.push((
+            id,
+            GenesisMessages {
+                id: ism.id.clone(),
+                messages: msgs,
+            },
+        ));
+    }
+    messages.sort_by_key(|a| a.0);
+    let mut submissions = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[SUBMISSIONS_PREFIX])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        let internal =
+            sdk::codec::decode_u64(&k[1..]).ok_or_else(|| undefined("invalid submission key"))?;
+        let (id, s) = by_internal.get(&internal).cloned().ok_or_else(|| {
+            err_ism_not_found().wrap(format!(
+                "message proof submitted entry for unknown ism {internal}"
+            ))
+        })?;
+        submissions.push((
+            id,
+            GenesisProofSubmission {
+                id: s,
+                submitted: v.first().copied().unwrap_or(0) != 0,
+            },
+        ));
+    }
+    submissions.sort_by_key(|a| a.0);
+    Ok(GenesisState {
+        isms,
+        messages: messages.into_iter().map(|(_, m)| m).collect(),
+        submissions: submissions.into_iter().map(|(_, s)| s).collect(),
+    })
+}
+
 /// `InitGenesis` from the module's genesis JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())

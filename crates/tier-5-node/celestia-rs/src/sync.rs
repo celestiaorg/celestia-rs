@@ -195,7 +195,8 @@ pub fn block_sync(
     exec: &mut BlockExecutor,
     state_synced: bool,
     switch_to_consensus: bool,
-    halt_height: i64,
+    stop_height: i64,
+    shutdown: &crate::ops::Shutdown,
 ) -> anyhow::Result<blocksync::SyncOutcome> {
     let mut last = state.last_block_height;
     tracing::info!(height = last, switch_to_consensus, "starting block sync");
@@ -209,7 +210,7 @@ pub fn block_sync(
                 "synced block"
             );
         }
-        halt_height > 0 && s.last_block_height >= halt_height
+        shutdown.is_triggered() || (stop_height > 0 && s.last_block_height >= stop_height)
     };
     reactor
         .run_sync(state, exec, state_synced, switch_to_consensus, &mut stop)

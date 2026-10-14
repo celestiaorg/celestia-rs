@@ -25,19 +25,28 @@ base64 = "0.22"
 api-server = { path = "../../tier-4-runtime/api-server" }
 app = { path = "../../tier-4-runtime/app", default-features = false }
 blocksync = { path = "../../tier-4-runtime/blocksync" }
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 consensus = { path = "../../tier-4-runtime/consensus" }
 crypto = { path = "../../tier-0-primitives/crypto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+encoding = { path = "../../tier-0-primitives/encoding" }
 evidence = { path = "../../tier-4-runtime/evidence" }
+hash = { path = "../../tier-0-primitives/hash" }
 hex = "0.4"
+keyring = { path = "../keyring" }
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
 light = { path = "../../tier-4-runtime/light" }
+merkle = { path = "../../tier-0-primitives/merkle" }
 mempool = { path = "../../tier-4-runtime/mempool" }
 nodestore = { path = "../../tier-4-runtime/nodestore" }
 p2p = { path = "../../tier-4-runtime/p2p" }
 privval = { path = "../../tier-4-runtime/privval" }
 propagation = { path = "../../tier-4-runtime/propagation" }
 prost = "0.13"
+rand = "0.8"
+serde = "1"
+shares = { path = "../../tier-1-protocol-types/shares" }
+square = { path = "../../tier-1-protocol-types/square" }
 rpc = { path = "../../tier-4-runtime/rpc" }
 sdk = { path = "../../tier-3-app-modules/sdk" }
 serde_json = "1"
@@ -45,13 +54,14 @@ multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 statesync = { path = "../../tier-4-runtime/statesync" }
 toml = "0.8"
+toml_edit = "0.22"
+txdecode = { path = "../../tier-3-app-modules/txdecode" }
+x-blob = { path = "../../tier-3-app-modules/x/blob" }
 tracing = "0.1"
-clap.workspace = true
+clap = { workspace = true, features = ["env"] }
 math = { path = "../../tier-0-primitives/math" }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "time"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [dev-dependencies]
 tempfile = "3"
-crypto = { path = "../../tier-0-primitives/crypto" }
-hash = { path = "../../tier-0-primitives/hash" }

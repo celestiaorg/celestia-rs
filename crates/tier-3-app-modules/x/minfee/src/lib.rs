@@ -102,6 +102,18 @@ pub fn set_params(ctx: &mut Context<'_>, p: &MinfeeParams) -> Result<()> {
     ctx.set(STORE_KEY, PARAMS_KEY.to_vec(), p.to_proto().encode_to_vec())
 }
 
+/// `ExportGenesis`: params, and the deprecated top-level
+/// `network_min_gas_price` kept in sync with them.
+pub fn export_genesis(
+    ctx: &mut Context<'_>,
+) -> Result<celestia_proto::celestia::minfee::v1::GenesisState> {
+    let params = get_params(ctx)?.to_proto();
+    Ok(celestia_proto::celestia::minfee::v1::GenesisState {
+        network_min_gas_price: params.network_min_gas_price.clone(),
+        params: Some(params),
+    })
+}
+
 /// `InitGenesis` from the module's genesis JSON. `Params.Validate` accepts
 /// everything; the deprecated top-level `network_min_gas_price` is parsed
 /// (Go would fail to unmarshal an invalid value) but not stored.

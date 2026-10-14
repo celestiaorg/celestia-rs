@@ -503,6 +503,23 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: every grant in store order.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    let mut it = ctx.prefix_iter(STORE_KEY, &[GRANT_PREFIX])?;
+    let mut authorization = Vec::new();
+    while let Some((k, v)) = it.next(ctx)? {
+        let (granter, grantee, _) = parse_grant_key(&k);
+        let g: Grant = decode(&v)?;
+        authorization.push(celestia_proto::cosmos::authz::v1beta1::GrantAuthorization {
+            granter: bech32(&granter),
+            grantee: bech32(&grantee),
+            authorization: g.authorization,
+            expiration: g.expiration,
+        });
+    }
+    Ok(GenesisState { authorization })
+}
+
 /// `InitGenesis` from JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())

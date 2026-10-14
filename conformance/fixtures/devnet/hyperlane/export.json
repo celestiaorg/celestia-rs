@@ -1,0 +1,812 @@
+{
+ "app_hash": null,
+ "app_name": "<appd>",
+ "app_state": {
+  "auth": {
+   "accounts": [
+    {
+     "@type": "/cosmos.auth.v1beta1.BaseAccount",
+     "account_number": "1",
+     "address": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4",
+     "pub_key": {
+      "@type": "/cosmos.crypto.secp256k1.PubKey",
+      "key": "A3VthM2R1r5vC5Rd0TDDl6sVeraXQ00VuTnSQvwHvCPW"
+     },
+     "sequence": "14"
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.BaseAccount",
+     "account_number": "0",
+     "address": "celestia1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdhvar9x",
+     "pub_key": {
+      "@type": "/cosmos.crypto.secp256k1.PubKey",
+      "key": "A9ve4NOgB4ynnJoOLX8QEqnx2edCOzXX8eeVUDYv4zBi"
+     },
+     "sequence": "2"
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "4",
+      "address": "celestia1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3y3clr6",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "bonded_tokens_pool",
+     "permissions": [
+      "burner",
+      "staking"
+     ]
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "5",
+      "address": "celestia1tygms3xhhs3yv487phx3dw4a95jn7t7ls3yw4w",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "not_bonded_tokens_pool",
+     "permissions": [
+      "burner",
+      "staking"
+     ]
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "6",
+      "address": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "gov",
+     "permissions": [
+      "burner"
+     ]
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "3",
+      "address": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "distribution",
+     "permissions": []
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "9",
+      "address": "celestia1mqcszwafr476x3rud8qyufdegn7gvxh99rc2gk",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "hyperlane",
+     "permissions": []
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "8",
+      "address": "celestia1m20fddqpmfuwcz2r9ckj6wd70p5e75t8y22wqj",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "warp",
+     "permissions": [
+      "minter",
+      "burner"
+     ]
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "7",
+      "address": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "mint",
+     "permissions": [
+      "minter"
+     ]
+    },
+    {
+     "@type": "/cosmos.auth.v1beta1.ModuleAccount",
+     "base_account": {
+      "account_number": "2",
+      "address": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+      "pub_key": null,
+      "sequence": "0"
+     },
+     "name": "fee_collector",
+     "permissions": []
+    }
+   ],
+   "params": {
+    "max_memo_characters": "256",
+    "sig_verify_cost_ed25519": "590",
+    "sig_verify_cost_secp256k1": "1000",
+    "tx_sig_limit": "7",
+    "tx_size_cost_per_byte": "10"
+   }
+  },
+  "authz": {
+   "authorization": []
+  },
+  "bank": {
+   "balances": [
+    {
+     "address": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4",
+     "coins": [
+      {
+       "amount": "999999194000",
+       "denom": "utia"
+      }
+     ]
+    },
+    {
+     "address": "celestia1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdhvar9x",
+     "coins": [
+      {
+       "amount": "994999496000",
+       "denom": "utia"
+      }
+     ]
+    },
+    {
+     "address": "celestia1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3y3clr6",
+     "coins": [
+      {
+       "amount": "5000000000",
+       "denom": "utia"
+      }
+     ]
+    },
+    {
+     "address": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+     "coins": [
+      {
+       "amount": "842074",
+       "denom": "utia"
+      }
+     ]
+    },
+    {
+     "address": "celestia1m20fddqpmfuwcz2r9ckj6wd70p5e75t8y22wqj",
+     "coins": [
+      {
+       "amount": "750000",
+       "denom": "utia"
+      }
+     ]
+    }
+   ],
+   "denom_metadata": [
+    {
+     "base": "utia",
+     "denom_units": [
+      {
+       "aliases": [
+        "microtia"
+       ],
+       "denom": "utia",
+       "exponent": 0
+      },
+      {
+       "aliases": [],
+       "denom": "TIA",
+       "exponent": 6
+      }
+     ],
+     "description": "The native token of the Celestia network.",
+     "display": "TIA",
+     "name": "TIA",
+     "symbol": "TIA",
+     "uri": "",
+     "uri_hash": ""
+    }
+   ],
+   "params": {
+    "default_send_enabled": true,
+    "send_enabled": []
+   },
+   "send_enabled": [],
+   "supply": [
+    {
+     "amount": "2000000282074",
+     "denom": "utia"
+    }
+   ]
+  },
+  "blob": {
+   "params": {
+    "gas_per_blob_byte": 8,
+    "gov_max_square_size": "256"
+   }
+  },
+  "capability": {
+   "index": "3",
+   "owners": [
+    {
+     "index": "1",
+     "index_owners": {
+      "owners": [
+       {
+        "module": "ibc",
+        "name": "ports/transfer"
+       },
+       {
+        "module": "transfer",
+        "name": "ports/transfer"
+       }
+      ]
+     }
+    },
+    {
+     "index": "2",
+     "index_owners": {
+      "owners": [
+       {
+        "module": "ibc",
+        "name": "ports/icahost"
+       },
+       {
+        "module": "icahost",
+        "name": "ports/icahost"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "circuit": {
+   "account_permissions": [],
+   "disabled_type_urls": [
+    "/cosmos.upgrade.v1beta1.MsgCancelUpgrade",
+    "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+    "/ibc.core.client.v1.MsgIBCSoftwareUpgrade"
+   ]
+  },
+  "distribution": {
+   "delegator_starting_infos": [
+    {
+     "delegator_address": "celestia1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdhvar9x",
+     "starting_info": {
+      "height": "0",
+      "previous_period": "1",
+      "stake": "5000000000.000000000000000000"
+     },
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "delegator_withdraw_infos": [],
+   "fee_pool": {
+    "community_pool": [
+     {
+      "amount": "16841.480000000000000000",
+      "denom": "utia"
+     }
+    ]
+   },
+   "outstanding_rewards": [
+    {
+     "outstanding_rewards": [
+      {
+       "amount": "825232.520000000000000000",
+       "denom": "utia"
+      }
+     ],
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "params": {
+    "base_proposer_reward": "0.000000000000000000",
+    "bonus_proposer_reward": "0.000000000000000000",
+    "community_tax": "0.020000000000000000",
+    "withdraw_addr_enabled": true
+   },
+   "previous_proposer": "celestiavalcons1gzkky5kusmkd6mwvgfkpcs9hruphej02an93hy",
+   "validator_accumulated_commissions": [
+    {
+     "accumulated": {
+      "commission": [
+       {
+        "amount": "82523.252000000000000000",
+        "denom": "utia"
+       }
+      ]
+     },
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "validator_current_rewards": [
+    {
+     "rewards": {
+      "period": "2",
+      "rewards": [
+       {
+        "amount": "742709.268000000000000000",
+        "denom": "utia"
+       }
+      ]
+     },
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "validator_historical_rewards": [
+    {
+     "period": "1",
+     "rewards": {
+      "cumulative_reward_ratio": [],
+      "reference_count": 2
+     },
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "validator_slash_events": []
+  },
+  "evidence": {
+   "evidence": []
+  },
+  "feegrant": {
+   "allowances": []
+  },
+  "fibre": {
+   "escrow_accounts": [],
+   "params": {
+    "full_stake_storage_budget": "2199023255552",
+    "payment_promise_height_window": "1000",
+    "payment_promise_timeout": "3600s",
+    "shard_retention": "14400s",
+    "withdrawal_delay": "86400s"
+   },
+   "processed_payments": [],
+   "promise_freshness_floor": "2026-10-13T07:20:48.106421322Z",
+   "withdrawals": []
+  },
+  "forwarding": {},
+  "genutil": {
+   "gen_txs": []
+  },
+  "gov": {
+   "constitution": "",
+   "deposit_params": null,
+   "deposits": [],
+   "params": {
+    "burn_proposal_deposit_prevote": false,
+    "burn_vote_quorum": false,
+    "burn_vote_veto": true,
+    "expedited_min_deposit": [
+     {
+      "amount": "50000000000",
+      "denom": "utia"
+     }
+    ],
+    "expedited_threshold": "0.667000000000000000",
+    "expedited_voting_period": "86400s",
+    "max_deposit_period": "604800s",
+    "min_deposit": [
+     {
+      "amount": "10000000000",
+      "denom": "utia"
+     }
+    ],
+    "min_deposit_ratio": "0.010000000000000000",
+    "min_initial_deposit_ratio": "0.000000000000000000",
+    "proposal_cancel_dest": "",
+    "proposal_cancel_ratio": "0.500000000000000000",
+    "quorum": "0.334000000000000000",
+    "threshold": "0.500000000000000000",
+    "veto_threshold": "0.334000000000000000",
+    "voting_period": "604800s"
+   },
+   "proposals": [],
+   "starting_proposal_id": "1",
+   "tally_params": null,
+   "votes": [],
+   "voting_params": null
+  },
+  "hyperlane": {
+   "app_sequence": "1",
+   "ism_genesis": {
+    "isms": [
+     {
+      "@type": "/hyperlane.core.interchain_security.v1.NoopISM",
+      "id": "0x726f757465725f69736d00000000000000000000000000000000000000000000",
+      "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4"
+     }
+    ],
+    "validator_storage_locations": []
+   },
+   "ism_sequence": "1",
+   "mailboxes": [
+    {
+     "default_hook": "0x726f757465725f706f73745f6469737061746368000000040000000000000002",
+     "default_ism": "0x726f757465725f69736d00000000000000000000000000000000000000000000",
+     "id": "0x68797065726c616e650000000000000000000000000000000000000000000000",
+     "local_domain": 69420,
+     "message_received": 1,
+     "message_sent": 1,
+     "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4",
+     "required_hook": "0x726f757465725f706f73745f6469737061746368000000030000000000000001"
+    }
+   ],
+   "messages": [
+    {
+     "mailbox_id": "0",
+     "message_id": "0x27c4417d1e94fd463482593f5bc7f7ef7d638d18d9d88ba41682ac74d31d5384"
+    },
+    {
+     "mailbox_id": "0",
+     "message_id": "0x766c211c4054e6922b02b78e946f6a5cc5e15d783c84ba566c6a5332ed4703d2"
+    }
+   ],
+   "post_dispatch_genesis": {
+    "igp_gas_configs": [
+     {
+      "gas_oracle": {
+       "gas_price": "1",
+       "token_exchange_rate": "10000000000"
+      },
+      "gas_overhead": "100",
+      "igp_id": "2",
+      "remote_domain": 1
+     }
+    ],
+    "igps": [
+     {
+      "claimable_fees": [],
+      "denom": "utia",
+      "id": "0x726f757465725f706f73745f6469737061746368000000040000000000000002",
+      "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4"
+     }
+    ],
+    "merkle_tree_hooks": [
+     {
+      "id": "0x726f757465725f706f73745f6469737061746368000000030000000000000001",
+      "mailbox_id": "0x68797065726c616e650000000000000000000000000000000000000000000000",
+      "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4",
+      "tree": {
+       "branch": [
+        "J8RBfR6U/UY0glk/W8f3731jjRjZ2IukFoKsdNMdU4Q=",
+        "rTIotnb3081ChKVEPxfxlis25JGzCkCyQFhJ5Ze6X7U=",
+        "tMEZUZV8b49kLEr2HNayRkD+xtx/xgfuggapnpJBDTA=",
+        "Id25o1aBXD+sECa23sXfMSSvuttIXJulo+M5igS3uoU=",
+        "5Ydpsyob6vHqJzdaRAlaDR+2ZM4t01jn/L+3jCahk0Q=",
+        "DrAev8ntJ1AM1N/JeSctHwkTzJ9mVA1+gAWBEQnhzy0=",
+        "iHwivYdQ00AWrDxmtf8QLazdc/awFOcQtR6AIq+aGWg=",
+        "/9cBV+SAY/wzyXoFD39kAjO/ZGzJjZUkxrkrzzq1b4M=",
+        "mGfMX38Za5O64eJ+YyB0JEXSkPImOCdJi1T+xTn3Vq8=",
+        "zvrU5QjAmLmn4dj+sZlV+wK6lnVYUHhxCWnTRA9QVOA=",
+        "+dw+f+AW4FDv8mAzTxil1P45HYIJIxn1lk8uLrfBw6U=",
+        "+LE6SeKC9gnDF6gz+42XbRFRfFcdEiGiZdJa93js+JI=",
+        "NJDGzutFCuzcguKCkwMdEMfXO/heV78EGpc2CqLF2Zw=",
+        "wd+C2cS4dBPq4u8Ej5S001VM6nPZKw96+W4CccaR4rs=",
+        "XGet18bK8wIlat7ferEU2grP6HDUSaOkifeB1lnovsw=",
+        "2nvOn06GGLa9L0EyznmM3Hpg5+FGCnKZ48Y0KleWJtI=",
+        "JzPlD1JuwvoZoisx6O1Q8jzR/flMkVTtOnYJovH/mB8=",
+        "4dO1yAeygeRoPMbWMVz5W5rehkHe/LMjcvHBJuOY73o=",
+        "Wi3OCop/aLt0Vg+PcYN8LC67y/f/+0KuGJbxP3x0eaA=",
+        "tGootvVVQPiURPY94DeOPRIb4J4GzJ3tHCDmWHbTaqA=",
+        "xl6WRWRHhrYg4t0q1kjd/L9KflsaOk7P5/ZGZ6Pwt+I=",
+        "9EGFiO01okWM/+s5uT0m8Y0qsTvc5q7ljnuZNZ7C39k=",
+        "WpwW3ADW7xi3kzpvjcZcy1VmcTh3b33qEBBw3IeW43c=",
+        "TfhPQK4MginQ1gaeXI85p8KZZ3oJ02f8ewXjvDgO5lI=",
+        "zccllfdMexBD0OH/urc0ZIyDjfsFJ9lxtgK8IWyWGe8=",
+        "Cr9ayXSh7Vf0BQqlEN2cdPUIJ3s515c7st/Mxe6wYY0=",
+        "uM10BG/zN/CnvyyOA+EPZCwYhnmNcYBqseiI2eXuh9A=",
+        "g4xWVcshxsuDMTtaYxF13/SWN3LM6RCBiLNKyHyBxB4=",
+        "Zi7k3S3XsrxweWGx5kbEBHZp3LZYTw2Ndw2vXX596y4=",
+        "OIqyDiVz0XGogQjnnYIOmPJsC4Sqiy9KpJaNu4GOoyI=",
+        "kyN8ULp17khfTCKt8vdBQAvfjWqcx99+yuV2IhZl1zU=",
+        "hEiBi7SuRWKEnpSeF6wW4L4WaI4Va1zxXgmMYnwAVqk="
+       ],
+       "count": 1
+      }
+     }
+    ],
+    "noop_hooks": [
+     {
+      "id": "0x726f757465725f706f73745f6469737061746368000000000000000000000000",
+      "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4"
+     }
+    ]
+   },
+   "post_dispatch_sequence": "3"
+  },
+  "ibc": {
+   "channel_genesis": {
+    "ack_sequences": [],
+    "acknowledgements": [],
+    "channels": [],
+    "commitments": [],
+    "next_channel_sequence": "0",
+    "params": {
+     "upgrade_timeout": {
+      "height": {
+       "revision_height": "0",
+       "revision_number": "0"
+      },
+      "timestamp": "600000000000"
+     }
+    },
+    "receipts": [],
+    "recv_sequences": [],
+    "send_sequences": []
+   },
+   "client_genesis": {
+    "clients": [
+     {
+      "client_id": "09-localhost",
+      "client_state": {
+       "@type": "/ibc.lightclients.localhost.v2.ClientState",
+       "latest_height": {
+        "revision_height": "0",
+        "revision_number": "1"
+       }
+      }
+     }
+    ],
+    "clients_consensus": [],
+    "clients_metadata": [],
+    "create_localhost": false,
+    "next_client_sequence": "0",
+    "params": {
+     "allowed_clients": [
+      "06-solomachine",
+      "07-tendermint"
+     ]
+    }
+   },
+   "connection_genesis": {
+    "client_connection_paths": [],
+    "connections": [
+     {
+      "client_id": "09-localhost",
+      "counterparty": {
+       "client_id": "09-localhost",
+       "connection_id": "connection-localhost",
+       "prefix": {
+        "key_prefix": "aWJj"
+       }
+      },
+      "delay_period": "0",
+      "id": "connection-localhost",
+      "state": "STATE_OPEN",
+      "versions": [
+       {
+        "features": [
+         "ORDER_ORDERED",
+         "ORDER_UNORDERED"
+        ],
+        "identifier": "1"
+       }
+      ]
+     }
+    ],
+    "next_connection_sequence": "0",
+    "params": {
+     "max_expected_time_per_block": "13000000000"
+    }
+   }
+  },
+  "interchainaccounts": {
+   "controller_genesis_state": {
+    "active_channels": [],
+    "interchain_accounts": [],
+    "params": {
+     "controller_enabled": true
+    },
+    "ports": []
+   },
+   "host_genesis_state": {
+    "active_channels": [],
+    "interchain_accounts": [],
+    "params": {
+     "allow_messages": [
+      "/ibc.applications.transfer.v1.MsgTransfer",
+      "/cosmos.bank.v1beta1.MsgSend",
+      "/cosmos.staking.v1beta1.MsgDelegate",
+      "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+      "/cosmos.staking.v1beta1.MsgUndelegate",
+      "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+      "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+      "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+      "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+      "/cosmos.gov.v1.MsgVote",
+      "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+      "/cosmos.feegrant.v1beta1.MsgRevokeAllowance"
+     ],
+     "host_enabled": true
+    },
+    "port": "icahost"
+   }
+  },
+  "minfee": {
+   "network_min_gas_price": "0.000001000000000000",
+   "params": {
+    "network_min_gas_price": "0.000001000000000000"
+   }
+  },
+  "mint": {
+   "bond_denom": "utia"
+  },
+  "packetfowardmiddleware": {
+   "in_flight_packets": {}
+  },
+  "slashing": {
+   "missed_blocks": [
+    {
+     "address": "celestiavalcons1gzkky5kusmkd6mwvgfkpcs9hruphej02an93hy",
+     "missed_blocks": []
+    }
+   ],
+   "params": {
+    "downtime_jail_duration": "60s",
+    "min_signed_per_window": "0.001000000000000000",
+    "signed_blocks_window": "10000",
+    "slash_fraction_double_sign": "0.020000000000000000",
+    "slash_fraction_downtime": "0.000000000000000000"
+   },
+   "signing_infos": [
+    {
+     "address": "celestiavalcons1gzkky5kusmkd6mwvgfkpcs9hruphej02an93hy",
+     "validator_signing_info": {
+      "address": "celestiavalcons1gzkky5kusmkd6mwvgfkpcs9hruphej02an93hy",
+      "index_offset": "59",
+      "jailed_until": "1970-01-01T00:00:00Z",
+      "missed_blocks_counter": "0",
+      "start_height": "0",
+      "tombstoned": false
+     }
+    }
+   ]
+  },
+  "staking": {
+   "delegations": [
+    {
+     "delegator_address": "celestia1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdhvar9x",
+     "shares": "5000000000.000000000000000000",
+     "validator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq"
+    }
+   ],
+   "exported": true,
+   "last_total_power": "5000",
+   "last_validator_powers": [
+    {
+     "address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq",
+     "power": "5000"
+    }
+   ],
+   "params": {
+    "bond_denom": "utia",
+    "historical_entries": 10000,
+    "max_entries": 7,
+    "max_validators": 100,
+    "min_commission_rate": "0.050000000000000000",
+    "unbonding_time": "1213200s"
+   },
+   "redelegations": [],
+   "unbonding_delegations": [],
+   "validators": [
+    {
+     "commission": {
+      "commission_rates": {
+       "max_change_rate": "0.010000000000000000",
+       "max_rate": "0.200000000000000000",
+       "rate": "0.100000000000000000"
+      },
+      "update_time": "2026-10-14T07:18:01.397061641Z"
+     },
+     "consensus_pubkey": {
+      "@type": "/cosmos.crypto.ed25519.PubKey",
+      "key": "IACbg+Uj03uhOl6uVbLIJTC3pZq5uqgUgSZ9oOqSI0w="
+     },
+     "delegator_shares": "5000000000.000000000000000000",
+     "description": {
+      "details": "",
+      "identity": "",
+      "moniker": "val0",
+      "security_contact": "",
+      "website": ""
+     },
+     "jailed": false,
+     "min_self_delegation": "1",
+     "operator_address": "celestiavaloper1x7r0xjawke3zhqnwgf3kxk5utjqrkgcdjnl6nq",
+     "status": "BOND_STATUS_BONDED",
+     "tokens": "5000000000",
+     "unbonding_height": "0",
+     "unbonding_ids": [],
+     "unbonding_on_hold_ref_count": "0",
+     "unbonding_time": "1970-01-01T00:00:00Z"
+    }
+   ]
+  },
+  "transfer": {
+   "denom_traces": [],
+   "params": {
+    "receive_enabled": true,
+    "send_enabled": true
+   },
+   "port_id": "transfer",
+   "total_escrowed": []
+  },
+  "upgrade": {},
+  "valaddr": {
+   "fibre_providers": []
+  },
+  "vesting": {},
+  "warp": {
+   "params": {},
+   "remote_routers": [
+    {
+     "remote_router": {
+      "gas": "50000",
+      "receiver_contract": "0x000000000000000000000000ee00000000000000000000000000000000000001",
+      "receiver_domain": 1
+     },
+     "token_id": "0"
+    }
+   ],
+   "tokens": [
+    {
+     "collateral_balance": "750000",
+     "id": "0x726f757465725f61707000000000000000000000000000010000000000000000",
+     "ism_id": null,
+     "origin_denom": "utia",
+     "origin_mailbox": "0x68797065726c616e650000000000000000000000000000000000000000000000",
+     "owner": "celestia1xcgj4udsfxzhyeprluwkp34nanx0s20nfq2pn4",
+     "token_type": "HYP_TOKEN_TYPE_COLLATERAL"
+    }
+   ]
+  },
+  "zkism": {
+   "isms": [],
+   "messages": [],
+   "submissions": []
+  }
+ },
+ "app_version": "",
+ "chain_id": "rs-devnet-1",
+ "consensus": {
+  "params": {
+   "abci": {
+    "vote_extensions_enable_height": "0"
+   },
+   "block": {
+    "max_bytes": "33554432",
+    "max_gas": "-1"
+   },
+   "evidence": {
+    "max_age_duration": "172800000000000",
+    "max_age_num_blocks": "100000",
+    "max_bytes": "1048576"
+   },
+   "validator": {
+    "pub_key_types": [
+     "ed25519"
+    ]
+   },
+   "version": {
+    "app": "0"
+   }
+  },
+  "validators": [
+   {
+    "address": "40AD6252DC86ECDD6DCC426C1C40B71F037CC9EA",
+    "name": "val0",
+    "power": "5000",
+    "pub_key": {
+     "type": "tendermint/PubKeyEd25519",
+     "value": "IACbg+Uj03uhOl6uVbLIJTC3pZq5uqgUgSZ9oOqSI0w="
+    }
+   }
+  ]
+ },
+ "genesis_time": "2026-10-14T07:18:01.397061641Z",
+ "initial_height": 61
+}

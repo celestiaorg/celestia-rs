@@ -1,0 +1,9 @@
+-----BEGIN TENDERMINT PRIVATE KEY-----
+kdf: argon2
+salt: 3D7218959CC28A1B7B31B9B61EC6C64E
+type: secp256k1
+
+txhP+JYxmqmpML0ftWHvV8ndg1nzBySlIbqZzaDopOtESqmgk42q6JBCn94kDEvk
+mhDaB+0=
+=9CdV
+-----END TENDERMINT PRIVATE KEY-----

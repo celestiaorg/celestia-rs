@@ -14,8 +14,12 @@
 //! | `data/cs.wal/wal` | consensus WAL (Go format) |
 //! | `data/tx-inbox/*.tx` | raw txs submitted to the CAT mempool via CheckTx (until RPC exists) |
 //!
-//! There is no P2P yet: the node is the only validator (or a validator
-//! that never reaches quorum when others exist).
+//! Shutdown (SIGINT / SIGTERM through [`crate::ops::Shutdown`]) stops
+//! consensus between steps, so the WAL, the privval state and the stores
+//! are consistent; `halt-height` / `halt-time` (app.toml) stop the node
+//! like Go's `checkHalt`, and a due upgrade without a handler stops
+//! consensus with `data/upgrade-info.json` written (cosmovisor's trigger)
+//! while RPC keeps serving, exactly like a Go node.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -130,13 +134,24 @@ fn feed_inbox(dir: &Path, pool: &mempool::TxPool) {
     }
 }
 
+/// Prometheus endpoint options.
+#[derive(Debug, Clone)]
+pub struct MetricsOptions {
+    /// Listen address (`:26660`, `127.0.0.1:26660`).
+    pub laddr: String,
+    /// Metric namespace (`cometbft`).
+    pub namespace: String,
+}
+
 /// Options of `celestia-rs start`.
 #[derive(Debug, Clone)]
 pub struct StartOptions {
     /// Node home.
     pub home: PathBuf,
-    /// Stop after committing this height (0 = run forever).
-    pub halt_height: i64,
+    /// Stop after committing this height (0 = run forever); unlike Go's
+    /// `halt-height` ([`app::NodeOptions::halt_height`]) the block at this
+    /// height is committed.
+    pub stop_height: i64,
     /// Consensus config overrides.
     pub config: ConsensusConfig,
     /// P2P (None: no networking, a lone validator).
@@ -145,19 +160,32 @@ pub struct StartOptions {
     pub block_sync: bool,
     /// `[statesync]` (fresh nodes only).
     pub state_sync: Option<crate::sync::StateSyncOptions>,
+    /// App state options (pruning, caches, snapshots, block retention,
+    /// halt height / time).
+    pub app: app::AppOptions,
+    /// `minimum-gas-prices` (utia) for CheckTx.
+    pub min_gas_price: Option<math::LegacyDec>,
+    /// Prometheus endpoint.
+    pub metrics: Option<MetricsOptions>,
+    /// Shutdown requests (signals, tests).
+    pub shutdown: crate::ops::Shutdown,
 }
 
 impl StartOptions {
     /// A node without networking.
     #[must_use]
-    pub fn new(home: PathBuf, halt_height: i64, config: ConsensusConfig) -> Self {
+    pub fn new(home: PathBuf, stop_height: i64, config: ConsensusConfig) -> Self {
         Self {
             home,
-            halt_height,
+            stop_height,
             config,
             p2p: None,
             block_sync: true,
             state_sync: None,
+            app: app::AppOptions::default(),
+            min_gas_price: None,
+            metrics: None,
+            shutdown: crate::ops::Shutdown::new(),
         }
     }
 }
@@ -205,18 +233,18 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     if genesis.genesis_time > now {
         let wait = nodestore::state::sub_times(genesis.genesis_time, now);
         tracing::info!(seconds = wait / 1_000_000_000, "waiting for genesis time");
-        std::thread::sleep(std::time::Duration::from_nanos(
+        if opts.shutdown.sleep(std::time::Duration::from_nanos(
             u64::try_from(wait).unwrap_or(0),
-        ));
+        )) {
+            return Ok(());
+        }
     }
-    let app = app::App::open_with(
-        home,
-        app::AppOptions {
-            chain_id: Some(genesis.chain_id.clone()),
-            ..app::AppOptions::default()
-        },
-    )
-    .map_err(|e| anyhow!("open app state: {}", e.log))?;
+    let mut app_opts = opts.app.clone();
+    app_opts.chain_id = Some(genesis.chain_id.clone());
+    app_opts.node.home = Some(home.clone());
+    let mut app =
+        app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
+    app.set_node_min_gas_price(opts.min_gas_price.clone());
     let (bs, ss) = open_stores(home)?;
     let state = ss
         .load_from_db_or_genesis(&genesis)
@@ -296,10 +324,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         );
         state
     };
-    if opts.halt_height > 0 && state.last_block_height >= opts.halt_height {
-        tracing::info!(height = state.last_block_height, "halt height reached");
+    if opts.stop_height > 0 && state.last_block_height >= opts.stop_height {
+        tracing::info!(height = state.last_block_height, "stop height reached");
         return Ok(());
     }
+    let metrics = match &opts.metrics {
+        Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
+        None => None,
+    };
     // The consensus state machine and its reactors exist from the start
     // (Go's `NewState` + `NewReactor`); block sync executes blocks through
     // the same block executor and then hands over (`SwitchToConsensus`).
@@ -343,6 +375,18 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     };
     if let Some((sw, _)) = &net {
         let _ = rpc.shared.switch.set(sw.clone());
+        if let Some(m) = &metrics {
+            let sw = sw.clone();
+            #[allow(clippy::cast_precision_loss)]
+            m.probe("p2p_peers", move || sw.peers().len() as f64);
+        }
+    }
+    {
+        // Shutdown: stop consensus between steps (Go `OnStop`).
+        let stop = creactors.stop.clone();
+        opts.shutdown.on_trigger(move || {
+            let _ = stop.send(consensus::service::Input::Stop);
+        });
     }
     let result = (|| {
         let mut state_synced = false;
@@ -362,7 +406,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     &mut cs.block_exec,
                     state_synced,
                     CONSENSUS_GOSSIP || is_validator,
-                    opts.halt_height,
+                    opts.stop_height,
+                    &opts.shutdown,
                 )?;
                 state = out.state;
                 blocks_synced = out.blocks_synced;
@@ -386,16 +431,20 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     };
     let skip_wal = match result {
         Ok(None) => {
-            tracing::info!(height = state.last_block_height, "halt height reached");
+            tracing::info!(height = state.last_block_height, "block sync stopped");
             stop(&net);
             return Ok(());
         }
         Ok(Some(synced)) => synced,
         Err(e) => {
             stop(&net);
-            return Err(e);
+            return planned_stop(&format!("{e:#}"), &opts.shutdown);
         }
     };
+    if opts.shutdown.is_triggered() {
+        stop(&net);
+        return Ok(());
+    }
     let started = if wait_sync {
         // `SwitchToConsensus`.
         cs.switch_to_consensus(state, skip_wal).map(|()| {
@@ -414,9 +463,122 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         return Err(anyhow!("consensus start: {e}"));
     }
     rpc.shared.update_round_state(cs.round_state());
-    let res = run(&mut cs, &creactors, &pool, &inbox, opts.halt_height, &rpc);
+    let local = (!local_addr.is_empty()).then(|| local_addr.clone());
+    let res = run(
+        &mut cs,
+        &creactors,
+        &pool,
+        &inbox,
+        opts.stop_height,
+        &rpc,
+        metrics.as_deref(),
+        local.as_deref(),
+        &bs,
+    );
     stop(&net);
-    res
+    match res {
+        Ok(()) => Ok(()),
+        Err(e) => planned_stop(&format!("{e:#}"), &opts.shutdown),
+    }
+}
+
+/// Go stops consensus on a FinalizeBlock error ("CONSENSUS FAILURE"). Two
+/// such errors are planned: `halt-height` / `halt-time` (the node exits
+/// cleanly here) and a due upgrade without a handler (`x/upgrade` wrote
+/// `data/upgrade-info.json`; like Go the process stays up with RPC
+/// serving until it is stopped, so cosmovisor or the operator can swap the
+/// binary). Anything else is an error.
+fn planned_stop(err: &str, shutdown: &crate::ops::Shutdown) -> anyhow::Result<()> {
+    if err.contains(app::HALT_ERROR_PREFIX) {
+        tracing::info!(reason = err, "halting node per configuration");
+        return Ok(());
+    }
+    if app::is_upgrade_needed(err) {
+        tracing::error!(
+            reason = err,
+            "consensus halted for a software upgrade (data/upgrade-info.json written); \
+             RPC keeps serving — stop the node and start the upgraded binary"
+        );
+        shutdown.wait();
+        return Ok(());
+    }
+    Err(anyhow!("{err}"))
+}
+
+/// Starts the Prometheus endpoint (`[instrumentation]`).
+fn start_metrics(
+    m: &MetricsOptions,
+    chain_id: &str,
+    pool: &Arc<mempool::TxPool>,
+) -> anyhow::Result<Arc<crate::metrics::Metrics>> {
+    let metrics = crate::metrics::Metrics::new(&m.namespace, chain_id);
+    {
+        let pool1 = pool.clone();
+        #[allow(clippy::cast_precision_loss)]
+        metrics.probe("mempool_size", move || pool1.size() as f64);
+        let pool2 = pool.clone();
+        #[allow(clippy::cast_precision_loss)]
+        metrics.probe("mempool_size_bytes", move || pool2.size_bytes() as f64);
+    }
+    let laddr = if m.laddr.starts_with(':') {
+        format!("0.0.0.0{}", m.laddr)
+    } else {
+        m.laddr.clone()
+    };
+    let addr = crate::rpc_service::socket_addr(&laddr)?;
+    let rt = tokio::runtime::Handle::try_current()
+        .map_err(|_| anyhow!("metrics need a tokio runtime"))?;
+    let _g = rt.enter();
+    let listener = std::net::TcpListener::bind(addr)
+        .with_context(|| format!("bind prometheus_listen_addr {addr}"))?;
+    listener.set_nonblocking(true)?;
+    let listener = tokio::net::TcpListener::from_std(listener)?;
+    tracing::info!(%addr, "Prometheus metrics listening");
+    crate::metrics::serve(listener, metrics.clone());
+    Ok(metrics)
+}
+
+/// What the metrics need about a committed block.
+fn block_report(
+    bs: &BlockStore,
+    state: &nodestore::State,
+    height: i64,
+    round: i32,
+    local: Option<&[u8]>,
+) -> Option<crate::metrics::BlockReport> {
+    let block = bs.load_block(height).ok()??;
+    let vals = &state.last_validators;
+    let mut missing = (0usize, 0i64);
+    let mut signed = None;
+    if let Some(c) = &block.last_commit {
+        for (i, sig) in c.signatures.iter().enumerate() {
+            let absent = sig.block_id_flag == ctypes::commit::BLOCK_ID_FLAG_ABSENT;
+            if let Some(v) = vals.validators.get(i) {
+                if absent {
+                    missing.0 += 1;
+                    missing.1 += v.voting_power;
+                }
+                if local.is_some_and(|a| a == v.address.as_slice()) {
+                    signed = Some(!absent);
+                }
+            }
+        }
+    }
+    let own = local.and_then(|a| {
+        let (_, v) = vals.get_by_address(a)?;
+        Some((hex::encode_upper(a), v.voting_power, signed.unwrap_or(true)))
+    });
+    Some(crate::metrics::BlockReport {
+        height,
+        round,
+        time_ns: i64::try_from(block.header.time.unix_nanos()).unwrap_or(0),
+        num_txs: block.data.txs.len(),
+        size_bytes: block.to_proto().map_or(0, |p| p.encode_to_vec().len()),
+        validators: (vals.size(), vals.total_voting_power()),
+        missing,
+        byzantine: (block.evidence.evidence.len(), 0),
+        own,
+    })
 }
 
 /// The consensus and block propagation reactors around a state machine.
@@ -424,6 +586,8 @@ pub(crate) struct ConsensusReactors {
     reactor: Arc<consensus::reactor::Reactor>,
     propagation: Arc<propagation::Reactor>,
     inputs: std::sync::mpsc::Receiver<consensus::service::Input>,
+    /// Sender for [`consensus::service::Input::Stop`] (shutdown).
+    stop: std::sync::mpsc::Sender<consensus::service::Input>,
 }
 
 /// Creates the consensus reactor and the propagation reactor (`RECOVERY`)
@@ -461,6 +625,7 @@ fn consensus_reactors(
         wait_sync,
     );
     reactor.set_inputs(tx.clone());
+    let stop = tx.clone();
     prop.set_output(Arc::new(move |o| {
         let _ = tx.send(consensus::service::Input::Propagation(o));
     }));
@@ -468,6 +633,7 @@ fn consensus_reactors(
         reactor,
         propagation: prop,
         inputs: rx,
+        stop,
     }
 }
 
@@ -523,13 +689,17 @@ fn start_network(
 /// The node loop: the consensus thread (`consensus::service::run`) with
 /// the reactors, the local tx inbox fed from a helper thread; stops at the
 /// halt height or on a consensus failure.
+#[allow(clippy::too_many_arguments)]
 fn run(
     cs: &mut ConsensusState,
     reactors: &ConsensusReactors,
     pool: &Arc<mempool::TxPool>,
     inbox: &Path,
-    halt_height: i64,
+    stop_height: i64,
     rpc: &crate::rpc_service::Rpc,
+    metrics: Option<&crate::metrics::Metrics>,
+    local: Option<&[u8]>,
+    bs: &BlockStore,
 ) -> anyhow::Result<()> {
     let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let feeder = {
@@ -559,8 +729,14 @@ fn run(
                 app_hash = %hex::encode_upper(app_hash),
                 "committed block"
             );
-            if halt_height > 0 && *height >= halt_height {
-                tracing::info!(height, "halt height reached");
+            if let Some(m) = metrics {
+                let round = cs.round_state().commit_round;
+                if let Some(r) = block_report(bs, cs.state(), *height, round, local) {
+                    m.block(&r);
+                }
+            }
+            if stop_height > 0 && *height >= stop_height {
+                tracing::info!(height, "stop height reached");
                 return consensus::service::Flow::Stop;
             }
         }

@@ -65,6 +65,66 @@ fn block(store: &mut Store, height: i64) {
     }
 }
 
+#[test]
+fn rollback_deletes_versions_and_replays_identically() {
+    on_every_backend(rollback_deletes_versions_and_replays_identically_on);
+}
+
+/// `rollback` (Go `RollbackToVersion`): versions above the target vanish
+/// (also after a restart), the nodes they created are deleted, and
+/// re-applying the same blocks reproduces the same commits — with and
+/// without pruning.
+fn rollback_deletes_versions_and_replays_identically_on(kind: BackendKind) {
+    let expected = reference(20);
+    for pruning in [PruningOptions::nothing(), PruningOptions::validator()] {
+        let archive = pruning.interval == 0;
+        let dir = tempfile::tempdir().unwrap();
+        let node_count = |store: &Store| -> usize {
+            STORES
+                .iter()
+                .map(|n| {
+                    store
+                        .get_store(n)
+                        .unwrap()
+                        .tree()
+                        .node_db()
+                        .unwrap()
+                        .node_count()
+                        .unwrap()
+                })
+                .sum()
+        };
+        let mut nodes_at_10 = 0;
+        {
+            let mut store = open(persistent(kind, dir.path()), pruning);
+            for h in 1..=12 {
+                block(&mut store, h);
+                store.commit().unwrap();
+                if h == 10 {
+                    nodes_at_10 = node_count(&store);
+                }
+            }
+            assert_eq!(store.rollback_to_version(11).unwrap(), expected[10]);
+            assert_eq!(store.rollback_to_version(10).unwrap(), expected[9]);
+            if archive {
+                assert_eq!(node_count(&store), nodes_at_10);
+            }
+        }
+        let mut store = open(persistent(kind, dir.path()), pruning);
+        assert_eq!(store.version(), 10);
+        assert_eq!(store.last_commit_id().unwrap(), expected[9]);
+        assert!(store.get_commit_info(11).is_err());
+        for h in 11..=20 {
+            block(&mut store, h);
+            assert_eq!(
+                store.commit().unwrap(),
+                expected[usize::try_from(h - 1).unwrap()]
+            );
+        }
+        assert!(store.rollback_to_version(0).is_err());
+    }
+}
+
 fn reference(heights: i64) -> Vec<CommitId> {
     let mut mem = mount(Store::new());
     (1..=heights)

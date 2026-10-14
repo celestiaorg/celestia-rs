@@ -62,8 +62,8 @@ done
 (cd "$ROOT" && cargo build -q -p celestia-rs)
 RS=$ROOT/target/debug/celestia-rs
 HALF=$((BLOCKS / 2))
-$RS start --home "$H" --halt-height "$HALF" > "$WORK/node1.log" 2>&1
-$RS start --home "$H" --halt-height "$BLOCKS" > "$WORK/node2.log" 2>&1
+$RS start --home "$H" --p2p.laddr "" --stop-at-height "$HALF" > "$WORK/node1.log" 2>&1
+$RS start --home "$H" --p2p.laddr "" --stop-at-height "$BLOCKS" > "$WORK/node2.log" 2>&1
 grep -q "Catchup by replaying consensus messages" "$WORK/node2.log"
 $RS export-blocks --home "$H" --out "$WORK/blocks.json" > /dev/null 2>&1
 

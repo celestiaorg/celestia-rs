@@ -545,6 +545,69 @@ pub fn init_genesis(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Resul
     Ok(())
 }
 
+/// `ExportGenesis`: params, balances grouped by address (address order),
+/// total supply (denom order), denom metadata and send-enabled entries.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    use celestia_proto::cosmos::bank::v1beta1::{Balance, SendEnabled};
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+    let params = get_params(ctx)?;
+    let mut balances: Vec<Balance> = Vec::new();
+    let mut last: Option<Vec<u8>> = None;
+    let mut it = ctx.prefix_iter(STORE_KEY, &[BALANCES])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        let n = usize::from(*k.get(1).ok_or_else(|| errs::logic("balance key"))?);
+        let addr = k
+            .get(2..2 + n)
+            .ok_or_else(|| errs::logic("balance key"))?
+            .to_vec();
+        let denom = String::from_utf8_lossy(&k[2 + n..]).into_owned();
+        let coin = PbCoin {
+            denom,
+            amount: parse_int(&v)?.to_string(),
+        };
+        if last.as_deref() == Some(addr.as_slice()) {
+            if let Some(b) = balances.last_mut() {
+                b.coins.push(coin);
+            }
+        } else {
+            balances.push(Balance {
+                address: x_auth::bech32(&addr)?,
+                coins: vec![coin],
+            });
+            last = Some(addr);
+        }
+    }
+    let mut supply = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[SUPPLY])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        supply.push(PbCoin {
+            denom: String::from_utf8_lossy(&k[1..]).into_owned(),
+            amount: parse_int(&v)?.to_string(),
+        });
+    }
+    let mut denom_metadata = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[DENOM_METADATA])?;
+    while let Some((_, v)) = it.next(ctx)? {
+        denom_metadata
+            .push(Metadata::decode(v.as_slice()).map_err(|e| errs::unpack_any(e.to_string()))?);
+    }
+    let mut send_enabled = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[SEND_ENABLED])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        send_enabled.push(SendEnabled {
+            denom: String::from_utf8_lossy(&k[1..]).into_owned(),
+            enabled: v == pbjson_bool(true),
+        });
+    }
+    Ok(GenesisState {
+        params: Some(params),
+        balances,
+        supply,
+        denom_metadata,
+        send_enabled,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

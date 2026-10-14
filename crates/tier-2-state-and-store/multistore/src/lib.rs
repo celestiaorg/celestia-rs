@@ -592,6 +592,38 @@ impl Store {
         Ok(deleted.into_iter().collect())
     }
 
+    /// Go `rootmulti.Store.RollbackToVersion`: deletes every version above
+    /// `target` in every store and makes `target` the latest commit, in one
+    /// backend batch. Uncommitted changes are discarded.
+    pub fn rollback_to_version(&mut self, target: Version) -> Result<CommitId> {
+        if target <= 0 {
+            return Err(Error::InvalidVersion { version: target });
+        }
+        let info = self.read_commit_info(target)?;
+        let mut batch = WriteBatch::new();
+        for store in self.stores.values_mut() {
+            let tree = store.tree_mut();
+            if tree.available_versions().contains(&target) {
+                tree.rollback_to(target, &mut batch)?;
+            } else {
+                // A store added after `target`: it did not exist yet.
+                tree.rollback_to(0, &mut batch)?;
+            }
+        }
+        if let Some(db) = &self.db {
+            for v in target + 1..=self.version {
+                batch.delete(commit_info_key(v));
+            }
+            batch.put(LATEST_KEY, target.to_be_bytes().to_vec());
+            db.write(batch).map_err(db_err)?;
+        } else {
+            self.history.retain(|v, _| *v <= target);
+        }
+        self.version = target;
+        self.last_commit_info = Some(info);
+        self.last_commit_id()
+    }
+
     /// Committed versions available in every store, ascending.
     #[must_use]
     pub fn available_versions(&self) -> Vec<Version> {

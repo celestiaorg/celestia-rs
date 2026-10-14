@@ -204,6 +204,32 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: starting proposal id, deposits, votes, proposals
+/// (store order), params and constitution.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    fn all<M: Message + Default>(ctx: &mut Context<'_>, prefix: u8) -> Result<Vec<M>> {
+        let mut it = ctx.prefix_iter(STORE_KEY, &[prefix])?;
+        let mut out = Vec::new();
+        while let Some((_, v)) = it.next(ctx)? {
+            out.push(decode(&v)?);
+        }
+        Ok(out)
+    }
+    let constitution = ctx
+        .get(STORE_KEY, &[CONSTITUTION_KEY])?
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    Ok(GenesisState {
+        starting_proposal_id: peek_proposal_id(ctx)?,
+        deposits: all(ctx, DEPOSITS_PREFIX)?,
+        votes: all(ctx, VOTES_PREFIX)?,
+        proposals: all(ctx, PROPOSALS_PREFIX)?,
+        params: Some(get_params(ctx)?),
+        constitution,
+        ..GenesisState::default()
+    })
+}
+
 /// `InitGenesis` from the module's genesis JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())

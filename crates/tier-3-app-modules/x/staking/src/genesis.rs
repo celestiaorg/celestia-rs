@@ -33,6 +33,56 @@ fn pool_balance(ctx: &mut Context<'_>, name: &str) -> Result<(x_auth::Account, C
     Ok((acc, bal))
 }
 
+fn decode_all<M: prost::Message + Default>(ctx: &mut Context<'_>, prefix: u8) -> Result<Vec<M>> {
+    store::collect_prefix(ctx, &[prefix])?
+        .iter()
+        .map(|(_, v)| M::decode(v.as_slice()).map_err(|e| errs::json_unmarshal(e.to_string())))
+        .collect()
+}
+
+/// `ExportGenesis` (`exported = true`): params, last total power, last
+/// validator powers, validators, delegations, unbonding delegations and
+/// redelegations, each in store order.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<pb::GenesisState> {
+    let params = store::get_params(ctx)?.to_proto();
+    let last_total_power = store::get_last_total_power(ctx)?.to_string().into_bytes();
+    let mut last_validator_powers = Vec::new();
+    for (k, v) in store::collect_prefix(ctx, &[crate::keys::LAST_VALIDATOR_POWER])? {
+        let power = <pbjson_types::Int64Value as prost::Message>::decode(v.as_slice())
+            .map_err(|e| errs::json_unmarshal(e.to_string()))?
+            .value;
+        last_validator_powers.push(pb::LastValidatorPower {
+            address: crate::addr::val_to_string(&crate::keys::address_from_key(&k))?,
+            power,
+        });
+    }
+    Ok(pb::GenesisState {
+        params: Some(params),
+        last_total_power,
+        last_validator_powers,
+        validators: decode_all(ctx, crate::keys::VALIDATORS)?,
+        delegations: decode_all(ctx, crate::keys::DELEGATION)?,
+        unbonding_delegations: decode_all(ctx, crate::keys::UNBONDING_DELEGATION)?,
+        redelegations: decode_all(ctx, crate::keys::REDELEGATION)?,
+        exported: true,
+    })
+}
+
+/// `staking.WriteValidators`: the last validator set (operator order) as
+/// `(consensus pubkey Any, power, moniker)`.
+pub fn write_validators(ctx: &mut Context<'_>) -> Result<Vec<(celestia_proto::Any, i64, String)>> {
+    let mut out = Vec::new();
+    for v in store::get_last_validators(ctx)? {
+        let p = v.to_proto();
+        out.push((
+            p.consensus_pubkey.clone().unwrap_or_default(),
+            v.consensus_power()?,
+            p.description.map(|d| d.moniker).unwrap_or_default(),
+        ));
+    }
+    Ok(out)
+}
+
 /// `InitGenesis`: returns the initial validator set.
 pub fn init_genesis(
     ctx: &mut Context<'_>,

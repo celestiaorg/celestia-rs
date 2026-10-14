@@ -227,6 +227,17 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: every stored evidence (`Any`) in hash order.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    let mut it = ctx.prefix_iter(STORE_KEY, &[0x00])?;
+    let mut evidence = Vec::new();
+    while let Some((_, v)) = it.next(ctx)? {
+        evidence
+            .push(Any::decode(v.as_slice()).map_err(|e| sdkerr::json_unmarshal(e.to_string()))?);
+    }
+    Ok(GenesisState { evidence })
+}
+
 /// `InitGenesis` from JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())

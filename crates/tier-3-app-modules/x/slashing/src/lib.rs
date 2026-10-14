@@ -519,6 +519,53 @@ pub fn normalize_params_json(params: &mut serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: params, signing infos (address order) and each
+/// validator's missed blocks. Like Go's `IterateMissedBlockBitmap`, the
+/// missed-block index counts bits across the stored chunks in key order.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<pb::GenesisState> {
+    let params = decode::<pb::Params>(&ctx.get(STORE_KEY, PARAMS)?.unwrap_or_default())?;
+    let mut infos = Vec::new();
+    let mut it = ctx.prefix_iter(STORE_KEY, &[SIGNING_INFO])?;
+    while let Some((k, v)) = it.next(ctx)? {
+        let cons = k.get(2..).unwrap_or_default().to_vec();
+        infos.push((cons, decode::<pb::ValidatorSigningInfo>(&v)?));
+    }
+    let mut signing_infos = Vec::new();
+    let mut missed_blocks = Vec::new();
+    for (cons, info) in infos {
+        let address = cons_to_string(&cons)?;
+        let mut missed = Vec::new();
+        let mut index = 0i64;
+        let mut it = ctx.prefix_iter(STORE_KEY, &missed_bitmap_prefix(&cons))?;
+        while let Some((_, v)) = it.next(ctx)? {
+            let words = decode_chunk(&v)?;
+            for i in 0..MISSED_BLOCK_BITMAP_CHUNK_SIZE {
+                let bit = usize::try_from(i).unwrap_or(0);
+                if words[bit / 64] >> (bit % 64) & 1 == 1 {
+                    missed.push(pb::MissedBlock {
+                        index,
+                        missed: true,
+                    });
+                }
+                index += 1;
+            }
+        }
+        signing_infos.push(pb::SigningInfo {
+            address: address.clone(),
+            validator_signing_info: Some(info),
+        });
+        missed_blocks.push(pb::ValidatorMissedBlocks {
+            address,
+            missed_blocks: missed,
+        });
+    }
+    Ok(pb::GenesisState {
+        params: Some(params),
+        signing_infos,
+        missed_blocks,
+    })
+}
+
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let mut g = genesis.clone();

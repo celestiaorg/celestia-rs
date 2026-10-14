@@ -7,6 +7,7 @@
 
 pub mod check_tx;
 pub mod comet;
+pub mod export;
 pub mod fibre_tx;
 pub mod genutil;
 pub mod hyperlane;
@@ -63,6 +64,70 @@ pub struct App {
     /// Node-local `minimum-gas-prices` (utia) for CheckTx; `None` (the v10
     /// default `""`) means `appconsts.DefaultMinGasPrice`.
     node_min_gas_price: Option<math::LegacyDec>,
+    /// Node-local block retention, halt and upgrade-info settings.
+    node: NodeOptions,
+}
+
+/// Node-local settings of `app.toml` that do not affect consensus state.
+#[derive(Debug, Clone, Default)]
+pub struct NodeOptions {
+    /// `min-retain-blocks`: `ResponseCommit.retain_height` keeps at least
+    /// this many blocks (0 = no block pruning).
+    pub min_retain_blocks: u64,
+    /// `halt-height`: FinalizeBlock of this height (and above) fails with
+    /// Go's "halt per configuration" error.
+    pub halt_height: u64,
+    /// `halt-time` (Unix seconds): same for blocks at or after this time.
+    pub halt_time: u64,
+    /// Node home: `x/upgrade` writes `data/upgrade-info.json` there when an
+    /// upgrade without a handler is due (cosmovisor's trigger).
+    pub home: Option<PathBuf>,
+}
+
+/// Go's `checkHalt` error prefix.
+pub const HALT_ERROR_PREFIX: &str = "halt per configuration";
+
+/// Whether a FinalizeBlock error is the planned stop of an upgrade
+/// without a handler in this binary (`UPGRADE "x" NEEDED at height: …`).
+#[must_use]
+pub fn is_upgrade_needed(log: &str) -> bool {
+    log.contains("UPGRADE \"") && log.contains("NEEDED at height")
+}
+
+/// `Keeper.DumpUpgradeInfoToDisk`: `<home>/data/upgrade-info.json` with
+/// Go's `encoding/json` of the plan (`name`, `time`, `height`, `info`).
+pub fn dump_upgrade_info(
+    home: &Path,
+    height: i64,
+    plan: &celestia_proto::cosmos::upgrade::v1beta1::Plan,
+) -> std::io::Result<()> {
+    let dir = home.join("data");
+    std::fs::create_dir_all(&dir)?;
+    let mut v = serde_json::Map::new();
+    if !plan.name.is_empty() {
+        v.insert("name".into(), serde_json::Value::String(plan.name.clone()));
+    }
+    v.insert(
+        "time".into(),
+        serde_json::Value::String("0001-01-01T00:00:00Z".into()),
+    );
+    if height != 0 {
+        v.insert("height".into(), serde_json::Value::from(height));
+    }
+    if !plan.info.is_empty() {
+        v.insert("info".into(), serde_json::Value::String(plan.info.clone()));
+    }
+    // Go marshals struct fields in declaration order.
+    let order = ["name", "time", "height", "info"];
+    let body = order
+        .iter()
+        .filter_map(|k| {
+            v.get(*k)
+                .map(|x| format!("{}:{x}", serde_json::Value::String((*k).to_owned())))
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    std::fs::write(dir.join("upgrade-info.json"), format!("{{{body}}}"))
 }
 
 /// Metadata key of the chain ID in the state database.
@@ -80,6 +145,8 @@ pub struct AppOptions {
     /// Chain ID to use when the database does not know it yet (a node
     /// bootstrapped by state sync never sees InitChain).
     pub chain_id: Option<String>,
+    /// Node-local settings (block retention, halt, upgrade info).
+    pub node: NodeOptions,
 }
 
 /// Directory holding the state database of a node home directory.
@@ -161,7 +228,50 @@ impl App {
             snapshots: None,
             check_header: Header::default(),
             node_min_gas_price: None,
+            node: NodeOptions::default(),
         }
+    }
+
+    /// Sets the node-local options (`AppOptions::node`).
+    pub fn set_node_options(&mut self, node: NodeOptions) {
+        self.node = node;
+    }
+
+    /// Go `CommitMultiStore().RollbackToVersion(height)` (`rollback`): the
+    /// committed state at `height` becomes the latest.
+    pub fn rollback_to(&mut self, height: i64) -> Result<()> {
+        self.ms
+            .root_mut()
+            .rollback_to_version(height)
+            .map_err(store_err)?;
+        self.finalize_header = None;
+        self.load_committed_state()
+    }
+
+    /// `BaseApp.GetBlockRetentionHeight(commitHeight)`.
+    #[must_use]
+    pub fn block_retention_height(&self, commit_height: i64) -> i64 {
+        let min_retain = i64::try_from(self.node.min_retain_blocks).unwrap_or(i64::MAX);
+        if min_retain == 0 {
+            return 0;
+        }
+        let min_non_zero = |x: i64, y: i64| match (x, y) {
+            (0, y) => y,
+            (x, 0) => x,
+            (x, y) => x.min(y),
+        };
+        let mut retention = 0;
+        if let Some(m) = &self.snapshots {
+            let o = m.options();
+            let snapshot_heights =
+                i64::try_from(o.interval.saturating_mul(u64::from(o.keep_recent)))
+                    .unwrap_or(i64::MAX);
+            if snapshot_heights > 0 {
+                retention = min_non_zero(retention, commit_height - snapshot_heights);
+            }
+        }
+        retention = min_non_zero(retention, commit_height - min_retain);
+        retention.max(0)
     }
 
     /// Sets the node's minimum gas price (utia) used by CheckTx.
@@ -188,6 +298,7 @@ impl App {
         let db =
             kvdb::open_backend(&data_dir(home), STATE_DB_NAME, &options.db).map_err(store_err)?;
         let mut app = Self::open_backend(db, &options)?;
+        app.node = options.node.clone();
         app.snapshots = Some(
             snapshots::Manager::new(snapshot_dir(home), options.snapshots).map_err(store_err)?,
         );
@@ -353,6 +464,7 @@ impl App {
         &mut self,
         req: abci::RequestFinalizeBlock,
     ) -> Result<ResponseFinalizeBlock> {
+        self.check_halt(&req)?;
         let header = Header {
             chain_id: self.chain_id.clone(),
             height: req.height,
@@ -373,7 +485,24 @@ impl App {
 
         let mut params_changed = false;
         for module in modules::PRE_BLOCKERS {
-            params_changed |= modules::pre_block(&mut ctx, module, &mut self.upgrade)?;
+            match modules::pre_block(&mut ctx, module, &mut self.upgrade) {
+                Ok(changed) => params_changed |= changed,
+                Err(e) => {
+                    if is_upgrade_needed(&e.log) {
+                        if let (Some(home), Ok(Some(plan))) =
+                            (&self.node.home, x_upgrade::get_upgrade_plan(&mut ctx))
+                        {
+                            if let Err(io) = dump_upgrade_info(home, req.height, &plan) {
+                                return Err(sdk::error::sdk::logic(format!(
+                                    "unable to write upgrade info to filesystem: {io}"
+                                )));
+                            }
+                        }
+                        tracing::error!("{}", e.log);
+                    }
+                    return Err(e);
+                }
+            }
         }
         if params_changed {
             ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
@@ -454,7 +583,30 @@ impl App {
         self.last_height = id.version;
         self.check_header = header;
         self.snapshot_if_applicable();
-        Ok(ResponseCommit { retain_height: 0 })
+        Ok(ResponseCommit {
+            retain_height: self.block_retention_height(id.version),
+        })
+    }
+
+    /// Go `checkHalt`.
+    fn check_halt(&self, req: &abci::RequestFinalizeBlock) -> Result<()> {
+        let NodeOptions {
+            halt_height,
+            halt_time,
+            ..
+        } = self.node;
+        let height_hit = halt_height > 0 && u64::try_from(req.height).unwrap_or(0) >= halt_height;
+        let time_hit = halt_time > 0
+            && req
+                .time
+                .as_ref()
+                .is_some_and(|t| t.seconds >= i64::try_from(halt_time).unwrap_or(i64::MAX));
+        if height_hit || time_hit {
+            return Err(sdk::error::sdk::logic(format!(
+                "{HALT_ERROR_PREFIX} height {halt_height} time {halt_time}"
+            )));
+        }
+        Ok(())
     }
 
     /// `SnapshotIfApplicable`: snapshots are taken synchronously after the

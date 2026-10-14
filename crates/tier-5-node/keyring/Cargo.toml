@@ -1,0 +1,37 @@
+[package]
+name = "keyring"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK keyring (test / file backends, Go-compatible on-disk format), BIP-39/BIP-32 keys."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+aes = "0.8"
+aes-gcm = "0.10"
+argon2 = "0.5"
+base64 = "0.22"
+bcrypt = "0.15"
+bip39 = "2"
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+chacha20poly1305 = "0.10"
+crypto = { path = "../../tier-0-primitives/crypto" }
+encoding = { path = "../../tier-0-primitives/encoding" }
+hex = "0.4"
+hmac = "0.12"
+k256 = { version = "0.13", features = ["arithmetic"] }
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+prost = "0.13"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"

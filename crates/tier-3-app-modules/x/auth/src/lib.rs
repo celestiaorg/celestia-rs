@@ -367,6 +367,14 @@ pub fn all_accounts(ctx: &mut Context<'_>) -> Result<Vec<Account>> {
     Ok(out)
 }
 
+/// `ExportGenesis`: params and every account (address order).
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    Ok(GenesisState {
+        params: Some(get_params(ctx)?),
+        accounts: all_accounts(ctx)?.iter().map(Account::to_any).collect(),
+    })
+}
+
 /// `SanitizeGenesisAccounts`: fix duplicate account numbers with the lowest
 /// unused values, then sort by account number (stable).
 #[must_use]

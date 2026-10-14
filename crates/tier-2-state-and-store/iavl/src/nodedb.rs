@@ -261,6 +261,17 @@ impl NodeDb {
         Ok(out)
     }
 
+    /// Keys of the nodes created by `version`.
+    pub(crate) fn node_keys_at(&self, version: Version) -> Result<Vec<NodeKey>> {
+        let prefix = self.key(NODE, &version.to_be_bytes());
+        let mut out = Vec::new();
+        for item in self.backend.prefix_range(&prefix, false).map_err(db_err)? {
+            let (key, _) = item.map_err(db_err)?;
+            out.push(NodeKey::from_bytes(&key[prefix.len() - 8..])?);
+        }
+        Ok(out)
+    }
+
     /// Number of persisted nodes (diagnostics and pruning tests).
     pub fn node_count(&self) -> Result<usize> {
         let prefix = self.key(NODE, &[]);

@@ -363,6 +363,40 @@ impl Tree {
         Ok(delete.into_iter().collect())
     }
 
+    /// Deletes every committed version above `target` and makes `target`
+    /// the working tree (Go `LoadVersionForOverwriting`, used by
+    /// `rollback`), queueing the storage deletions into `batch`: the roots
+    /// and nodes created by the deleted versions, and the orphan records
+    /// their commits wrote (those nodes are live again in `target`).
+    pub fn rollback_to(&mut self, target: Version, batch: &mut WriteBatch) -> Result<()> {
+        if target != 0 && !self.versions.contains_key(&target) {
+            return Err(Error::VersionNotFound { version: target });
+        }
+        let doomed: Vec<Version> = self.versions.range(target + 1..).map(|(v, _)| *v).collect();
+        if let Some(ndb) = &self.ndb {
+            for &d in &doomed {
+                batch.delete(ndb.root_key(d));
+                for nk in ndb.node_keys_at(d)? {
+                    ndb.delete_node(batch, nk);
+                }
+                // Orphans written by the commit of `d` are keyed by the
+                // version before it.
+                let prev = self.versions.range(..d).next_back().map_or(0, |(v, _)| *v);
+                for nk in ndb.orphans(prev)? {
+                    batch.delete(ndb.orphan_key(prev, nk));
+                }
+            }
+        }
+        for d in &doomed {
+            self.versions.remove(d);
+        }
+        self.version = target;
+        self.root = self.versions.get(&target).cloned().flatten();
+        self.dirty = false;
+        self.orphans.clear();
+        Ok(())
+    }
+
     /// An immutable view of committed `version`.
     pub fn get_immutable(&self, version: Version) -> Result<ImmutableTree> {
         let root = self

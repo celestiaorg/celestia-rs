@@ -20,6 +20,7 @@ pub mod client;
 pub mod commitment;
 pub mod connection;
 pub mod errors;
+pub mod export;
 pub mod gojson;
 pub mod height;
 pub mod host;

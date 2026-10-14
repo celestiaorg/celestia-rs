@@ -310,6 +310,21 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     Ok(())
 }
 
+/// `ExportGenesis`: every allowance (`Grant`) in store order.
+pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
+    let mut it = ctx.prefix_iter(STORE_KEY, &[0x00])?;
+    let mut allowances = Vec::new();
+    while let Some((_, v)) = it.next(ctx)? {
+        allowances.push(
+            <celestia_proto::cosmos::feegrant::v1beta1::Grant as prost::Message>::decode(
+                v.as_slice(),
+            )
+            .map_err(|e| sdkerr::json_unmarshal(e.to_string()))?,
+        );
+    }
+    Ok(GenesisState { allowances })
+}
+
 /// `InitGenesis` from JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState = serde_json::from_value(genesis.clone())
