@@ -106,10 +106,10 @@ impl PeerHandle for ReqPeer {
         self.id.clone()
     }
     fn send(&self, ch: u8, msg: Vec<u8>) -> bool {
-        if ch == CHUNK_CHANNEL {
-            if let Ok(Msg::ChunkRequest(r)) = Msg::decode(&msg) {
-                let _ = self.tx.lock().unwrap().send((self.id.clone(), r));
-            }
+        if ch == CHUNK_CHANNEL
+            && let Ok(Msg::ChunkRequest(r)) = Msg::decode(&msg)
+        {
+            let _ = self.tx.lock().unwrap().send((self.id.clone(), r));
         }
         true
     }

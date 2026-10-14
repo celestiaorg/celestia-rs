@@ -57,7 +57,7 @@ fn aes_kw_wrap(kek: &[u8; 16], cek: &[u8]) -> Vec<u8> {
 /// RFC 3394 AES key unwrap with a 128-bit KEK.
 #[allow(clippy::many_single_char_names)]
 fn aes_kw_unwrap(kek: &[u8; 16], wrapped: &[u8]) -> Result<Vec<u8>, Error> {
-    if wrapped.len() < 24 || wrapped.len() % 8 != 0 {
+    if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) {
         return Err(Error::Decrypt("invalid wrapped key length".into()));
     }
     let cipher = aes::Aes128::new(GenericArray::from_slice(kek));

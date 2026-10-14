@@ -190,13 +190,13 @@ pub fn init(opts: &InitOptions) -> anyhow::Result<InitInfo> {
                 net.chain_id, net.name
             ));
         }
-    } else if let Some(net) = crate::networks::by_chain_id(&chain_id) {
-        if net.genesis_sha256.is_some() {
-            genesis_note = Some(format!(
-                "The chain ID {chain_id} is a public network.\nPlease download the genesis file via:\n\tcelestia-rs download-genesis --network {}",
-                net.name
-            ));
-        }
+    } else if let Some(net) = crate::networks::by_chain_id(&chain_id)
+        && net.genesis_sha256.is_some()
+    {
+        genesis_note = Some(format!(
+            "The chain ID {chain_id} is a public network.\nPlease download the genesis file via:\n\tcelestia-rs download-genesis --network {}",
+            net.name
+        ));
     }
     Ok(InitInfo {
         moniker: opts.moniker.clone(),

@@ -388,7 +388,7 @@ fn split_signatures(metadata: &[u8], offset: usize) -> std::result::Result<Vec<V
         ));
     }
     let sigs = &metadata[offset..];
-    if sigs.len() % 65 != 0 {
+    if !sigs.len().is_multiple_of(65) {
         return Err("invalid signatures length in metadata".into());
     }
     Ok(sigs.chunks(65).map(<[u8]>::to_vec).collect())

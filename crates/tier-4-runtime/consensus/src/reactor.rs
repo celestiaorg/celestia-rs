@@ -335,12 +335,12 @@ impl Reactor {
             if rs.height == prs.height && self.gossip_votes_for_height(rs, &prs, &peer, &ps).await {
                 continue;
             }
-            if prs.height != 0 && rs.height == prs.height + 1 {
-                if let Some(lc) = &rs.last_commit {
-                    if Self::pick_send_vote(&peer, &ps, lc).await {
-                        continue;
-                    }
-                }
+            if prs.height != 0
+                && rs.height == prs.height + 1
+                && let Some(lc) = &rs.last_commit
+                && Self::pick_send_vote(&peer, &ps, lc).await
+            {
+                continue;
             }
             let base = self.block_store.base();
             if base > 0 && prs.height != 0 && rs.height >= prs.height + 2 && prs.height >= base {
@@ -360,10 +360,10 @@ impl Reactor {
                         .flatten()
                         .map(|c| c.wrapped_extended_commit())
                 };
-                if let Some(ec) = ec {
-                    if Self::pick_send_vote(&peer, &ps, &ec).await {
-                        continue;
-                    }
+                if let Some(ec) = ec
+                    && Self::pick_send_vote(&peer, &ps, &ec).await
+                {
+                    continue;
                 }
             }
             if sleeping == 0 || sleeping == 2 {
@@ -381,51 +381,49 @@ impl Reactor {
         peer: &Peer,
         ps: &PeerState,
     ) -> bool {
-        if prs.step == RoundStep::NewHeight {
-            if let Some(lc) = &rs.last_commit {
-                if Self::pick_send_vote(peer, ps, lc).await {
-                    return true;
-                }
-            }
+        if prs.step == RoundStep::NewHeight
+            && let Some(lc) = &rs.last_commit
+            && Self::pick_send_vote(peer, ps, lc).await
+        {
+            return true;
         }
         if prs.step <= RoundStep::Propose
             && prs.round != -1
             && prs.round <= rs.round
             && prs.proposal_pol_round != -1
+            && let Some(pol) = rs.votes.prevotes(prs.proposal_pol_round)
+            && Self::pick_send_vote(peer, ps, pol).await
         {
-            if let Some(pol) = rs.votes.prevotes(prs.proposal_pol_round) {
-                if Self::pick_send_vote(peer, ps, pol).await {
-                    return true;
-                }
-            }
+            return true;
         }
-        if prs.step <= RoundStep::PrevoteWait && prs.round != -1 && prs.round <= rs.round {
-            if let Some(v) = rs.votes.prevotes(prs.round) {
-                if Self::pick_send_vote(peer, ps, v).await {
-                    return true;
-                }
-            }
+        if prs.step <= RoundStep::PrevoteWait
+            && prs.round != -1
+            && prs.round <= rs.round
+            && let Some(v) = rs.votes.prevotes(prs.round)
+            && Self::pick_send_vote(peer, ps, v).await
+        {
+            return true;
         }
-        if prs.step <= RoundStep::PrecommitWait && prs.round != -1 && prs.round <= rs.round {
-            if let Some(v) = rs.votes.precommits(prs.round) {
-                if Self::pick_send_vote(peer, ps, v).await {
-                    return true;
-                }
-            }
+        if prs.step <= RoundStep::PrecommitWait
+            && prs.round != -1
+            && prs.round <= rs.round
+            && let Some(v) = rs.votes.precommits(prs.round)
+            && Self::pick_send_vote(peer, ps, v).await
+        {
+            return true;
         }
-        if prs.round != -1 && prs.round <= rs.round {
-            if let Some(v) = rs.votes.prevotes(prs.round) {
-                if Self::pick_send_vote(peer, ps, v).await {
-                    return true;
-                }
-            }
+        if prs.round != -1
+            && prs.round <= rs.round
+            && let Some(v) = rs.votes.prevotes(prs.round)
+            && Self::pick_send_vote(peer, ps, v).await
+        {
+            return true;
         }
-        if prs.proposal_pol_round != -1 {
-            if let Some(pol) = rs.votes.prevotes(prs.proposal_pol_round) {
-                if Self::pick_send_vote(peer, ps, pol).await {
-                    return true;
-                }
-            }
+        if prs.proposal_pol_round != -1
+            && let Some(pol) = rs.votes.prevotes(prs.proposal_pol_round)
+            && Self::pick_send_vote(peer, ps, pol).await
+        {
+            return true;
         }
         false
     }
@@ -465,25 +463,25 @@ impl Reactor {
             {
                 let snap = self.snapshot();
                 let prs = ps.round_state();
-                if snap.rs.height == prs.height && prs.proposal_pol_round >= 0 {
-                    if let Some(maj23) = snap
+                if snap.rs.height == prs.height
+                    && prs.proposal_pol_round >= 0
+                    && let Some(maj23) = snap
                         .rs
                         .votes
                         .prevotes(prs.proposal_pol_round)
                         .and_then(crate::vote_set::VoteSet::two_thirds_majority)
-                    {
-                        let _ = peer.try_send(
-                            STATE_CHANNEL,
-                            ConsensusMessage::VoteSetMaj23 {
-                                height: prs.height,
-                                round: prs.proposal_pol_round,
-                                vote_type: PREVOTE_TYPE,
-                                block_id: maj23,
-                            }
-                            .encode(),
-                        );
-                        tokio::time::sleep(sleep).await;
-                    }
+                {
+                    let _ = peer.try_send(
+                        STATE_CHANNEL,
+                        ConsensusMessage::VoteSetMaj23 {
+                            height: prs.height,
+                            round: prs.proposal_pol_round,
+                            vote_type: PREVOTE_TYPE,
+                            block_id: maj23,
+                        }
+                        .encode(),
+                    );
+                    tokio::time::sleep(sleep).await;
                 }
             }
             {
@@ -492,20 +490,19 @@ impl Reactor {
                     && prs.height > 0
                     && prs.height <= self.block_store.height()
                     && prs.height >= self.block_store.base()
+                    && let Some(commit) = self.load_commit(prs.height)
                 {
-                    if let Some(commit) = self.load_commit(prs.height) {
-                        let _ = peer.try_send(
-                            STATE_CHANNEL,
-                            ConsensusMessage::VoteSetMaj23 {
-                                height: prs.height,
-                                round: commit.round,
-                                vote_type: PRECOMMIT_TYPE,
-                                block_id: commit.block_id,
-                            }
-                            .encode(),
-                        );
-                        tokio::time::sleep(sleep).await;
-                    }
+                    let _ = peer.try_send(
+                        STATE_CHANNEL,
+                        ConsensusMessage::VoteSetMaj23 {
+                            height: prs.height,
+                            round: commit.round,
+                            vote_type: PRECOMMIT_TYPE,
+                            block_id: commit.block_id,
+                        }
+                        .encode(),
+                    );
+                    tokio::time::sleep(sleep).await;
                 }
             }
             tokio::time::sleep(sleep).await;
@@ -531,23 +528,23 @@ impl Reactor {
             let rs = &snap.rs;
             let prs = ps.round_state();
             // Proposal block parts the peer lacks.
-            if let Some(parts) = &rs.proposal_block_parts {
-                if parts.has_header(&prs.proposal_block_part_set_header) {
-                    let ours = BitArray(parts.bit_array());
-                    let missing = ours.sub(&prs.proposal_block_parts);
-                    if let Some(index) = missing.pick_random(|n| rand::random_range(0..n)) {
-                        if let Some(part) = parts.get_part(index) {
-                            let m = ConsensusMessage::BlockPart {
-                                height: rs.height,
-                                round: rs.round,
-                                part,
-                            };
-                            if peer.send(DATA_CHANNEL, m.encode()).await {
-                                ps.set_has_proposal_block_part(prs.height, prs.round, index);
-                            }
-                            continue;
-                        }
+            if let Some(parts) = &rs.proposal_block_parts
+                && parts.has_header(&prs.proposal_block_part_set_header)
+            {
+                let ours = BitArray(parts.bit_array());
+                let missing = ours.sub(&prs.proposal_block_parts);
+                if let Some(index) = missing.pick_random(|n| rand::random_range(0..n))
+                    && let Some(part) = parts.get_part(index)
+                {
+                    let m = ConsensusMessage::BlockPart {
+                        height: rs.height,
+                        round: rs.round,
+                        part,
+                    };
+                    if peer.send(DATA_CHANNEL, m.encode()).await {
+                        ps.set_has_proposal_block_part(prs.height, prs.round, index);
                     }
+                    continue;
                 }
             }
             // Catch-up from the block store.
@@ -567,34 +564,34 @@ impl Reactor {
                 tokio::time::sleep(sleep).await;
                 continue;
             }
-            if let Some(p) = &rs.proposal {
-                if !prs.proposal {
-                    if peer
-                        .send(DATA_CHANNEL, ConsensusMessage::Proposal(p.clone()).encode())
-                        .await
-                    {
-                        ps.set_has_proposal(p);
-                    }
-                    if p.pol_round >= 0 {
-                        let pol = rs
-                            .votes
-                            .prevotes(p.pol_round)
-                            .map(crate::vote_set::VoteSet::bit_array)
-                            .unwrap_or_default();
-                        let _ = peer
-                            .send(
-                                DATA_CHANNEL,
-                                ConsensusMessage::ProposalPol {
-                                    height: rs.height,
-                                    proposal_pol_round: p.pol_round,
-                                    proposal_pol: pol,
-                                }
-                                .encode(),
-                            )
-                            .await;
-                    }
-                    continue;
+            if let Some(p) = &rs.proposal
+                && !prs.proposal
+            {
+                if peer
+                    .send(DATA_CHANNEL, ConsensusMessage::Proposal(p.clone()).encode())
+                    .await
+                {
+                    ps.set_has_proposal(p);
                 }
+                if p.pol_round >= 0 {
+                    let pol = rs
+                        .votes
+                        .prevotes(p.pol_round)
+                        .map(crate::vote_set::VoteSet::bit_array)
+                        .unwrap_or_default();
+                    let _ = peer
+                        .send(
+                            DATA_CHANNEL,
+                            ConsensusMessage::ProposalPol {
+                                height: rs.height,
+                                proposal_pol_round: p.pol_round,
+                                proposal_pol: pol,
+                            }
+                            .encode(),
+                        )
+                        .await;
+                }
+                continue;
             }
             tokio::time::sleep(sleep).await;
         }

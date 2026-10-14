@@ -546,7 +546,7 @@ impl Manager {
     /// True when a snapshot should be taken after committing `height`.
     #[must_use]
     pub fn should_snapshot(&self, height: u64) -> bool {
-        self.options.interval > 0 && height > 0 && height % self.options.interval == 0
+        self.options.interval > 0 && height > 0 && height.is_multiple_of(self.options.interval)
     }
 
     /// Takes a snapshot of `store` at committed `height`, then prunes old

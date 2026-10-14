@@ -397,12 +397,11 @@ impl TxIndexer {
         for r in results {
             let hash = tx_hash(&r.tx);
             let ok = r.result.as_ref().is_none_or(|x| x.code == 0);
-            if !ok {
-                if let Some(old) = self.get(&hash)? {
-                    if old.result.as_ref().is_none_or(|x| x.code == 0) {
-                        continue;
-                    }
-                }
+            if !ok
+                && let Some(old) = self.get(&hash)?
+                && old.result.as_ref().is_none_or(|x| x.code == 0)
+            {
+                continue;
             }
             self.index_events(r, &hash, &mut batch)?;
             batch.put(key_for_height(r), hash.clone());

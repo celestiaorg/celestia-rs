@@ -518,10 +518,10 @@ fn bad_block_stops_peer() {
         if let Some(bc::message::Sum::BlockResponse(br)) = &mut m.sum {
             // a different app hash keeps the block well-formed but changes
             // its hash, so the next block's commit does not sign it
-            if let Some(h) = br.block.as_mut().and_then(|b| b.header.as_mut()) {
-                if let Some(x) = h.app_hash.first_mut() {
-                    *x ^= 1;
-                }
+            if let Some(h) = br.block.as_mut().and_then(|b| b.header.as_mut())
+                && let Some(x) = h.app_hash.first_mut()
+            {
+                *x ^= 1;
             }
         }
         m.encode_to_vec()

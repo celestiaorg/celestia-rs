@@ -333,12 +333,13 @@ impl Encoder {
                 w.push(',');
             }
             let is_oneof = e.oneof.is_some();
-            if is_oneof && !write_nil {
-                if let Some((_, field_name, type_name)) = &e.oneof {
-                    w.push_str(&format!(
-                        "\"{field_name}\":{{\"type\":\"{type_name}\",\"value\":{{"
-                    ));
-                }
+            if is_oneof
+                && !write_nil
+                && let Some((_, field_name, type_name)) = &e.oneof
+            {
+                w.push_str(&format!(
+                    "\"{field_name}\":{{\"type\":\"{type_name}\",\"value\":{{"
+                ));
             }
             json_string(w, &name);
             w.push(':');
@@ -484,23 +485,22 @@ fn module_account_encoder(msg: &DynamicMessage, w: &mut String) -> Res<()> {
         })
         .unwrap_or_default();
     let (mut address, mut number, mut sequence) = (String::new(), 0u64, 0u64);
-    if let Some(fd) = msg.descriptor().get_field_by_name("base_account") {
-        if msg.has_field(&fd) {
-            if let Value::Message(ba) = msg.get_field(&fd).into_owned() {
-                address = ba
-                    .get_field_by_name("address")
-                    .and_then(|v| v.as_str().map(ToOwned::to_owned))
-                    .unwrap_or_default();
-                number = ba
-                    .get_field_by_name("account_number")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                sequence = ba
-                    .get_field_by_name("sequence")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-            }
-        }
+    if let Some(fd) = msg.descriptor().get_field_by_name("base_account")
+        && msg.has_field(&fd)
+        && let Value::Message(ba) = msg.get_field(&fd).into_owned()
+    {
+        address = ba
+            .get_field_by_name("address")
+            .and_then(|v| v.as_str().map(ToOwned::to_owned))
+            .unwrap_or_default();
+        number = ba
+            .get_field_by_name("account_number")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        sequence = ba
+            .get_field_by_name("sequence")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
     }
     w.push_str(&format!("{{\"account_number\":{number},\"address\":"));
     json_string(w, &address);

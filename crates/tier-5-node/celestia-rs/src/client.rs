@@ -88,11 +88,11 @@ pub fn send_tx(
     let (msgs, blobs) = msgs(&key)?;
     let node = Node::new(&node_addr(home, &f.node));
     let mut fee = f.fee.clone();
-    if fee.gas == 0 {
-        if let Some(b) = &blobs {
-            let pfb = txs::msg_pay_for_blobs(&key.bech32(ACC_PREFIX), b)?;
-            fee.gas = txs::pfb_gas(&pfb);
-        }
+    if fee.gas == 0
+        && let Some(b) = &blobs
+    {
+        let pfb = txs::msg_pay_for_blobs(&key.bech32(ACC_PREFIX), b)?;
+        fee.gas = txs::pfb_gas(&pfb);
     }
     if f.generate_only {
         let body = celestia_proto::cosmos::tx::v1beta1::TxBody {

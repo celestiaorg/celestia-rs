@@ -50,7 +50,7 @@ pub fn compact_shares_needed(len: u32) -> u64 {
     }
     let rem = len - FIRST_COMPACT_SHARE_CONTENT_SIZE;
     let mut n = rem / CONTINUATION_COMPACT_SHARE_CONTENT_SIZE;
-    if rem % CONTINUATION_COMPACT_SHARE_CONTENT_SIZE > 0 {
+    if !rem.is_multiple_of(CONTINUATION_COMPACT_SHARE_CONTENT_SIZE) {
         n += 1;
     }
     1 + u64::from(n)
@@ -72,7 +72,7 @@ pub fn sparse_shares_needed(len: u32, contains_signer: bool) -> u64 {
     }
     let rem = len - first;
     let mut n = rem / CONTINUATION_SPARSE_SHARE_CONTENT_SIZE;
-    if rem % CONTINUATION_SPARSE_SHARE_CONTENT_SIZE > 0 {
+    if !rem.is_multiple_of(CONTINUATION_SPARSE_SHARE_CONTENT_SIZE) {
         n += 1;
     }
     1 + u64::from(n)

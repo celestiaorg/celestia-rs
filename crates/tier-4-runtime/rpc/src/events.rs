@@ -575,12 +575,11 @@ impl nodestore::BlockEventSink for BlockEventPublisher {
             })
             .collect();
         // Index first so a client reacting to an event finds it indexed.
-        if let (Some(txi), Some(bi)) = (&self.tx_indexer, &self.block_indexer) {
-            if let Err(e) =
+        if let (Some(txi), Some(bi)) = (&self.tx_indexer, &self.block_indexer)
+            && let Err(e) =
                 crate::indexer::index_block(txi, bi, height, &f.response.events, &tx_results)
-            {
-                tracing::error!(height, error = %e, "failed to index block");
-            }
+        {
+            tracing::error!(height, error = %e, "failed to index block");
         }
         self.bus
             .publish_new_block(block.clone(), f.block_id.clone(), f.response.clone());

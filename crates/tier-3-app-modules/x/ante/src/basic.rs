@@ -73,12 +73,10 @@ pub fn validate_basic(ctx: &Context<'_>, tx: &Tx) -> R<()> {
     if amounts.iter().flatten().any(math::Int::is_negative) {
         return Err(errs::insufficient_fee("invalid fee provided").into());
     }
-    if !fee.payer.is_empty() {
-        if let Err(e) = txview::acc_address_from_bech32(&fee.payer) {
-            return Err(
-                errs::invalid_address(format!("Invalid fee payer address ({})", e.log)).into(),
-            );
-        }
+    if !fee.payer.is_empty()
+        && let Err(e) = txview::acc_address_from_bech32(&fee.payer)
+    {
+        return Err(errs::invalid_address(format!("Invalid fee payer address ({})", e.log)).into());
     }
     if tx.signatures.is_empty() {
         return Err(errs::no_signatures("").into());

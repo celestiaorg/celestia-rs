@@ -1156,12 +1156,12 @@ pub fn recv_packet(
             state_name(ch.state)
         )));
     }
-    if let Some(up) = get_counterparty_upgrade(ctx, &p.destination_port, &p.destination_channel)? {
-        if p.sequence >= up.next_sequence_send {
-            return Err(cherr::invalid_packet(
-                "cannot flush packet at sequence greater than or equal to counterparty next sequence send",
-            ));
-        }
+    if let Some(up) = get_counterparty_upgrade(ctx, &p.destination_port, &p.destination_channel)?
+        && p.sequence >= up.next_sequence_send
+    {
+        return Err(cherr::invalid_packet(
+            "cannot flush packet at sequence greater than or equal to counterparty next sequence send",
+        ));
     }
     let cap_name = host::channel_capability_path(&p.destination_port, &p.destination_channel);
     if !SCOPED.authenticate_capability(ctx, cap, &cap_name)? {

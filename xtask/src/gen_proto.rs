@@ -439,20 +439,20 @@ fn write_services(
             }
             let mut rules = Vec::new();
             let mopts = m.options();
-            if mopts.has_extension(&http) {
-                if let Value::Message(rule) = mopts.get_extension(&http).as_ref() {
-                    if let Some(r) = rule_of(rule) {
-                        rules.push(r);
-                    }
-                    if let Some(Value::List(extra)) =
-                        rule.get_field_by_name("additional_bindings").as_deref()
-                    {
-                        for e in extra {
-                            if let Value::Message(e) = e {
-                                if let Some(r) = rule_of(e) {
-                                    rules.push(r);
-                                }
-                            }
+            if mopts.has_extension(&http)
+                && let Value::Message(rule) = mopts.get_extension(&http).as_ref()
+            {
+                if let Some(r) = rule_of(rule) {
+                    rules.push(r);
+                }
+                if let Some(Value::List(extra)) =
+                    rule.get_field_by_name("additional_bindings").as_deref()
+                {
+                    for e in extra {
+                        if let Value::Message(e) = e
+                            && let Some(r) = rule_of(e)
+                        {
+                            rules.push(r);
                         }
                     }
                 }

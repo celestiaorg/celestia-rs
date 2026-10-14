@@ -397,29 +397,29 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
             state = crate::sync::state_sync(&reactors.statesync, ss_opts, &state, &ss, &bs)?;
             state_synced = true;
         }
-        if let Some((_, reactors)) = &net {
-            if (opts.block_sync && !only_validator_is_us) || state_synced {
-                let is_validator = state.validators.has_address(&local_addr);
-                let out = crate::sync::block_sync(
-                    &reactors.blocksync,
-                    state.clone(),
-                    &mut cs.block_exec,
-                    state_synced,
-                    CONSENSUS_GOSSIP || is_validator,
-                    opts.stop_height,
-                    &opts.shutdown,
-                )?;
-                state = out.state;
-                blocks_synced = out.blocks_synced;
-                tracing::info!(
-                    height = state.last_block_height,
-                    blocks_synced = out.blocks_synced,
-                    reason = ?out.reason,
-                    "block sync finished"
-                );
-                if out.reason == blocksync::SwitchToConsensus::Stopped {
-                    return Ok(None);
-                }
+        if let Some((_, reactors)) = &net
+            && ((opts.block_sync && !only_validator_is_us) || state_synced)
+        {
+            let is_validator = state.validators.has_address(&local_addr);
+            let out = crate::sync::block_sync(
+                &reactors.blocksync,
+                state.clone(),
+                &mut cs.block_exec,
+                state_synced,
+                CONSENSUS_GOSSIP || is_validator,
+                opts.stop_height,
+                &opts.shutdown,
+            )?;
+            state = out.state;
+            blocks_synced = out.blocks_synced;
+            tracing::info!(
+                height = state.last_block_height,
+                blocks_synced = out.blocks_synced,
+                reason = ?out.reason,
+                "block sync finished"
+            );
+            if out.reason == blocksync::SwitchToConsensus::Stopped {
+                return Ok(None);
             }
         }
         Ok::<Option<bool>, anyhow::Error>(Some(state_synced || blocks_synced > 0))

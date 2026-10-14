@@ -408,11 +408,11 @@ pub fn parse_duration(orig: &str) -> Result<i64, String> {
     let invalid = || format!("time: invalid duration {}", time_quote(orig));
     let mut s = orig;
     let mut neg = false;
-    if let Some(c) = s.chars().next() {
-        if c == '-' || c == '+' {
-            neg = c == '-';
-            s = &s[1..];
-        }
+    if let Some(c) = s.chars().next()
+        && (c == '-' || c == '+')
+    {
+        neg = c == '-';
+        s = &s[1..];
     }
     if s == "0" {
         return Ok(0);

@@ -1186,7 +1186,7 @@ fn transfer_params(
 
 /// `validateTraceIdentifiers` (plain errors and wrapped host errors).
 fn validate_trace_identifiers(ids: &[&str]) -> Result<(), String> {
-    if ids.is_empty() || ids.len() % 2 != 0 {
+    if ids.is_empty() || !ids.len().is_multiple_of(2) {
         return Err(format!(
             "trace info must come in pairs of port and channel identifiers '{{portID}}/{{channelID}}', got the identifiers: [{}]",
             ids.join(" ")

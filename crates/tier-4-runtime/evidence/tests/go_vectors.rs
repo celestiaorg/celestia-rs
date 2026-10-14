@@ -224,13 +224,13 @@ fn go_evidence_vectors() {
                 if let Some(want) = &c.verify_lca_err {
                     let sh = |h: i64| {
                         // the trusted header may be the conflicting one
-                        if let Some(m) = s.metas.get(&h) {
-                            if let Some(cm) = s.commits.get(&h) {
-                                return SignedHeader {
-                                    header: Some(m.header.clone()),
-                                    commit: Some(cm.clone()),
-                                };
-                            }
+                        if let Some(m) = s.metas.get(&h)
+                            && let Some(cm) = s.commits.get(&h)
+                        {
+                            return SignedHeader {
+                                header: Some(m.header.clone()),
+                                commit: Some(cm.clone()),
+                            };
                         }
                         lca.conflicting_block
                             .as_ref()

@@ -148,10 +148,10 @@ pub fn replay_into(
         };
         if skipping {
             // Skip InitChain and every exchange up to the commit of `from`.
-            if let request::Value::FinalizeBlock(r) = &req {
-                if r.height > from {
-                    skipping = false;
-                }
+            if let request::Value::FinalizeBlock(r) = &req
+                && r.height > from
+            {
+                skipping = false;
             }
             if skipping {
                 continue;

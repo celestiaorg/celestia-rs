@@ -113,19 +113,18 @@ impl App {
         })?;
         let mut header = self.check_header.clone();
         header.height = height;
-        if height != last {
-            if let Some(ts) = self
+        if height != last
+            && let Some(ts) = self
                 .ms
                 .root()
                 .get_commit_info(height)
                 .ok()
                 .and_then(|ci| ci.timestamp)
-            {
-                header.time = pbjson_types::Timestamp {
-                    seconds: ts.seconds,
-                    nanos: ts.nanos,
-                };
-            }
+        {
+            header.time = pbjson_types::Timestamp {
+                seconds: ts.seconds,
+                nanos: ts.nanos,
+            };
         }
         Ok(QueryState { ms, header })
     }

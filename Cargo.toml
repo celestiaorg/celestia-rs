@@ -21,10 +21,6 @@ members = [
     "crates/tier-2-state-and-store/kvstore",
     "crates/tier-2-state-and-store/multistore",
     "crates/tier-2-state-and-store/snapshots",
-    "crates/tier-3-app-modules/ante",
-    "crates/tier-3-app-modules/auth",
-    "crates/tier-3-app-modules/bank",
-    "crates/tier-3-app-modules/staking",
     "crates/tier-3-app-modules/sdk",
     "crates/tier-3-app-modules/txdecode",
     "crates/tier-3-app-modules/x/auth",
@@ -76,13 +72,12 @@ members = [
     "crates/tier-5-node/keyring",
     "crates/m1-integration",
     "crates/m2-integration",
-    "crates/m3-integration",
     "xtask",
 ]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/rootulp/celestia-rs"
 authors = ["Rootul Patel"]

@@ -303,7 +303,7 @@ impl LegacyDec {
         let mut tmp = Self::one();
         let mut i = power;
         while i > 1 {
-            if i % 2 != 0 {
+            if !i.is_multiple_of(2) {
                 tmp = tmp.checked_mul(&d)?;
             }
             i /= 2;

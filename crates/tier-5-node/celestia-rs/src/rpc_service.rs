@@ -698,38 +698,37 @@ impl Rpc {
                 }
             });
         }
-        if !self.settings.rpc.grpc_laddr.is_empty() {
-            if let Some(listener) = bind("celestia-core gRPC", &self.settings.rpc.grpc_laddr) {
-                let env = self.env.clone();
-                rt.spawn(async move {
-                    if let Err(e) = rpc::grpc::serve(listener, env).await {
-                        tracing::error!(error = %e, "gRPC server failed");
-                    }
-                });
-            }
+        if !self.settings.rpc.grpc_laddr.is_empty()
+            && let Some(listener) = bind("celestia-core gRPC", &self.settings.rpc.grpc_laddr)
+        {
+            let env = self.env.clone();
+            rt.spawn(async move {
+                if let Err(e) = rpc::grpc::serve(listener, env).await {
+                    tracing::error!(error = %e, "gRPC server failed");
+                }
+            });
         }
         let abci = Arc::new(app::AbciApp::from_shared(self.app.clone()));
-        if !self.settings.app_grpc.is_empty() {
-            if let Some(listener) =
+        if !self.settings.app_grpc.is_empty()
+            && let Some(listener) =
                 bind("gRPC query server (with BlockAPI)", &self.settings.app_grpc)
-            {
-                let router = rpc::grpc::router(self.env.clone())
-                    .merge(api_server::grpc_router(abci.clone()));
-                rt.spawn(async move {
-                    if let Err(e) = axum::serve(listener, router).await {
-                        tracing::error!(error = %e, "app gRPC server failed");
-                    }
-                });
-            }
+        {
+            let router =
+                rpc::grpc::router(self.env.clone()).merge(api_server::grpc_router(abci.clone()));
+            rt.spawn(async move {
+                if let Err(e) = axum::serve(listener, router).await {
+                    tracing::error!(error = %e, "app gRPC server failed");
+                }
+            });
         }
-        if !self.settings.app_api.is_empty() {
-            if let Some(listener) = bind("REST API", &self.settings.app_api) {
-                rt.spawn(async move {
-                    if let Err(e) = api_server::serve_rest_on(listener, abci).await {
-                        tracing::error!(error = %e, "REST API failed");
-                    }
-                });
-            }
+        if !self.settings.app_api.is_empty()
+            && let Some(listener) = bind("REST API", &self.settings.app_api)
+        {
+            rt.spawn(async move {
+                if let Err(e) = api_server::serve_rest_on(listener, abci).await {
+                    tracing::error!(error = %e, "REST API failed");
+                }
+            });
         }
         Ok(())
     }

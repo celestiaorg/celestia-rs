@@ -1349,10 +1349,9 @@ impl<'a> Builder<'a> {
                     .pointer("/receiver_domain")
                     .and_then(Value::as_u64)
                     .and_then(|d| u32::try_from(d).ok())
+                    && !domains.contains(&d)
                 {
-                    if !domains.contains(&d) {
-                        domains.push(d);
-                    }
+                    domains.push(d);
                 }
             }
         }

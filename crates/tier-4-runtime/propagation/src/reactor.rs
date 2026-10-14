@@ -140,7 +140,7 @@ pub fn chunk_parts(p: &BitArray, peer_count: usize, redundancy: usize) -> Vec<Bi
     let size = p.size();
     let peer_count = peer_count.max(1);
     let mut chunk = size / peer_count;
-    if size % peer_count != 0 || chunk == 0 {
+    if !size.is_multiple_of(peer_count) || chunk == 0 {
         chunk += 1;
     }
     let mut parts = vec![BitArray::new(size); peer_count];
@@ -204,11 +204,11 @@ impl State {
         let props = self.proposals.get(&height);
         let mut r = round;
         let mut has_round = props.is_some_and(|p| p.contains_key(&round));
-        if round < -1 {
-            if let Some(p) = props.filter(|p| !p.is_empty()) {
-                r = p.keys().copied().max().unwrap_or(0).max(0);
-                has_round = p.contains_key(&r);
-            }
+        if round < -1
+            && let Some(p) = props.filter(|p| !p.is_empty())
+        {
+            r = p.keys().copied().max().unwrap_or(0).max(0);
+            has_round = p.contains_key(&r);
         }
         if has_round {
             return Some((Found::Cached, r));
@@ -394,19 +394,18 @@ impl Reactor {
             return;
         }
         if let Err(e) = self.validate_compact_block(&st, &cb) {
-            if cb.proposal.height >= st.height {
-                if let Some(p) = st.peers.get_mut(&peer) {
-                    if p.store_unverified_proposal(cb.clone()) {
-                        tracing::debug!(
-                            height = cb.proposal.height,
-                            round = cb.proposal.round,
-                            current_height = st.height,
-                            err = %e,
-                            peer = %peer,
-                            "cached compact block that failed validation"
-                        );
-                    }
-                }
+            if cb.proposal.height >= st.height
+                && let Some(p) = st.peers.get_mut(&peer)
+                && p.store_unverified_proposal(cb.clone())
+            {
+                tracing::debug!(
+                    height = cb.proposal.height,
+                    round = cb.proposal.round,
+                    current_height = st.height,
+                    err = %e,
+                    peer = %peer,
+                    "cached compact block that failed validation"
+                );
             }
             return;
         }
@@ -947,10 +946,10 @@ impl Reactor {
         };
         let original_total = pd.block.original().total();
         let relevant = st.relevant(height, round);
-        if let Some(p) = st.peers.get_mut(&peer) {
-            if relevant {
-                p.decrease_concurrent_reqs(1);
-            }
+        if let Some(p) = st.peers.get_mut(&peer)
+            && relevant
+        {
+            p.decrease_concurrent_reqs(1);
         }
         if !added {
             self.process_requests(&mut st, peer);
@@ -1308,13 +1307,13 @@ impl Propagator for Reactor {
                 .map(|p| p.proof.leaf_hash)
                 .unwrap_or_default(),
         }];
-        if parts.total() > 1 {
-            if let Some(last) = parts.get_part(parts.total() as usize - 1) {
-                initial.push(PartMetaData {
-                    index: last.index,
-                    hash: last.proof.leaf_hash,
-                });
-            }
+        if parts.total() > 1
+            && let Some(last) = parts.get_part(parts.total() as usize - 1)
+        {
+            initial.push(PartMetaData {
+                index: last.index,
+                hash: last.proof.leaf_hash,
+            });
         }
         let parity_bits = BitArray::from_fn(parity.total() as usize, |i| parity.has_part(i));
         let ids: Vec<NodeId> = st.peers.keys().copied().collect();
@@ -1420,11 +1419,12 @@ impl Propagator for Reactor {
             let prev = st.height;
             st.round = round;
             st.height = height;
-            if height > prev && height == committed + 1 {
-                if let Some(props) = st.proposals.get_mut(&height) {
-                    for pd in props.values_mut() {
-                        pd.catchup = true;
-                    }
+            if height > prev
+                && height == committed + 1
+                && let Some(props) = st.proposals.get_mut(&height)
+            {
+                for pd in props.values_mut() {
+                    pd.catchup = true;
                 }
             }
             st.reset_request_counts();

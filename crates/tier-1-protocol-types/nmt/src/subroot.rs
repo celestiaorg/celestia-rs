@@ -131,7 +131,7 @@ fn prune(mut idx_start: usize, mut idx_end: usize, max_width: usize) -> Vec<Vec<
         path_start = subdivide(idx_start, max_width);
     }
 
-    if idx_end % 2 == 0 {
+    if idx_end.is_multiple_of(2) {
         idx_end -= 1;
         preprocessed_paths.push(path_end);
     }

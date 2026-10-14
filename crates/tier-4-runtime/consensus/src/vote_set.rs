@@ -283,10 +283,10 @@ impl VoteSet {
 
     fn get_vote(&self, val_index: i32, block_key: &[u8]) -> Option<&Vote> {
         let idx = val_index as usize;
-        if let Some(Some(existing)) = self.votes.get(idx) {
-            if existing.block_id.key() == block_key {
-                return Some(existing);
-            }
+        if let Some(Some(existing)) = self.votes.get(idx)
+            && existing.block_id.key() == block_key
+        {
+            return Some(existing);
         }
         self.votes_by_block
             .get(block_key)

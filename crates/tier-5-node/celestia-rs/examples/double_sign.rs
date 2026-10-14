@@ -50,15 +50,13 @@ impl p2p::Reactor for Byzantine {
         *self.peer.lock().unwrap() = Some(peer.clone());
     }
     fn receive(&self, env: Envelope) -> Result<(), String> {
-        if env.channel_id == 0x20 {
-            if let Ok(ConsensusMessage::NewRoundStep { height, round, .. }) =
+        if env.channel_id == 0x20
+            && let Ok(ConsensusMessage::NewRoundStep { height, round, .. }) =
                 ConsensusMessage::decode(&env.message)
-            {
-                if height >= self.height.load(Ordering::SeqCst) {
-                    self.height.store(height, Ordering::SeqCst);
-                    self.round.store(i64::from(round), Ordering::SeqCst);
-                }
-            }
+            && height >= self.height.load(Ordering::SeqCst)
+        {
+            self.height.store(height, Ordering::SeqCst);
+            self.round.store(i64::from(round), Ordering::SeqCst);
         }
         Ok(())
     }

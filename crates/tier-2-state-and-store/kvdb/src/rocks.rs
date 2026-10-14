@@ -255,11 +255,12 @@ impl Iterator for ChunkedRange {
     type Item = Result<KvPair>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.buf.is_empty() && !self.done {
-            if let Err(e) = self.refill() {
-                self.done = true;
-                return Some(Err(e));
-            }
+        if self.buf.is_empty()
+            && !self.done
+            && let Err(e) = self.refill()
+        {
+            self.done = true;
+            return Some(Err(e));
         }
         self.buf.pop_front().map(Ok)
     }

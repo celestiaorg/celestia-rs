@@ -203,29 +203,29 @@ pub fn save_grant(
     let msg_type = auth.msg_type_url()?;
     let key = grant_key(grantee, granter, &msg_type);
     let now = ctx.header.time;
-    if let Some(exp) = expiration {
-        if !sdk::time::after(exp, &now) {
-            return Err(errors::invalid_expiration_time().wrap(format!(
-                "expiration must be after the current block time ({}), got {}",
-                sdk::time::format_rfc3339(&now),
-                sdk::time::format_rfc3339(exp)
-            )));
-        }
+    if let Some(exp) = expiration
+        && !sdk::time::after(exp, &now)
+    {
+        return Err(errors::invalid_expiration_time().wrap(format!(
+            "expiration must be after the current block time ({}), got {}",
+            sdk::time::format_rfc3339(&now),
+            sdk::time::format_rfc3339(exp)
+        )));
     }
     let grant = Grant {
         authorization: Some(auth.to_any()),
         expiration: expiration.copied(),
     };
     let old_exp = get_grant(ctx, &key)?.and_then(|g| g.expiration);
-    if let Some(old) = &old_exp {
-        if expiration.is_none_or(|e| e != old) {
-            remove_from_grant_queue(ctx, &key, granter, grantee, old)?;
-        }
+    if let Some(old) = &old_exp
+        && expiration.is_none_or(|e| e != old)
+    {
+        remove_from_grant_queue(ctx, &key, granter, grantee, old)?;
     }
-    if let Some(exp) = expiration {
-        if old_exp.as_ref().is_none_or(|o| o != exp) {
-            insert_into_grant_queue(ctx, granter, grantee, &msg_type, exp)?;
-        }
+    if let Some(exp) = expiration
+        && old_exp.as_ref().is_none_or(|o| o != exp)
+    {
+        insert_into_grant_queue(ctx, granter, grantee, &msg_type, exp)?;
     }
     ctx.set(STORE_KEY, key, grant.encode_to_vec())?;
     emit_typed(

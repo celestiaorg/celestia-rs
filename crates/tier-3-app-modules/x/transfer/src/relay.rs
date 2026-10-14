@@ -229,7 +229,7 @@ pub fn parse_denom_trace(raw: &str) -> DenomTrace {
 }
 
 fn validate_trace_identifiers(ids: &[&str]) -> Result<()> {
-    if ids.is_empty() || ids.len() % 2 != 0 {
+    if ids.is_empty() || !ids.len().is_multiple_of(2) {
         return Err(x_ibc::errors::unregistered(format!(
             "trace info must come in pairs of port and channel identifiers '{{portID}}/{{channelID}}', got the identifiers: {ids:?}"
         )));
@@ -264,7 +264,7 @@ pub fn validate_prefixed_denom(denom: &str) -> Result<()> {
 
 /// `ParseHexHash`: hex, empty or 32 bytes (`ValidateHash`).
 fn parse_hex_hash(s: &str) -> core::result::Result<Vec<u8>, String> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err("encoding/hex: odd length hex string".into());
     }
     let mut out = Vec::with_capacity(s.len() / 2);
@@ -876,15 +876,15 @@ impl IbcModule for TransferModule {
             ack_err = Some(e);
             PacketData::default()
         });
-        if ack.success {
-            if let Err(e) = on_recv_packet(ctx, p, &data) {
-                // Go panics propagate (the tx fails) instead of becoming an ack.
-                if e.codespace == "undefined" && e.code == 111_222 {
-                    return Err(e);
-                }
-                ack = Acknowledgement::error(&e);
-                ack_err = Some(e);
+        if ack.success
+            && let Err(e) = on_recv_packet(ctx, p, &data)
+        {
+            // Go panics propagate (the tx fails) instead of becoming an ack.
+            if e.codespace == "undefined" && e.code == 111_222 {
+                return Err(e);
             }
+            ack = Acknowledgement::error(&e);
+            ack_err = Some(e);
         }
         let mut attrs = vec![
             ("module", MODULE_NAME.to_owned()),

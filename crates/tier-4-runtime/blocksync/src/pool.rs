@@ -724,10 +724,10 @@ impl BlockPool {
     /// `RedoRequestFrom`.
     pub fn redo_request_from(&self, height: i64, peer: &str) {
         let mut g = self.lock();
-        if let Some(r) = g.requesters.get_mut(&height) {
-            if r.did_request_from(peer) {
-                r.redo(peer);
-            }
+        if let Some(r) = g.requesters.get_mut(&height)
+            && r.did_request_from(peer)
+        {
+            r.redo(peer);
         }
     }
 
@@ -741,10 +741,8 @@ impl BlockPool {
         now: Instant,
     ) -> Result<(), String> {
         let (res, remove_peer) = self.add_block_inner(peer, block, ext_commit, block_size, now);
-        if remove_peer {
-            if let Err(e) = &res {
-                self.send_error(e, peer.to_owned());
-            }
+        if remove_peer && let Err(e) = &res {
+            self.send_error(e, peer.to_owned());
         }
         res
     }
@@ -759,16 +757,16 @@ impl BlockPool {
     ) -> (Result<(), String>, bool) {
         let mut g = self.lock();
         let height = block.header.height;
-        if let Some(ec) = &ext_commit {
-            if height != ec.height {
-                return (
-                    Err(format!(
-                        "block height {height} != extCommit height {}",
-                        ec.height
-                    )),
-                    true,
-                );
-            }
+        if let Some(ec) = &ext_commit
+            && height != ec.height
+        {
+            return (
+                Err(format!(
+                    "block height {height} != extCommit height {}",
+                    ec.height
+                )),
+                true,
+            );
         }
         let (pool_height, start_height) = (g.height, g.start_height);
         let Some(r) = g.requesters.get_mut(&height) else {

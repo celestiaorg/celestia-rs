@@ -98,20 +98,20 @@ pub fn submit_proposal(
             errors::no_proposal_msgs().wrap("either metadata or Msgs length must be non-nil")
         );
     }
-    if !msg.metadata.is_empty() {
-        if let Some((title, summary)) = metadata_title_summary(&msg.metadata) {
-            if title != msg.title {
-                return Err(errors::invalid_proposal_content().wrap(format!(
-                    "metadata title '{title}' must equal proposal title '{}'",
-                    msg.title
-                )));
-            }
-            if summary != msg.summary {
-                return Err(errors::invalid_proposal_content().wrap(format!(
-                    "metadata summary '{summary}' must equal proposal summary '{}'",
-                    msg.summary
-                )));
-            }
+    if !msg.metadata.is_empty()
+        && let Some((title, summary)) = metadata_title_summary(&msg.metadata)
+    {
+        if title != msg.title {
+            return Err(errors::invalid_proposal_content().wrap(format!(
+                "metadata title '{title}' must equal proposal title '{}'",
+                msg.title
+            )));
+        }
+        if summary != msg.summary {
+            return Err(errors::invalid_proposal_content().wrap(format!(
+                "metadata summary '{summary}' must equal proposal summary '{}'",
+                msg.summary
+            )));
         }
     }
     let initial = new_coins(&msg.initial_deposit)?;

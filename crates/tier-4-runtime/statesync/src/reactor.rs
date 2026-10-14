@@ -294,10 +294,10 @@ impl p2p::Reactor for Reactor {
     }
 
     fn on_start(self: Arc<Self>) -> Result<(), String> {
-        if let Ok(mut g) = self.rt.lock() {
-            if g.is_none() {
-                *g = tokio::runtime::Handle::try_current().ok();
-            }
+        if let Ok(mut g) = self.rt.lock()
+            && g.is_none()
+        {
+            *g = tokio::runtime::Handle::try_current().ok();
         }
         self.running.store(true, Ordering::SeqCst);
         Ok(())
@@ -325,10 +325,10 @@ impl p2p::Reactor for Reactor {
         }
         let msg = Msg::decode(&env.message)?;
         if let Err(e) = validate_msg(&msg, self.cfg.max_snapshot_chunks) {
-            if e.starts_with(ERR_EXCEEDS_MAX_SNAPSHOT_CHUNKS) {
-                if let Some(s) = self.current_syncer() {
-                    s.reject_peer(&env.src.id().to_string());
-                }
+            if e.starts_with(ERR_EXCEEDS_MAX_SNAPSHOT_CHUNKS)
+                && let Some(s) = self.current_syncer()
+            {
+                s.reject_peer(&env.src.id().to_string());
             }
             tracing::error!(peer = %env.src.id(), err = %e, "Invalid message");
             return Err(e);

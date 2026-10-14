@@ -223,21 +223,22 @@ fn go_style_fields(v: &mut Value, msg: &str) {
     let ics23 = msg.starts_with("cosmos.ics23.");
     let wire = wire_table::message(msg);
     for field in schema.fields {
-        if field.json_name != field.name {
-            if let Some(v) = obj.remove(field.json_name) {
-                obj.insert(field.name.to_owned(), v);
-            }
+        if field.json_name != field.name
+            && let Some(v) = obj.remove(field.json_name)
+        {
+            obj.insert(field.name.to_owned(), v);
         }
-        if ics23 && !obj.contains_key(field.name) {
-            if let Some(d) = scalar_default(field) {
-                obj.insert(field.name.to_owned(), d);
-            }
+        if ics23
+            && !obj.contains_key(field.name)
+            && let Some(d) = scalar_default(field)
+        {
+            obj.insert(field.name.to_owned(), d);
         }
         if CAST_HEX.contains(&(msg, field.name)) {
-            if let Some(v) = obj.get_mut(field.name) {
-                if let Some(b) = v.as_str().and_then(decode_b64) {
-                    *v = Value::String(upper_hex(&b));
-                }
+            if let Some(v) = obj.get_mut(field.name)
+                && let Some(b) = v.as_str().and_then(decode_b64)
+            {
+                *v = Value::String(upper_hex(&b));
             }
             continue;
         }

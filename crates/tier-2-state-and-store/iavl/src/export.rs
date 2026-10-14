@@ -111,10 +111,10 @@ impl Importer {
         if version <= 0 {
             return Err(Error::InvalidVersion { version });
         }
-        if let Some(ndb) = &ndb {
-            if !ndb.roots()?.is_empty() {
-                return Err(Error::InvalidVersion { version });
-            }
+        if let Some(ndb) = &ndb
+            && !ndb.roots()?.is_empty()
+        {
+            return Err(Error::InvalidVersion { version });
         }
         Ok(Self {
             ndb,

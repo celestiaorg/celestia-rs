@@ -359,10 +359,10 @@ pub fn begin_blocker(ctx: &mut Context<'_>) -> Result<()> {
         }
     }
 
-    if let Some(cs) = client_state(ctx, LOCALHOST_CLIENT_ID)? {
-        if client_status(ctx, LOCALHOST_CLIENT_ID, &cs)? == Status::Active {
-            update_localhost_client(ctx)?;
-        }
+    if let Some(cs) = client_state(ctx, LOCALHOST_CLIENT_ID)?
+        && client_status(ctx, LOCALHOST_CLIENT_ID, &cs)? == Status::Active
+    {
+        update_localhost_client(ctx)?;
     }
     Ok(())
 }

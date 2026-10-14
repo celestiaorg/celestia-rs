@@ -797,10 +797,10 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         opts.db.cache_size = a.db_cache_mib << 20;
     }
     opts.store.pruning = pruning;
-    if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size")) {
-        if n > 0 {
-            opts.store.node_cache_size = n;
-        }
+    if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size"))
+        && n > 0
+    {
+        opts.store.node_cache_size = n;
     }
     opts.snapshots = snapshots::SnapshotOptions {
         interval: u64::try_from(files.int(File::App, "state-sync.snapshot-interval")).unwrap_or(0),

@@ -331,10 +331,10 @@ impl MultiStore {
             }
         }
         for (name, kind) in &self.kinds {
-            if *kind == Kind::Transient {
-                if let Some(m) = self.volatile.get_mut(name) {
-                    m.clear();
-                }
+            if *kind == Kind::Transient
+                && let Some(m) = self.volatile.get_mut(name)
+            {
+                m.clear();
             }
         }
         Ok(())

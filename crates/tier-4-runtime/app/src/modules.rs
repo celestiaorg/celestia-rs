@@ -331,19 +331,18 @@ pub fn app_end_block(ctx: &mut Context<'_>) -> Result<()> {
     let current = x_consensus::get_params(ctx)?
         .and_then(|p| p.version)
         .map_or(0, |v| v.app);
-    if let Some(up) = x_signal::should_upgrade(ctx)? {
-        if up.app_version > current {
-            let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
-                name: format!("v{}", up.app_version),
-                height: up.upgrade_height + 1,
-                ..Default::default()
-            };
-            x_upgrade::schedule_upgrade(ctx, &plan).map_err(|e| {
-                sdk::error::internal(format!("failed to schedule upgrade: {}", e.log))
-            })?;
-            crate::upgrades::set_app_version(ctx, up.app_version)?;
-            x_signal::reset_tally(ctx)?;
-        }
+    if let Some(up) = x_signal::should_upgrade(ctx)?
+        && up.app_version > current
+    {
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: format!("v{}", up.app_version),
+            height: up.upgrade_height + 1,
+            ..Default::default()
+        };
+        x_upgrade::schedule_upgrade(ctx, &plan)
+            .map_err(|e| sdk::error::internal(format!("failed to schedule upgrade: {}", e.log)))?;
+        crate::upgrades::set_app_version(ctx, up.app_version)?;
+        x_signal::reset_tally(ctx)?;
     }
     Ok(())
 }

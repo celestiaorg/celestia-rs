@@ -277,10 +277,10 @@ impl GenesisData {
             );
         }
         o.push("app_hash", J::hex(&doc.app_hash));
-        if let Some(app_state) = root.get("app_state") {
-            if !app_state.raw.is_empty() {
-                o.push("app_state", J::Raw(crate::json::compact(app_state.raw)));
-            }
+        if let Some(app_state) = root.get("app_state")
+            && !app_state.raw.is_empty()
+        {
+            o.push("app_state", J::Raw(crate::json::compact(app_state.raw)));
         }
         Ok(Self::new(o.encode()))
     }
@@ -794,12 +794,12 @@ impl Environment {
         }
         let latest = self.block_store.height();
         st.latest_time = ctypes::Time::from_unix(0, 0);
-        if latest != 0 {
-            if let Some(m) = self.block_store.load_block_meta(latest).map_err(s)? {
-                st.latest_hash = m.block_id.hash.clone();
-                st.latest_app_hash = m.header.app_hash.clone();
-                st.latest_time = m.header.time;
-            }
+        if latest != 0
+            && let Some(m) = self.block_store.load_block_meta(latest).map_err(s)?
+        {
+            st.latest_hash = m.block_id.hash.clone();
+            st.latest_app_hash = m.header.app_hash.clone();
+            st.latest_time = m.header.time;
         }
         st.latest_height = latest;
         st.voting_power = self
@@ -1159,10 +1159,10 @@ impl Environment {
             ),
             ("tx", J::b64n(&r.tx)),
         ]);
-        if let Some(p) = proof {
-            if !encode::share_proof_is_zero(&p) {
-                o.push("proof", encode::share_proof(&p));
-            }
+        if let Some(p) = proof
+            && !encode::share_proof_is_zero(&p)
+        {
+            o.push("proof", encode::share_proof(&p));
         }
         Ok(o)
     }
@@ -1244,17 +1244,16 @@ impl Environment {
         let n = usize_of(per_page).min(total.saturating_sub(skip));
         let mut blocks = Vec::new();
         for &h in &results[skip..skip + n] {
-            if let Some(b) = self.block_store.load_block(h).map_err(s)? {
-                if let Some(m) = self
+            if let Some(b) = self.block_store.load_block(h).map_err(s)?
+                && let Some(m) = self
                     .block_store
                     .load_block_meta(b.header.height)
                     .map_err(s)?
-                {
-                    blocks.push(J::obj([
-                        ("block_id", encode::block_id(&m.block_id)),
-                        ("block", encode::block(&b)),
-                    ]));
-                }
+            {
+                blocks.push(J::obj([
+                    ("block_id", encode::block_id(&m.block_id)),
+                    ("block", encode::block(&b)),
+                ]));
             }
         }
         Ok(J::obj([

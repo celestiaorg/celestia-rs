@@ -461,12 +461,11 @@ pub fn response_query_for_path(path: &str, r: &abci::ResponseQuery) -> J {
         && r.value.is_empty()
         && !path.starts_with("/store")
         && !path.starts_with("store")
+        && let J::Obj(f) = &mut j
     {
-        if let J::Obj(f) = &mut j {
-            for (k, v) in f.iter_mut() {
-                if k == "value" {
-                    *v = J::str("");
-                }
+        for (k, v) in f.iter_mut() {
+            if k == "value" {
+                *v = J::str("");
             }
         }
     }

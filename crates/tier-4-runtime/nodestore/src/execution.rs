@@ -737,10 +737,10 @@ impl BlockExecutor {
         self.evpool.update(&new_state, &block.evidence.evidence);
         new_state.app_hash.clone_from(&resp.app_hash);
         self.state_store.save(&new_state)?;
-        if retain_height > 0 {
-            if let Err(e) = self.prune_blocks(retain_height, &new_state) {
-                tracing::error!(retain_height, error = %e, "failed to prune blocks");
-            }
+        if retain_height > 0
+            && let Err(e) = self.prune_blocks(retain_height, &new_state)
+        {
+            tracing::error!(retain_height, error = %e, "failed to prune blocks");
         }
         // Events are fired after everything else.
         if let Some(sink) = &self.event_sink {

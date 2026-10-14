@@ -315,12 +315,13 @@ impl App {
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
         if app.chain_id.is_empty()
-            && let Some(chain_id) = &options.chain_id {
-                app.chain_id.clone_from(chain_id);
-                app.ms
-                    .root_mut()
-                    .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
-            }
+            && let Some(chain_id) = &options.chain_id
+        {
+            app.chain_id.clone_from(chain_id);
+            app.ms
+                .root_mut()
+                .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
+        }
         Ok(app)
     }
 
@@ -490,12 +491,11 @@ impl App {
                     if is_upgrade_needed(&e.log) {
                         if let (Some(home), Ok(Some(plan))) =
                             (&self.node.home, x_upgrade::get_upgrade_plan(&mut ctx))
+                            && let Err(io) = dump_upgrade_info(home, req.height, &plan)
                         {
-                            if let Err(io) = dump_upgrade_info(home, req.height, &plan) {
-                                return Err(sdk::error::sdk::logic(format!(
-                                    "unable to write upgrade info to filesystem: {io}"
-                                )));
-                            }
+                            return Err(sdk::error::sdk::logic(format!(
+                                "unable to write upgrade info to filesystem: {io}"
+                            )));
                         }
                         tracing::error!("{}", e.log);
                     }
@@ -877,9 +877,10 @@ impl Application for AbciApp {
         // celestia-core-backed queries run outside the lock (see
         // `node_services`).
         if let request::Value::Query(r) = &request
-            && let Some(resp) = node_services::abci_query(self, r) {
-                return response::Value::Query(resp);
-            }
+            && let Some(resp) = node_services::abci_query(self, r)
+        {
+            return response::Value::Query(resp);
+        }
         let Ok(mut app) = self.inner.lock() else {
             return response::Value::Exception(ResponseException {
                 error: "poisoned".into(),

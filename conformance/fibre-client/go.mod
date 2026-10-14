@@ -2,4 +2,6 @@ module github.com/celestiaorg/celestia-rs/conformance/fibre-client
 
 go 1.24
 
+toolchain go1.26.9
+
 require github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0

@@ -158,10 +158,8 @@ pub fn run_msgs(ctx: &mut Context<'_>, p: &mut Prepared, write: bool) -> Result<
                 let has_module = handler_events
                     .iter()
                     .any(|e| e.attributes.iter().any(|a| a.key == "module"));
-                if !has_module {
-                    if let Some(m) = module_from_type_url(&msg.type_url) {
-                        msg_event.attributes.push(attr("module", m));
-                    }
+                if !has_module && let Some(m) = module_from_type_url(&msg.type_url) {
+                    msg_event.attributes.push(attr("module", m));
                 }
                 for mut e in std::iter::once(msg_event).chain(handler_events) {
                     e.attributes.push(attr("msg_index", &i.to_string()));

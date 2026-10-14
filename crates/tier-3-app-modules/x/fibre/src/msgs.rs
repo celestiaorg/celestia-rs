@@ -387,10 +387,10 @@ pub fn validate_payment_promise_stateful_internal(
         }
     }
     // IsPaymentPromiseProcessed: an unhashable promise reads as unprocessed.
-    if let Ok(h) = promise::promise_hash(p) {
-        if is_payment_processed_by_hash(ctx, &h)? {
-            return Ok(Err("payment promise has already been processed".into()));
-        }
+    if let Ok(h) = promise::promise_hash(p)
+        && is_payment_processed_by_hash(ctx, &h)?
+    {
+        return Ok(Err("payment promise has already been processed".into()));
     }
     let signer = escrow_signer(p);
     let Some(escrow) = get_escrow_account(ctx, &signer)? else {

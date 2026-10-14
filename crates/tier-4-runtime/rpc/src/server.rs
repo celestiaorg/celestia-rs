@@ -221,10 +221,10 @@ fn request_from_node(n: &Node<'_>) -> Result<RpcRequest, String> {
                         None
                     }
                 };
-                if key == "method" {
-                    if let Some(m) = val {
-                        method = m;
-                    }
+                if key == "method"
+                    && let Some(m) = val
+                {
+                    method = m;
                 }
             }
             "id" => id = Some(v.clone()),
@@ -755,10 +755,10 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             r
         };
     }
-    if parts.method == Method::OPTIONS {
-        if let Some(r) = cors_preflight(&ctx.env, &parts.headers) {
-            return r;
-        }
+    if parts.method == Method::OPTIONS
+        && let Some(r) = cors_preflight(&ctx.env, &parts.headers)
+    {
+        return r;
     }
     let max = ctx.env.config.max_body_bytes;
     let Ok(body) = axum::body::to_bytes(body, max).await else {
@@ -777,23 +777,23 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
     // PreChecksHandler: oversized batches are rejected on every path.
     if ctx.env.config.max_request_batch_size > 0 {
         let text = json::go_string(&body);
-        if let Ok(n) = json::parse(&text) {
-            if let Val::Arr(items) = &n.v {
-                let all_requests = items.iter().all(|i| request_from_node(i).is_ok());
-                if all_requests && items.len() > ctx.env.config.max_request_batch_size {
-                    return json_response(
-                        StatusCode::OK,
-                        RpcResponse::invalid_request(
-                            None,
-                            &format!(
-                                "batch request exceeds maximum ({}) allowed number of requests",
-                                ctx.env.config.max_request_batch_size
-                            ),
-                        )
-                        .encode(),
-                        false,
-                    );
-                }
+        if let Ok(n) = json::parse(&text)
+            && let Val::Arr(items) = &n.v
+        {
+            let all_requests = items.iter().all(|i| request_from_node(i).is_ok());
+            if all_requests && items.len() > ctx.env.config.max_request_batch_size {
+                return json_response(
+                    StatusCode::OK,
+                    RpcResponse::invalid_request(
+                        None,
+                        &format!(
+                            "batch request exceeds maximum ({}) allowed number of requests",
+                            ctx.env.config.max_request_batch_size
+                        ),
+                    )
+                    .encode(),
+                    false,
+                );
             }
         }
     }
@@ -919,10 +919,10 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
             Ok(WsMessage::Close(_)) | Err(_) => break,
             Ok(_) => continue,
         };
-        if let Some(r) = ws_request(&env, &remote, &text, &tx).await {
-            if tx.send(r).await.is_err() {
-                break;
-            }
+        if let Some(r) = ws_request(&env, &remote, &text, &tx).await
+            && tx.send(r).await.is_err()
+        {
+            break;
         }
     }
     let _ = env.event_bus.unsubscribe_all(&remote);

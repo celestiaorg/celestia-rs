@@ -202,12 +202,11 @@ impl Dyn {
     }
 
     fn set(&mut self, f: &FieldInfo, v: Val) {
-        if f.oneof >= 0 {
-            if let Some(prev) = self.oneofs.insert(f.oneof, f.number) {
-                if prev != f.number {
-                    self.fields.remove(&prev);
-                }
-            }
+        if f.oneof >= 0
+            && let Some(prev) = self.oneofs.insert(f.oneof, f.number)
+            && prev != f.number
+        {
+            self.fields.remove(&prev);
         }
         self.fields.insert(f.number, v);
     }
@@ -574,19 +573,20 @@ pub(crate) fn marshal(d: &Dyn, mode: Mode) -> Vec<u8> {
 }
 
 fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
-    if mode == Mode::Struct && d.info.name == "google.protobuf.Any" {
-        if let Some(cached) = &d.cached {
-            let type_url = d.bytes(1);
-            if !type_url.is_empty() {
-                protowire::append_bytes_field(out, 1, type_url);
-            }
-            let value = marshal(cached, mode);
-            if !value.is_empty() {
-                protowire::append_bytes_field(out, 2, &value);
-            }
-            out.extend_from_slice(&d.unknown);
-            return;
+    if mode == Mode::Struct
+        && d.info.name == "google.protobuf.Any"
+        && let Some(cached) = &d.cached
+    {
+        let type_url = d.bytes(1);
+        if !type_url.is_empty() {
+            protowire::append_bytes_field(out, 1, type_url);
         }
+        let value = marshal(cached, mode);
+        if !value.is_empty() {
+            protowire::append_bytes_field(out, 2, &value);
+        }
+        out.extend_from_slice(&d.unknown);
+        return;
     }
     // gogoproto emits a oneof at the position of its highest-numbered member.
     let mut oneof_last: BTreeMap<i32, u32> = BTreeMap::new();
@@ -600,10 +600,10 @@ fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
             if oneof_last.get(&f.oneof) != Some(&f.number) {
                 continue;
             }
-            if let Some(set) = d.oneofs.get(&f.oneof) {
-                if let (Some(mf), Some(v)) = (d.info.field(*set), d.fields.get(set)) {
-                    marshal_value(mf, v, mode, true, out);
-                }
+            if let Some(set) = d.oneofs.get(&f.oneof)
+                && let (Some(mf), Some(v)) = (d.info.field(*set), d.fields.get(set))
+            {
+                marshal_value(mf, v, mode, true, out);
             }
             continue;
         }

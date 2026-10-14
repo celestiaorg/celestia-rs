@@ -468,12 +468,11 @@ impl ValidatorSet {
     }
 
     fn detach_proposer_if(&mut self, addr: &[u8]) {
-        if let Some(ProposerRef::Member(a)) = &self.proposer {
-            if a == addr {
-                if let Some(v) = self.validators.iter().find(|v| v.address == addr) {
-                    self.proposer = Some(ProposerRef::Detached(v.clone()));
-                }
-            }
+        if let Some(ProposerRef::Member(a)) = &self.proposer
+            && a == addr
+            && let Some(v) = self.validators.iter().find(|v| v.address == addr)
+        {
+            self.proposer = Some(ProposerRef::Detached(v.clone()));
         }
     }
 

@@ -264,10 +264,10 @@ impl PffSigCache {
         if !self.index.contains(key) {
             return false;
         }
-        if let Some(pos) = self.entries.iter().position(|k| k == key) {
-            if let Some(k) = self.entries.remove(pos) {
-                self.entries.push_back(k);
-            }
+        if let Some(pos) = self.entries.iter().position(|k| k == key)
+            && let Some(k) = self.entries.remove(pos)
+        {
+            self.entries.push_back(k);
         }
         true
     }
@@ -277,10 +277,10 @@ impl PffSigCache {
         if self.is_cached(&key) {
             return;
         }
-        if self.entries.len() >= PFF_SIG_CACHE_CAPACITY {
-            if let Some(old) = self.entries.pop_front() {
-                self.index.remove(&old);
-            }
+        if self.entries.len() >= PFF_SIG_CACHE_CAPACITY
+            && let Some(old) = self.entries.pop_front()
+        {
+            self.index.remove(&old);
         }
         self.entries.push_back(key);
         self.index.insert(key);

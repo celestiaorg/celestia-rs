@@ -518,12 +518,12 @@ pub fn cancel_proposal(ctx: &mut Context<'_>, id: u64, proposer: &str) -> Result
             errors::invalid_proposal().wrap("proposal should be in the deposit or voting period")
         );
     }
-    if let Some(end) = &p.voting_end_time {
-        if sdk::time::before(end, &ctx.header.time) {
-            return Err(errors::voting_period_ended().wrap(format!(
-                "voting period is already ended for this proposal {id}"
-            )));
-        }
+    if let Some(end) = &p.voting_end_time
+        && sdk::time::before(end, &ctx.header.time)
+    {
+        return Err(errors::voting_period_ended().wrap(format!(
+            "voting period is already ended for this proposal {id}"
+        )));
     }
     let params = get_params(ctx)?;
     charge_deposit(

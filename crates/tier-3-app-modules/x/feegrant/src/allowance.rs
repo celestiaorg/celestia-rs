@@ -58,10 +58,10 @@ fn basic_validate(a: &BasicAllowance) -> Result<()> {
             )));
         }
     }
-    if let Some(e) = &a.expiration {
-        if e.seconds < 0 {
-            return Err(errors::invalid_duration().wrap("expiration time cannot be negative"));
-        }
+    if let Some(e) = &a.expiration
+        && e.seconds < 0
+    {
+        return Err(errors::invalid_duration().wrap("expiration time cannot be negative"));
     }
     Ok(())
 }

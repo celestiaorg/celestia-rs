@@ -119,14 +119,14 @@ pub fn handle_create_validator(
         )));
     }
     types::ensure_description_length(&description)?;
-    if let Some(vp) = ctx.consensus_params.validator.as_ref() {
-        if !vp.pub_key_types.iter().any(|t| t == pk.type_str()) {
-            return Err(errors::validator_pub_key_type_not_supported().wrap(format!(
-                "got: {}, expected: {:?}",
-                pk.type_str(),
-                vp.pub_key_types
-            )));
-        }
+    if let Some(vp) = ctx.consensus_params.validator.as_ref()
+        && !vp.pub_key_types.iter().any(|t| t == pk.type_str())
+    {
+        return Err(errors::validator_pub_key_type_not_supported().wrap(format!(
+            "got: {}, expected: {:?}",
+            pk.type_str(),
+            vp.pub_key_types
+        )));
     }
 
     let mut v = Validator::new(msg.validator_address.clone(), pk_any.clone(), description);
@@ -163,12 +163,12 @@ pub fn handle_edit_validator(
     } else {
         Some(wire_int(&msg.min_self_delegation)?)
     };
-    if let Some(m) = &min_self {
-        if !m.is_positive() {
-            return Err(errs::invalid_request(
-                "minimum self delegation must be a positive integer",
-            ));
-        }
+    if let Some(m) = &min_self
+        && !m.is_positive()
+    {
+        return Err(errs::invalid_request(
+            "minimum self delegation must be a positive integer",
+        ));
     }
     let rate = if msg.commission_rate.is_empty() {
         None
@@ -429,12 +429,12 @@ fn json_dec_to_wire(v: &mut serde_json::Value, path: &[&str]) -> Result<()> {
         }
     }
     let last = path[path.len() - 1];
-    if let Some(s) = cur.get(last).and_then(serde_json::Value::as_str) {
-        if !s.is_empty() {
-            let b = math::legacy_dec_json_to_proto_bytes(s)
-                .map_err(|e| errs::json_unmarshal(e.to_string()))?;
-            cur[last] = serde_json::Value::String(String::from_utf8_lossy(&b).into_owned());
-        }
+    if let Some(s) = cur.get(last).and_then(serde_json::Value::as_str)
+        && !s.is_empty()
+    {
+        let b = math::legacy_dec_json_to_proto_bytes(s)
+            .map_err(|e| errs::json_unmarshal(e.to_string()))?;
+        cur[last] = serde_json::Value::String(String::from_utf8_lossy(&b).into_owned());
     }
     Ok(())
 }

@@ -23,14 +23,15 @@ pub fn set_up_context(ctx: &mut Context<'_>, tx: &sdk::tx::Tx, simulate: bool) -
     // `gasTx.GetGas()` dereferences `AuthInfo.Fee` (nil → panic).
     let gas = txview::gas(tx)?;
     set_gas_meter(ctx, simulate, gas);
-    if let Some(block) = &ctx.consensus_params.block {
-        if block.max_gas > 0 && gas > block.max_gas.unsigned_abs() {
-            return Err(errs::invalid_gas_limit(format!(
-                "tx gas limit {gas} exceeds block max gas {}",
-                block.max_gas
-            ))
-            .into());
-        }
+    if let Some(block) = &ctx.consensus_params.block
+        && block.max_gas > 0
+        && gas > block.max_gas.unsigned_abs()
+    {
+        return Err(errs::invalid_gas_limit(format!(
+            "tx gas limit {gas} exceeds block max gas {}",
+            block.max_gas
+        ))
+        .into());
     }
     Ok(())
 }

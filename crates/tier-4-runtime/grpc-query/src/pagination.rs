@@ -43,10 +43,10 @@ pub fn range(
         Some(e) => Some([prefix, e].concat()),
         None => prefix_end(prefix),
     };
-    if let Some(e) = &abs_end {
-        if abs_start.as_slice() > e.as_slice() {
-            return Ok(Vec::new());
-        }
+    if let Some(e) = &abs_end
+        && abs_start.as_slice() > e.as_slice()
+    {
+        return Ok(Vec::new());
     }
     let items = ctx
         .multistore()

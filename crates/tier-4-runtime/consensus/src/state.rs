@@ -490,13 +490,12 @@ impl ConsensusState {
         }
         let n = self.config.double_sign_check_height.min(height - 1);
         for i in 1..=n {
-            if let Ok(Some(c)) = self.block_exec.block_store.load_seen_commit(height - i) {
-                if c.signatures
+            if let Ok(Some(c)) = self.block_exec.block_store.load_seen_commit(height - i)
+                && c.signatures
                     .iter()
                     .any(|s| s.block_id_flag == BLOCK_ID_FLAG_COMMIT && s.validator_address == addr)
-                {
-                    return Err("found signature from the same key".into());
-                }
+            {
+                return Err("found signature from the same key".into());
             }
         }
         Ok(())
@@ -985,12 +984,12 @@ impl ConsensusState {
         }
         let d = self.propose_timeout(round);
         self.schedule_timeout(d, height, round, RoundStep::Propose);
-        if self.priv_validator.is_some() {
-            if let Some(addr) = self.priv_addr() {
-                if self.rs.validators.has_address(&addr) && self.is_proposer(&addr) {
-                    self.decide_proposal(height, round);
-                }
-            }
+        if self.priv_validator.is_some()
+            && let Some(addr) = self.priv_addr()
+            && self.rs.validators.has_address(&addr)
+            && self.is_proposer(&addr)
+        {
+            self.decide_proposal(height, round);
         }
         // Done enterPropose.
         self.update_round_step(round, RoundStep::Propose);
@@ -1262,10 +1261,11 @@ impl ConsensusState {
         {
             return;
         }
-        if let Some(until) = self.precommit_delay_until() {
-            if !self.replay_mode && until > self.now() {
-                self.clock.sleep_until(until);
-            }
+        if let Some(until) = self.precommit_delay_until()
+            && !self.replay_mode
+            && until > self.now()
+        {
+            self.clock.sleep_until(until);
         }
         let polka = self
             .rs
@@ -1572,10 +1572,10 @@ impl ConsensusState {
         if self.failure.is_some() {
             return;
         }
-        if let Some(pv) = &self.priv_validator {
-            if let Ok(pk) = pv.pub_key() {
-                self.priv_validator_pub_key = Some(pk);
-            }
+        if let Some(pv) = &self.priv_validator
+            && let Ok(pk) = pv.pub_key()
+        {
+            self.priv_validator_pub_key = Some(pk);
         }
         // Prune the propagation reactor; the next height's round state is
         // installed when enterNewRound(height+1, 0) runs.
@@ -1691,21 +1691,20 @@ impl ConsensusState {
             .votes
             .prevotes(round)
             .and_then(VoteSet::two_thirds_majority);
-        if let Some(id) = &polka {
-            if !id.is_zero()
-                && self.rs.valid_round < round
-                && block_matches(
-                    self.rs.proposal_block.as_ref(),
-                    self.rs.proposal_block_parts.as_ref(),
-                    id,
-                )
-            {
-                self.rs.valid_round = round;
-                self.rs.valid_block.clone_from(&self.rs.proposal_block);
-                self.rs
-                    .valid_block_parts
-                    .clone_from(&self.rs.proposal_block_parts);
-            }
+        if let Some(id) = &polka
+            && !id.is_zero()
+            && self.rs.valid_round < round
+            && block_matches(
+                self.rs.proposal_block.as_ref(),
+                self.rs.proposal_block_parts.as_ref(),
+                id,
+            )
+        {
+            self.rs.valid_round = round;
+            self.rs.valid_block.clone_from(&self.rs.proposal_block);
+            self.rs
+                .valid_block_parts
+                .clone_from(&self.rs.proposal_block_parts);
         }
         if self.rs.step <= RoundStep::Propose && self.is_proposal_complete() {
             self.enter_prevote(height, round);

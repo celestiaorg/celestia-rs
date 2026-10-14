@@ -185,10 +185,11 @@ fn delegation_rewards(
     };
     let ending = x_distribution::keeper::increment_validator_period(ctx, &v)?;
     let mut rewards = x_distribution::keeper::calculate_delegation_rewards(ctx, &v, &d, ending)?;
-    if let Some(o) = outstanding {
-        if !o.is_empty() && o.iter().any(|c| !c.is_zero()) {
-            rewards = rewards.add(&DecCoins::from_coins(&o)?)?;
-        }
+    if let Some(o) = outstanding
+        && !o.is_empty()
+        && o.iter().any(|c| !c.is_zero())
+    {
+        rewards = rewards.add(&DecCoins::from_coins(&o)?)?;
     }
     Ok(pb::QueryDelegationRewardsResponse {
         rewards: rewards.to_proto(),

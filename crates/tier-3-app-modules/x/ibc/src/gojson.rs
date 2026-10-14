@@ -96,7 +96,7 @@ pub fn first_value(bz: &[u8]) -> Result<Value, String> {
 #[must_use]
 pub fn decode_base64_std(s: &str) -> Option<Vec<u8>> {
     let clean: Vec<u8> = s.bytes().filter(|b| *b != b'\r' && *b != b'\n').collect();
-    if clean.len() % 4 != 0 {
+    if !clean.len().is_multiple_of(4) {
         return None;
     }
     let mut out = Vec::with_capacity(clean.len() / 4 * 3);

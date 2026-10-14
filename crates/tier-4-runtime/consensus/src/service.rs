@@ -136,10 +136,10 @@ fn handle(cs: &mut ConsensusState, reactor: &Reactor, input: Input) -> bool {
             if height != rs.height || round != rs.round {
                 return true;
             }
-            if let Some(parts) = &rs.proposal_block_parts {
-                if parts.is_complete() || parts.has_part(part.index as usize) {
-                    return true;
-                }
+            if let Some(parts) = &rs.proposal_block_parts
+                && (parts.is_complete() || parts.has_part(part.index as usize))
+            {
+                return true;
             }
             cs.receive_peer(
                 ConsensusMessage::BlockPart {

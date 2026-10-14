@@ -117,10 +117,10 @@ fn all_balances(
         |ctx, k, v| {
             let denom = String::from_utf8_lossy(&k[prefix.len()..]).into_owned();
             let amount = parse_amount(v)?;
-            if req.resolve_denom {
-                if let Some(m) = get_metadata(ctx, &denom)? {
-                    return Ok(coin(&m.display, &amount));
-                }
+            if req.resolve_denom
+                && let Some(m) = get_metadata(ctx, &denom)?
+            {
+                return Ok(coin(&m.display, &amount));
             }
             Ok(coin(&denom, &amount))
         },

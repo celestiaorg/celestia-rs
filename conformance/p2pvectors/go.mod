@@ -2,6 +2,8 @@ module github.com/rootulp/celestia-rs/conformance/p2pvectors
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/cometbft/cometbft v1.0.1
 	github.com/cosmos/gogoproto v1.7.2
@@ -78,7 +80,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

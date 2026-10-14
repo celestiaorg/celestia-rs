@@ -180,7 +180,7 @@ pub fn uint(v: &Value) -> Result<u64, String> {
 /// Upper-case hex bytes (`HexBytes`).
 pub fn hex_bytes(v: &Value) -> Result<Vec<u8>, String> {
     let s = v.as_str().unwrap_or_default();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(bad("hex"));
     }
     (0..s.len())

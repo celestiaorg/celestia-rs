@@ -347,12 +347,12 @@ impl Wal for FileWal {
         let rec = encode(m)?;
         self.buf.extend_from_slice(&rec);
         self.size += rec.len() as u64;
-        if let WalMessage::EndHeight(_) = m.msg {
-            if self.size > self.head_size_limit {
-                // Everything before this marker is no longer needed.
-                self.flush_and_sync()?;
-                self.replace(&rec)?;
-            }
+        if let WalMessage::EndHeight(_) = m.msg
+            && self.size > self.head_size_limit
+        {
+            // Everything before this marker is no longer needed.
+            self.flush_and_sync()?;
+            self.replace(&rec)?;
         }
         Ok(())
     }

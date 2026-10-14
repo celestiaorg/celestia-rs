@@ -456,7 +456,7 @@ impl Reactor {
             }
             if self.try_sync_one(&mut state, exec, &chain_id, blocks_synced)? {
                 blocks_synced += 1;
-                if blocks_synced % 100 == 0 {
+                if blocks_synced.is_multiple_of(100) {
                     let secs = last_hundred.elapsed().as_secs_f64().max(1e-9);
                     last_rate = 0.9 * last_rate + 0.1 * (100.0 / secs);
                     tracing::info!(
@@ -558,20 +558,21 @@ impl Reactor {
                 "non-nil extended commit must be received iff vote extensions are enabled for its height (height {height}, non-nil extended commit {present_ext}, extensions enabled {ext_enabled})"
             ));
         }
-        if err.is_none() && ext_enabled {
-            if let Some(ec) = &ext_commit {
-                err = ec.ensure_extensions(true).err().map(|e| e.to_string());
-                if err.is_none() {
-                    err = ctypes::verify_commit(
-                        chain_id,
-                        &state.validators,
-                        &first_id,
-                        height,
-                        &ec.to_commit(),
-                    )
-                    .err()
-                    .map(|e| e.to_string());
-                }
+        if err.is_none()
+            && ext_enabled
+            && let Some(ec) = &ext_commit
+        {
+            err = ec.ensure_extensions(true).err().map(|e| e.to_string());
+            if err.is_none() {
+                err = ctypes::verify_commit(
+                    chain_id,
+                    &state.validators,
+                    &first_id,
+                    height,
+                    &ec.to_commit(),
+                )
+                .err()
+                .map(|e| e.to_string());
             }
         }
         if let Some(e) = err {
@@ -582,18 +583,19 @@ impl Reactor {
                 .pool
                 .remove_peer_and_redo_all_peer_requests(height, now);
             let net = self.net();
-            if let Some(net) = &net {
-                if !peer1.is_empty() {
-                    net.stop_peer_for_error(&peer1, &reason);
-                }
+            if let Some(net) = &net
+                && !peer1.is_empty()
+            {
+                net.stop_peer_for_error(&peer1, &reason);
             }
             let peer2 = self
                 .pool
                 .remove_peer_and_redo_all_peer_requests(height + 1, now);
-            if let Some(net) = &net {
-                if !peer2.is_empty() && peer2 != peer1 {
-                    net.stop_peer_for_error(&peer2, &reason);
-                }
+            if let Some(net) = &net
+                && !peer2.is_empty()
+                && peer2 != peer1
+            {
+                net.stop_peer_for_error(&peer2, &reason);
             }
             return Ok(false);
         }

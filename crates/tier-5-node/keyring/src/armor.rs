@@ -150,10 +150,10 @@ pub fn decrypt_secp256k1(armor: &str, passphrase: &str) -> Result<[u8; 32], Erro
             .find(|(hk, _)| hk == k)
             .map(|(_, v)| v.clone())
     };
-    if let Some(t) = header("type") {
-        if t != "secp256k1" {
-            return Err(Error::Armor(format!("unsupported key type {t}")));
-        }
+    if let Some(t) = header("type")
+        && t != "secp256k1"
+    {
+        return Err(Error::Armor(format!("unsupported key type {t}")));
     }
     let salt = hex::decode(header("salt").ok_or_else(|| Error::Armor("missing salt".into()))?)
         .map_err(|e| Error::Armor(format!("salt: {e}")))?;

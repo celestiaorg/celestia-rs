@@ -455,7 +455,7 @@ impl BlockStore {
                 batch.delete(part_key(h, p));
             }
             pruned += 1;
-            if pruned % 1000 == 0 {
+            if pruned.is_multiple_of(1000) {
                 let b = std::mem::take(&mut batch);
                 self.write_with_state(
                     b,
