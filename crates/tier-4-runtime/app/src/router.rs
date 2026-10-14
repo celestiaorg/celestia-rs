@@ -65,6 +65,7 @@ use celestia_proto::celestia::signal::v1 as signal;
 use celestia_proto::cosmos::authz::v1beta1 as authz;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::circuit::v1 as circuit;
+use celestia_proto::cosmos::consensus::v1 as consensus;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
 use celestia_proto::cosmos::evidence::v1beta1 as evidence;
 use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
@@ -126,6 +127,7 @@ routes! {
     vesting::MsgCreatePermanentLockedAccount => x_bank::vesting_msgs::handle_create_permanent_locked_account,
     vesting::MsgCreatePeriodicVestingAccount => x_bank::vesting_msgs::handle_create_periodic_vesting_account,
     evidence::MsgSubmitEvidence => x_evidence::handle_submit_evidence,
+    consensus::MsgUpdateParams => x_consensus::handle_update_params,
 }
 
 /// The app's message router as gov sees it (`baseapp.MessageRouter`).

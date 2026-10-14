@@ -49,6 +49,11 @@ fn vesting_parity() -> anyhow::Result<()> {
     assert_parity("vesting")
 }
 
+#[test]
+fn consensus_params_parity() -> anyhow::Result<()> {
+    assert_parity("consensus")
+}
+
 /// `staking` re-driven through Go with duplicate-vote evidence injected
 /// (conformance/devnet/inject-evidence.sh staking evidence 20 30): slash,
 /// jail, tombstone; unknown validator, unknown type and an already

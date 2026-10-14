@@ -24,6 +24,23 @@ Only Go (module proxy) and cargo are needed; no public RPC access.
 Genesis keys and times are random per run, so regenerating a scenario
 replaces its fixture wholesale.
 
+Workloads may ship `<name>.setup.sh` (genesis accounts, run before gentx)
+and `<name>.genesis.py` (edits the final genesis, e.g. short gov voting
+periods); `CHAIN_ID` overrides the chain id and `ALLOW_HALT=1` accepts a
+workload that halts the chain (the replay then requires Rust to refuse the
+same block). Shared helpers (`tx`, `rawtx` for messages the CLI cannot
+build, `q`) live in `workloads/lib.sh`.
+
+Misbehavior cannot be produced by a single honest validator, so
+`inject-evidence.sh <src> <dst> <height>...` re-drives a recorded scenario
+through a fresh Go `celestia-appd` with duplicate-vote evidence injected
+into those FinalizeBlock requests and records Go's responses as `<dst>`.
+
+```bash
+CHAIN_ID=test ALLOW_HALT=1 conformance/devnet/devnet.sh upgrade 10 conformance/devnet/workloads/upgrade.sh
+conformance/devnet/inject-evidence.sh staking evidence 20 30
+```
+
 ## Live mixed network
 
 `mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a

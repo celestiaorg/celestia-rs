@@ -35,15 +35,17 @@ open question 2).
 **S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
 exactly — app hash, every tx result's code/data/gas, validator updates — for
 every height of the `empty` (20), `staking` (40), `staking-lifecycle` (60) and
-`hyperlane` (60) devnet scenarios, and runs live: Go celestia-core over
+`hyperlane` (60) devnet scenarios (plus `gov`, `authz-feegrant`, `vesting`,
+`upgrade` (ends in Go's halt), `consensus` and `evidence` (misbehavior
+injected into a re-driven Go app, `inject-evidence.sh`)), and runs live: Go celestia-core over
 `celestia-rs abci` produces blocks, and a Rust follower tracks a Go validator
 through a staking workload (`conformance/devnet/mixed.sh`).
 
 | Area | State |
 |---|---|
 | Runtime & tx pipeline | sdk runtime, math (12,446 vectors), txdecode (4,968 vectors), x-ante (4,144 vectors), phased runTx, router, genutil |
-| Modules at parity | auth, bank, staking, distribution, slashing, mint, gov (genesis/queues), upgrade, consensus, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
-| In progress | Prepare/ProcessProposal + CheckTx + blob scenario; persistent storage (ADR 0002); gov msgs/tally, upgrade execution, authz, feegrant, evidence, vesting; IBC msgs + relaying |
+| Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
+| In progress | Prepare/ProcessProposal + CheckTx + blob scenario; persistent storage (ADR 0002); IBC msgs + relaying |
 | Not started | queries/gRPC/REST (M11), state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's non-empty historical-state import hardening remains pending; S3 (state

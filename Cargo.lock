@@ -2588,6 +2588,7 @@ name = "x-consensus"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "pbjson-types",
  "prost",
  "sdk",
 ]
