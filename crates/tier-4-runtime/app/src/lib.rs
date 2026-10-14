@@ -346,9 +346,54 @@ impl Application for AbciApp {
             request::Value::Commit(_) => app
                 .commit()
                 .map_or_else(|e| exception(&e), response::Value::Commit),
+            request::Value::PrepareProposal(r) => proposal::prepare(&r)
+                .map_or_else(|e| exception(&e), response::Value::PrepareProposal),
+            request::Value::ProcessProposal(r) => {
+                response::Value::ProcessProposal(proposal::process(&r))
+            }
+            request::Value::CheckTx(_) => response::Value::CheckTx(abci::ResponseCheckTx {
+                code: sdk::error::sdk::not_supported("").code,
+                codespace: "sdk".into(),
+                log: "CheckTx not ported yet".into(),
+                ..Default::default()
+            }),
+            request::Value::Query(_) => response::Value::Query(abci::ResponseQuery {
+                code: sdk::error::sdk::not_supported("").code,
+                codespace: "sdk".into(),
+                log: "Query not ported yet".into(),
+                ..Default::default()
+            }),
+            request::Value::ListSnapshots(_) => {
+                response::Value::ListSnapshots(abci::ResponseListSnapshots::default())
+            }
             other => response::Value::Exception(ResponseException {
                 error: format!("unsupported request {other:?}"),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod abci_dispatch_tests {
+    use super::*;
+
+    /// Guards against the dispatch arms being dropped in a merge: every
+    /// request celestia-core sends during normal block production must be
+    /// answered with its own response type, never an exception.
+    #[test]
+    fn proposal_requests_are_dispatched() {
+        let app = AbciApp::new(App::new());
+        let r = app.handle(request::Value::PrepareProposal(
+            abci::RequestPrepareProposal::default(),
+        ));
+        assert!(matches!(r, response::Value::PrepareProposal(_)), "{r:?}");
+        let r = app.handle(request::Value::ProcessProposal(
+            abci::RequestProcessProposal::default(),
+        ));
+        assert!(matches!(r, response::Value::ProcessProposal(_)), "{r:?}");
+        let r = app.handle(request::Value::CheckTx(abci::RequestCheckTx::default()));
+        assert!(matches!(r, response::Value::CheckTx(_)), "{r:?}");
+        let r = app.handle(request::Value::Query(abci::RequestQuery::default()));
+        assert!(matches!(r, response::Value::Query(_)), "{r:?}");
     }
 }
