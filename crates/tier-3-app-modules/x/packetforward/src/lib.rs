@@ -11,6 +11,9 @@ use celestia_proto::packetforward::v1::{GenesisState, InFlightPacket};
 use prost::Message;
 use sdk::{Context, Result};
 
+pub mod memo;
+pub mod middleware;
+
 /// Module name (sic).
 pub const MODULE_NAME: &str = "packetfowardmiddleware";
 /// Store key (sic).

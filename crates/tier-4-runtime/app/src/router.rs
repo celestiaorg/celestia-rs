@@ -20,7 +20,7 @@ macro_rules! routes {
         #[must_use]
         pub fn has_handler(type_url: &str) -> bool {
             $( if type_url == <$ty>::type_url() { return true; } )*
-            crate::hyperlane::has_handler(type_url)
+            crate::hyperlane::has_handler(type_url) || crate::ibc::has_handler(type_url)
         }
 
         /// Executes `msg`, returning its packed response.
@@ -52,6 +52,9 @@ macro_rules! routes {
                 }
             }
             if let Some(r) = crate::hyperlane::route(ctx, msg) {
+                return r;
+            }
+            if let Some(r) = crate::ibc::route(ctx, msg) {
                 return r;
             }
             Err(errs::unknown_request(format!("no message handler found for {}", msg.type_url)))
@@ -178,6 +181,9 @@ fn handle_legacy_submit_proposal(
 
 /// Legacy `ValidateBasic` for messages that still implement it in v0.52.12.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    if let Some(r) = crate::ibc::validate_basic(msg) {
+        return r;
+    }
     if msg.type_url == blob::MsgPayForBlobs::type_url() {
         return x_blob::validate_basic(&decode(msg)?);
     }

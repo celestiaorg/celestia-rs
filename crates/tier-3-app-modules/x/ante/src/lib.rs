@@ -65,7 +65,7 @@ pub mod txview;
 
 use sdk::{Context, ExecMode, SdkError};
 
-pub use deps::{AnteDeps, StoreDeps};
+pub use deps::{AnteDeps, IbcHooks, IbcPacketMsg, StoreDeps};
 
 /// `sdkerrors.ErrPanic` (`undefined` codespace, code 111222).
 pub const PANIC_CODE: u32 = 111_222;

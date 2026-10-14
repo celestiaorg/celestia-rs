@@ -14,11 +14,19 @@
 //!
 //! The module has a begin blocker only (no end blocker).
 
+pub mod ante;
 pub mod channel;
 pub mod client;
+pub mod commitment;
 pub mod connection;
+pub mod errors;
+pub mod gojson;
+pub mod height;
 pub mod host;
+pub mod lightclients;
+pub mod msgs;
 pub mod port;
+pub mod router;
 
 use celestia_proto::ibc::core::types::v1::GenesisState;
 use sdk::{Context, Result};

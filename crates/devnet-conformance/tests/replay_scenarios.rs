@@ -88,3 +88,12 @@ fn blob_parity() -> anyhow::Result<()> {
     assert!(c.prepare_with_txs >= 7 && c.check_tx >= 50, "{c:?}");
     Ok(())
 }
+
+/// Two Go chains linked by a relayer: client creation and updates,
+/// connection and channel handshakes, ICS-20 escrow / mint / burn, error
+/// acks, packet-forward-middleware forwards (success and failure) and a
+/// packet timeout, all from the main chain's side.
+#[test]
+fn ibc_parity() -> anyhow::Result<()> {
+    assert_parity("ibc")
+}

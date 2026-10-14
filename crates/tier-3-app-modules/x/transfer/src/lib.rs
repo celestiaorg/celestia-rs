@@ -18,6 +18,8 @@ use prost::Message;
 use sdk::{Context, Result};
 use x_capability::ScopedKeeper;
 
+pub mod relay;
+
 /// Module name.
 pub const MODULE_NAME: &str = "transfer";
 /// Store key.

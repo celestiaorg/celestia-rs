@@ -82,6 +82,12 @@ sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" \
   -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$((9098 + OFF))#" "$H/config/config.toml"
 sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
+# Workloads that need tx results over RPC (e.g. the relayer) set
+# DEVNET_TX_INDEX=kv; indexing is node-local and does not change ABCI traffic.
+if [ -n "${DEVNET_TX_INDEX:-}" ]; then
+  sed -i -e "s#^indexer = \"null\"#indexer = \"$DEVNET_TX_INDEX\"#" \
+    -e "s#^discard_abci_responses = true#discard_abci_responses = false#" "$H/config/config.toml"
+fi
 
 # celestia-core wants a CometBFT GenesisDoc, not the SDK app genesis.
 mkdir -p "$H/core/config" "$H/core/data"

@@ -199,6 +199,16 @@ fn not_supported(what: &str) -> SdkError {
     errs::not_supported(format!("{what} is not ported yet"))
 }
 
+/// The IBC checks of `RedundantRelayDecorator`, supplied by the app (they
+/// run IBC message handlers, which need the app's ICS-26 router).
+#[derive(Debug, Clone, Copy)]
+pub struct IbcHooks {
+    /// See [`AnteDeps::ibc_packet_is_noop`].
+    pub packet_is_noop: fn(&mut Context<'_>, IbcPacketMsg, &Any, bool) -> sdk::Result<bool>,
+    /// See [`AnteDeps::ibc_update_client_check`].
+    pub update_client_check: fn(&mut Context<'_>, &Any, bool) -> sdk::Result<()>,
+}
+
 /// [`AnteDeps`] backed by the Go modules' store layouts.
 ///
 /// Implements the circuit, minfee and blob reads exactly like their Go
@@ -211,6 +221,9 @@ pub struct StoreDeps {
     /// Node-local minimum gas price (utia), see
     /// [`AnteDeps::node_min_gas_price`].
     pub node_min_gas_price: Option<LegacyDec>,
+    /// The app's IBC checks (CheckTx); without them IBC packet txs fail
+    /// with `ErrNotSupported` in CheckTx.
+    pub ibc: Option<IbcHooks>,
     pff_cache: RefCell<HashSet<[u8; 32]>>,
 }
 
@@ -220,8 +233,16 @@ impl StoreDeps {
     pub fn new(node_min_gas_price: Option<LegacyDec>) -> Self {
         Self {
             node_min_gas_price,
+            ibc: None,
             pff_cache: RefCell::default(),
         }
+    }
+
+    /// Sets the app's IBC checks.
+    #[must_use]
+    pub fn with_ibc(mut self, hooks: IbcHooks) -> Self {
+        self.ibc = Some(hooks);
+        self
     }
 }
 
@@ -293,20 +314,26 @@ impl AnteDeps for StoreDeps {
 
     fn ibc_packet_is_noop(
         &self,
-        _ctx: &mut Context<'_>,
-        _kind: IbcPacketMsg,
-        _msg: &Any,
-        _recheck: bool,
+        ctx: &mut Context<'_>,
+        kind: IbcPacketMsg,
+        msg: &Any,
+        recheck: bool,
     ) -> sdk::Result<bool> {
+        if let Some(h) = self.ibc {
+            return (h.packet_is_noop)(ctx, kind, msg, recheck);
+        }
         Err(not_supported("IBC redundant relay check"))
     }
 
     fn ibc_update_client_check(
         &self,
-        _ctx: &mut Context<'_>,
+        ctx: &mut Context<'_>,
         msg: &Any,
-        _recheck: bool,
+        recheck: bool,
     ) -> sdk::Result<()> {
+        if let Some(h) = self.ibc {
+            return (h.update_client_check)(ctx, msg, recheck);
+        }
         // clienttypes.UnpackClientMessage: a nil client message fails before
         // any state is read.
         let m: celestia_proto::ibc::core::client::v1::MsgUpdateClient = decode(msg)?;

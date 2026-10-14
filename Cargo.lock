@@ -2698,10 +2698,16 @@ name = "x-ibc"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "crypto",
+ "hash",
  "hex",
+ "ics23",
+ "merkle",
+ "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
+ "x-auth",
  "x-capability",
  "x-upgrade",
 ]
@@ -2752,9 +2758,14 @@ name = "x-packetforward"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "encoding",
+ "hash",
  "prost",
  "sdk",
  "serde_json",
+ "x-bank",
+ "x-ibc",
+ "x-transfer",
 ]
 
 [[package]]
@@ -2814,9 +2825,12 @@ dependencies = [
  "celestia-proto",
  "hash",
  "hex",
+ "math",
  "prost",
  "sdk",
  "serde_json",
+ "x-auth",
+ "x-bank",
  "x-capability",
  "x-ibc",
 ]

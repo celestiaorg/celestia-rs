@@ -9,6 +9,7 @@ pub mod check_tx;
 pub mod fibre_tx;
 pub mod genutil;
 pub mod hyperlane;
+pub mod ibc;
 pub mod modules;
 pub mod msg_count;
 pub mod proposal;
