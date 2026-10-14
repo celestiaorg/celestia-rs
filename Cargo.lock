@@ -127,6 +127,7 @@ dependencies = [
  "txdecode",
  "x-ante",
  "x-auth",
+ "x-authz",
  "x-bank",
  "x-blob",
  "x-capability",
@@ -2432,6 +2433,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-authz"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde",
+ "serde_json",
+ "x-auth",
+ "x-bank",
+]
+
+[[package]]
 name = "x-bank"
 version = "0.0.1"
 dependencies = [
@@ -2530,12 +2546,16 @@ name = "x-gov"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "encoding",
+ "math",
  "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-distribution",
+ "x-staking",
 ]
 
 [[package]]

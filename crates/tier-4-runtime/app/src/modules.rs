@@ -174,6 +174,7 @@ pub fn init_genesis(
             );
         }
         "hyperlane" => x_hyperlane::init_genesis_json(ctx, genesis)?,
+        "authz" if !genesis.is_null() => x_authz::init_genesis_json(ctx, genesis)?,
         "warp" => x_warp::init_genesis_json(ctx, genesis)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
@@ -189,11 +190,16 @@ pub fn install_staking_hooks() {
     ])));
 }
 
-/// Runs one module's `PreBlock`.
-pub fn pre_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
+/// Runs one module's `PreBlock`; returns whether consensus params may have
+/// changed.
+pub fn pre_block(
+    ctx: &mut Context<'_>,
+    module: &str,
+    upgrade: &mut x_upgrade::NodeState,
+) -> Result<bool> {
     match module {
-        "upgrade" => x_upgrade::pre_block(ctx),
-        _ => Ok(()),
+        "upgrade" => x_upgrade::pre_block(ctx, &crate::upgrades::Handlers, upgrade),
+        _ => Ok(false),
     }
 }
 
@@ -207,6 +213,7 @@ pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
         "distribution" => x_distribution::begin_block(ctx),
         "slashing" => x_slashing::begin_block(ctx),
         "staking" => x_staking::begin_block(ctx),
+        "authz" => x_authz::begin_block(ctx),
         // No begin blocker in Go.
         "transfer" | "interchainaccounts" | "packetfowardmiddleware" => Ok(()),
         _ => {
@@ -233,7 +240,7 @@ impl x_transfer::BankKeeper for TransferBank {
 pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
     match module {
         "staking" => return x_staking::end_block(ctx),
-        "gov" => x_gov::end_block(ctx)?,
+        "gov" => x_gov::end_block(ctx, &crate::router::AppRouter)?,
         "valaddr" => x_valaddr::end_block(ctx, &mut ValaddrStaking)?,
         _ => tracing::trace!(module, "end_block not ported"),
     }
@@ -302,18 +309,27 @@ pub fn handle_try_upgrade(
     x_signal::try_upgrade(ctx, &mut SignalStaking, msg)
 }
 
-/// celestia `App.EndBlocker` after the module manager's EndBlock: a signalled
-/// upgrade whose height is reached schedules an upgrade plan, bumps the app
-/// version and resets the tally. Executing that is not ported yet, so a due
-/// upgrade fails loudly instead of diverging silently.
+/// celestia `App.EndBlocker` after the module manager's EndBlock: once a
+/// signalled upgrade's height is reached, schedule the `v<N>` plan for the
+/// next height, bump the app version and reset the signal tally. The next
+/// block's `PreBlocker` then runs the `v<N>` handler, or halts the chain if
+/// this binary has none (exactly like Go).
 pub fn app_end_block(ctx: &mut Context<'_>) -> Result<()> {
-    let current = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let current = x_consensus::get_params(ctx)?
+        .and_then(|p| p.version)
+        .map_or(0, |v| v.app);
     if let Some(up) = x_signal::should_upgrade(ctx)? {
         if up.app_version > current {
-            return Err(sdk::error::sdk::not_supported(format!(
-                "signalled upgrade to v{} at height {} is due but app-version upgrades are not implemented",
-                up.app_version, up.upgrade_height
-            )));
+            let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+                name: format!("v{}", up.app_version),
+                height: up.upgrade_height + 1,
+                ..Default::default()
+            };
+            x_upgrade::schedule_upgrade(ctx, &plan).map_err(|e| {
+                sdk::error::internal(format!("failed to schedule upgrade: {}", e.log))
+            })?;
+            crate::upgrades::set_app_version(ctx, up.app_version)?;
+            x_signal::reset_tally(ctx)?;
         }
     }
     Ok(())

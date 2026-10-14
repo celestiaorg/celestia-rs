@@ -62,11 +62,15 @@ macro_rules! routes {
 use celestia_proto::celestia::blob::v1 as blob;
 use celestia_proto::celestia::minfee::v1 as minfee;
 use celestia_proto::celestia::signal::v1 as signal;
+use celestia_proto::cosmos::authz::v1beta1 as authz;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::circuit::v1 as circuit;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::gov::v1 as gov;
+use celestia_proto::cosmos::gov::v1beta1 as govb;
 use celestia_proto::cosmos::slashing::v1beta1 as slashing;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
+use celestia_proto::cosmos::upgrade::v1beta1 as upgrade;
 
 routes! {
     bank::MsgSend => x_bank::msgs::handle_send,
@@ -95,6 +99,69 @@ routes! {
     circuit::MsgResetCircuitBreaker => x_circuit::handle_reset_circuit_breaker,
     signal::MsgSignalVersion => crate::modules::handle_signal_version,
     signal::MsgTryUpgrade => crate::modules::handle_try_upgrade,
+    gov::MsgSubmitProposal => handle_submit_proposal,
+    gov::MsgExecLegacyContent => x_gov::msgs::exec_legacy_content,
+    gov::MsgVote => x_gov::msgs::vote,
+    gov::MsgVoteWeighted => x_gov::msgs::vote_weighted,
+    gov::MsgDeposit => x_gov::msgs::deposit,
+    gov::MsgUpdateParams => x_gov::msgs::update_params,
+    gov::MsgCancelProposal => x_gov::msgs::cancel_proposal,
+    govb::MsgSubmitProposal => handle_legacy_submit_proposal,
+    govb::MsgVote => x_gov::msgs::legacy_vote,
+    govb::MsgVoteWeighted => x_gov::msgs::legacy_vote_weighted,
+    govb::MsgDeposit => x_gov::msgs::legacy_deposit,
+    upgrade::MsgSoftwareUpgrade => x_upgrade::handle_software_upgrade,
+    upgrade::MsgCancelUpgrade => x_upgrade::handle_cancel_upgrade,
+    authz::MsgGrant => handle_authz_grant,
+    authz::MsgExec => handle_authz_exec,
+    authz::MsgRevoke => x_authz::handle_revoke,
+    authz::MsgPruneExpiredGrants => x_authz::handle_prune_expired_grants,
+}
+
+/// The app's message router as gov sees it (`baseapp.MessageRouter`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AppRouter;
+
+impl sdk::router::MsgRouter for AppRouter {
+    fn has_handler(&self, type_url: &str) -> bool {
+        has_handler(type_url)
+    }
+
+    fn validate_basic(&self, msg: &Any) -> Result<()> {
+        validate_basic(msg)
+    }
+
+    fn handle(&self, ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+        route(ctx, msg)
+    }
+}
+
+fn handle_submit_proposal(
+    ctx: &mut Context<'_>,
+    msg: &gov::MsgSubmitProposal,
+) -> Result<gov::MsgSubmitProposalResponse> {
+    x_gov::msgs::submit_proposal(ctx, &AppRouter, msg)
+}
+
+fn handle_authz_grant(
+    ctx: &mut Context<'_>,
+    msg: &authz::MsgGrant,
+) -> Result<authz::MsgGrantResponse> {
+    x_authz::handle_grant(ctx, &AppRouter, msg)
+}
+
+fn handle_authz_exec(
+    ctx: &mut Context<'_>,
+    msg: &authz::MsgExec,
+) -> Result<authz::MsgExecResponse> {
+    x_authz::handle_exec(ctx, &AppRouter, msg)
+}
+
+fn handle_legacy_submit_proposal(
+    ctx: &mut Context<'_>,
+    msg: &govb::MsgSubmitProposal,
+) -> Result<govb::MsgSubmitProposalResponse> {
+    x_gov::msgs::legacy_submit_proposal(ctx, &AppRouter, msg)
 }
 
 /// Legacy `ValidateBasic` for messages that still implement it in v0.52.12.
@@ -107,6 +174,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     }
     if msg.type_url == signal::MsgTryUpgrade::type_url() {
         return x_signal::validate_basic_try_upgrade(&decode(msg)?);
+    }
+    if msg.type_url == gov::MsgExecLegacyContent::type_url() {
+        return x_gov::msgs::validate_basic_exec_legacy_content(&decode(msg)?);
     }
     Ok(())
 }

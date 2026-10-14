@@ -16,6 +16,7 @@ pub mod context;
 pub mod dec_coins;
 pub mod error;
 pub mod event;
+pub mod router;
 pub mod store;
 pub mod time;
 pub mod tx;

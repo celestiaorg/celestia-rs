@@ -3,7 +3,15 @@
 # ABCI) behind Go celestia-core with the abci-recorder proxy in between, run
 # an optional workload, then dump committed state.
 #
-# usage: [DEVNET_PORT_OFFSET=n] conformance/devnet/devnet.sh <scenario> <blocks> [workload-script]
+# usage: [DEVNET_PORT_OFFSET=n] [CHAIN_ID=id] [GENESIS_SETUP=script.sh] [GENESIS_PATCH=script.py] \
+#          conformance/devnet/devnet.sh <scenario> <blocks> [workload-script]
+#
+# GENESIS_SETUP (bash) runs after the default keys and genesis accounts are
+# added and before gentx, with HOME_DIR and CHAIN_ID set (e.g. to add
+# vesting accounts). GENESIS_PATCH (python) is called with the path of the
+# final SDK genesis.json and edits it in place (e.g. short gov voting
+# periods). Both default to `workloads/<workload>.setup.sh` /
+# `workloads/<workload>.genesis.py` when those files exist.
 #
 # Output: conformance/fixtures/devnet/<scenario>/
 #   genesis.json        SDK app genesis fed to InitChain
@@ -21,7 +29,7 @@ BLOCKS=${2:?blocks}
 WORKLOAD=${3:-}
 APP_VERSION=v10.4.0
 CORE_VERSION=v0.42.3
-CHAIN_ID=rs-devnet-1
+CHAIN_ID=${CHAIN_ID:-rs-devnet-1}
 # Shift every listening port so concurrent devnets don't collide.
 OFF=${DEVNET_PORT_OFFSET:-0}
 P_RPC=$((26657 + OFF)); P_P2P=$((26656 + OFF)); P_PROXY=$((26658 + OFF)); P_APP=$((36658 + OFF))
@@ -54,8 +62,18 @@ $A keys add user0 --keyring-backend test >/dev/null 2>&1
 for k in val0 user0; do
   $A genesis add-genesis-account "$($A keys show $k -a --keyring-backend test)" 1000000000000utia >/dev/null 2>&1
 done
+if [ -n "$WORKLOAD" ]; then
+  GENESIS_SETUP=${GENESIS_SETUP:-$(ls "${WORKLOAD%.sh}.setup.sh" 2>/dev/null || true)}
+  GENESIS_PATCH=${GENESIS_PATCH:-$(ls "${WORKLOAD%.sh}.genesis.py" 2>/dev/null || true)}
+fi
+if [ -n "${GENESIS_SETUP:-}" ]; then
+  HOME_DIR=$H CHAIN_ID=$CHAIN_ID bash "$GENESIS_SETUP"
+fi
 $A genesis gentx val0 5000000000utia --chain-id $CHAIN_ID --keyring-backend test --fees 500000utia >/dev/null 2>&1
 $A genesis collect-gentxs >/dev/null 2>&1
+if [ -n "${GENESIS_PATCH:-}" ]; then
+  python3 "$GENESIS_PATCH" "$H/config/genesis.json"
+fi
 sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
 sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" "$H/config/config.toml"

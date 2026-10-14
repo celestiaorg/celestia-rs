@@ -13,6 +13,7 @@ pub mod router;
 pub mod stores;
 pub mod tx;
 pub mod txpipe;
+pub mod upgrades;
 
 use std::sync::Mutex;
 
@@ -40,6 +41,8 @@ pub struct App {
     finalize_header: Option<Header>,
     last_commit_hash: Vec<u8>,
     last_height: i64,
+    /// Node-local `x/upgrade` keeper state.
+    upgrade: x_upgrade::NodeState,
 }
 
 impl Default for App {
@@ -87,6 +90,7 @@ impl App {
             finalize_header: None,
             last_commit_hash: sdk_empty_hash(),
             last_height: 0,
+            upgrade: x_upgrade::NodeState::default(),
         }
     }
 
@@ -205,8 +209,12 @@ impl App {
             .unwrap_or_default();
         ctx.misbehavior.clone_from(&req.misbehavior);
 
+        let mut params_changed = false;
         for module in modules::PRE_BLOCKERS {
-            modules::pre_block(&mut ctx, module)?;
+            params_changed |= modules::pre_block(&mut ctx, module, &mut self.upgrade)?;
+        }
+        if params_changed {
+            ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
         }
         for module in modules::BEGIN_BLOCKERS {
             modules::begin_block(&mut ctx, module)?;

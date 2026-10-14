@@ -10,10 +10,21 @@
 //! - `0x20 || u64(id) || len || addr` → `Vote`
 //! - `0x30` → `Params`, `0x31` → constitution (raw string)
 //!
-//! `time(t)` is `sdk.TimeKey` (`sdk.FormatTimeBytes`). Proposal tallying and
-//! execution of passed proposals are not ported yet: [`end_block`] returns
-//! a `not supported` error when a queue holds an expired proposal, so a
-//! divergence is loud rather than silent.
+//! `time(t)` is `sdk.TimeKey` (`sdk.FormatTimeBytes`).
+//!
+//! Passed proposals execute their messages through the app's message router
+//! ([`keeper::MsgRouter`]). celestia registers an empty legacy (v1beta1)
+//! content router, so `MsgExecLegacyContent` always fails with
+//! `ErrNoProposalHandlerExists`.
+
+pub mod abci;
+pub mod errors;
+pub mod keeper;
+pub mod msgs;
+pub mod tally;
+
+pub use abci::end_block;
+pub use keeper::MsgRouter;
 
 use celestia_proto::cosmos::gov::v1::{
     Deposit, GenesisState, Params, Proposal, ProposalStatus, Vote,
@@ -114,7 +125,9 @@ pub fn set_vote(ctx: &mut Context<'_>, v: &Vote) -> Result<()> {
     )
 }
 
-fn queue_key(prefix: u8, end: &Timestamp, id: u64) -> Vec<u8> {
+/// Proposal queue key: `prefix || time(end) || u64(id)`.
+#[must_use]
+pub fn queue_key(prefix: u8, end: &Timestamp, id: u64) -> Vec<u8> {
     let mut k = vec![prefix];
     k.extend_from_slice(&format_time_bytes(end));
     k.extend_from_slice(&u64_key(id));
@@ -217,32 +230,37 @@ pub fn expired_queue_entries(
     Ok(out)
 }
 
-/// `EndBlocker`: walks the inactive and active proposal queues up to the
-/// block time. Processing an expired proposal (refund/burn deposits,
-/// tally, executing messages) is not ported; it is reported as an error.
-pub fn end_block(ctx: &mut Context<'_>) -> Result<()> {
-    let now = ctx.header.time;
-    for (prefix, what) in [
-        (INACTIVE_QUEUE_PREFIX, "inactive"),
-        (ACTIVE_QUEUE_PREFIX, "active"),
-    ] {
-        if let Some((_, id)) = expired_queue_entries(ctx, prefix, &now)?.first() {
-            return Err(sdkerr::not_supported(format!(
-                "gov: processing {what} proposal {id} is not implemented"
-            )));
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use sdk::{ExecMode, Header, Kind, MultiStore};
 
+    struct NoRouter;
+
+    impl MsgRouter for NoRouter {
+        fn has_handler(&self, _: &str) -> bool {
+            false
+        }
+        fn validate_basic(&self, _: &celestia_proto::Any) -> Result<()> {
+            Ok(())
+        }
+        fn handle(
+            &self,
+            _: &mut Context<'_>,
+            _: &celestia_proto::Any,
+        ) -> Result<celestia_proto::Any> {
+            Err(sdkerr::unknown_request(""))
+        }
+    }
+
     fn ms() -> MultiStore {
         let mut ms = MultiStore::new();
-        for s in [STORE_KEY, x_auth::STORE_KEY, x_bank::STORE_KEY] {
+        for s in [
+            STORE_KEY,
+            x_auth::STORE_KEY,
+            x_bank::STORE_KEY,
+            x_staking::STORE_KEY,
+        ] {
             ms.mount(s, Kind::Iavl).unwrap_or_default();
         }
         ms
@@ -289,7 +307,7 @@ mod tests {
         assert!(x_auth::get_account(&mut ctx, &x_auth::module_address(MODULE_NAME))?.is_some());
         assert_eq!(peek_proposal_id(&mut ctx)?, 1);
         assert_eq!(get_params(&mut ctx)?.quorum, "0.334000000000000000");
-        end_block(&mut ctx)?;
+        end_block(&mut ctx, &NoRouter)?;
         Ok(())
     }
 
@@ -316,13 +334,19 @@ mod tests {
             Some(vec![1])
         );
         // Before the end time nothing expires.
-        end_block(&mut ctx)?;
+        end_block(&mut ctx, &NoRouter)?;
         ctx.header.time = end;
         assert_eq!(
             expired_queue_entries(&mut ctx, ACTIVE_QUEUE_PREFIX, &end)?.len(),
             1
         );
-        assert!(end_block(&mut ctx).is_err());
+        // No bonded tokens: the proposal is rejected and leaves the queue.
+        end_block(&mut ctx, &NoRouter)?;
+        assert_eq!(ctx.get(STORE_KEY, &qk)?, None);
+        let p = keeper::must_get_proposal(&mut ctx, 1)?;
+        assert_eq!(p.status, ProposalStatus::Rejected as i32);
+        assert_eq!(p.failed_reason, "proposal did not get enough votes to pass");
+        assert_eq!(ctx.get(STORE_KEY, &[0x04, 0, 0, 0, 0, 0, 0, 0, 1])?, None);
         Ok(())
     }
 

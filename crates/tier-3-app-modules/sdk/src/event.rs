@@ -66,6 +66,18 @@ impl EventManager {
     pub fn events(&self) -> &[Event] {
         &self.events
     }
+
+    /// Appends an attribute to every event emitted since checkpoint `from`
+    /// (e.g. authz's `authz_msg_index`).
+    pub fn append_attribute_since(&mut self, from: usize, key: &str, value: &str) {
+        for e in self.events.iter_mut().skip(from) {
+            e.attributes.push(EventAttribute {
+                key: key.into(),
+                value: value.into(),
+                index: true,
+            });
+        }
+    }
 }
 
 /// `sdk.TypedEventToEvent`: the event type is the proto full name and each

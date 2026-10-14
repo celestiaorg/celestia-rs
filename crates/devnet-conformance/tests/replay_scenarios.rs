@@ -33,3 +33,8 @@ fn staking_lifecycle_parity() -> anyhow::Result<()> {
 fn hyperlane_parity() -> anyhow::Result<()> {
     assert_parity("hyperlane")
 }
+
+#[test]
+fn gov_parity() -> anyhow::Result<()> {
+    assert_parity("gov")
+}

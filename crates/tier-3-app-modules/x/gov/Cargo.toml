@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "x/gov v1 (celestiaorg/cosmos-sdk v0.52.12): genesis state and proposal queues."
+description = "x/gov v1 (celestiaorg/cosmos-sdk v0.52.12): proposals, deposits, votes, tally and execution."
 publish = false
 
 [lints]
@@ -14,9 +14,13 @@ workspace = true
 
 [dependencies]
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+encoding = { path = "../../../tier-0-primitives/encoding" }
+math = { path = "../../../tier-0-primitives/math" }
 pbjson-types = "0.7"
 prost = "0.13"
 sdk = { path = "../../sdk" }
 serde_json = "1"
 x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
+x-distribution = { path = "../distribution" }
+x-staking = { path = "../staking" }

@@ -39,6 +39,7 @@ x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 x-forwarding = { path = "../../tier-3-app-modules/x/forwarding" }
 x-gov = { path = "../../tier-3-app-modules/x/gov" }
+x-authz = { path = "../../tier-3-app-modules/x/authz" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-mint = { path = "../../tier-3-app-modules/x/mint" }
 x-params = { path = "../../tier-3-app-modules/x/params" }

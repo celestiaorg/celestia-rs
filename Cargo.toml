@@ -43,6 +43,7 @@ members = [
     "crates/tier-3-app-modules/x/hyperlane",
     "crates/tier-3-app-modules/x/warp",
     "crates/tier-3-app-modules/x/gov",
+    "crates/tier-3-app-modules/x/authz",
     "crates/tier-3-app-modules/x/valaddr",
     "crates/tier-3-app-modules/x/staking",
     "crates/tier-3-app-modules/x/distribution",
