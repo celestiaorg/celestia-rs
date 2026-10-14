@@ -501,13 +501,27 @@ pub fn acc_address(s: &str) -> Result<Vec<u8>> {
             "empty address string is not allowed",
         ));
     }
-    x_auth::parse_bech32(s).map_err(|e| {
-        if e.log.contains("addresses cannot be empty") {
-            sdk::error::sdk::unknown_address("addresses cannot be empty")
-        } else {
-            x_ibc::errors::unregistered(e.log)
-        }
-    })
+    // `sdk.AccAddressFromBech32`: `GetFromBech32` (plain errors with Go's
+    // bech32 messages) then `VerifyAddressFormat`.
+    let (hrp, bz) = encoding::bech32::decode_and_convert(s).map_err(x_ibc::errors::unregistered)?;
+    if hrp != encoding::bech32::ACCOUNT_PREFIX {
+        return Err(x_ibc::errors::unregistered(format!(
+            "invalid Bech32 prefix; expected {}, got {hrp}",
+            encoding::bech32::ACCOUNT_PREFIX
+        )));
+    }
+    if bz.is_empty() {
+        return Err(sdk::error::sdk::unknown_address(
+            "addresses cannot be empty",
+        ));
+    }
+    if bz.len() > 255 {
+        return Err(sdk::error::sdk::unknown_address(format!(
+            "address max length is 255, got {}",
+            bz.len()
+        )));
+    }
+    Ok(bz)
 }
 
 /// Keeper `Transfer` (the msg server, also called by PFM without

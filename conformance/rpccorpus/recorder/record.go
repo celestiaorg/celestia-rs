@@ -443,15 +443,25 @@ func record(args []string) error {
 	r.get("/consensus_params")
 	r.get("/signed_block")
 	r.get("/blockchain")
-	for _, ht := range heights {
-		r.get(fmt.Sprintf("/block?height=%d", ht))
+	// Whole blocks only at a few heights (blob blocks are large): the
+	// first sampled heights, the tip and two large-square heights.
+	big := 0
+	for i, ht := range heights {
+		whole := i < 6 || ht == h
+		if !whole && squares[ht] >= 16 && big < 2 {
+			whole = true
+			big++
+		}
+		if whole {
+			r.get(fmt.Sprintf("/block?height=%d", ht))
+			r.get(fmt.Sprintf("/signed_block?height=%d", ht))
+			r.get(fmt.Sprintf("/block_by_hash?hash=0x%s", blockHashes[ht]))
+		}
 		r.get(fmt.Sprintf("/header?height=%d", ht))
 		r.get(fmt.Sprintf("/commit?height=%d", ht))
 		r.get(fmt.Sprintf("/block_results?height=%d", ht))
 		r.get(fmt.Sprintf("/validators?height=%d", ht))
 		r.get(fmt.Sprintf("/consensus_params?height=%d", ht))
-		r.get(fmt.Sprintf("/signed_block?height=%d", ht))
-		r.get(fmt.Sprintf("/block_by_hash?hash=0x%s", blockHashes[ht]))
 		r.get(fmt.Sprintf("/header_by_hash?hash=0x%s", blockHashes[ht]))
 		r.get(fmt.Sprintf("/blockchain?minHeight=%d&maxHeight=%d", ht, ht))
 		r.get(fmt.Sprintf("/data_commitment?start=%d&end=%d", ht, h+1))
@@ -600,7 +610,8 @@ func record(args []string) error {
 		queries = append(queries, "transfer.recipient='"+vs[0]+"' AND transfer.amount CONTAINS 'utia'")
 	}
 	for i, qs := range queries {
-		r.get("/tx_search?query=" + q(`"`+qs+`"`))
+		// Small pages: blob txs are large and incompressible.
+		r.get("/tx_search?query=" + q(`"`+qs+`"`) + "&per_page=3")
 		if i%3 == 0 {
 			r.get("/tx_search?query=" + q(`"`+qs+`"`) + "&order_by=" + q(`"desc"`) + "&per_page=2")
 			r.get("/tx_search?query=" + q(`"`+qs+`"`) + "&page=2&per_page=1")
@@ -608,7 +619,7 @@ func record(args []string) error {
 	}
 	for _, p := range []string{
 		"/tx_search", "/tx_search?query=" + q(`"tx.height>0"`) + "&per_page=1&page=3",
-		"/tx_search?query=" + q(`"tx.height>0"`) + "&per_page=1000&prove=true",
+		"/tx_search?query=" + q(`"tx.height>0"`) + "&per_page=4&prove=true",
 		"/tx_search?query=" + q(`"tx.height>0"`) + "&page=1000",
 		"/tx_search?query=" + q(`"tx.height>0"`) + "&page=0",
 		"/tx_search?query=" + q(`"tx.height>0"`) + "&per_page=-5",
@@ -724,7 +735,7 @@ func record(args []string) error {
 	r.call("header_by_hash", map[string]any{"hash": blockHashes[2]})
 	r.call("blockchain", map[string]any{"minHeight": "2", "maxHeight": "4"})
 	r.call("tx_search", map[string]any{"query": "tx.height>0", "page": "1", "per_page": "2", "order_by": "desc"})
-	r.call("tx_search", map[string]any{"query": "tx.height>0", "prove": "true"})
+	r.call("tx_search", map[string]any{"query": "tx.height>0", "prove": "true", "per_page": "3"})
 	r.call("block_search", map[string]any{"query": "block.height>2", "page": "1", "per_page": "3"})
 	r.call("data_commitment", map[string]any{"start": "1", "end": "3"})
 	r.call("data_commitment", map[string]any{"start": 1, "end": 3})

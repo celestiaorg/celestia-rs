@@ -1393,6 +1393,7 @@ name = "grpc-query"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "encoding",
  "kvstore",
  "math",
  "pbjson-types",
@@ -4238,6 +4239,7 @@ name = "x-transfer"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "encoding",
  "hash",
  "hex",
  "math",

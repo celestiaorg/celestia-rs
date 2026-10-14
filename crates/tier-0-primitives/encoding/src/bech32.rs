@@ -76,6 +76,111 @@ pub fn decode(input: &str) -> Result<(String, Vec<u8>), Error> {
     Ok((prefix, bytes))
 }
 
+const CHARSET: &[u8; 32] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+fn polymod(values: impl IntoIterator<Item = u8>) -> u32 {
+    const GEN: [u32; 5] = [
+        0x3b6a_57b2,
+        0x2650_8e6d,
+        0x1ea1_19fa,
+        0x3d42_33dd,
+        0x2a14_62b3,
+    ];
+    let mut chk: u32 = 1;
+    for v in values {
+        let b = chk >> 25;
+        chk = ((chk & 0x01ff_ffff) << 5) ^ u32::from(v);
+        for (i, g) in GEN.iter().enumerate() {
+            if (b >> i) & 1 == 1 {
+                chk ^= g;
+            }
+        }
+    }
+    chk
+}
+
+fn hrp_expand(hrp: &str) -> Vec<u8> {
+    let b = hrp.as_bytes();
+    let mut v: Vec<u8> = b.iter().map(|c| c >> 5).collect();
+    v.push(0);
+    v.extend(b.iter().map(|c| c & 31));
+    v
+}
+
+fn checksum(hrp: &str, data: &[u8]) -> String {
+    let mut v = hrp_expand(hrp);
+    v.extend_from_slice(data);
+    v.extend_from_slice(&[0; 6]);
+    let pm = polymod(v) ^ 1;
+    (0..6)
+        .map(|i| CHARSET[((pm >> (5 * (5 - i))) & 31) as usize] as char)
+        .collect()
+}
+
+/// Go's `bech32.DecodeAndConvert` (cosmos btcutil v1.0.5, length limit
+/// 1023, as used by `sdk.GetFromBech32` / `AccAddressFromBech32` and the
+/// SDK's bech32 address codec) with Go's error strings
+/// (`decoding bech32 failed: ...`).
+pub fn decode_and_convert(input: &str) -> Result<(String, Vec<u8>), String> {
+    let fail = |e: String| Err(format!("decoding bech32 failed: {e}"));
+    if input.len() > 1023 || input.len() < 8 {
+        return fail(format!("invalid bech32 string length {}", input.len()));
+    }
+    let mut has_lower = false;
+    let mut has_upper = false;
+    for &c in input.as_bytes() {
+        if !(33..=126).contains(&c) {
+            return fail(format!("invalid character in string: '{}'", c as char));
+        }
+        has_lower |= c.is_ascii_lowercase();
+        has_upper |= c.is_ascii_uppercase();
+        if has_lower && has_upper {
+            return fail("string not all lowercase or all uppercase".into());
+        }
+    }
+    let bech = input.to_ascii_lowercase();
+    let one = match bech.rfind('1') {
+        Some(i) if i >= 1 && i + 7 <= bech.len() => i,
+        Some(i) => return fail(format!("invalid separator index {i}")),
+        None => return fail("invalid separator index -1".into()),
+    };
+    let hrp = &bech[..one];
+    let mut decoded = Vec::with_capacity(bech.len() - one - 1);
+    for &c in &bech.as_bytes()[one + 1..] {
+        match CHARSET.iter().position(|x| *x == c) {
+            Some(i) => decoded.push(u8::try_from(i).unwrap_or_default()),
+            None => return fail(format!("invalid character not part of charset: {c}")),
+        }
+    }
+    let (values, check) = decoded.split_at(decoded.len() - 6);
+    let mut all = hrp_expand(hrp);
+    all.extend_from_slice(values);
+    all.extend_from_slice(check);
+    if polymod(all) != 1 {
+        return fail(format!(
+            "invalid checksum (expected {} got {})",
+            checksum(hrp, values),
+            &bech[bech.len() - 6..]
+        ));
+    }
+    // ConvertBits(data, 5, 8, false).
+    let mut out = Vec::new();
+    let mut acc: u32 = 0;
+    let mut bits = 0u32;
+    for v in values {
+        acc = (acc << 5) | u32::from(*v);
+        bits += 5;
+        while bits >= 8 {
+            bits -= 8;
+            out.push(u8::try_from((acc >> bits) & 0xff).unwrap_or_default());
+        }
+    }
+    if bits > 4 || (acc & ((1 << bits) - 1)) != 0 {
+        return fail("invalid incomplete group".into());
+    }
+    Ok((hrp.to_owned(), out))
+}
+
 /// Encode a 20-byte Celestia account address.
 pub fn encode_account_address(bytes: &AddressBytes) -> Result<String, Error> {
     encode(ACCOUNT_PREFIX, bytes)

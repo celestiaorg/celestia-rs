@@ -202,6 +202,30 @@ impl RpcSettings {
     }
 }
 
+/// Binds a listener (on the entered runtime). A listener that cannot be
+/// bound (address in use, bad address) is logged and skipped so the node
+/// still runs: several nodes of a test topology on one machine often share
+/// `celestia-appd init`'s default ports.
+fn bind(what: &str, laddr: &str) -> Option<tokio::net::TcpListener> {
+    let res = (|| {
+        let addr = socket_addr(laddr)?;
+        let listener = std::net::TcpListener::bind(addr).with_context(|| format!("bind {addr}"))?;
+        listener.set_nonblocking(true)?;
+        let listener = tokio::net::TcpListener::from_std(listener)?;
+        Ok::<_, anyhow::Error>((addr, listener))
+    })();
+    match res {
+        Ok((addr, listener)) => {
+            tracing::info!(%addr, "{what} listening");
+            Some(listener)
+        }
+        Err(e) => {
+            tracing::error!(laddr, error = format!("{e:#}"), "{what} not started");
+            None
+        }
+    }
+}
+
 /// `tcp://host:port` / `host:port` → socket address (`localhost` resolved).
 pub fn socket_addr(laddr: &str) -> anyhow::Result<SocketAddr> {
     let a = laddr
@@ -534,12 +558,9 @@ impl Rpc {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            let addr = socket_addr(laddr)?;
-            let listener =
-                std::net::TcpListener::bind(addr).with_context(|| format!("bind rpc {addr}"))?;
-            listener.set_nonblocking(true)?;
-            let listener = tokio::net::TcpListener::from_std(listener)?;
-            tracing::info!(%addr, "RPC server listening");
+            let Some(listener) = bind("RPC server", laddr) else {
+                continue;
+            };
             let env = self.env.clone();
             rt.spawn(async move {
                 if let Err(e) = rpc::server::serve(listener, env).await {
@@ -548,47 +569,37 @@ impl Rpc {
             });
         }
         if !self.settings.rpc.grpc_laddr.is_empty() {
-            let addr = socket_addr(&self.settings.rpc.grpc_laddr)?;
-            let listener = std::net::TcpListener::bind(addr)
-                .with_context(|| format!("bind grpc_laddr {addr}"))?;
-            listener.set_nonblocking(true)?;
-            let listener = tokio::net::TcpListener::from_std(listener)?;
-            tracing::info!(%addr, "celestia-core gRPC listening");
-            let env = self.env.clone();
-            rt.spawn(async move {
-                if let Err(e) = rpc::grpc::serve(listener, env).await {
-                    tracing::error!(error = %e, "gRPC server failed");
-                }
-            });
+            if let Some(listener) = bind("celestia-core gRPC", &self.settings.rpc.grpc_laddr) {
+                let env = self.env.clone();
+                rt.spawn(async move {
+                    if let Err(e) = rpc::grpc::serve(listener, env).await {
+                        tracing::error!(error = %e, "gRPC server failed");
+                    }
+                });
+            }
         }
         let abci = Arc::new(app::AbciApp::from_shared(self.app.clone()));
         if !self.settings.app_grpc.is_empty() {
-            let addr = socket_addr(&self.settings.app_grpc)?;
-            let listener = std::net::TcpListener::bind(addr)
-                .with_context(|| format!("bind app gRPC {addr}"))?;
-            listener.set_nonblocking(true)?;
-            let listener = tokio::net::TcpListener::from_std(listener)?;
-            tracing::info!(%addr, "gRPC query server listening (with BlockAPI)");
-            let router =
-                rpc::grpc::router(self.env.clone()).merge(api_server::grpc_router(abci.clone()));
-            rt.spawn(async move {
-                if let Err(e) = axum::serve(listener, router).await {
-                    tracing::error!(error = %e, "app gRPC server failed");
-                }
-            });
+            if let Some(listener) =
+                bind("gRPC query server (with BlockAPI)", &self.settings.app_grpc)
+            {
+                let router = rpc::grpc::router(self.env.clone())
+                    .merge(api_server::grpc_router(abci.clone()));
+                rt.spawn(async move {
+                    if let Err(e) = axum::serve(listener, router).await {
+                        tracing::error!(error = %e, "app gRPC server failed");
+                    }
+                });
+            }
         }
         if !self.settings.app_api.is_empty() {
-            let addr = socket_addr(&self.settings.app_api)?;
-            let listener = std::net::TcpListener::bind(addr)
-                .with_context(|| format!("bind REST API {addr}"))?;
-            listener.set_nonblocking(true)?;
-            let listener = tokio::net::TcpListener::from_std(listener)?;
-            tracing::info!(%addr, "REST API listening");
-            rt.spawn(async move {
-                if let Err(e) = api_server::serve_rest_on(listener, abci).await {
-                    tracing::error!(error = %e, "REST API failed");
-                }
-            });
+            if let Some(listener) = bind("REST API", &self.settings.app_api) {
+                rt.spawn(async move {
+                    if let Err(e) = api_server::serve_rest_on(listener, abci).await {
+                        tracing::error!(error = %e, "REST API failed");
+                    }
+                });
+            }
         }
         Ok(())
     }

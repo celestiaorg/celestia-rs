@@ -1,0 +1,10 @@
+{
+  "scenario": "ibc",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "blocks": 40,
+  "workload": "ibc.sh",
+  "frozen_validator": {"address": "1A989B687BBBFC04FCCA580DB975B60569849BD1", "pub_key": {"type": "tendermint/PubKeyEd25519", "value": "1AZxH13bgbgkBYYXJuMp4W8m+ferLUWHnijnZjse37o="}},
+  "generated_at": "2026-10-14T16:51:44Z"
+}

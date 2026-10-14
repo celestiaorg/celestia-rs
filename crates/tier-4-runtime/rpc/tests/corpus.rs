@@ -239,20 +239,26 @@ const LIVE_QUERIES: &[&str] = &[
     "tm.event='NewBlock' AND block.height>2",
 ];
 
+/// App options of the rebuilt node: Go's recorded node keeps every
+/// version of these short chains (SDK `pruning = "default"` keeps 362880),
+/// so historical `abci_query` heights must not be pruned here either.
+fn app_options(genesis: &GenesisDoc) -> app::AppOptions {
+    let mut o = app::AppOptions {
+        chain_id: Some(genesis.chain_id.clone()),
+        ..app::AppOptions::default()
+    };
+    o.store.pruning.interval = 0;
+    o
+}
+
 /// Rebuilds the Go chain in a Rust node.
 fn build_chain(dir: &Path, status_resp: &Value, frozen_pub_key: ctypes::PubKey) -> Chain {
     let genesis_bytes = std::fs::read(dir.join("genesis.json")).unwrap();
     let genesis = GenesisDoc::from_json(&genesis_bytes, now()).unwrap();
     let app_db: Arc<dyn KvBackend> = Arc::new(MemBackend::new());
-    let app = app::App::open_backend(
-        app_db.clone(),
-        &app::AppOptions {
-            chain_id: Some(genesis.chain_id.clone()),
-            ..app::AppOptions::default()
-        },
-    )
-    .map_err(|e| e.log)
-    .unwrap();
+    let app = app::App::open_backend(app_db.clone(), &app_options(&genesis))
+        .map_err(|e| e.log)
+        .unwrap();
     let app = Arc::new(Mutex::new(app));
     let bs = BlockStore::new(Arc::new(MemBackend::new())).unwrap();
     let ss = StateStore::new(Arc::new(MemBackend::new()));
@@ -328,15 +334,9 @@ fn build_chain(dir: &Path, status_resp: &Value, frozen_pub_key: ctypes::PubKey) 
     // the app from its database (check state back at height 0, as after a
     // restart) with a fresh mempool.
     drop(exec);
-    let app = app::App::open_backend(
-        app_db,
-        &app::AppOptions {
-            chain_id: Some(genesis.chain_id.clone()),
-            ..app::AppOptions::default()
-        },
-    )
-    .map_err(|e| e.log)
-    .unwrap();
+    let app = app::App::open_backend(app_db, &app_options(&genesis))
+        .map_err(|e| e.log)
+        .unwrap();
     let app = Arc::new(Mutex::new(app));
     let pool = Arc::new(
         mempool::TxPool::new(

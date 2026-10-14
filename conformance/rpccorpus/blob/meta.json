@@ -1,0 +1,10 @@
+{
+  "scenario": "blob",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "blocks": 30,
+  "workload": "blob.sh",
+  "frozen_validator": {"address": "D63A73D12A41D80EDC44BD3ABA21BA29BF25D71F", "pub_key": {"type": "tendermint/PubKeyEd25519", "value": "GO/F4Hyy8XLhfeT4ZZOKT8nnQ+IHihxULD6gqylmmac="}},
+  "generated_at": "2026-10-14T16:43:06Z"
+}

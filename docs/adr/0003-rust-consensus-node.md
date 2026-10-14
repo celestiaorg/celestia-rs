@@ -106,3 +106,25 @@ devnet.
   consensus. Until the consensus reactor is wired, a non-validator node
   follows the chain by block sync. Live interop:
   `conformance/devnet/blocksync-interop.sh`.
+- `rpc` (2026-10-14): every route of celestia-core v0.42.3
+  `rpc/core/routes.go` over JSON-RPC 2.0 (POST, batches, notifications),
+  URI GET (Go's argument decoding and errors) and WebSocket (subscribe /
+  unsubscribe / unsubscribe_all on an event bus with Go's pubsub query
+  language), incl. the celestia routes (`prove_shares[_v2]`,
+  `data_root_inclusion_proof`, `data_commitment`, `signed_block`,
+  `tx_status[_batch]`); cmtjson / gogo-jsonpb encoders; kv tx and block
+  indexers on `KvBackend` (Go key layout, `tx_search` / `block_search`
+  pagination and ordering); celestia-core gRPC `BlockAPI`, `BlobstreamAPI`,
+  `BroadcastAPI` on `grpc_laddr` and merged into the app's gRPC server.
+  `celestia-rs start` reads `[rpc]` / `[tx_index]` of config.toml and
+  `[grpc]` / `[api]` of app.toml (a home without config.toml serves
+  nothing; a listener that cannot be bound is logged and skipped).
+  Conformance: `conformance/rpccorpus` — Go celestia-core's responses over
+  devnet chains (blob, staking, ibc workloads: URI, JSON-RPC, WebSocket
+  frames, gRPC) replayed against the Rust server on the reconstructed chain
+  must be byte-identical after normalizing node-specific fields
+  (`crates/tier-4-runtime/rpc/tests/corpus.rs`; 2026-10-14: blob
+  1102/1102, ibc 2460/2460, staking 1389/1389 identical). Live:
+  `conformance/devnet/rpc-cli.sh` drives a Rust node only through Go
+  celestia-appd's CLI (queries, sync/async broadcasts, `wait-tx` over
+  WebSocket, PayForBlobs, the blob and staking workloads).

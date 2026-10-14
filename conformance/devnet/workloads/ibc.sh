@@ -122,7 +122,9 @@ PEER_USER=$($P keys show user0 -a "${PK[@]}")
 
 # Packets are relayed by a running `rly start` (its startup flush needs
 # tx_search, which rly cannot decode from celestia-core; live relaying works).
-rly start demo --flush-interval 1h > "$RH.start.log" 2>&1 &
+# (the binary itself, not the `rly` function: `$!` must be the relayer, not
+# a subshell that `kill` would leave the relayer running behind)
+command rly --home "$RH" start demo --flush-interval 1h > "$RH.start.log" 2>&1 &
 RLY_PID=$!
 trap 'kill $RLY_PID $PEER_PID 2>/dev/null || true' EXIT
 sleep 5
