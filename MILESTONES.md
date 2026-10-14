@@ -14,11 +14,11 @@ open question 2).
 |-----|-------------|-----------|-----------------|
 | M0  | completed   | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
 | M1  | completed   | Foundational libraries (hash, encoding, crypto, merkle, NMT, shares, square, …) | `m1-integration::parse_real_mainnet_block_produces_matching_dah` |
-| M2  | completed*  | State & storage (IAVL, kvstore, multistore, ICS-23) | DB-backed replay shard; *non-empty historical import pending |
-| M3  | completed   | Tx & ante machinery | Tx-validation outcome matches Go for 1,062 mainnet txs |
-| M4  | in progress | Core SDK modules (auth, bank, staking) | Keeper state matches Go vectors |
+| M2  | completed   | State & storage (IAVL, kvstore, multistore, ICS-23) | DB-backed replay shard (`m2-integration`); non-empty historical import by snapshot restore of Go state (ADR 0002) |
+| M3  | completed   | Tx & ante machinery | Tx-validation outcome matches Go for 1,062 mainnet txs (the v6 prototype `ante` / `m3-integration` were removed; the corpus runs through the v10 `x-ante`: `x/ante/tests/mainnet_corpus.rs`) |
+| M4  | completed   | Core SDK modules (auth, bank, staking) | Superseded by the v10 `x/auth`, `x/bank`, `x/staking` at app-hash parity on every devnet scenario; the v6 prototype crates and their storage fixtures were removed |
 | D1  | completed   | Devnet differential oracle: Go `celestia-appd` v10 devnet in-container, exported blocks + per-block app hashes + genesis as fixtures | `cargo xtask devnet-fixtures` regenerates a committed corpus |
-| R1  | pending     | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Existing conformance suites pass against v10-generated fixtures |
+| R1  | completed   | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Done by the v10 parity work: go-square v4 builder, `x-ante` (Go v10 vectors), every module at v10 app-hash parity; the remaining v6-era fixtures (hash, NMT, shares, DAH of mainnet blocks, IAVL / multistore) cover algorithms unchanged in v10 |
 | S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
 | S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
 | S3  | in progress | State sync client + snapshot import (devnet Go↔Rust done); follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |

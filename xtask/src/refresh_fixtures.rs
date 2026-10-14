@@ -390,56 +390,6 @@ pub const SCENARIOS: &[Scenario] = &[
         crate_name: "m2-integration",
         output_path: "conformance/fixtures/m2-integration/state-diffs.json",
     },
-    Scenario {
-        name: "ante-stateless",
-        crate_name: "ante",
-        output_path: "conformance/fixtures/ante/stateless.json",
-    },
-    Scenario {
-        name: "ante-signatures",
-        crate_name: "ante",
-        output_path: "conformance/fixtures/ante/signatures.json",
-    },
-    Scenario {
-        name: "ante-fees",
-        crate_name: "ante",
-        output_path: "conformance/fixtures/ante/fees.json",
-    },
-    Scenario {
-        name: "ante-gas",
-        crate_name: "ante",
-        output_path: "conformance/fixtures/ante/gas.json",
-    },
-    Scenario {
-        name: "ante-malformed",
-        crate_name: "ante",
-        output_path: "conformance/fixtures/ante/malformed.json",
-    },
-    Scenario {
-        name: "auth-accounts",
-        crate_name: "auth",
-        output_path: "conformance/fixtures/auth/accounts.json",
-    },
-    Scenario {
-        name: "bank-balances",
-        crate_name: "bank",
-        output_path: "conformance/fixtures/bank/balances.json",
-    },
-    Scenario {
-        name: "bank-messages",
-        crate_name: "bank",
-        output_path: "conformance/fixtures/bank/messages.json",
-    },
-    Scenario {
-        name: "staking-state",
-        crate_name: "staking",
-        output_path: "conformance/fixtures/staking/state.json",
-    },
-    Scenario {
-        name: "staking-delegate",
-        crate_name: "staking",
-        output_path: "conformance/fixtures/staking/delegate.json",
-    },
 ];
 
 /// Resolve the workspace root from `CARGO_MANIFEST_DIR` (set by cargo at build time).

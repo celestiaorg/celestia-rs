@@ -1,5 +1,11 @@
 # M3 - Tx & Ante Machinery
 
+> **Superseded (2026-10-14).** The app-v6 prototype crates this spec
+> describes (`crates/tier-3-app-modules/ante`, `crates/m3-integration`) were
+> removed: the v10 port `crates/tier-3-app-modules/x/ante` replaced them
+> (Go vectors in `conformance/antevectors`), and the 1,062-tx mainnet corpus
+> now runs through it (`x/ante/tests/mainnet_corpus.rs`). Kept for history.
+
 **Goal:** Ship the transaction validation layer that turns decoded Cosmos SDK
 transactions into deterministic ante outcomes: signer extraction, signature
 verification, fee and gas checks, account sequence checks, ante state updates,

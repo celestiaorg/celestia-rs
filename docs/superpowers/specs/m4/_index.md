@@ -1,5 +1,11 @@
 # M4 - Core SDK Modules
 
+> **Superseded (2026-10-14).** The prototype crates
+> `crates/tier-3-app-modules/{auth,bank,staking}` and their app-v6 storage
+> fixtures were removed; the v10 modules live in
+> `crates/tier-3-app-modules/x/{auth,bank,staking}` and are checked by
+> app-hash parity on every devnet scenario. Kept for history.
+
 **Goal:** Ship the Cosmos SDK core state machines needed to replace M3's
 fixture-backed account and balance adapters: `x/auth`, `x/bank`, and
 `x/staking`.

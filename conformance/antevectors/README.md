@@ -44,9 +44,10 @@ CheckTx, and IBC redundant-relay checks beyond the nil client message.
 Extension options cannot be covered: no `TxExtensionOptionI` implementation
 is registered, so such txs fail decoding before the ante handler.
 
-The M3 mainnet corpus (`conformance/fixtures/ante/`, replayed by the
-v6-era `crates/tier-3-app-modules/ante` prototype) is unchanged. It targets
-app v6 and differs from v10 in: the tx-size cost (auth param vs. the
-versioned constant), the fee checker (no utia-only rule or minfee network
-minimum in v6's prototype), the absent circuit-breaker, nested-message,
-fibre and param-filter decorators, and the v0.52 x/tx sign-mode handlers.
+The M3 mainnet corpus (`conformance/fixtures/ante/mainnet-tx-corpus.json.zst`,
+1,062 mainnet txs with Go app-v6 outcomes) is replayed through `x-ante` by
+`crates/tier-3-app-modules/x/ante/tests/mainnet_corpus.rs`: signature
+verification (direct and legacy amino-JSON), sequences and sig/decoding
+error codes must match; fee and gas outcomes are not compared because v10
+changed them (tx-size cost, utia-only fees, network minimum gas price,
+circuit breaker, nested-message, fibre and param-filter decorators).
