@@ -15,7 +15,7 @@ use sdk::tx::Tx;
 
 use crate::pubkey::PubKey;
 use crate::txview::{self, SigData};
-use crate::{R, idx, internal, panic};
+use crate::{R, idx, panic};
 
 /// `SIGN_MODE_UNSPECIFIED`.
 pub const SIGN_MODE_UNSPECIFIED: i32 = 0;
@@ -355,10 +355,4 @@ pub fn verify_secp256r1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
 #[must_use]
 pub fn unauthorized(msg: String) -> SdkError {
     sdk::error::sdk::unauthorized(msg)
-}
-
-/// Unused helper kept for API symmetry with Go's `internal` errors.
-#[must_use]
-pub fn plain(msg: &str) -> SdkError {
-    internal(msg)
 }

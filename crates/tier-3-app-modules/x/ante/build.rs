@@ -64,8 +64,9 @@ fn main() {
     if let Err(e) = compiler.open_files(&files) {
         panic!("protox: {e:?}");
     }
-    let fds = compiler.file_descriptor_set();
-    let bytes = prost::Message::encode_to_vec(&fds);
+    // `encode_file_descriptor_set` keeps custom options (prost-types would
+    // drop them as unknown fields).
+    let bytes = compiler.encode_file_descriptor_set();
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_default()).join("descriptors.bin");
     if let Err(e) = std::fs::write(&out, bytes) {
         panic!("write {}: {e}", out.display());

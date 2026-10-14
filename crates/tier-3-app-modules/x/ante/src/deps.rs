@@ -314,9 +314,19 @@ impl AnteDeps for StoreDeps {
     fn ibc_update_client_check(
         &self,
         _ctx: &mut Context<'_>,
-        _msg: &Any,
+        msg: &Any,
         _recheck: bool,
     ) -> sdk::Result<()> {
+        // clienttypes.UnpackClientMessage: a nil client message fails before
+        // any state is read.
+        let m: celestia_proto::ibc::core::client::v1::MsgUpdateClient = decode(msg)?;
+        if m.client_message.is_none() {
+            return Err(SdkError::new(
+                "ibc",
+                14,
+                "protobuf Any message cannot be nil: failed unpacking protobuf message from Any",
+            ));
+        }
         Err(not_supported("IBC update client check"))
     }
 }

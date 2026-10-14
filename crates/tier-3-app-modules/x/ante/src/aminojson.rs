@@ -284,7 +284,11 @@ impl Encoder {
                             fd.name()
                         )
                     })?;
-                    Some((o.full_name().to_owned(), to_camel(o.name()), type_name))
+                    Some((
+                        o.full_name().to_owned(),
+                        to_camel(go_oneof_name(&o)),
+                        type_name,
+                    ))
                 }
                 None => None,
             };
@@ -591,6 +595,15 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// The upstream oneof name. The vendored protos rename oneofs that collide
+/// with nested message names under prost; amino JSON encodes the Go name.
+fn go_oneof_name(o: &prost_reflect::OneofDescriptor) -> &str {
+    match o.full_name() {
+        "cosmos.staking.v1beta1.StakeAuthorization.policy" => "validators",
+        _ => o.name(),
+    }
 }
 
 /// `strcase.ToCamel`.

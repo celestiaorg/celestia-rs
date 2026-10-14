@@ -155,8 +155,9 @@ pub fn consume_tx_size_gas(ctx: &mut Context<'_>, tx: &Tx, simulate: bool) -> R<
             }
             let pk = sig.pub_key.clone().unwrap_or_else(PubKey::sim);
             let mut cost = std_signature_amino_len(&pk)? + 6;
+            // celestia reads the params for every incomplete signature.
+            let params = x_auth::get_params(ctx)?;
             if matches!(pk, PubKey::Multisig { .. }) {
-                let params = x_auth::get_params(ctx)?;
                 cost = cost.wrapping_mul(params.tx_sig_limit);
             }
             consume_gas(ctx, TX_SIZE_COST_PER_BYTE.wrapping_mul(cost), "txSize")?;
