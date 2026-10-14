@@ -1,0 +1,21 @@
+[package]
+name = "x-fibre"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia x/fibre: escrow accounts, withdrawals, processed payments; genesis and BeginBlocker."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+pbjson-types = "0.7"
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-bank = { path = "../bank" }

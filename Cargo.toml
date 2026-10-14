@@ -36,6 +36,8 @@ members = [
     "crates/tier-3-app-modules/x/transfer",
     "crates/tier-3-app-modules/x/icahost",
     "crates/tier-3-app-modules/x/packetforward",
+    "crates/tier-3-app-modules/x/mint",
+    "crates/tier-3-app-modules/x/fibre",
     "crates/tier-4-runtime/abci-server",
     "crates/tier-4-runtime/app",
     "crates/devnet-conformance",

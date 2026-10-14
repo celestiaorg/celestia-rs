@@ -1,0 +1,1166 @@
+{
+ "inflation": [
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1698757200123456789,
+   "inflation_rate": "0.026700000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1698760800123456789,
+   "inflation_rate": "0.026700000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1698760801123456789,
+   "inflation_rate": "0.026700000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1730317752123456788,
+   "inflation_rate": "0.026700000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1730317752123456789,
+   "inflation_rate": "0.024911100000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1730317752123456790,
+   "inflation_rate": "0.024911100000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1761874704123456788,
+   "inflation_rate": "0.024911100000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1761874704123456789,
+   "inflation_rate": "0.023242056300000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1793431656123456788,
+   "inflation_rate": "0.023242056300000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1793431656123456789,
+   "inflation_rate": "0.021684838527900000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1824988608123456788,
+   "inflation_rate": "0.021684838527900000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1824988608123456789,
+   "inflation_rate": "0.020231954346530700"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1856545560123456788,
+   "inflation_rate": "0.020231954346530700"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1856545560123456789,
+   "inflation_rate": "0.018876413405313143"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1888102512123456788,
+   "inflation_rate": "0.018876413405313143"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1888102512123456789,
+   "inflation_rate": "0.017611693707157163"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1919659464123456788,
+   "inflation_rate": "0.017611693707157163"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1919659464123456789,
+   "inflation_rate": "0.016431710228777633"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1951216416123456788,
+   "inflation_rate": "0.016431710228777633"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1951216416123456789,
+   "inflation_rate": "0.015330785643449531"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1982773368123456788,
+   "inflation_rate": "0.015330785643449531"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 1982773368123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2014330320123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2014330320123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2045887272123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2045887272123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2077444224123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2077444224123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2109001176123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2109001176123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2140558128123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2140558128123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2172115080123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2172115080123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2203672032123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2203672032123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2235228984123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2235228984123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2266785936123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2266785936123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2298342888123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2298342888123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2329899840123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2329899840123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2361456792123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2361456792123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2393013744123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2393013744123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2424570696123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2424570696123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2456127648123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2456127648123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2487684600123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2487684600123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2519241552123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2519241552123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2550798504123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2550798504123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2582355456123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2582355456123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2613912408123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2613912408123456789,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2645469360123456788,
+   "inflation_rate": "0.015000000000000000"
+  },
+  {
+   "genesis_unix_nanos": 1698760800123456789,
+   "block_unix_nanos": 2645469360123456789,
+   "inflation_rate": "0.015000000000000000"
+  }
+ ],
+ "provision": [
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.026700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.024911100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "0.015000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "10153",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "25591",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "6091843",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "53400000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "53400000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "160200000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "9472",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "23876",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "5683689",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "49822200000",
+   "error": false
+  },
+  {
+   "annual_provisions": "49822200000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "149466600000",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "5703",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "14377",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "3422383",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "30000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "30000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "90000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "5076535",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "12795795",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "3045921545",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "26700000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "26700000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "80100000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "4736408",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "11938476",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "2841844801",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "24911100000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "24911100000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "74733300000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "2851986",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "7188649",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "1711191879",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "15000000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "15000000000000.000000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "45000000000000",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "105",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "626732822605",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "1579727793487",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "376039693563137",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "3296296266629629626",
+   "error": false
+  },
+  {
+   "annual_provisions": "3296296266629629626.656700000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "9888888799888888879",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "98",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "584741723491",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "1473886031323",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "350845034094407",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "3075444416765444441",
+   "error": false
+  },
+  {
+   "annual_provisions": "3075444416765444441.670701100000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "9226333250296333325",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456788,
+   "amount": "",
+   "error": true
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456789,
+   "amount": "0",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760800123456790,
+   "amount": "59",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760806123456789,
+   "amount": "352097091351",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698760815246913578,
+   "amount": "887487524431",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1698764400123456789,
+   "amount": "211258254810751",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1730317752123456789,
+   "amount": "1851851835185185183",
+   "error": false
+  },
+  {
+   "annual_provisions": "1851851835185185183.515000000000000000",
+   "previous_unix_nanos": 1698760800123456789,
+   "current_unix_nanos": 1793431656123456789,
+   "amount": "5555555505555555550",
+   "error": false
+  }
+ ]
+}

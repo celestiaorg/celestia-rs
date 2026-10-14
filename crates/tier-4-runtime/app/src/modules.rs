@@ -142,10 +142,12 @@ pub fn init_genesis(
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
         // Go's module manager skips modules whose genesis section is null.
-        "blob" | "circuit" | "minfee" if genesis.is_null() => {}
+        "blob" | "circuit" | "fibre" | "minfee" | "mint" if genesis.is_null() => {}
         "blob" => x_blob::init_genesis_json(ctx, genesis)?,
         "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
         "minfee" => x_minfee::init_genesis_json(ctx, genesis)?,
+        "mint" => x_mint::init_genesis_json(ctx, genesis)?,
+        "fibre" => x_fibre::init_genesis_json(ctx, genesis)?,
         // x/params has no genesis state.
         "params" => x_params::init_genesis(ctx)?,
         "capability" => x_capability::init_genesis_json(ctx, genesis)?,
@@ -179,6 +181,8 @@ pub fn pre_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
 /// Runs one module's `BeginBlock`.
 pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
     match module {
+        "mint" => x_mint::begin_block(ctx),
+        "fibre" => x_fibre::begin_block(ctx),
         "capability" => x_capability::begin_block(ctx),
         "ibc" => x_ibc::begin_block(ctx),
         // No begin blocker in Go.

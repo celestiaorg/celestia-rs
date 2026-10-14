@@ -32,6 +32,8 @@ x-icahost = { path = "../../tier-3-app-modules/x/icahost" }
 x-packetforward = { path = "../../tier-3-app-modules/x/packetforward" }
 x-transfer = { path = "../../tier-3-app-modules/x/transfer" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
+x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
+x-mint = { path = "../../tier-3-app-modules/x/mint" }
 x-params = { path = "../../tier-3-app-modules/x/params" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
