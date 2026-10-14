@@ -151,14 +151,36 @@ impl Gossip {
 
     fn send_catchup(cs: &ConsensusState, peer: &str, h: i64, net: &mut dyn Network) {
         let bs = cs.block_store();
-        let Ok(Some(commit)) = bs.load_seen_commit(h) else {
+        // With vote extensions the precommits must carry them (Go sends the
+        // stored extended commit).
+        let ext_enabled = cs
+            .state()
+            .consensus_params
+            .abci
+            .vote_extensions_enabled(h)
+            .unwrap_or(false);
+        let ec = if ext_enabled {
+            bs.load_block_extended_commit(h).ok().flatten()
+        } else {
+            bs.load_seen_commit(h)
+                .ok()
+                .flatten()
+                .map(|c| c.wrapped_extended_commit())
+        };
+        let Some(commit) = ec else {
             return;
         };
-        for i in 0..commit.signatures.len() {
-            if commit.signatures[i].block_id_flag == ctypes::BLOCK_ID_FLAG_ABSENT {
+        for (i, s) in commit.extended_signatures.iter().enumerate() {
+            if s.commit_sig.block_id_flag == ctypes::BLOCK_ID_FLAG_ABSENT {
                 continue;
             }
-            if let Ok(v) = commit.get_vote(i32::try_from(i).unwrap_or(i32::MAX)) {
+            let idx = i32::try_from(i).unwrap_or(i32::MAX);
+            let vote = if ext_enabled {
+                commit.get_extended_vote(idx)
+            } else {
+                commit.to_commit().get_vote(idx)
+            };
+            if let Ok(v) = vote {
                 net.send(peer, ConsensusMessage::Vote(v));
             }
         }

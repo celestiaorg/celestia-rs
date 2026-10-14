@@ -185,6 +185,28 @@ impl AppConn for SimApp {
             ..Default::default()
         })
     }
+    fn extend_vote(
+        &mut self,
+        req: abci::RequestExtendVote,
+    ) -> nodestore::Result<abci::ResponseExtendVote> {
+        Ok(abci::ResponseExtendVote {
+            vote_extension: format!("ext-{}", req.height).into_bytes(),
+        })
+    }
+    fn verify_vote_extension(
+        &mut self,
+        req: abci::RequestVerifyVoteExtension,
+    ) -> nodestore::Result<abci::ResponseVerifyVoteExtension> {
+        let ok = req.vote_extension == format!("ext-{}", req.height).into_bytes();
+        Ok(abci::ResponseVerifyVoteExtension {
+            status: if ok {
+                abci::response_verify_vote_extension::VerifyStatus::Accept
+            } else {
+                abci::response_verify_vote_extension::VerifyStatus::Reject
+            }
+            .into(),
+        })
+    }
     fn commit(&mut self) -> nodestore::Result<abci::ResponseCommit> {
         if let Some(p) = self.pending.take() {
             *self.disk.lock().unwrap() = p;
@@ -293,6 +315,8 @@ struct Scenario {
     byzantine: Option<usize>,
     /// Validator updates the app returns: (height, node, new power).
     val_updates: Vec<(i64, usize, i64)>,
+    /// First height with vote extensions (0 = disabled).
+    vote_extensions_height: i64,
 }
 
 #[derive(Default)]
@@ -304,6 +328,8 @@ struct Outcome {
     /// Own/timeout WAL records replayed across restarts.
     replayed: usize,
     restarts: usize,
+    /// Commit signatures carrying a verified vote extension.
+    extended_sigs: usize,
 }
 
 struct Sim {
@@ -364,6 +390,7 @@ impl Sim {
             app_hash: Vec::new(),
             app_state: b"{}".to_vec(),
         };
+        genesis.consensus_params.abci.vote_extensions_enable_height = sc.vote_extensions_height;
         genesis.validate_and_complete(Time::ZERO).unwrap();
         let mut nodes = Vec::new();
         for i in 0..sc.n {
@@ -720,6 +747,17 @@ impl Sim {
                     self.outcome.evidence_blocks += 1;
                 }
             }
+            for s in &stores {
+                if let Some(ec) = s.load_block_extended_commit(h).unwrap() {
+                    for e in &ec.extended_signatures {
+                        if e.commit_sig.block_id_flag == ctypes::BLOCK_ID_FLAG_COMMIT {
+                            assert_eq!(e.extension, format!("ext-{h}").into_bytes());
+                            assert!(!e.extension_signature.is_empty());
+                            self.outcome.extended_sigs += 1;
+                        }
+                    }
+                }
+            }
         }
         self.outcome.heights = self
             .nodes
@@ -912,4 +950,66 @@ fn single_validator() {
     };
     let o = Sim::new(sc).run();
     assert_live(&o, 10, &[0]);
+}
+
+#[test]
+fn vote_extensions_with_crashes() {
+    // Extensions from height 3: precommits carry app extensions, blocks are
+    // stored with extended commits and restarts rebuild the last commit
+    // from them.
+    let sc = Scenario {
+        n: 4,
+        seed: 16,
+        duration_s: 300,
+        target_height: 14,
+        max_delay_ms: 100,
+        drop_per_mille: 30,
+        vote_extensions_height: 3,
+        crashes: vec![(1, 12, 4), (2, 25, 2)],
+        ..Scenario::default()
+    };
+    let o = Sim::new(sc).run();
+    assert_live(&o, 14, &[0, 1, 2, 3]);
+    assert!(o.extended_sigs > 0, "no extended commit signatures stored");
+}
+
+/// Random fault schedules: drops, delays, a partition and several crashes
+/// per run, with and without vote extensions.
+#[test]
+fn randomized_faults() {
+    for seed in 100..108u64 {
+        let mut r = Rng(seed * 7919 + 1);
+        let n = 4;
+        let mut crashes = Vec::new();
+        let mut t = 3;
+        for _ in 0..=r.below(4) {
+            t += i64::try_from(2 + r.below(15)).unwrap();
+            crashes.push((
+                usize::try_from(r.below(n)).unwrap(),
+                t,
+                i64::try_from(1 + r.below(10)).unwrap(),
+            ));
+            t += 12;
+        }
+        let ps = i64::try_from(5 + r.below(30)).unwrap();
+        let part = vec![(
+            ps,
+            ps + i64::try_from(5 + r.below(20)).unwrap(),
+            vec![vec![usize::try_from(r.below(n)).unwrap()]],
+        )];
+        let sc = Scenario {
+            n: 4,
+            seed,
+            duration_s: 500,
+            target_height: 15,
+            drop_per_mille: r.below(200),
+            max_delay_ms: 10 + r.below(1500),
+            partitions: part,
+            crashes,
+            vote_extensions_height: if seed % 2 == 0 { 2 } else { 0 },
+            ..Scenario::default()
+        };
+        let o = Sim::new(sc).run();
+        assert_live(&o, 15, &[0, 1, 2, 3]);
+    }
 }
