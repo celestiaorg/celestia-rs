@@ -74,3 +74,22 @@ The replay (`devnet-conformance::replay`) compares, besides FinalizeBlock,
 every PrepareProposal response (txs, square size, data root),
 ProcessProposal status and CheckTx response (code, codespace, gas,
 priority, signer address/sequence, or exception).
+
+## State sync and restarts (ADR 0002)
+
+`statesync.sh [blocks] [workload.sh]` checks persistent storage and
+snapshots against Go, in three phases on one chain:
+
+1. **Go → Rust:** a fresh follower (celestia-core + `celestia-rs abci
+   --home`) state-syncs from the Go validator's snapshots, then follows with
+   celestia-core verifying every app hash.
+2. **Restart:** the follower's app and celestia-core are killed and
+   restarted; the ABCI handshake resumes it from its redb state.
+3. **Rust → Go:** a fresh Go `celestia-appd` whose only peer is the Rust
+   follower state-syncs from the Rust-made snapshots and follows the chain.
+
+```bash
+cargo build -p celestia-rs
+DEVNET_BIN=<dir with celestia-appd, cometbft> DEVNET_PORT_OFFSET=6000 \
+  conformance/devnet/statesync.sh 10 conformance/devnet/workloads/staking.sh
+```

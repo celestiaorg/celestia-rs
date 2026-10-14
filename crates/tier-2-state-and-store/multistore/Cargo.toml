@@ -25,6 +25,7 @@ prost = "0.13"
 prost-types = "0.13"
 
 [dev-dependencies]
+anyhow.workspace = true
 tempfile = "3"
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }

@@ -21,7 +21,7 @@ open question 2).
 | R1  | pending     | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Existing conformance suites pass against v10-generated fixtures |
 | S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
 | S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
-| S3  | pending     | State sync client + snapshot import; follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
+| S3  | in progress | State sync client + snapshot import (devnet Go↔Rust done); follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
 | M9  | pending     | Rust consensus engine (Tendermint BFT, celestia-core semantics) | Mixed Rust+Go private devnet reaches consensus |
 | M10 | pending     | Rust P2P (secret connection, MConn, PEX), mempool, block sync | Rust node peers with Go nodes and gossips blocks/txs |
 | M11 | pending     | RPC & gRPC | Responses match Go for a canned request corpus |
@@ -47,8 +47,10 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 | Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
 | At parity (blocks) | PrepareProposal / ProcessProposal (go-square v4 builder, DAH) and CheckTx, replayed for every scenario incl. `devnet/blob`; Rust-proposed blocks accepted by a Go full node (`rust-proposer.sh`) |
 | Deferred | Pay-for-fibre settlement in proposals (x/fibre Msg server not routed); ProcessProposal blob-tx cache (behavior-neutral) |
-| In progress | persistent storage (ADR 0002); IBC msgs + relaying |
-| Not started | queries/gRPC/REST (M11), state sync (S3), Rust consensus/P2P (M9/M10) |
+| Storage (ADR 0002) | Persistent IAVL on redb (lazy nodes, LRU cache, history, pruning), atomic multistore commits, restart/handshake (`celestia-rs abci --home`), SDK snapshots + ABCI state sync; every scenario replays on redb, incl. restart-halfway and snapshot-restore replays; Go↔Rust state sync both ways (`conformance/devnet/statesync.sh`) |
+| In progress | IBC msgs + relaying |
+| Not started | queries/gRPC/REST (M11), testnet state sync (S3), Rust consensus/P2P (M9/M10) |
 
-M2's non-empty historical-state import hardening remains pending; S3 (state
-sync) will revisit it together with a disk-backed IAVL.
+M2's disk-backed IAVL and non-empty historical import landed with ADR 0002
+(snapshot import of Go state, verified against Go app hashes); S3 now only
+needs a public testnet to follow.
