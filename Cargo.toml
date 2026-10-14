@@ -69,6 +69,7 @@ members = [
     "crates/tier-4-runtime/evidence",
     "crates/tier-4-runtime/light",
     "crates/tier-4-runtime/statesync",
+    "crates/tier-4-runtime/rpc",
     "crates/devnet-conformance",
     "crates/tier-5-node/celestia-rs",
     "crates/m1-integration",

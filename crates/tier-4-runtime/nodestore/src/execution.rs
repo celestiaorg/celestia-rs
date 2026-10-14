@@ -19,6 +19,32 @@ use crate::state::{
 use crate::state_store::StateStore;
 use crate::{Error, Result, ctypes_err};
 
+/// A committed block as handed to [`BlockEventSink::fire_events`] (the
+/// arguments of Go's `fireEvents`).
+#[derive(Debug)]
+pub struct FiredBlock<'a> {
+    /// The block.
+    pub block: &'a Block,
+    /// Its id.
+    pub block_id: &'a BlockId,
+    /// The FinalizeBlock response.
+    pub response: &'a abci::ResponseFinalizeBlock,
+    /// Validator updates (CometBFT types).
+    pub validator_updates: &'a [ctypes::Validator],
+    /// `state.Validators` of the state after the block (Go passes the
+    /// updated state's set to `EventDataSignedBlock`).
+    pub validators: &'a ValidatorSet,
+    /// The commit the block was applied with (its seen commit), if stored.
+    pub seen_commit: Option<ctypes::Commit>,
+}
+
+/// Receives the events of every applied block (Go's `BlockEventPublisher`
+/// passed to `fireEvents`, after the state is saved).
+pub trait BlockEventSink: Send + Sync {
+    /// `fireEvents`.
+    fn fire_events(&self, fired: &FiredBlock<'_>);
+}
+
 /// `maxBlockTimeTolerance`: a block may not be this far ahead of the local
 /// clock (Go `time.Duration` nanoseconds).
 pub const MAX_BLOCK_TIME_TOLERANCE: i64 = 60 * 1_000_000_000;
@@ -155,6 +181,7 @@ pub struct BlockExecutor {
     evpool: Box<dyn EvidencePool>,
     /// Number of states pruned so far.
     pub pruned_states: u64,
+    event_sink: Option<std::sync::Arc<dyn BlockEventSink>>,
 }
 
 impl std::fmt::Debug for BlockExecutor {
@@ -498,7 +525,14 @@ impl BlockExecutor {
             mempool,
             evpool,
             pruned_states: 0,
+            event_sink: None,
         }
+    }
+
+    /// `SetEventBus`: where applied blocks' events go (RPC event bus,
+    /// indexers).
+    pub fn set_event_sink(&mut self, sink: std::sync::Arc<dyn BlockEventSink>) {
+        self.event_sink = Some(sink);
     }
 
     /// The application connection.
@@ -684,13 +718,21 @@ impl BlockExecutor {
                 resp.tx_results.len()
             )));
         }
+        // Saved before the state for crash recovery, as in Go.
+        self.block_store.save_tx_info(block, &resp.tx_results)?;
         self.state_store
             .save_finalize_block_response(block.header.height, &resp)?;
         validate_validator_updates(&resp.validator_updates, &state.consensus_params.validator)
             .map_err(|e| Error::new(format!("error in validator updates: {e}")))?;
         let validator_updates = validator_updates_from_abci(&resp.validator_updates)?;
-        let mut new_state = update_state(state, block_id, &block.header, &resp, &validator_updates)
-            .map_err(|e| Error::new(format!("commit failed for application: {e}")))?;
+        let mut new_state = update_state(
+            state,
+            block_id.clone(),
+            &block.header,
+            &resp,
+            &validator_updates,
+        )
+        .map_err(|e| Error::new(format!("commit failed for application: {e}")))?;
         let retain_height = self.commit(&new_state, block, &resp)?;
         self.evpool.update(&new_state, &block.evidence.evidence);
         new_state.app_hash.clone_from(&resp.app_hash);
@@ -699,6 +741,22 @@ impl BlockExecutor {
             if let Err(e) = self.prune_blocks(retain_height, &new_state) {
                 tracing::error!(retain_height, error = %e, "failed to prune blocks");
             }
+        }
+        // Events are fired after everything else.
+        if let Some(sink) = &self.event_sink {
+            let seen_commit = self
+                .block_store
+                .load_seen_commit(block.header.height)
+                .ok()
+                .flatten();
+            sink.fire_events(&FiredBlock {
+                block,
+                block_id: &block_id,
+                response: &resp,
+                validator_updates: &validator_updates,
+                validators: &new_state.validators,
+                seen_commit,
+            });
         }
         Ok(new_state)
     }

@@ -36,6 +36,10 @@ fn ext_commit_key(h: i64) -> Vec<u8> {
 fn hash_key(hash: &[u8]) -> Vec<u8> {
     format!("BH:{}", hex::encode(hash)).into_bytes()
 }
+/// `calcTxHashKey` (celestia-core's committed-tx info, `TH:<hex>`).
+fn tx_hash_key(hash: &[u8]) -> Vec<u8> {
+    format!("TH:{}", hex::encode(hash)).into_bytes()
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 struct BaseHeight {
@@ -230,6 +234,48 @@ impl BlockStore {
         self.load_commit(&seen_commit_key(height))
     }
 
+    /// `SaveTxInfo`: per-tx execution info of a committed block (keyed by
+    /// the celestia tx hash), read by RPC `tx_status`. Only failed txs keep
+    /// their log.
+    pub fn save_tx_info(
+        &self,
+        block: &Block,
+        results: &[ctypes::proto::abci::ExecTxResult],
+    ) -> Result<()> {
+        if results.len() != block.data.txs.len() {
+            return Err(Error::new(
+                "tx execution results length mismatch with block txs length",
+            ));
+        }
+        let mut batch = WriteBatch::new();
+        for (i, (tx, r)) in block.data.txs.iter().zip(results).enumerate() {
+            let info = pbstore::TxInfo {
+                height: block.header.height,
+                index: u32::try_from(i).unwrap_or(u32::MAX),
+                code: r.code,
+                error: if r.code == 0 {
+                    String::new()
+                } else {
+                    r.log.clone()
+                },
+                codespace: r.codespace.clone(),
+                gas_wanted: r.gas_wanted,
+                gas_used: r.gas_used,
+                signers: r.signers.clone(),
+            };
+            batch.put(tx_hash_key(&tx.hash()), info.encode_to_vec());
+        }
+        self.db.write(batch).map_err(kv_err)
+    }
+
+    /// `LoadTxInfo`.
+    pub fn load_tx_info(&self, tx_hash: &[u8]) -> Result<Option<pbstore::TxInfo>> {
+        match self.get(&tx_hash_key(tx_hash))? {
+            Some(bz) if !bz.is_empty() => decode(&bz, "tx info").map(Some),
+            _ => Ok(None),
+        }
+    }
+
     /// `LoadBlockExtendedCommit`.
     pub fn load_block_extended_commit(&self, height: i64) -> Result<Option<ExtendedCommit>> {
         let Some(bz) = self.get(&ext_commit_key(height))? else {
@@ -382,6 +428,11 @@ impl BlockStore {
             let Some(meta) = self.load_block_meta(h)? else {
                 continue;
             };
+            if let Ok(Some(block)) = self.load_block(h) {
+                for tx in &block.data.txs {
+                    batch.delete(tx_hash_key(&tx.hash()));
+                }
+            }
             if evidence_point == height
                 && !is_evidence_expired(
                     state.last_block_height,

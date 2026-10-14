@@ -1,0 +1,39 @@
+[package]
+name = "rpc"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Port of celestia-core v0.42.3 rpc/: CometBFT JSON-RPC (HTTP + WebSocket), event bus, kv tx/block indexer and the celestia-core gRPC services (BlockAPI, BlobstreamAPI, BroadcastAPI)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio", "ws"] }
+base64 = "0.22"
+bytes = "1"
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+hex = "0.4"
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service", "http1", "http2"] }
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+mempool = { path = "../mempool" }
+nodestore = { path = "../nodestore" }
+pbjson-types = "0.7"
+prost = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time"] }
+tonic = { version = "=0.12.3", default-features = false }
+tracing = "0.1"
+
+[dev-dependencies]
+app = { path = "../app" }
+flate2 = "1"
+sdk = { path = "../../tier-3-app-modules/sdk" }
+serde_json = "1"
+tokio-tungstenite = "0.24"
+tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
+tower = { version = "0.5", features = ["util"] }

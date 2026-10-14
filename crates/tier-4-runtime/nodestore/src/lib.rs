@@ -18,7 +18,7 @@ pub mod state_store;
 
 pub use block_store::BlockStore;
 pub use evidence::{EmptyEvidencePool, EvidencePool, MemEvidencePool};
-pub use execution::{AppConn, BlockExecutor, Mempool, NopMempool};
+pub use execution::{AppConn, BlockEventSink, BlockExecutor, FiredBlock, Mempool, NopMempool};
 pub use genesis::GenesisDoc;
 pub use handshake::Handshaker;
 pub use state::{State, Timeouts};

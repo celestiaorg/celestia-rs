@@ -378,10 +378,21 @@ impl App {
         if params_changed {
             ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
         }
+        // PreBlocker events are reported as emitted (own event manager, not
+        // marked for indexing); BeginBlock / EndBlock events get Go's `mode`
+        // attribute (`baseapp.beginBlock` / `endBlock`).
+        let mut events = ctx.events.take();
+        for e in &mut events {
+            for a in &mut e.attributes {
+                a.index = false;
+            }
+        }
         for module in modules::BEGIN_BLOCKERS {
             modules::begin_block(&mut ctx, module)?;
         }
-        let mut events = ctx.events.take();
+        let mut begin = ctx.events.take();
+        with_mode(&mut begin, "BeginBlock");
+        events.extend(begin);
 
         let tx_results = execute_txs_phased(&mut ctx, &req.txs);
 
@@ -393,7 +404,9 @@ impl App {
             }
         }
         modules::app_end_block(&mut ctx)?;
-        events.extend(ctx.events.take());
+        let mut end = ctx.events.take();
+        with_mode(&mut end, "EndBlock");
+        events.extend(end);
         let cp = x_consensus::get_params(&mut ctx)?;
         drop(ctx);
 
@@ -580,6 +593,39 @@ impl App {
 
 /// `executeTxsPhased`: every tx's ante handler first, then every surviving
 /// tx's messages. Ante writes persist even when the messages fail.
+/// Appends the `mode` attribute (indexed) to every event.
+fn with_mode(events: &mut [abci::Event], mode: &str) {
+    for e in events {
+        e.attributes.push(abci::EventAttribute {
+            key: "mode".into(),
+            value: mode.into(),
+            index: true,
+        });
+    }
+}
+
+/// `BaseApp.extractSigners`: the bech32 addresses of the signer infos'
+/// public keys (nil on any error).
+fn extract_signers(tx_bytes: &[u8]) -> Vec<String> {
+    let Ok(tx) = txpipe::decode_tx(tx_bytes) else {
+        return Vec::new();
+    };
+    let Ok(sigs) = x_ante::txview::signatures_v2(&tx) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(sigs.len());
+    for s in sigs {
+        let Some(pk) = s.pub_key else {
+            return Vec::new();
+        };
+        match pk.address() {
+            Ok(a) => out.push(x_ante::txview::bytes_to_bech32(&a)),
+            Err(_) => return Vec::new(),
+        }
+    }
+    out
+}
+
 fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecTxResult> {
     let mut results: Vec<Option<abci::ExecTxResult>> = vec![None; txs.len()];
     let mut prepared: Vec<Option<tx::Prepared>> = Vec::with_capacity(txs.len());
@@ -599,7 +645,9 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
         match res {
             Ok(()) => prepared.push(Some(p)),
             Err(e) => {
-                results[i] = Some(tx::exec_result(&p, Err(e)));
+                let mut r = tx::exec_result(&p, Err(e));
+                r.signers = extract_signers(raw);
+                results[i] = Some(r);
                 prepared.push(None);
             }
         }
@@ -607,7 +655,9 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
     for (i, p) in prepared.iter_mut().enumerate() {
         if let Some(p) = p {
             let res = tx::run_msgs(ctx, p, true);
-            results[i] = Some(tx::exec_result(p, res));
+            let mut r = tx::exec_result(p, res);
+            r.signers = extract_signers(&p.tx_bytes);
+            results[i] = Some(r);
         }
     }
     results.into_iter().map(Option::unwrap_or_default).collect()

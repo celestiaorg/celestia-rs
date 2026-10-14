@@ -1,0 +1,10 @@
+{
+  "scenario": "staking",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "blocks": 30,
+  "workload": "staking.sh",
+  "frozen_validator": {"address": "D42C3BCE7E8F7B2AD4EF6DDD99C4989790DAE5BE", "pub_key": {"type": "tendermint/PubKeyEd25519", "value": "UJzW/imRdd5Mi0+1uAmlAFfslAQ7XzAjqaTgEeh3FHw="}},
+  "generated_at": "2026-10-14T12:42:18Z"
+}
