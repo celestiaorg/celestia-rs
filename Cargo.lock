@@ -127,9 +127,11 @@ dependencies = [
  "x-capability",
  "x-circuit",
  "x-consensus",
+ "x-fibre",
  "x-ibc",
  "x-icahost",
  "x-minfee",
+ "x-mint",
  "x-packetforward",
  "x-params",
  "x-transfer",
@@ -2305,6 +2307,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-fibre"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-bank",
+]
+
+[[package]]
 name = "x-ibc"
 version = "0.0.1"
 dependencies = [
@@ -2340,6 +2354,21 @@ dependencies = [
  "sdk",
  "serde_json",
  "x-params",
+]
+
+[[package]]
+name = "x-mint"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde",
+ "serde_json",
+ "x-auth",
+ "x-bank",
 ]
 
 [[package]]
