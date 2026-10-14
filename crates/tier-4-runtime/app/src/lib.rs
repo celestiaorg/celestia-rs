@@ -240,6 +240,18 @@ impl App {
         })
     }
 
+    /// `QuerySequence` (celestia-core mempool): the signer's sequence in
+    /// check state, 0 for unknown accounts.
+    pub fn query_sequence(&mut self, signer: &[u8]) -> abci::ResponseQuerySequence {
+        let header = self.finalize_header.clone().unwrap_or_default();
+        let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+        let sequence = x_auth::get_account(&mut ctx, signer)
+            .ok()
+            .flatten()
+            .map_or(0, |a| a.sequence());
+        abci::ResponseQuerySequence { sequence }
+    }
+
     /// `Commit`.
     pub fn commit(&mut self) -> Result<ResponseCommit> {
         let header = self
@@ -363,6 +375,9 @@ impl Application for AbciApp {
                 log: "Query not ported yet".into(),
                 ..Default::default()
             }),
+            request::Value::QuerySequence(r) => {
+                response::Value::QuerySequence(app.query_sequence(&r.signer))
+            }
             request::Value::ListSnapshots(_) => {
                 response::Value::ListSnapshots(abci::ResponseListSnapshots::default())
             }

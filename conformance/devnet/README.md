@@ -23,3 +23,16 @@ conformance/devnet/devnet.sh <name> <blocks> workloads/x.sh  # with txs
 Only Go (module proxy) and cargo are needed; no public RPC access.
 Genesis keys and times are random per run, so regenerating a scenario
 replaces its fixture wholesale.
+
+## Live mixed network
+
+`mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a
+follower made of Go celestia-core on top of the Rust state machine
+(`celestia-rs abci`). celestia-core verifies every block's app hash against
+the follower's state, so reaching `<blocks>` proves live consensus
+compatibility for that workload:
+
+```bash
+cargo build -p celestia-rs
+DEVNET_BIN=<dir with celestia-appd, cometbft> conformance/devnet/mixed.sh 60 conformance/devnet/workloads/staking.sh
+```
