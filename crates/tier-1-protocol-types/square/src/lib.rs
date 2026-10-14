@@ -13,6 +13,7 @@ pub mod erasure;
 pub mod error;
 pub mod inclusion;
 pub mod square;
+pub mod v4;
 
 pub use blob_tx::{BlobTx, PROTO_BLOB_TX_TYPE_ID};
 pub use builder::{

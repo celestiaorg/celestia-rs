@@ -1130,7 +1130,15 @@ fn commitment_fixtures_match_go_square() -> square::Result<()> {
     }
 
     let mut by_label = BTreeMap::new();
+    let mut skipped = Vec::new();
     for case in fixture.commitment_cases {
+        // The go-square v1 fixture uses namespace 0x..05 as a blob namespace;
+        // go-square v4 (celestia-app v10) reserves it for compact
+        // pay-for-fibre shares, so its v1 commitment no longer applies.
+        if decode_namespace(&case.namespace_hex)?.is_pay_for_fibre() {
+            skipped.push(case.label);
+            continue;
+        }
         let blob = Blob::new(
             decode_namespace(&case.namespace_hex)?,
             decode_bytes(&case.data_hex),
@@ -1149,6 +1157,14 @@ fn commitment_fixtures_match_go_square() -> square::Result<()> {
         by_label.insert(case.label, (blob, case.subtree_root_threshold));
     }
 
+    if fixture
+        .batch_case
+        .labels
+        .iter()
+        .any(|l| skipped.contains(l))
+    {
+        return Ok(());
+    }
     let mut batch_blobs = Vec::with_capacity(fixture.batch_case.labels.len());
     let mut threshold = None;
     for label in &fixture.batch_case.labels {

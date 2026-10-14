@@ -51,6 +51,11 @@ enum Cmd {
         /// Number of snapshots kept.
         #[arg(long, default_value_t = 2)]
         snapshot_keep_recent: u32,
+        /// Node minimum gas prices for CheckTx (`app.toml`
+        /// `minimum-gas-prices`, e.g. `0.002utia`). Empty (the v10 default)
+        /// means `appconsts.DefaultMinGasPrice` (0.004utia).
+        #[arg(long, default_value = "")]
+        minimum_gas_prices: String,
     },
 }
 
@@ -73,8 +78,9 @@ async fn main() -> anyhow::Result<()> {
             node_cache_size,
             snapshot_interval,
             snapshot_keep_recent,
+            minimum_gas_prices,
         } => {
-            let app = match home {
+            let mut app = match home {
                 None => app::App::new(),
                 Some(home) => {
                     let mut options = app::AppOptions {
@@ -103,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
                     app
                 }
             };
+            app.set_node_min_gas_price(utia_min_gas_price(&minimum_gas_prices)?);
             let listener = tokio::net::TcpListener::bind(&addr).await?;
             abci_server::serve(listener, Arc::new(app::AbciApp::new(app))).await
         }
@@ -115,4 +122,28 @@ fn hex(bytes: &[u8]) -> String {
         let _ = write!(s, "{b:02X}");
         s
     })
+}
+
+/// `ctx.MinGasPrices().AmountOf("utia")` for a `DecCoins` config string;
+/// `None` when unset.
+fn utia_min_gas_price(s: &str) -> anyhow::Result<Option<math::LegacyDec>> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    let mut amount = "0"
+        .parse::<math::LegacyDec>()
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    for coin in s.split(',') {
+        let coin = coin.trim();
+        let split = coin
+            .find(|c: char| c.is_ascii_alphabetic())
+            .ok_or_else(|| anyhow::anyhow!("invalid decimal coin {coin}"))?;
+        if &coin[split..] == "utia" {
+            amount = coin[..split]
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid decimal coin {coin}: {e:?}"))?;
+        }
+    }
+    Ok(Some(amount))
 }

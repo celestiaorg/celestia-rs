@@ -33,7 +33,7 @@ pub struct SplitTxsResult {
 impl CompactShareSplitter {
     /// Construct a compact share splitter.
     pub fn new(namespace: Namespace, share_version: u8) -> Result<Self> {
-        if !namespace.is_tx() && !namespace.is_pay_for_blob() {
+        if !namespace.is_tx() && !namespace.is_pay_for_blob() && !namespace.is_pay_for_fibre() {
             return Err(Error::InvalidCompactShare);
         }
         Ok(Self {

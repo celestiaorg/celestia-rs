@@ -79,7 +79,8 @@ if [ -n "${GENESIS_PATCH:-}" ]; then
 fi
 sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
 sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
-  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" "$H/config/config.toml"
+  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" \
+  -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$((9098 + OFF))#" "$H/config/config.toml"
 sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
 
 # celestia-core wants a CometBFT GenesisDoc, not the SDK app genesis.

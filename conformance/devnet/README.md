@@ -53,3 +53,24 @@ compatibility for that workload:
 cargo build -p celestia-rs
 DEVNET_BIN=<dir with celestia-appd, cometbft> conformance/devnet/mixed.sh 60 conformance/devnet/workloads/staking.sh
 ```
+
+`mixed.sh` with `workloads/blob.sh` also exercises the Rust
+ProcessProposal / CheckTx on blob blocks proposed by Go.
+
+## Rust proposer
+
+`rust-proposer.sh <blocks> [workload.sh]` inverts the roles: the only
+validator is celestia-core on top of `celestia-rs abci` (so every block is
+built by the Rust PrepareProposal) and a Go `celestia-appd` full node
+follows it. Txs are submitted to the Go node and reach the Rust mempool by
+gossip. The run fails if the Go node logs a rejected proposal or an app
+hash mismatch:
+
+```bash
+DEVNET_BIN=... conformance/devnet/rust-proposer.sh 60 conformance/devnet/workloads/blob.sh
+```
+
+The replay (`devnet-conformance::replay`) compares, besides FinalizeBlock,
+every PrepareProposal response (txs, square size, data root),
+ProcessProposal status and CheckTx response (code, codespace, gas,
+priority, signer address/sequence, or exception).

@@ -15,6 +15,13 @@ pub const SEQUENCE_LEN_BYTES: usize = 4;
 pub const SHARE_VERSION_ZERO: u8 = 0;
 /// Signer-aware share version used by current mainnet blob shares.
 pub const SHARE_VERSION_ONE: u8 = 1;
+/// Fibre system-blob share version (go-square v4): signer, fibre blob
+/// version and fibre commitment in the first share.
+pub const SHARE_VERSION_TWO: u8 = 2;
+/// Size of the fibre blob version in a version-two share.
+pub const FIBRE_BLOB_VERSION_SIZE: usize = 4;
+/// Size of the fibre commitment in a version-two share.
+pub const FIBRE_COMMITMENT_SIZE: usize = 32;
 /// Default share version.
 pub const DEFAULT_SHARE_VERSION: u8 = SHARE_VERSION_ZERO;
 /// Number of compact-share reserved bytes.
@@ -46,7 +53,8 @@ pub const MIN_SHARE_COUNT: usize = MIN_SQUARE_SIZE * MIN_SQUARE_SIZE;
 /// Maximum share version representable in an info byte.
 pub const MAX_SHARE_VERSION: u8 = 127;
 /// Supported share versions.
-pub const SUPPORTED_SHARE_VERSIONS: &[u8] = &[SHARE_VERSION_ZERO, SHARE_VERSION_ONE];
+pub const SUPPORTED_SHARE_VERSIONS: &[u8] =
+    &[SHARE_VERSION_ZERO, SHARE_VERSION_ONE, SHARE_VERSION_TWO];
 
 /// A fixed 512-byte Celestia share.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,10 +131,11 @@ impl Share {
         Ok(self.info_byte()?.is_sequence_start())
     }
 
-    /// Return true when this share is in the transaction or `PayForBlob` namespace.
+    /// Return true when this share is in the transaction, `PayForBlob` or
+    /// `PayForFibre` namespace.
     pub fn is_compact_share(&self) -> Result<bool> {
         let namespace = self.namespace()?;
-        Ok(namespace.is_tx() || namespace.is_pay_for_blob())
+        Ok(namespace.is_tx() || namespace.is_pay_for_blob() || namespace.is_pay_for_fibre())
     }
 
     /// Return the sequence length for sequence-start shares.
@@ -156,9 +165,14 @@ impl Share {
         Ok(&self.0[self.raw_data_start_index()?..])
     }
 
-    /// Return true when this share contains a version-one signer.
+    /// Return true when this share contains a signer (version one or two
+    /// sequence start).
     pub fn contains_signer(&self) -> Result<bool> {
-        Ok(self.version()? == SHARE_VERSION_ONE && self.is_sequence_start()?)
+        let version = self.version()?;
+        Ok(
+            (version == SHARE_VERSION_ONE || version == SHARE_VERSION_TWO)
+                && self.is_sequence_start()?,
+        )
     }
 
     /// Return the signer encoded in a version-one sequence-start share.

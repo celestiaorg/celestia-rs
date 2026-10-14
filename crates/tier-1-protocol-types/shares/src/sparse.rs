@@ -1,6 +1,6 @@
 //! Sparse blob share splitting helpers.
 
-use crate::share::{DEFAULT_SHARE_VERSION, SUPPORTED_SHARE_VERSIONS};
+use crate::share::{DEFAULT_SHARE_VERSION, SHARE_VERSION_TWO, SUPPORTED_SHARE_VERSIONS};
 use crate::{Blob, Error, Result, Share, ShareBuilder, namespace_padding_shares};
 
 /// Incremental sparse share splitter for blobs.
@@ -32,6 +32,14 @@ impl SparseShareSplitter {
             .write_sequence_len(u32::try_from(raw_data.len()).map_err(|_| Error::InvalidBlob)?)?;
         if let Some(signer) = blob.signer() {
             builder.write_signer(&signer);
+        }
+        if blob.share_version() == SHARE_VERSION_TWO {
+            // Fibre system blob: blob version + commitment (validated to be
+            // exactly 36 bytes) fit in the first share.
+            builder.write_fibre_bytes(&raw_data);
+            builder.zero_pad_if_necessary();
+            self.shares.push(builder.build()?);
+            return Ok(());
         }
 
         loop {

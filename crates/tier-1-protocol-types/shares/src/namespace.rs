@@ -25,6 +25,9 @@ pub const INTERMEDIATE_STATE_ROOTS_NAMESPACE: Namespace = primary_reserved_names
 /// Namespace reserved for `PayForBlob` transactions.
 pub const PAY_FOR_BLOB_NAMESPACE: Namespace = primary_reserved_namespace(0x04);
 /// Namespace used for primary reserved padding shares.
+/// Namespace reserved for `PayForFibre` transactions (go-square v4).
+pub const PAY_FOR_FIBRE_NAMESPACE: Namespace = primary_reserved_namespace(0x05);
+/// Namespace used for padding after primary reserved namespaces.
 pub const PRIMARY_RESERVED_PADDING_NAMESPACE: Namespace = primary_reserved_namespace(0xff);
 /// Highest primary reserved namespace.
 pub const MAX_PRIMARY_RESERVED_NAMESPACE: Namespace = primary_reserved_namespace(0xff);
@@ -174,6 +177,12 @@ impl Namespace {
     #[must_use]
     pub fn is_pay_for_blob(self) -> bool {
         self == PAY_FOR_BLOB_NAMESPACE
+    }
+
+    /// Return true when this is the `PayForFibre` namespace.
+    #[must_use]
+    pub fn is_pay_for_fibre(self) -> bool {
+        self == PAY_FOR_FIBRE_NAMESPACE
     }
 
     /// Return a vector repeating this namespace.

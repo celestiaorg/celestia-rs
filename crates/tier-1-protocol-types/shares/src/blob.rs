@@ -1,6 +1,9 @@
 //! Blob and index-wrapper helpers.
 
-use crate::share::{DEFAULT_SHARE_VERSION, MAX_SHARE_VERSION, SHARE_VERSION_ONE, SIGNER_SIZE};
+use crate::share::{
+    DEFAULT_SHARE_VERSION, FIBRE_BLOB_VERSION_SIZE, FIBRE_COMMITMENT_SIZE, MAX_SHARE_VERSION,
+    SHARE_VERSION_ONE, SHARE_VERSION_TWO, SIGNER_SIZE,
+};
 use crate::{Error, Namespace, Result, Share, split_blobs};
 use encoding::protobuf::Message;
 
@@ -67,13 +70,20 @@ impl Blob {
                 max: MAX_SHARE_VERSION,
             });
         }
-        if self.share_version == SHARE_VERSION_ONE && self.signer.is_none() {
+        let signed =
+            self.share_version == SHARE_VERSION_ONE || self.share_version == SHARE_VERSION_TWO;
+        if signed && self.signer.is_none() {
             return Err(Error::InvalidSignerLength {
                 actual: 0,
                 expected: SIGNER_SIZE,
             });
         }
-        if self.share_version != SHARE_VERSION_ONE && self.signer.is_some() {
+        if !signed && self.signer.is_some() {
+            return Err(Error::InvalidBlob);
+        }
+        if self.share_version == SHARE_VERSION_TWO
+            && self.data.len() != FIBRE_BLOB_VERSION_SIZE + FIBRE_COMMITMENT_SIZE
+        {
             return Err(Error::InvalidBlob);
         }
         Ok(())
@@ -101,6 +111,22 @@ impl Blob {
     #[must_use]
     pub fn share_version(&self) -> u8 {
         self.share_version
+    }
+
+    /// Construct a fibre system blob (share version two): `data` is the
+    /// big-endian fibre blob version followed by the 32-byte commitment.
+    pub fn new_v2(
+        namespace: Namespace,
+        fibre_blob_version: u32,
+        commitment: &[u8],
+        signer: [u8; SIGNER_SIZE],
+    ) -> Result<Self> {
+        if commitment.len() != FIBRE_COMMITMENT_SIZE {
+            return Err(Error::InvalidBlob);
+        }
+        let mut data = fibre_blob_version.to_be_bytes().to_vec();
+        data.extend_from_slice(commitment);
+        Self::new_with_signer(namespace, data, SHARE_VERSION_TWO, Some(signer))
     }
 
     /// Return the signer encoded in version-one blob shares.

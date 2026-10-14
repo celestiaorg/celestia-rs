@@ -4,7 +4,7 @@ use crate::info_byte::InfoByte;
 use crate::reserved::ReservedBytes;
 use crate::share::{
     COMPACT_SHARE_RESERVED_BYTES, SEQUENCE_LEN_BYTES, SHARE_INFO_BYTES, SHARE_SIZE,
-    SHARE_VERSION_ONE, SIGNER_SIZE,
+    SHARE_VERSION_ONE, SHARE_VERSION_TWO, SIGNER_SIZE,
 };
 use crate::{Error, Namespace, Result, Share};
 
@@ -36,7 +36,8 @@ impl ShareBuilder {
     /// Construct a builder with namespace, info byte, and required placeholders.
     pub fn new(namespace: Namespace, share_version: u8, is_first_share: bool) -> Result<Self> {
         namespace.validate_basic()?;
-        let is_compact_share = namespace.is_tx() || namespace.is_pay_for_blob();
+        let is_compact_share =
+            namespace.is_tx() || namespace.is_pay_for_blob() || namespace.is_pay_for_fibre();
         let mut builder = Self {
             namespace: Some(namespace),
             share_version,
@@ -142,10 +143,21 @@ impl ShareBuilder {
         Ok(())
     }
 
-    /// Write the signer bytes carried by a version-one sequence-start share.
+    /// Write the signer bytes carried by a version-one or version-two
+    /// sequence-start share.
     pub fn write_signer(&mut self, signer: &[u8; SIGNER_SIZE]) {
-        if self.is_first_share && self.share_version == SHARE_VERSION_ONE {
+        if self.is_first_share
+            && (self.share_version == SHARE_VERSION_ONE || self.share_version == SHARE_VERSION_TWO)
+        {
             self.raw_share_data.extend_from_slice(signer);
+        }
+    }
+
+    /// Write raw fibre fields (blob version, commitment) into a version-two
+    /// sequence-start share (`WriteFibreBlobVersion` / `WriteFibreCommitment`).
+    pub fn write_fibre_bytes(&mut self, bytes: &[u8]) {
+        if self.is_first_share && self.share_version == SHARE_VERSION_TWO {
+            self.raw_share_data.extend_from_slice(bytes);
         }
     }
 

@@ -500,7 +500,7 @@ fn sparse_splitter_padding_and_error_paths() -> shares::Result<()> {
     assert_eq!(MIN_SHARE_COUNT, 1);
     assert_eq!(SHARE_VERSION_ZERO, 0);
     assert_eq!(SHARE_VERSION_ONE, 1);
-    assert_eq!(SUPPORTED_SHARE_VERSIONS, &[0, 1]);
+    assert_eq!(SUPPORTED_SHARE_VERSIONS, &[0, 1, 2]);
 
     let namespace = blob_namespace(0x66)?;
     let blob = Blob::new(namespace, b"blob".to_vec(), 0)?;
@@ -530,14 +530,14 @@ fn sparse_splitter_padding_and_error_paths() -> shares::Result<()> {
     );
     assert_eq!(tail_padding_shares(2), vec![tail_padding_share(); 2]);
 
-    let unsupported = Blob::new(namespace, b"blob".to_vec(), 2)?;
+    let unsupported = Blob::new(namespace, b"blob".to_vec(), 3)?;
     assert_eq!(
         SparseShareSplitter::new()
             .write(&unsupported)
             .expect_err("unsupported sparse share version"),
         Error::UnsupportedShareVersion {
-            version: 2,
-            supported: vec![0, 1],
+            version: 3,
+            supported: vec![0, 1, 2],
         }
     );
     Ok(())

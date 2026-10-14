@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use abci_server::record::Exchange;
 use app::App;
-use celestia_proto::celestia_core_proto::abci::{request, response};
+use celestia_proto::celestia_core_proto::abci::{self, request, response};
 
 use crate::{StateDump, load_exchanges, load_state};
 
@@ -42,6 +42,42 @@ pub struct Report {
     pub init_chain_diffs: Vec<String>,
     /// Height at which both Go and Rust refused to finalize a block.
     pub halted_at: Option<i64>,
+    /// PrepareProposal / ProcessProposal / CheckTx responses compared.
+    pub compared: Compared,
+}
+
+/// Counts of non-FinalizeBlock responses compared against Go.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Compared {
+    /// PrepareProposal responses (txs, square size, data root).
+    pub prepare: usize,
+    /// PrepareProposal responses with at least one tx.
+    pub prepare_with_txs: usize,
+    /// ProcessProposal responses (status).
+    pub process: usize,
+    /// CheckTx responses (code, codespace, gas, priority, signer fields).
+    pub check_tx: usize,
+}
+
+/// The consensus/mempool-relevant fields of a CheckTx answer: `Err` is a
+/// `ResponseException`.
+type CheckTxFields = Result<(u32, String, i64, i64, i64, Vec<u8>, u64, Vec<u8>), ()>;
+
+fn check_tx_fields(r: &Result<abci::ResponseCheckTx, String>) -> CheckTxFields {
+    r.as_ref()
+        .map(|r| {
+            (
+                r.code,
+                r.codespace.clone(),
+                r.gas_wanted,
+                r.gas_used,
+                r.priority,
+                r.address.clone(),
+                r.sequence,
+                r.data.clone(),
+            )
+        })
+        .map_err(|_| ())
 }
 
 fn compare_stores(app: &App, dump: &StateDump) -> (Vec<String>, Vec<StoreDiff>) {
@@ -143,44 +179,16 @@ pub fn replay_into(
             }
             (request::Value::FinalizeBlock(r), Some(response::Value::FinalizeBlock(go))) => {
                 height = r.height;
-                match app.finalize_block(r) {
-                    Ok(ours) => {
-                        let det =
-                            |r: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]| {
-                                r.iter()
-                                    .map(|t| {
-                                        (
-                                            t.code,
-                                            t.codespace.clone(),
-                                            t.data.clone(),
-                                            t.gas_wanted,
-                                            t.gas_used,
-                                        )
-                                    })
-                                    .collect::<Vec<_>>()
-                            };
-                        let (o, g) = (det(&ours.tx_results), det(&go.tx_results));
-                        if o != g {
-                            report.errors.push(format!(
-                                "FinalizeBlock h={height}: tx results differ: go={g:?} rust={o:?}"
-                            ));
-                        }
-                        if ours.validator_updates != go.validator_updates {
-                            report.errors.push(format!(
-                                "FinalizeBlock h={height}: validator updates differ"
-                            ));
-                        }
-                        if ours.app_hash == go.app_hash && o == g {
-                            report.matched_heights.push(height);
-                        } else {
-                            report.first_mismatch = Some(height);
-                        }
-                    }
-                    Err(e) => {
-                        report.errors.push(format!("FinalizeBlock h={height}: {e}"));
-                        report.first_mismatch = Some(height);
-                    }
-                }
+                compare_finalize(app, r, &go, &mut report);
+            }
+            (request::Value::PrepareProposal(r), Some(go)) => {
+                compare_prepare(app, &r, &go, &mut report);
+            }
+            (request::Value::ProcessProposal(r), Some(go)) => {
+                compare_process(app, &r, &go, &mut report);
+            }
+            (request::Value::CheckTx(r), Some(go)) => {
+                compare_check_tx(app, &r, go, height, &mut report);
             }
             (request::Value::FinalizeBlock(r), Some(response::Value::Exception(go))) => {
                 // Go halted the chain (e.g. a due upgrade without handler):
@@ -218,4 +226,139 @@ pub fn replay_into(
         }
     }
     Ok(report)
+}
+
+fn summarize_prepare(p: &abci::ResponsePrepareProposal) -> String {
+    format!(
+        "txs={} sizes={:?} square={} root={}",
+        p.txs.len(),
+        p.txs.iter().map(Vec::len).collect::<Vec<_>>(),
+        p.square_size,
+        hex::encode(&p.data_root_hash)
+    )
+}
+
+fn compare_prepare(
+    app: &mut App,
+    r: &abci::RequestPrepareProposal,
+    go: &response::Value,
+    report: &mut Report,
+) {
+    let ours = app.prepare_proposal(r);
+    report.compared.prepare += 1;
+    let same = match (&ours, go) {
+        (Ok(o), response::Value::PrepareProposal(g)) => {
+            if !g.txs.is_empty() {
+                report.compared.prepare_with_txs += 1;
+            }
+            o == g
+        }
+        (Err(_), response::Value::Exception(_)) => true,
+        _ => false,
+    };
+    if !same {
+        let go_s = match go {
+            response::Value::PrepareProposal(g) => summarize_prepare(g),
+            other => format!("{other:?}"),
+        };
+        let ours_s = match &ours {
+            Ok(o) => summarize_prepare(o),
+            Err(e) => format!("error {}", e.log),
+        };
+        report.errors.push(format!(
+            "PrepareProposal h={}: go={go_s} rust={ours_s}",
+            r.height
+        ));
+    }
+}
+
+fn compare_process(
+    app: &mut App,
+    r: &abci::RequestProcessProposal,
+    go: &response::Value,
+    report: &mut Report,
+) {
+    let ours = app.process_proposal(r);
+    report.compared.process += 1;
+    let same = match (&ours, go) {
+        (Ok(o), response::Value::ProcessProposal(g)) => o.status == g.status,
+        (Err(_), response::Value::Exception(_)) => true,
+        _ => false,
+    };
+    if !same {
+        report.errors.push(format!(
+            "ProcessProposal h={}: go={go:?} rust={:?}",
+            r.height,
+            ours.map(|o| o.status)
+        ));
+    }
+}
+
+fn compare_check_tx(
+    app: &mut App,
+    r: &abci::RequestCheckTx,
+    go: response::Value,
+    height: i64,
+    report: &mut Report,
+) {
+    let ours = app.check_tx(r);
+    report.compared.check_tx += 1;
+    let go = match go {
+        response::Value::CheckTx(g) => Ok(g),
+        response::Value::Exception(e) => Err(e.error),
+        other => Err(format!("{other:?}")),
+    };
+    if check_tx_fields(&ours) != check_tx_fields(&go) {
+        report.errors.push(format!(
+            "CheckTx after h={height} type={} {}B: go={go:?} rust={ours:?}",
+            r.r#type,
+            r.tx.len()
+        ));
+    }
+}
+
+fn compare_finalize(
+    app: &mut App,
+    r: abci::RequestFinalizeBlock,
+    go: &abci::ResponseFinalizeBlock,
+    report: &mut Report,
+) {
+    let height = r.height;
+    match app.finalize_block(r) {
+        Ok(ours) => {
+            let det = |r: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]| {
+                r.iter()
+                    .map(|t| {
+                        (
+                            t.code,
+                            t.codespace.clone(),
+                            t.data.clone(),
+                            t.gas_wanted,
+                            t.gas_used,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let (o, g) = (det(&ours.tx_results), det(&go.tx_results));
+            if o != g {
+                report.errors.push(format!(
+                    "FinalizeBlock h={height}: tx results differ: go={g:?} rust={o:?}"
+                ));
+            }
+            if ours.validator_updates != go.validator_updates {
+                report.errors.push(format!(
+                    "FinalizeBlock h={height}: validator updates differ"
+                ));
+            }
+            if ours.app_hash == go.app_hash && o == g {
+                report.matched_heights.push(height);
+            } else {
+                report.first_mismatch = Some(height);
+            }
+        }
+        Err(e) => {
+            report.errors.push(format!("FinalizeBlock h={height}: {e}"));
+            report.first_mismatch = Some(height);
+        }
+    }
 }

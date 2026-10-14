@@ -169,6 +169,9 @@ pub struct AnteError {
     pub gas_wanted: u64,
     /// The Go ante handler panicked (the error is `ErrPanic`).
     pub panicked: bool,
+    /// The failing decorator returned `sdk.Context{}`: Go callers that keep
+    /// using the returned context then hold a context without a store.
+    pub zero_ctx: bool,
 }
 
 fn limit_of(meter: &kvstore::GasMeter) -> u64 {
@@ -190,6 +193,30 @@ pub fn ante_handle(
     simulate: bool,
     deps: &impl AnteDeps,
 ) -> Result<AnteOutcome, AnteError> {
+    run_ante(ctx, tx, simulate, deps, false)
+}
+
+/// The ante handler called directly on a context, without `runTxAnte`'s
+/// store branch: writes made by decorators before a failure are kept, as
+/// when celestia-app calls its `AnteHandler` from PrepareProposal and
+/// ProcessProposal. A failing decorator that returns `sdk.Context{}` is
+/// reported with [`AnteError::zero_ctx`] set.
+pub fn ante_handle_in_place(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    simulate: bool,
+    deps: &impl AnteDeps,
+) -> Result<AnteOutcome, AnteError> {
+    run_ante(ctx, tx, simulate, deps, true)
+}
+
+fn run_ante(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    simulate: bool,
+    deps: &impl AnteDeps,
+    in_place: bool,
+) -> Result<AnteOutcome, AnteError> {
     let original_meter = ctx.gas.clone();
     let cp = ctx.branch();
     let res = run_chain(ctx, tx, simulate, deps);
@@ -202,7 +229,11 @@ pub fn ante_handle(
             })
         }
         Err(fail) => {
-            ctx.discard(cp);
+            if in_place {
+                ctx.write(cp);
+            } else {
+                ctx.discard(cp);
+            }
             // A KV gas overflow is a panic in Go (`ErrorGasOverflow` is not
             // recovered by SetUpContextDecorator).
             let fail = match fail {
@@ -218,6 +249,7 @@ pub fn ante_handle(
                     error,
                     gas_wanted: limit_of(&ctx.gas),
                     panicked: false,
+                    zero_ctx: false,
                 }),
                 Fail::ZeroCtx(error) => {
                     ctx.gas = original_meter;
@@ -225,6 +257,7 @@ pub fn ante_handle(
                         error,
                         gas_wanted: limit_of(&ctx.gas),
                         panicked: false,
+                        zero_ctx: true,
                     })
                 }
                 Fail::Panic(msg) => {
@@ -237,6 +270,7 @@ pub fn ante_handle(
                         ),
                         gas_wanted: 0,
                         panicked: true,
+                        zero_ctx: false,
                     })
                 }
             }

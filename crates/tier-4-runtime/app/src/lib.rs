@@ -5,9 +5,12 @@
 //! Go's exact order lists ([`modules`]). [`AbciApp`] adapts it to the ABCI
 //! socket server.
 
+pub mod check_tx;
+pub mod fibre_tx;
 pub mod genutil;
 pub mod hyperlane;
 pub mod modules;
+pub mod msg_count;
 pub mod proposal;
 pub mod router;
 pub mod stores;
@@ -47,6 +50,12 @@ pub struct App {
     upgrade: x_upgrade::NodeState,
     /// State-sync snapshots (storage-backed apps only).
     snapshots: Option<snapshots::Manager>,
+    /// Header of the check state (`setState(execModeCheck, ...)` at
+    /// InitChain and Commit).
+    check_header: Header,
+    /// Node-local `minimum-gas-prices` (utia) for CheckTx; `None` (the v10
+    /// default `""`) means `appconsts.DefaultMinGasPrice`.
+    node_min_gas_price: Option<math::LegacyDec>,
 }
 
 /// Metadata key of the chain ID in the state database.
@@ -133,7 +142,14 @@ impl App {
             last_height: 0,
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
+            check_header: Header::default(),
+            node_min_gas_price: None,
         }
+    }
+
+    /// Sets the node's minimum gas price (utia) used by CheckTx.
+    pub fn set_node_min_gas_price(&mut self, price: Option<math::LegacyDec>) {
+        self.node_min_gas_price = price;
     }
 
     /// Opens (or creates) the persistent state of node home `home`
@@ -192,6 +208,11 @@ impl App {
             self.chain_id = String::from_utf8_lossy(&chain_id).into_owned();
         }
         self.ms.reset_check();
+        // BaseApp.Init: `setState(execModeCheck, Header{ChainID})`.
+        self.check_header = Header {
+            chain_id: self.chain_id.clone(),
+            ..Header::default()
+        };
         Ok(())
     }
 
@@ -259,6 +280,7 @@ impl App {
             time: req.time.unwrap_or_default(),
             ..Header::default()
         };
+        self.check_header = header.clone();
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
 
         if let Some(mut cp) = req.consensus_params.clone() {
@@ -390,7 +412,7 @@ impl App {
         self.ms.reset_check();
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
-        let _ = header;
+        self.check_header = header;
         self.snapshot_if_applicable();
         Ok(ResponseCommit { retain_height: 0 })
     }
@@ -616,17 +638,16 @@ impl Application for AbciApp {
             request::Value::Commit(_) => app
                 .commit()
                 .map_or_else(|e| exception(&e), response::Value::Commit),
-            request::Value::PrepareProposal(r) => proposal::prepare(&r)
+            request::Value::PrepareProposal(r) => app
+                .prepare_proposal(&r)
                 .map_or_else(|e| exception(&e), response::Value::PrepareProposal),
-            request::Value::ProcessProposal(r) => {
-                response::Value::ProcessProposal(proposal::process(&r))
-            }
-            request::Value::CheckTx(_) => response::Value::CheckTx(abci::ResponseCheckTx {
-                code: sdk::error::sdk::not_supported("").code,
-                codespace: "sdk".into(),
-                log: "CheckTx not ported yet".into(),
-                ..Default::default()
-            }),
+            request::Value::ProcessProposal(r) => app
+                .process_proposal(&r)
+                .map_or_else(|e| exception(&e), response::Value::ProcessProposal),
+            request::Value::CheckTx(r) => app.check_tx(&r).map_or_else(
+                |error| response::Value::Exception(ResponseException { error }),
+                response::Value::CheckTx,
+            ),
             request::Value::Query(_) => response::Value::Query(abci::ResponseQuery {
                 code: sdk::error::sdk::not_supported("").code,
                 codespace: "sdk".into(),
@@ -666,14 +687,25 @@ mod abci_dispatch_tests {
     fn proposal_requests_are_dispatched() {
         let app = AbciApp::new(App::new());
         let r = app.handle(request::Value::PrepareProposal(
-            abci::RequestPrepareProposal::default(),
+            abci::RequestPrepareProposal {
+                height: 1,
+                ..Default::default()
+            },
         ));
         assert!(matches!(r, response::Value::PrepareProposal(_)), "{r:?}");
         let r = app.handle(request::Value::ProcessProposal(
-            abci::RequestProcessProposal::default(),
+            abci::RequestProcessProposal {
+                height: 1,
+                ..Default::default()
+            },
         ));
         assert!(matches!(r, response::Value::ProcessProposal(_)), "{r:?}");
-        let r = app.handle(request::Value::CheckTx(abci::RequestCheckTx::default()));
+        // A non-canonical BlobTx (type id + unknown field): rejected with a
+        // CheckTx response (app/11147), not an exception.
+        let r = app.handle(request::Value::CheckTx(abci::RequestCheckTx {
+            tx: b"\x1a\x04BLOB\x78\x01".to_vec(),
+            ..Default::default()
+        }));
         assert!(matches!(r, response::Value::CheckTx(_)), "{r:?}");
         let r = app.handle(request::Value::Query(abci::RequestQuery::default()));
         assert!(matches!(r, response::Value::Query(_)), "{r:?}");

@@ -1,6 +1,8 @@
 //! Every devnet scenario must replay with full parity: app hash and the
 //! consensus fields of every tx result (code, codespace, data, gas) at every
-//! height, plus validator updates.
+//! height, validator updates, PrepareProposal responses (txs, square size,
+//! data root), ProcessProposal status and CheckTx responses (code,
+//! codespace, gas, priority, signer address and sequence).
 
 use devnet_conformance::replay::replay;
 
@@ -15,6 +17,11 @@ fn assert_parity(scenario: &str) -> anyhow::Result<()> {
     assert!(
         !r.matched_heights.is_empty(),
         "{scenario}: nothing replayed"
+    );
+    assert!(
+        r.compared.prepare > 0 && r.compared.process > 0,
+        "{scenario}: proposals not replayed: {:?}",
+        r.compared
     );
     Ok(())
 }
@@ -71,5 +78,13 @@ fn upgrade_parity_and_halt() -> anyhow::Result<()> {
     assert_parity("upgrade")?;
     let r = devnet_conformance::replay::replay("upgrade")?;
     assert!(r.halted_at.is_some(), "Go halted but Rust did not");
+    Ok(())
+}
+
+#[test]
+fn blob_parity() -> anyhow::Result<()> {
+    assert_parity("blob")?;
+    let c = devnet_conformance::replay::replay("blob")?.compared;
+    assert!(c.prepare_with_txs >= 7 && c.check_tx >= 50, "{c:?}");
     Ok(())
 }

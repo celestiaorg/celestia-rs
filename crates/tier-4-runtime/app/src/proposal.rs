@@ -1,45 +1,557 @@
-//! `PrepareProposal` / `ProcessProposal`.
+//! `PrepareProposal` / `ProcessProposal` (celestia-app v10
+//! `app/prepare_proposal.go`, `app/filtered_square_builder.go`,
+//! `app/process_proposal.go`) on top of cosmos-sdk `BaseApp`'s proposal
+//! state handling.
 //!
-//! Only the empty block is supported so far: celestia's square
-//! construction and blob validation (`app/prepare_proposal.go`,
-//! `app/process_proposal.go`) are pending. Non-empty proposals are refused
-//! rather than guessed at.
+//! Both run on a branch of the latest state that is always discarded:
+//! committed state, plus the InitChain writes at the initial height
+//! (`getContextForProposal`). The ante handler is called directly on that
+//! branch, as Go does, so a failing decorator's earlier writes stay visible
+//! to later transactions.
+//!
+//! The `RequestProcessProposal.header` celestia-core sends is not read by
+//! v10 (BaseApp builds the header from the request fields and the handler
+//! only logs it).
+//!
+//! Not ported: settling `MsgPayForFibre` promises and replaying fibre
+//! escrow messages (`executeTxMsgs`) needs the x/fibre Msg server, which is
+//! not routed yet; such messages fail to execute here.
 
+use celestia_proto::celestia::blob::v1::MsgPayForBlobs;
 use celestia_proto::celestia_core_proto::abci::{
     RequestPrepareProposal, RequestProcessProposal, ResponsePrepareProposal,
     ResponseProcessProposal, response_process_proposal::ProposalStatus,
 };
-use sdk::Result;
-use sdk::error::sdk as errs;
+use prost::Name;
+use sdk::tx::Tx;
+use sdk::{Context, ExecMode, Header, SdkError};
+use square::v4::{self, BlobTx, Builder, ClassifiedTx};
+use txdecode::UnwrappedBlobTx;
 
-fn min_data_root() -> Vec<u8> {
-    square::min_data_availability_header().hash().to_vec()
+use crate::msg_count::{MAX_SDK_MESSAGES, count_executable_msgs};
+use crate::{App, fibre_tx, router};
+
+/// `appconsts.MaxTxSize`.
+pub const MAX_TX_SIZE: usize = 8_388_608;
+/// `appconsts.MaxPFBMessages`.
+pub const MAX_PFB_MESSAGES: usize = 200;
+/// `appconsts.MaxPayForFibreMessages`.
+pub const MAX_PAY_FOR_FIBRE_MESSAGES: usize = 200;
+/// `appconsts.SubtreeRootThreshold`.
+pub const SUBTREE_ROOT_THRESHOLD: usize = 64;
+/// `appconsts.SquareSizeUpperBound`.
+pub const SQUARE_SIZE_UPPER_BOUND: u64 = 512;
+
+/// A Go panic (or handler error) that aborts the whole handler.
+#[derive(Debug)]
+struct Abort(#[allow(dead_code)] String);
+
+impl From<SdkError> for Abort {
+    fn from(e: SdkError) -> Self {
+        Self(e.log)
+    }
 }
 
-/// `PrepareProposal` for an empty mempool.
-pub fn prepare(req: &RequestPrepareProposal) -> Result<ResponsePrepareProposal> {
-    if !req.txs.is_empty() {
-        return Err(errs::not_supported("PrepareProposal with transactions"));
+impl From<square::Error> for Abort {
+    fn from(e: square::Error) -> Self {
+        Self(e.to_string())
     }
-    Ok(ResponsePrepareProposal {
-        txs: Vec::new(),
-        square_size: 1,
-        data_root_hash: min_data_root(),
+}
+
+/// Converts a decoded `BlobTx` into go-square's representation.
+pub fn to_square_blob_tx(u: &UnwrappedBlobTx) -> Result<BlobTx, String> {
+    let blobs = u
+        .blobs
+        .iter()
+        .map(to_share_blob)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(BlobTx {
+        tx: u.tx.clone(),
+        blobs,
     })
 }
 
-/// `ProcessProposal`: accepts exactly the empty block.
-#[must_use]
-pub fn process(req: &RequestProcessProposal) -> ResponseProcessProposal {
-    let ok = req.txs.is_empty() && req.square_size == 1 && req.data_root_hash == min_data_root();
-    ResponseProcessProposal {
-        status: if ok {
-            ProposalStatus::Accept
-        } else {
-            ProposalStatus::Reject
+/// `sdk::tx::Blob` (already validated by `UnmarshalBlobTx`) as a
+/// `shares::Blob`.
+pub fn to_share_blob(b: &sdk::tx::Blob) -> Result<shares::Blob, String> {
+    let mut ns = Vec::with_capacity(shares::NAMESPACE_SIZE);
+    ns.push(u8::try_from(b.namespace_version).map_err(|e| e.to_string())?);
+    ns.extend_from_slice(&b.namespace_id);
+    let ns = shares::Namespace::from_slice(&ns).map_err(|e| e.to_string())?;
+    let signer = if b.signer.is_empty() {
+        None
+    } else {
+        Some(
+            <[u8; shares::SIGNER_SIZE]>::try_from(b.signer.as_slice())
+                .map_err(|e| e.to_string())?,
+        )
+    };
+    shares::Blob::new_with_signer(
+        ns,
+        b.data.clone(),
+        u8::try_from(b.share_version).map_err(|e| e.to_string())?,
+        signer,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// `ValidateBlobTx` on a decoded `BlobTx` (`inner` is its decoded SDK tx).
+pub fn validate_blob_tx(inner: &Tx, u: &UnwrappedBlobTx) -> sdk::Result<()> {
+    let pfb = x_blob::pfb_from_msgs(inner.msgs())?;
+    let blobs = u
+        .blobs
+        .iter()
+        .map(to_share_blob)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| SdkError::new("undefined", 1, e))?;
+    x_blob::validate_blob_tx(&pfb, &blobs, true)
+}
+
+/// `MaxEffectiveSquareSize`.
+fn max_effective_square_size(ctx: &mut Context<'_>) -> Result<usize, Abort> {
+    let gov = x_blob::get_params(ctx)?.gov_max_square_size;
+    let size = gov.min(SQUARE_SIZE_UPPER_BOUND);
+    usize::try_from(size).map_err(|e| Abort(e.to_string()))
+}
+
+/// `executeTxMsgs`: runs a tx's messages on a branch written only if all
+/// succeed.
+fn execute_tx_msgs(ctx: &mut Context<'_>, tx: &Tx) -> sdk::Result<()> {
+    let outer_events = std::mem::take(&mut ctx.events);
+    let cp = ctx.branch();
+    let mut res = Ok(());
+    for msg in tx.msgs() {
+        if !router::has_handler(&msg.type_url) {
+            res = Err(sdk::error::sdk::unknown_request(format!(
+                "no message handler found for {}",
+                msg.type_url
+            )));
+            break;
         }
-        .into(),
+        if let Err(e) = router::route(ctx, msg) {
+            res = Err(e);
+            break;
+        }
     }
+    if res.is_ok() {
+        ctx.write(cp);
+    } else {
+        ctx.multistore().discard_branch();
+    }
+    ctx.events = outer_events;
+    res
+}
+
+fn has_pfb(tx: &Tx) -> bool {
+    let url = MsgPayForBlobs::type_url();
+    tx.msgs().iter().any(|m| m.type_url == url)
+}
+
+/// `coretypes.ComputeProtoSizeForTxs([]Tx{tx})`.
+fn proto_size(tx: &[u8]) -> i64 {
+    let n = 1 + encoding::varint::encode_uvarint(tx.len() as u64).len() + tx.len();
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// `ClassifyTxs`, with go-square's blob-tx unmarshalling done here.
+fn classify_txs(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String> {
+    txs.iter()
+        .map(|raw| {
+            if let Some(f) = fibre_tx::try_parse(raw)? {
+                return Ok(ClassifiedTx::Fibre(f));
+            }
+            match txdecode::unmarshal_blob_tx(raw) {
+                Some(Ok(u)) => Ok(ClassifiedTx::Blob(to_square_blob_tx(&u)?)),
+                Some(Err(e)) => Err(format!("unmarshalling blob tx: {e:?}")),
+                None => Ok(ClassifiedTx::Normal(raw.clone())),
+            }
+        })
+        .collect()
+}
+
+/// Erasure-extends `square` and returns `(original width, data root)`.
+fn data_root(square: &square::Square) -> Result<(usize, Vec<u8>), Abort> {
+    let eds = square::extend_shares(square.as_shares())?;
+    let dah = square::new_data_availability_header(&eds)?;
+    Ok((eds.width() / 2, dah.hash().to_vec()))
+}
+
+fn ante(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> Result<(), x_ante::AnteError> {
+    x_ante::ante_handle_in_place(ctx, tx, false, deps).map(|_| ())
+}
+
+impl App {
+    /// The header `BaseApp` gives the proposal state: at the initial height
+    /// the InitChain context with its header cleared (the chain id stays).
+    fn proposal_header(
+        &self,
+        height: i64,
+        time: Option<pbjson_types::Timestamp>,
+        proposer: &[u8],
+        next_validators_hash: &[u8],
+    ) -> Header {
+        let mut h = Header {
+            chain_id: self.chain_id.clone(),
+            height,
+            time: time.unwrap_or_default(),
+            proposer_address: proposer.to_vec(),
+            ..Header::default()
+        };
+        if height != self.initial_height {
+            h.app_hash.clone_from(&self.last_commit_hash);
+            h.next_validators_hash = next_validators_hash.to_vec();
+        }
+        h
+    }
+
+    /// Runs `f` on a discarded branch of the proposal state.
+    fn with_proposal_ctx<T>(
+        &mut self,
+        header: Header,
+        mode: ExecMode,
+        f: impl FnOnce(&mut Context<'_>, &x_ante::StoreDeps) -> T,
+    ) -> T {
+        let deps = x_ante::StoreDeps::new(None);
+        let mut ctx = Context::new(&mut self.ms, header, mode);
+        let base = ctx.multistore().depth();
+        ctx.multistore().branch();
+        ctx.consensus_params = x_consensus::get_params(&mut ctx)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let out = f(&mut ctx, &deps);
+        while ctx.multistore().depth() > base {
+            ctx.multistore().discard_branch();
+        }
+        out
+    }
+
+    /// `PrepareProposal`. Errors and panics of the handler make `BaseApp`
+    /// return the request's txs unchanged (no square size, no data root).
+    pub fn prepare_proposal(
+        &mut self,
+        req: &RequestPrepareProposal,
+    ) -> sdk::Result<ResponsePrepareProposal> {
+        if req.height < 1 {
+            return Err(sdk::error::sdk::invalid_request(
+                "PrepareProposal called with invalid height",
+            ));
+        }
+        let header = self.proposal_header(
+            req.height,
+            req.time,
+            &req.proposer_address,
+            &req.next_validators_hash,
+        );
+        let res = self.with_proposal_ctx(header, ExecMode::PrepareProposal, |ctx, deps| {
+            prepare(ctx, deps, req)
+        });
+        Ok(res.unwrap_or_else(|_| ResponsePrepareProposal {
+            txs: req.txs.clone(),
+            ..ResponsePrepareProposal::default()
+        }))
+    }
+
+    /// `ProcessProposal`.
+    pub fn process_proposal(
+        &mut self,
+        req: &RequestProcessProposal,
+    ) -> sdk::Result<ResponseProcessProposal> {
+        if req.height < 1 {
+            return Err(sdk::error::sdk::invalid_request(
+                "ProcessProposal called with invalid height",
+            ));
+        }
+        let header = self.proposal_header(
+            req.height,
+            req.time,
+            &req.proposer_address,
+            &req.next_validators_hash,
+        );
+        let accept = self
+            .with_proposal_ctx(header, ExecMode::ProcessProposal, |ctx, deps| {
+                process(ctx, deps, req)
+            })
+            .unwrap_or(false);
+        Ok(ResponseProcessProposal {
+            status: if accept {
+                ProposalStatus::Accept
+            } else {
+                ProposalStatus::Reject
+            }
+            .into(),
+        })
+    }
+}
+
+/// The SDK txs of a proposal, split like `separateTxs`.
+#[derive(Default)]
+struct Separated<'a> {
+    normal: Vec<&'a [u8]>,
+    blob: Vec<(&'a [u8], UnwrappedBlobTx)>,
+    pff: Vec<&'a [u8]>,
+}
+
+/// `separateTxs`.
+fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
+    let mut s = Separated::default();
+    for raw in txs {
+        if raw.len() > MAX_TX_SIZE {
+            continue;
+        }
+        match txdecode::unmarshal_blob_tx(raw) {
+            Some(Ok(u)) => s.blob.push((raw, u)),
+            Some(Err(_)) => {}
+            None => {
+                let Ok(tx) = txdecode::decode(raw) else {
+                    continue;
+                };
+                if fibre_tx::count_pff(tx.msgs()) > 0 {
+                    if fibre_tx::validate_shape(&tx).is_ok() {
+                        s.pff.push(raw);
+                    }
+                    continue;
+                }
+                s.normal.push(raw);
+            }
+        }
+    }
+    s
+}
+
+/// `PrepareProposalHandler`.
+fn prepare(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    req: &RequestPrepareProposal,
+) -> Result<ResponsePrepareProposal, Abort> {
+    let max_square_size = max_effective_square_size(ctx)?;
+    let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
+    x_fibre::begin_block(ctx)?;
+    let txs = fill(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?;
+    let square = builder.export()?;
+    let (width, root) = data_root(&square)?;
+    Ok(ResponsePrepareProposal {
+        txs,
+        square_size: width as u64,
+        data_root_hash: root,
+    })
+}
+
+/// `FilteredSquareBuilder.Fill`.
+fn fill(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    builder: &mut Builder,
+    txs: &[Vec<u8>],
+    max_tx_bytes: i64,
+) -> Result<Vec<Vec<u8>>, Abort> {
+    let mut within_bytes: Vec<&[u8]> = Vec::with_capacity(txs.len());
+    let mut current = 0i64;
+    for tx in txs {
+        if max_tx_bytes > 0 {
+            let size = proto_size(tx);
+            if current + size > max_tx_bytes {
+                continue;
+            }
+            current += size;
+        }
+        within_bytes.push(tx);
+    }
+    let sep = separate(within_bytes.into_iter());
+
+    // Set once an ante decorator returned `sdk.Context{}`: Go keeps using
+    // that store-less context, so every later ante run fails and any state
+    // read outside a recover panics the whole handler.
+    let mut zeroed = false;
+    let mut kept = Vec::new();
+
+    let mut sdk_count = 0usize;
+    for raw in &sep.normal {
+        let Ok(tx) = txdecode::decode(raw) else {
+            continue;
+        };
+        ctx.tx_bytes = raw.to_vec();
+        let exec = count_executable_msgs((!zeroed).then_some(&mut *ctx), tx.msgs())
+            .map_err(|_| Abort("nil multistore".into()))?;
+        if sdk_count + exec > MAX_SDK_MESSAGES {
+            continue;
+        }
+        if !builder.append_tx(raw) {
+            continue;
+        }
+        if zeroed {
+            let _ = builder.revert_last_tx();
+            continue;
+        }
+        if let Err(e) = ante(ctx, &tx, deps) {
+            zeroed |= e.zero_ctx;
+            let _ = builder.revert_last_tx();
+            continue;
+        }
+        if fibre_tx::contains_fibre_state_msg(&tx) {
+            let _ = execute_tx_msgs(ctx, &tx);
+        }
+        sdk_count += exec;
+        kept.push(raw.to_vec());
+    }
+
+    let mut blob_msgs = 0usize;
+    for (raw, u) in &sep.blob {
+        let Ok(tx) = txdecode::decode(&u.tx) else {
+            continue;
+        };
+        ctx.tx_bytes.clone_from(&u.tx);
+        if blob_msgs + tx.msgs().len() > MAX_PFB_MESSAGES {
+            continue;
+        }
+        let Ok(btx) = to_square_blob_tx(u) else {
+            continue;
+        };
+        match builder.append_blob_tx(&btx) {
+            Ok(true) => {}
+            Ok(false) | Err(_) => continue,
+        }
+        if zeroed {
+            let _ = builder.revert_last_blob_tx();
+            continue;
+        }
+        if let Err(e) = ante(ctx, &tx, deps) {
+            zeroed |= e.zero_ctx;
+            let _ = builder.revert_last_blob_tx();
+            continue;
+        }
+        blob_msgs += tx.msgs().len();
+        kept.push(raw.to_vec());
+    }
+
+    kept.extend(process_fibre_txs(ctx, deps, builder, &sep.pff, zeroed)?);
+    Ok(kept)
+}
+
+/// `processFibreTxsForSquare`.
+fn process_fibre_txs(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    builder: &mut Builder,
+    pff: &[&[u8]],
+    zeroed: bool,
+) -> Result<Vec<Vec<u8>>, Abort> {
+    let mut kept = Vec::new();
+    let mut fibre_msgs = 0usize;
+    for raw in pff {
+        let Ok(Some(fibre)) = fibre_tx::try_parse(raw) else {
+            continue;
+        };
+        let Ok(tx) = txdecode::decode(raw) else {
+            continue;
+        };
+        if fibre_msgs + tx.msgs().len() > MAX_PAY_FOR_FIBRE_MESSAGES {
+            continue;
+        }
+        if zeroed {
+            return Err(Abort("nil multistore".into()));
+        }
+        let base = ctx.multistore().depth();
+        let cp = ctx.branch();
+        ctx.tx_bytes = raw.to_vec();
+        let discard = |ctx: &mut Context<'_>| {
+            while ctx.multistore().depth() > base {
+                ctx.multistore().discard_branch();
+            }
+        };
+        if !matches!(builder.append_fibre_tx(&fibre), Ok(true)) {
+            discard(ctx);
+            continue;
+        }
+        if ante(ctx, &tx, deps).is_err() || execute_tx_msgs(ctx, &tx).is_err() {
+            let _ = builder.revert_last_pay_for_fibre_tx();
+            discard(ctx);
+            continue;
+        }
+        ctx.write(cp);
+        fibre_msgs += tx.msgs().len();
+        kept.push(raw.to_vec());
+    }
+    Ok(kept)
+}
+
+/// `ProcessProposalHandler`: `Ok(true)` accepts.
+fn process(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    req: &RequestProcessProposal,
+) -> Result<bool, Abort> {
+    let max_square_size = max_effective_square_size(ctx)?;
+    if x_fibre::begin_block(ctx).is_err() {
+        return Ok(false);
+    }
+    let (mut sdk_msgs, mut blob_msgs, mut fibre_msgs) = (0usize, 0usize, 0usize);
+    for raw in &req.txs {
+        if raw.len() > MAX_TX_SIZE {
+            return Ok(false);
+        }
+        let blob = match txdecode::unmarshal_blob_tx(raw) {
+            Some(Err(_)) => return Ok(false),
+            Some(Ok(u)) => Some(u),
+            None => None,
+        };
+        let sdk_bytes = blob.as_ref().map_or(raw.as_slice(), |u| u.tx.as_slice());
+        ctx.tx_bytes = sdk_bytes.to_vec();
+        let Ok(tx) = txdecode::decode(sdk_bytes) else {
+            return Ok(false);
+        };
+        let Some(blob) = blob else {
+            if has_pfb(&tx) || fibre_tx::validate_shape(&tx).is_err() {
+                return Ok(false);
+            }
+            let is_pff = fibre_tx::is_pff(&tx);
+            if is_pff {
+                fibre_msgs += 1;
+                if fibre_msgs > MAX_PAY_FOR_FIBRE_MESSAGES {
+                    return Ok(false);
+                }
+            } else {
+                sdk_msgs += count_executable_msgs(Some(&mut *ctx), tx.msgs())
+                    .map_err(|_| Abort("nil multistore".into()))?;
+                if sdk_msgs > MAX_SDK_MESSAGES {
+                    return Ok(false);
+                }
+            }
+            if ante(ctx, &tx, deps).is_err() {
+                return Ok(false);
+            }
+            if is_pff {
+                if execute_tx_msgs(ctx, &tx).is_err() {
+                    return Ok(false);
+                }
+            } else if fibre_tx::contains_fibre_state_msg(&tx) {
+                let _ = execute_tx_msgs(ctx, &tx);
+            }
+            continue;
+        };
+        if validate_blob_tx(&tx, &blob).is_err() {
+            return Ok(false);
+        }
+        blob_msgs += tx.msgs().len();
+        if blob_msgs > MAX_PFB_MESSAGES {
+            return Ok(false);
+        }
+        if ante(ctx, &tx, deps).is_err() {
+            return Ok(false);
+        }
+    }
+
+    let Ok(classified) = classify_txs(&req.txs) else {
+        return Ok(false);
+    };
+    let Ok(square) = v4::construct(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
+        return Ok(false);
+    };
+    let Ok((width, root)) = data_root(&square) else {
+        return Ok(false);
+    };
+    Ok(width as u64 == req.square_size && root == req.data_root_hash)
 }
 
 #[cfg(test)]
@@ -49,16 +561,11 @@ mod tests {
     #[test]
     fn empty_block_data_root_matches_go() {
         // ProcessProposal.data_root_hash recorded from Go celestia-app v10.
+        let (w, root) = data_root(&square::empty_square()).unwrap_or_default();
+        assert_eq!(w, 1);
         assert_eq!(
-            hex::encode(min_data_root()),
+            hex::encode(root),
             "3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353"
         );
-        let r = prepare(&RequestPrepareProposal::default()).unwrap();
-        let p = process(&RequestProcessProposal {
-            square_size: r.square_size,
-            data_root_hash: r.data_root_hash,
-            ..Default::default()
-        });
-        assert_eq!(p.status, i32::from(ProposalStatus::Accept));
     }
 }

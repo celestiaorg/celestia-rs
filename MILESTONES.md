@@ -45,7 +45,9 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 |---|---|
 | Runtime & tx pipeline | sdk runtime, math (12,446 vectors), txdecode (4,968 vectors), x-ante (4,144 vectors), phased runTx, router, genutil |
 | Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (blocks), valaddr, zkism, forwarding (genesis), capability, ibc, transfer, icahost, pfm (genesis/begin), hyperlane + warp (all msgs) |
-| In progress | Prepare/ProcessProposal + CheckTx + blob scenario; persistent storage (ADR 0002); IBC msgs + relaying |
+| At parity (blocks) | PrepareProposal / ProcessProposal (go-square v4 builder, DAH) and CheckTx, replayed for every scenario incl. `devnet/blob`; Rust-proposed blocks accepted by a Go full node (`rust-proposer.sh`) |
+| Deferred | Pay-for-fibre settlement in proposals (x/fibre Msg server not routed); ProcessProposal blob-tx cache (behavior-neutral) |
+| In progress | persistent storage (ADR 0002); IBC msgs + relaying |
 | Not started | queries/gRPC/REST (M11), state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's non-empty historical-state import hardening remains pending; S3 (state

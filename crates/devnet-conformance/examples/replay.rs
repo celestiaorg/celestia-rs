@@ -21,6 +21,7 @@ fn main() -> anyhow::Result<()> {
     println!("halted at: {:?}", r.halted_at);
     println!("errors: {:?}", r.errors);
     println!("init_chain diffs: {:?}", r.init_chain_diffs);
+    println!("compared: {:?}", r.compared);
     println!(
         "matching stores ({}): {:?}",
         r.matching_stores.len(),

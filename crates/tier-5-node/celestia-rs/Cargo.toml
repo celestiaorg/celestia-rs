@@ -20,5 +20,6 @@ multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 tracing = "0.1"
 clap.workspace = true
+math = { path = "../../tier-0-primitives/math" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

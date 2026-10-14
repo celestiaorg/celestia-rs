@@ -23,6 +23,7 @@ pbjson-types = "0.7"
 math = { path = "../../tier-0-primitives/math" }
 prost = "0.13"
 square = { path = "../../tier-1-protocol-types/square" }
+shares = { path = "../../tier-1-protocol-types/shares" }
 sdk = { path = "../../tier-3-app-modules/sdk" }
 txdecode = { path = "../../tier-3-app-modules/txdecode" }
 serde_json = "1"

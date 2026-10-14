@@ -45,7 +45,7 @@ pub struct Prepared {
 pub const INFINITE_GAS_LIMIT: u64 = u64::MAX;
 
 /// `validateBasicTxMsgs` + handler existence check.
-fn check_msgs(tx: &Tx) -> Result<()> {
+pub(crate) fn check_msgs(tx: &Tx) -> Result<()> {
     if tx.msgs().is_empty() {
         return Err(errs::invalid_request("must contain at least one message"));
     }
