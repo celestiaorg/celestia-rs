@@ -130,6 +130,7 @@ dependencies = [
  "x-circuit",
  "x-consensus",
  "x-fibre",
+ "x-gov",
  "x-hyperlane",
  "x-ibc",
  "x-icahost",
@@ -139,6 +140,7 @@ dependencies = [
  "x-params",
  "x-transfer",
  "x-upgrade",
+ "x-valaddr",
  "x-warp",
 ]
 
@@ -2473,6 +2475,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-gov"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-auth",
+ "x-bank",
+]
+
+[[package]]
 name = "x-hyperlane"
 version = "0.0.1"
 dependencies = [
@@ -2579,6 +2594,17 @@ dependencies = [
  "celestia-proto",
  "prost",
  "sdk",
+]
+
+[[package]]
+name = "x-valaddr"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
 ]
 
 [[package]]
