@@ -253,6 +253,21 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         })
     }
     .map_err(|e| anyhow!("privval: {e}"))?;
+    // RPC (ADR 0003 `rpc`): JSON-RPC/WebSocket, celestia-core gRPC, the
+    // app's gRPC (+BlockAPI) and REST servers, indexers and the event bus.
+    let mut rpc = crate::rpc_service::Rpc::new(crate::rpc_service::RpcInputs {
+        home,
+        genesis: &genesis,
+        block_store: bs.clone(),
+        state_store: ss.clone(),
+        app: app.clone(),
+        mempool: pool.clone(),
+        evidence: evpool.clone(),
+        pub_key: ctypes::PubKey::Ed25519(pv.key.pub_key),
+        app_version: state.consensus_params.version.app,
+    })?;
+    exec.set_event_sink(rpc.publisher.clone());
+    rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
     // state comes from the snapshot.
@@ -366,7 +381,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     )
     .map_err(|e| anyhow!("consensus: {e}"))?;
     cs.start().map_err(|e| anyhow!("consensus start: {e}"))?;
-    let res = run(&mut cs, &pool, &inbox, opts.halt_height);
+    rpc.shared.update_round_state(cs.round_state());
+    let res = run(&mut cs, &pool, &inbox, opts.halt_height, &rpc);
     if let Some((sw, _)) = &net {
         sw.stop();
     }
@@ -426,6 +442,7 @@ fn run(
     pool: &mempool::TxPool,
     inbox: &Path,
     halt_height: i64,
+    rpc: &crate::rpc_service::Rpc,
 ) -> anyhow::Result<()> {
     loop {
         // The app's check state only has genesis state after the first
@@ -435,6 +452,7 @@ fn run(
         }
         cs.tick();
         for ev in cs.take_events() {
+            rpc.consensus_event(&ev, cs.round_state());
             if let Event::NewBlock {
                 height,
                 block_id,

@@ -156,6 +156,7 @@ pub fn grpc_query(
 }
 
 /// The ABCI `Query` path (`handleQueryGRPC`). `None` for other paths.
+#[must_use]
 pub fn abci_query(app: &AbciApp, req: &RequestQuery) -> Option<ResponseQuery> {
     // `BaseApp.Query` refuses BroadcastTx before routing.
     if !handles(&req.path) || req.path == "/cosmos.tx.v1beta1.Service/BroadcastTx" {

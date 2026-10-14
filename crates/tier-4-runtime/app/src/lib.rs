@@ -682,7 +682,7 @@ fn sdk_empty_hash() -> Vec<u8> {
 /// Thread-safe ABCI adapter.
 #[derive(Debug, Default)]
 pub struct AbciApp {
-    inner: Mutex<App>,
+    inner: Arc<Mutex<App>>,
 }
 
 impl AbciApp {
@@ -690,8 +690,21 @@ impl AbciApp {
     #[must_use]
     pub fn new(app: App) -> Self {
         Self {
-            inner: Mutex::new(app),
+            inner: Arc::new(Mutex::new(app)),
         }
+    }
+
+    /// Wraps an app shared with other in-process users (the consensus
+    /// node's block executor and mempool connections).
+    #[must_use]
+    pub fn from_shared(app: Arc<Mutex<App>>) -> Self {
+        Self { inner: app }
+    }
+
+    /// The shared app.
+    #[must_use]
+    pub fn shared(&self) -> Arc<Mutex<App>> {
+        Arc::clone(&self.inner)
     }
 }
 

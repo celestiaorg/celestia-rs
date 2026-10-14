@@ -240,9 +240,11 @@ func (r *recorder) grpcCalls(heights []int64, h int64, hashes [][]byte) {
 		}
 		r.grpcEntry("/tendermint.rpc.grpc.BlockAPI/BlockByHash", req, out, err)
 	}
-	for _, ht := range heights {
-		blockByHeight(&coregrpc.BlockByHeightRequest{Height: ht})
-		blockByHeight(&coregrpc.BlockByHeightRequest{Height: ht, Prove: true})
+	for i, ht := range heights {
+		if i < 4 || i == len(heights)-1 {
+			blockByHeight(&coregrpc.BlockByHeightRequest{Height: ht})
+			blockByHeight(&coregrpc.BlockByHeightRequest{Height: ht, Prove: true})
+		}
 		creq := &coregrpc.CommitRequest{Height: ht}
 		cres, err := r.block.Commit(ctx, creq)
 		r.grpcEntry("/tendermint.rpc.grpc.BlockAPI/Commit", creq, msgs(cres), err)
@@ -652,11 +654,13 @@ func record(args []string) error {
 		bqueries = append(bqueries, fmt.Sprintf("%s EXISTS AND block.height<=%d", k, mid),
 			fmt.Sprintf("%s EXISTS AND block.height=%d", k, mid))
 	}
+	// Matching blocks are returned whole: one per page keeps blob-sized
+	// blocks from dominating the corpus (total_count still covers all).
 	for i, qs := range bqueries {
-		r.get("/block_search?query=" + q(`"`+qs+`"`))
+		r.get("/block_search?query=" + q(`"`+qs+`"`) + "&per_page=1&order_by=" + q(`"asc"`))
 		if i%3 == 0 {
-			r.get("/block_search?query=" + q(`"`+qs+`"`) + "&order_by=" + q(`"asc"`) + "&per_page=2")
-			r.get("/block_search?query=" + q(`"`+qs+`"`) + "&page=2&per_page=1")
+			r.get("/block_search?query=" + q(`"`+qs+`"`) + "&per_page=1")
+			r.get("/block_search?query=" + q(`"`+qs+`"`) + "&page=2&per_page=1&order_by=" + q(`"asc"`))
 		}
 	}
 	for _, p := range []string{

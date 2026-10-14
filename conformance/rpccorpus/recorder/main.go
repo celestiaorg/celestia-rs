@@ -121,8 +121,9 @@ type multiFlag []string
 func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
-// wsRecord subscribes to each query (request id = query index) and appends
-// every received frame as one JSON line {"t":unix_ms,"frame":<raw>}.
+// wsRecord subscribes to each query (request id = query index; at most 5
+// queries per connection, Go's max_subscriptions_per_client) and appends
+// every received frame as one JSON line {"frame":<raw>}.
 func wsRecord(args []string) error {
 	fs := flag.NewFlagSet("ws", flag.ExitOnError)
 	url := fs.String("url", "", "websocket url")
@@ -130,54 +131,50 @@ func wsRecord(args []string) error {
 	var qs multiFlag
 	fs.Var(&qs, "q", "query (repeatable)")
 	_ = fs.Parse(args)
-	var conn *websocket.Conn
-	var err error
-	for i := 0; i < 120; i++ {
-		conn, _, err = websocket.DefaultDialer.Dial(*url, nil)
-		if err == nil {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	if err != nil {
-		return err
-	}
 	f, err := os.Create(*out)
 	if err != nil {
 		return err
 	}
 	w := bufio.NewWriter(f)
-	for i, q := range qs {
-		req, _ := json.Marshal(map[string]any{
-			"jsonrpc": "2.0", "id": i, "method": "subscribe", "params": map[string]any{"query": q},
-		})
-		if err := conn.WriteMessage(websocket.TextMessage, req); err != nil {
+	frames := make(chan []byte, 4096)
+	for start := 0; start < len(qs); start += 5 {
+		var conn *websocket.Conn
+		for i := 0; i < 120; i++ {
+			conn, _, err = websocket.DefaultDialer.Dial(*url, nil)
+			if err == nil {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		if err != nil {
 			return err
 		}
+		for i := start; i < len(qs) && i < start+5; i++ {
+			req, _ := json.Marshal(map[string]any{
+				"jsonrpc": "2.0", "id": i, "method": "subscribe", "params": map[string]any{"query": qs[i]},
+			})
+			if err := conn.WriteMessage(websocket.TextMessage, req); err != nil {
+				return err
+			}
+		}
+		go func(c *websocket.Conn) {
+			for {
+				_, msg, err := c.ReadMessage()
+				if err != nil {
+					return
+				}
+				frames <- msg
+			}
+		}(conn)
 	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-	frames := make(chan []byte, 1024)
-	go func() {
-		for {
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				close(frames)
-				return
-			}
-			frames <- msg
-		}
-	}()
 	for {
 		select {
 		case <-stop:
 			_ = w.Flush()
 			return f.Close()
-		case msg, ok := <-frames:
-			if !ok {
-				_ = w.Flush()
-				return f.Close()
-			}
+		case msg := <-frames:
 			line, _ := json.Marshal(map[string]any{"frame": string(msg)})
 			_, _ = w.Write(line)
 			_ = w.WriteByte('\n')

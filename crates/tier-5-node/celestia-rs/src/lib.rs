@@ -4,4 +4,5 @@
 
 pub mod net;
 pub mod node;
+pub mod rpc_service;
 pub mod sync;
