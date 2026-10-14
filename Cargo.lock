@@ -124,6 +124,7 @@ dependencies = [
  "serde_json",
  "square",
  "tracing",
+ "x-ante",
  "x-auth",
  "x-bank",
  "x-blob",

@@ -27,9 +27,17 @@ pub fn decode_tx(bytes: &[u8]) -> Result<Tx> {
     })
 }
 
-/// The ante handler. Stand-in until `x-ante` lands: refuses every tx.
-pub fn ante(_ctx: &mut Context<'_>, _tx: &Tx, _simulate: bool) -> Result<()> {
-    Err(errs::not_supported("ante handler not ported yet"))
+/// The ante handler (`x_ante`) over store-backed keeper dependencies.
+/// The node min gas price only matters in CheckTx and is unset here.
+pub fn ante(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    simulate: bool,
+) -> core::result::Result<u64, (sdk::SdkError, u64)> {
+    let deps = x_ante::StoreDeps::new(None);
+    x_ante::ante_handle(ctx, tx, simulate, &deps)
+        .map(|o| o.gas_wanted)
+        .map_err(|e| (e.error, e.gas_wanted))
 }
 
 /// `stakingKeeper.ApplyAndReturnValidatorSetUpdates`.

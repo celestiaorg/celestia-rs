@@ -21,8 +21,10 @@ use crate::router;
 /// Decodes raw tx bytes into a [`Tx`].
 pub type DecodeFn = fn(&[u8]) -> Result<Tx>;
 
-/// The ante handler: must set `ctx.gas` (SetUpContextDecorator).
-pub type AnteFn = fn(&mut Context<'_>, &Tx, bool) -> Result<()>;
+/// The ante handler. It sets `ctx.gas` (SetUpContextDecorator), owns its
+/// store branch (written only on success) and returns gas wanted as
+/// `runTxAnte` reports it, on success and on failure.
+pub type AnteFn = fn(&mut Context<'_>, &Tx, bool) -> core::result::Result<u64, (SdkError, u64)>;
 
 /// A transaction that went through the ante phase.
 #[derive(Debug)]
@@ -41,10 +43,6 @@ pub struct Prepared {
 
 /// Gas limit reported by Go's infinite meter (`math.MaxUint64`).
 pub const INFINITE_GAS_LIMIT: u64 = u64::MAX;
-
-fn limit_of(g: &GasMeter) -> u64 {
-    g.limit().unwrap_or(INFINITE_GAS_LIMIT)
-}
 
 /// `validateBasicTxMsgs` + handler existence check.
 fn check_msgs(tx: &Tx) -> Result<()> {
@@ -92,21 +90,18 @@ pub fn run_ante(
         return (p, Err(e));
     }
     let events_before = std::mem::take(&mut ctx.events);
-    let cp = ctx.branch();
     let res = ante(ctx, &tx, simulate);
     p.gas = ctx.gas.clone();
-    p.gas_wanted = limit_of(&ctx.gas);
     let ante_events = std::mem::replace(&mut ctx.events, events_before).take();
+    p.tx = Some(tx);
     match res {
-        Ok(()) => {
-            ctx.write(cp);
+        Ok(gas_wanted) => {
+            p.gas_wanted = gas_wanted;
             p.ante_events = ante_events;
-            p.tx = Some(tx);
             (p, Ok(()))
         }
-        Err(e) => {
-            ctx.multistore().discard_branch();
-            p.tx = Some(tx);
+        Err((e, gas_wanted)) => {
+            p.gas_wanted = gas_wanted;
             (p, Err(e))
         }
     }
