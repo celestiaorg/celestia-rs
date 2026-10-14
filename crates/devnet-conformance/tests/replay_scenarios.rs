@@ -25,6 +25,11 @@ fn staking_parity() -> anyhow::Result<()> {
 }
 
 #[test]
+fn staking_lifecycle_parity() -> anyhow::Result<()> {
+    assert_parity("staking-lifecycle")
+}
+
+#[test]
 fn hyperlane_parity() -> anyhow::Result<()> {
     assert_parity("hyperlane")
 }
