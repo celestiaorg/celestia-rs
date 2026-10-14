@@ -58,6 +58,7 @@ members = [
     "crates/tier-3-app-modules/x/forwarding",
     "crates/tier-4-runtime/abci-server",
     "crates/tier-4-runtime/app",
+    "crates/tier-4-runtime/privval",
     "crates/tier-4-runtime/grpc-query",
     "crates/tier-4-runtime/p2p",
     "crates/devnet-conformance",

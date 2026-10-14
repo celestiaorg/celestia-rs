@@ -1,0 +1,528 @@
+{
+ "chain_id": "rs-privval-1",
+ "key": "{\n  \"address\": \"B4A0D3D725E04E491A586842DE175FB74CB9D58D\",\n  \"pub_key\": {\n    \"type\": \"tendermint/PubKeyEd25519\",\n    \"value\": \"ucNEhAQ96w3yVWnGRm7UVEBSKaAnPAmwp5cwIaeLI5s=\"\n  },\n  \"priv_key\": {\n    \"type\": \"tendermint/PrivKeyEd25519\",\n    \"value\": \"yy8nXQ+EY4pddUU/7nCzg4WhY7cy/GXNgXDrq47/Bru5w0SEBD3rDfJVacZGbtRUQFIpoCc8CbCnlzAhp4sjmw==\"\n  }\n}",
+ "results": [
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "8425c6c4ce23e185c0c9d86d73da46d7417abe4aa7f0d54fcc44da9c1cb2642fee34bb740f34abb94baaebc17f555fb571c486d299fa150d1346e9cb1c0c2f01",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "8425c6c4ce23e185c0c9d86d73da46d7417abe4aa7f0d54fcc44da9c1cb2642fee34bb740f34abb94baaebc17f555fb571c486d299fa150d1346e9cb1c0c2f01",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 1000,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "8425c6c4ce23e185c0c9d86d73da46d7417abe4aa7f0d54fcc44da9c1cb2642fee34bb740f34abb94baaebc17f555fb571c486d299fa150d1346e9cb1c0c2f01",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 0,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: round regression at height 10. Got 0, last round 1",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 9,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: height regression. Got 9, last height 10",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 8,
+    "round": 5,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: height regression. Got 8, last height 10",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 2,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: conflicting data",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: conflicting data",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 10,
+    "round": 2,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": "6578742d64617461"
+   },
+   "err": "error signing vote: unexpected vote extension - extensions are only allowed in non-nil precommits",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"hCXGxM4j4YXAydhtc9pG10F6vkqn8NVPzETanByyZC/uNLt0DzSruUuq68F/VV+1ccSG0pn6FQ0TRunLHAwvAQ==\",\n  \"signbytes\": \"740801110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060880F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000001,
+    "nanos": 0,
+    "extension": "6578742d64617461"
+   },
+   "err": "",
+   "signature": "d160dd7c688e2b080c416b24c8665bb95ae84e844c72b7ead2b9d9fc562d331574b7cf5550ced79023af416437f293b2c827028620540b0b3b7e3431c0944609",
+   "ext_signature": "a6e34af3c892b3cf5a2126c4ff6d52df315e6f9fbe24980940bcbe38338b64428f30925a54019f80b849e0364133d7ee60056c015097e5106a9f75982e649901",
+   "seconds": 1760000001,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 3,\n  \"signature\": \"0WDdfGiOKwgMQWskyGZbuVroToRMcrfq0rnZ/FYtMxV0t89VUM7XkCOvQWQ38pOyyCcChiBUCws7fjQxwJRGCQ==\",\n  \"signbytes\": \"740802110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060881F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000001,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "d160dd7c688e2b080c416b24c8665bb95ae84e844c72b7ead2b9d9fc562d331574b7cf5550ced79023af416437f293b2c827028620540b0b3b7e3431c0944609",
+   "ext_signature": "f678173948c24841dcf114b6d8b2343743a8ca286bf865c5278630d56da3fe30decff5ef8e7c2f060f636342ebaccbc7a4e2138459e1f39cfecb257ac4c76307",
+   "seconds": 1760000001,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 3,\n  \"signature\": \"0WDdfGiOKwgMQWskyGZbuVroToRMcrfq0rnZ/FYtMxV0t89VUM7XkCOvQWQ38pOyyCcChiBUCws7fjQxwJRGCQ==\",\n  \"signbytes\": \"740802110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060881F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000002,
+    "nanos": 5,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "d160dd7c688e2b080c416b24c8665bb95ae84e844c72b7ead2b9d9fc562d331574b7cf5550ced79023af416437f293b2c827028620540b0b3b7e3431c0944609",
+   "ext_signature": "f678173948c24841dcf114b6d8b2343743a8ca286bf865c5278630d56da3fe30decff5ef8e7c2f060f636342ebaccbc7a4e2138459e1f39cfecb257ac4c76307",
+   "seconds": 1760000001,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 3,\n  \"signature\": \"0WDdfGiOKwgMQWskyGZbuVroToRMcrfq0rnZ/FYtMxV0t89VUM7XkCOvQWQ38pOyyCcChiBUCws7fjQxwJRGCQ==\",\n  \"signbytes\": \"740802110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060881F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 10,
+    "round": 1,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000001,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing vote: conflicting data",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000001,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 3,\n  \"signature\": \"0WDdfGiOKwgMQWskyGZbuVroToRMcrfq0rnZ/FYtMxV0t89VUM7XkCOvQWQ38pOyyCcChiBUCws7fjQxwJRGCQ==\",\n  \"signbytes\": \"740802110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060881F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 10,
+    "round": 1,
+    "pol_round": -1,
+    "block": 1,
+    "seconds": 1760000000,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing proposal: step regression at height 10 round 1. Got 1, last step 3",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000000,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"10\",\n  \"round\": 1,\n  \"step\": 3,\n  \"signature\": \"0WDdfGiOKwgMQWskyGZbuVroToRMcrfq0rnZ/FYtMxV0t89VUM7XkCOvQWQ38pOyyCcChiBUCws7fjQxwJRGCQ==\",\n  \"signbytes\": \"740802110A0000000000000019010000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A060881F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 11,
+    "round": 0,
+    "pol_round": -1,
+    "block": 2,
+    "seconds": 1760000003,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "b41e67a472695ade7938950bfff63519967d7ee282e9810b3e8dce7a49f79379c8b776e2a395d6d12a00150ecb8c4a70f0139333e04713165f837ce2222e1307",
+   "ext_signature": "",
+   "seconds": 1760000003,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"tB5npHJpWt55OJUL//Y1GZZ9fuKC6YELPo3Oekn3k3nIt3bio5XW0SoAFQ7LjEpw8BOTM+BHExZfg3ziIi4TBw==\",\n  \"signbytes\": \"760820110B0000000000000020FFFFFFFFFFFFFFFFFF012A480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA32060883F09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 11,
+    "round": 0,
+    "pol_round": -1,
+    "block": 2,
+    "seconds": 1760000003,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "b41e67a472695ade7938950bfff63519967d7ee282e9810b3e8dce7a49f79379c8b776e2a395d6d12a00150ecb8c4a70f0139333e04713165f837ce2222e1307",
+   "ext_signature": "",
+   "seconds": 1760000003,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"tB5npHJpWt55OJUL//Y1GZZ9fuKC6YELPo3Oekn3k3nIt3bio5XW0SoAFQ7LjEpw8BOTM+BHExZfg3ziIi4TBw==\",\n  \"signbytes\": \"760820110B0000000000000020FFFFFFFFFFFFFFFFFF012A480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA32060883F09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 11,
+    "round": 0,
+    "pol_round": -1,
+    "block": 2,
+    "seconds": 1760000004,
+    "nanos": 999,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "b41e67a472695ade7938950bfff63519967d7ee282e9810b3e8dce7a49f79379c8b776e2a395d6d12a00150ecb8c4a70f0139333e04713165f837ce2222e1307",
+   "ext_signature": "",
+   "seconds": 1760000003,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"tB5npHJpWt55OJUL//Y1GZZ9fuKC6YELPo3Oekn3k3nIt3bio5XW0SoAFQ7LjEpw8BOTM+BHExZfg3ziIi4TBw==\",\n  \"signbytes\": \"760820110B0000000000000020FFFFFFFFFFFFFFFFFF012A480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA32060883F09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 11,
+    "round": 0,
+    "pol_round": 0,
+    "block": 2,
+    "seconds": 1760000003,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing proposal: conflicting data",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000003,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"tB5npHJpWt55OJUL//Y1GZZ9fuKC6YELPo3Oekn3k3nIt3bio5XW0SoAFQ7LjEpw8BOTM+BHExZfg3ziIi4TBw==\",\n  \"signbytes\": \"760820110B0000000000000020FFFFFFFFFFFFFFFFFF012A480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA32060883F09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 11,
+    "round": 0,
+    "pol_round": -1,
+    "block": 1,
+    "seconds": 1760000003,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "error signing proposal: conflicting data",
+   "signature": "",
+   "ext_signature": "",
+   "seconds": 1760000003,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"tB5npHJpWt55OJUL//Y1GZZ9fuKC6YELPo3Oekn3k3nIt3bio5XW0SoAFQ7LjEpw8BOTM+BHExZfg3ziIi4TBw==\",\n  \"signbytes\": \"760820110B0000000000000020FFFFFFFFFFFFFFFFFF012A480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA32060883F09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 11,
+    "round": 0,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000005,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "6b76cf903b4165fadf0dde96e16d203b730c70bc2a99041033f6579721958425422c71209fc1e5678f1a3a8ec7e7c4c0e30be3474f2982b9ed997343a26cbd07",
+   "ext_signature": "",
+   "seconds": 1760000005,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 2,\n  \"signature\": \"a3bPkDtBZfrfDd6W4W0gO3MMcLwqmQQQM/ZXlyGVhCVCLHEgn8HlZ48aOo7H58TA4wvjR08pgrntmXNDomy9Bw==\",\n  \"signbytes\": \"210801110B000000000000002A060885F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 11,
+    "round": 0,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000006,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "6b76cf903b4165fadf0dde96e16d203b730c70bc2a99041033f6579721958425422c71209fc1e5678f1a3a8ec7e7c4c0e30be3474f2982b9ed997343a26cbd07",
+   "ext_signature": "",
+   "seconds": 1760000005,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 2,\n  \"signature\": \"a3bPkDtBZfrfDd6W4W0gO3MMcLwqmQQQM/ZXlyGVhCVCLHEgn8HlZ48aOo7H58TA4wvjR08pgrntmXNDomy9Bw==\",\n  \"signbytes\": \"210801110B000000000000002A060885F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 11,
+    "round": 0,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000006,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "c84bf6a2be3cbf262ee7def94a9043d12a75713b0f41484d90f60d2eb68dd20c7fb0094b0c773e1b4c521f7fc012401d2535b5b545ce1794e3ad095f437bd602",
+   "ext_signature": "",
+   "seconds": 1760000006,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 3,\n  \"signature\": \"yEv2or48vyYu5975SpBD0Sp1cTsPQUhNkPYNLraN0gx/sAlLDHc+G0xSH3/AEkAdJTW1tUXOF5TjrQlfQ3vWAg==\",\n  \"signbytes\": \"210802110B000000000000002A060886F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 11,
+    "round": 0,
+    "pol_round": 0,
+    "block": 0,
+    "seconds": 1760000007,
+    "nanos": 1,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "c84bf6a2be3cbf262ee7def94a9043d12a75713b0f41484d90f60d2eb68dd20c7fb0094b0c773e1b4c521f7fc012401d2535b5b545ce1794e3ad095f437bd602",
+   "ext_signature": "",
+   "seconds": 1760000006,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 0,\n  \"step\": 3,\n  \"signature\": \"yEv2or48vyYu5975SpBD0Sp1cTsPQUhNkPYNLraN0gx/sAlLDHc+G0xSH3/AEkAdJTW1tUXOF5TjrQlfQ3vWAg==\",\n  \"signbytes\": \"210802110B000000000000002A060886F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 11,
+    "round": 3,
+    "pol_round": 0,
+    "block": 2,
+    "seconds": 1760000008,
+    "nanos": 0,
+    "extension": "6578742d64617461"
+   },
+   "err": "",
+   "signature": "6171c93d2f51e5a2c8dddbe6482b8d414fb2131cb1d6372566e11504873b91a29b53d5eff752c1c57464e7235a5fa88046d84de24952e001414df6644c0d4b0d",
+   "ext_signature": "82ffdb0b21e91e6d79d792ddd4b3abc94c89ad0c1d622a6513991de515bf962837e53f4f6d423e2365549ffa1fa2430c189005620077976a45f9b7c7c4314a0d",
+   "seconds": 1760000008,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 3,\n  \"step\": 3,\n  \"signature\": \"YXHJPS9R5aLI3dvmSCuNQU+yExyx1jclZuEVBIc7kaKbU9Xv91LBxXRk5yNaX6iARthN4klS4AFBTfZkTA1LDQ==\",\n  \"signbytes\": \"740802110B0000000000000019030000000000000022480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA2A060888F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 11,
+    "round": 4,
+    "pol_round": 0,
+    "block": 2,
+    "seconds": 1760000009,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "3b40261d5802c7774917a1caf4260af8fe8d4fe79ebe375d7eca0b433b3fa52ea14a78a368c22fa71f30cff62de7e145de5a90a5a4b83826bf6f30b9f337a20c",
+   "ext_signature": "",
+   "seconds": 1760000009,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"11\",\n  \"round\": 4,\n  \"step\": 2,\n  \"signature\": \"O0AmHVgCx3dJF6HK9CYK+P6NT+eevjddfsoLQzs/pS6hSnijaMIvpx8wz/Yt5+FF3lqQpaS4OCa/bzC58zeiDA==\",\n  \"signbytes\": \"740801110B0000000000000019040000000000000022480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA2A060889F09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "proposal",
+    "height": 12,
+    "round": 0,
+    "pol_round": -1,
+    "block": 1,
+    "seconds": 1760000010,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "dbcf37387b838671d8c3357f9c403cfdef7b5389347aa5a989e76834c1df9be15046fd6695f4efb29c2475ffe39421b47c23063de5fa0b333713fbd76f42110a",
+   "ext_signature": "",
+   "seconds": 1760000010,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"12\",\n  \"round\": 0,\n  \"step\": 1,\n  \"signature\": \"2883OHuDhnHYwzV/nEA8/e97U4k0eqWpiedoNMHfm+FQRv1mlfTvspwkdf/jlCG0fCMGPeX6CzM3E/vXb0IRCg==\",\n  \"signbytes\": \"760820110C0000000000000020FFFFFFFFFFFFFFFFFF012A480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F703206088AF09DC7063A0C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "prevote",
+    "height": 12,
+    "round": 0,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000010,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "ebbdf6f29db91accbba1f68a24495c1cdd5718f6086948f5ea1db7374afc58c4396064e654ff8b27f8f79dc5794b4ca5a43d56d50a2e8c5cc7d5aa50d47c3107",
+   "ext_signature": "",
+   "seconds": 1760000010,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"12\",\n  \"round\": 0,\n  \"step\": 2,\n  \"signature\": \"67328p25Gsy7ofaKJElcHN1XGPYIaUj16h23N0r8WMQ5YGTmVP+LJ/j3ncV5S0ylpD1W1QoujFzH1apQ1HwxBw==\",\n  \"signbytes\": \"6B0801110C0000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A06088AF09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 12,
+    "round": 0,
+    "pol_round": 0,
+    "block": 1,
+    "seconds": 1760000011,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "a79196d86d1732f47fcfe8b7b089f20e04887f3e9fdcbb3608feaff581857a346b7e532b995db2503638b63a8df62e165a8cdba6510d5f5b7e18be48242faa0e",
+   "ext_signature": "89c7627956c8ef7dc5af987cf4ac7040bdf9f53341f5df0f10703bea2356026b090f75b1bd5ba59441f26077b1cf511db892b29b929af6241cc6edf431c9b803",
+   "seconds": 1760000011,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"12\",\n  \"round\": 0,\n  \"step\": 3,\n  \"signature\": \"p5GW2G0XMvR/z+i3sInyDgSIfz6f3Ls2CP6v9YGFejRrflMrmV2yUDY4tjqN9i4WWozbplENX1t+GL5IJC+qDg==\",\n  \"signbytes\": \"6B0802110C0000000000000022480A204BF5122F344554C53BDE2EBB8CD2B7E3D1600AD631C385A5D7CCE23C7785459A1224080312209C12CFDC04C74584D787AC3D23772132C18524BC7AB28DEC4219B8FC5B425F702A06088BF09DC706320C72732D7072697676616C2D31\"\n}"
+  },
+  {
+   "op": {
+    "kind": "precommit",
+    "height": 13,
+    "round": 0,
+    "pol_round": 0,
+    "block": 2,
+    "seconds": 1760000012,
+    "nanos": 0,
+    "extension": ""
+   },
+   "err": "",
+   "signature": "2428293138f1c7f8120dd8d13b3d854cd60607f027f10e229a26f18f9f88fc63146dc3def0ac977b7e3a57daf401dc020d547162f365b563e315ede86ddb2106",
+   "ext_signature": "aa25d7b3b019b27ddd798b55aab07a1b0f8ed95caafc2375f26ad354124e3eba07e8169ec5538da86cf35addf5cfa67236eb6a3149cbae3984e4ffb3cf96830b",
+   "seconds": 1760000012,
+   "nanos": 0,
+   "state": "{\n  \"height\": \"13\",\n  \"round\": 0,\n  \"step\": 3,\n  \"signature\": \"JCgpMTjxx/gSDdjROz2FTNYGB/An8Q4imibxj5+I/GMUbcPe8KyXe346V9r0AdwCDVRxYvNltWPjFe3obdshBg==\",\n  \"signbytes\": \"6B0802110D0000000000000022480A20DBC1B4C900FFE48D575B5DA5C638040125F65DB0FE3E24494B76EA986457D9861224080612201CC3ADEA40EBFD94433AC004777D68150CCE9DB4C771BC7DE1B297A7B795BBBA2A06088CF09DC706320C72732D7072697676616C2D31\"\n}"
+  }
+ ]
+}
