@@ -142,13 +142,14 @@ pub fn init_genesis(
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
         // Go's module manager skips modules whose genesis section is null.
-        "blob" | "circuit" | "fibre" | "hyperlane" | "minfee" | "mint" | "warp"
+        "blob" | "circuit" | "fibre" | "gov" | "hyperlane" | "minfee" | "mint" | "warp"
             if genesis.is_null() => {}
         "blob" => x_blob::init_genesis_json(ctx, genesis)?,
         "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
         "minfee" => x_minfee::init_genesis_json(ctx, genesis)?,
         "mint" => x_mint::init_genesis_json(ctx, genesis)?,
         "fibre" => x_fibre::init_genesis_json(ctx, genesis)?,
+        "gov" => x_gov::init_genesis_json(ctx, genesis)?,
         // x/params has no genesis state.
         "params" => x_params::init_genesis(ctx)?,
         "capability" => x_capability::init_genesis_json(ctx, genesis)?,
@@ -212,7 +213,9 @@ impl x_transfer::BankKeeper for TransferBank {
 
 /// Runs one module's `EndBlock`.
 pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
-    let _ = ctx;
-    tracing::trace!(module, "end_block not ported");
+    match module {
+        "gov" => x_gov::end_block(ctx)?,
+        _ => tracing::trace!(module, "end_block not ported"),
+    }
     Ok(Vec::new())
 }

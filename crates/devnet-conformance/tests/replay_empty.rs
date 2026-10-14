@@ -13,6 +13,7 @@ const EXPECTED_MATCHING_STORES: &[&str] = &[
     "evidence",
     "feegrant",
     "hyperlane",
+    "gov",
     "ibc",
     "icahost",
     "fibre",
