@@ -1,0 +1,21 @@
+[package]
+name = "x-bank"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "x/bank: balances, supply, sends, mint/burn."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+math = { path = "../../../tier-0-primitives/math" }
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-auth = { path = "../auth" }

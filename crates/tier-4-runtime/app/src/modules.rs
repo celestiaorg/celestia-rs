@@ -98,9 +98,9 @@ pub const END_BLOCKERS: &[&str] = &[
 pub const VERSION_MAP: &[(&str, u64)] = &[
     ("06-solomachine", 0),
     ("07-tendermint", 0),
-    ("auth", 5),
+    ("auth", x_auth::CONSENSUS_VERSION),
     ("authz", 2),
-    ("bank", 4),
+    ("bank", x_bank::CONSENSUS_VERSION),
     ("blob", 3),
     ("capability", 1),
     ("circuit", 1),
@@ -134,11 +134,13 @@ pub const VERSION_MAP: &[(&str, u64)] = &[
 pub fn init_genesis(
     ctx: &mut Context<'_>,
     module: &str,
-    _genesis: &serde_json::Value,
+    genesis: &serde_json::Value,
 ) -> Result<Vec<ValidatorUpdate>> {
     match module {
         // Consensus params are stored by baseapp before the init chainer.
         "consensus" | "upgrade" => {}
+        "auth" => x_auth::init_genesis(ctx, genesis)?,
+        "bank" => x_bank::init_genesis(ctx, genesis)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
     let _ = ctx;

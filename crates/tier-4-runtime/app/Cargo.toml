@@ -20,5 +20,7 @@ prost = "0.13"
 sdk = { path = "../../tier-3-app-modules/sdk" }
 serde_json = "1"
 tracing = "0.1"
+x-auth = { path = "../../tier-3-app-modules/x/auth" }
+x-bank = { path = "../../tier-3-app-modules/x/bank" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }

@@ -119,6 +119,8 @@ dependencies = [
  "sdk",
  "serde_json",
  "tracing",
+ "x-auth",
+ "x-bank",
  "x-consensus",
  "x-upgrade",
 ]
@@ -1578,6 +1580,7 @@ dependencies = [
  "celestia-proto",
  "hash",
  "kvstore",
+ "math",
  "multistore",
  "pbjson-types",
  "prost",
@@ -2216,6 +2219,30 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "x-auth"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "hash",
+ "prost",
+ "sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "x-bank"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-auth",
 ]
 
 [[package]]

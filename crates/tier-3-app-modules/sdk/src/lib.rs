@@ -10,6 +10,7 @@
 //! - [`codec`]: `collections` key encodings.
 
 pub mod codec;
+pub mod coins;
 pub mod context;
 pub mod error;
 pub mod event;
