@@ -1,0 +1,98 @@
+//! Bech32 address codecs (`sdk.AccAddressFromBech32`,
+//! `address.Bech32Codec`) and module addresses (`authtypes.NewModuleAddress`).
+//!
+//! Errors mirror Go: decoding and prefix failures are plain errors (ABCI
+//! codespace `undefined`, code 1); empty or over-long decoded addresses are
+//! `ErrUnknownAddress`.
+
+use crate::error::{SdkError, sdk};
+
+/// Account address prefix.
+pub const ACC_PREFIX: &str = "celestia";
+/// Validator operator address prefix.
+pub const VALOPER_PREFIX: &str = "celestiavaloper";
+/// Validator consensus address prefix.
+pub const VALCONS_PREFIX: &str = "celestiavalcons";
+
+/// An error from a Go `error` that has no registered ABCI code
+/// (`errorsmod.ABCIInfo` maps it to codespace `undefined`, code 1).
+pub fn undefined(log: impl Into<String>) -> SdkError {
+    SdkError::new("undefined", 1, log)
+}
+
+/// Go `sdk.VerifyAddressFormat` with the default (no-op) verifier.
+pub fn verify_address_format(bz: &[u8]) -> Result<(), SdkError> {
+    if bz.is_empty() {
+        return Err(sdk::unknown_address("addresses cannot be empty"));
+    }
+    if bz.len() > 255 {
+        return Err(sdk::unknown_address("address max length is 255"));
+    }
+    Ok(())
+}
+
+/// Go `sdk.GetFromBech32` + `VerifyAddressFormat` for `prefix`.
+pub fn from_bech32(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
+    if s.trim().is_empty() {
+        return Err(undefined("empty address string is not allowed"));
+    }
+    let (hrp, bz) = encoding::bech32::decode(s).map_err(|e| undefined(e.to_string()))?;
+    if hrp != prefix {
+        return Err(undefined(format!(
+            "invalid Bech32 prefix; expected {prefix}, got {hrp}"
+        )));
+    }
+    verify_address_format(&bz)?;
+    Ok(bz)
+}
+
+/// Go `sdk.AccAddressFromBech32` / the account address codec.
+pub fn acc_from_bech32(s: &str) -> Result<Vec<u8>, SdkError> {
+    from_bech32(s, ACC_PREFIX)
+}
+
+/// Go `sdk.ValAddressFromBech32`.
+pub fn val_from_bech32(s: &str) -> Result<Vec<u8>, SdkError> {
+    from_bech32(s, VALOPER_PREFIX)
+}
+
+/// Go `sdk.ConsAddressFromBech32`.
+pub fn cons_from_bech32(s: &str) -> Result<Vec<u8>, SdkError> {
+    from_bech32(s, VALCONS_PREFIX)
+}
+
+/// Bech32 encoding (`AccAddress.String()` etc.; empty bytes encode to "").
+#[must_use]
+pub fn to_bech32(prefix: &str, bz: &[u8]) -> String {
+    if bz.is_empty() {
+        return String::new();
+    }
+    encoding::bech32::encode(prefix, bz).unwrap_or_default()
+}
+
+/// `authtypes.NewModuleAddress(name)`: `sha256(name)[:20]`.
+#[must_use]
+pub fn module_address(name: &str) -> Vec<u8> {
+    hash::sha256(name.as_bytes())[..20].to_vec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn module_address_gov() {
+        // celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7 is the gov module.
+        assert_eq!(
+            to_bech32(ACC_PREFIX, &module_address("gov")),
+            "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7"
+        );
+        let bz = acc_from_bech32("celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7");
+        assert_eq!(bz, Ok(module_address("gov")));
+        assert_eq!(
+            acc_from_bech32("").map_err(|e| (e.codespace, e.code)),
+            Err(("undefined", 1))
+        );
+        assert!(val_from_bech32("celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7").is_err());
+    }
+}

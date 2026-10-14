@@ -121,7 +121,11 @@ dependencies = [
  "tracing",
  "x-auth",
  "x-bank",
+ "x-blob",
+ "x-circuit",
  "x-consensus",
+ "x-minfee",
+ "x-params",
  "x-upgrade",
 ]
 
@@ -1578,12 +1582,15 @@ version = "0.0.1"
 dependencies = [
  "celestia-core-proto",
  "celestia-proto",
+ "encoding",
  "hash",
  "kvstore",
  "math",
  "multistore",
  "pbjson-types",
  "prost",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -2246,11 +2253,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-blob"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "merkle",
+ "prost",
+ "sdk",
+ "serde_json",
+ "shares",
+ "square",
+ "x-params",
+]
+
+[[package]]
+name = "x-circuit"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "prost",
+ "sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "x-consensus"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "prost",
+ "sdk",
+]
+
+[[package]]
+name = "x-minfee"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-params",
+]
+
+[[package]]
+name = "x-params"
+version = "0.0.1"
+dependencies = [
  "sdk",
 ]
 

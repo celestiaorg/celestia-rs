@@ -1,0 +1,23 @@
+[package]
+name = "x-blob"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia x/blob: params, MsgPayForBlobs handler and blob tx validation."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+merkle = { path = "../../../tier-0-primitives/merkle" }
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+shares = { path = "../../../tier-1-protocol-types/shares" }
+square = { path = "../../../tier-1-protocol-types/square" }
+x-params = { path = "../params" }

@@ -9,6 +9,7 @@
 //! - [`error::SdkError`]: ABCI codespace/code errors.
 //! - [`codec`]: `collections` key encodings.
 
+pub mod address;
 pub mod codec;
 pub mod coins;
 pub mod context;
@@ -16,6 +17,7 @@ pub mod error;
 pub mod event;
 pub mod store;
 pub mod tx;
+pub mod time;
 
 pub use context::{Context, ExecMode, Header};
 pub use error::{Result, SdkError};

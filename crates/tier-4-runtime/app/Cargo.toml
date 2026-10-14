@@ -22,5 +22,9 @@ serde_json = "1"
 tracing = "0.1"
 x-auth = { path = "../../tier-3-app-modules/x/auth" }
 x-bank = { path = "../../tier-3-app-modules/x/bank" }
+x-blob = { path = "../../tier-3-app-modules/x/blob" }
+x-circuit = { path = "../../tier-3-app-modules/x/circuit" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
+x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
+x-params = { path = "../../tier-3-app-modules/x/params" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }

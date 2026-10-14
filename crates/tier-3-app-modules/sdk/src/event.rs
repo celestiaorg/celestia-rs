@@ -67,3 +67,64 @@ impl EventManager {
         &self.events
     }
 }
+
+/// `sdk.TypedEventToEvent`: the event type is the proto full name and each
+/// top-level field of the message's proto3 JSON (original field names,
+/// defaults emitted) becomes an attribute whose value is the field's compact
+/// JSON, in sorted key order.
+///
+/// Go's `jsonpb` escapes `<`, `>` and `&` in strings as `<` etc.; this
+/// helper applies the same escaping so values match byte-for-byte.
+pub fn typed_event<T: prost::Name + serde::Serialize>(msg: &T) -> Result<Event, serde_json::Error> {
+    typed_event_from_json(T::full_name(), serde_json::to_value(msg)?)
+}
+
+/// [`typed_event`] from an already-built proto3-JSON object, for messages
+/// whose gogoproto `customtype` fields (e.g. `LegacyDec` stored as its
+/// scaled-integer string) need their JSON form patched in first.
+pub fn typed_event_from_json(
+    full_name: impl Into<String>,
+    value: serde_json::Value,
+) -> Result<Event, serde_json::Error> {
+    let mut attrs: Vec<(String, String)> = Vec::new();
+    if let serde_json::Value::Object(map) = value {
+        for (k, v) in map {
+            let s = serde_json::to_string(&v)?
+                .replace('<', "\\u003c")
+                .replace('>', "\\u003e")
+                .replace('&', "\\u0026");
+            attrs.push((k, s));
+        }
+    }
+    attrs.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(event(full_name, attrs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_event_sorted_json_attrs() {
+        let e = typed_event(&celestia_proto::celestia::blob::v1::EventPayForBlobs {
+            signer: "a<b".into(),
+            blob_sizes: vec![1, 2],
+            namespaces: vec![vec![0]],
+        })
+        .unwrap_or_default();
+        assert_eq!(e.r#type, "celestia.blob.v1.EventPayForBlobs");
+        let kv: Vec<_> = e
+            .attributes
+            .iter()
+            .map(|a| (a.key.as_str(), a.value.as_str()))
+            .collect();
+        assert_eq!(
+            kv,
+            [
+                ("blob_sizes", "[1,2]"),
+                ("namespaces", "[\"AA==\"]"),
+                ("signer", "\"a\\u003cb\""),
+            ]
+        );
+    }
+}

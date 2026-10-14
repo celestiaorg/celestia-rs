@@ -141,6 +141,13 @@ pub fn init_genesis(
         "consensus" | "upgrade" => {}
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
+        // Go's module manager skips modules whose genesis section is null.
+        "blob" | "circuit" | "minfee" if genesis.is_null() => {}
+        "blob" => x_blob::init_genesis_json(ctx, genesis)?,
+        "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
+        "minfee" => x_minfee::init_genesis_json(ctx, genesis)?,
+        // x/params has no genesis state.
+        "params" => x_params::init_genesis(ctx)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
     let _ = ctx;
