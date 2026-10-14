@@ -23,7 +23,7 @@ const NOT_ON_GATEWAY: &[&str] = &[
     "/cosmos.mint.v1beta1.",
     "/cosmos.store.streaming.",
     "/ibc.applications.fee.",
-    "/ibc.applications.interchain_accounts.controller.",
+    "/celestia.forwarding.v1.",
     "/ibc.lightclients.wasm.",
 ];
 
@@ -129,12 +129,15 @@ fn match_pattern(pattern: &str, segments: &[&str]) -> Option<Vec<(String, String
         if let Some(var) = p.strip_prefix('{').and_then(|v| v.strip_suffix('}')) {
             match var.split_once('=') {
                 Some((name, "**")) => {
-                    // Must be the last pattern segment.
-                    if pi + 1 != pat.len() || i >= segments.len() {
+                    // Deep wildcard: one or more segments, leaving enough
+                    // for the (literal) rest of the pattern.
+                    let rest = pat.len() - pi - 1;
+                    if segments.len() < i + 1 + rest {
                         return None;
                     }
-                    vars.push((name.to_owned(), segments[i..].join("/")));
-                    return Some(vars);
+                    let end = segments.len() - rest;
+                    vars.push((name.to_owned(), segments[i..end].join("/")));
+                    i = end;
                 }
                 Some(_) => return None,
                 None => {
@@ -250,6 +253,52 @@ fn gateway_bytes(v: &str) -> Result<Vec<u8>, String> {
 /// `strconv.ParseInt`.
 const NUMERIC_ENUM_PACKAGES: &[&str] = &["cosmos.gov.v1beta1."];
 
+/// Go's `strconv` error for `value` (`ParseInt`/`ParseUint`, bit size
+/// `bits`), or `None` if it parses.
+fn go_int_error(value: &str, signed: bool, bits: u32) -> Option<String> {
+    let func = if signed { "ParseInt" } else { "ParseUint" };
+    let digits = if signed {
+        value.strip_prefix(['+', '-']).unwrap_or(value)
+    } else {
+        value
+    };
+    let reason = if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        "invalid syntax"
+    } else {
+        let ok = if signed {
+            value
+                .parse::<i128>()
+                .is_ok_and(|n| n >= -(1i128 << (bits - 1)) && n < (1i128 << (bits - 1)))
+        } else {
+            value.parse::<u128>().is_ok_and(|n| n < (1u128 << bits))
+        };
+        if ok {
+            return None;
+        }
+        "value out of range"
+    };
+    Some(format!(
+        "strconv.{func}: parsing {}: {reason}",
+        serde_json::to_string(value).unwrap_or_default()
+    ))
+}
+
+/// The gateway's typed conversion of a path parameter (`runtime.Int64`,
+/// `runtime.Uint64Slice`, ...): Go errors for malformed integers.
+fn check_path_param(field: &services::Field, value: &str) -> Result<(), String> {
+    let (signed, bits) = match field.ty {
+        ty::INT32 | ty::SINT32 | ty::SFIXED32 => (true, 32),
+        ty::INT64 | ty::SINT64 | ty::SFIXED64 => (true, 64),
+        ty::UINT32 | ty::FIXED32 => (false, 32),
+        ty::UINT64 | ty::FIXED64 => (false, 64),
+        _ => return Ok(()),
+    };
+    match go_int_error(value, signed, bits) {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
 /// Converts a query/path parameter string to the JSON value of a field.
 fn param_value(msg: &str, field: &services::Field, value: &str) -> Result<Value, String> {
     Ok(match field.ty {
@@ -285,6 +334,19 @@ fn set_field(
     path: &[&str],
     value: &str,
 ) -> Result<(), String> {
+    set_field_as(obj, msg, path, value, false)
+}
+
+/// [`set_field`]; `path_param` applies the gateway's path-parameter
+/// conversion (repeated values are comma separated, integers parsed
+/// strictly).
+fn set_field_as(
+    obj: &mut Map<String, Value>,
+    msg: &str,
+    path: &[&str],
+    value: &str,
+    path_param: bool,
+) -> Result<(), String> {
     let Some(schema) = services::message(msg) else {
         return Ok(());
     };
@@ -295,6 +357,24 @@ fn set_field(
         return Ok(());
     };
     let key = field.name.to_owned();
+    if rest.is_empty() && path_param {
+        let parts: Vec<&str> = if field.repeated {
+            value.split(',').collect()
+        } else {
+            vec![value]
+        };
+        for part in &parts {
+            check_path_param(field, part)?;
+        }
+        if field.repeated {
+            let mut vals = Vec::new();
+            for part in parts {
+                vals.push(param_value(msg, field, part)?);
+            }
+            obj.insert(key, Value::Array(vals));
+            return Ok(());
+        }
+    }
     if rest.is_empty() {
         let v = param_value(msg, field, value)?;
         if field.repeated {
@@ -315,7 +395,7 @@ fn set_field(
         *entry = Value::Object(Map::new());
     }
     if let Value::Object(inner) = entry {
-        set_field(inner, field.type_name, rest, value)?;
+        set_field_as(inner, field.type_name, rest, value, path_param)?;
     }
     Ok(())
 }
@@ -338,7 +418,7 @@ pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
     }
     for (name, value) in &vars {
         let path: Vec<&str> = name.split('.').collect();
-        if let Err(e) = set_field(&mut obj, method.input, &path, value) {
+        if let Err(e) = set_field_as(&mut obj, method.input, &path, value, true) {
             return error_reply(
                 grpc_query::Code::InvalidArgument,
                 &format!("type mismatch, parameter: {name}, error: {e}"),

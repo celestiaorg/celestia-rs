@@ -9,7 +9,10 @@
 //! - `customtype` fields use the custom type's `MarshalJSON`:
 //!   `math.LegacyDec` is a decimal string (the wire form is the scaled
 //!   integer), `math.Int` the integer string, and a nullable custom field
-//!   that is unset is `null`.
+//!   that is unset is `null`;
+//! - `casttype` `HexBytes` fields marshal as upper-case hex;
+//! - `cosmos.ics23.v1` messages come from the `ics23` crate (camelCase,
+//!   defaults omitted) and are normalized to the gogoproto form.
 
 use celestia_proto::services;
 use celestia_proto::wire_table::{self, ty};
@@ -217,8 +220,27 @@ fn go_style_fields(v: &mut Value, msg: &str) {
     let Some(schema) = services::message(msg) else {
         return;
     };
+    let ics23 = msg.starts_with("cosmos.ics23.");
     let wire = wire_table::message(msg);
     for field in schema.fields {
+        if field.json_name != field.name {
+            if let Some(v) = obj.remove(field.json_name) {
+                obj.insert(field.name.to_owned(), v);
+            }
+        }
+        if ics23 && !obj.contains_key(field.name) {
+            if let Some(d) = scalar_default(field) {
+                obj.insert(field.name.to_owned(), d);
+            }
+        }
+        if CAST_HEX.contains(&(msg, field.name)) {
+            if let Some(v) = obj.get_mut(field.name) {
+                if let Some(b) = v.as_str().and_then(decode_b64) {
+                    *v = Value::String(upper_hex(&b));
+                }
+            }
+            continue;
+        }
         let info = wire.and_then(|w| w.field(field.number));
         let Some(value) = obj.get_mut(field.name) else {
             let is_message = field.ty == ty::MESSAGE && !field.repeated;
@@ -266,6 +288,45 @@ fn go_style_fields(v: &mut Value, msg: &str) {
             other => go_style(other, field.type_name),
         }
     }
+}
+
+/// `bytes` fields with `(gogoproto.casttype) = "…/libs/bytes.HexBytes"`.
+const CAST_HEX: &[(&str, &str)] = &[(
+    "ibc.lightclients.tendermint.v1.ConsensusState",
+    "next_validators_hash",
+)];
+
+fn upper_hex(b: &[u8]) -> String {
+    use std::fmt::Write;
+    b.iter().fold(String::new(), |mut s, x| {
+        let _ = write!(s, "{x:02X}");
+        s
+    })
+}
+
+/// Go `EmitDefaults` value of an unset non-message field.
+fn scalar_default(field: &services::Field) -> Option<Value> {
+    if field.repeated {
+        return Some(Value::Array(Vec::new()));
+    }
+    Some(match field.ty {
+        ty::BOOL => Value::Bool(false),
+        ty::STRING => Value::String(String::new()),
+        ty::BYTES => Value::Null,
+        ty::INT64 | ty::UINT64 | ty::SINT64 | ty::FIXED64 | ty::SFIXED64 => {
+            Value::String("0".into())
+        }
+        ty::ENUM => Value::String(
+            match field.type_name {
+                "cosmos.ics23.v1.HashOp" => "NO_HASH",
+                "cosmos.ics23.v1.LengthOp" => "NO_PREFIX",
+                _ => return None,
+            }
+            .into(),
+        ),
+        ty::MESSAGE => return None,
+        _ => Value::from(0),
+    })
 }
 
 #[cfg(test)]

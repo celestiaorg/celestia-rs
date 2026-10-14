@@ -1,6 +1,6 @@
 //! celestia-app module queries: `celestia.mint.v1`, `celestia.blob.v1`,
-//! `celestia.minfee.v1`, `celestia.signal.v1`, `celestia.fibre.v1`
-//! (except `ValidatePaymentPromise`) and `celestia.valaddr.v1`.
+//! `celestia.minfee.v1`, `celestia.signal.v1`, `celestia.fibre.v1` and
+//! `celestia.valaddr.v1`.
 
 use celestia_proto::celestia::{blob, fibre, minfee, mint, signal, valaddr};
 use celestia_proto::cosmos::staking::v1beta1 as spb;
@@ -34,6 +34,10 @@ pub(crate) fn register(r: &mut Router) {
     );
     r.add("/celestia.fibre.v1.Query/Params", fibre_params);
     r.add("/celestia.fibre.v1.Query/EscrowAccount", escrow_account);
+    r.add(
+        "/celestia.fibre.v1.Query/ValidatePaymentPromise",
+        validate_payment_promise,
+    );
     r.add("/celestia.fibre.v1.Query/Withdrawals", withdrawals);
     r.add(
         "/celestia.fibre.v1.Query/IsPaymentProcessed",
@@ -200,6 +204,28 @@ fn fibre_params(
 ) -> QResult<fibre::v1::QueryParamsResponse> {
     Ok(fibre::v1::QueryParamsResponse {
         params: Some(x_fibre::get_params(ctx)?),
+    })
+}
+
+/// `ValidatePaymentPromise`. The validator-local promise cache (a
+/// non-consensus double-spend budget kept in memory by each Go node) is
+/// not modeled: a promise that passes the stateful and stateless checks
+/// is reported valid.
+fn validate_payment_promise(
+    ctx: &mut Context<'_>,
+    req: fibre::v1::QueryValidatePaymentPromiseRequest,
+) -> QResult<fibre::v1::QueryValidatePaymentPromiseResponse> {
+    let p = req.promise.unwrap_or_default();
+    let expiration = x_fibre::msgs::validate_payment_promise_stateful_internal(ctx, &p, false)
+        .map_err(|e| crate::error::internal(e.log))?
+        .map_err(crate::error::internal)?;
+    x_fibre::promise::from_proto_check(&p)
+        .map_err(|e| invalid_arg(format!("invalid payment promise format: {e}")))?;
+    x_fibre::promise::validate(&p).map_err(invalid_arg)?;
+    Ok(fibre::v1::QueryValidatePaymentPromiseResponse {
+        is_valid: true,
+        expiration_time: Some(expiration),
+        shard_retention: x_fibre::get_params(ctx)?.shard_retention,
     })
 }
 

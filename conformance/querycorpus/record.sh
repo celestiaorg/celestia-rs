@@ -7,7 +7,7 @@
 # pruning "nothing", gRPC and REST API enabled), re-drive the scenario's
 # recorded ABCI requests into it, then issue the corpus requests over ABCI
 # Query and REST (crates/devnet-conformance/examples/record_queries.rs) and
-# write conformance/querycorpus/<scenario>.json. The Go node keeps all
+# write conformance/querycorpus/<scenario>.json.gz. The Go node keeps all
 # heights, so requests target several historical heights.
 #
 # Binaries come from $DEVNET_BIN (default target/devnet-bin), as for
@@ -56,9 +56,10 @@ PY
   done
   sleep 2
   "$REC" "$SCENARIO" "127.0.0.1:$P_APP" "127.0.0.1:$P_API" "$ROOT/conformance/querycorpus/$SCENARIO.json"
+  gzip -9 -n -f "$ROOT/conformance/querycorpus/$SCENARIO.json"
   kill $APP 2>/dev/null || true
   wait $APP 2>/dev/null || true
   trap - EXIT
   rm -rf "$WORK"
-  echo "wrote conformance/querycorpus/$SCENARIO.json"
+  echo "wrote conformance/querycorpus/$SCENARIO.json.gz"
 done

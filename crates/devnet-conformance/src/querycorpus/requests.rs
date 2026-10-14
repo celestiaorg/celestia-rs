@@ -892,34 +892,12 @@ impl<'a> Builder<'a> {
             self.latest(&format!("{z}Ism"), &json!({"id": id}));
             self.latest(&format!("{z}Messages"), &json!({"id": id}));
         }
-        let fw = "/celestia.forwarding.v1.Query/";
-        for (domain, recipient) in [
-            (
-                1u32,
-                "0x000000000000000000000000000000000000000000000000000000000000beef",
-            ),
-            (0, ""),
-            (7, "nothex"),
-        ] {
-            self.latest(
-                &format!("{fw}DeriveForwardingAddress"),
-                &json!({"dest_domain": domain, "dest_recipient": recipient}),
-            );
-            self.latest(
-                &format!("{fw}QuoteForwardingFee"),
-                &json!({"dest_domain": domain}),
-            );
-        }
         let rf = "/cosmos.base.reflection.v1beta1.ReflectionService/";
+        let all = self.get(&format!("{rf}ListAllInterfaces"), &json!({}));
         self.latest(&format!("{rf}ListAllInterfaces"), &json!({}));
-        for i in [
-            "cosmos.base.v1beta1.Msg",
-            "cosmos.tx.v1beta1.Tx",
-            "cosmos.crypto.PubKey",
-            "cosmos.auth.v1beta1.AccountI",
-            "nope",
-            "",
-        ] {
+        let mut ifaces = strs(&all, "/interface_names");
+        ifaces.extend(["nope".to_owned(), String::new()]);
+        for i in &ifaces {
             self.latest(
                 &format!("{rf}ListImplementations"),
                 &json!({"interface_name": i}),
@@ -1124,7 +1102,66 @@ impl<'a> Builder<'a> {
                 );
             }
         }
-        let _ = strs;
+        self.forwarding(&tids);
+    }
+
+    fn forwarding(&mut self, tokens: &[String]) {
+        let fw = "/celestia.forwarding.v1.Query/";
+        let beef = "0x000000000000000000000000000000000000000000000000000000000000beef";
+        let mut domains = vec![0u32, 1, 7];
+        let w = "/hyperlane.warp.v1.Query/";
+        for id in tokens.iter().filter(|t| !t.is_empty()) {
+            let rr = self.get(&format!("{w}RemoteRouters"), &json!({"id": id}));
+            for r in arr(&rr, "/remote_routers") {
+                if let Some(d) = r
+                    .pointer("/receiver_domain")
+                    .and_then(Value::as_u64)
+                    .and_then(|d| u32::try_from(d).ok())
+                {
+                    if !domains.contains(&d) {
+                        domains.push(d);
+                    }
+                }
+            }
+        }
+        let mut toks: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        toks.push("nothex");
+        for tok in &toks {
+            for &domain in &domains {
+                for recipient in [beef, "", "nothex"] {
+                    self.latest(
+                        &format!("{fw}DeriveForwardingAddress"),
+                        &json!({"dest_domain": domain, "dest_recipient": recipient, "token_id": tok}),
+                    );
+                }
+                self.latest(
+                    &format!("{fw}QuoteForwardingFee"),
+                    &json!({"dest_domain": domain, "token_id": tok}),
+                );
+            }
+            for (hook, meta) in [
+                (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "",
+                ),
+                (beef, "0x"),
+                ("nothex", ""),
+                ("", "nothex"),
+                ("", "0xdeadbeef"),
+            ] {
+                let d = domains.last().copied().unwrap_or(1);
+                self.latest(
+                    &format!("{fw}DeriveForwardingAddress"),
+                    &json!({"dest_domain": d, "dest_recipient": beef, "token_id": tok,
+                            "custom_hook_id": hook, "custom_hook_metadata": meta}),
+                );
+                self.latest(
+                    &format!("{fw}QuoteForwardingFee"),
+                    &json!({"dest_domain": d, "token_id": tok,
+                            "custom_hook_id": hook, "custom_hook_metadata": meta}),
+                );
+            }
+        }
     }
 
     fn store_queries(&mut self, addrs: &[String]) {

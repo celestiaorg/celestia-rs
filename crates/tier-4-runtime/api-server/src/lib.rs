@@ -123,6 +123,20 @@ pub fn grpc_call(
     r.map_err(|e| grpc_error_status(path, e))
 }
 
+/// Services Go's gRPC server registers that are answered outside the
+/// module query router here (or not ported): an unknown method of these is
+/// "unknown method", any other service is "unknown service".
+const GO_ONLY_SERVICES: &[&str] = &[
+    "cosmos.tx.v1beta1.Service",
+    "cosmos.base.node.v1beta1.Service",
+    "cosmos.base.tendermint.v1beta1.Service",
+    "cosmos.base.reflection.v1beta1.ReflectionService",
+    "cosmos.base.reflection.v2alpha1.ReflectionService",
+    "cosmos.reflection.v1.ReflectionService",
+    "celestia.core.v1.gas_estimation.GasEstimator",
+    "celestia.core.v1.tx.Tx",
+];
+
 /// The gRPC status Go's server returns for a failed query on `path`.
 #[must_use]
 pub fn grpc_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, String) {
@@ -132,9 +146,7 @@ pub fn grpc_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, St
                 .trim_start_matches('/')
                 .split_once('/')
                 .unwrap_or((path, ""));
-            let known = celestia_proto::services::METHODS
-                .iter()
-                .any(|m| m.path.starts_with(&format!("/{svc}/")));
+            let known = grpc_query::router().has_service(svc) || GO_ONLY_SERVICES.contains(&svc);
             let msg = if known {
                 format!("unknown method {method} for service {svc}")
             } else {

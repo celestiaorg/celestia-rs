@@ -32,6 +32,14 @@ x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
 x-valaddr = { path = "../../tier-3-app-modules/x/valaddr" }
 x-distribution = { path = "../../tier-3-app-modules/x/distribution" }
 x-gov = { path = "../../tier-3-app-modules/x/gov" }
+x-forwarding = { path = "../../tier-3-app-modules/x/forwarding" }
+x-hyperlane = { path = "../../tier-3-app-modules/x/hyperlane" }
+x-ibc = { path = "../../tier-3-app-modules/x/ibc" }
+x-icahost = { path = "../../tier-3-app-modules/x/icahost" }
+x-transfer = { path = "../../tier-3-app-modules/x/transfer" }
+x-warp = { path = "../../tier-3-app-modules/x/warp" }
+x-zkism = { path = "../../tier-3-app-modules/x/zkism" }
+kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 x-slashing = { path = "../../tier-3-app-modules/x/slashing" }
 x-staking = { path = "../../tier-3-app-modules/x/staking" }
 pbjson-types = "0.7"

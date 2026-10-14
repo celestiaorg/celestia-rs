@@ -1,7 +1,8 @@
 //! End-to-end transport test: the `empty` scenario is replayed into an app
-//! served by the gRPC query server and the REST API over real sockets; a
-//! sample of the Go-recorded corpus is answered through them (tonic client,
-//! `x-cosmos-block-height` metadata; HTTP/1.1 GET) and must match Go.
+//! served by the gRPC query server and the REST API over real sockets; the
+//! Go-recorded gRPC-method corpus cases (tonic client,
+//! `x-cosmos-block-height` metadata) and a sample of the REST cases
+//! (HTTP/1.1 GET) are answered through them and must match Go.
 
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -29,15 +30,7 @@ async fn grpc_server_answers_like_go() -> anyhow::Result<()> {
     let corpus = load("empty")?;
     let mut checked = 0;
     for case in corpus.abci.iter().filter(|c| {
-        [
-            "/cosmos.bank.",
-            "/cosmos.auth.",
-            "/cosmos.staking.",
-            "/cosmos.gov.",
-            "/cosmos.distribution.",
-        ]
-        .iter()
-        .any(|p| c.path.starts_with(p))
+        celestia_proto::services::method(&c.path).is_some()
             && !c.prove
             && !needs_consensus(&c.path)
             && c.height >= 0

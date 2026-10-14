@@ -197,8 +197,16 @@ pub fn to_lines(c: &Corpus) -> anyhow::Result<String> {
 
 /// Loads a recorded corpus.
 pub fn load(scenario: &str) -> anyhow::Result<Corpus> {
-    let path = corpus_dir().join(format!("{scenario}.json"));
-    Ok(serde_json::from_slice(&std::fs::read(path)?)?)
+    use std::io::Read;
+    let gz = corpus_dir().join(format!("{scenario}.json.gz"));
+    let bytes = if gz.exists() {
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(gz)?).read_to_end(&mut out)?;
+        out
+    } else {
+        std::fs::read(corpus_dir().join(format!("{scenario}.json")))?
+    };
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 /// Methods answered by celestia-core RPC (block store, tx indexer,

@@ -1,28 +1,14 @@
 //! Query corpus parity: every ABCI query recorded against Go celestia-appd
-//! (`conformance/querycorpus/<scenario>.json`) must get a byte-identical
+//! (`conformance/querycorpus/<scenario>.json.gz`) must get a byte-identical
 //! response (code, codespace, log, value, proof ops, height) from the Rust
-//! app after it replays the same scenario.
+//! app after it replays the same scenario, and every REST request the same
+//! status and JSON body from the Rust gateway.
 //!
-//! Exceptions are listed in [`DEFERRED`] (methods not ported yet) and
-//! [`KNOWN_DIVERGENCES`] (Go behavior that cannot be reproduced, with the
-//! reason). Responses in Go map order are compared canonically
+//! Exceptions are listed in [`KNOWN_DIVERGENCES`] (Go behavior that cannot
+//! be reproduced, with the reason). Responses in Go map order are compared canonically
 //! (`querycorpus::comparable`).
 
 use devnet_conformance::querycorpus::{check_abci, check_rest, corpus_dir};
-
-/// Methods whose handlers are not ported yet.
-const DEFERRED: &[&str] = &[
-    // Amino JSON tx codec.
-    "/cosmos.tx.v1beta1.Service/TxDecodeAmino",
-    "/cosmos.tx.v1beta1.Service/TxEncodeAmino",
-    // Stateful payment-promise validation (signature + escrow checks).
-    "/celestia.fibre.v1.Query/ValidatePaymentPromise",
-    "/celestia.forwarding.v1.",
-    "/celestia.zkism.v1.",
-    "/hyperlane.",
-    "/ibc.",
-    "/cosmos.base.reflection.v1beta1.",
-];
 
 /// Requests whose Go answer depends on Go internals.
 const KNOWN_DIVERGENCES: &[(&str, &str)] = &[
@@ -36,10 +22,9 @@ const KNOWN_DIVERGENCES: &[(&str, &str)] = &[
 ];
 
 fn deferred(path: &str, data: &str) -> bool {
-    DEFERRED.iter().any(|p| path.starts_with(p))
-        || KNOWN_DIVERGENCES
-            .iter()
-            .any(|(p, d)| *p == path && *d == data)
+    KNOWN_DIVERGENCES
+        .iter()
+        .any(|(p, d)| *p == path && *d == data)
 }
 
 fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
@@ -75,7 +60,6 @@ fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
     let failures: Vec<String> = r
         .mismatches
         .iter()
-        .filter(|(c, _, _)| !DEFERRED.iter().any(|p| c.method.starts_with(p)))
         .map(|(c, status, body)| {
             format!(
                 "{} {}\n  go:   {} {}\n  rust: {status} {body}",
@@ -98,16 +82,6 @@ fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
 }
 
 #[test]
-fn rest_corpus_empty() -> anyhow::Result<()> {
-    assert_rest_corpus("empty")
-}
-
-#[test]
-fn rest_corpus_staking_lifecycle() -> anyhow::Result<()> {
-    assert_rest_corpus("staking-lifecycle")
-}
-
-#[test]
 fn every_scenario_has_a_corpus_test() {
     let mut recorded: Vec<String> = std::fs::read_dir(corpus_dir())
         .map(|d| {
@@ -115,7 +89,7 @@ fn every_scenario_has_a_corpus_test() {
                 .filter_map(|e| {
                     e.file_name()
                         .to_str()
-                        .and_then(|n| n.strip_suffix(".json"))
+                        .and_then(|n| n.strip_suffix(".json.gz"))
                         .map(str::to_owned)
                 })
                 .collect()
@@ -125,14 +99,42 @@ fn every_scenario_has_a_corpus_test() {
     assert_eq!(recorded, SCENARIOS, "update SCENARIOS and add a test");
 }
 
-const SCENARIOS: &[&str] = &["empty", "staking-lifecycle"];
+const SCENARIOS: &[&str] = &[
+    "authz-feegrant",
+    "blob",
+    "consensus",
+    "empty",
+    "evidence",
+    "fibre",
+    "gov",
+    "hyperlane",
+    "ibc",
+    "staking-lifecycle",
+    "vesting",
+    "zkism-forwarding",
+];
 
-#[test]
-fn query_corpus_empty() -> anyhow::Result<()> {
-    assert_corpus("empty")
+macro_rules! corpus_tests {
+    ($($name:ident => $scenario:literal;)*) => {$(
+        #[test]
+        fn $name() -> anyhow::Result<()> {
+            assert_corpus($scenario)?;
+            assert_rest_corpus($scenario)
+        }
+    )*};
 }
 
-#[test]
-fn query_corpus_staking_lifecycle() -> anyhow::Result<()> {
-    assert_corpus("staking-lifecycle")
+corpus_tests! {
+    corpus_authz_feegrant => "authz-feegrant";
+    corpus_blob => "blob";
+    corpus_consensus => "consensus";
+    corpus_empty => "empty";
+    corpus_evidence => "evidence";
+    corpus_fibre => "fibre";
+    corpus_gov => "gov";
+    corpus_hyperlane => "hyperlane";
+    corpus_ibc => "ibc";
+    corpus_staking_lifecycle => "staking-lifecycle";
+    corpus_vesting => "vesting";
+    corpus_zkism_forwarding => "zkism-forwarding";
 }

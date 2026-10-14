@@ -211,6 +211,9 @@ impl App {
                 value,
                 ..ResponseQuery::default()
             },
+            // A recovered panic is reported by `BaseApp.Query`'s deferred
+            // handler, without a height.
+            Err(e) if e.is_panic() => query_result(&e.to_sdk()),
             Err(e) => ResponseQuery {
                 height: req.height,
                 ..query_result(&e.to_sdk())

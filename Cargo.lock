@@ -942,6 +942,7 @@ dependencies = [
  "app",
  "celestia-proto",
  "encoding",
+ "flate2",
  "hash",
  "hex",
  "http",
@@ -1270,6 +1271,7 @@ name = "grpc-query"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "kvstore",
  "math",
  "pbjson-types",
  "prost",
@@ -1283,14 +1285,21 @@ dependencies = [
  "x-distribution",
  "x-feegrant",
  "x-fibre",
+ "x-forwarding",
  "x-gov",
+ "x-hyperlane",
+ "x-ibc",
+ "x-icahost",
  "x-minfee",
  "x-mint",
  "x-signal",
  "x-slashing",
  "x-staking",
+ "x-transfer",
  "x-upgrade",
  "x-valaddr",
+ "x-warp",
+ "x-zkism",
 ]
 
 [[package]]

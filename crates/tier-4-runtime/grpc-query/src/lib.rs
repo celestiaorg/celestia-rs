@@ -21,6 +21,10 @@ mod circuit_evidence;
 mod distribution;
 mod feegrant;
 mod gov;
+mod hyperlane;
+mod ibc;
+mod reflection;
+mod reflection_table;
 mod sdk_misc;
 mod slashing;
 mod staking;
@@ -76,6 +80,14 @@ impl Router {
         self.routes.get(path)
     }
 
+    /// Whether any method of `service` (full name, no slashes) is
+    /// registered.
+    #[must_use]
+    pub fn has_service(&self, service: &str) -> bool {
+        let prefix = format!("/{service}/");
+        self.routes.keys().any(|k| k.starts_with(&prefix))
+    }
+
     /// All registered method paths.
     pub fn paths(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.routes.keys().copied()
@@ -107,6 +119,9 @@ pub fn router() -> &'static Router {
         distribution::register(&mut r);
         feegrant::register(&mut r);
         gov::register(&mut r);
+        hyperlane::register(&mut r);
+        ibc::register(&mut r);
+        reflection::register(&mut r);
         sdk_misc::register(&mut r);
         slashing::register(&mut r);
         staking::register(&mut r);

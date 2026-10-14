@@ -82,6 +82,9 @@ pub enum QueryError {
     /// An unregistered Go error (`errors.New`, `fmt.Errorf`,
     /// `collections.ErrNotFound`, proto decode errors).
     Plain(String),
+    /// A Go panic in the handler (recovered by `BaseApp.Query` as
+    /// `ErrPanic`, by the gRPC server's recovery interceptor as `Internal`).
+    Panic(String),
 }
 
 /// Handler result.
@@ -133,8 +136,15 @@ impl QueryError {
         match self {
             Self::Status(code, msg) => format!("rpc error: code = {} desc = {msg}", code.name()),
             Self::Sdk(e) => e.log.clone(),
-            Self::Plain(msg) => msg.clone(),
+            Self::Plain(msg) | Self::Panic(msg) => msg.clone(),
         }
+    }
+
+    /// Whether this is a recovered panic (the ABCI response then carries
+    /// no height).
+    #[must_use]
+    pub fn is_panic(&self) -> bool {
+        matches!(self, Self::Panic(_))
     }
 
     /// `gRPCErrorToSDKError`: the error reported by an ABCI query.
@@ -151,6 +161,7 @@ impl QueryError {
             // Registered errors carry gRPC code Unknown.
             Self::Sdk(_) => errs::unknown_request(msg),
             Self::Plain(_) => errs::invalid_request(msg),
+            Self::Panic(_) => sdk::error::go_panic(format!("{msg}: panic")),
         }
     }
 
@@ -171,6 +182,7 @@ impl QueryError {
                 )
             }
             Self::Plain(msg) => (Code::Unknown, msg.clone()),
+            Self::Panic(msg) => (Code::Internal, msg.clone()),
         }
     }
 }

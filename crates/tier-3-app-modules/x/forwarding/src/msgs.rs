@@ -131,8 +131,8 @@ fn coins(c: &Coin) -> Result<Coins> {
     Coins::sanitized(vec![c.clone()])
 }
 
-/// `QuoteIgpFeeForToken`.
-fn quote_igp_fee(
+/// `QuoteIgpFeeForToken` (also used by the `QuoteForwardingFee` query).
+pub fn quote_igp_fee(
     ctx: &mut Context<'_>,
     deps: &Deps<'_>,
     token: &x_warp::HypToken,

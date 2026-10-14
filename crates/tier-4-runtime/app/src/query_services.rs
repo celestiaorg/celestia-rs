@@ -9,8 +9,9 @@ use celestia_proto::cosmos::base::node::v1beta1::{
     ConfigRequest, ConfigResponse, StatusRequest, StatusResponse,
 };
 use celestia_proto::cosmos::tx::v1beta1::{
-    SimulateRequest, SimulateResponse, Tx, TxDecodeRequest, TxDecodeResponse, TxEncodeRequest,
-    TxEncodeResponse, TxRaw,
+    SimulateRequest, SimulateResponse, Tx, TxDecodeAminoRequest, TxDecodeAminoResponse,
+    TxDecodeRequest, TxDecodeResponse, TxEncodeAminoRequest, TxEncodeAminoResponse,
+    TxEncodeRequest, TxEncodeResponse, TxRaw,
 };
 use grpc_query::{Code, QResult, QueryError};
 use prost::Message;
@@ -40,6 +41,12 @@ pub fn route(path: &str) -> Option<AppHandler> {
         "/cosmos.tx.v1beta1.Service/Simulate" => typed!(simulate_grpc, SimulateRequest),
         "/cosmos.tx.v1beta1.Service/TxDecode" => typed!(tx_decode, TxDecodeRequest),
         "/cosmos.tx.v1beta1.Service/TxEncode" => typed!(tx_encode, TxEncodeRequest),
+        "/cosmos.tx.v1beta1.Service/TxDecodeAmino" => {
+            typed!(tx_decode_amino, TxDecodeAminoRequest)
+        }
+        "/cosmos.tx.v1beta1.Service/TxEncodeAmino" => {
+            typed!(tx_encode_amino, TxEncodeAminoRequest)
+        }
         "/cosmos.base.node.v1beta1.Service/Config" => typed!(node_config, ConfigRequest),
         "/cosmos.base.node.v1beta1.Service/Status" => typed!(node_status, StatusRequest),
         _ => return None,
@@ -146,6 +153,43 @@ fn tx_decode(_: &mut App, _: &mut QueryState, req: TxDecodeRequest) -> QResult<T
             signatures: tx.signatures,
         }),
     })
+}
+
+/// The legacy amino codec of `StdTx` is not ported: only the request
+/// checks that precede it are answered like Go.
+fn amino_unsupported() -> QueryError {
+    QueryError::Status(
+        Code::Unimplemented,
+        "legacy amino tx codec is not supported".into(),
+    )
+}
+
+fn tx_decode_amino(
+    _: &mut App,
+    _: &mut QueryState,
+    req: TxDecodeAminoRequest,
+) -> QResult<TxDecodeAminoResponse> {
+    if req.amino_binary.is_empty() {
+        return Err(QueryError::Status(
+            Code::InvalidArgument,
+            "invalid empty tx bytes".into(),
+        ));
+    }
+    Err(amino_unsupported())
+}
+
+fn tx_encode_amino(
+    _: &mut App,
+    _: &mut QueryState,
+    req: TxEncodeAminoRequest,
+) -> QResult<TxEncodeAminoResponse> {
+    if req.amino_json.is_empty() {
+        return Err(QueryError::Status(
+            Code::InvalidArgument,
+            "invalid empty tx json".into(),
+        ));
+    }
+    Err(amino_unsupported())
 }
 
 fn tx_encode(_: &mut App, _: &mut QueryState, req: TxEncodeRequest) -> QResult<TxEncodeResponse> {
