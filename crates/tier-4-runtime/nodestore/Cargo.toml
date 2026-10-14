@@ -1,0 +1,27 @@
+[package]
+name = "nodestore"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Port of celestia-core v0.42.3 store/ and state/: block store, state store, State, block execution and the ABCI handshake."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+pbjson-types = "0.7"
+prost = "0.13"
+serde_json = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+crypto = { path = "../../tier-0-primitives/crypto" }
+hash = { path = "../../tier-0-primitives/hash" }

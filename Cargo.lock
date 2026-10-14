@@ -1896,6 +1896,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nodestore"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "crypto",
+ "ctypes",
+ "hash",
+ "hex",
+ "kvdb",
+ "pbjson-types",
+ "prost",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
