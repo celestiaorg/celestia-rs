@@ -363,6 +363,110 @@ pub fn burn_coins(ctx: &mut Context<'_>, module: &str, amt: &Coins) -> Result<()
     Ok(())
 }
 
+/// `trackDelegation` / `trackUndelegation`: vesting accounts are not
+/// supported yet and fail loudly.
+fn track_vesting(ctx: &mut Context<'_>, addr: &[u8]) -> Result<()> {
+    match x_auth::get_account(ctx, addr)? {
+        None => Err(errs::unknown_address(format!(
+            "account {} does not exist",
+            x_auth::bech32(addr)?
+        ))),
+        Some(Account::Base(_) | Account::Module(_)) => Ok(()),
+        Some(_) => Err(errs::not_supported("vesting account delegation tracking")),
+    }
+}
+
+/// `DelegateCoins`.
+pub fn delegate_coins(
+    ctx: &mut Context<'_>,
+    del: &[u8],
+    module_addr: &[u8],
+    amt: &Coins,
+) -> Result<()> {
+    if x_auth::get_account(ctx, module_addr)?.is_none() {
+        return Err(errs::unknown_address(format!(
+            "module account {} does not exist",
+            x_auth::bech32(module_addr)?
+        )));
+    }
+    if !amt.is_valid() {
+        return Err(errs::invalid_coins(amt.to_string()));
+    }
+    for coin in amt {
+        let balance = get_balance(ctx, del, &coin.denom)?;
+        if balance.amount < coin.amount {
+            return Err(errs::insufficient_funds(format!(
+                "failed to delegate; {balance} is smaller than {amt}"
+            )));
+        }
+        let rest = balance.amount.checked_sub(&coin.amount).map_err(math_err)?;
+        set_balance(ctx, del, &Coin::with_amount(coin.denom.clone(), rest))?;
+    }
+    track_vesting(ctx, del).map_err(|e| e.wrap("failed to track delegation"))?;
+    ctx.events.emit(event(
+        "coin_spent",
+        [
+            ("spender", x_auth::bech32(del)?),
+            ("amount", amt.to_string()),
+        ],
+    ));
+    add_coins(ctx, module_addr, amt)
+}
+
+/// `UndelegateCoins`.
+pub fn undelegate_coins(
+    ctx: &mut Context<'_>,
+    module_addr: &[u8],
+    del: &[u8],
+    amt: &Coins,
+) -> Result<()> {
+    if x_auth::get_account(ctx, module_addr)?.is_none() {
+        return Err(errs::unknown_address(format!(
+            "module account {} does not exist",
+            x_auth::bech32(module_addr)?
+        )));
+    }
+    if !amt.is_valid() {
+        return Err(errs::invalid_coins(amt.to_string()));
+    }
+    sub_unlocked_coins(ctx, module_addr, amt)?;
+    track_vesting(ctx, del).map_err(|e| e.wrap("failed to track undelegation"))?;
+    add_coins(ctx, del, amt)
+}
+
+fn staking_module_addr(ctx: &mut Context<'_>, module: &str) -> Result<Address> {
+    let acc = x_auth::get_module_account(ctx, module)?
+        .ok_or_else(|| errs::unknown_address(format!("module account {module} does not exist")))?;
+    if !acc.permissions.iter().any(|p| p == x_auth::STAKING) {
+        return Err(errs::unauthorized(format!(
+            "module account {module} does not have permissions to receive delegated coins"
+        )));
+    }
+    x_auth::Account::Module(acc).address()
+}
+
+/// `DelegateCoinsFromAccountToModule`.
+pub fn delegate_coins_from_account_to_module(
+    ctx: &mut Context<'_>,
+    from: &[u8],
+    module: &str,
+    amt: &Coins,
+) -> Result<()> {
+    let to = staking_module_addr(ctx, module)?;
+    delegate_coins(ctx, from, &to, amt)
+}
+
+/// `UndelegateCoinsFromModuleToAccount`.
+pub fn undelegate_coins_from_module_to_account(
+    ctx: &mut Context<'_>,
+    module: &str,
+    to: &[u8],
+    amt: &Coins,
+) -> Result<()> {
+    let from = staking_module_addr(ctx, module)?;
+    undelegate_coins(ctx, &from, to, amt)
+}
+
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
     let gs: GenesisState =

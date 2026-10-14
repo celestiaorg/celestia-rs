@@ -38,10 +38,29 @@ macro_rules! routes {
 }
 
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::slashing::v1beta1 as slashing;
+use celestia_proto::cosmos::staking::v1beta1 as staking;
 
 routes! {
     bank::MsgSend => x_bank::msgs::handle_send,
     bank::MsgMultiSend => x_bank::msgs::handle_multi_send,
+    staking::MsgCreateValidator => x_staking::handle_create_validator,
+    staking::MsgEditValidator => x_staking::handle_edit_validator,
+    staking::MsgDelegate => x_staking::handle_delegate,
+    staking::MsgBeginRedelegate => x_staking::handle_begin_redelegate,
+    staking::MsgUndelegate => x_staking::handle_undelegate,
+    staking::MsgCancelUnbondingDelegation => x_staking::handle_cancel_unbonding_delegation,
+    staking::MsgUpdateParams => x_staking::handle_update_params,
+    distr::MsgSetWithdrawAddress => x_distribution::handle_set_withdraw_address,
+    distr::MsgWithdrawDelegatorReward => x_distribution::handle_withdraw_delegator_reward,
+    distr::MsgWithdrawValidatorCommission => x_distribution::handle_withdraw_validator_commission,
+    distr::MsgFundCommunityPool => x_distribution::handle_fund_community_pool,
+    distr::MsgCommunityPoolSpend => x_distribution::handle_community_pool_spend,
+    distr::MsgUpdateParams => x_distribution::handle_update_params,
+    distr::MsgDepositValidatorRewardsPool => x_distribution::handle_deposit_validator_rewards_pool,
+    slashing::MsgUnjail => x_slashing::handle_unjail,
+    slashing::MsgUpdateParams => x_slashing::handle_update_params,
 }
 
 /// Legacy `ValidateBasic` for messages that still implement it in v0.52.12.

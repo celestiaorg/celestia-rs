@@ -12,8 +12,19 @@ use crate::tx::{AnteFn, DecodeFn, run_ante, run_msgs};
 
 /// JSON gentx → canonical tx bytes (`TxJSONDecoder` + `TxEncoder`).
 pub fn gentx_bytes(json: &serde_json::Value) -> Result<Vec<u8>> {
+    let mut json = json.clone();
+    // LegacyDec fields are decimal strings in JSON but `Marshal()` text on
+    // the wire.
+    if let Some(msgs) = json
+        .pointer_mut("/body/messages")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for m in msgs {
+            x_staking::msgs::json_msg_to_wire(m)?;
+        }
+    }
     let tx: TxJson =
-        serde_json::from_value(json.clone()).map_err(|e| errs::json_unmarshal(e.to_string()))?;
+        serde_json::from_value(json).map_err(|e| errs::json_unmarshal(e.to_string()))?;
     let raw = TxRaw {
         body_bytes: tx.body.unwrap_or_default().encode_to_vec(),
         auth_info_bytes: tx.auth_info.unwrap_or_default().encode_to_vec(),

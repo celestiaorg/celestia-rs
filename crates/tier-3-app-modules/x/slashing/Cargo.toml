@@ -1,0 +1,23 @@
+[package]
+name = "x-slashing"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "x/slashing: liveness tracking, downtime jailing, unjail."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+encoding = { path = "../../../tier-0-primitives/encoding" }
+math = { path = "../../../tier-0-primitives/math" }
+pbjson-types = "0.7"
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-staking = { path = "../staking" }

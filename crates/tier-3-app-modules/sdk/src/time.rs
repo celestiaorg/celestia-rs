@@ -209,6 +209,46 @@ pub fn parse_time_bytes(b: &[u8]) -> Option<Timestamp> {
     ))
 }
 
+/// Go `t.Add(d)` for a protobuf duration.
+#[must_use]
+pub fn add_duration(ts: &Timestamp, d: &Duration) -> Timestamp {
+    add(ts, duration_nanos(d))
+}
+
+/// Orders two instants.
+#[must_use]
+pub fn cmp(a: &Timestamp, b: &Timestamp) -> std::cmp::Ordering {
+    to_nanos(a).cmp(&to_nanos(b))
+}
+
+/// Go `a.Before(b)`.
+#[must_use]
+pub fn before(a: &Timestamp, b: &Timestamp) -> bool {
+    to_nanos(a) < to_nanos(b)
+}
+
+/// Go `a.After(b)`.
+#[must_use]
+pub fn after(a: &Timestamp, b: &Timestamp) -> bool {
+    to_nanos(a) > to_nanos(b)
+}
+
+/// Go `time.Unix(0, 0).UTC()`.
+#[must_use]
+pub fn unix_epoch() -> Timestamp {
+    Timestamp::default()
+}
+
+/// Go `t.UTC().Format(time.RFC3339)` (no fractional seconds).
+#[must_use]
+pub fn format_rfc3339(ts: &Timestamp) -> String {
+    let (y, mo, d, h, mi, s, _) = to_civil(ts);
+    let mut out = String::new();
+    push_year(&mut out, y);
+    let _ = write!(out, "-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -24,3 +24,5 @@ celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 [dev-dependencies]
 iavl = { path = "../tier-2-state-and-store/iavl" }
 multistore = { path = "../tier-2-state-and-store/multistore" }
+sdk = { path = "../tier-3-app-modules/sdk" }
+x-staking = { path = "../tier-3-app-modules/x/staking" }

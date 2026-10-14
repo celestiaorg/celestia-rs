@@ -13,6 +13,7 @@ pub mod address;
 pub mod codec;
 pub mod coins;
 pub mod context;
+pub mod dec_coins;
 pub mod error;
 pub mod event;
 pub mod store;

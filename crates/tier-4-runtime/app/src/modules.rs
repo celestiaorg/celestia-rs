@@ -159,6 +159,9 @@ pub fn init_genesis(
         "transfer" => x_transfer::init_genesis_json(ctx, genesis, &mut TransferBank)?,
         "interchainaccounts" => x_icahost::init_genesis_json(ctx, genesis)?,
         "packetfowardmiddleware" => x_packetforward::init_genesis_json(ctx, genesis)?,
+        "distribution" => x_distribution::init_genesis(ctx, genesis)?,
+        "staking" => return x_staking::init_genesis(ctx, genesis),
+        "slashing" => x_slashing::init_genesis(ctx, genesis)?,
         "genutil" => {
             return crate::genutil::init_genesis(
                 ctx,
@@ -176,6 +179,14 @@ pub fn init_genesis(
     Ok(Vec::new())
 }
 
+/// Installs the staking hooks (`NewMultiStakingHooks(distr, slashing)`).
+pub fn install_staking_hooks() {
+    x_staking::set_hooks(std::sync::Arc::new(x_staking::MultiStakingHooks(vec![
+        Box::new(x_distribution::Hooks),
+        Box::new(x_slashing::Hooks),
+    ])));
+}
+
 /// Runs one module's `PreBlock`.
 pub fn pre_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
     match module {
@@ -191,6 +202,9 @@ pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
         "fibre" => x_fibre::begin_block(ctx),
         "capability" => x_capability::begin_block(ctx),
         "ibc" => x_ibc::begin_block(ctx),
+        "distribution" => x_distribution::begin_block(ctx),
+        "slashing" => x_slashing::begin_block(ctx),
+        "staking" => x_staking::begin_block(ctx),
         // No begin blocker in Go.
         "transfer" | "interchainaccounts" | "packetfowardmiddleware" => Ok(()),
         _ => {
@@ -216,6 +230,7 @@ impl x_transfer::BankKeeper for TransferBank {
 /// Runs one module's `EndBlock`.
 pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
     match module {
+        "staking" => return x_staking::end_block(ctx),
         "gov" => x_gov::end_block(ctx)?,
         "valaddr" => x_valaddr::end_block(ctx, &mut ValaddrStaking)?,
         _ => tracing::trace!(module, "end_block not ported"),
@@ -224,19 +239,22 @@ pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpd
 }
 
 /// `x/staking` as the valaddr module's expected staking keeper.
-///
-/// TODO(staking): look the validator up once x/staking is ported; until then
-/// a stored fibre provider makes the EndBlocker fail loudly.
 struct ValaddrStaking;
 
 impl x_valaddr::StakingKeeper for ValaddrStaking {
     fn validator_by_cons_addr(
         &mut self,
-        _ctx: &mut Context<'_>,
-        _cons_addr: &[u8],
+        ctx: &mut Context<'_>,
+        cons_addr: &[u8],
     ) -> Result<Option<x_valaddr::ValidatorInfo>> {
-        Err(sdk::error::sdk::not_supported(
-            "valaddr: GetValidatorByConsAddr requires x/staking",
-        ))
+        Ok(
+            x_staking::store::get_validator_by_cons_addr(ctx, cons_addr)?.map(|v| {
+                x_valaddr::ValidatorInfo {
+                    jailed: v.jailed,
+                    bonded: v.is_bonded(),
+                    unbonding_time: v.unbonding_time,
+                }
+            }),
+        )
     }
 }

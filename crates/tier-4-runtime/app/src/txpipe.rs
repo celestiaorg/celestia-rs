@@ -32,8 +32,7 @@ pub fn ante(_ctx: &mut Context<'_>, _tx: &Tx, _simulate: bool) -> Result<()> {
     Err(errs::not_supported("ante handler not ported yet"))
 }
 
-/// `stakingKeeper.ApplyAndReturnValidatorSetUpdates`. Stand-in until
-/// `x-staking` lands.
-pub fn apply_validator_set(_ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
-    Err(errs::not_supported("staking not ported yet"))
+/// `stakingKeeper.ApplyAndReturnValidatorSetUpdates`.
+pub fn apply_validator_set(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+    x_staking::apply_and_return_validator_set_updates(ctx)
 }

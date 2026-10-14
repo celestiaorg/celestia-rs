@@ -129,6 +129,7 @@ dependencies = [
  "x-capability",
  "x-circuit",
  "x-consensus",
+ "x-distribution",
  "x-fibre",
  "x-gov",
  "x-hyperlane",
@@ -138,6 +139,8 @@ dependencies = [
  "x-mint",
  "x-packetforward",
  "x-params",
+ "x-slashing",
+ "x-staking",
  "x-transfer",
  "x-upgrade",
  "x-valaddr",
@@ -550,8 +553,10 @@ dependencies = [
  "hex",
  "iavl",
  "multistore",
+ "sdk",
  "serde",
  "serde_json",
+ "x-staking",
 ]
 
 [[package]]
@@ -2463,6 +2468,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-distribution"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-auth",
+ "x-bank",
+ "x-staking",
+]
+
+[[package]]
 name = "x-fibre"
 version = "0.0.1"
 dependencies = [
@@ -2571,6 +2591,36 @@ name = "x-params"
 version = "0.0.1"
 dependencies = [
  "sdk",
+]
+
+[[package]]
+name = "x-slashing"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "math",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-staking",
+]
+
+[[package]]
+name = "x-staking"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "hash",
+ "math",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-auth",
+ "x-bank",
 ]
 
 [[package]]

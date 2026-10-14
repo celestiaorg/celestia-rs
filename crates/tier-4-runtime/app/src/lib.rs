@@ -78,6 +78,7 @@ impl App {
             #[allow(clippy::expect_used)]
             ms.mount(name, kind).expect("static store list is valid");
         }
+        modules::install_staking_hooks();
         Self {
             ms,
             chain_id: String::new(),

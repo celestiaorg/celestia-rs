@@ -34,6 +34,18 @@ impl SdkError {
 /// Result alias.
 pub type Result<T> = core::result::Result<T, SdkError>;
 
+/// A recovered Go panic inside a transaction (`sdkerrors.ErrPanic`:
+/// codespace `undefined`, code 111222).
+pub fn go_panic(log: impl Into<String>) -> SdkError {
+    SdkError::new("undefined", 111_222, log)
+}
+
+/// An error that is not registered with a codespace (plain `fmt.Errorf` /
+/// `errors.New` in Go); `ABCIInfo` reports it as `undefined`/1.
+pub fn internal(log: impl Into<String>) -> SdkError {
+    SdkError::new("undefined", 1, log)
+}
+
 macro_rules! sdk_errors {
     ($($name:ident = $code:expr, $desc:expr;)*) => {
         /// Root `sdk` codespace errors (`types/errors`).
