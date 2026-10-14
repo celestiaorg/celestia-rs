@@ -191,15 +191,18 @@ fn write_registry(out: &Path, messages: &[(String, String)]) -> Result<()> {
 }
 
 fn rust_path(full_name: &str, package: &str) -> String {
-    use heck::{ToSnakeCase as _, ToUpperCamelCase as _};
-    let module: Vec<String> = package.split('.').map(|s| s.to_snake_case()).collect();
+    use heck::ToUpperCamelCase as _;
+    let module: Vec<String> = package
+        .split('.')
+        .map(heck::ToSnakeCase::to_snake_case)
+        .collect();
     let rest = &full_name[package.len() + 1..];
     let mut parts: Vec<&str> = rest.split('.').collect();
     let last = parts.pop().unwrap_or_default();
     let mut path = format!("crate::{}", module.join("::"));
     for p in parts {
         path.push_str("::");
-        path.push_str(&p.to_snake_case());
+        path.push_str(&heck::ToSnakeCase::to_snake_case(p));
     }
     format!("{path}::{}", last.to_upper_camel_case())
 }
@@ -254,14 +257,14 @@ fn write_signers(
             };
             match (f.kind(), f.is_list()) {
                 (Kind::String, false) => {
-                    writeln!(body, "    out.push(Signer::Str(m.{ident}.clone()));")?
+                    writeln!(body, "    out.push(Signer::Str(m.{ident}.clone()));")?;
                 }
                 (Kind::String, true) => writeln!(
                     body,
                     "    for s in &m.{ident} {{ out.push(Signer::Str(s.clone())); }}"
                 )?,
                 (Kind::Bytes, false) => {
-                    writeln!(body, "    out.push(Signer::Raw(m.{ident}.clone()));")?
+                    writeln!(body, "    out.push(Signer::Raw(m.{ident}.clone()));")?;
                 }
                 (Kind::Message(inner), list) => {
                     let inner_fn = fn_name(inner.full_name());

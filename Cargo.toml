@@ -73,3 +73,9 @@ unnecessary_wraps = "allow"
 [workspace.dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+
+# Keep build directories small: several agent worktrees build concurrently
+# inside one fixed disk allowance.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
