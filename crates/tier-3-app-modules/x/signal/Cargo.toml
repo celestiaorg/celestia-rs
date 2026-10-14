@@ -1,0 +1,19 @@
+[package]
+name = "x-signal"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia x/signal: validator version signalling, upgrade tally and ShouldUpgrade."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+math = { path = "../../../tier-0-primitives/math" }
+prost = "0.13"
+sdk = { path = "../../sdk" }

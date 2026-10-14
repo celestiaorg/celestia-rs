@@ -231,6 +231,30 @@ pub fn reset_circuit_breaker(
     Ok(MsgResetCircuitBreakerResponse { success: true })
 }
 
+/// Router entry for `MsgAuthorizeCircuitBreaker` (authority = gov).
+pub fn handle_authorize_circuit_breaker(
+    ctx: &mut Context<'_>,
+    msg: &MsgAuthorizeCircuitBreaker,
+) -> Result<MsgAuthorizeCircuitBreakerResponse> {
+    authorize_circuit_breaker(ctx, &sdk::address::module_address("gov"), msg)
+}
+
+/// Router entry for `MsgTripCircuitBreaker` (authority = gov).
+pub fn handle_trip_circuit_breaker(
+    ctx: &mut Context<'_>,
+    msg: &MsgTripCircuitBreaker,
+) -> Result<MsgTripCircuitBreakerResponse> {
+    trip_circuit_breaker(ctx, &sdk::address::module_address("gov"), msg)
+}
+
+/// Router entry for `MsgResetCircuitBreaker` (authority = gov).
+pub fn handle_reset_circuit_breaker(
+    ctx: &mut Context<'_>,
+    msg: &MsgResetCircuitBreaker,
+) -> Result<MsgResetCircuitBreakerResponse> {
+    reset_circuit_breaker(ctx, &sdk::address::module_address("gov"), msg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

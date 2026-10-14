@@ -214,12 +214,11 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
     init_genesis(ctx, &gs)
 }
 
-/// `StakingKeeper.StakingTokenSupply`: the bank supply of the bond denom.
-///
-/// Go reads the bond denom from the staking params; celestia's minter and
-/// staking bond denoms are the same (`utia`), so the minter's denom is used.
-fn staking_token_supply(ctx: &mut Context<'_>, bond_denom: &str) -> Result<Int> {
-    Ok(x_bank::get_supply(ctx, bond_denom)?.amount)
+/// `StakingKeeper.StakingTokenSupply`: the bank supply of the staking bond
+/// denom (read from the staking params, as in Go).
+fn staking_token_supply(ctx: &mut Context<'_>) -> Result<Int> {
+    let denom = x_staking::store::bond_denom(ctx)?;
+    Ok(x_bank::get_supply(ctx, &denom)?.amount)
 }
 
 fn maybe_update_minter(ctx: &mut Context<'_>) -> Result<()> {
@@ -230,7 +229,7 @@ fn maybe_update_minter(ctx: &mut Context<'_>) -> Result<()> {
     if rate == minter.inflation_rate && !minter.annual_provisions.is_zero() {
         return Ok(());
     }
-    let supply = staking_token_supply(ctx, &minter.bond_denom)?;
+    let supply = staking_token_supply(ctx)?;
     minter.annual_provisions = rate.checked_mul_int(&supply).map_err(math_err)?;
     minter.inflation_rate = rate;
     set_minter(ctx, &minter)

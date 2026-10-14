@@ -225,6 +225,7 @@ impl App {
                 validator_updates = updates;
             }
         }
+        modules::app_end_block(&mut ctx)?;
         events.extend(ctx.events.take());
         let cp = x_consensus::get_params(&mut ctx)?;
         drop(ctx);

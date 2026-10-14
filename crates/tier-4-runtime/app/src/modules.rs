@@ -258,3 +258,61 @@ impl x_valaddr::StakingKeeper for ValaddrStaking {
         )
     }
 }
+
+/// `x/staking` as the signal module's expected staking keeper.
+pub struct SignalStaking;
+
+impl x_signal::StakingKeeper for SignalStaking {
+    fn last_validator_power(&mut self, ctx: &mut Context<'_>, val: &[u8]) -> Result<i64> {
+        x_staking::store::get_last_validator_power(ctx, val)
+    }
+
+    fn last_total_power(&mut self, ctx: &mut Context<'_>) -> Result<math::Int> {
+        x_staking::store::get_last_total_power(ctx)
+    }
+
+    fn validator(
+        &mut self,
+        ctx: &mut Context<'_>,
+        val: &[u8],
+    ) -> Result<Option<x_signal::ValidatorStatus>> {
+        Ok(
+            x_staking::store::get_validator(ctx, val)?.map(|v| x_signal::ValidatorStatus {
+                bonded: v.is_bonded(),
+            }),
+        )
+    }
+}
+
+/// Router entry for `MsgSignalVersion`.
+pub fn handle_signal_version(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::celestia::signal::v1::MsgSignalVersion,
+) -> Result<celestia_proto::celestia::signal::v1::MsgSignalVersionResponse> {
+    x_signal::signal_version(ctx, &mut SignalStaking, msg)
+}
+
+/// Router entry for `MsgTryUpgrade`.
+pub fn handle_try_upgrade(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::celestia::signal::v1::MsgTryUpgrade,
+) -> Result<celestia_proto::celestia::signal::v1::MsgTryUpgradeResponse> {
+    x_signal::try_upgrade(ctx, &mut SignalStaking, msg)
+}
+
+/// celestia `App.EndBlocker` after the module manager's EndBlock: a signalled
+/// upgrade whose height is reached schedules an upgrade plan, bumps the app
+/// version and resets the tally. Executing that is not ported yet, so a due
+/// upgrade fails loudly instead of diverging silently.
+pub fn app_end_block(ctx: &mut Context<'_>) -> Result<()> {
+    let current = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    if let Some(up) = x_signal::should_upgrade(ctx)? {
+        if up.app_version > current {
+            return Err(sdk::error::sdk::not_supported(format!(
+                "signalled upgrade to v{} at height {} is due but app-version upgrades are not implemented",
+                up.app_version, up.upgrade_height
+            )));
+        }
+    }
+    Ok(())
+}

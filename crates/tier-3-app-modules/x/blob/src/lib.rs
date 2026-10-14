@@ -424,6 +424,24 @@ pub fn validate_blob_tx(
     Ok(())
 }
 
+/// The gov module account (bech32), the authority of governance-gated
+/// messages.
+#[must_use]
+pub fn gov_authority() -> String {
+    sdk::address::to_bech32(
+        sdk::address::ACC_PREFIX,
+        &sdk::address::module_address("gov"),
+    )
+}
+
+/// Router entry for `MsgUpdateBlobParams` (authority = gov).
+pub fn handle_update_blob_params(
+    ctx: &mut Context<'_>,
+    msg: &MsgUpdateBlobParams,
+) -> Result<MsgUpdateBlobParamsResponse> {
+    update_blob_params(ctx, &gov_authority(), msg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

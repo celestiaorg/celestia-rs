@@ -142,6 +142,18 @@ pub fn update_minfee_params(
     Ok(MsgUpdateMinfeeParamsResponse {})
 }
 
+/// Router entry for `MsgUpdateMinfeeParams` (authority = gov).
+pub fn handle_update_minfee_params(
+    ctx: &mut Context<'_>,
+    msg: &MsgUpdateMinfeeParams,
+) -> Result<MsgUpdateMinfeeParamsResponse> {
+    let gov = sdk::address::to_bech32(
+        sdk::address::ACC_PREFIX,
+        &sdk::address::module_address("gov"),
+    );
+    update_minfee_params(ctx, &gov, msg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

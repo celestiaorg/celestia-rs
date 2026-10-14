@@ -46,6 +46,7 @@ members = [
     "crates/tier-3-app-modules/x/staking",
     "crates/tier-3-app-modules/x/distribution",
     "crates/tier-3-app-modules/x/slashing",
+    "crates/tier-3-app-modules/x/signal",
     "crates/tier-4-runtime/abci-server",
     "crates/tier-4-runtime/app",
     "crates/devnet-conformance",

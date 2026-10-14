@@ -28,6 +28,15 @@ macro_rules! routes {
             $(
                 if msg.type_url == <$ty>::type_url() {
                     let m: $ty = decode(msg)?;
+                    // baseapp's registered handler: ValidateBasic, then the
+                    // circuit breaker (x/circuit), then the msg server.
+                    validate_basic(msg)?;
+                    if !x_circuit::is_allowed(ctx, &msg.type_url)? {
+                        return Err(sdk::address::undefined(format!(
+                            "circuit breaker disables execution of this message: {}",
+                            msg.type_url
+                        )));
+                    }
                     let resp = $handler(ctx, &m)?;
                     return Ok(Any::pack(&resp));
                 }
@@ -40,7 +49,11 @@ macro_rules! routes {
     };
 }
 
+use celestia_proto::celestia::blob::v1 as blob;
+use celestia_proto::celestia::minfee::v1 as minfee;
+use celestia_proto::celestia::signal::v1 as signal;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::circuit::v1 as circuit;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
 use celestia_proto::cosmos::slashing::v1beta1 as slashing;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
@@ -64,10 +77,26 @@ routes! {
     distr::MsgDepositValidatorRewardsPool => x_distribution::handle_deposit_validator_rewards_pool,
     slashing::MsgUnjail => x_slashing::handle_unjail,
     slashing::MsgUpdateParams => x_slashing::handle_update_params,
+    blob::MsgPayForBlobs => x_blob::pay_for_blobs,
+    blob::MsgUpdateBlobParams => x_blob::handle_update_blob_params,
+    minfee::MsgUpdateMinfeeParams => x_minfee::handle_update_minfee_params,
+    circuit::MsgAuthorizeCircuitBreaker => x_circuit::handle_authorize_circuit_breaker,
+    circuit::MsgTripCircuitBreaker => x_circuit::handle_trip_circuit_breaker,
+    circuit::MsgResetCircuitBreaker => x_circuit::handle_reset_circuit_breaker,
+    signal::MsgSignalVersion => crate::modules::handle_signal_version,
+    signal::MsgTryUpgrade => crate::modules::handle_try_upgrade,
 }
 
 /// Legacy `ValidateBasic` for messages that still implement it in v0.52.12.
 pub fn validate_basic(msg: &Any) -> Result<()> {
-    let _ = msg;
+    if msg.type_url == blob::MsgPayForBlobs::type_url() {
+        return x_blob::validate_basic(&decode(msg)?);
+    }
+    if msg.type_url == signal::MsgSignalVersion::type_url() {
+        return x_signal::validate_basic_signal_version(&decode(msg)?);
+    }
+    if msg.type_url == signal::MsgTryUpgrade::type_url() {
+        return x_signal::validate_basic_try_upgrade(&decode(msg)?);
+    }
     Ok(())
 }

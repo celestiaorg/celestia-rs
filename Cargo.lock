@@ -117,6 +117,7 @@ dependencies = [
  "encoding",
  "hex",
  "kvstore",
+ "math",
  "pbjson-types",
  "prost",
  "sdk",
@@ -139,6 +140,7 @@ dependencies = [
  "x-mint",
  "x-packetforward",
  "x-params",
+ "x-signal",
  "x-slashing",
  "x-staking",
  "x-transfer",
@@ -2574,6 +2576,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-staking",
 ]
 
 [[package]]
@@ -2590,6 +2593,16 @@ dependencies = [
 name = "x-params"
 version = "0.0.1"
 dependencies = [
+ "sdk",
+]
+
+[[package]]
+name = "x-signal"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "math",
+ "prost",
  "sdk",
 ]
 
