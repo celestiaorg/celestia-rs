@@ -106,3 +106,28 @@ cargo build -p celestia-rs
 DEVNET_BIN=<dir with celestia-appd, cometbft> DEVNET_PORT_OFFSET=6000 \
   conformance/devnet/statesync.sh 10 conformance/devnet/workloads/staking.sh
 ```
+
+## P2P interop (M10)
+
+`p2p-interop.sh [duration]` checks the Rust `p2p` crate against a Go
+celestia-core v0.42.3 validator (`celestia-appd`): one Rust node
+(`cargo run -p p2p --example p2p_interop`) dials the Go node, and the Go
+node dials a second Rust node configured as its persistent peer. Both must
+stay connected for `duration` seconds (default 75, covering Go's 60s ping)
+in the right direction (checked on both sides, incl. Go's `/net_info`),
+decode every consensus / propagation / block sync message, answer and
+receive PEX requests, and never be dropped by the Go node:
+
+```bash
+DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=11000 conformance/devnet/p2p-interop.sh
+```
+
+Byte-level vectors (SecretConnection handshakes with fixed ephemeral keys,
+MConnection wire bytes, NodeInfo, NetAddress, PEX, `node_key.json`,
+`addrbook.json`) come from `conformance/p2pvectors` (fixture
+`conformance/fixtures/p2p/go-vectors.json`):
+
+```bash
+cd conformance/p2pvectors
+GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/p2p/go-vectors.json
+```
