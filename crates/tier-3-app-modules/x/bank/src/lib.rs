@@ -9,6 +9,7 @@
 //! - `0x05` params.
 
 pub mod msgs;
+pub mod vesting_msgs;
 
 use celestia_proto::cosmos::bank::v1beta1::{GenesisState, Metadata, Params};
 use prost::Message;
@@ -157,12 +158,21 @@ pub fn set_denom_metadata(ctx: &mut Context<'_>, m: &Metadata) -> Result<()> {
     )
 }
 
-/// `LockedCoins`: vesting accounts are not supported yet and fail loudly.
+/// `LockedCoins`: the vesting coins not delegated, for vesting accounts.
 pub fn locked_coins(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
+    let now = ctx.header.time;
     match x_auth::get_account(ctx, addr)? {
-        Some(Account::Base(_) | Account::Module(_)) | None => Ok(Coins::new()),
-        Some(_) => Err(errs::not_supported("vesting account locked coins")),
+        Some(acc) => Ok(x_auth::vesting::locked_coins(&acc, &now)?.unwrap_or_default()),
+        None => Ok(Coins::new()),
     }
+}
+
+/// `SpendableCoins`: balances minus locked coins (empty if negative).
+pub fn spendable_coins(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
+    let total = get_all_balances(ctx, addr)?;
+    let locked = locked_coins(ctx, addr)?;
+    let (spendable, neg) = x_auth::vesting::safe_sub(&total, &locked)?;
+    Ok(if neg { Coins::new() } else { spendable })
 }
 
 /// `subUnlockedCoins`.
@@ -363,17 +373,40 @@ pub fn burn_coins(ctx: &mut Context<'_>, module: &str, amt: &Coins) -> Result<()
     Ok(())
 }
 
-/// `trackDelegation` / `trackUndelegation`: vesting accounts are not
-/// supported yet and fail loudly.
-fn track_vesting(ctx: &mut Context<'_>, addr: &[u8]) -> Result<()> {
-    match x_auth::get_account(ctx, addr)? {
-        None => Err(errs::unknown_address(format!(
+fn tracked_account(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Account> {
+    x_auth::get_account(ctx, addr)?.ok_or_else(|| {
+        errs::unknown_address(format!(
             "account {} does not exist",
-            x_auth::bech32(addr)?
-        ))),
-        Some(Account::Base(_) | Account::Module(_)) => Ok(()),
-        Some(_) => Err(errs::not_supported("vesting account delegation tracking")),
+            x_auth::bech32(addr).unwrap_or_default()
+        ))
+    })
+}
+
+/// `trackDelegation`: vesting accounts record the delegated vesting and
+/// free amounts.
+fn track_delegation(
+    ctx: &mut Context<'_>,
+    addr: &[u8],
+    balance: &Coins,
+    amt: &Coins,
+) -> Result<()> {
+    let mut acc = tracked_account(ctx, addr)?;
+    if x_auth::vesting::is_vesting(&acc) {
+        let now = ctx.header.time;
+        x_auth::vesting::track_delegation(&mut acc, &now, balance, amt)?;
+        x_auth::set_account(ctx, &acc)?;
     }
+    Ok(())
+}
+
+/// `trackUndelegation`.
+fn track_undelegation(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Result<()> {
+    let mut acc = tracked_account(ctx, addr)?;
+    if x_auth::vesting::is_vesting(&acc) {
+        x_auth::vesting::track_undelegation(&mut acc, amt)?;
+        x_auth::set_account(ctx, &acc)?;
+    }
+    Ok(())
 }
 
 /// `DelegateCoins`.
@@ -392,6 +425,7 @@ pub fn delegate_coins(
     if !amt.is_valid() {
         return Err(errs::invalid_coins(amt.to_string()));
     }
+    let mut balances = Coins::new();
     for coin in amt {
         let balance = get_balance(ctx, del, &coin.denom)?;
         if balance.amount < coin.amount {
@@ -399,10 +433,11 @@ pub fn delegate_coins(
                 "failed to delegate; {balance} is smaller than {amt}"
             )));
         }
+        balances = balances.add(&Coins(vec![balance.clone()]))?;
         let rest = balance.amount.checked_sub(&coin.amount).map_err(math_err)?;
         set_balance(ctx, del, &Coin::with_amount(coin.denom.clone(), rest))?;
     }
-    track_vesting(ctx, del).map_err(|e| e.wrap("failed to track delegation"))?;
+    track_delegation(ctx, del, &balances, amt).map_err(|e| e.wrap("failed to track delegation"))?;
     ctx.events.emit(event(
         "coin_spent",
         [
@@ -430,7 +465,7 @@ pub fn undelegate_coins(
         return Err(errs::invalid_coins(amt.to_string()));
     }
     sub_unlocked_coins(ctx, module_addr, amt)?;
-    track_vesting(ctx, del).map_err(|e| e.wrap("failed to track undelegation"))?;
+    track_undelegation(ctx, del, amt).map_err(|e| e.wrap("failed to track undelegation"))?;
     add_coins(ctx, del, amt)
 }
 

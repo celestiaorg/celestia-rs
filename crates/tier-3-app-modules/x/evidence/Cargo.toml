@@ -1,0 +1,23 @@
+[package]
+name = "x-evidence"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "x/evidence (celestiaorg/cosmos-sdk/x/evidence v0.1.2-celestia): equivocation handling."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+hash = { path = "../../../tier-0-primitives/hash" }
+pbjson-types = "0.7"
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-slashing = { path = "../slashing" }
+x-staking = { path = "../staking" }

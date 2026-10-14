@@ -66,11 +66,14 @@ use celestia_proto::cosmos::authz::v1beta1 as authz;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::circuit::v1 as circuit;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::evidence::v1beta1 as evidence;
+use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
 use celestia_proto::cosmos::gov::v1 as gov;
 use celestia_proto::cosmos::gov::v1beta1 as govb;
 use celestia_proto::cosmos::slashing::v1beta1 as slashing;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use celestia_proto::cosmos::upgrade::v1beta1 as upgrade;
+use celestia_proto::cosmos::vesting::v1beta1 as vesting;
 
 routes! {
     bank::MsgSend => x_bank::msgs::handle_send,
@@ -116,6 +119,13 @@ routes! {
     authz::MsgExec => handle_authz_exec,
     authz::MsgRevoke => x_authz::handle_revoke,
     authz::MsgPruneExpiredGrants => x_authz::handle_prune_expired_grants,
+    feegrant::MsgGrantAllowance => x_feegrant::handle_grant_allowance,
+    feegrant::MsgRevokeAllowance => x_feegrant::handle_revoke_allowance,
+    feegrant::MsgPruneAllowances => x_feegrant::handle_prune_allowances,
+    vesting::MsgCreateVestingAccount => x_bank::vesting_msgs::handle_create_vesting_account,
+    vesting::MsgCreatePermanentLockedAccount => x_bank::vesting_msgs::handle_create_permanent_locked_account,
+    vesting::MsgCreatePeriodicVestingAccount => x_bank::vesting_msgs::handle_create_periodic_vesting_account,
+    evidence::MsgSubmitEvidence => x_evidence::handle_submit_evidence,
 }
 
 /// The app's message router as gov sees it (`baseapp.MessageRouter`).

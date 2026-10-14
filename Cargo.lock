@@ -134,6 +134,8 @@ dependencies = [
  "x-circuit",
  "x-consensus",
  "x-distribution",
+ "x-evidence",
+ "x-feegrant",
  "x-fibre",
  "x-forwarding",
  "x-gov",
@@ -2417,6 +2419,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-feegrant",
  "zstd",
 ]
 
@@ -2427,6 +2430,8 @@ dependencies = [
  "celestia-proto",
  "encoding",
  "hash",
+ "math",
+ "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
@@ -2518,6 +2523,33 @@ dependencies = [
  "x-auth",
  "x-bank",
  "x-staking",
+]
+
+[[package]]
+name = "x-evidence"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hash",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-slashing",
+ "x-staking",
+]
+
+[[package]]
+name = "x-feegrant"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "pbjson-types",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-auth",
+ "x-bank",
 ]
 
 [[package]]

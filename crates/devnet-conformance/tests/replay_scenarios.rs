@@ -38,3 +38,13 @@ fn hyperlane_parity() -> anyhow::Result<()> {
 fn gov_parity() -> anyhow::Result<()> {
     assert_parity("gov")
 }
+
+#[test]
+fn authz_feegrant_parity() -> anyhow::Result<()> {
+    assert_parity("authz-feegrant")
+}
+
+#[test]
+fn vesting_parity() -> anyhow::Result<()> {
+    assert_parity("vesting")
+}

@@ -175,6 +175,8 @@ pub fn init_genesis(
         }
         "hyperlane" => x_hyperlane::init_genesis_json(ctx, genesis)?,
         "authz" if !genesis.is_null() => x_authz::init_genesis_json(ctx, genesis)?,
+        "feegrant" if !genesis.is_null() => x_feegrant::init_genesis_json(ctx, genesis)?,
+        "evidence" if !genesis.is_null() => x_evidence::init_genesis_json(ctx, genesis)?,
         "warp" => x_warp::init_genesis_json(ctx, genesis)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
@@ -214,6 +216,7 @@ pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
         "slashing" => x_slashing::begin_block(ctx),
         "staking" => x_staking::begin_block(ctx),
         "authz" => x_authz::begin_block(ctx),
+        "evidence" => x_evidence::begin_block(ctx),
         // No begin blocker in Go.
         "transfer" | "interchainaccounts" | "packetfowardmiddleware" => Ok(()),
         _ => {
@@ -241,6 +244,7 @@ pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpd
     match module {
         "staking" => return x_staking::end_block(ctx),
         "gov" => x_gov::end_block(ctx, &crate::router::AppRouter)?,
+        "feegrant" => x_feegrant::end_block(ctx)?,
         "valaddr" => x_valaddr::end_block(ctx, &mut ValaddrStaking)?,
         _ => tracing::trace!(module, "end_block not ported"),
     }

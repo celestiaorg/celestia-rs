@@ -8,10 +8,12 @@
 
 use celestia_proto::Any;
 use celestia_proto::cosmos::auth::v1beta1::{BaseAccount, GenesisState, ModuleAccount, Params};
-use celestia_proto::cosmos::vesting::v1beta1 as vesting;
+use celestia_proto::cosmos::vesting::v1beta1 as vpb;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
 use sdk::{Context, Result};
+
+pub mod vesting;
 
 /// Store key.
 pub const STORE_KEY: &str = "acc";
@@ -89,13 +91,13 @@ pub enum Account {
     /// `ModuleAccount`.
     Module(ModuleAccount),
     /// `ContinuousVestingAccount`.
-    ContinuousVesting(vesting::ContinuousVestingAccount),
+    ContinuousVesting(vpb::ContinuousVestingAccount),
     /// `DelayedVestingAccount`.
-    DelayedVesting(vesting::DelayedVestingAccount),
+    DelayedVesting(vpb::DelayedVestingAccount),
     /// `PeriodicVestingAccount`.
-    PeriodicVesting(vesting::PeriodicVestingAccount),
+    PeriodicVesting(vpb::PeriodicVestingAccount),
     /// `PermanentLockedAccount`.
-    PermanentLocked(vesting::PermanentLockedAccount),
+    PermanentLocked(vpb::PermanentLockedAccount),
 }
 
 fn decode<M: Message + Default>(b: &[u8]) -> Result<M> {
@@ -109,18 +111,12 @@ impl Account {
         Ok(match any.type_url.as_str() {
             u if u == BaseAccount::type_url() => Self::Base(decode(v)?),
             u if u == ModuleAccount::type_url() => Self::Module(decode(v)?),
-            u if u == vesting::ContinuousVestingAccount::type_url() => {
+            u if u == vpb::ContinuousVestingAccount::type_url() => {
                 Self::ContinuousVesting(decode(v)?)
             }
-            u if u == vesting::DelayedVestingAccount::type_url() => {
-                Self::DelayedVesting(decode(v)?)
-            }
-            u if u == vesting::PeriodicVestingAccount::type_url() => {
-                Self::PeriodicVesting(decode(v)?)
-            }
-            u if u == vesting::PermanentLockedAccount::type_url() => {
-                Self::PermanentLocked(decode(v)?)
-            }
+            u if u == vpb::DelayedVestingAccount::type_url() => Self::DelayedVesting(decode(v)?),
+            u if u == vpb::PeriodicVestingAccount::type_url() => Self::PeriodicVesting(decode(v)?),
+            u if u == vpb::PermanentLockedAccount::type_url() => Self::PermanentLocked(decode(v)?),
             other => return Err(errs::unpack_any(format!("unknown account type {other}"))),
         })
     }

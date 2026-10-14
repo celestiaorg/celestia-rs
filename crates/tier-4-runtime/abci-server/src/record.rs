@@ -88,6 +88,107 @@ pub struct Exchange {
     pub response: Response,
 }
 
+fn read_varint(b: &[u8], i: &mut usize) -> Option<u64> {
+    let mut v = 0u64;
+    for shift in (0..64).step_by(7) {
+        let byte = *b.get(*i)?;
+        *i += 1;
+        v |= u64::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn write_varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        out.push(u8::try_from(v & 0x7f).unwrap_or(0) | 0x80);
+        v >>= 7;
+    }
+    out.push(u8::try_from(v).unwrap_or(0));
+}
+
+/// Go's protobuf does not validate UTF-8, so recorded tx logs can hold raw
+/// bytes (e.g. authz's "failed to delete grant with key <raw key>"). Makes
+/// the `log`/`info` strings of FinalizeBlock tx results and CheckTx valid
+/// UTF-8 (lossily) so the response decodes; consensus fields are untouched.
+#[must_use]
+pub fn sanitize_logs(bytes: &[u8]) -> Vec<u8> {
+    // Field paths: Response.check_tx(9).{log 3, info 4};
+    // Response.finalize_block(21).tx_results(2).{log 3, info 4};
+    // Response.exception(1).error(1).
+    fn fields(b: &[u8]) -> Option<Vec<(u64, u8, Vec<u8>)>> {
+        let mut i = 0;
+        let mut out = Vec::new();
+        while i < b.len() {
+            let key = read_varint(b, &mut i)?;
+            let (num, wt) = (key >> 3, u8::try_from(key & 7).ok()?);
+            let start = i;
+            match wt {
+                0 => {
+                    read_varint(b, &mut i)?;
+                }
+                1 => i += 8,
+                2 => {
+                    let n = usize::try_from(read_varint(b, &mut i)?).ok()?;
+                    let s = i;
+                    i = s.checked_add(n)?;
+                    out.push((num, wt, b.get(s..i)?.to_vec()));
+                    continue;
+                }
+                5 => i += 4,
+                _ => return None,
+            }
+            out.push((num, wt, b.get(start..i)?.to_vec()));
+        }
+        Some(out)
+    }
+    fn encode(fs: &[(u64, u8, Vec<u8>)]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (num, wt, v) in fs {
+            write_varint(&mut out, (num << 3) | u64::from(*wt));
+            if *wt == 2 {
+                write_varint(&mut out, v.len() as u64);
+            }
+            out.extend_from_slice(v);
+        }
+        out
+    }
+    fn lossy(v: &[u8]) -> Vec<u8> {
+        String::from_utf8_lossy(v).into_owned().into_bytes()
+    }
+    fn strings(b: &[u8], nums: &[u64]) -> Option<Vec<u8>> {
+        let mut fs = fields(b)?;
+        for f in &mut fs {
+            if f.1 == 2 && nums.contains(&f.0) {
+                f.2 = lossy(&f.2);
+            }
+        }
+        Some(encode(&fs))
+    }
+    let run = || -> Option<Vec<u8>> {
+        let mut top = fields(bytes)?;
+        for f in &mut top {
+            match (f.0, f.1) {
+                (1 | 9, 2) => f.2 = strings(&f.2, if f.0 == 1 { &[1] } else { &[3, 4] })?,
+                (21, 2) => {
+                    let mut fb = fields(&f.2)?;
+                    for r in &mut fb {
+                        if r.0 == 2 && r.1 == 2 {
+                            r.2 = strings(&r.2, &[3, 4])?;
+                        }
+                    }
+                    f.2 = encode(&fb);
+                }
+                _ => {}
+            }
+        }
+        Some(encode(&top))
+    };
+    run().unwrap_or_else(|| bytes.to_vec())
+}
+
 /// Pairs requests with responses per connection, preserving the global
 /// order of requests.
 pub fn exchanges(records: &[Record]) -> io::Result<Vec<Exchange>> {
@@ -103,7 +204,9 @@ pub fn exchanges(records: &[Record]) -> io::Result<Vec<Exchange>> {
                 slots.push((r.conn, req, None));
             }
             Direction::Response => {
-                let resp = Response::decode(r.bytes.as_slice()).map_err(|e| bad(e.to_string()))?;
+                let resp = Response::decode(r.bytes.as_slice())
+                    .or_else(|_| Response::decode(sanitize_logs(&r.bytes).as_slice()))
+                    .map_err(|e| bad(e.to_string()))?;
                 let idx = pending
                     .get_mut(&r.conn)
                     .and_then(VecDeque::pop_front)

@@ -278,12 +278,21 @@ pub fn withdraw_delegation_rewards(
             let withdraw_addr = store::get_withdraw_addr(ctx, &del)?;
             final_rewards = final_rewards.add(&user)?;
             let acc = x_auth::get_account(ctx, &del)?;
-            if is_vesting(acc.as_ref()) {
-                return Err(errs::not_supported(
-                    "vesting account reward schedule update",
-                ));
+            if let Some(mut acc) = acc.filter(|a| is_vesting(Some(a))) {
+                // celestia: rewards of a vesting account go to the account
+                // itself and extend its vesting schedule.
+                let now = ctx.header.time;
+                x_auth::vesting::update_schedule(&mut acc, &now, &final_rewards)?;
+                x_auth::set_account(ctx, &acc)?;
+                x_bank::send_from_module_to_account(ctx, MODULE_NAME, &del, &final_rewards)?;
+            } else {
+                x_bank::send_from_module_to_account(
+                    ctx,
+                    MODULE_NAME,
+                    &withdraw_addr,
+                    &final_rewards,
+                )?;
             }
-            x_bank::send_from_module_to_account(ctx, MODULE_NAME, &withdraw_addr, &final_rewards)?;
             store::remove_user_outstanding(ctx, &del, &val)?;
         } else {
             let total = user.add(&final_rewards)?;
@@ -327,12 +336,14 @@ pub fn withdraw_delegation_rewards_for(
         };
         let withdraw_addr = store::get_withdraw_addr(ctx, del)?;
         let acc = x_auth::get_account(ctx, del)?;
-        if is_vesting(acc.as_ref()) {
-            return Err(errs::not_supported(
-                "vesting account reward schedule update",
-            ));
+        if let Some(mut acc) = acc.filter(|a| is_vesting(Some(a))) {
+            let now = ctx.header.time;
+            x_auth::vesting::update_schedule(&mut acc, &now, &rewards)?;
+            x_auth::set_account(ctx, &acc)?;
+            x_bank::send_from_module_to_account(ctx, MODULE_NAME, del, &rewards)?;
+        } else {
+            x_bank::send_from_module_to_account(ctx, MODULE_NAME, &withdraw_addr, &rewards)?;
         }
-        x_bank::send_from_module_to_account(ctx, MODULE_NAME, &withdraw_addr, &rewards)?;
         store::remove_user_outstanding(ctx, del, val)?;
         ctx.events.emit(event(
             "withdraw_rewards",

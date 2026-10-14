@@ -34,6 +34,40 @@ tx() {
 
 q() { celestia-appd query "$@" --node "$NODE" -o json; }
 
+# gen <file> <tx args...>: an unsigned tx (for authz exec / raw messages).
+gen() {
+  local f=$1
+  shift
+  celestia-appd tx "$@" "${K[@]}" --chain-id "$CHAIN_ID" --node "$NODE" \
+    --fees 20000utia --gas 400000 --generate-only -o json >"$f"
+}
+
+# rawtx <from> <messages-json>: sign and broadcast a tx with custom messages
+# (for messages the CLI cannot build).
+rawtx() {
+  local from=$1 msgs=$2 a out hash res r=$HOME_DIR/rawtx
+  mkdir -p "$r"
+  a=$(addr "$from")
+  gen "$r/raw.json" bank send "$a" "$a" 1utia --from "$from"
+  python3 - "$r/raw.json" "$msgs" <<'PY'
+import json, sys
+f, msgs = sys.argv[1], json.loads(sys.argv[2])
+t = json.load(open(f))
+t["body"]["messages"] = msgs
+json.dump(t, open(f, "w"))
+PY
+  celestia-appd tx sign "$r/raw.json" --from "$from" "${K[@]}" --chain-id "$CHAIN_ID" \
+    --node "$NODE" -o json >"$r/raw.signed.json"
+  out=$(celestia-appd tx broadcast "$r/raw.signed.json" --node "$NODE" -o json)
+  if [ "$(echo "$out" | json 'd.get("code", 0)')" != "0" ]; then
+    echo "checktx failed: $out" >&2
+    return 1
+  fi
+  hash=$(echo "$out" | json 'd["txhash"]')
+  res=$(python3 "$HERE/wait_tx.py" "$RPC" "$hash")
+  echo "rawtx $msgs -> $res"
+}
+
 height() { curl -s "$RPC/status" | json 'd["result"]["sync_info"]["latest_block_height"]'; }
 
 # wait_blocks <n>

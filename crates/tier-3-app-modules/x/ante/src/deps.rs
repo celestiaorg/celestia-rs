@@ -202,7 +202,7 @@ fn not_supported(what: &str) -> SdkError {
 /// [`AnteDeps`] backed by the Go modules' store layouts.
 ///
 /// Implements the circuit, minfee and blob reads exactly like their Go
-/// keepers, the feegrant "no grant" path, and holds the node-local PFF
+/// keepers, feegrant allowances (`x_feegrant`), and holds the node-local PFF
 /// signature cache. Fibre and IBC checks are not ported yet and fail with
 /// `ErrNotSupported` when reached (only for `MsgPayForFibre` txs and IBC
 /// packet txs in CheckTx).
@@ -261,20 +261,10 @@ impl AnteDeps for StoreDeps {
         ctx: &mut Context<'_>,
         granter: &[u8],
         grantee: &[u8],
-        _fee: &Coins,
-        _msgs: &[Any],
+        fee: &Coins,
+        msgs: &[Any],
     ) -> sdk::Result<()> {
-        // FeeAllowanceKey: 0x00 | len(grantee) grantee | len(granter) granter
-        let key = sdk::codec::key(&[
-            &[0x00],
-            &sdk::codec::length_prefixed(grantee),
-            &sdk::codec::length_prefixed(granter),
-        ]);
-        match ctx.get(FEEGRANT_STORE_KEY, &key)? {
-            None => Err(errs::not_found("fee-grant not found")),
-            Some(bz) if bz.is_empty() => Err(errs::not_found("fee-grant not found")),
-            Some(_) => Err(not_supported("feegrant allowances")),
-        }
+        x_feegrant::use_granted_fees(ctx, granter, grantee, fee, msgs)
     }
 
     fn fibre_validate_payment_promise(

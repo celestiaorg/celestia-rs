@@ -30,6 +30,7 @@ sdk = { path = "../../sdk" }
 serde_json = "1"
 x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
+x-feegrant = { path = "../feegrant" }
 
 [build-dependencies]
 protox = "0.7"

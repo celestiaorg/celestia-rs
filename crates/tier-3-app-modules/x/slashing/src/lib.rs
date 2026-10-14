@@ -546,6 +546,64 @@ pub fn init_genesis(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Resul
 
 // ---- msgs ----
 
+/// `AttributeValueDoubleSign`.
+pub const REASON_DOUBLE_SIGN: &str = "double_sign";
+
+/// `Keeper.SlashWithInfractionReason`: slashes through staking and emits
+/// the `slash` event with `reason`.
+pub fn slash_with_reason(
+    ctx: &mut Context<'_>,
+    cons: &[u8],
+    fraction: &LegacyDec,
+    power: i64,
+    distribution_height: i64,
+    reason: &str,
+) -> Result<()> {
+    let burned = x_staking::slash(ctx, cons, distribution_height, power, fraction)?;
+    ctx.events.emit(event(
+        "slash",
+        [
+            ("address", cons_to_string(cons)?),
+            ("power", power.to_string()),
+            ("reason", reason.to_owned()),
+            ("burned_coins", burned.to_string()),
+        ],
+    ));
+    Ok(())
+}
+
+/// `Keeper.Jail` (the staking error is ignored, as in Go).
+pub fn jail(ctx: &mut Context<'_>, cons: &[u8]) -> Result<()> {
+    let _ = x_staking::jail(ctx, cons);
+    ctx.events
+        .emit(event("slash", [("jailed", cons_to_string(cons)?)]));
+    Ok(())
+}
+
+/// `Keeper.JailUntil`.
+pub fn jail_until(ctx: &mut Context<'_>, cons: &[u8], until: &Timestamp) -> Result<()> {
+    let mut info = get_signing_info(ctx, cons)?.ok_or_else(|| {
+        errors::no_signing_info_found()
+            .wrap("cannot jail validator that does not have any signing information")
+    })?;
+    info.jailed_until = *until;
+    set_signing_info(ctx, cons, &info)
+}
+
+/// `Keeper.Tombstone`.
+pub fn tombstone(ctx: &mut Context<'_>, cons: &[u8]) -> Result<()> {
+    let mut info = get_signing_info(ctx, cons)?.ok_or_else(|| {
+        errors::no_signing_info_found()
+            .wrap("cannot tombstone validator that does not have any signing information")
+    })?;
+    if info.tombstoned {
+        return Err(errors::validator_tombstoned()
+            .wrap("cannot tombstone validator that is already tombstoned"));
+    }
+    info.tombstoned = true;
+    set_signing_info(ctx, cons, &info)
+}
+
 /// `Unjail`.
 pub fn unjail(ctx: &mut Context<'_>, val: &[u8]) -> Result<()> {
     let v = x_staking::store::validator(ctx, val)?;
