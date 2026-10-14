@@ -3,7 +3,7 @@
 # ABCI) behind Go celestia-core with the abci-recorder proxy in between, run
 # an optional workload, then dump committed state.
 #
-# usage: conformance/devnet/devnet.sh <scenario> <blocks> [workload-script]
+# usage: [DEVNET_PORT_OFFSET=n] conformance/devnet/devnet.sh <scenario> <blocks> [workload-script]
 #
 # Output: conformance/fixtures/devnet/<scenario>/
 #   genesis.json        SDK app genesis fed to InitChain
@@ -22,6 +22,10 @@ WORKLOAD=${3:-}
 APP_VERSION=v10.4.0
 CORE_VERSION=v0.42.3
 CHAIN_ID=rs-devnet-1
+# Shift every listening port so concurrent devnets don't collide.
+OFF=${DEVNET_PORT_OFFSET:-0}
+P_RPC=$((26657 + OFF)); P_P2P=$((26656 + OFF)); P_PROXY=$((26658 + OFF)); P_APP=$((36658 + OFF))
+P_GRPC=$((9090 + OFF)); P_API=$((1317 + OFF)); P_PPROF=$((6060 + OFF)); P_PRIVVAL_GRPC=$((26669 + OFF))
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
@@ -53,6 +57,9 @@ done
 $A genesis gentx val0 5000000000utia --chain-id $CHAIN_ID --keyring-backend test --fees 500000utia >/dev/null 2>&1
 $A genesis collect-gentxs >/dev/null 2>&1
 sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
+sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
+  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" "$H/config/config.toml"
+sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
 
 # celestia-core wants a CometBFT GenesisDoc, not the SDK app genesis.
 mkdir -p "$H/core/config" "$H/core/data"
@@ -73,22 +80,22 @@ echo '{"height":"0","round":0,"step":0}' > "$H/core/data/priv_validator_state.js
 PIDS=()
 cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
 trap cleanup EXIT
-celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:36658 > "$WORK/app.log" 2>&1 &
+celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
 PIDS+=($!); sleep 4
-abci-recorder 127.0.0.1:26658 127.0.0.1:36658 "$WORK/abci.rec" > "$WORK/rec.log" 2>&1 &
+abci-recorder 127.0.0.1:$P_PROXY 127.0.0.1:$P_APP "$WORK/abci.rec" > "$WORK/rec.log" 2>&1 &
 PIDS+=($!); sleep 1
-cometbft start --home "$H/core" --proxy_app tcp://127.0.0.1:26658 > "$WORK/core.log" 2>&1 &
+cometbft start --home "$H/core" --proxy_app tcp://127.0.0.1:$P_PROXY > "$WORK/core.log" 2>&1 &
 CORE=$!; PIDS+=($CORE)
 
-height() { curl -s localhost:26657/status | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }
+height() { curl -s localhost:$P_RPC/status | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }
 until [ "$(height || echo 0)" -ge 2 ] 2>/dev/null; do kill -0 $CORE || { tail "$WORK/core.log"; exit 1; }; sleep 1; done
 if [ -n "$WORKLOAD" ]; then
-  HOME_DIR=$H CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:26657 bash "$WORKLOAD"
+  HOME_DIR=$H CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$P_RPC bash "$WORKLOAD"
 fi
 until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do kill -0 $CORE || { tail "$WORK/core.log"; exit 1; }; sleep 1; done
 # Stop consensus first so the app commits nothing past what core saw.
 kill $CORE; sleep 2; cleanup; sleep 1
-LAST=$(curl -s localhost:26657/status >/dev/null 2>&1 || true; python3 - "$WORK/abci.rec" <<'PY'
+LAST=$(curl -s localhost:$P_RPC/status >/dev/null 2>&1 || true; python3 - "$WORK/abci.rec" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()
 # Count Commit requests (Request oneof tag 11 => 0x5a) on any connection.
