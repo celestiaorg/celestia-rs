@@ -148,6 +148,11 @@ pub fn init_genesis(
         "minfee" => x_minfee::init_genesis_json(ctx, genesis)?,
         // x/params has no genesis state.
         "params" => x_params::init_genesis(ctx)?,
+        "capability" => x_capability::init_genesis_json(ctx, genesis)?,
+        "ibc" => x_ibc::init_genesis_json(ctx, genesis)?,
+        "transfer" => x_transfer::init_genesis_json(ctx, genesis, &mut TransferBank)?,
+        "interchainaccounts" => x_icahost::init_genesis_json(ctx, genesis)?,
+        "packetfowardmiddleware" => x_packetforward::init_genesis_json(ctx, genesis)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
     let _ = ctx;
@@ -164,9 +169,29 @@ pub fn pre_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
 
 /// Runs one module's `BeginBlock`.
 pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
-    let _ = ctx;
-    tracing::trace!(module, "begin_block not ported");
-    Ok(())
+    match module {
+        "capability" => x_capability::begin_block(ctx),
+        "ibc" => x_ibc::begin_block(ctx),
+        // No begin blocker in Go.
+        "transfer" | "interchainaccounts" | "packetfowardmiddleware" => Ok(()),
+        _ => {
+            tracing::trace!(module, "begin_block not ported");
+            Ok(())
+        }
+    }
+}
+
+/// `x/bank` as the transfer module's expected bank keeper.
+struct TransferBank;
+
+impl x_transfer::BankKeeper for TransferBank {
+    fn set_denom_metadata(
+        &mut self,
+        ctx: &mut Context<'_>,
+        md: &celestia_proto::cosmos::bank::v1beta1::Metadata,
+    ) -> Result<()> {
+        x_bank::set_denom_metadata(ctx, md)
+    }
 }
 
 /// Runs one module's `EndBlock`.

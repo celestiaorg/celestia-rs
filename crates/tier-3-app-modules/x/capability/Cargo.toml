@@ -1,0 +1,20 @@
+[package]
+name = "x-capability"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "x/capability (ibc-go modules/capability v1.0.1): object capabilities and scoped keepers."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+kvstore = { path = "../../../tier-2-state-and-store/kvstore" }
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"

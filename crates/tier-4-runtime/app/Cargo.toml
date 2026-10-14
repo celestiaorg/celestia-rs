@@ -24,6 +24,11 @@ x-auth = { path = "../../tier-3-app-modules/x/auth" }
 x-bank = { path = "../../tier-3-app-modules/x/bank" }
 x-blob = { path = "../../tier-3-app-modules/x/blob" }
 x-circuit = { path = "../../tier-3-app-modules/x/circuit" }
+x-capability = { path = "../../tier-3-app-modules/x/capability" }
+x-ibc = { path = "../../tier-3-app-modules/x/ibc" }
+x-icahost = { path = "../../tier-3-app-modules/x/icahost" }
+x-packetforward = { path = "../../tier-3-app-modules/x/packetforward" }
+x-transfer = { path = "../../tier-3-app-modules/x/transfer" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-params = { path = "../../tier-3-app-modules/x/params" }

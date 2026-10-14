@@ -122,10 +122,15 @@ dependencies = [
  "x-auth",
  "x-bank",
  "x-blob",
+ "x-capability",
  "x-circuit",
  "x-consensus",
+ "x-ibc",
+ "x-icahost",
  "x-minfee",
+ "x-packetforward",
  "x-params",
+ "x-transfer",
  "x-upgrade",
 ]
 
@@ -2267,6 +2272,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-capability"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "kvstore",
+ "prost",
+ "sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "x-circuit"
 version = "0.0.1"
 dependencies = [
@@ -2287,6 +2303,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-ibc"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hex",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-capability",
+ "x-upgrade",
+]
+
+[[package]]
+name = "x-icahost"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hex",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-capability",
+ "x-ibc",
+]
+
+[[package]]
 name = "x-minfee"
 version = "0.0.1"
 dependencies = [
@@ -2299,10 +2341,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-packetforward"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "prost",
+ "sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "x-params"
 version = "0.0.1"
 dependencies = [
  "sdk",
+]
+
+[[package]]
+name = "x-transfer"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hash",
+ "hex",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-capability",
+ "x-ibc",
 ]
 
 [[package]]

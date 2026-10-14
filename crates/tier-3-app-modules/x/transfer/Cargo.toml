@@ -1,0 +1,25 @@
+[package]
+name = "x-transfer"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "ICS-20 fungible token transfer (ibc-go/v8 v8.7.2 apps/transfer): genesis, params, denom traces, escrow totals."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+hash = { path = "../../../tier-0-primitives/hash" }
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-capability = { path = "../capability" }
+x-ibc = { path = "../ibc" }
+
+[dev-dependencies]
+hex = "0.4"

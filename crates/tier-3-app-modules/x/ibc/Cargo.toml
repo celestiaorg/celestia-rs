@@ -1,0 +1,24 @@
+[package]
+name = "x-ibc"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "IBC core (celestiaorg/ibc-go/v8 v8.7.2 modules/core): clients, connections, channels, ports."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+prost = "0.13"
+sdk = { path = "../../sdk" }
+serde_json = "1"
+x-capability = { path = "../capability" }
+x-upgrade = { path = "../upgrade" }
+
+[dev-dependencies]
+hex = "0.4"
