@@ -66,3 +66,22 @@ environment is still blocked (`OPEN_QUESTIONS.md` #1).
 Next: wire the consensus reactor (peer round states, `HasVote`, catch-up)
 to the `p2p` crate and the propagation reactor, then the mixed Rust+Go
 devnet.
+
+## Implementation notes
+
+- `light` (2026-10-14): verifier, bisection client, backwards verification,
+  detector with `LightClientAttackEvidence`, light store on `KvBackend`,
+  JSON-RPC provider (`/commit`, `/validators`, `/status`,
+  `/consensus_params`). Blocking API; witness requests run on scoped
+  threads and are handled in witness-index order. Go quirks are kept (the
+  skipping pivot is appended twice; an unwrapped `ErrNewValSetCantBeTrusted`
+  after a benign provider error runs the detector on a nil trace).
+  Conformance: `conformance/lightvectors` (720 verifier cases, 56 trust
+  levels, 196 client scenarios incl. provider call logs and evidence).
+- `statesync` (2026-10-14): reactor (0x60/0x61), syncer, chunk queue,
+  snapshot pool, light-client state provider producing a `nodestore::State`
+  + `Commit`. The node stores receive them through
+  `statesync::Bootstrapper` (`bootstrap_state` + `save_seen_commit`, Go's
+  `stateStore.Bootstrap` + `blockStore.SaveSeenCommit`), implemented by
+  `statesync::NodeStores` over `nodestore`'s `StateStore` and `BlockStore`.
+  Live interop: `conformance/devnet/statesync-rust.sh`.

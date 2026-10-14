@@ -1,0 +1,27 @@
+[package]
+name = "light"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Exact port of celestia-core v0.42.3 `light/`: verifier, bisection client, attack detector, light store and HTTP RPC provider."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+prost = "0.13"
+rand = "0.9"
+serde_json = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+zstd = "0.13"

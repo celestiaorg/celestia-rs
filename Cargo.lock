@@ -1708,6 +1708,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "light"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "ctypes",
+ "hex",
+ "kvdb",
+ "prost",
+ "rand 0.9.4",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zstd",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2807,6 +2823,30 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "statesync"
+version = "0.0.1"
+dependencies = [
+ "abci-server",
+ "app",
+ "celestia-core-proto",
+ "ctypes",
+ "hex",
+ "kvdb",
+ "light",
+ "nodestore",
+ "p2p",
+ "prost",
+ "rand 0.9.4",
+ "serde_json",
+ "sha2 0.10.9",
+ "snapshots",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

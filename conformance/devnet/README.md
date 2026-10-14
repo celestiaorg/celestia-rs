@@ -163,4 +163,34 @@ Both mempools must drain, and the Go node must keep the Rust peer:
 
 ```bash
 DEVNET_BIN=<dir with celestia-appd, cometbft> DEVNET_PORT_OFFSET=13000 conformance/devnet/mempool-interop.sh
+
+## Rust state-sync node (ADR 0003: `light`, `statesync`)
+
+`statesync-rust.sh [workload.sh]` runs a Rust state-syncing node
+(`cargo run -p statesync --example statesync_node`: p2p `Switch` +
+statesync reactor on 0x60/0x61 + light client against the validator's RPC +
+the in-process Rust app) against a Go validator taking snapshots:
+
+1. **Go → Rust:** the Rust node discovers the Go snapshots, light-verifies
+   headers H, H+1, H+2 and the consensus params, fetches the chunks from the
+   Go peer, restores them into the Rust app, verifies the app hash against
+   the light-client-verified header and bootstraps State + Commit; the
+   script also compares the restored app hash with the validator's block
+   H+1 header.
+2. **Rust → Go:** the Rust node snapshots the restored state and serves it
+   through its statesync reactor; a fresh Go `celestia-appd` whose only peer
+   is the Rust node state-syncs from it.
+
+```bash
+DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=14000 \
+  conformance/devnet/statesync-rust.sh conformance/devnet/workloads/staking.sh
+```
+
+Light client outcomes are checked against celestia-core's `light` package
+with vectors from `conformance/lightvectors` (fixtures
+`conformance/fixtures/light/{verifier,client}.json.zst`):
+
+```bash
+cd conformance/lightvectors
+GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/light
 ```

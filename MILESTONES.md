@@ -51,6 +51,7 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 | Storage (ADR 0002) | Persistent IAVL on redb (lazy nodes, LRU cache, history, pruning), atomic multistore commits, restart/handshake (`celestia-rs abci --home`), SDK snapshots + ABCI state sync; every scenario replays on redb, incl. restart-halfway and snapshot-restore replays; Go↔Rust state sync both ways (`conformance/devnet/statesync.sh`) |
 | IBC differential | `devnet/ibc` (two Go chains + cosmos/relayer) and `devnet/ibc-edge` (ibc-go testing package, `conformance/ibcvectors`) at full parity incl. CheckTx |
 | Deferred (IBC) | 06-solomachine verification, channel upgrades, IBCSoftwareUpgrade scheduling, ICA `proto3json` txs and `MsgModuleQuerySafe` |
+| Light client & state sync (ADR 0003) | `light` (verifier, bisection, detector, store, RPC provider; Go vectors 720 verifier + 196 client scenarios at parity) and `statesync` (reactor, syncer, state provider); a Rust node state-syncs from Go peers and serves snapshots to Go (`conformance/devnet/statesync-rust.sh`) |
 | Not started | queries/gRPC/REST (M11), testnet state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's disk-backed IAVL and non-empty historical import landed with ADR 0002

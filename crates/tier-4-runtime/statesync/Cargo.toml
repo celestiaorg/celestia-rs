@@ -1,0 +1,36 @@
+[package]
+name = "statesync"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Exact port of celestia-core v0.42.3 `statesync/`: snapshot/chunk reactor (0x60/0x61), syncer, chunk queue, snapshot pool and the light-client state provider."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+abci-server = { path = "../abci-server" }
+celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+light = { path = "../light" }
+nodestore = { path = "../nodestore" }
+p2p = { path = "../p2p" }
+prost = "0.13"
+rand = "0.9"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+app = { path = "../app" }
+hex = "0.4"
+kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+serde_json = "1"
+snapshots = { path = "../../tier-2-state-and-store/snapshots" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
