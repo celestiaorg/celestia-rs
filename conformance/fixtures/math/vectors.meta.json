@@ -1,0 +1,8 @@
+{
+  "scenario": "math-vectors",
+  "source": "cosmossdk.io/math v1.5.3",
+  "go_version": "1.24",
+  "generator": "conformance/mathvectors",
+  "seed": 20261014,
+  "regen_command": "cd conformance/mathvectors && GOFLAGS=-mod=mod go run . -out ../fixtures/math/vectors.json"
+}

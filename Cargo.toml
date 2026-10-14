@@ -4,6 +4,7 @@ members = [
     "crates/tier-0-primitives/crypto",
     "crates/tier-0-primitives/encoding",
     "crates/tier-0-primitives/hash",
+    "crates/tier-0-primitives/math",
     "crates/tier-0-primitives/merkle",
     "crates/tier-1-protocol-types/abci-types",
     "crates/tier-1-protocol-types/celestia-core-proto",

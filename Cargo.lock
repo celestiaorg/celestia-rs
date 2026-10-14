@@ -1047,6 +1047,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "math"
+version = "0.0.1"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
