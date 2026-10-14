@@ -7,3 +7,4 @@ Cargo.lock.bak
 .idea/
 .vscode/
 *.swp
+.claude/worktrees/
