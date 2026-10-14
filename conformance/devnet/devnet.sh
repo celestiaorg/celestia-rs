@@ -40,7 +40,7 @@ build_go() { # <module@version> <pkg> <name>
 build_go github.com/celestiaorg/celestia-app/v10@$APP_VERSION ./cmd/celestia-appd celestia-appd
 build_go github.com/celestiaorg/celestia-core@$CORE_VERSION ./cmd/cometbft cometbft
 [ -x "$BIN/devnet-oracle" ] || (cd "$ROOT/conformance/devnet-oracle" && go build -o "$BIN/devnet-oracle" .)
-(cd "$ROOT" && cargo build -q --release -p abci-server --bin abci-recorder && cp target/release/abci-recorder "$BIN/")
+[ -x "$BIN/abci-recorder" ] || (cd "$ROOT" && cargo build -q --release -p abci-server --bin abci-recorder && cp target/release/abci-recorder "$BIN/")
 
 H=$WORK/home
 A="celestia-appd --home $H"
