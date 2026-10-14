@@ -17,9 +17,9 @@ open question 2).
 | M2  | completed*  | State & storage (IAVL, kvstore, multistore, ICS-23) | DB-backed replay shard; *non-empty historical import pending |
 | M3  | completed   | Tx & ante machinery | Tx-validation outcome matches Go for 1,062 mainnet txs |
 | M4  | in progress | Core SDK modules (auth, bank, staking) | Keeper state matches Go vectors |
-| D1  | in progress | Devnet differential oracle: Go `celestia-appd` v10 devnet in-container, exported blocks + per-block app hashes + genesis as fixtures | `cargo xtask devnet-fixtures` regenerates a committed corpus |
+| D1  | completed   | Devnet differential oracle: Go `celestia-appd` v10 devnet in-container, exported blocks + per-block app hashes + genesis as fixtures | `cargo xtask devnet-fixtures` regenerates a committed corpus |
 | R1  | pending     | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Existing conformance suites pass against v10-generated fixtures |
-| S1  | pending     | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
+| S1  | in progress | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
 | S2  | pending     | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
 | S3  | pending     | State sync client + snapshot import; follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
 | M9  | pending     | Rust consensus engine (Tendermint BFT, celestia-core semantics) | Mixed Rust+Go private devnet reaches consensus |
@@ -32,11 +32,17 @@ open question 2).
 
 ## Current focus
 
-**D1 + S1.** Build the Go devnet oracle (Go is available through the module
-proxy; public chain RPC is blocked — open question 1) and stand up the ABCI
-vertical slice so app-hash mismatches drive the remaining module work. M4
-keeper work continues as the slice needs it.
+**S1/S2** — the Rust app runs the full ABCI lifecycle (`app` crate, `celestia-rs abci`
+binary) and `devnet-conformance::replay` diffs it against the Go devnet oracle
+store-by-store. Status at height 1 of `devnet/empty` (`cargo run -p devnet-conformance --example replay -- empty`):
 
-M2's non-empty historical-state import hardening remains pending because
-arbitrary IAVL snapshots need preserved node-version metadata; S3 (state sync)
-will revisit it.
+| Area | State |
+|---|---|
+| Runtime | `sdk` (layered multistore, gaskv metering, events, coins), `math` (12,446 Go vectors), proto + proto3-JSON + signer extraction for all v10 messages |
+| At parity | upgrade, consensus, params, authz, evidence, feegrant, signal, valaddr, zkism, packetfowardmiddleware, capability, ibc, icahost, transfer, blob/minfee/circuit (genesis) |
+| In progress | ante chain, tx decoding (unknownproto, BlobTx), staking/distribution/slashing, gov/mint/fibre/signal, hyperlane/warp |
+| Blocker for height 1 | genesis tx delivery (needs ante + `MsgCreateValidator`) |
+| Not started | PrepareProposal/ProcessProposal square construction, CheckTx/mempool, queries/gRPC, persistent (disk-backed) IAVL + pruning, state sync |
+
+M2's non-empty historical-state import hardening remains pending; S3 (state
+sync) will revisit it together with a disk-backed IAVL.
