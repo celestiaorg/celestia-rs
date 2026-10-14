@@ -41,53 +41,58 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # NOTE: skipping the `advisories` check because cargo-deny < 0.18(?)
-      # crashes on CVSS 4.0 advisories in the RUSTSEC database. Reinstate
-      # `check` (no args) once upstream cargo-deny adds CVSS 4.0 support.
+      # cargo-deny >= 0.18 parses CVSS 4.0 advisories; accepted advisories
+      # are listed with reasons in deny.toml and docs/security.md.
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check bans licenses sources
+          command: check
           arguments: --all-features
 
-  fixturegen-build:
+  # Every Go conformance module (fixture generators, oracles, recorders)
+  # must keep building. Module downloads are retried: proxy.golang.org
+  # has transient failures, and the module cache is restored between runs.
+  go-modules:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - antereplay
+          - antevectors
+          - consensusvectors
+          - ctypesvectors
+          - devnet-oracle
+          - evidencevectors
+          - fibre-client
+          - fixturegen
+          - lightvectors
+          - mathvectors
+          - mintvectors
+          - p2pvectors
+          - rpccorpus/recorder
+          - txdecode
+    env:
+      GOFLAGS: -mod=mod
+      GOPROXY: https://proxy.golang.org,direct
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.11"
-      - run: |
-          set -euo pipefail
-          if [ -f conformance/fixturegen/go.mod ]; then
-            cd conformance/fixturegen
-            go build ./...
-            go test ./...
-          else
-            echo "fixturegen not yet present; skipping (Task 8 adds it)."
-          fi
-
-  antereplay-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.5"
-      - run: |
-          set -euo pipefail
-          if [ -f conformance/antereplay/go.mod ]; then
-            cd conformance/antereplay
-            go build ./...
-            go test ./...
-          else
-            echo "antereplay not present; skipping."
-          fi
-
-  devnet-oracle-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.5"
-      - run: cd conformance/devnet-oracle && go build ./... && go vet ./...
+          go-version-file: conformance/${{ matrix.module }}/go.mod
+          cache-dependency-path: conformance/${{ matrix.module }}/go.sum
+      - name: Download modules (with retries)
+        working-directory: conformance/${{ matrix.module }}
+        run: |
+          for n in 1 2 3 4 5; do
+            go mod download && exit 0
+            echo "go mod download failed (attempt $n); retrying in $((n * 15))s"
+            sleep $((n * 15))
+          done
+          exit 1
+      - name: Build
+        working-directory: conformance/${{ matrix.module }}
+        run: go build ./...
+      - name: Test
+        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay'
+        working-directory: conformance/${{ matrix.module }}
+        run: go test ./...

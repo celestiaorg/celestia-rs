@@ -4,26 +4,115 @@ on:
   schedule:
     - cron: "0 7 * * *"  # 07:00 UTC daily
   workflow_dispatch:
+    inputs:
+      soak_secs:
+        description: "Soak duration in seconds (conformance/devnet/soak.sh)"
+        default: "1800"
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  GOFLAGS: -mod=mod
+  GOPROXY: https://proxy.golang.org,direct
 
 jobs:
-  conformance-corpus:
+  # Go binaries for the devnet scripts (celestia-app v10.4.0 / celestia-core
+  # v0.42.3), built from module-proxy sources and cached by version.
+  devnet-bins:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          lfs: true
+          go-version-file: conformance/devnet-oracle/go.mod
+          cache-dependency-path: conformance/devnet-oracle/go.sum
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: target/devnet-bin
+          key: devnet-bin-app-v10.4.0-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: conformance/devnet/build-bins.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devnet-bin
+          path: target/devnet-bin
+          retention-days: 2
+
+  # The cheap live interop scripts (each a few minutes): Rust P2P, CAT
+  # mempool, state sync and block sync against Go nodes, the mixed
+  # validator set (M9) and live double-sign evidence.
+  devnet-interop:
+    needs: devnet-bins
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - p2p-interop.sh
+          - mempool-interop.sh
+          - statesync-rust.sh conformance/devnet/workloads/staking.sh
+          - blocksync-interop.sh
+          - mixed-validators.sh 60 20
+          - double-sign-evidence.sh
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run full conformance corpus
+      - uses: actions/download-artifact@v4
+        with:
+          name: devnet-bin
+          path: target/devnet-bin
+      - run: chmod +x target/devnet-bin/*
+      - name: Run ${{ matrix.script }}
+        env:
+          DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
+          DEVNET_PORT_OFFSET: "15000"
+          BLOCKS: "100"
+          TMPDIR: ${{ runner.temp }}/devnet
         run: |
-          set -euo pipefail
-          # Activated when the first conformance test crate lands.
-          # For now this job is a no-op placeholder so the workflow exists.
-          echo "No conformance crates yet — placeholder run."
+          mkdir -p "$TMPDIR"
+          bash conformance/devnet/${{ matrix.script }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/devnet
+          retention-days: 7
+
+  # Mixed Go / Rust network under load with chaos (kills, partitions,
+  # latency, state-sync restarts, validator set changes).
+  soak:
+    needs: devnet-bins
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: devnet-bin
+          path: target/devnet-bin
+      - run: chmod +x target/devnet-bin/*
+      - name: soak
+        env:
+          DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
+          SOAK_SECS: ${{ github.event.inputs.soak_secs || '1800' }}
+          SOAK_MIN_HEIGHTS: "300"
+          SOAK_DIR: ${{ runner.temp }}/soak
+        run: bash conformance/devnet/soak.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-report
+          path: |
+            ${{ runner.temp }}/soak/report.*
+            ${{ runner.temp }}/soak/*.csv
+            ${{ runner.temp }}/soak/events.log
+          retention-days: 14
 
   coverage:
     runs-on: ubuntu-latest
@@ -36,7 +125,4 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
       - name: Compute coverage
-        run: |
-          set -euo pipefail
-          # Coverage threshold enforced once first non-xtask crate lands.
-          cargo llvm-cov --workspace --summary-only || echo "coverage tooling smoke-run only"
+        run: cargo llvm-cov --workspace --summary-only || echo "coverage tooling smoke-run only"

@@ -163,6 +163,7 @@ Both mempools must drain, and the Go node must keep the Rust peer:
 
 ```bash
 DEVNET_BIN=<dir with celestia-appd, cometbft> DEVNET_PORT_OFFSET=13000 conformance/devnet/mempool-interop.sh
+```
 
 ## Rust state-sync node (ADR 0003: `light`, `statesync`)
 
@@ -259,3 +260,42 @@ conflicting prevotes of a Go validator to a Rust validator only. The Rust
 node detects them, verifies the `DuplicateVoteEvidence` and gossips it;
 the network commits it, the double signer is slashed out of the set, and
 all block / app hashes still agree.
+
+## Soak and chaos (`soak.sh`)
+
+`soak.sh` runs a mixed network for `$SOAK_SECS` (default 7200) and at
+least `$SOAK_MIN_HEIGHTS` (1500) heights: Go validators V0, V1, Rust
+validators V2, V3, V4 (equal power), a Go full node F5 and a Rust full node
+F6. Every P2P link goes through `soak/netproxy.py` (one listener per
+directed node pair), so the orchestrator (`soak/soak.py`) can cut or slow
+links without iptables.
+
+- **Workload:** bank sends at volume (`soak/cosmostx.py` signs `MsgSend`s
+  itself and broadcasts them to every node's RPC, `$SOAK_TX_RATE` tx/s),
+  PFB rounds (medium blobs; every `$SOAK_BIG_EVERY` s a near-max round of
+  8 x 1.9 MB or 3 x 7.3 MB blobs: 128x128 to 256x256 squares), staking
+  churn (delegate / redelegate / unbond / withdraw on all validators), gov
+  proposals (`MsgUpdateBlobParams`, passing and rejected).
+- **Chaos** (one disruptive event at a time): SIGKILL + restart of Rust
+  validators (WAL recovery; with and without block sync) and of the Rust
+  full node, isolating any node, link latency, a 3/4 split that halts the
+  chain until healed, a Rust node wiped (except
+  `priv_validator_state.json`) and restarted from state sync off the Go
+  snapshots, and V4 unbonding its whole self-delegation (leaves the set)
+  then re-bonding + unjailing.
+- **Checks:** block and app hash of every height on every node against
+  the Go reference (`/commit`), no evidence in any block, no double-sign /
+  conflicting-vote / consensus-failure / rejected-proposal log line, no
+  stall over 60 s outside the planned split, every node converges after
+  each event; RSS of every node every 15 s (`rss.csv`, per-lifetime growth
+  slope in the report) and disk usage every 60 s (`disk.csv`).
+
+```bash
+DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=19000 conformance/devnet/soak.sh
+```
+
+The report (`report.md` / `report.json`) lists heights, txs, block sizes,
+proposers, restarts, max RSS and disk per node, stalls, chaos events and
+the most frequent Rust warnings. `build-bins.sh` builds the Go binaries
+(with download retries); the nightly workflow runs the interop scripts and
+a 30-minute soak.
