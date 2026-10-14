@@ -314,14 +314,13 @@ impl App {
         ms.load_latest_version().map_err(store_err)?;
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
-        if app.chain_id.is_empty() {
-            if let Some(chain_id) = &options.chain_id {
+        if app.chain_id.is_empty()
+            && let Some(chain_id) = &options.chain_id {
                 app.chain_id.clone_from(chain_id);
                 app.ms
                     .root_mut()
                     .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
             }
-        }
         Ok(app)
     }
 
@@ -812,6 +811,13 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
             results[i] = Some(r);
         }
     }
+    // Go runs every tx on its own copy of the finalize-block context, so
+    // the end blockers see the block context's infinite gas meter and no
+    // tx bytes. Without this reset they inherited the last tx's meter: a
+    // passed gov proposal executed in EndBlock after a nearly exhausted
+    // tx failed with "out of gas" and halted the Rust nodes (soak).
+    ctx.gas = kvstore::GasMeter::infinite();
+    ctx.tx_bytes.clear();
     results.into_iter().map(Option::unwrap_or_default).collect()
 }
 
@@ -870,11 +876,10 @@ impl Application for AbciApp {
     fn handle(&self, request: request::Value) -> response::Value {
         // celestia-core-backed queries run outside the lock (see
         // `node_services`).
-        if let request::Value::Query(r) = &request {
-            if let Some(resp) = node_services::abci_query(self, r) {
+        if let request::Value::Query(r) = &request
+            && let Some(resp) = node_services::abci_query(self, r) {
                 return response::Value::Query(resp);
             }
-        }
         let Ok(mut app) = self.inner.lock() else {
             return response::Value::Exception(ResponseException {
                 error: "poisoned".into(),
@@ -924,6 +929,144 @@ impl Application for AbciApp {
                 error: format!("unsupported request {other:?}"),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod finalize_gas_tests {
+    use super::*;
+    use celestia_proto::Any;
+    use celestia_proto::cosmos::auth::v1beta1::{BaseAccount, Params as AuthParams};
+    use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+    use celestia_proto::cosmos::tx::v1beta1::{
+        AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw, mode_info,
+    };
+    use prost::Message as _;
+
+    /// A DIRECT-signed MsgSend from a funded account with a 100,000 gas
+    /// limit, chain "test", sequence 0.
+    fn signed_send(ctx: &mut Context<'_>) -> Vec<u8> {
+        let sk = crypto::secp256k1::secret_key_from_secret(b"end-block-gas");
+        let pk = crypto::secp256k1::public_key_from_secret_key(&sk).unwrap_or([0; 33]);
+        let addr = crypto::secp256k1::address(&pk).to_vec();
+        let ok = |r: Result<()>| assert!(r.is_ok(), "{r:?}");
+        ok(x_auth::set_params(
+            ctx,
+            &AuthParams {
+                max_memo_characters: 256,
+                tx_sig_limit: 7,
+                tx_size_cost_per_byte: 10,
+                sig_verify_cost_ed25519: 590,
+                sig_verify_cost_secp256k1: 1000,
+            },
+        ));
+        ok(x_auth::get_module_account(ctx, x_auth::FEE_COLLECTOR).map(|_| ()));
+        let account_number = x_auth::next_account_number(ctx).unwrap_or_default();
+        ok(x_auth::set_account(
+            ctx,
+            &x_auth::Account::Base(BaseAccount {
+                address: x_auth::bech32(&addr).unwrap_or_default(),
+                pub_key: None,
+                account_number,
+                sequence: 0,
+            }),
+        ));
+        ok(x_bank::set_params(
+            ctx,
+            celestia_proto::cosmos::bank::v1beta1::Params {
+                default_send_enabled: true,
+                ..Default::default()
+            },
+        ));
+        ok(x_bank::set_balance(
+            ctx,
+            &addr,
+            &sdk::coins::Coin::new("utia", 1_000_000),
+        ));
+        ok(ctx.set(
+            "minfee",
+            b"params".to_vec(),
+            celestia_proto::celestia::minfee::v1::Params {
+                network_min_gas_price: "1000000000000".into(),
+            }
+            .encode_to_vec(),
+        ));
+        let body = TxBody {
+            messages: vec![Any::pack(&MsgSend {
+                from_address: x_auth::bech32(&addr).unwrap_or_default(),
+                to_address: x_auth::bech32(&[7; 20]).unwrap_or_default(),
+                amount: vec![PbCoin {
+                    denom: "utia".into(),
+                    amount: "10".into(),
+                }],
+            })],
+            ..Default::default()
+        };
+        let mut key = vec![0x0a, 33];
+        key.extend_from_slice(&pk);
+        let auth = AuthInfo {
+            signer_infos: vec![SignerInfo {
+                public_key: Some(Any {
+                    type_url: "/cosmos.crypto.secp256k1.PubKey".into(),
+                    value: key,
+                }),
+                mode_info: Some(ModeInfo {
+                    sum: Some(mode_info::Sum::Single(mode_info::Single { mode: 1 })),
+                }),
+                sequence: 0,
+            }],
+            fee: Some(Fee {
+                amount: vec![PbCoin {
+                    denom: "utia".into(),
+                    amount: "2000".into(),
+                }],
+                gas_limit: 100_000,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (body_bytes, auth_info_bytes) = (body.encode_to_vec(), auth.encode_to_vec());
+        let doc = SignDoc {
+            body_bytes: body_bytes.clone(),
+            auth_info_bytes: auth_info_bytes.clone(),
+            chain_id: "test".into(),
+            account_number,
+        };
+        let sig = crypto::secp256k1::sign(&sk, &doc.encode_to_vec()).unwrap_or([0; 64]);
+        TxRaw {
+            body_bytes,
+            auth_info_bytes,
+            signatures: vec![sig.to_vec()],
+        }
+        .encode_to_vec()
+    }
+
+    /// Regression (soak, 2026-10-14): after the tx phase the block context
+    /// must hold an infinite gas meter again, not the last tx's limited one.
+    /// EndBlock work (here: executing a passed gov proposal) ran out of gas
+    /// on Rust nodes only and halted them.
+    #[test]
+    fn end_block_context_gets_an_infinite_gas_meter() {
+        let mut app = App::new();
+        let header = Header {
+            chain_id: "test".into(),
+            height: 5,
+            ..Default::default()
+        };
+        let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+        let tx = signed_send(&mut ctx);
+        let results = execute_txs_phased(&mut ctx, std::slice::from_ref(&tx));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].code, 0, "{}", results[0].log);
+        assert_eq!(results[0].gas_wanted, 100_000);
+        assert_eq!(
+            ctx.gas.limit(),
+            None,
+            "block context meter must be infinite"
+        );
+        assert_eq!(ctx.gas.consumed(), 0);
+        assert!(ctx.tx_bytes.is_empty());
     }
 }
 
