@@ -19,6 +19,7 @@ kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 pbjson-types = "0.7"
 prost = "0.13"
+square = { path = "../../tier-1-protocol-types/square" }
 sdk = { path = "../../tier-3-app-modules/sdk" }
 serde_json = "1"
 tracing = "0.1"
@@ -37,3 +38,6 @@ x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-mint = { path = "../../tier-3-app-modules/x/mint" }
 x-params = { path = "../../tier-3-app-modules/x/params" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
+
+[dev-dependencies]
+hex = "0.4"

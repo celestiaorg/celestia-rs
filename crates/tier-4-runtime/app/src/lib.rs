@@ -7,6 +7,7 @@
 
 pub mod genutil;
 pub mod modules;
+pub mod proposal;
 pub mod router;
 pub mod stores;
 pub mod tx;
