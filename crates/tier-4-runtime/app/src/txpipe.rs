@@ -2,29 +2,12 @@
 //! [`crate::tx`]. Temporary stand-ins are marked and fail loudly.
 
 use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
-use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, TxBody, TxRaw};
-use prost::Message;
-use sdk::error::sdk as errs;
 use sdk::tx::Tx;
 use sdk::{Context, Result};
 
-/// Decodes block tx bytes. Stand-in until the `txdecode` crate lands:
-/// plain prost decoding without unknown-field rejection or blob wrappers.
+/// Decodes block tx bytes: celestia-app's `TxConfig.TxDecoder()`.
 pub fn decode_tx(bytes: &[u8]) -> Result<Tx> {
-    let raw = TxRaw::decode(bytes).map_err(|e| errs::tx_decode(e.to_string()))?;
-    let body =
-        TxBody::decode(raw.body_bytes.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))?;
-    let auth_info = AuthInfo::decode(raw.auth_info_bytes.as_slice())
-        .map_err(|e| errs::tx_decode(e.to_string()))?;
-    Ok(Tx {
-        tx_bytes: bytes.to_vec(),
-        body_bytes: raw.body_bytes,
-        auth_info_bytes: raw.auth_info_bytes,
-        signatures: raw.signatures,
-        body,
-        auth_info,
-        ..Tx::default()
-    })
+    txdecode::decode(bytes)
 }
 
 /// The ante handler (`x_ante`) over store-backed keeper dependencies.

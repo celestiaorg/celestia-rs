@@ -124,6 +124,7 @@ dependencies = [
  "serde_json",
  "square",
  "tracing",
+ "txdecode",
  "x-ante",
  "x-auth",
  "x-bank",
@@ -561,6 +562,7 @@ dependencies = [
  "sdk",
  "serde",
  "serde_json",
+ "txdecode",
  "x-staking",
 ]
 
@@ -2149,6 +2151,20 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "txdecode"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hex",
+ "math",
+ "p256",
+ "prost",
+ "sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

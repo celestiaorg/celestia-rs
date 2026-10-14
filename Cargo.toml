@@ -23,6 +23,7 @@ members = [
     "crates/tier-3-app-modules/bank",
     "crates/tier-3-app-modules/staking",
     "crates/tier-3-app-modules/sdk",
+    "crates/tier-3-app-modules/txdecode",
     "crates/tier-3-app-modules/x/auth",
     "crates/tier-3-app-modules/x/ante",
     "crates/tier-3-app-modules/x/bank",

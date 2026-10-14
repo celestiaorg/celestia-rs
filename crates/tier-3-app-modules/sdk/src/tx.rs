@@ -4,7 +4,7 @@
 use celestia_proto::Any;
 use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, TxBody};
 
-/// A blob carried by a `BlobTx` wrapper (go-square v3 `Blob`).
+/// A blob carried by a `BlobTx` wrapper (go-square v4 `Blob`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Blob {
     /// Namespace ID bytes (without version).
@@ -15,7 +15,7 @@ pub struct Blob {
     pub share_version: u32,
     /// Blob data.
     pub data: Vec<u8>,
-    /// Signer (share version 1 only).
+    /// Signer (share versions 1 and 2; empty for version 0).
     pub signer: Vec<u8>,
 }
 
@@ -41,6 +41,13 @@ pub struct Tx {
     pub blobs: Vec<Blob>,
     /// Share indexes, when the tx was an `IndexWrapper`.
     pub share_indexes: Vec<u32>,
+    /// The messages as Go's message handlers see them (the `Any` cached
+    /// values after `UnpackInterfaces`): same type URLs as `body.messages`,
+    /// but each value re-encoded from the decoded Go struct, so prost decodes
+    /// it to the same content Go holds (customtype amounts normalized, e.g.
+    /// `"0x10"` -> `"16"`; invalid UTF-8 in strings replaced, which Go keeps
+    /// but prost cannot decode). `body.messages` keeps the bytes as received.
+    pub normalized_msgs: Vec<Any>,
 }
 
 impl Tx {

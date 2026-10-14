@@ -22,6 +22,15 @@ cargo xtask refresh-fixtures --crate-name hash
 
 The Rust runner shells out to `go run ./conformance/fixturegen ...`. Go 1.24.11 is required for regeneration only; consumers of fixtures (Rust crates) need no Go toolchain.
 
+Tx decoding vectors (`fixtures/txdecode/`, celestia-app v10.4.0 `TxDecoder`)
+come from their own module, which also regenerates the `txdecode` crate's
+static interface-registry table:
+
+```bash
+cd conformance/txdecode
+GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/txdecode
+```
+
 ## Expanding cached mainnet blocks
 
 The `square-mainnet-blocks` fixture is generated from cached CometBFT block

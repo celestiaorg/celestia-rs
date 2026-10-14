@@ -1,0 +1,25 @@
+[package]
+name = "txdecode"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Consensus-exact port of celestia-app v10's TxDecoder: BlobTx/IndexWrapper unwrapping and the cosmos-sdk DefaultTxDecoder (ADR-027, unknownproto, gogoproto unmarshal, Any unpacking)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+math = { path = "../../tier-0-primitives/math" }
+sdk = { path = "../sdk" }
+p256 = { version = "0.13", default-features = false, features = ["arithmetic"] }
+prost = "0.13"
+
+[dev-dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

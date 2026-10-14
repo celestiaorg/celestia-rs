@@ -13,7 +13,7 @@ into prost bindings by `cargo xtask gen-proto` (pure-Rust `protox`, no
 | `celestia-app/` | `celestiaorg/celestia-app/v10` v10.4.0 |
 | `hyperlane-cosmos/` | `celestiaorg/hyperlane-cosmos` v1.3.0 |
 | `packet-forward-middleware/` | `cosmos/ibc-apps/middleware/packet-forward-middleware/v8` v8.2.0 |
-| `third_party/` | gogoproto, cosmos_proto, google/api, and a name-only `cosmos/ics23` stub (mapped to the `ics23` crate) |
+| `third_party/` | gogoproto, cosmos_proto, google/api, and `cosmos/ics23` proofs.proto reconstructed from the Go descriptor (mapped to the `ics23` crate) |
 
 Local edits (wire-format neutral) are marked `celestia-rs:` in the source:
 

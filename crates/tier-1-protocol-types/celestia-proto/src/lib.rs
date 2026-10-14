@@ -21,6 +21,7 @@ include!("gen/mod.rs");
 pub mod any;
 pub mod registry;
 pub mod signers;
+pub mod wire_table;
 
 pub use any::Any;
 pub use celestia_core_proto;
