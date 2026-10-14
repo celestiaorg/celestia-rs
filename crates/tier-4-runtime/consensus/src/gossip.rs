@@ -12,6 +12,8 @@
 //! under message loss.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::state::{ConsensusState, Event};
 use crate::types::{ConsensusMessage, RoundStep};
@@ -35,10 +37,23 @@ pub struct PeerState {
     pub step: RoundStep,
 }
 
+/// A peer's consensus height shared with the mempool reactor (Go stores
+/// the consensus `PeerState` on the peer under `types.PeerStateKey`; the
+/// CAT mempool reads its height to skip lagging peers).
+#[derive(Debug, Default)]
+pub struct SharedPeerHeight(AtomicI64);
+
+impl mempool::cat::PeerState for SharedPeerHeight {
+    fn get_height(&self) -> i64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
 /// The gossip layer of one node.
 #[derive(Debug, Default)]
 pub struct Gossip {
     peers: BTreeMap<String, PeerState>,
+    heights: BTreeMap<String, Arc<SharedPeerHeight>>,
 }
 
 impl Gossip {
@@ -54,6 +69,19 @@ impl Gossip {
         self.peers.get(peer).copied()
     }
 
+    /// The handle the mempool reads a peer's consensus height from.
+    pub fn mempool_peer_state(&mut self, peer: &str) -> mempool::cat::PeerStateHandle {
+        let h = self.heights.entry(peer.to_owned()).or_default().clone();
+        mempool::cat::PeerStateHandle(h)
+    }
+
+    /// `AddPeer`: publishes the peer's consensus height for the mempool
+    /// (`peer.Set(types.PeerStateKey, ps)`).
+    pub fn add_p2p_peer(&mut self, peer: &p2p::Peer) {
+        let handle = self.mempool_peer_state(&peer.id().to_string());
+        peer.set(mempool::cat::PEER_STATE_KEY, Arc::new(handle));
+    }
+
     /// Handles a message from a peer.
     pub fn receive(&mut self, cs: &mut ConsensusState, peer: &str, msg: ConsensusMessage) {
         match msg {
@@ -63,6 +91,11 @@ impl Gossip {
                 step,
                 ..
             } => {
+                self.heights
+                    .entry(peer.to_owned())
+                    .or_default()
+                    .0
+                    .store(height, Ordering::Relaxed);
                 self.peers.insert(
                     peer.to_owned(),
                     PeerState {

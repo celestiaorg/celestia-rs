@@ -61,27 +61,87 @@ pub trait AppConn: Send {
     }
 }
 
-/// The mempool as block execution sees it.
-pub trait Mempool: Send {
-    /// `ReapMaxBytesMaxGas` (`-1` = unlimited).
-    fn reap_max_bytes_max_gas(&mut self, max_bytes: i64, max_gas: i64) -> Vec<Vec<u8>>;
-    /// `Update` after a commit.
-    fn update(&mut self, height: i64, txs: &[Tx], results: &[abci::ExecTxResult]);
-    /// Whether txs are waiting (drives `TxsAvailable`).
-    fn has_txs(&self) -> bool {
-        false
-    }
+pub use mempool::{CachedTx, Mempool, MempoolLock};
+
+/// `TxPreCheck(state)`: txs must fit an evidence-free block.
+#[must_use]
+pub fn tx_pre_check(state: &State) -> mempool::PreCheckFunc {
+    let max = ctypes::block::max_data_bytes_no_evidence(
+        state.consensus_params.block.max_bytes,
+        state.validators.size(),
+    )
+    .unwrap_or(i64::MAX);
+    mempool::pre_check_max_bytes(max)
 }
 
-/// A mempool that never has transactions.
+/// `TxPostCheck(state)`: gas wanted within `Block.MaxGas`.
+#[must_use]
+pub fn tx_post_check(state: &State) -> mempool::PostCheckFunc {
+    mempool::post_check_max_gas(state.consensus_params.block.max_gas)
+}
+
+/// `emptyMempool` (handshake replay, tests): never has transactions.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NopMempool;
 
+struct NopLock;
+
+impl MempoolLock for NopLock {
+    fn flush_app_conn(&mut self) -> Result<(), mempool::MempoolError> {
+        Ok(())
+    }
+    fn update(
+        &mut self,
+        _: i64,
+        _: &[CachedTx],
+        _: &[abci::ExecTxResult],
+        _: Option<mempool::PreCheckFunc>,
+        _: Option<mempool::PostCheckFunc>,
+    ) -> Result<(), mempool::MempoolError> {
+        Ok(())
+    }
+}
+
 impl Mempool for NopMempool {
-    fn reap_max_bytes_max_gas(&mut self, _: i64, _: i64) -> Vec<Vec<u8>> {
+    fn check_tx(
+        &self,
+        _: &[u8],
+        _: mempool::TxInfo,
+    ) -> Result<abci::ResponseCheckTx, mempool::MempoolError> {
+        Ok(abci::ResponseCheckTx::default())
+    }
+    fn remove_tx_by_key(&self, _: &mempool::TxKey) -> Result<(), mempool::MempoolError> {
+        Ok(())
+    }
+    fn reap_max_bytes_max_gas(&self, _: i64, _: i64) -> Vec<CachedTx> {
         Vec::new()
     }
-    fn update(&mut self, _: i64, _: &[Tx], _: &[abci::ExecTxResult]) {}
+    fn reap_max_txs(&self, _: i64) -> Vec<CachedTx> {
+        Vec::new()
+    }
+    fn lock(&self) -> Box<dyn MempoolLock + '_> {
+        Box::new(NopLock)
+    }
+    fn flush(&self) {}
+    fn enable_txs_available(&self) {}
+    fn txs_available(&self) -> Option<std::sync::Arc<tokio::sync::Notify>> {
+        None
+    }
+    fn size(&self) -> usize {
+        0
+    }
+    fn size_bytes(&self) -> i64 {
+        0
+    }
+    fn get_tx_by_key(&self, _: &mempool::TxKey) -> Option<CachedTx> {
+        None
+    }
+    fn was_recently_evicted(&self, _: &mempool::TxKey) -> bool {
+        false
+    }
+    fn was_recently_rejected(&self, _: &mempool::TxKey) -> (bool, u32, String) {
+        (false, 0, String::new())
+    }
 }
 
 /// `BlockExecutor`.
@@ -91,7 +151,7 @@ pub struct BlockExecutor {
     /// Block store.
     pub block_store: BlockStore,
     app: Box<dyn AppConn>,
-    mempool: Box<dyn Mempool>,
+    mempool: std::sync::Arc<dyn Mempool>,
     evpool: Box<dyn EvidencePool>,
     /// Number of states pruned so far.
     pub pruned_states: u64,
@@ -428,7 +488,7 @@ impl BlockExecutor {
         state_store: StateStore,
         block_store: BlockStore,
         app: Box<dyn AppConn>,
-        mempool: Box<dyn Mempool>,
+        mempool: std::sync::Arc<dyn Mempool>,
         evpool: Box<dyn EvidencePool>,
     ) -> Self {
         Self {
@@ -447,8 +507,9 @@ impl BlockExecutor {
     }
 
     /// The mempool.
-    pub fn mempool(&mut self) -> &mut dyn Mempool {
-        self.mempool.as_mut()
+    #[must_use]
+    pub fn mempool(&self) -> &std::sync::Arc<dyn Mempool> {
+        &self.mempool
     }
 
     /// The evidence pool.
@@ -481,7 +542,12 @@ impl BlockExecutor {
         } else {
             max_data_bytes + max_data_bytes / 4
         };
-        let txs = self.mempool.reap_max_bytes_max_gas(max_reap_bytes, max_gas);
+        let txs: Vec<Vec<u8>> = self
+            .mempool
+            .reap_max_bytes_max_gas(max_reap_bytes, max_gas)
+            .iter()
+            .map(|t| t.tx().to_vec())
+            .collect();
         let commit = last_ext_commit.to_commit();
         let block = state.make_block_without_partset(
             height,
@@ -600,7 +666,7 @@ impl BlockExecutor {
         let validator_updates = validator_updates_from_abci(&resp.validator_updates)?;
         let mut new_state = update_state(state, block_id, &block.header, &resp, &validator_updates)
             .map_err(|e| Error::new(format!("commit failed for application: {e}")))?;
-        let retain_height = self.commit(block, &resp)?;
+        let retain_height = self.commit(&new_state, block, &resp)?;
         self.evpool.update(&new_state, &block.evidence.evidence);
         new_state.app_hash.clone_from(&resp.app_hash);
         self.state_store.save(&new_state)?;
@@ -612,14 +678,41 @@ impl BlockExecutor {
         Ok(new_state)
     }
 
-    /// `Commit`: app Commit then mempool update; returns the retain height.
-    fn commit(&mut self, block: &Block, resp: &abci::ResponseFinalizeBlock) -> Result<i64> {
+    /// `Commit`: with the mempool locked (no CheckTx in between), flush
+    /// its app connection, Commit the app, then `Update` the mempool
+    /// (remove the block's txs, recheck the rest against the new state).
+    /// Returns the app's retain height.
+    fn commit(
+        &mut self,
+        state: &State,
+        block: &Block,
+        resp: &abci::ResponseFinalizeBlock,
+    ) -> Result<i64> {
+        let mempool = self.mempool.clone();
+        let mut guard = mempool.lock();
+        guard
+            .flush_app_conn()
+            .map_err(|e| Error::new(format!("client error during mempool.FlushAppConn: {e}")))?;
         let res = self
             .app
             .commit()
             .map_err(|e| Error::new(format!("commit failed for application: {e}")))?;
-        self.mempool
-            .update(block.header.height, &block.data.txs, &resp.tx_results);
+        let txs: Vec<CachedTx> = block
+            .data
+            .txs
+            .iter()
+            .map(|t| CachedTx::new(t.0.clone()))
+            .collect();
+        guard
+            .update(
+                block.header.height,
+                &txs,
+                &resp.tx_results,
+                Some(tx_pre_check(state)),
+                Some(tx_post_check(state)),
+            )
+            .map_err(|e| Error::new(format!("mempool update: {e}")))?;
+        drop(guard);
         Ok(res.retain_height)
     }
 

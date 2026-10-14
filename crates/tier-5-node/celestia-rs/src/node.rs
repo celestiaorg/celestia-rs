@@ -12,125 +12,123 @@
 //! | `data/application.redb` | app state (ADR 0002) |
 //! | `data/blockstore.redb`, `data/state.redb` | block / state stores |
 //! | `data/cs.wal/wal` | consensus WAL (Go format) |
-//! | `data/tx-inbox/*.tx` | raw txs to include (local mempool until P2P/RPC exist) |
+//! | `data/tx-inbox/*.tx` | raw txs submitted to the CAT mempool via CheckTx (until RPC exists) |
 //!
 //! There is no P2P yet: the node is the only validator (or a validator
 //! that never reaches quorum when others exist).
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context as _, anyhow};
 use consensus::{ConsensusConfig, ConsensusState, Event, FileWal, SystemClock};
 use ctypes::proto::abci;
 use kvdb::{KvBackend, RedbBackend, RedbOptions};
 use nodestore::{
-    AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, Mempool,
-    StateStore,
+    AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, StateStore,
 };
 use privval::FilePv;
 use prost::Message as _;
 
 /// The Rust app behind [`AppConn`].
-struct AppAdapter(app::App);
+struct AppAdapter(Arc<Mutex<app::App>>);
 
 fn app_err(e: &sdk::SdkError) -> nodestore::Error {
     nodestore::Error::new(e.log.clone())
 }
 
+impl AppAdapter {
+    fn app(&self) -> std::sync::MutexGuard<'_, app::App> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The mempool connection to the same app (CheckTx runs on its check
+/// state; `QuerySequence` for the CAT mempool).
+struct MempoolApp(Arc<Mutex<app::App>>);
+
+impl mempool::AppConnMempool for MempoolApp {
+    fn check_tx(&self, req: abci::RequestCheckTx) -> Result<abci::ResponseCheckTx, String> {
+        let mut app = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        app.check_tx(&req)
+    }
+
+    fn query_sequence(&self, signer: &[u8]) -> Result<u64, String> {
+        let mut app = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(app.query_sequence(signer).sequence)
+    }
+}
+
 impl AppConn for AppAdapter {
     fn info(&mut self) -> nodestore::Result<abci::ResponseInfo> {
-        Ok(self.0.info())
+        Ok(self.app().info())
     }
     fn init_chain(
         &mut self,
         req: abci::RequestInitChain,
     ) -> nodestore::Result<abci::ResponseInitChain> {
-        self.0.init_chain(req).map_err(|e| app_err(&e))
+        self.app().init_chain(req).map_err(|e| app_err(&e))
     }
     fn prepare_proposal(
         &mut self,
         req: abci::RequestPrepareProposal,
     ) -> nodestore::Result<abci::ResponsePrepareProposal> {
-        self.0.prepare_proposal(&req).map_err(|e| app_err(&e))
+        self.app().prepare_proposal(&req).map_err(|e| app_err(&e))
     }
     fn process_proposal(
         &mut self,
         req: abci::RequestProcessProposal,
     ) -> nodestore::Result<abci::ResponseProcessProposal> {
-        self.0.process_proposal(&req).map_err(|e| app_err(&e))
+        self.app().process_proposal(&req).map_err(|e| app_err(&e))
     }
     fn finalize_block(
         &mut self,
         req: abci::RequestFinalizeBlock,
     ) -> nodestore::Result<abci::ResponseFinalizeBlock> {
-        self.0.finalize_block(req).map_err(|e| app_err(&e))
+        self.app().finalize_block(req).map_err(|e| app_err(&e))
     }
     fn commit(&mut self) -> nodestore::Result<abci::ResponseCommit> {
-        self.0.commit().map_err(|e| app_err(&e))
+        self.app().commit().map_err(|e| app_err(&e))
     }
 }
 
-/// A local mempool: raw tx files in `<home>/data/tx-inbox` (sorted by
-/// name), a few per block. Reaped files are removed once their block is
-/// committed (included or rejected by `PrepareProposal`).
-struct DirMempool {
-    dir: PathBuf,
-    per_block: usize,
-    reaped: Vec<PathBuf>,
-}
-
-impl DirMempool {
-    fn files(&self) -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = std::fs::read_dir(&self.dir)
-            .map(|rd| {
-                rd.filter_map(Result::ok)
-                    .map(|e| e.path())
-                    .filter(|p| p.extension().is_some_and(|x| x == "tx"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        v.sort();
-        v
-    }
-}
-
-impl Mempool for DirMempool {
-    fn reap_max_bytes_max_gas(&mut self, max_bytes: i64, _: i64) -> Vec<Vec<u8>> {
-        let mut out = Vec::new();
-        let mut size = 0i64;
-        self.reaped.clear();
-        for p in self.files().into_iter().take(self.per_block) {
-            let Ok(bz) = std::fs::read(&p) else { continue };
-            let n = i64::try_from(bz.len()).unwrap_or(i64::MAX);
-            if max_bytes >= 0 && size + n > max_bytes {
-                break;
-            }
-            size += n;
-            out.push(bz);
-            self.reaped.push(p);
-        }
-        out
-    }
-
-    fn update(&mut self, height: i64, txs: &[ctypes::Tx], results: &[abci::ExecTxResult]) {
-        for p in self.reaped.drain(..) {
-            let _ = std::fs::remove_file(&p);
-        }
-        for (tx, r) in txs.iter().zip(results) {
-            tracing::info!(
-                height,
-                hash = %hex::encode_upper(tx.hash()),
+/// Submits the raw tx files in `<home>/data/tx-inbox` (name order) to the
+/// mempool through CheckTx and removes them (a local stand-in for RPC
+/// `broadcast_tx` until the RPC server exists).
+fn feed_inbox(dir: &Path, pool: &mempool::TxPool) {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "tx"))
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    for p in files {
+        let Ok(bz) = std::fs::read(&p) else { continue };
+        let _ = std::fs::remove_file(&p);
+        let info = mempool::TxInfo {
+            from_broadcast: true,
+            ..mempool::TxInfo::default()
+        };
+        match pool.check_tx(&bz, info) {
+            Ok(r) => tracing::info!(
+                file = %p.display(),
                 code = r.code,
-                gas_used = r.gas_used,
                 log = %r.log,
-                "tx committed"
-            );
+                "CheckTx"
+            ),
+            Err(e) => tracing::warn!(file = %p.display(), err = %e, "mempool rejected tx"),
         }
-    }
-
-    fn has_txs(&self) -> bool {
-        !self.files().is_empty()
     }
 }
 
@@ -141,8 +139,6 @@ pub struct StartOptions {
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever).
     pub halt_height: i64,
-    /// Txs taken from the inbox per block.
-    pub txs_per_block: usize,
     /// Consensus config overrides.
     pub config: ConsensusConfig,
 }
@@ -198,15 +194,21 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .map_err(|e| anyhow!("load state: {e}"))?;
     let inbox = home.join("data").join("tx-inbox");
     std::fs::create_dir_all(&inbox)?;
+    let app = Arc::new(Mutex::new(app));
+    let pool = Arc::new(
+        mempool::TxPool::new(
+            mempool::MempoolConfig::celestia_app(),
+            Arc::new(MempoolApp(app.clone())),
+            state.last_block_height,
+        )
+        .with_pre_check(nodestore::execution::tx_pre_check(&state))
+        .with_post_check(nodestore::execution::tx_post_check(&state)),
+    );
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
         Box::new(AppAdapter(app)),
-        Box::new(DirMempool {
-            dir: inbox,
-            per_block: opts.txs_per_block,
-            reaped: Vec::new(),
-        }),
+        pool.clone(),
         Box::new(MemEvidencePool::new(ss.clone(), bs.clone())),
     );
     let mut hs = Handshaker::new(ss, state, bs, &genesis, consensus::ticker::system_now());
@@ -250,13 +252,23 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     )
     .map_err(|e| anyhow!("consensus: {e}"))?;
     cs.start().map_err(|e| anyhow!("consensus start: {e}"))?;
-    run(&mut cs, opts.halt_height)
+    run(&mut cs, &pool, &inbox, opts.halt_height)
 }
 
 /// The node loop: fire due timeouts, report commits, stop at the halt
 /// height or on a consensus failure.
-fn run(cs: &mut ConsensusState, halt_height: i64) -> anyhow::Result<()> {
+fn run(
+    cs: &mut ConsensusState,
+    pool: &mempool::TxPool,
+    inbox: &Path,
+    halt_height: i64,
+) -> anyhow::Result<()> {
     loop {
+        // The app's check state only has genesis state after the first
+        // commit (as in the SDK), so txs wait for block 1.
+        if cs.state().last_block_height > 0 {
+            feed_inbox(inbox, pool);
+        }
         cs.tick();
         for ev in cs.take_events() {
             if let Event::NewBlock {

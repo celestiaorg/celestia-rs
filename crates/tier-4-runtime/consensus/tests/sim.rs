@@ -33,8 +33,7 @@ use ctypes::{BlockId, PubKey, Time, Vote};
 use kvdb::{KvBackend, MemBackend};
 use nodestore::genesis::GenesisValidator;
 use nodestore::{
-    AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, Mempool,
-    StateStore,
+    AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, StateStore,
 };
 use privval::FilePv;
 
@@ -215,18 +214,21 @@ impl AppConn for SimApp {
     }
 }
 
-/// One tx per block, named after the proposer and height.
-struct SimMempool {
-    name: String,
-    height: i64,
-}
+/// CheckTx of the mempool connection: accepts everything.
+struct AcceptAll;
 
-impl Mempool for SimMempool {
-    fn reap_max_bytes_max_gas(&mut self, _: i64, _: i64) -> Vec<Vec<u8>> {
-        vec![format!("tx-{}-{}", self.name, self.height + 1).into_bytes()]
+impl mempool::AppConnMempool for AcceptAll {
+    fn check_tx(
+        &self,
+        _: abci::RequestCheckTx,
+    ) -> std::result::Result<abci::ResponseCheckTx, String> {
+        Ok(abci::ResponseCheckTx {
+            gas_wanted: 1,
+            ..Default::default()
+        })
     }
-    fn update(&mut self, height: i64, _: &[ctypes::Tx], _: &[abci::ExecTxResult]) {
-        self.height = height;
+    fn query_sequence(&self, _: &[u8]) -> std::result::Result<u64, String> {
+        Ok(0)
     }
 }
 
@@ -265,6 +267,7 @@ struct Disks {
 
 struct Running {
     cs: ConsensusState,
+    pool: Arc<mempool::TxPool>,
     gossip: Gossip,
     timer: Option<Time>,
 }
@@ -328,6 +331,8 @@ struct Outcome {
     /// Own/timeout WAL records replayed across restarts.
     replayed: usize,
     restarts: usize,
+    /// Txs committed (reaped from the proposers' TxPools).
+    txs: usize,
     /// Commit signatures carrying a verified vote extension.
     extended_sigs: usize,
 }
@@ -468,14 +473,17 @@ impl Sim {
             val_updates,
         };
         let height = node.disks.app.lock().unwrap().height;
+        let pool = Arc::new(mempool::TxPool::new(
+            mempool::MempoolConfig::celestia_app(),
+            Arc::new(AcceptAll),
+            height,
+        ));
+        let name = node.name.clone();
         let mut exec = BlockExecutor::new(
             ss.clone(),
             bs.clone(),
             Box::new(app),
-            Box::new(SimMempool {
-                name: node.name.clone(),
-                height,
-            }),
+            pool.clone(),
             Box::new(MemEvidencePool::new(ss.clone(), bs.clone())),
         );
         let now = *self.global.lock().unwrap();
@@ -496,10 +504,16 @@ impl Sim {
             Some(Box::new(pv)),
         )
         .unwrap();
+        // Each node submits a tx per height it reaches to its own pool.
+        let _ = pool.check_tx(
+            format!("tx-{name}-{height}").as_bytes(),
+            mempool::TxInfo::default(),
+        );
         cs.start().unwrap();
         self.outcome.replayed += cs.replayed_messages;
         self.nodes[i].running = Some(Running {
             cs,
+            pool,
             gossip: Gossip::new(),
             timer: None,
         });
@@ -596,6 +610,14 @@ impl Sim {
             panic!("node {i} consensus failure: {f}");
         }
         let events = run.cs.take_events();
+        for ev in &events {
+            if let Event::NewBlock { height, .. } = ev {
+                let _ = run.pool.check_tx(
+                    format!("tx-n{i}-{height}").as_bytes(),
+                    mempool::TxInfo::default(),
+                );
+            }
+        }
         let send_at = run.cs.clock_now().unix_nanos();
         let mut net = SimNet {
             peers: (0..self.sc.n)
@@ -746,6 +768,7 @@ impl Sim {
                 if !b.evidence.evidence.is_empty() {
                     self.outcome.evidence_blocks += 1;
                 }
+                self.outcome.txs += b.data.txs.len();
             }
             for s in &stores {
                 if let Some(ec) = s.load_block_extended_commit(h).unwrap() {
@@ -799,6 +822,8 @@ fn four_validators_reliable_network() {
     assert_live(&o, 15, &[0, 1, 2, 3]);
     // A healthy network decides every height in round 0.
     assert_eq!(o.max_round, 0);
+    // Proposers reap their TxPools; committed txs leave every pool.
+    assert!(o.txs >= 10, "only {} txs committed", o.txs);
 }
 
 #[test]

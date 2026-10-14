@@ -156,18 +156,22 @@ impl AppConn for TestApp {
     }
 }
 
-/// A mempool handing out a fixed tx per height.
-#[derive(Debug, Default)]
-struct CountingMempool {
-    n: u64,
-}
+/// kvstore-like CheckTx for the mempool connection: accepts everything.
+struct AcceptAll;
 
-impl Mempool for CountingMempool {
-    fn reap_max_bytes_max_gas(&mut self, _: i64, _: i64) -> Vec<Vec<u8>> {
-        self.n += 1;
-        vec![format!("tx-{}", self.n).into_bytes()]
+impl mempool::AppConnMempool for AcceptAll {
+    fn check_tx(
+        &self,
+        _: abci::RequestCheckTx,
+    ) -> std::result::Result<abci::ResponseCheckTx, String> {
+        Ok(abci::ResponseCheckTx {
+            gas_wanted: 1,
+            ..Default::default()
+        })
     }
-    fn update(&mut self, _: i64, _: &[ctypes::Tx], _: &[abci::ExecTxResult]) {}
+    fn query_sequence(&self, _: &[u8]) -> std::result::Result<u64, String> {
+        Ok(0)
+    }
 }
 
 pub(crate) struct Key {
@@ -209,6 +213,7 @@ pub(crate) struct Node {
     pub exec: BlockExecutor,
     pub state: State,
     pub keys: Vec<Key>,
+    pub pool: Arc<mempool::TxPool>,
     pub genesis_doc: GenesisDoc,
 }
 
@@ -256,11 +261,16 @@ pub(crate) fn open_node(
     let bs = BlockStore::new(bdb).unwrap();
     let ss = StateStore::new(sdb);
     let state = ss.load_from_db_or_genesis(&genesis_doc).unwrap();
+    let pool: Arc<mempool::TxPool> = Arc::new(mempool::TxPool::new(
+        mempool::MempoolConfig::celestia_app(),
+        Arc::new(AcceptAll),
+        state.last_block_height,
+    ));
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
         Box::new(app),
-        Box::new(CountingMempool::default()),
+        pool.clone(),
         Box::new(MemEvidencePool::new(ss.clone(), bs.clone())),
     );
     let mut hs = Handshaker::new(
@@ -275,6 +285,7 @@ pub(crate) fn open_node(
         exec,
         state,
         keys: (0..n).map(key).collect(),
+        pool,
         genesis_doc,
     }
 }
@@ -305,6 +316,12 @@ impl Node {
 
     pub(crate) fn produce(&mut self, stop: Stop) {
         let height = self.state.last_block_height + 1;
+        self.pool
+            .check_tx(
+                format!("tx-{height}").as_bytes(),
+                mempool::TxInfo::default(),
+            )
+            .unwrap();
         let proposer = self.state.validators.get_proposer().unwrap().address;
         let lec = self.last_ext_commit();
         let state = self.state.clone();
@@ -397,6 +414,9 @@ fn produce_and_validate_chain() {
         assert!(b.hash().is_some());
     }
     assert_eq!(disk.lock().unwrap().height, 10);
+    // Every reaped tx was committed and removed by the locked Update.
+    assert_eq!(node.pool.size(), 0);
+    assert_eq!(node.pool.height(), 10);
     assert_eq!(node.state.app_hash, disk.lock().unwrap().hash);
 }
 
@@ -585,7 +605,7 @@ fn handshake_rejects_app_ahead_of_store() {
         ss.clone(),
         bs.clone(),
         Box::new(TestApp::new(disk)),
-        Box::new(NopMempool),
+        Arc::new(NopMempool),
         Box::new(EmptyEvidencePool),
     );
     // Store is empty: the app hash must match the state's (Go panics).

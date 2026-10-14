@@ -267,7 +267,7 @@ impl<'a> Handshaker<'a> {
             self.state_store.clone(),
             self.block_store.clone(),
             Box::new(MockApp { resp }),
-            Box::new(NopMempool),
+            std::sync::Arc::new(NopMempool),
             Box::new(EmptyEvidencePool),
         );
         let s = self.replay_block(&state, store_height, &mut mock)?;

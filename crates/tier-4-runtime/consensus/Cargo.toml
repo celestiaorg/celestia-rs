@@ -15,7 +15,9 @@ workspace = true
 [dependencies]
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 hex = "0.4"
+mempool = { path = "../mempool" }
 nodestore = { path = "../nodestore" }
+p2p = { path = "../p2p" }
 privval = { path = "../privval" }
 prost = "0.13"
 tracing = "0.1"

@@ -21,6 +21,7 @@ consensus = { path = "../../tier-4-runtime/consensus" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 hex = "0.4"
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+mempool = { path = "../../tier-4-runtime/mempool" }
 nodestore = { path = "../../tier-4-runtime/nodestore" }
 privval = { path = "../../tier-4-runtime/privval" }
 prost = "0.13"

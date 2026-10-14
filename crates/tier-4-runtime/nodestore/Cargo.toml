@@ -17,9 +17,11 @@ base64 = "0.22"
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 hex = "0.4"
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
+mempool = { path = "../mempool" }
 pbjson-types = "0.7"
 prost = "0.13"
 serde_json = "1"
+tokio = { version = "1", features = ["sync"] }
 tracing = "0.1"
 
 [dev-dependencies]

@@ -34,9 +34,6 @@ enum Cmd {
         /// Stop after committing this height (0 = run forever).
         #[arg(long, default_value_t = 0)]
         halt_height: i64,
-        /// Transactions taken from `<home>/data/tx-inbox` per block.
-        #[arg(long, default_value_t = 2)]
-        txs_per_block: usize,
         /// Fallback `timeout_commit` in ms when the app sets none.
         #[arg(long, default_value_t = 1000)]
         timeout_commit_ms: i64,
@@ -109,13 +106,11 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Start {
             home,
             halt_height,
-            txs_per_block,
             timeout_commit_ms,
         } => {
             let opts = node::StartOptions {
                 home,
                 halt_height,
-                txs_per_block,
                 config: consensus::ConsensusConfig {
                     timeout_commit: timeout_commit_ms * 1_000_000,
                     ..consensus::ConsensusConfig::default()

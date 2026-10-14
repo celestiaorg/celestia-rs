@@ -39,7 +39,6 @@ fn opts(home: &Path, halt: i64) -> StartOptions {
     StartOptions {
         home: home.to_path_buf(),
         halt_height: halt,
-        txs_per_block: 2,
         config: consensus::ConsensusConfig::default(),
     }
 }
