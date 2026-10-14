@@ -6,13 +6,17 @@
 #![warn(missing_docs)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use encoding::varint;
+use iavl::{NodeCache, NodeDb};
 use ics23::commitment_proof::Proof as RawCommitmentProof;
 use ics23::{ExistenceProof, HashOp, InnerOp, LeafOp, LengthOp};
+use kvdb::{KvBackend, WriteBatch};
 use prost::Message;
 
 pub use iavl::{Hash, Version};
+pub use kvdb;
 
 /// IAVL-backed key/value store mounted in a multi-store.
 pub type KvStore = kvstore::Store;
@@ -145,7 +149,116 @@ pub enum StoreKind {
     Iavl,
 }
 
-/// In-memory Cosmos SDK commit multi-store.
+/// When committed versions are deleted (Cosmos SDK pruning semantics).
+///
+/// After the commit of every `interval`-th version, all versions except the
+/// latest, the `keep_recent` before it and multiples of `keep_every` are
+/// deleted. `interval == 0` disables pruning (archive).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PruningOptions {
+    /// Versions kept below the latest one.
+    pub keep_recent: u64,
+    /// Additionally keep every version divisible by this (0 = none).
+    pub keep_every: u64,
+    /// Prune after every `interval` commits (0 = never prune).
+    pub interval: u64,
+}
+
+impl PruningOptions {
+    /// Keep every version.
+    #[must_use]
+    pub const fn nothing() -> Self {
+        Self {
+            keep_recent: 0,
+            keep_every: 0,
+            interval: 0,
+        }
+    }
+
+    /// Keep only the latest version (in-memory default).
+    #[must_use]
+    pub const fn latest_only() -> Self {
+        Self {
+            keep_recent: 0,
+            keep_every: 0,
+            interval: 1,
+        }
+    }
+
+    /// Validator default (ADR 0002): the latest 100 versions, pruned every
+    /// 10 commits.
+    #[must_use]
+    pub const fn validator() -> Self {
+        Self {
+            keep_recent: 100,
+            keep_every: 0,
+            interval: 10,
+        }
+    }
+
+    /// True when `version` survives pruning at `latest`.
+    #[must_use]
+    pub fn retains(&self, version: Version, latest: Version) -> bool {
+        if self.interval == 0 || version >= latest {
+            return true;
+        }
+        let keep_recent = Version::try_from(self.keep_recent).unwrap_or(Version::MAX);
+        let keep_every = Version::try_from(self.keep_every).unwrap_or(0);
+        version >= latest.saturating_sub(keep_recent)
+            || (keep_every > 0 && version % keep_every == 0)
+    }
+
+    /// True when pruning runs after committing `version`.
+    #[must_use]
+    pub fn due(&self, version: Version) -> bool {
+        self.interval > 0 && u64::try_from(version).is_ok_and(|v| v % self.interval == 0)
+    }
+}
+
+/// Options of a storage-backed multi-store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreOptions {
+    /// Pruning policy.
+    pub pruning: PruningOptions,
+    /// Decoded IAVL nodes cached across all stores.
+    pub node_cache_size: usize,
+}
+
+impl Default for StoreOptions {
+    fn default() -> Self {
+        Self {
+            pruning: PruningOptions::validator(),
+            node_cache_size: 500_000,
+        }
+    }
+}
+
+/// Backend key of the latest committed version (Go: `s/latest`).
+pub const LATEST_KEY: &[u8] = b"s/latest";
+const METADATA_PREFIX: &[u8] = b"m/";
+
+fn commit_info_key(version: Version) -> Vec<u8> {
+    format!("s/{version}").into_bytes()
+}
+
+fn store_prefix(name: &str) -> Vec<u8> {
+    format!("s/k:{name}/").into_bytes()
+}
+
+fn metadata_key(key: &[u8]) -> Vec<u8> {
+    [METADATA_PREFIX, key].concat()
+}
+
+fn db_err(e: kvdb::Error) -> Error {
+    Error::Db(e.0)
+}
+
+/// Cosmos SDK commit multi-store, in memory ([`Store::new`]) or backed by a
+/// [`KvBackend`] ([`Store::open`]).
+///
+/// A storage-backed store writes all IAVL stores of a height, the commit
+/// info, the latest-version pointer and staged metadata in **one** backend
+/// batch, so a crash leaves either the previous or the new height on disk.
 #[derive(Debug, Clone)]
 pub struct Store {
     initial_version: Version,
@@ -153,10 +266,16 @@ pub struct Store {
     stores: BTreeMap<String, KvStore>,
     last_commit_info: Option<CommitInfo>,
     history: BTreeMap<Version, CommitInfo>,
+    db: Option<Arc<dyn KvBackend>>,
+    cache: Arc<NodeCache>,
+    pruning: PruningOptions,
+    /// Metadata staged for the next commit batch (storage) or kept (memory).
+    metadata: BTreeMap<Vec<u8>, Vec<u8>>,
+    pending_metadata: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl Store {
-    /// Create an empty multi-store.
+    /// Create an empty in-memory multi-store.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -165,10 +284,15 @@ impl Store {
             stores: BTreeMap::new(),
             last_commit_info: None,
             history: BTreeMap::new(),
+            db: None,
+            cache: NodeCache::new(1),
+            pruning: PruningOptions::latest_only(),
+            metadata: BTreeMap::new(),
+            pending_metadata: Vec::new(),
         }
     }
 
-    /// Create an empty multi-store with a custom first commit version.
+    /// Create an empty in-memory multi-store with a custom first commit version.
     pub fn with_initial_version(initial_version: Version) -> Result<Self> {
         if initial_version <= 0 {
             return Err(Error::InvalidVersion {
@@ -181,6 +305,53 @@ impl Store {
         })
     }
 
+    /// Create a storage-backed multi-store over `db`. Mount the stores, then
+    /// call [`Self::load_latest_version`].
+    #[must_use]
+    pub fn open(db: Arc<dyn KvBackend>, options: StoreOptions) -> Self {
+        Self {
+            db: Some(db),
+            cache: NodeCache::new(options.node_cache_size),
+            pruning: options.pruning,
+            ..Self::new()
+        }
+    }
+
+    /// The backend of a storage-backed store.
+    #[must_use]
+    pub fn backend(&self) -> Option<&Arc<dyn KvBackend>> {
+        self.db.as_ref()
+    }
+
+    /// The shared node cache (diagnostics).
+    #[must_use]
+    pub fn node_cache(&self) -> &Arc<NodeCache> {
+        &self.cache
+    }
+
+    /// The pruning policy.
+    #[must_use]
+    pub fn pruning(&self) -> PruningOptions {
+        self.pruning
+    }
+
+    /// Replace the pruning policy.
+    pub fn set_pruning(&mut self, pruning: PruningOptions) {
+        self.pruning = pruning;
+    }
+
+    fn new_kv_store(&self, name: &str) -> Result<KvStore> {
+        match &self.db {
+            None => Ok(KvStore::with_initial_version(self.initial_version)?),
+            Some(db) => {
+                let ndb = NodeDb::new(Arc::clone(db), store_prefix(name), Arc::clone(&self.cache));
+                let mut tree = iavl::Tree::open(ndb)?;
+                tree.set_initial_version(self.initial_version)?;
+                Ok(KvStore::from_tree(tree))
+            }
+        }
+    }
+
     /// Mount a new store under `name`.
     pub fn mount_store(&mut self, name: impl Into<String>, kind: StoreKind) -> Result<()> {
         let name = name.into();
@@ -190,11 +361,83 @@ impl Store {
         }
         match kind {
             StoreKind::Iavl => {
-                self.stores
-                    .insert(name, KvStore::with_initial_version(self.initial_version)?);
+                let store = self.new_kv_store(&name)?;
+                self.stores.insert(name, store);
             }
         }
         Ok(())
+    }
+
+    /// Load the latest committed version from storage (Go
+    /// `LoadLatestVersion`) and return its commit ID. Every mounted store is
+    /// positioned at that version and checked against the stored commit
+    /// info; stores missing from it (added later) start empty at the next
+    /// version. A no-op returning the zero commit ID for in-memory stores
+    /// and fresh databases.
+    pub fn load_latest_version(&mut self) -> Result<CommitId> {
+        let Some(db) = &self.db else {
+            return self.last_commit_id();
+        };
+        let latest = match db.get(LATEST_KEY).map_err(db_err)? {
+            None => 0,
+            Some(raw) => Version::from_be_bytes(
+                raw.as_slice()
+                    .try_into()
+                    .map_err(|_| Error::InvalidCommitInfo("latest version encoding"))?,
+            ),
+        };
+        if latest == 0 {
+            for (name, store) in &self.stores {
+                if !store.tree().available_versions().is_empty() {
+                    return Err(Error::Corrupted(format!(
+                        "store {name} has versions but no commit info"
+                    )));
+                }
+            }
+            return self.last_commit_id();
+        }
+        let info = self.read_commit_info(latest)?;
+        for (name, store) in &mut self.stores {
+            let tree = store.tree_mut();
+            if let Some(store_info) = info.store_info(name) {
+                tree.load_version(latest)?;
+                if tree.root_hash() != store_info.commit_id.hash {
+                    return Err(Error::Corrupted(format!(
+                        "store {name} root does not match commit info at {latest}"
+                    )));
+                }
+            } else {
+                if !tree.available_versions().is_empty() {
+                    return Err(Error::Corrupted(format!(
+                        "store {name} has versions but is not in commit info"
+                    )));
+                }
+                tree.set_initial_version(latest + 1)?;
+            }
+        }
+        for store_info in &info.store_infos {
+            if !self.stores.contains_key(&store_info.name) {
+                return Err(Error::UnknownStore(store_info.name.clone()));
+            }
+        }
+        self.version = latest;
+        self.last_commit_info = Some(info);
+        self.last_commit_id()
+    }
+
+    fn read_commit_info(&self, version: Version) -> Result<CommitInfo> {
+        let Some(db) = &self.db else {
+            return self
+                .history
+                .get(&version)
+                .cloned()
+                .ok_or(Error::VersionNotFound { version });
+        };
+        let raw = db
+            .get(&commit_info_key(version))
+            .map_err(db_err)?
+            .ok_or(Error::VersionNotFound { version })?;
+        CommitInfo::from_proto_bytes(&raw)
     }
 
     /// Return true when a store is mounted under `name`.
@@ -247,6 +490,24 @@ impl Store {
         commit_info_hash(&self.working_store_infos())
     }
 
+    /// Stage `value` under application metadata `key`; it is written in the
+    /// next commit's batch (storage) and readable immediately.
+    pub fn set_metadata(&mut self, key: &[u8], value: Vec<u8>) {
+        self.metadata.insert(key.to_vec(), value.clone());
+        self.pending_metadata.push((key.to_vec(), value));
+    }
+
+    /// Application metadata written by [`Self::set_metadata`].
+    pub fn get_metadata(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        if let Some(value) = self.metadata.get(key) {
+            return Ok(Some(value.clone()));
+        }
+        match &self.db {
+            Some(db) => db.get(&metadata_key(key)).map_err(db_err),
+            None => Ok(None),
+        }
+    }
+
     /// Commit every mounted store and return the multi-store commit ID.
     pub fn commit(&mut self) -> Result<CommitId> {
         let next_version = if self.version == 0 && self.initial_version > 1 {
@@ -262,9 +523,10 @@ impl Store {
             });
         }
 
+        let mut batch = WriteBatch::new();
         let mut store_infos = Vec::with_capacity(self.stores.len());
         for (name, store) in &mut self.stores {
-            let commit = store.save_version()?;
+            let commit = store.tree_mut().save_version_to(&mut batch)?;
             store_infos.push(StoreInfo {
                 name: name.clone(),
                 commit_id: CommitId {
@@ -276,17 +538,116 @@ impl Store {
 
         let commit_info = CommitInfo::new(next_version, store_infos)?;
         let commit_id = commit_info.commit_id()?;
+        if let Some(db) = &self.db {
+            batch.put(commit_info_key(next_version), commit_info.to_proto_bytes()?);
+            batch.put(LATEST_KEY, next_version.to_be_bytes().to_vec());
+            for (key, value) in self.pending_metadata.drain(..) {
+                batch.put(metadata_key(&key), value);
+            }
+            db.write(batch).map_err(db_err)?;
+        } else {
+            self.pending_metadata.clear();
+            self.history.insert(next_version, commit_info.clone());
+        }
         self.version = next_version;
-        self.history.insert(next_version, commit_info.clone());
         self.last_commit_info = Some(commit_info);
+        if self.pruning.due(next_version) {
+            self.prune()?;
+        }
         Ok(commit_id)
     }
 
+    /// Delete every version the pruning policy no longer retains, in one
+    /// backend batch. Returns the deleted versions.
+    pub fn prune(&mut self) -> Result<Vec<Version>> {
+        let latest = self.version;
+        let pruning = self.pruning;
+        let mut batch = WriteBatch::new();
+        let mut deleted = BTreeSet::new();
+        for store in self.stores.values_mut() {
+            deleted.extend(
+                store
+                    .tree_mut()
+                    .prune(|v| pruning.retains(v, latest), &mut batch)?,
+            );
+        }
+        if let Some(db) = &self.db {
+            for version in &deleted {
+                batch.delete(commit_info_key(*version));
+            }
+            if !batch.is_empty() {
+                db.write(batch).map_err(db_err)?;
+            }
+        }
+        Ok(deleted.into_iter().collect())
+    }
+
+    /// Committed versions available in every store, ascending.
+    #[must_use]
+    pub fn available_versions(&self) -> Vec<Version> {
+        let mut stores = self.stores.values();
+        let Some(first) = stores.next() else {
+            return Vec::new();
+        };
+        let mut versions: BTreeSet<Version> =
+            first.tree().available_versions().into_iter().collect();
+        for store in stores {
+            let other: BTreeSet<Version> = store.tree().available_versions().into_iter().collect();
+            versions.retain(|v| other.contains(v));
+        }
+        versions.into_iter().collect()
+    }
+
     /// Return historical commit info by version.
-    pub fn get_commit_info(&self, version: Version) -> Result<&CommitInfo> {
-        self.history
-            .get(&version)
-            .ok_or(Error::VersionNotFound { version })
+    pub fn get_commit_info(&self, version: Version) -> Result<CommitInfo> {
+        self.read_commit_info(version)
+    }
+
+    /// Export every IAVL store at `version`, sorted by store name (the SDK
+    /// snapshot order).
+    pub fn export(&self, version: Version) -> Result<Vec<(String, iavl::Exporter)>> {
+        if version <= 0 || version > self.version {
+            return Err(Error::InvalidVersion { version });
+        }
+        self.stores
+            .iter()
+            .map(|(name, store)| Ok((name.clone(), store.tree().export(version)?)))
+            .collect()
+    }
+
+    /// Start restoring a snapshot taken at `version` into this (empty)
+    /// store. See [`Restorer`].
+    pub fn restore(&mut self, version: Version) -> Result<Restorer<'_>> {
+        if version <= 0 {
+            return Err(Error::InvalidVersion { version });
+        }
+        if self.version != 0 {
+            return Err(Error::InvalidVersion {
+                version: self.version,
+            });
+        }
+        if let Some(db) = &self.db {
+            // Remove leftovers of an interrupted restore.
+            let mut batch = WriteBatch::new();
+            for name in self.stores.keys() {
+                for item in db
+                    .prefix_range(&store_prefix(name), false)
+                    .map_err(db_err)?
+                {
+                    batch.delete(item.map_err(db_err)?.0);
+                }
+            }
+            if !batch.is_empty() {
+                db.write(batch).map_err(db_err)?;
+            }
+        }
+        Ok(Restorer {
+            store: self,
+            version,
+            current: None,
+            imported: BTreeMap::new(),
+            batch: WriteBatch::new(),
+        })
     }
 
     /// Create a clone-backed cache multi-store.
@@ -313,6 +674,97 @@ impl Store {
                 },
             })
             .collect()
+    }
+}
+
+/// Imports a snapshot stream store by store (Go `rootmulti.Store.Restore`).
+///
+/// Nodes are written while importing; the commit info and the
+/// latest-version pointer are written by [`Restorer::finish`] in the same
+/// batch as the store roots, so an interrupted restore leaves the store
+/// empty (the leftovers are wiped by the next [`Store::restore`]).
+#[derive(Debug)]
+pub struct Restorer<'a> {
+    store: &'a mut Store,
+    version: Version,
+    current: Option<(String, iavl::Importer)>,
+    imported: BTreeMap<String, iavl::Tree>,
+    batch: WriteBatch,
+}
+
+impl Restorer<'_> {
+    fn finish_current(&mut self) -> Result<()> {
+        if let Some((name, importer)) = self.current.take() {
+            let tree = importer.commit(&mut self.batch)?;
+            self.imported.insert(name, tree);
+        }
+        Ok(())
+    }
+
+    /// Begin the nodes of store `name`.
+    pub fn start_store(&mut self, name: &str) -> Result<()> {
+        self.finish_current()?;
+        if !self.store.stores.contains_key(name) {
+            return Err(Error::UnknownStore(name.to_owned()));
+        }
+        if self.imported.contains_key(name) {
+            return Err(Error::DuplicateStoreName(name.to_owned()));
+        }
+        let ndb = self
+            .store
+            .stores
+            .get(name)
+            .and_then(|s| s.tree().node_db().cloned());
+        self.current = Some((name.to_owned(), iavl::Importer::new(ndb, self.version)?));
+        Ok(())
+    }
+
+    /// Add the next node of the current store.
+    pub fn add_node(&mut self, node: iavl::ExportNode) -> Result<()> {
+        match &mut self.current {
+            Some((_, importer)) => Ok(importer.add(node)?),
+            None => Err(Error::InvalidCommitInfo("snapshot node before store item")),
+        }
+    }
+
+    /// Finish the restore: every mounted store must have been imported.
+    /// Writes roots + commit info atomically and loads the restored version.
+    pub fn finish(mut self) -> Result<CommitId> {
+        self.finish_current()?;
+        let mut store_infos = Vec::new();
+        for name in self.store.stores.keys() {
+            let tree = self
+                .imported
+                .get(name)
+                .ok_or_else(|| Error::UnknownStore(name.clone()))?;
+            store_infos.push(StoreInfo {
+                name: name.clone(),
+                commit_id: CommitId {
+                    version: self.version,
+                    hash: tree.root_hash(),
+                },
+            });
+        }
+        let info = CommitInfo::new(self.version, store_infos)?;
+        if let Some(db) = &self.store.db {
+            let mut batch = std::mem::take(&mut self.batch);
+            batch.put(commit_info_key(self.version), info.to_proto_bytes()?);
+            batch.put(LATEST_KEY, self.version.to_be_bytes().to_vec());
+            for (key, value) in self.store.pending_metadata.drain(..) {
+                batch.put(metadata_key(&key), value);
+            }
+            db.write(batch).map_err(db_err)?;
+        } else {
+            self.store.history.insert(self.version, info.clone());
+        }
+        for (name, tree) in std::mem::take(&mut self.imported) {
+            if let Some(store) = self.store.stores.get_mut(&name) {
+                *store = KvStore::from_tree(tree);
+            }
+        }
+        self.store.version = self.version;
+        self.store.last_commit_info = Some(info);
+        self.store.last_commit_id()
     }
 }
 
@@ -402,6 +854,10 @@ pub enum Error {
     Merkle(merkle::Error),
     /// Underlying ICS-23 proof error.
     Proof(ics23_proofs::Error),
+    /// Storage backend error.
+    Db(String),
+    /// Persisted state is inconsistent.
+    Corrupted(String),
 }
 
 impl From<kvstore::Error> for Error {
@@ -442,6 +898,8 @@ impl core::fmt::Display for Error {
             Self::Iavl(err) => write!(f, "iavl: {err}"),
             Self::Merkle(err) => write!(f, "merkle: {err}"),
             Self::Proof(err) => write!(f, "proof: {err}"),
+            Self::Db(err) => write!(f, "storage: {err}"),
+            Self::Corrupted(err) => write!(f, "corrupted state: {err}"),
         }
     }
 }
@@ -832,11 +1290,8 @@ mod tests {
     #[test]
     fn commit_rejects_impossible_next_versions() {
         let mut overflow = Store {
-            initial_version: 1,
             version: Version::MAX,
-            stores: std::collections::BTreeMap::new(),
-            last_commit_info: None,
-            history: std::collections::BTreeMap::new(),
+            ..Store::new()
         };
         assert_eq!(
             overflow.commit(),
@@ -846,11 +1301,8 @@ mod tests {
         );
 
         let mut negative = Store {
-            initial_version: 1,
             version: -2,
-            stores: std::collections::BTreeMap::new(),
-            last_commit_info: None,
-            history: std::collections::BTreeMap::new(),
+            ..Store::new()
         };
         assert_eq!(
             negative.commit(),

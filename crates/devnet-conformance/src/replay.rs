@@ -83,16 +83,41 @@ fn compare_stores(app: &App, dump: &StateDump) -> (Vec<String>, Vec<StoreDiff>) 
     (matching, diffs)
 }
 
-/// Replays `scenario`, stopping at the first app-hash mismatch.
+/// Replays `scenario` on a fresh in-memory app, stopping at the first
+/// app-hash mismatch.
 pub fn replay(scenario: &str) -> anyhow::Result<Report> {
+    replay_into(scenario, &mut App::new(), 0, None)
+}
+
+/// Replays the blocks of `scenario` after height `from` into `app` (which
+/// must already be at height `from`; InitChain is only replayed when `from`
+/// is 0), stopping after the commit of height `until` when given, or at the
+/// first app-hash mismatch.
+pub fn replay_into(
+    scenario: &str,
+    app: &mut App,
+    from: i64,
+    until: Option<i64>,
+) -> anyhow::Result<Report> {
     let exchanges: Vec<Exchange> = load_exchanges(scenario)?;
-    let mut app = App::new();
     let mut report = Report::default();
-    let mut height = 0i64;
+    let mut height = from;
+    let mut skipping = from > 0;
     for ex in exchanges {
         let Some(req) = ex.request.value else {
             continue;
         };
+        if skipping {
+            // Skip InitChain and every exchange up to the commit of `from`.
+            if let request::Value::FinalizeBlock(r) = &req {
+                if r.height > from {
+                    skipping = false;
+                }
+            }
+            if skipping {
+                continue;
+            }
+        }
         match (req, ex.response.value) {
             (request::Value::InitChain(r), Some(response::Value::InitChain(go))) => {
                 match app.init_chain(r) {
@@ -159,9 +184,12 @@ pub fn replay(scenario: &str) -> anyhow::Result<Report> {
                     report.errors.push(format!("Commit h={height}: {e}"));
                     return Ok(report);
                 }
+                if until == Some(height) {
+                    return Ok(report);
+                }
                 if report.first_mismatch.is_some() {
                     if let Ok(dump) = load_state(scenario, height) {
-                        let (m, d) = compare_stores(&app, &dump);
+                        let (m, d) = compare_stores(app, &dump);
                         report.matching_stores = m;
                         report.store_diffs = d;
                     }

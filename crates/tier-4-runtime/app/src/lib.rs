@@ -15,7 +15,8 @@ pub mod tx;
 pub mod txpipe;
 pub mod upgrades;
 
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use abci_server::Application;
 use celestia_proto::celestia_core_proto::abci::{
@@ -23,6 +24,7 @@ use celestia_proto::celestia_core_proto::abci::{
     ResponseInitChain, TimeoutInfo, request, response,
 };
 use celestia_proto::celestia_core_proto::tendermint::types::{ConsensusParams, VersionParams};
+use multistore::kvdb::{KvBackend, RedbBackend, RedbOptions};
 use pbjson_types::Duration;
 use sdk::{Context, ExecMode, Header, MultiStore, Result, SdkError};
 
@@ -43,6 +45,41 @@ pub struct App {
     last_height: i64,
     /// Node-local `x/upgrade` keeper state.
     upgrade: x_upgrade::NodeState,
+    /// State-sync snapshots (storage-backed apps only).
+    snapshots: Option<snapshots::Manager>,
+}
+
+/// Metadata key of the chain ID in the state database.
+const CHAIN_ID_KEY: &[u8] = b"chain_id";
+
+/// Options of a storage-backed [`App`] ([`App::open_with`]).
+#[derive(Debug, Clone, Default)]
+pub struct AppOptions {
+    /// Multistore pruning and node-cache size.
+    pub store: multistore::StoreOptions,
+    /// Database page cache and durability.
+    pub db: RedbOptions,
+    /// Snapshot interval / retention (`interval == 0` disables snapshots).
+    pub snapshots: snapshots::SnapshotOptions,
+    /// Chain ID to use when the database does not know it yet (a node
+    /// bootstrapped by state sync never sees InitChain).
+    pub chain_id: Option<String>,
+}
+
+/// State database of a node home directory.
+#[must_use]
+pub fn state_db_path(home: &Path) -> PathBuf {
+    home.join("data").join("application.redb")
+}
+
+/// Snapshot directory of a node home directory.
+#[must_use]
+pub fn snapshot_dir(home: &Path) -> PathBuf {
+    home.join("data").join("snapshots")
+}
+
+fn store_err(e: impl std::fmt::Display) -> SdkError {
+    sdk::error::sdk::logic(format!("store: {e}"))
 }
 
 impl Default for App {
@@ -82,6 +119,10 @@ impl App {
             #[allow(clippy::expect_used)]
             ms.mount(name, kind).expect("static store list is valid");
         }
+        Self::from_multistore(ms)
+    }
+
+    fn from_multistore(ms: MultiStore) -> Self {
         modules::install_staking_hooks();
         Self {
             ms,
@@ -91,7 +132,79 @@ impl App {
             last_commit_hash: sdk_empty_hash(),
             last_height: 0,
             upgrade: x_upgrade::NodeState::default(),
+            snapshots: None,
         }
+    }
+
+    /// Opens (or creates) the persistent state of node home `home`
+    /// (`<home>/data/application.redb`) with default options and resumes
+    /// from the last committed height.
+    pub fn open(home: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with(home, AppOptions::default())
+    }
+
+    /// [`Self::open`] with explicit options.
+    pub fn open_with(home: impl AsRef<Path>, options: AppOptions) -> Result<Self> {
+        let home = home.as_ref();
+        let db = RedbBackend::open(state_db_path(home), options.db).map_err(store_err)?;
+        let mut app = Self::open_backend(Arc::new(db), &options)?;
+        app.snapshots = Some(
+            snapshots::Manager::new(snapshot_dir(home), options.snapshots).map_err(store_err)?,
+        );
+        Ok(app)
+    }
+
+    /// Opens an app over an arbitrary storage backend (tests).
+    pub fn open_backend(db: Arc<dyn KvBackend>, options: &AppOptions) -> Result<Self> {
+        let mut ms = MultiStore::open(db, options.store);
+        for (name, kind) in stores::all() {
+            ms.mount(name, kind).map_err(store_err)?;
+        }
+        ms.load_latest_version().map_err(store_err)?;
+        let mut app = Self::from_multistore(ms);
+        app.load_committed_state()?;
+        if app.chain_id.is_empty() {
+            if let Some(chain_id) = &options.chain_id {
+                app.chain_id.clone_from(chain_id);
+                app.ms
+                    .root_mut()
+                    .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
+            }
+        }
+        Ok(app)
+    }
+
+    /// Refreshes height, app hash and chain ID from the committed store.
+    fn load_committed_state(&mut self) -> Result<()> {
+        let id = self.ms.root().last_commit_id().map_err(store_err)?;
+        self.last_height = id.version;
+        self.last_commit_hash = if id.version == 0 {
+            sdk_empty_hash()
+        } else {
+            id.hash.to_vec()
+        };
+        if let Some(chain_id) = self
+            .ms
+            .root()
+            .get_metadata(CHAIN_ID_KEY)
+            .map_err(store_err)?
+        {
+            self.chain_id = String::from_utf8_lossy(&chain_id).into_owned();
+        }
+        self.ms.reset_check();
+        Ok(())
+    }
+
+    /// The snapshot manager of a storage-backed app.
+    #[must_use]
+    pub fn snapshot_manager(&self) -> Option<&snapshots::Manager> {
+        self.snapshots.as_ref()
+    }
+
+    /// Chain ID (from InitChain, the database or [`AppOptions::chain_id`]).
+    #[must_use]
+    pub fn chain_id(&self) -> &str {
+        &self.chain_id
     }
 
     /// Read access to the multistore (tests, diagnostics).
@@ -136,6 +249,9 @@ impl App {
             return Err(sdk::error::sdk::not_supported("initial_height > 1"));
         }
         self.chain_id.clone_from(&req.chain_id);
+        self.ms
+            .root_mut()
+            .set_metadata(CHAIN_ID_KEY, req.chain_id.clone().into_bytes());
         self.initial_height = req.initial_height.max(1);
         let header = Header {
             chain_id: req.chain_id.clone(),
@@ -275,7 +391,141 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         let _ = header;
+        self.snapshot_if_applicable();
         Ok(ResponseCommit { retain_height: 0 })
+    }
+
+    /// `SnapshotIfApplicable`: snapshots are taken synchronously after the
+    /// commit; a failure is logged and never halts the chain (as in Go).
+    fn snapshot_if_applicable(&mut self) {
+        let Some(manager) = &self.snapshots else {
+            return;
+        };
+        let Ok(height) = u64::try_from(self.last_height) else {
+            return;
+        };
+        if !manager.should_snapshot(height) {
+            return;
+        }
+        match manager.create(self.ms.root(), height) {
+            Ok(s) => tracing::info!(height, chunks = s.chunks, "created state-sync snapshot"),
+            Err(e) => tracing::error!(height, error = %e, "snapshot creation failed"),
+        }
+    }
+
+    /// `ListSnapshots`.
+    #[must_use]
+    pub fn list_snapshots(&self) -> abci::ResponseListSnapshots {
+        let snapshots = self
+            .snapshots
+            .as_ref()
+            .and_then(|m| m.list().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| abci::Snapshot {
+                metadata: s.metadata_bytes(),
+                height: s.height,
+                format: s.format,
+                chunks: s.chunks,
+                hash: s.hash,
+            })
+            .collect();
+        abci::ResponseListSnapshots { snapshots }
+    }
+
+    /// `LoadSnapshotChunk`.
+    #[must_use]
+    pub fn load_snapshot_chunk(
+        &self,
+        req: &abci::RequestLoadSnapshotChunk,
+    ) -> abci::ResponseLoadSnapshotChunk {
+        let chunk = self
+            .snapshots
+            .as_ref()
+            .and_then(|m| {
+                m.load_chunk(req.height, req.format, req.chunk)
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_default();
+        abci::ResponseLoadSnapshotChunk { chunk }
+    }
+
+    /// `OfferSnapshot`.
+    pub fn offer_snapshot(
+        &mut self,
+        req: abci::RequestOfferSnapshot,
+    ) -> abci::ResponseOfferSnapshot {
+        use abci::response_offer_snapshot::Result as R;
+        let result = match (&mut self.snapshots, req.snapshot) {
+            (None, _) => R::Abort,
+            (Some(_), None) => R::Reject,
+            (Some(manager), Some(s)) => {
+                match snapshots::Snapshot::from_abci(
+                    s.height,
+                    s.format,
+                    s.chunks,
+                    s.hash,
+                    &s.metadata,
+                )
+                .and_then(|snapshot| manager.begin_restore(snapshot))
+                {
+                    Ok(()) => R::Accept,
+                    Err(snapshots::Error::UnknownFormat(_)) => R::RejectFormat,
+                    Err(snapshots::Error::InvalidMetadata(e)) => {
+                        tracing::error!(error = %e, "rejecting invalid snapshot");
+                        R::Reject
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to restore snapshot");
+                        R::Abort
+                    }
+                }
+            }
+        };
+        abci::ResponseOfferSnapshot {
+            result: result as i32,
+        }
+    }
+
+    /// `ApplySnapshotChunk`. After the last chunk the app resumes from the
+    /// restored height.
+    pub fn apply_snapshot_chunk(
+        &mut self,
+        req: abci::RequestApplySnapshotChunk,
+    ) -> abci::ResponseApplySnapshotChunk {
+        use abci::response_apply_snapshot_chunk::Result as R;
+        let abort = || abci::ResponseApplySnapshotChunk {
+            result: R::Abort as i32,
+            ..Default::default()
+        };
+        let Some(manager) = &mut self.snapshots else {
+            return abort();
+        };
+        match manager.restore_chunk(self.ms.root_mut(), &req.chunk) {
+            Ok(done) => {
+                if let Some(id) = done {
+                    tracing::info!(height = id.version, "restored state-sync snapshot");
+                    if let Err(e) = self.load_committed_state() {
+                        tracing::error!(error = %e, "failed to load restored state");
+                        return abort();
+                    }
+                }
+                abci::ResponseApplySnapshotChunk {
+                    result: R::Accept as i32,
+                    ..Default::default()
+                }
+            }
+            Err(snapshots::Error::ChunkHashMismatch(_)) => abci::ResponseApplySnapshotChunk {
+                result: R::Retry as i32,
+                refetch_chunks: vec![req.index],
+                reject_senders: vec![req.sender],
+            },
+            Err(e) => {
+                tracing::error!(error = %e, "failed to restore snapshot");
+                abort()
+            }
+        }
     }
 }
 
@@ -387,7 +637,16 @@ impl Application for AbciApp {
                 response::Value::QuerySequence(app.query_sequence(&r.signer))
             }
             request::Value::ListSnapshots(_) => {
-                response::Value::ListSnapshots(abci::ResponseListSnapshots::default())
+                response::Value::ListSnapshots(app.list_snapshots())
+            }
+            request::Value::LoadSnapshotChunk(r) => {
+                response::Value::LoadSnapshotChunk(app.load_snapshot_chunk(&r))
+            }
+            request::Value::OfferSnapshot(r) => {
+                response::Value::OfferSnapshot(app.offer_snapshot(r))
+            }
+            request::Value::ApplySnapshotChunk(r) => {
+                response::Value::ApplySnapshotChunk(app.apply_snapshot_chunk(r))
             }
             other => response::Value::Exception(ResponseException {
                 error: format!("unsupported request {other:?}"),

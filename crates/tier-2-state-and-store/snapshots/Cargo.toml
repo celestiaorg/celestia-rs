@@ -1,0 +1,24 @@
+[package]
+name = "snapshots"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cosmos SDK state-sync snapshots (store/snapshots format 3) for celestia-rs."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
+hash = { path = "../../tier-0-primitives/hash" }
+iavl = { path = "../iavl" }
+multistore = { path = "../multistore" }
+prost = "0.13"
+
+[dev-dependencies]
+kvdb = { path = "../kvdb" }
+tempfile = "3"

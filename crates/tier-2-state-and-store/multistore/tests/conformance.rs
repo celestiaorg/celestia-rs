@@ -513,5 +513,7 @@ fn error_code(err: &Error) -> &'static str {
         Error::Iavl(_) => "iavl",
         Error::Merkle(_) => "merkle",
         Error::Proof(_) => "proof",
+        Error::Db(_) => "db",
+        Error::Corrupted(_) => "corrupted",
     }
 }

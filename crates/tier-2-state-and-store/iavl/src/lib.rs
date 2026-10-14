@@ -1,15 +1,40 @@
 //! Cosmos IAVL+ state tree primitives.
 //!
-//! See `docs/superpowers/specs/m2/iavl.md` for the API contract.
+//! See `docs/superpowers/specs/m2/iavl.md` for the API contract and
+//! `docs/adr/0002-persistent-state-storage.md` for the storage design.
+//!
+//! A [`Tree`] is either purely in memory ([`Tree::new`]) or backed by a
+//! [`NodeDb`] ([`Tree::open`]): nodes persisted under their IAVL v1 node key
+//! `(version, nonce)`, loaded lazily through a bounded LRU [`NodeCache`].
+//! Between commits only the dirty (modified) nodes of the working tree live
+//! in memory. Both modes share the hashing code, so root hashes are
+//! identical (and match Go IAVL v1).
+//!
+//! Committed versions stay readable as [`ImmutableTree`]s (get, iterate,
+//! ICS-23 proofs, snapshot export) until pruned with [`Tree::prune`].
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod error;
+mod export;
+mod mutate;
+mod node;
+mod nodedb;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 pub use error::{Error, Result};
+pub use export::{ExportNode, Exporter, Importer};
+pub use kvdb;
+pub use node::NodeKey;
+pub use nodedb::{CacheStats, NodeCache, NodeDb};
+
+use kvdb::WriteBatch;
+use mutate::{Mutator, load};
+use node::{Inner, Leaf, Link, Node, StoredRef, encode_inner, encode_leaf, encode_root};
+use nodedb::db_err;
 
 /// Byte length of an IAVL root hash.
 pub const HASH_SIZE: usize = 32;
@@ -21,39 +46,45 @@ pub type Hash = [u8; HASH_SIZE];
 /// IAVL commit version.
 pub type Version = i64;
 
-/// Versioned in-memory IAVL tree.
+/// Versioned IAVL tree (in memory or storage backed).
+///
+/// Cloning is cheap (subtrees are shared); two clones must not both commit
+/// into the same [`NodeDb`].
 #[derive(Debug, Clone)]
 pub struct Tree {
+    ndb: Option<Arc<NodeDb>>,
     initial_version: Version,
     version: Version,
-    entries: BTreeMap<Vec<u8>, Vec<u8>>,
-    root: Option<Box<Node>>,
+    root: Option<Link>,
     dirty: bool,
+    /// Persisted nodes replaced in the working tree since the last commit.
+    orphans: Vec<NodeKey>,
+    /// Committed versions still available, with their roots.
+    versions: BTreeMap<Version, Option<Link>>,
 }
 
 impl Default for Tree {
     fn default() -> Self {
         Self {
+            ndb: None,
             initial_version: 1,
             version: 0,
-            entries: BTreeMap::new(),
             root: None,
             dirty: false,
+            orphans: Vec::new(),
+            versions: BTreeMap::new(),
         }
     }
 }
 
 impl Tree {
-    /// Create an empty tree at version zero.
+    /// Create an empty in-memory tree at version zero.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            initial_version: 1,
-            ..Self::default()
-        }
+        Self::default()
     }
 
-    /// Create an empty tree with a custom first commit version.
+    /// Create an empty in-memory tree with a custom first commit version.
     pub fn with_initial_version(initial_version: Version) -> Result<Self> {
         if initial_version <= 0 {
             return Err(Error::InvalidVersion {
@@ -66,34 +97,129 @@ impl Tree {
         })
     }
 
+    /// Open a storage-backed tree at its latest committed version (an empty
+    /// tree at version zero when nothing was committed yet).
+    pub fn open(ndb: Arc<NodeDb>) -> Result<Self> {
+        let mut versions = BTreeMap::new();
+        for (version, root) in ndb.roots()? {
+            versions.insert(version, root.map(Link::Stored));
+        }
+        let (version, root) = versions
+            .iter()
+            .next_back()
+            .map_or((0, None), |(v, r)| (*v, r.clone()));
+        Ok(Self {
+            ndb: Some(ndb),
+            version,
+            root,
+            versions,
+            ..Self::default()
+        })
+    }
+
+    /// Set the first commit version of a tree that has no versions yet.
+    pub fn set_initial_version(&mut self, initial_version: Version) -> Result<()> {
+        if initial_version <= 0 {
+            return Err(Error::InvalidVersion {
+                version: initial_version,
+            });
+        }
+        self.initial_version = initial_version;
+        Ok(())
+    }
+
+    /// Make committed `version` the working tree, discarding uncommitted
+    /// changes. Fails when `version` is unknown or newer versions exist
+    /// (their node keys would collide with the next commit).
+    pub fn load_version(&mut self, version: Version) -> Result<()> {
+        if version == 0 && self.versions.is_empty() {
+            self.root = None;
+            self.version = 0;
+        } else {
+            let root = self
+                .versions
+                .get(&version)
+                .ok_or(Error::VersionNotFound { version })?
+                .clone();
+            if self.versions.range(version + 1..).next().is_some() {
+                return Err(Error::InvalidVersion { version });
+            }
+            self.root = root;
+            self.version = version;
+        }
+        self.dirty = false;
+        self.orphans.clear();
+        Ok(())
+    }
+
+    /// Discard uncommitted changes.
+    pub fn rollback(&mut self) {
+        self.root = self.versions.get(&self.version).cloned().flatten();
+        self.dirty = false;
+        self.orphans.clear();
+    }
+
+    /// The node store, for storage-backed trees.
+    #[must_use]
+    pub fn node_db(&self) -> Option<&Arc<NodeDb>> {
+        self.ndb.as_ref()
+    }
+
     /// Return the latest saved version.
     #[must_use]
     pub fn version(&self) -> Version {
         self.version
     }
 
+    /// Committed versions still available, ascending.
+    #[must_use]
+    pub fn available_versions(&self) -> Vec<Version> {
+        self.versions.keys().copied().collect()
+    }
+
+    /// True when committed `version` is available.
+    #[must_use]
+    pub fn version_exists(&self, version: Version) -> bool {
+        self.versions.contains_key(&version)
+    }
+
     /// Return the number of key/value entries.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.root
+            .as_ref()
+            .map_or(0, |root| usize::try_from(root.size()).unwrap_or(0))
     }
 
     /// Return true when the tree contains no key/value entries.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.root.is_none()
+    }
+
+    /// True when there are uncommitted changes.
+    #[must_use]
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    fn view(&self) -> View<'_> {
+        View {
+            ndb: self.ndb.as_ref(),
+            root: self.root.as_ref(),
+            version: self.hash_version(),
+        }
     }
 
     /// Return the deterministic root hash for the current tree contents.
     #[must_use]
     pub fn root_hash(&self) -> Hash {
-        root_hash_for_node(self.root.as_deref(), self.hash_version())
+        self.view().root_hash()
     }
 
     /// Return the value for `key`, if present.
-    #[must_use]
-    pub fn get(&self, key: &[u8]) -> Option<&[u8]> {
-        self.entries.get(key).map(Vec::as_slice)
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        self.view().get(key)
     }
 
     /// Insert or replace a key/value pair, returning the previous value.
@@ -101,11 +227,18 @@ impl Tree {
         if key.is_empty() {
             return Err(Error::EmptyKey);
         }
-        let previous = self.entries.insert(key.clone(), value.clone());
-        self.root = Some(match self.root.take() {
-            Some(root) => Box::new(recursive_set(*root, key, value).0),
-            None => Box::new(Node::leaf(key, value)),
-        });
+        let mut mutator = Mutator {
+            ndb: self.ndb.as_deref(),
+            orphans: &mut self.orphans,
+        };
+        let (root, previous) = match &self.root {
+            Some(root) => {
+                let (root, _, previous) = mutator.set(root, key, value)?;
+                (root, previous)
+            }
+            None => (Link::mem(Node::leaf(key, value)), None),
+        };
+        self.root = Some(root);
         self.dirty = true;
         Ok(previous)
     }
@@ -115,57 +248,155 @@ impl Tree {
         if key.is_empty() {
             return Err(Error::EmptyKey);
         }
-        let previous = self.entries.remove(key);
-        if previous.is_some() {
-            if let Some(root) = self.root.take() {
-                self.root = recursive_remove(*root, key).node.map(Box::new);
-            }
-            self.dirty = true;
+        let Some(root) = &self.root else {
+            return Ok(None);
+        };
+        let mut mutator = Mutator {
+            ndb: self.ndb.as_deref(),
+            orphans: &mut self.orphans,
+        };
+        let removed = mutator.remove(root, key)?;
+        if !removed.removed {
+            return Ok(None);
         }
-        Ok(previous)
+        self.root = removed.node;
+        self.dirty = true;
+        Ok(removed.value)
     }
 
-    /// Commit the current working tree as the next version.
+    /// Commit the current working tree as the next version. Storage-backed
+    /// trees write the new nodes in one backend batch.
     pub fn save_version(&mut self) -> Result<CommitInfo> {
+        let mut batch = WriteBatch::new();
+        let info = self.save_version_to(&mut batch)?;
+        if let Some(ndb) = &self.ndb {
+            ndb.backend().write(batch).map_err(db_err)?;
+        }
+        Ok(info)
+    }
+
+    /// Commit the working tree as the next version, queueing the storage
+    /// writes (new nodes, root record, orphan records) into `batch` instead
+    /// of writing them. The caller must write `batch` before reading the new
+    /// version back from storage. In-memory trees leave `batch` untouched.
+    pub fn save_version_to(&mut self, batch: &mut WriteBatch) -> Result<CommitInfo> {
         let next_version = self.next_version()?;
-        let root_hash = match self.root.as_mut() {
-            Some(root) => root.assign_hashes(next_version),
-            None => hash::sha256(&[]),
+        let root = match self.root.take() {
+            None => None,
+            Some(root) => Some(match &self.ndb {
+                Some(ndb) => {
+                    let mut nonce = 0u32;
+                    Link::Stored(persist(ndb, root, next_version, &mut nonce, batch)?)
+                }
+                None => assign_hashes(root, next_version),
+            }),
         };
+        if let Some(ndb) = &self.ndb {
+            let root_ref = match &root {
+                Some(Link::Stored(r)) => Some(*r),
+                _ => None,
+            };
+            batch.put(ndb.root_key(next_version), encode_root(root_ref.as_ref()));
+            self.orphans.sort_unstable();
+            self.orphans.dedup();
+            for nk in self.orphans.drain(..) {
+                batch.put(ndb.orphan_key(self.version, nk), Vec::new());
+            }
+        }
+        let root_hash = root
+            .as_ref()
+            .map_or_else(|| hash::sha256(&[]), |root| root.hash_for(next_version));
+        self.root = root;
+        self.versions.insert(next_version, self.root.clone());
         self.version = next_version;
         self.dirty = false;
+        self.orphans.clear();
         Ok(CommitInfo {
             version: self.version,
             root_hash,
-            size: self.entries.len(),
+            size: self.len(),
         })
+    }
+
+    /// Delete every committed version (except the latest) for which
+    /// `keep(version)` is false, queueing the storage deletions into
+    /// `batch`. Returns the deleted versions.
+    ///
+    /// Nodes are deleted only when no retained version still references
+    /// them, so retained versions keep their exact hashes.
+    pub fn prune(
+        &mut self,
+        keep: impl Fn(Version) -> bool,
+        batch: &mut WriteBatch,
+    ) -> Result<Vec<Version>> {
+        let latest = self.version;
+        let delete: BTreeSet<Version> = self
+            .versions
+            .keys()
+            .copied()
+            .filter(|v| *v != latest && !keep(*v))
+            .collect();
+        if delete.is_empty() {
+            return Ok(Vec::new());
+        }
+        if let Some(ndb) = &self.ndb {
+            let retained: BTreeSet<Version> = self
+                .versions
+                .keys()
+                .copied()
+                .filter(|v| !delete.contains(v))
+                .collect();
+            for &d in &delete {
+                batch.delete(ndb.root_key(d));
+                for nk in ndb.orphans(d)? {
+                    batch.delete(ndb.orphan_key(d, nk));
+                    match retained.range(nk.version..d).next_back() {
+                        Some(&t) => batch.put(ndb.orphan_key(t, nk), Vec::new()),
+                        None => ndb.delete_node(batch, nk),
+                    }
+                }
+            }
+        }
+        for d in &delete {
+            self.versions.remove(d);
+        }
+        Ok(delete.into_iter().collect())
+    }
+
+    /// An immutable view of committed `version`.
+    pub fn get_immutable(&self, version: Version) -> Result<ImmutableTree> {
+        let root = self
+            .versions
+            .get(&version)
+            .ok_or(Error::VersionNotFound { version })?
+            .clone();
+        Ok(ImmutableTree {
+            ndb: self.ndb.clone(),
+            root,
+            version,
+        })
+    }
+
+    /// Export committed `version` as IAVL export nodes in post-order.
+    pub fn export(&self, version: Version) -> Result<Exporter> {
+        self.get_immutable(version)?.export()
     }
 
     /// Iterate forward over the half-open range `[start, end)`.
     #[must_use]
-    pub fn iter<'a>(&'a self, start: Option<&'a [u8]>, end: Option<&'a [u8]>) -> Iter<'a> {
-        Iter::new(self.entries.iter(), start, end, false)
+    pub fn iter(&self, start: Option<&[u8]>, end: Option<&[u8]>) -> Iter {
+        self.view().iter(start, end, false)
     }
 
     /// Iterate backward over the half-open range `[start, end)`.
     #[must_use]
-    pub fn reverse_iter<'a>(&'a self, start: Option<&'a [u8]>, end: Option<&'a [u8]>) -> Iter<'a> {
-        Iter::new(self.entries.iter(), start, end, true)
+    pub fn reverse_iter(&self, start: Option<&[u8]>, end: Option<&[u8]>) -> Iter {
+        self.view().iter(start, end, true)
     }
 
     /// Return membership or non-membership proof material for `key`.
     pub fn get_with_proof(&self, key: &[u8]) -> Result<Option<Proof>> {
-        if key.is_empty() {
-            return Err(Error::EmptyKey);
-        }
-        if self.root.is_none() {
-            return Ok(None);
-        }
-        Ok(if let Some(value) = self.entries.get(key) {
-            Some(self.membership_proof(key, value)?)
-        } else {
-            Some(self.non_membership_proof(key)?)
-        })
+        self.view().get_with_proof(key)
     }
 
     /// Verify an IAVL membership proof.
@@ -224,9 +455,277 @@ impl Tree {
         Ok(next_version)
     }
 
+    pub(crate) fn from_import(
+        ndb: Option<Arc<NodeDb>>,
+        version: Version,
+        root: Option<Link>,
+    ) -> Self {
+        let mut versions = BTreeMap::new();
+        versions.insert(version, root.clone());
+        Self {
+            ndb,
+            version,
+            root,
+            versions,
+            ..Self::default()
+        }
+    }
+}
+
+/// Writes the dirty part of `link` (post-order) at `version`.
+fn persist(
+    ndb: &NodeDb,
+    link: Link,
+    version: Version,
+    nonce: &mut u32,
+    batch: &mut WriteBatch,
+) -> Result<StoredRef> {
+    let arc = match link {
+        Link::Stored(r) => return Ok(r),
+        Link::Mem(arc) => arc,
+    };
+    if arc.saved_version().is_some() {
+        return Err(Error::Corrupt(
+            "saved in-memory node in a storage-backed tree",
+        ));
+    }
+    let node = Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone());
+    let (r, bytes, saved) = match node {
+        Node::Leaf(leaf) => {
+            let hash = leaf_hash(version, &leaf.key, &leaf.value);
+            *nonce += 1;
+            let r = StoredRef {
+                nk: NodeKey {
+                    version,
+                    nonce: *nonce,
+                },
+                hash,
+                height: 0,
+                size: 1,
+            };
+            let bytes = encode_leaf(&leaf.key, &leaf.value);
+            let saved = Node::Leaf(Leaf {
+                version,
+                hash: Some(hash),
+                ..leaf
+            });
+            (r, bytes, saved)
+        }
+        Node::Inner(inner) => {
+            let left = persist(ndb, inner.left, version, nonce, batch)?;
+            let right = persist(ndb, inner.right, version, nonce, batch)?;
+            let hash = inner_hash(
+                i64::from(inner.height),
+                inner.size,
+                version,
+                left.hash,
+                right.hash,
+            );
+            *nonce += 1;
+            let r = StoredRef {
+                nk: NodeKey {
+                    version,
+                    nonce: *nonce,
+                },
+                hash,
+                height: inner.height,
+                size: inner.size,
+            };
+            let bytes = encode_inner(&inner.key, inner.height, inner.size, &left, &right);
+            let saved = Node::Inner(Inner {
+                key: inner.key,
+                height: inner.height,
+                size: inner.size,
+                left: Link::Stored(left),
+                right: Link::Stored(right),
+                version,
+                hash: Some(hash),
+            });
+            (r, bytes, saved)
+        }
+    };
+    ndb.put_node(batch, r.nk, bytes, Arc::new(saved));
+    Ok(r)
+}
+
+/// In-memory commit: hash and version every dirty node of `link`.
+fn assign_hashes(link: Link, version: Version) -> Link {
+    let arc = match link {
+        Link::Mem(arc) if arc.saved_hash().is_none() => arc,
+        other => return other,
+    };
+    let node = Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone());
+    Link::mem(match node {
+        Node::Leaf(leaf) => {
+            let hash = leaf_hash(version, &leaf.key, &leaf.value);
+            Node::Leaf(Leaf {
+                version,
+                hash: Some(hash),
+                ..leaf
+            })
+        }
+        Node::Inner(inner) => {
+            let left = assign_hashes(inner.left, version);
+            let right = assign_hashes(inner.right, version);
+            let hash = inner_hash(
+                i64::from(inner.height),
+                inner.size,
+                version,
+                left.hash_for(version),
+                right.hash_for(version),
+            );
+            Node::Inner(Inner {
+                left,
+                right,
+                version,
+                hash: Some(hash),
+                ..inner
+            })
+        }
+    })
+}
+
+/// Read-only snapshot of one committed version.
+#[derive(Debug, Clone)]
+pub struct ImmutableTree {
+    ndb: Option<Arc<NodeDb>>,
+    root: Option<Link>,
+    version: Version,
+}
+
+impl ImmutableTree {
+    fn view(&self) -> View<'_> {
+        View {
+            ndb: self.ndb.as_ref(),
+            root: self.root.as_ref(),
+            version: self.version.max(1),
+        }
+    }
+
+    /// The version of this snapshot.
+    #[must_use]
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
+    /// Root hash at this version.
+    #[must_use]
+    pub fn root_hash(&self) -> Hash {
+        self.view().root_hash()
+    }
+
+    /// Number of entries.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.root
+            .as_ref()
+            .map_or(0, |root| usize::try_from(root.size()).unwrap_or(0))
+    }
+
+    /// True when the tree is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
+    /// Value of `key` at this version.
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        self.view().get(key)
+    }
+
+    /// Iterate forward over `[start, end)`.
+    #[must_use]
+    pub fn iter(&self, start: Option<&[u8]>, end: Option<&[u8]>) -> Iter {
+        self.view().iter(start, end, false)
+    }
+
+    /// Iterate backward over `[start, end)`.
+    #[must_use]
+    pub fn reverse_iter(&self, start: Option<&[u8]>, end: Option<&[u8]>) -> Iter {
+        self.view().iter(start, end, true)
+    }
+
+    /// Membership or non-membership proof for `key` at this version.
+    pub fn get_with_proof(&self, key: &[u8]) -> Result<Option<Proof>> {
+        self.view().get_with_proof(key)
+    }
+
+    /// Export nodes in post-order (the SDK snapshot order).
+    pub fn export(&self) -> Result<Exporter> {
+        Exporter::new(self.ndb.clone(), self.root.as_ref())
+    }
+}
+
+/// Read access to one root.
+struct View<'a> {
+    ndb: Option<&'a Arc<NodeDb>>,
+    root: Option<&'a Link>,
+    /// Version dirty nodes are hashed at.
+    version: Version,
+}
+
+impl View<'_> {
+    fn load(&self, link: &Link) -> Result<Arc<Node>> {
+        load(self.ndb.map(AsRef::as_ref), link)
+    }
+
+    fn root_hash(&self) -> Hash {
+        self.root
+            .map_or_else(|| hash::sha256(&[]), |root| root.hash_for(self.version))
+    }
+
+    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        let Some(mut link) = self.root.cloned() else {
+            return Ok(None);
+        };
+        loop {
+            let node = self.load(&link)?;
+            match &*node {
+                Node::Leaf(leaf) => {
+                    return Ok((leaf.key.as_slice() == key).then(|| leaf.value.clone()));
+                }
+                Node::Inner(inner) => {
+                    link = if key < inner.key.as_slice() {
+                        inner.left.clone()
+                    } else {
+                        inner.right.clone()
+                    };
+                }
+            }
+        }
+    }
+
+    fn iter(&self, start: Option<&[u8]>, end: Option<&[u8]>, reverse: bool) -> Iter {
+        let invalid_range = matches!((start, end), (Some(start), Some(end)) if start > end);
+        Iter {
+            ndb: self.ndb.cloned(),
+            stack: if invalid_range {
+                Vec::new()
+            } else {
+                self.root.cloned().into_iter().collect()
+            },
+            start: start.map(<[u8]>::to_vec),
+            end: end.map(<[u8]>::to_vec),
+            reverse,
+        }
+    }
+
+    fn get_with_proof(&self, key: &[u8]) -> Result<Option<Proof>> {
+        if key.is_empty() {
+            return Err(Error::EmptyKey);
+        }
+        if self.root.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(match self.get(key)? {
+            Some(value) => self.membership_proof(key, &value)?,
+            None => self.non_membership_proof(key)?,
+        }))
+    }
+
     fn membership_proof(&self, key: &[u8], value: &[u8]) -> Result<Proof> {
         let existence = self
-            .existence_proof(key)
+            .existence_proof(key)?
             .ok_or(Error::InvalidProof("missing membership proof path"))?;
         let data = commitment_existence_proto(&existence);
         Ok(Proof {
@@ -243,32 +742,30 @@ impl Tree {
     }
 
     fn non_membership_proof(&self, key: &[u8]) -> Result<Proof> {
-        let key_vec = key.to_vec();
         let left_key = self
-            .entries
-            .range(..key_vec.clone())
-            .next_back()
-            .map(|(left, _)| left.clone());
-        let right_key = self
-            .entries
-            .range(key_vec..)
+            .iter(None, Some(key), true)
             .next()
-            .map(|(right, _)| right.clone());
-
-        let left = left_key
-            .as_deref()
-            .map(|left| {
-                self.existence_proof(left)
-                    .ok_or(Error::InvalidProof("missing left non-membership neighbor"))
-            })
-            .transpose()?;
-        let right = right_key
-            .as_deref()
-            .map(|right| {
-                self.existence_proof(right)
-                    .ok_or(Error::InvalidProof("missing right non-membership neighbor"))
-            })
-            .transpose()?;
+            .transpose()?
+            .map(|entry| entry.key);
+        let right_key = self
+            .iter(Some(key), None, false)
+            .next()
+            .transpose()?
+            .map(|entry| entry.key);
+        let left = match left_key.as_deref() {
+            Some(left) => Some(
+                self.existence_proof(left)?
+                    .ok_or(Error::InvalidProof("missing left non-membership neighbor"))?,
+            ),
+            None => None,
+        };
+        let right = match right_key.as_deref() {
+            Some(right) => Some(
+                self.existence_proof(right)?
+                    .ok_or(Error::InvalidProof("missing right non-membership neighbor"))?,
+            ),
+            None => None,
+        };
         let data = commitment_nonexistence_proto(key, left.as_ref(), right.as_ref());
         Ok(Proof {
             key: key.to_vec(),
@@ -283,21 +780,49 @@ impl Tree {
         })
     }
 
-    fn existence_proof(&self, key: &[u8]) -> Option<ExistenceProof> {
+    fn existence_proof(&self, key: &[u8]) -> Result<Option<ExistenceProof>> {
+        let Some(mut link) = self.root.cloned() else {
+            return Ok(None);
+        };
         let mut path = Vec::new();
-        let (leaf, found) = self
-            .root
-            .as_deref()?
-            .path_to_leaf(key, self.hash_version(), &mut path);
-        if !found {
-            return None;
+        loop {
+            let node = self.load(&link)?;
+            match &*node {
+                Node::Leaf(leaf) => {
+                    if leaf.key.as_slice() != key {
+                        return Ok(None);
+                    }
+                    return Ok(Some(ExistenceProof {
+                        key: leaf.key.clone(),
+                        value: leaf.value.clone(),
+                        leaf_version: node.saved_version().unwrap_or(self.version),
+                        path,
+                    }));
+                }
+                Node::Inner(inner) => {
+                    let version = node.saved_version().unwrap_or(self.version);
+                    if key < inner.key.as_slice() {
+                        path.push(ProofInner {
+                            height: inner.height,
+                            size: inner.size,
+                            version,
+                            left: None,
+                            right: Some(inner.right.hash_for(self.version)),
+                        });
+                        link = inner.left.clone();
+                    } else {
+                        path.push(ProofInner {
+                            height: inner.height,
+                            size: inner.size,
+                            version,
+                            left: Some(inner.left.hash_for(self.version)),
+                            right: None,
+                        });
+                        link = inner.right.clone();
+                    }
+                }
+            }
         }
-        Some(ExistenceProof {
-            key: leaf.key.clone(),
-            value: leaf.value.clone(),
-            leaf_version: leaf.version.unwrap_or_else(|| self.hash_version()),
-            path,
-        })
     }
 }
 
@@ -312,56 +837,85 @@ pub struct CommitInfo {
     pub size: usize,
 }
 
-/// Borrowed key/value iterator entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Entry<'a> {
+/// Owned key/value iterator entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
     /// Entry key.
-    pub key: &'a [u8],
+    pub key: Vec<u8>,
     /// Entry value.
-    pub value: &'a [u8],
+    pub value: Vec<u8>,
 }
 
-/// Range iterator over IAVL entries.
-#[derive(Debug, Clone)]
-pub struct Iter<'a> {
-    entries: Vec<Entry<'a>>,
-    index: usize,
+/// Lazy in-order range iterator. Loads only the nodes on the iterated
+/// path; yields an error (and stops) when a node cannot be loaded.
+#[derive(Debug)]
+pub struct Iter {
+    ndb: Option<Arc<NodeDb>>,
+    stack: Vec<Link>,
+    start: Option<Vec<u8>>,
+    end: Option<Vec<u8>>,
+    reverse: bool,
 }
 
-impl<'a> Iter<'a> {
-    fn new<'b>(
-        source: impl Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
-        start: Option<&'b [u8]>,
-        end: Option<&'b [u8]>,
-        reverse: bool,
-    ) -> Self {
-        let invalid_range = matches!((start, end), (Some(start), Some(end)) if start > end);
-        let mut entries = if invalid_range {
-            Vec::new()
-        } else {
-            source
-                .filter(|(key, _)| start.is_none_or(|bound| key.as_slice() >= bound))
-                .filter(|(key, _)| end.is_none_or(|bound| key.as_slice() < bound))
-                .map(|(key, value)| Entry {
-                    key: key.as_slice(),
-                    value: value.as_slice(),
-                })
-                .collect::<Vec<_>>()
-        };
-        if reverse {
-            entries.reverse();
-        }
-        Self { entries, index: 0 }
-    }
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = Entry<'a>;
+impl Iterator for Iter {
+    type Item = Result<Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entry = self.entries.get(self.index).copied()?;
-        self.index += 1;
-        Some(entry)
+        while let Some(link) = self.stack.pop() {
+            let node = match load(self.ndb.as_deref(), &link) {
+                Ok(node) => node,
+                Err(err) => {
+                    self.stack.clear();
+                    return Some(Err(err));
+                }
+            };
+            match &*node {
+                Node::Leaf(leaf) => {
+                    let below = self
+                        .start
+                        .as_deref()
+                        .is_some_and(|start| leaf.key.as_slice() < start);
+                    let above = self
+                        .end
+                        .as_deref()
+                        .is_some_and(|end| leaf.key.as_slice() >= end);
+                    if below || above {
+                        continue;
+                    }
+                    return Some(Ok(Entry {
+                        key: leaf.key.clone(),
+                        value: leaf.value.clone(),
+                    }));
+                }
+                Node::Inner(inner) => {
+                    // Left subtree: keys < inner.key; right subtree: keys >= inner.key.
+                    let want_left = self
+                        .start
+                        .as_deref()
+                        .is_none_or(|start| start < inner.key.as_slice());
+                    let want_right = self
+                        .end
+                        .as_deref()
+                        .is_none_or(|end| end > inner.key.as_slice());
+                    if self.reverse {
+                        if want_left {
+                            self.stack.push(inner.left.clone());
+                        }
+                        if want_right {
+                            self.stack.push(inner.right.clone());
+                        }
+                    } else {
+                        if want_right {
+                            self.stack.push(inner.right.clone());
+                        }
+                        if want_left {
+                            self.stack.push(inner.left.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -641,479 +1195,17 @@ fn proto_bytes_field(out: &mut Vec<u8>, field_number: u64, bytes: &[u8]) {
     out.extend_from_slice(bytes);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Node {
-    Leaf(LeafNode),
-    Inner(InnerNode),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LeafNode {
-    key: Vec<u8>,
-    value: Vec<u8>,
-    hash: Option<Hash>,
-    version: Option<Version>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct InnerNode {
-    key: Vec<u8>,
-    height: i8,
-    size: i64,
-    left: Box<Node>,
-    right: Box<Node>,
-    hash: Option<Hash>,
-    version: Option<Version>,
-}
-
-impl Node {
-    fn leaf(key: Vec<u8>, value: Vec<u8>) -> Self {
-        Self::Leaf(LeafNode {
-            key,
-            value,
-            hash: None,
-            version: None,
-        })
-    }
-
-    fn height(&self) -> i8 {
-        match self {
-            Self::Leaf(_) => 0,
-            Self::Inner(node) => node.height,
-        }
-    }
-
-    fn size(&self) -> i64 {
-        match self {
-            Self::Leaf(_) => 1,
-            Self::Inner(node) => node.size,
-        }
-    }
-
-    fn cached_hash(&self) -> Option<Hash> {
-        match self {
-            Self::Leaf(node) => node.hash,
-            Self::Inner(node) => node.hash,
-        }
-    }
-
-    fn version(&self) -> Option<Version> {
-        match self {
-            Self::Leaf(node) => node.version,
-            Self::Inner(node) => node.version,
-        }
-    }
-
-    fn hash_for(&self, version: Version) -> Hash {
-        if let Some(hash) = self.cached_hash() {
-            return hash;
-        }
-        match self {
-            Self::Leaf(node) => leaf_hash(version, &node.key, &node.value),
-            Self::Inner(node) => {
-                let left = node.left.hash_for(version);
-                let right = node.right.hash_for(version);
-                inner_hash(i64::from(node.height), node.size, version, left, right)
-            }
-        }
-    }
-
-    fn assign_hashes(&mut self, version: Version) -> Hash {
-        if let Some(hash) = self.cached_hash() {
-            return hash;
-        }
-        let hash = match self {
-            Self::Leaf(node) => leaf_hash(version, &node.key, &node.value),
-            Self::Inner(node) => {
-                let left = node.left.assign_hashes(version);
-                let right = node.right.assign_hashes(version);
-                inner_hash(i64::from(node.height), node.size, version, left, right)
-            }
-        };
-        match self {
-            Self::Leaf(node) => {
-                node.hash = Some(hash);
-                node.version = Some(version);
-            }
-            Self::Inner(node) => {
-                node.hash = Some(hash);
-                node.version = Some(version);
-            }
-        }
-        hash
-    }
-
-    fn path_to_leaf<'a>(
-        &'a self,
-        key: &[u8],
-        version: Version,
-        path: &mut Vec<ProofInner>,
-    ) -> (&'a LeafNode, bool) {
-        match self {
-            Self::Leaf(leaf) => (leaf, leaf.key.as_slice() == key),
-            Self::Inner(inner) if key < inner.key.as_slice() => {
-                path.push(ProofInner {
-                    height: inner.height,
-                    size: inner.size,
-                    version: self.version().unwrap_or(version),
-                    left: None,
-                    right: Some(inner.right.hash_for(version)),
-                });
-                inner.left.path_to_leaf(key, version, path)
-            }
-            Self::Inner(inner) => {
-                path.push(ProofInner {
-                    height: inner.height,
-                    size: inner.size,
-                    version: self.version().unwrap_or(version),
-                    left: Some(inner.left.hash_for(version)),
-                    right: None,
-                });
-                inner.right.path_to_leaf(key, version, path)
-            }
-        }
-    }
-
-    #[cfg(test)]
-    fn validate_shape(&self, version: Version) -> Result<()> {
-        if version <= 0 {
-            return Err(Error::MalformedNode("version must be greater than 0"));
-        }
-        self.validate_node()
-    }
-
-    #[cfg(test)]
-    fn validate_node(&self) -> Result<()> {
-        match self {
-            Self::Leaf(leaf) => {
-                if leaf.key.is_empty() {
-                    return Err(Error::MalformedNode("key cannot be empty"));
-                }
-                if leaf.version.is_some_and(|version| version <= 0) {
-                    return Err(Error::MalformedNode("version must be greater than 0"));
-                }
-                Ok(())
-            }
-            Self::Inner(inner) => {
-                if inner.key.is_empty() {
-                    return Err(Error::MalformedNode("key cannot be empty"));
-                }
-                if inner.height <= 0 {
-                    return Err(Error::MalformedNode("height must be greater than 0"));
-                }
-                if inner.size < 2 {
-                    return Err(Error::MalformedNode("inner size must be at least 2"));
-                }
-                let expected_size = inner.left.size() + inner.right.size();
-                if inner.size != expected_size {
-                    return Err(Error::MalformedNode("inner size mismatch"));
-                }
-                let expected_height = inner.left.height().max(inner.right.height()) + 1;
-                if inner.height != expected_height {
-                    return Err(Error::MalformedNode("inner height mismatch"));
-                }
-                if inner.left.max_key() >= inner.key.as_slice() {
-                    return Err(Error::MalformedNode("left subtree overlaps separator"));
-                }
-                if inner.right.min_key() != inner.key.as_slice() {
-                    return Err(Error::MalformedNode(
-                        "right subtree must start at separator",
-                    ));
-                }
-                if inner.version.is_some_and(|version| version <= 0) {
-                    return Err(Error::MalformedNode("version must be greater than 0"));
-                }
-                inner.left.validate_node()?;
-                inner.right.validate_node()
-            }
-        }
-    }
-
-    #[cfg(test)]
-    fn min_key(&self) -> &[u8] {
-        match self {
-            Self::Leaf(leaf) => &leaf.key,
-            Self::Inner(inner) => inner.left.min_key(),
-        }
-    }
-
-    #[cfg(test)]
-    fn max_key(&self) -> &[u8] {
-        match self {
-            Self::Leaf(leaf) => &leaf.key,
-            Self::Inner(inner) => inner.right.max_key(),
-        }
-    }
-}
-
-fn root_hash_for_node(root: Option<&Node>, version: Version) -> Hash {
-    root.map_or_else(|| hash::sha256(&[]), |node| node.hash_for(version))
-}
-
-fn recursive_set(node: Node, key: Vec<u8>, value: Vec<u8>) -> (Node, bool) {
-    match node {
-        Node::Leaf(leaf) => match key.as_slice().cmp(leaf.key.as_slice()) {
-            core::cmp::Ordering::Less => (
-                make_inner(
-                    leaf.key.clone(),
-                    Box::new(Node::leaf(key, value)),
-                    Box::new(Node::Leaf(leaf)),
-                ),
-                false,
-            ),
-            core::cmp::Ordering::Greater => (
-                make_inner(
-                    key.clone(),
-                    Box::new(Node::Leaf(leaf)),
-                    Box::new(Node::leaf(key, value)),
-                ),
-                false,
-            ),
-            core::cmp::Ordering::Equal => (Node::leaf(key, value), true),
-        },
-        Node::Inner(mut inner) => {
-            let updated = if key.as_slice() < inner.key.as_slice() {
-                let (left, updated) = recursive_set(*inner.left, key, value);
-                inner.left = Box::new(left);
-                updated
-            } else {
-                let (right, updated) = recursive_set(*inner.right, key, value);
-                inner.right = Box::new(right);
-                updated
-            };
-            if updated {
-                return (
-                    Node::Inner(InnerNode {
-                        hash: None,
-                        version: None,
-                        ..inner
-                    }),
-                    true,
-                );
-            }
-            (
-                balance(make_inner(inner.key, inner.left, inner.right)),
-                false,
-            )
-        }
-    }
-}
-
-struct RemoveResult {
-    node: Option<Node>,
-    new_key: Option<Vec<u8>>,
-    value: Option<Vec<u8>>,
-    removed: bool,
-}
-
-#[allow(clippy::too_many_lines)]
-fn recursive_remove(node: Node, key: &[u8]) -> RemoveResult {
-    match node {
-        Node::Leaf(leaf) => {
-            if key == leaf.key.as_slice() {
-                RemoveResult {
-                    node: None,
-                    new_key: None,
-                    value: Some(leaf.value),
-                    removed: true,
-                }
-            } else {
-                RemoveResult {
-                    node: Some(Node::Leaf(leaf)),
-                    new_key: None,
-                    value: None,
-                    removed: false,
-                }
-            }
-        }
-        Node::Inner(inner) => {
-            let InnerNode {
-                key: mut node_key,
-                height,
-                size,
-                left,
-                right,
-                hash,
-                version,
-            } = inner;
-            if key < node_key.as_slice() {
-                let result = recursive_remove(*left, key);
-                if !result.removed {
-                    let Some(left) = result.node else {
-                        return RemoveResult {
-                            node: None,
-                            new_key: None,
-                            value: result.value,
-                            removed: false,
-                        };
-                    };
-                    return RemoveResult {
-                        node: Some(Node::Inner(InnerNode {
-                            key: node_key,
-                            height,
-                            size,
-                            left: Box::new(left),
-                            right,
-                            hash,
-                            version,
-                        })),
-                        new_key: None,
-                        value: result.value,
-                        removed: false,
-                    };
-                }
-                let Some(left) = result.node else {
-                    return RemoveResult {
-                        node: Some(*right),
-                        new_key: Some(node_key),
-                        value: result.value,
-                        removed: true,
-                    };
-                };
-                let node = balance(make_inner(node_key, Box::new(left), right));
-                RemoveResult {
-                    node: Some(node),
-                    new_key: result.new_key,
-                    value: result.value,
-                    removed: true,
-                }
-            } else {
-                let result = recursive_remove(*right, key);
-                if !result.removed {
-                    let Some(right) = result.node else {
-                        return RemoveResult {
-                            node: None,
-                            new_key: None,
-                            value: result.value,
-                            removed: false,
-                        };
-                    };
-                    return RemoveResult {
-                        node: Some(Node::Inner(InnerNode {
-                            key: node_key,
-                            height,
-                            size,
-                            left,
-                            right: Box::new(right),
-                            hash,
-                            version,
-                        })),
-                        new_key: None,
-                        value: result.value,
-                        removed: false,
-                    };
-                }
-                let Some(right) = result.node else {
-                    return RemoveResult {
-                        node: Some(*left),
-                        new_key: None,
-                        value: result.value,
-                        removed: true,
-                    };
-                };
-                if let Some(new_key) = result.new_key {
-                    node_key = new_key;
-                }
-                let node = balance(make_inner(node_key, left, Box::new(right)));
-                RemoveResult {
-                    node: Some(node),
-                    new_key: None,
-                    value: result.value,
-                    removed: true,
-                }
-            }
-        }
-    }
-}
-
-fn make_inner(key: Vec<u8>, left: Box<Node>, right: Box<Node>) -> Node {
-    Node::Inner(InnerNode {
-        key,
-        height: left.height().max(right.height()) + 1,
-        size: left.size() + right.size(),
-        left,
-        right,
-        hash: None,
-        version: None,
-    })
-}
-
-fn balance(node: Node) -> Node {
-    let inner = match node {
-        Node::Inner(inner) => inner,
-        leaf @ Node::Leaf(_) => return leaf,
-    };
-    let balance = i16::from(inner.left.height()) - i16::from(inner.right.height());
-    if balance > 1 {
-        let left_balance = match inner.left.as_ref() {
-            Node::Leaf(_) => 0,
-            Node::Inner(left) => i16::from(left.left.height()) - i16::from(left.right.height()),
-        };
-        if left_balance >= 0 {
-            return rotate_right(inner);
-        }
-        let mut inner = inner;
-        inner.left = Box::new(rotate_left_child(*inner.left));
-        return rotate_right(inner);
-    }
-    if balance < -1 {
-        let right_balance = match inner.right.as_ref() {
-            Node::Leaf(_) => 0,
-            Node::Inner(right) => i16::from(right.left.height()) - i16::from(right.right.height()),
-        };
-        if right_balance <= 0 {
-            return rotate_left(inner);
-        }
-        let mut inner = inner;
-        inner.right = Box::new(rotate_right_child(*inner.right));
-        return rotate_left(inner);
-    }
-    Node::Inner(inner)
-}
-
-fn rotate_right_child(node: Node) -> Node {
-    match node {
-        Node::Inner(inner) => rotate_right(inner),
-        leaf @ Node::Leaf(_) => leaf,
-    }
-}
-
-fn rotate_left_child(node: Node) -> Node {
-    match node {
-        Node::Inner(inner) => rotate_left(inner),
-        leaf @ Node::Leaf(_) => leaf,
-    }
-}
-
-fn rotate_right(mut node: InnerNode) -> Node {
-    let left = match *node.left {
-        Node::Inner(left) => left,
-        leaf @ Node::Leaf(_) => {
-            node.left = Box::new(leaf);
-            return Node::Inner(node);
-        }
-    };
-    let old_root = make_inner(node.key, left.right, node.right);
-    make_inner(left.key, left.left, Box::new(old_root))
-}
-
-fn rotate_left(mut node: InnerNode) -> Node {
-    let right = match *node.right {
-        Node::Inner(right) => right,
-        leaf @ Node::Leaf(_) => {
-            node.right = Box::new(leaf);
-            return Node::Inner(node);
-        }
-    };
-    let old_root = make_inner(node.key, node.left, right.left);
-    make_inner(right.key, Box::new(old_root), right.right)
-}
-
-fn leaf_hash(version: Version, key: &[u8], value: &[u8]) -> Hash {
+pub(crate) fn leaf_hash(version: Version, key: &[u8], value: &[u8]) -> Hash {
     node_hash(0, 1, version, Some((key, value)), None)
 }
 
-fn inner_hash(height: i64, size: i64, version: Version, left: Hash, right: Hash) -> Hash {
+pub(crate) fn inner_hash(
+    height: i64,
+    size: i64,
+    version: Version,
+    left: Hash,
+    right: Hash,
+) -> Hash {
     node_hash(height, size, version, None, Some((left, right)))
 }
 
@@ -1166,7 +1258,25 @@ fn encode_uvarint(out: &mut Vec<u8>, mut value: u64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, InnerNode, Node, ProofOpType, Tree, Version};
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::similar_names,
+        clippy::type_complexity
+    )]
+
+    use std::sync::Arc;
+
+    use super::{Error, ImmutableTree, NodeDb, ProofOpType, Tree, Version};
+    use kvdb::WriteBatch;
+
+    fn entries(iter: super::Iter) -> Vec<(Vec<u8>, Vec<u8>)> {
+        iter.map(|e| {
+            let e = e.unwrap();
+            (e.key, e.value)
+        })
+        .collect()
+    }
 
     #[test]
     fn empty_tree_matches_iavl_empty_hash() {
@@ -1188,8 +1298,8 @@ mod tests {
             tree.set(b"b".to_vec(), b"two-updated".to_vec())?,
             Some(b"two".to_vec())
         );
-        assert_eq!(tree.get(b"a"), Some(&b"one"[..]));
-        assert_eq!(tree.get(b"b"), Some(&b"two-updated"[..]));
+        assert_eq!(tree.get(b"a")?, Some(b"one".to_vec()));
+        assert_eq!(tree.get(b"b")?, Some(b"two-updated".to_vec()));
 
         let commit = tree.save_version()?;
         assert_eq!(commit.version, 1);
@@ -1199,7 +1309,7 @@ mod tests {
 
         assert_eq!(tree.remove(b"a")?, Some(b"one".to_vec()));
         assert_eq!(tree.remove(b"missing")?, None);
-        assert_eq!(tree.get(b"a"), None);
+        assert_eq!(tree.get(b"a")?, None);
 
         Ok(())
     }
@@ -1283,30 +1393,22 @@ mod tests {
             tree.set(key.to_vec(), value.to_vec())?;
         }
 
-        let forward = tree
-            .iter(Some(b"b"), Some(b"d"))
-            .map(|entry| (entry.key.to_vec(), entry.value.to_vec()))
-            .collect::<Vec<_>>();
         assert_eq!(
-            forward,
+            entries(tree.iter(Some(b"b"), Some(b"d"))),
             vec![
                 (b"b".to_vec(), b"2".to_vec()),
                 (b"c".to_vec(), b"3".to_vec())
             ]
         );
-
-        let reverse = tree
-            .reverse_iter(Some(b"b"), Some(b"d"))
-            .map(|entry| (entry.key.to_vec(), entry.value.to_vec()))
-            .collect::<Vec<_>>();
         assert_eq!(
-            reverse,
+            entries(tree.reverse_iter(Some(b"b"), Some(b"d"))),
             vec![
                 (b"c".to_vec(), b"3".to_vec()),
                 (b"b".to_vec(), b"2".to_vec())
             ]
         );
         assert_eq!(tree.iter(Some(b"d"), Some(b"a")).count(), 0);
+        assert_eq!(tree.iter(Some(b"b"), Some(b"b")).count(), 0);
 
         Ok(())
     }
@@ -1403,132 +1505,375 @@ mod tests {
     }
 
     #[test]
-    fn malformed_node_shapes_are_rejected() {
-        let valid = super::make_inner(
-            b"b".to_vec(),
-            Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
-            Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
-        );
-        assert_eq!(valid.validate_shape(1), Ok(()));
-        assert_eq!(
-            valid.validate_shape(0),
-            Err(Error::MalformedNode("version must be greater than 0"))
-        );
-
-        assert_eq!(
-            Node::leaf(Vec::new(), b"1".to_vec()).validate_shape(1),
-            Err(Error::MalformedNode("key cannot be empty"))
-        );
-
-        let bad_height = InnerNode {
-            key: b"b".to_vec(),
-            height: 0,
-            size: 2,
-            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: None,
-        };
-        assert_eq!(
-            Node::Inner(bad_height).validate_shape(1),
-            Err(Error::MalformedNode("height must be greater than 0"))
-        );
-
-        let bad_size = InnerNode {
-            key: b"b".to_vec(),
-            height: 1,
-            size: 1,
-            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: None,
-        };
-        assert_eq!(
-            Node::Inner(bad_size).validate_shape(1),
-            Err(Error::MalformedNode("inner size must be at least 2"))
-        );
-
-        let bad_order = InnerNode {
-            key: b"z".to_vec(),
-            height: 1,
-            size: 2,
-            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: None,
-        };
-        assert_eq!(
-            Node::Inner(bad_order).validate_shape(1),
-            Err(Error::MalformedNode(
-                "right subtree must start at separator"
-            ))
-        );
-
-        let bad_version = InnerNode {
-            key: b"b".to_vec(),
-            height: 1,
-            size: 2,
-            left: Box::new(Node::leaf(b"a".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"b".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: Some(0),
-        };
-        assert_eq!(
-            Node::Inner(bad_version).validate_shape(1),
-            Err(Error::MalformedNode("version must be greater than 0"))
-        );
-    }
-
-    #[test]
-    fn avl_rotations_dirty_hashes_and_removals_cover_edge_paths() -> Result<(), Error> {
+    fn avl_rotations_and_removals_cover_edge_paths() -> Result<(), Error> {
         let mut left_right = Tree::new();
         for key in [b"c", b"a", b"b"] {
             left_right.set(key.to_vec(), key.to_vec())?;
         }
         assert_ne!(left_right.root_hash(), [0; 32]);
-        let left_right_commit = left_right.save_version()?;
-        assert_eq!(left_right_commit.size, 3);
+        assert_eq!(left_right.save_version()?.size, 3);
 
         let mut right_left = Tree::new();
         for key in [b"a", b"c", b"b"] {
             right_left.set(key.to_vec(), key.to_vec())?;
         }
-        assert_ne!(right_left.root_hash(), [0; 32]);
-        let right_left_commit = right_left.save_version()?;
-        assert_eq!(right_left_commit.size, 3);
-
+        assert_eq!(right_left.save_version()?.size, 3);
         assert_eq!(right_left.remove(b"0")?, None);
         assert_eq!(right_left.remove(b"z")?, None);
         assert_eq!(right_left.remove(b"c")?, Some(b"c".to_vec()));
         assert_eq!(right_left.remove(b"a")?, Some(b"a".to_vec()));
         assert_eq!(right_left.save_version()?.size, 1);
-
-        let leaf = Node::leaf(b"x".to_vec(), b"1".to_vec());
-        assert!(matches!(super::rotate_left_child(leaf), Node::Leaf(_)));
-        let leaf = Node::leaf(b"x".to_vec(), b"1".to_vec());
-        assert!(matches!(super::rotate_right_child(leaf), Node::Leaf(_)));
-
-        let invalid_left = InnerNode {
-            key: b"y".to_vec(),
-            height: 1,
-            size: 2,
-            left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: None,
-        };
-        assert!(matches!(super::rotate_right(invalid_left), Node::Inner(_)));
-        let invalid_right = InnerNode {
-            key: b"y".to_vec(),
-            height: 1,
-            size: 2,
-            left: Box::new(Node::leaf(b"x".to_vec(), b"1".to_vec())),
-            right: Box::new(Node::leaf(b"y".to_vec(), b"2".to_vec())),
-            hash: None,
-            version: None,
-        };
-        assert!(matches!(super::rotate_left(invalid_right), Node::Inner(_)));
-
         Ok(())
+    }
+
+    // ---------------------------------------------------------------
+    // Storage-backed mode
+    // ---------------------------------------------------------------
+
+    /// Deterministic pseudo-random workload: `(op, key, value)` per version.
+    fn workload(versions: usize, ops: usize, seed: u64) -> Vec<Vec<(bool, Vec<u8>, Vec<u8>)>> {
+        let mut x = seed;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        (0..versions)
+            .map(|_| {
+                (0..ops)
+                    .map(|_| {
+                        let r = next();
+                        let key = format!("k{:03}", r % 300).into_bytes();
+                        let value = format!("v{}", r % 1000).into_bytes();
+                        (r % 4 != 0, key, value)
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn apply(tree: &mut Tree, ops: &[(bool, Vec<u8>, Vec<u8>)]) {
+        for (set, key, value) in ops {
+            if *set {
+                tree.set(key.clone(), value.clone()).unwrap();
+            } else {
+                tree.remove(key).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn storage_backed_tree_matches_in_memory_hashes_and_reopens() {
+        let ndb = NodeDb::in_memory(64);
+        let mut disk = Tree::open(Arc::clone(&ndb)).unwrap();
+        let mut mem = Tree::new();
+        let mut roots = Vec::new();
+        for ops in workload(30, 40, 7) {
+            apply(&mut disk, &ops);
+            apply(&mut mem, &ops);
+            assert_eq!(disk.root_hash(), mem.root_hash());
+            let a = disk.save_version().unwrap();
+            let b = mem.save_version().unwrap();
+            assert_eq!(a, b);
+            roots.push((a.version, a.root_hash, entries(mem.iter(None, None))));
+        }
+        // Every historical version is readable with its exact hash/content.
+        for (version, hash, content) in &roots {
+            let snap = disk.get_immutable(*version).unwrap();
+            assert_eq!(snap.root_hash(), *hash);
+            assert_eq!(&entries(snap.iter(None, None)), content);
+            let mem_snap = mem.get_immutable(*version).unwrap();
+            assert_eq!(mem_snap.root_hash(), *hash);
+        }
+        // Reopen from storage with a cold cache.
+        let reopened_db = NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            super::NodeCache::new(16),
+        );
+        let mut reopened = Tree::open(reopened_db).unwrap();
+        assert_eq!(reopened.version(), 30);
+        assert_eq!(reopened.root_hash(), mem.root_hash());
+        assert_eq!(
+            entries(reopened.iter(None, None)),
+            entries(mem.iter(None, None))
+        );
+        assert_eq!(
+            entries(reopened.reverse_iter(Some(b"k100"), Some(b"k200"))),
+            entries(mem.reverse_iter(Some(b"k100"), Some(b"k200")))
+        );
+        for ops in workload(5, 40, 99) {
+            apply(&mut reopened, &ops);
+            apply(&mut mem, &ops);
+            assert_eq!(
+                reopened.save_version().unwrap(),
+                mem.save_version().unwrap()
+            );
+        }
+        let stats = ndb.cache().stats();
+        assert!(stats.len <= 64, "{stats:?}");
+    }
+
+    #[test]
+    fn historical_proofs_verify_against_historical_roots() {
+        let mut tree = Tree::open(NodeDb::in_memory(1000)).unwrap();
+        let mut roots = Vec::new();
+        for ops in workload(10, 30, 3) {
+            apply(&mut tree, &ops);
+            roots.push(tree.save_version().unwrap());
+        }
+        for info in &roots {
+            let snap: ImmutableTree = tree.get_immutable(info.version).unwrap();
+            for entry in snap.iter(None, None).take(5) {
+                let entry = entry.unwrap();
+                let proof = snap.get_with_proof(&entry.key).unwrap().unwrap();
+                Tree::verify_membership(info.root_hash, &proof, &entry.key, &entry.value).unwrap();
+            }
+            let proof = snap.get_with_proof(b"k150x").unwrap().unwrap();
+            Tree::verify_non_membership(info.root_hash, &proof, b"k150x").unwrap();
+        }
+    }
+
+    /// Nodes reachable from the given roots.
+    fn reachable(tree: &Tree) -> usize {
+        let mut seen = std::collections::BTreeSet::new();
+        for version in tree.available_versions() {
+            let Some(super::Link::Stored(root)) = tree.versions[&version].clone() else {
+                continue;
+            };
+            let mut stack = vec![root];
+            while let Some(r) = stack.pop() {
+                if !seen.insert(r.nk) {
+                    continue;
+                }
+                let node = tree.ndb.as_ref().unwrap().load(&r).unwrap();
+                if let super::Node::Inner(inner) = &*node {
+                    for link in [&inner.left, &inner.right] {
+                        if let super::Link::Stored(c) = link {
+                            stack.push(*c);
+                        }
+                    }
+                }
+            }
+        }
+        seen.len()
+    }
+
+    #[test]
+    fn pruning_keeps_retained_versions_exact_and_frees_everything_else() {
+        let ndb = NodeDb::in_memory(10_000);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        let mut infos = Vec::new();
+        let keep = |latest: Version| move |v: Version| v > latest - 3 || v % 5 == 0;
+        for (i, ops) in workload(40, 25, 11).into_iter().enumerate() {
+            apply(&mut tree, &ops);
+            let info = tree.save_version().unwrap();
+            infos.push((info.clone(), entries(tree.iter(None, None))));
+            if i % 4 == 3 {
+                let mut batch = WriteBatch::new();
+                tree.prune(keep(info.version), &mut batch).unwrap();
+                ndb.backend().write(batch).unwrap();
+            }
+        }
+        let latest = tree.version();
+        let mut batch = WriteBatch::new();
+        tree.prune(keep(latest), &mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        let expected: Vec<Version> = (1..=latest).filter(|v| keep(latest)(*v)).collect();
+        assert_eq!(tree.available_versions(), expected);
+        for (info, content) in &infos {
+            if !expected.contains(&info.version) {
+                assert!(tree.get_immutable(info.version).is_err());
+                continue;
+            }
+            let snap = tree.get_immutable(info.version).unwrap();
+            assert_eq!(snap.root_hash(), info.root_hash);
+            assert_eq!(&entries(snap.iter(None, None)), content);
+        }
+        // No leaked nodes: every stored node is reachable from a retained root.
+        assert_eq!(ndb.node_count().unwrap(), reachable(&tree));
+
+        // Prune down to the latest version only.
+        let mut batch = WriteBatch::new();
+        tree.prune(|_| false, &mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        assert_eq!(tree.available_versions(), vec![latest]);
+        assert_eq!(ndb.node_count().unwrap(), tree.len() * 2 - 1);
+        assert_eq!(ndb.orphan_count().unwrap(), 0);
+        let reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            super::NodeCache::new(8),
+        ))
+        .unwrap();
+        assert_eq!(reopened.root_hash(), infos.last().unwrap().0.root_hash);
+    }
+
+    #[test]
+    fn in_memory_pruning_drops_versions() {
+        let mut tree = Tree::new();
+        for ops in workload(5, 10, 5) {
+            apply(&mut tree, &ops);
+            tree.save_version().unwrap();
+        }
+        let mut batch = WriteBatch::new();
+        assert_eq!(tree.prune(|v| v == 2, &mut batch).unwrap(), vec![1, 3, 4]);
+        assert!(batch.is_empty());
+        assert_eq!(tree.available_versions(), vec![2, 5]);
+        assert!(matches!(
+            tree.get_immutable(3),
+            Err(Error::VersionNotFound { version: 3 })
+        ));
+    }
+
+    #[test]
+    fn unchanged_and_emptied_versions_round_trip() {
+        let ndb = NodeDb::in_memory(100);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        let empty = tree.save_version().unwrap();
+        tree.set(b"a".to_vec(), b"1".to_vec()).unwrap();
+        let one = tree.save_version().unwrap();
+        let same = tree.save_version().unwrap();
+        assert_eq!(one.root_hash, same.root_hash);
+        tree.remove(b"a").unwrap();
+        let emptied = tree.save_version().unwrap();
+        assert_eq!(emptied.root_hash, empty.root_hash);
+        let reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            super::NodeCache::new(8),
+        ))
+        .unwrap();
+        assert_eq!(reopened.available_versions(), vec![1, 2, 3, 4]);
+        assert_eq!(
+            reopened.get_immutable(3).unwrap().root_hash(),
+            one.root_hash
+        );
+        assert!(reopened.is_empty());
+    }
+
+    #[test]
+    fn load_version_and_rollback() {
+        let ndb = NodeDb::in_memory(100);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        tree.set(b"a".to_vec(), b"1".to_vec()).unwrap();
+        let one = tree.save_version().unwrap();
+        tree.set(b"a".to_vec(), b"2".to_vec()).unwrap();
+        tree.rollback();
+        assert_eq!(tree.root_hash(), one.root_hash);
+        assert_eq!(tree.get(b"a").unwrap(), Some(b"1".to_vec()));
+        tree.set(b"b".to_vec(), b"2".to_vec()).unwrap();
+        tree.save_version().unwrap();
+        assert!(tree.load_version(1).is_err());
+        assert!(matches!(
+            tree.load_version(9),
+            Err(Error::VersionNotFound { version: 9 })
+        ));
+        tree.load_version(2).unwrap();
+        // A missing node surfaces as an error, not a panic.
+        let mut batch = WriteBatch::new();
+        ndb.clear(&mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        let cold = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            super::NodeCache::new(8),
+        ))
+        .unwrap();
+        assert_eq!(cold.version(), 0);
+    }
+
+    #[test]
+    fn export_import_round_trips_in_both_modes() {
+        let mut tree = Tree::open(NodeDb::in_memory(1000)).unwrap();
+        for ops in workload(12, 30, 21) {
+            apply(&mut tree, &ops);
+            tree.save_version().unwrap();
+        }
+        let version = tree.version();
+        let hash = tree.root_hash();
+        let nodes: Vec<_> = tree.export(version).unwrap().map(Result::unwrap).collect();
+        assert_eq!(nodes.len(), tree.len() * 2 - 1);
+        assert_eq!(nodes.last().unwrap().height, {
+            let snap = tree.get_immutable(version).unwrap();
+            let _ = snap;
+            nodes.iter().map(|n| n.height).max().unwrap()
+        });
+
+        // Into storage.
+        let ndb = NodeDb::in_memory(1000);
+        let mut importer = super::Importer::new(Some(Arc::clone(&ndb)), version).unwrap();
+        for node in nodes.iter().cloned() {
+            importer.add(node).unwrap();
+        }
+        let mut batch = WriteBatch::new();
+        let mut imported = importer.commit(&mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        assert_eq!(imported.root_hash(), hash);
+        assert_eq!(imported.version(), version);
+        assert_eq!(
+            entries(imported.iter(None, None)),
+            entries(tree.iter(None, None))
+        );
+        // Continue committing on both and stay in lockstep.
+        for ops in workload(3, 30, 77) {
+            apply(&mut imported, &ops);
+            apply(&mut tree, &ops);
+            assert_eq!(
+                imported.save_version().unwrap(),
+                tree.save_version().unwrap()
+            );
+        }
+
+        // Into memory.
+        let mut importer = super::Importer::new(None, version).unwrap();
+        for node in nodes {
+            importer.add(node).unwrap();
+        }
+        let mem = importer.commit(&mut WriteBatch::new()).unwrap();
+        assert_eq!(mem.root_hash(), hash);
+
+        // Malformed streams are rejected.
+        let mut importer = super::Importer::new(None, 1).unwrap();
+        assert!(
+            importer
+                .add(super::ExportNode {
+                    key: b"a".to_vec(),
+                    value: Vec::new(),
+                    version: 1,
+                    height: 1,
+                })
+                .is_err()
+        );
+        assert!(
+            importer
+                .add(super::ExportNode {
+                    key: b"a".to_vec(),
+                    value: Vec::new(),
+                    version: 2,
+                    height: 0,
+                })
+                .is_err()
+        );
+        // Importing into a store that already has versions is refused.
+        let mut used = Tree::open(NodeDb::in_memory(10)).unwrap();
+        used.set(b"a".to_vec(), b"1".to_vec()).unwrap();
+        used.save_version().unwrap();
+        assert!(super::Importer::new(used.node_db().cloned(), 5).is_err());
+    }
+
+    #[test]
+    fn empty_tree_export_import() {
+        let mut tree = Tree::open(NodeDb::in_memory(10)).unwrap();
+        tree.save_version().unwrap();
+        assert_eq!(tree.export(1).unwrap().count(), 0);
+        let ndb = NodeDb::in_memory(10);
+        let importer = super::Importer::new(Some(Arc::clone(&ndb)), 1).unwrap();
+        let mut batch = WriteBatch::new();
+        let imported = importer.commit(&mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        assert_eq!(imported.root_hash(), tree.root_hash());
+        assert_eq!(Tree::open(ndb).unwrap().version(), 1);
     }
 }

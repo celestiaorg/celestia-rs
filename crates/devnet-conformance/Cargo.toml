@@ -22,6 +22,8 @@ serde_json = "1"
 celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 
 [dev-dependencies]
+snapshots = { path = "../tier-2-state-and-store/snapshots" }
+tempfile = "3"
 iavl = { path = "../tier-2-state-and-store/iavl" }
 multistore = { path = "../tier-2-state-and-store/multistore" }
 sdk = { path = "../tier-3-app-modules/sdk" }

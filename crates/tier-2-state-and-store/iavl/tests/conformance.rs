@@ -12,13 +12,13 @@ struct RootFixture {
     cases: Vec<RootCase>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RootCase {
     label: String,
     commits: Vec<CommitCase>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct CommitCase {
     label: String,
     mutations: Vec<Mutation>,
@@ -27,7 +27,7 @@ struct CommitCase {
     root_hash_hex: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Mutation {
     action: String,
     key_hex: String,
@@ -40,7 +40,7 @@ struct IteratorFixture {
     cases: Vec<IteratorCase>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct IteratorCase {
     label: String,
     entries: Vec<Kv>,
@@ -50,7 +50,7 @@ struct IteratorCase {
     tree_version: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RangeCase {
     label: String,
     #[serde(default)]
@@ -61,7 +61,7 @@ struct RangeCase {
     entries: Vec<Kv>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 struct Kv {
     key_hex: String,
     value_hex: String,
@@ -117,8 +117,11 @@ struct MalformedCase {
 fn root_fixtures_match_go_iavl() {
     let fixture: RootFixture = read_fixture("roots.json");
 
-    for case in fixture.cases {
-        let mut tree = Tree::new();
+    for (case, mut tree) in fixture.cases.into_iter().flat_map(|case| {
+        both_modes()
+            .into_iter()
+            .map(move |tree| (case.clone(), tree))
+    }) {
         for commit in case.commits {
             for mutation in &commit.mutations {
                 apply_mutation(&mut tree, mutation);
@@ -154,8 +157,11 @@ fn root_fixtures_match_go_iavl() {
 fn iterator_fixtures_match_go_iavl() {
     let fixture: IteratorFixture = read_fixture("iterators.json");
 
-    for case in fixture.cases {
-        let mut tree = Tree::new();
+    for (case, mut tree) in fixture.cases.into_iter().flat_map(|case| {
+        both_modes()
+            .into_iter()
+            .map(move |tree| (case.clone(), tree))
+    }) {
         for entry in &case.entries {
             tree.set(decode_hex(&entry.key_hex), decode_hex(&entry.value_hex))
                 .unwrap_or_else(|err| panic!("{} set {}: {err}", case.label, entry.key_hex));
@@ -181,9 +187,12 @@ fn iterator_fixtures_match_go_iavl() {
                 tree.reverse_iter(start.as_deref(), end.as_deref())
             };
             let entries = iter
-                .map(|entry| Kv {
-                    key_hex: hex::encode(entry.key),
-                    value_hex: hex::encode(entry.value),
+                .map(|entry| {
+                    let entry = entry.expect("iterate");
+                    Kv {
+                        key_hex: hex::encode(entry.key),
+                        value_hex: hex::encode(entry.value),
+                    }
                 })
                 .collect::<Vec<_>>();
             assert_eq!(entries, range.entries, "{}:{}", case.label, range.label);
@@ -194,7 +203,12 @@ fn iterator_fixtures_match_go_iavl() {
 #[test]
 fn proof_fixtures_match_go_iavl() {
     let fixture: ProofFixture = read_fixture("proofs.json");
-    let mut tree = Tree::new();
+    for tree in both_modes() {
+        proof_fixtures_in(&fixture, tree);
+    }
+}
+
+fn proof_fixtures_in(fixture: &ProofFixture, mut tree: Tree) {
     for key in ["0a", "11", "2e", "32", "50", "72", "99", "a1", "e4", "f7"] {
         let bytes = decode_hex(key);
         tree.set(bytes.clone(), bytes)
@@ -205,7 +219,7 @@ fn proof_fixtures_match_go_iavl() {
         .unwrap_or_else(|err| panic!("save proof fixture tree: {err}"))
         .root_hash;
 
-    for case in fixture.cases {
+    for case in &fixture.cases {
         assert_eq!(hex::encode(root), case.root_hash_hex, "{}", case.label);
         let key = decode_hex(&case.key_hex);
         let proof = tree
@@ -306,6 +320,15 @@ fn malformed_fixtures_match_expected_errors() {
             other => panic!("unknown malformed api {other}"),
         }
     }
+}
+
+/// The same fixture runs against an in-memory and a storage-backed tree
+/// (with a tiny node cache, so most reads go to storage).
+fn both_modes() -> Vec<Tree> {
+    vec![
+        Tree::new(),
+        Tree::open(iavl::NodeDb::in_memory(4)).expect("open storage-backed tree"),
+    ]
 }
 
 fn apply_mutation(tree: &mut Tree, mutation: &Mutation) {

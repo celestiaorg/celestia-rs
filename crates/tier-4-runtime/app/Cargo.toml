@@ -16,6 +16,8 @@ workspace = true
 abci-server = { path = "../abci-server" }
 encoding = { path = "../../tier-0-primitives/encoding" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
+multistore = { path = "../../tier-2-state-and-store/multistore" }
+snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 pbjson-types = "0.7"
 math = { path = "../../tier-0-primitives/math" }
@@ -57,3 +59,4 @@ x-slashing = { path = "../../tier-3-app-modules/x/slashing" }
 
 [dev-dependencies]
 hex = "0.4"
+tempfile = "3"

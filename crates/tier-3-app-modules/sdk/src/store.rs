@@ -99,6 +99,26 @@ impl MultiStore {
         }
     }
 
+    /// Creates a storage-backed multistore over `db` (ADR 0002). Mount the
+    /// stores, then call [`Self::load_latest_version`]. Transient and memory
+    /// stores stay in memory.
+    #[must_use]
+    pub fn open(
+        db: std::sync::Arc<dyn multistore::kvdb::KvBackend>,
+        options: multistore::StoreOptions,
+    ) -> Self {
+        Self {
+            root: multistore::Store::open(db, options),
+            ..Self::new()
+        }
+    }
+
+    /// Positions every IAVL store at the latest committed version
+    /// (`LoadLatestVersion`) and returns its commit ID.
+    pub fn load_latest_version(&mut self) -> Result<CommitId, StoreError> {
+        Ok(self.root.load_latest_version()?)
+    }
+
     /// Mounts a store.
     pub fn mount(&mut self, name: &str, kind: Kind) -> Result<(), StoreError> {
         if kind == Kind::Iavl {
@@ -326,6 +346,12 @@ impl MultiStore {
     #[must_use]
     pub fn root(&self) -> &multistore::Store {
         &self.root
+    }
+
+    /// Committed root store, mutably (snapshot restore, pruning, metadata).
+    /// Callers must not leave uncommitted IAVL writes behind.
+    pub fn root_mut(&mut self) -> &mut multistore::Store {
+        &mut self.root
     }
 }
 

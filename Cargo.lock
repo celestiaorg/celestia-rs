@@ -28,6 +28,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "adler2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -118,11 +124,14 @@ dependencies = [
  "hex",
  "kvstore",
  "math",
+ "multistore",
  "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
+ "snapshots",
  "square",
+ "tempfile",
  "tracing",
  "txdecode",
  "x-ante",
@@ -372,7 +381,10 @@ dependencies = [
  "anyhow",
  "app",
  "clap",
+ "multistore",
+ "snapshots",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 
@@ -484,6 +496,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc32fast"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "crypto"
 version = "0.0.1"
 dependencies = [
@@ -565,6 +586,8 @@ dependencies = [
  "sdk",
  "serde",
  "serde_json",
+ "snapshots",
+ "tempfile",
  "txdecode",
  "x-staking",
 ]
@@ -702,6 +725,16 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
+name = "flate2"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a3d7db9596fecd151c5f638c0ee5d5bd487b6e0ea232e5dc96d5250f6f94b1d"
+dependencies = [
+ "crc32fast",
+ "miniz_oxide",
+]
 
 [[package]]
 name = "flex-error"
@@ -849,6 +882,8 @@ version = "0.0.1"
 dependencies = [
  "hash",
  "hex",
+ "kvdb",
+ "lru",
  "serde",
  "serde_json",
 ]
@@ -977,6 +1012,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kvdb"
+version = "0.0.1"
+dependencies = [
+ "redb",
+ "tempfile",
+]
+
+[[package]]
 name = "kvstore"
 version = "0.0.1"
 dependencies = [
@@ -1059,6 +1102,12 @@ checksum = "24fb722b06a9dc12adb0963ed585f19fc61dc5413e6a9be9422ef92c091e731d"
 dependencies = [
  "logos-codegen",
 ]
+
+[[package]]
+name = "lru"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
 
 [[package]]
 name = "m1-integration"
@@ -1155,6 +1204,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniz_oxide"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+dependencies = [
+ "adler2",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1181,12 +1239,14 @@ dependencies = [
  "iavl",
  "ics23",
  "ics23-proofs",
+ "kvdb",
  "kvstore",
  "merkle",
  "prost",
  "prost-types",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1596,6 +1656,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redb"
+version = "2.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d64e07496d293ad8ed401c4d193d5b9f0f97671fbd5bf21d691a0c7d2c53dc8"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1835,6 +1904,19 @@ name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+
+[[package]]
+name = "snapshots"
+version = "0.0.1"
+dependencies = [
+ "flate2",
+ "hash",
+ "iavl",
+ "kvdb",
+ "multistore",
+ "prost",
+ "tempfile",
+]
 
 [[package]]
 name = "socket2"

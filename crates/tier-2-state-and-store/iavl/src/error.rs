@@ -19,6 +19,22 @@ pub enum Error {
     InvalidProof(&'static str),
     /// An internal node shape is impossible for a valid IAVL tree.
     MalformedNode(&'static str),
+    /// A committed version is not available (never written or pruned).
+    VersionNotFound {
+        /// Requested version.
+        version: i64,
+    },
+    /// A persisted node referenced by the tree is missing from storage.
+    MissingNode {
+        /// Node key version.
+        version: i64,
+        /// Node key nonce.
+        nonce: u32,
+    },
+    /// Persisted data could not be decoded.
+    Corrupt(&'static str),
+    /// Storage backend error.
+    Db(String),
 }
 
 impl core::fmt::Display for Error {
@@ -29,6 +45,12 @@ impl core::fmt::Display for Error {
             Self::InvalidRange => f.write_str("invalid range"),
             Self::InvalidProof(message) => write!(f, "invalid proof: {message}"),
             Self::MalformedNode(message) => write!(f, "malformed node: {message}"),
+            Self::VersionNotFound { version } => write!(f, "version {version} not found"),
+            Self::MissingNode { version, nonce } => {
+                write!(f, "missing node ({version}, {nonce})")
+            }
+            Self::Corrupt(message) => write!(f, "corrupt storage: {message}"),
+            Self::Db(message) => write!(f, "storage: {message}"),
         }
     }
 }

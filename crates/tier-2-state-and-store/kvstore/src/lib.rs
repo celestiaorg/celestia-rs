@@ -48,6 +48,17 @@ impl Store {
         self.tree
     }
 
+    /// The underlying IAVL tree.
+    #[must_use]
+    pub fn tree(&self) -> &iavl::Tree {
+        &self.tree
+    }
+
+    /// The underlying IAVL tree, mutably (commit, pruning, export).
+    pub fn tree_mut(&mut self) -> &mut iavl::Tree {
+        &mut self.tree
+    }
+
     /// Return the latest saved version.
     #[must_use]
     pub fn version(&self) -> Version {
@@ -80,13 +91,13 @@ impl Store {
     /// Return the value for `key`, if present.
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         validate_key(key)?;
-        Ok(self.tree.get(key).map(<[u8]>::to_vec))
+        Ok(self.tree.get(key)?)
     }
 
     /// Return true when `key` exists.
     pub fn has(&self, key: &[u8]) -> Result<bool> {
         validate_key(key)?;
-        Ok(self.tree.get(key).is_some())
+        Ok(self.tree.get(key)?.is_some())
     }
 
     /// Insert or replace a key/value pair, returning the previous value.
@@ -107,8 +118,13 @@ impl Store {
         Ok(Iter::new(
             self.tree
                 .iter(start, end)
-                .map(|entry| Entry::new(entry.key, entry.value))
-                .collect(),
+                .map(|entry| {
+                    entry.map(|e| Entry {
+                        key: e.key,
+                        value: e.value,
+                    })
+                })
+                .collect::<core::result::Result<_, _>>()?,
         ))
     }
 
@@ -118,8 +134,13 @@ impl Store {
         Ok(Iter::new(
             self.tree
                 .reverse_iter(start, end)
-                .map(|entry| Entry::new(entry.key, entry.value))
-                .collect(),
+                .map(|entry| {
+                    entry.map(|e| Entry {
+                        key: e.key,
+                        value: e.value,
+                    })
+                })
+                .collect::<core::result::Result<_, _>>()?,
         ))
     }
 
@@ -439,15 +460,6 @@ pub struct Entry {
     pub key: Vec<u8>,
     /// Entry value.
     pub value: Vec<u8>,
-}
-
-impl Entry {
-    fn new(key: &[u8], value: &[u8]) -> Self {
-        Self {
-            key: key.to_vec(),
-            value: value.to_vec(),
-        }
-    }
 }
 
 /// Iterator over owned key/value entries.
