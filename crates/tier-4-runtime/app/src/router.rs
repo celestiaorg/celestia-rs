@@ -63,8 +63,12 @@ macro_rules! routes {
 }
 
 use celestia_proto::celestia::blob::v1 as blob;
+use celestia_proto::celestia::fibre::v1 as fibre;
+use celestia_proto::celestia::forwarding::v1 as forwarding;
 use celestia_proto::celestia::minfee::v1 as minfee;
 use celestia_proto::celestia::signal::v1 as signal;
+use celestia_proto::celestia::valaddr::v1 as valaddr;
+use celestia_proto::celestia::zkism::v1 as zkism;
 use celestia_proto::cosmos::authz::v1beta1 as authz;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::circuit::v1 as circuit;
@@ -131,6 +135,16 @@ routes! {
     vesting::MsgCreatePeriodicVestingAccount => x_bank::vesting_msgs::handle_create_periodic_vesting_account,
     evidence::MsgSubmitEvidence => x_evidence::handle_submit_evidence,
     consensus::MsgUpdateParams => x_consensus::handle_update_params,
+    fibre::MsgDepositToEscrow => x_fibre::msgs::deposit_to_escrow,
+    fibre::MsgRequestWithdrawal => x_fibre::msgs::request_withdrawal,
+    fibre::MsgPayForFibre => x_fibre::msgs::pay_for_fibre,
+    fibre::MsgPaymentPromiseTimeout => x_fibre::msgs::payment_promise_timeout,
+    fibre::MsgUpdateFibreParams => x_fibre::msgs::update_fibre_params,
+    valaddr::MsgSetFibreProviderInfo => handle_set_fibre_provider_info,
+    zkism::MsgCreateInterchainSecurityModule => crate::hyperlane::zkism_create,
+    zkism::MsgUpdateInterchainSecurityModule => x_zkism::msgs::update_ism,
+    zkism::MsgSubmitMessages => x_zkism::msgs::submit_messages,
+    forwarding::MsgForward => crate::hyperlane::forwarding_forward,
 }
 
 /// The app's message router as gov sees it (`baseapp.MessageRouter`).
@@ -156,6 +170,13 @@ fn handle_submit_proposal(
     msg: &gov::MsgSubmitProposal,
 ) -> Result<gov::MsgSubmitProposalResponse> {
     x_gov::msgs::submit_proposal(ctx, &AppRouter, msg)
+}
+
+fn handle_set_fibre_provider_info(
+    ctx: &mut Context<'_>,
+    msg: &valaddr::MsgSetFibreProviderInfo,
+) -> Result<valaddr::MsgSetFibreProviderInfoResponse> {
+    x_valaddr::set_fibre_provider_info_msg(ctx, &mut crate::modules::ValaddrStaking, msg)
 }
 
 fn handle_authz_grant(
@@ -192,6 +213,38 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     }
     if msg.type_url == signal::MsgTryUpgrade::type_url() {
         return x_signal::validate_basic_try_upgrade(&decode(msg)?);
+    }
+    if msg.type_url == fibre::MsgDepositToEscrow::type_url() {
+        let m: fibre::MsgDepositToEscrow = decode(msg)?;
+        return x_fibre::msgs::validate_basic_escrow(&m.signer, m.amount.as_ref());
+    }
+    if msg.type_url == fibre::MsgRequestWithdrawal::type_url() {
+        let m: fibre::MsgRequestWithdrawal = decode(msg)?;
+        return x_fibre::msgs::validate_basic_escrow(&m.signer, m.amount.as_ref());
+    }
+    if msg.type_url == fibre::MsgPayForFibre::type_url() {
+        return x_fibre::msgs::validate_basic_pay_for_fibre(&decode(msg)?);
+    }
+    if msg.type_url == fibre::MsgPaymentPromiseTimeout::type_url() {
+        return x_fibre::msgs::validate_basic_timeout(&decode(msg)?);
+    }
+    if msg.type_url == fibre::MsgUpdateFibreParams::type_url() {
+        return x_fibre::msgs::validate_basic_update_params(&decode(msg)?);
+    }
+    if msg.type_url == zkism::MsgCreateInterchainSecurityModule::type_url() {
+        return x_zkism::msgs::validate_basic_create(&decode(msg)?);
+    }
+    if msg.type_url == zkism::MsgUpdateInterchainSecurityModule::type_url() {
+        return x_zkism::msgs::validate_basic_update(&decode(msg)?);
+    }
+    if msg.type_url == zkism::MsgSubmitMessages::type_url() {
+        return x_zkism::msgs::validate_basic_submit(&decode(msg)?);
+    }
+    if msg.type_url == forwarding::MsgForward::type_url() {
+        return x_forwarding::msgs::validate_basic(&decode(msg)?);
+    }
+    if msg.type_url == valaddr::MsgSetFibreProviderInfo::type_url() {
+        return x_valaddr::validate_basic(&decode(msg)?);
     }
     if msg.type_url == gov::MsgExecLegacyContent::type_url() {
         return x_gov::msgs::validate_basic_exec_legacy_content(&decode(msg)?);

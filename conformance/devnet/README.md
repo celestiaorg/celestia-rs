@@ -68,7 +68,15 @@ DEVNET_BIN=<dir with celestia-appd, cometbft> conformance/devnet/mixed.sh 60 con
 ```
 
 `mixed.sh` with `workloads/blob.sh` also exercises the Rust
-ProcessProposal / CheckTx on blob blocks proposed by Go.
+ProcessProposal / CheckTx on blob blocks proposed by Go. `mixed.sh` and
+`rust-proposer.sh` apply the workload's `.setup.sh` / `.genesis.py` hooks
+like `devnet.sh`.
+
+`workloads/fibre.sh` builds signed payment promises (escrow owner's
+secp256k1 signature, validator ed25519 signatures from
+`priv_validator_key.json`) with `conformance/fibre-client`, a small Go
+program independent of celestia-app; `workloads/zkism-forwarding.sh`
+submits celestia-app's own SP1 Groth16 test vectors.
 
 ## Rust proposer
 

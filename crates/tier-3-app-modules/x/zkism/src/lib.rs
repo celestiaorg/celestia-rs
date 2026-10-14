@@ -1,4 +1,6 @@
-//! celestia-app v10 `x/zkism`: genesis state.
+//! celestia-app v10 `x/zkism`: genesis state, Msg server and the ZK ISM
+//! registered on the hyperlane ISM router ([`msgs`]), SP1 Groth16 proof
+//! verification ([`groth16`]).
 //!
 //! Store layout (collections):
 //! - `0x00 || u64(internal id)` → `InterchainSecurityModule`
@@ -7,8 +9,9 @@
 //!
 //! ISM ids are hyperlane `HexAddress`es: their gogoproto binary form is the
 //! lowercase `0x`-prefixed hex string, and the internal id is bytes 24..32.
-//! The Msg server (create/update ISM, submit messages, proof verification)
-//! is not ported yet.
+
+pub mod groth16;
+pub mod msgs;
 
 use celestia_proto::celestia::zkism::v1::{GenesisState, InterchainSecurityModule};
 use prost::Message;
@@ -63,7 +66,7 @@ pub fn internal_id(a: &HexAddress) -> u64 {
     u64::from_be_bytes(b)
 }
 
-fn ism_key(id: u64) -> Vec<u8> {
+pub(crate) fn ism_key(id: u64) -> Vec<u8> {
     let mut k = vec![ISMS_PREFIX];
     k.extend_from_slice(&u64_key(id));
     k

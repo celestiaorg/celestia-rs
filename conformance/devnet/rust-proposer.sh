@@ -9,6 +9,7 @@
 # mempool (CheckTx in Rust).
 #
 # usage: [DEVNET_PORT_OFFSET=n] conformance/devnet/rust-proposer.sh <blocks> [workload.sh]
+# Workload hooks (<workload>.setup.sh / .genesis.py) run as in devnet.sh.
 # Exit 0 iff the Go full node reaches <blocks> without rejecting a proposal.
 set -euo pipefail
 BLOCKS=${1:?blocks}; WORKLOAD=${2:-}
@@ -26,8 +27,18 @@ $A keys add user0 --keyring-backend test >/dev/null 2>&1
 for k in val0 user0; do
   $A genesis add-genesis-account "$($A keys show $k -a --keyring-backend test)" 1000000000000utia >/dev/null 2>&1
 done
+if [ -n "$WORKLOAD" ]; then
+  GENESIS_SETUP=${GENESIS_SETUP:-$(ls "${WORKLOAD%.sh}.setup.sh" 2>/dev/null || true)}
+  GENESIS_PATCH=${GENESIS_PATCH:-$(ls "${WORKLOAD%.sh}.genesis.py" 2>/dev/null || true)}
+fi
+if [ -n "${GENESIS_SETUP:-}" ]; then
+  HOME_DIR=$V CHAIN_ID=$CHAIN_ID bash "$GENESIS_SETUP"
+fi
 $A genesis gentx val0 5000000000utia --chain-id $CHAIN_ID --keyring-backend test --fees 500000utia >/dev/null 2>&1
 $A genesis collect-gentxs >/dev/null 2>&1
+if [ -n "${GENESIS_PATCH:-}" ]; then
+  python3 "$GENESIS_PATCH" "$V/config/genesis.json"
+fi
 
 port() { echo $(( $1 + OFF + $2 )); }   # base, node index (0 validator, 100 full node)
 shift_ports() { # file delta: shift every host:port listener

@@ -13,9 +13,9 @@
 //! v10 (BaseApp builds the header from the request fields and the handler
 //! only logs it).
 //!
-//! Not ported: settling `MsgPayForFibre` promises and replaying fibre
-//! escrow messages (`executeTxMsgs`) needs the x/fibre Msg server, which is
-//! not routed yet; such messages fail to execute here.
+//! `MsgPayForFibre` promises are settled, and fibre escrow messages
+//! replayed, on the proposal branch (`executeTxMsgs`) through the x/fibre
+//! Msg server.
 
 use celestia_proto::celestia::blob::v1::MsgPayForBlobs;
 use celestia_proto::celestia_core_proto::abci::{

@@ -2,7 +2,10 @@
 //!
 //! The module has no store: `InitGenesis` only unmarshals the (empty)
 //! genesis state, and there are no begin/end blockers. Its Msg server
-//! (forwarding through hyperlane warp) is not ported yet.
+//! (`MsgForward`: forwarding a derived address's balance through hyperlane
+//! warp) is in [`msgs`].
+
+pub mod msgs;
 
 use celestia_proto::celestia::forwarding::v1::GenesisState;
 use sdk::error::sdk as sdkerr;

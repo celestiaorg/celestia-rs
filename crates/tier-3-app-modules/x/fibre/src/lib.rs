@@ -9,8 +9,12 @@
 //! - `0x06 || time(processed) || "/" || hash` → `ProcessedPayment`
 //! - `0x07` → promise freshness floor (`sdk.FormatTimeBytes`)
 //!
-//! `time(t)` is `sdk.FormatTimeBytes`. The Msg server (escrow deposits,
-//! withdrawals, PayForFibre, timeouts) is not ported yet.
+//! `time(t)` is `sdk.FormatTimeBytes`. The Msg server, stateful promise
+//! validation and validator-signature checks are in [`msgs`]; payment
+//! promise encoding and signatures in [`promise`].
+
+pub mod msgs;
+pub mod promise;
 
 use celestia_proto::celestia::fibre::v1::{
     EscrowAccount, EventProcessedPaymentPruned, EventWithdrawFromEscrowExecuted, GenesisState,
@@ -76,7 +80,7 @@ pub fn default_params() -> Params {
 
 /// gogoproto non-nullable `stdduration` fields are always encoded; make the
 /// prost form carry them explicitly.
-fn normalize_params(mut p: Params) -> Params {
+pub(crate) fn normalize_params(mut p: Params) -> Params {
     for d in [
         &mut p.withdrawal_delay,
         &mut p.payment_promise_timeout,
@@ -87,12 +91,12 @@ fn normalize_params(mut p: Params) -> Params {
     p
 }
 
-fn ts_or_zero(t: Option<Timestamp>) -> Timestamp {
+pub(crate) fn ts_or_zero(t: Option<Timestamp>) -> Timestamp {
     t.unwrap_or_else(sdk::time::go_zero)
 }
 
 /// gogoproto non-nullable `Coin` with a nil `Int` encodes amount `"0"`.
-fn normalize_coin(c: Option<PbCoin>) -> PbCoin {
+pub(crate) fn normalize_coin(c: Option<PbCoin>) -> PbCoin {
     let mut c = c.unwrap_or_default();
     if c.amount.is_empty() {
         c.amount = "0".into();
@@ -118,7 +122,7 @@ fn normalize_processed(mut p: ProcessedPayment) -> ProcessedPayment {
     p
 }
 
-fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
+pub(crate) fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
     M::decode(bz).map_err(|e| undefined(e.to_string()))
 }
 
@@ -177,7 +181,7 @@ pub fn set_escrow_account(ctx: &mut Context<'_>, a: &EscrowAccount) -> Result<()
     ctx.set(STORE_KEY, escrow_key(&a.signer), a.encode_to_vec())
 }
 
-fn withdrawal_by_signer_key(signer: &str, requested: &Timestamp) -> Vec<u8> {
+pub(crate) fn withdrawal_by_signer_key(signer: &str, requested: &Timestamp) -> Vec<u8> {
     let mut k = vec![WITHDRAWALS_BY_SIGNER_PREFIX];
     k.extend_from_slice(signer.as_bytes());
     k.push(b'/');

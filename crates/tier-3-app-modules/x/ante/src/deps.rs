@@ -3,8 +3,7 @@
 //! decorator; KV reads must be performed on the given context so that gas is
 //! charged exactly like the Go keeper.
 
-use std::cell::RefCell;
-use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 
 use celestia_proto::Any;
 use celestia_proto::celestia::fibre::v1::{MsgPayForFibre, PaymentPromise};
@@ -212,10 +211,11 @@ pub struct IbcHooks {
 /// [`AnteDeps`] backed by the Go modules' store layouts.
 ///
 /// Implements the circuit, minfee and blob reads exactly like their Go
-/// keepers, feegrant allowances (`x_feegrant`), and holds the node-local PFF
-/// signature cache. Fibre and IBC checks are not ported yet and fail with
-/// `ErrNotSupported` when reached (only for `MsgPayForFibre` txs and IBC
-/// packet txs in CheckTx).
+/// keepers, feegrant allowances (`x_feegrant`), the fibre promise and
+/// validator-signature checks (`x_fibre`), and uses the process-wide PFF
+/// signature cache ([`pff_sig_cache`]). IBC packet checks are not ported
+/// yet and fail with `ErrNotSupported` when reached (only for IBC packet
+/// txs in CheckTx).
 #[derive(Debug, Default)]
 pub struct StoreDeps {
     /// Node-local minimum gas price (utia), see
@@ -224,7 +224,6 @@ pub struct StoreDeps {
     /// The app's IBC checks (CheckTx); without them IBC packet txs fail
     /// with `ErrNotSupported` in CheckTx.
     pub ibc: Option<IbcHooks>,
-    pff_cache: RefCell<HashSet<[u8; 32]>>,
 }
 
 impl StoreDeps {
@@ -234,7 +233,6 @@ impl StoreDeps {
         Self {
             node_min_gas_price,
             ibc: None,
-            pff_cache: RefCell::default(),
         }
     }
 
@@ -244,6 +242,55 @@ impl StoreDeps {
         self.ibc = Some(hooks);
         self
     }
+}
+
+/// `defaultPffSigVerificationCacheCapacity`.
+pub const PFF_SIG_CACHE_CAPACITY: usize = 10_000;
+
+/// `PffSigVerificationCache` (celestia `app/pff_sig_cache.go`): a bounded
+/// LRU set of certificates whose PFF signatures were verified. It is
+/// node-local and only skips repeated verification, so it never changes a
+/// result.
+#[derive(Debug, Default)]
+pub struct PffSigCache {
+    // Most recently used last.
+    entries: std::collections::VecDeque<[u8; 32]>,
+    index: std::collections::HashSet<[u8; 32]>,
+}
+
+impl PffSigCache {
+    /// `IsCached` (refreshes the entry's recency, like `lru.Cache.Get`).
+    pub fn is_cached(&mut self, key: &[u8; 32]) -> bool {
+        if !self.index.contains(key) {
+            return false;
+        }
+        if let Some(pos) = self.entries.iter().position(|k| k == key) {
+            if let Some(k) = self.entries.remove(pos) {
+                self.entries.push_back(k);
+            }
+        }
+        true
+    }
+
+    /// `Cache`.
+    pub fn cache(&mut self, key: [u8; 32]) {
+        if self.is_cached(&key) {
+            return;
+        }
+        if self.entries.len() >= PFF_SIG_CACHE_CAPACITY {
+            if let Some(old) = self.entries.pop_front() {
+                self.index.remove(&old);
+            }
+        }
+        self.entries.push_back(key);
+        self.index.insert(key);
+    }
+}
+
+/// The process-wide PFF signature cache (Go keeps one per `App`).
+pub fn pff_sig_cache() -> &'static Mutex<PffSigCache> {
+    static CACHE: OnceLock<Mutex<PffSigCache>> = OnceLock::new();
+    CACHE.get_or_init(Mutex::default)
 }
 
 impl AnteDeps for StoreDeps {
@@ -290,26 +337,28 @@ impl AnteDeps for StoreDeps {
 
     fn fibre_validate_payment_promise(
         &self,
-        _ctx: &mut Context<'_>,
-        _promise: &PaymentPromise,
+        ctx: &mut Context<'_>,
+        promise: &PaymentPromise,
     ) -> sdk::Result<()> {
-        Err(not_supported("fibre ValidatePaymentPromiseStateful"))
+        x_fibre::msgs::validate_payment_promise_stateful(ctx, promise).map(|_| ())
     }
 
     fn pff_sig_cached(&self, key: &[u8; 32]) -> bool {
-        self.pff_cache.borrow().contains(key)
+        pff_sig_cache().lock().is_ok_and(|mut c| c.is_cached(key))
     }
 
     fn pff_sig_cache(&self, key: [u8; 32]) {
-        self.pff_cache.borrow_mut().insert(key);
+        if let Ok(mut c) = pff_sig_cache().lock() {
+            c.cache(key);
+        }
     }
 
     fn fibre_validate_signatures(
         &self,
-        _ctx: &mut Context<'_>,
-        _msg: &MsgPayForFibre,
+        ctx: &mut Context<'_>,
+        msg: &MsgPayForFibre,
     ) -> sdk::Result<()> {
-        Err(not_supported("fibre ValidatePayForFibreSignatures"))
+        x_fibre::msgs::validate_pay_for_fibre_signatures(ctx, msg)
     }
 
     fn ibc_packet_is_noop(

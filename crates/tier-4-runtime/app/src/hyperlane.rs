@@ -1,8 +1,7 @@
 //! Wiring of `hyperlane` and `warp` (`app.go`: `HyperlaneKeeper`,
-//! `WarpKeeper` with both token types enabled and the gov authority).
-//!
-//! x/zkism (ISM type 42) and x/forwarding are not ported yet; zkism's ISM
-//! registration belongs in [`deps`] once it is.
+//! `WarpKeeper` with both token types enabled and the gov authority), the
+//! x/zkism ISM (router type 42) and the Msg servers that need the hyperlane
+//! routers (x/zkism create, x/forwarding).
 
 use celestia_proto::Any;
 use sdk::{Context, Result};
@@ -60,14 +59,35 @@ impl BankKeeper for Bank {
 }
 
 static BANK: Bank = Bank;
+static ZKISM: x_zkism::msgs::ZkIsm = x_zkism::msgs::ZkIsm;
 
-/// Builds the hyperlane routers with warp registered.
+/// Builds the hyperlane routers with warp and the zkism ISM registered.
 #[must_use]
 pub fn deps(warp: &Warp) -> Deps<'_> {
     let mut d = Deps::new(&BANK);
     // Static, distinct ids: registration cannot fail.
     let _ = warp.register(&mut d);
+    let _ = d.isms.register(x_zkism::msgs::MODULE_TYPE_ZK_ISM, &ZKISM);
     d
+}
+
+/// x/zkism `CreateInterchainSecurityModule` (allocates an id on the
+/// hyperlane ISM router).
+pub fn zkism_create(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::celestia::zkism::v1::MsgCreateInterchainSecurityModule,
+) -> Result<celestia_proto::celestia::zkism::v1::MsgCreateInterchainSecurityModuleResponse> {
+    let warp = Warp::celestia();
+    x_zkism::msgs::create_ism(ctx, &deps(&warp), msg)
+}
+
+/// x/forwarding `Forward`.
+pub fn forwarding_forward(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::celestia::forwarding::v1::MsgForward,
+) -> Result<celestia_proto::celestia::forwarding::v1::MsgForwardResponse> {
+    let warp = Warp::celestia();
+    x_forwarding::msgs::forward(ctx, &deps(&warp), msg)
 }
 
 /// Whether `type_url` is a hyperlane or warp message.

@@ -6,13 +6,19 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "celestia x/zkism: ZK interchain security modules; genesis state."
+description = "celestia x/zkism: ZK interchain security modules (SP1 Groth16), genesis and Msg server."
 publish = false
 
 [lints]
 workspace = true
 
 [dependencies]
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
+ark-ec = { version = "0.5", default-features = false }
+ark-ff = { version = "0.5", default-features = false }
+hash = { path = "../../../tier-0-primitives/hash" }
+serde = "1"
+x-hyperlane = { path = "../hyperlane" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 hex = "0.4"
 prost = "0.13"

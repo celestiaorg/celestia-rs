@@ -1,0 +1,9 @@
+{
+  "scenario": "zkism-forwarding",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 90,
+  "workload": "zkism-forwarding.sh",
+  "generated_at": "2026-10-14T10:04:44Z"
+}

@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "celestia x/forwarding: stateless module; genesis validation."
+description = "celestia x/forwarding: forwarding addresses and MsgForward through hyperlane warp."
 publish = false
 
 [lints]
@@ -14,5 +14,10 @@ workspace = true
 
 [dependencies]
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+hash = { path = "../../../tier-0-primitives/hash" }
+math = { path = "../../../tier-0-primitives/math" }
 sdk = { path = "../../sdk" }
 serde_json = "1"
+x-bank = { path = "../bank" }
+x-hyperlane = { path = "../hyperlane" }
+x-warp = { path = "../warp" }

@@ -81,6 +81,29 @@ fn upgrade_parity_and_halt() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// x/fibre + x/valaddr (`workloads/fibre.sh`): provider registration,
+/// escrow deposits/withdrawals (paid out by the BeginBlocker),
+/// MsgPayForFibre settlement (PFF system blobs in the square, validator
+/// signatures checked in CheckTx and ProcessProposal), unsettleable
+/// promises dropped by PrepareProposal, timeouts and a gov
+/// MsgUpdateFibreParams.
+#[test]
+fn fibre_parity() -> anyhow::Result<()> {
+    assert_parity("fibre")?;
+    let c = devnet_conformance::replay::replay("fibre")?.compared;
+    assert!(c.prepare_with_txs >= 15 && c.check_tx >= 40, "{c:?}");
+    Ok(())
+}
+
+/// x/zkism + x/forwarding (`workloads/zkism-forwarding.sh`): SP1 Groth16
+/// state-transition and membership proofs (celestia-app's test vectors)
+/// verified on chain, failing proofs, the zk ISM on the hyperlane router,
+/// and MsgForward through warp with IGP fee collection/refund.
+#[test]
+fn zkism_forwarding_parity() -> anyhow::Result<()> {
+    assert_parity("zkism-forwarding")
+}
+
 #[test]
 fn blob_parity() -> anyhow::Result<()> {
     assert_parity("blob")?;
