@@ -466,6 +466,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "devnet-conformance"
+version = "0.0.1"
+dependencies = [
+ "abci-server",
+ "anyhow",
+ "hex",
+ "iavl",
+ "multistore",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
