@@ -7,6 +7,9 @@
 use devnet_conformance::replay::replay;
 
 const EXPECTED_MATCHING_STORES: &[&str] = &[
+    "distribution",
+    "slashing",
+    "staking",
     "authz",
     "capability",
     "consensus",

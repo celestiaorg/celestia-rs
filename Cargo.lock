@@ -2477,6 +2477,7 @@ name = "x-distribution"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "hash",
  "math",
  "pbjson-types",
  "prost",
@@ -2624,11 +2625,14 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "hash",
  "math",
  "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
+ "x-auth",
+ "x-bank",
  "x-staking",
 ]
 

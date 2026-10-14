@@ -27,3 +27,6 @@ pub const STORE_KEY: &str = "distribution";
 pub const MODULE_NAME: &str = "distribution";
 /// Consensus version.
 pub const CONSENSUS_VERSION: u64 = 4;
+
+#[cfg(test)]
+mod tests;
