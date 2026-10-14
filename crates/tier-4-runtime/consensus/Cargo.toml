@@ -19,7 +19,10 @@ mempool = { path = "../mempool" }
 nodestore = { path = "../nodestore" }
 p2p = { path = "../p2p" }
 privval = { path = "../privval" }
+propagation = { path = "../propagation" }
 prost = "0.13"
+rand = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tracing = "0.1"
 
 [dev-dependencies]

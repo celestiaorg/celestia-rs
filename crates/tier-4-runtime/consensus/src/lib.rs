@@ -4,9 +4,11 @@
 //! conflicting-vote detection ([`vote_set::VoteSet`],
 //! [`height_vote_set::HeightVoteSet`]), the timeout ticker, the write-ahead
 //! log in Go's format with `#ENDHEIGHT` crash recovery ([`wal`]), the
-//! consensus wire messages ([`types::ConsensusMessage`]) and a minimal
-//! gossip layer over an abstract [`gossip::Network`] (until the `p2p`
-//! reactor is wired).
+//! consensus wire messages ([`types::ConsensusMessage`]), the consensus
+//! reactor on the `p2p` switch ([`reactor`], with peer round states in
+//! [`peer_state`]), the consensus thread ([`service`]) wired to the block
+//! propagation reactor (`propagation` crate), and a minimal gossip layer
+//! over an abstract [`gossip::Network`] for deterministic simulations.
 
 #![forbid(unsafe_code)]
 // Ported Go functions keep Go's structure (and length) for reviewability.
@@ -14,6 +16,9 @@
 
 pub mod gossip;
 pub mod height_vote_set;
+pub mod peer_state;
+pub mod reactor;
+pub mod service;
 pub mod state;
 pub mod ticker;
 pub mod types;

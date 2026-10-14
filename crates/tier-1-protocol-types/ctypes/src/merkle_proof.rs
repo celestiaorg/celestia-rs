@@ -46,7 +46,53 @@ pub fn proofs_from_byte_slices<T: AsRef<[u8]>>(items: &[T]) -> (Vec<u8>, Vec<Pro
     (root.to_vec(), proofs)
 }
 
-fn leaf_hash(leaf: &[u8]) -> Vec<u8> {
+/// `merkle.ProofsFromLeafHashes` / `ParallelProofsFromLeafHashes`: the tree
+/// over already-hashed leaves (empty input gives the empty hash).
+#[must_use]
+pub fn proofs_from_leaf_hashes(leaf_hashes: &[Vec<u8>]) -> (Vec<u8>, Vec<Proof>) {
+    fn build(leaves: &[Vec<u8>], aunts: &mut [Vec<Vec<u8>>]) -> Vec<u8> {
+        match leaves.len() {
+            0 => merkle::empty_hash().to_vec(),
+            1 => leaves[0].clone(),
+            n => {
+                #[allow(
+                    clippy::cast_possible_wrap,
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss
+                )]
+                let k = split_point(n as i64) as usize;
+                let (la, ra) = aunts.split_at_mut(k);
+                let left = build(&leaves[..k], la);
+                let right = build(&leaves[k..], ra);
+                for a in la.iter_mut() {
+                    a.push(right.clone());
+                }
+                for a in ra.iter_mut() {
+                    a.push(left.clone());
+                }
+                inner_hash(&left, &right)
+            }
+        }
+    }
+    let mut aunts = vec![Vec::new(); leaf_hashes.len()];
+    let root = build(leaf_hashes, &mut aunts);
+    let total = i64::try_from(leaf_hashes.len()).unwrap_or(i64::MAX);
+    let proofs = aunts
+        .into_iter()
+        .enumerate()
+        .map(|(i, a)| Proof {
+            total,
+            index: i64::try_from(i).unwrap_or(i64::MAX),
+            leaf_hash: leaf_hashes[i].clone(),
+            aunts: a,
+        })
+        .collect();
+    (root, proofs)
+}
+
+/// `merkle.LeafHash`.
+#[must_use]
+pub fn leaf_hash(leaf: &[u8]) -> Vec<u8> {
     merkle::leaf_hash(leaf).to_vec()
 }
 

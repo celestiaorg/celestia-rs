@@ -125,6 +125,7 @@ impl Gossip {
                     height,
                     round,
                     step,
+                    ..
                 } => {
                     let m = ConsensusMessage::NewRoundStep {
                         height: *height,

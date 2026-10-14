@@ -70,6 +70,7 @@ members = [
     "crates/tier-4-runtime/light",
     "crates/tier-4-runtime/statesync",
     "crates/tier-4-runtime/rpc",
+    "crates/tier-4-runtime/propagation",
     "crates/devnet-conformance",
     "crates/tier-5-node/celestia-rs",
     "crates/m1-integration",
@@ -127,3 +128,11 @@ incremental = false
 [profile.dev.package.librocksdb-sys]
 opt-level = 2
 debug = false
+
+# Erasure coding of block parts runs on every proposal; keep it fast in
+# the debug builds the devnets use.
+[profile.dev.package.reed-solomon-erasure]
+opt-level = 3
+
+[profile.dev.package.reed-solomon-simd]
+opt-level = 3

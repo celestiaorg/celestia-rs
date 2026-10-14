@@ -162,10 +162,10 @@ impl StartOptions {
     }
 }
 
-/// Whether consensus messages are gossiped over P2P. Until the consensus
-/// reactor is wired, a non-validator node never hands over to consensus
-/// and follows the chain by block sync instead.
-pub const CONSENSUS_GOSSIP: bool = false;
+/// Whether consensus messages are gossiped over P2P (the consensus and
+/// block propagation reactors are wired), so every node hands over from
+/// block sync to consensus once caught up, as in Go.
+pub const CONSENSUS_GOSSIP: bool = true;
 
 /// Opens node database `name` in `data` on the default backend (ADR 0002)
 /// with a 64 MiB cache: block and state store reads are mostly recent.
@@ -300,6 +300,29 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         tracing::info!(height = state.last_block_height, "halt height reached");
         return Ok(());
     }
+    // The consensus state machine and its reactors exist from the start
+    // (Go's `NewState` + `NewReactor`); block sync executes blocks through
+    // the same block executor and then hands over (`SwitchToConsensus`).
+    let wal = FileWal::open(
+        home.join("data").join("cs.wal").join("wal"),
+        consensus::ticker::system_now(),
+    )
+    .map_err(|e| anyhow!("wal: {e}"))?;
+    let mut cs = ConsensusState::new(
+        opts.config.clone(),
+        state.clone(),
+        exec,
+        Box::new(wal),
+        Box::new(SystemClock),
+        Some(Box::new(pv)),
+    )
+    .map_err(|e| anyhow!("consensus: {e}"))?;
+    let only_validator_is_us =
+        state.validators.size() == 1 && state.validators.has_address(&local_addr);
+    let wait_sync =
+        opts.p2p.is_some() && (state_sync_mode || (opts.block_sync && !only_validator_is_us));
+    let self_id = crate::net::node_key(home)?.id();
+    let creactors = consensus_reactors(&mut cs, &bs, &pool, wait_sync, self_id);
     let net = match &opts.p2p {
         None => None,
         Some(p2p_opts) => Some(start_network(
@@ -313,30 +336,31 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
             &app,
             &pool,
             &local_addr,
+            &creactors,
         )?),
     };
     let result = (|| {
         let mut state_synced = false;
+        let mut blocks_synced = 0;
         if let (true, Some((_, reactors)), Some(ss_opts)) =
             (state_sync_mode, &net, &opts.state_sync)
         {
             state = crate::sync::state_sync(&reactors.statesync, ss_opts, &state, &ss, &bs)?;
             state_synced = true;
         }
-        let only_validator_is_us =
-            state.validators.size() == 1 && state.validators.has_address(&local_addr);
         if let Some((_, reactors)) = &net {
             if (opts.block_sync && !only_validator_is_us) || state_synced {
                 let is_validator = state.validators.has_address(&local_addr);
                 let out = crate::sync::block_sync(
                     &reactors.blocksync,
                     state.clone(),
-                    &mut exec,
+                    &mut cs.block_exec,
                     state_synced,
                     CONSENSUS_GOSSIP || is_validator,
                     opts.halt_height,
                 )?;
                 state = out.state;
+                blocks_synced = out.blocks_synced;
                 tracing::info!(
                     height = state.last_block_height,
                     blocks_synced = out.blocks_synced,
@@ -344,49 +368,102 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     "block sync finished"
                 );
                 if out.reason == blocksync::SwitchToConsensus::Stopped {
-                    return Ok(true);
+                    return Ok(None);
                 }
             }
         }
-        Ok::<bool, anyhow::Error>(false)
+        Ok::<Option<bool>, anyhow::Error>(Some(state_synced || blocks_synced > 0))
     })();
-    match result {
-        Ok(true) => {
+    let stop = |net: &Option<(p2p::Switch, crate::sync::SyncReactors)>| {
+        if let Some((sw, _)) = net {
+            sw.stop();
+        }
+    };
+    let skip_wal = match result {
+        Ok(None) => {
             tracing::info!(height = state.last_block_height, "halt height reached");
-            if let Some((sw, _)) = &net {
-                sw.stop();
-            }
+            stop(&net);
             return Ok(());
         }
-        Ok(false) => {}
+        Ok(Some(synced)) => synced,
         Err(e) => {
-            if let Some((sw, _)) = &net {
-                sw.stop();
-            }
+            stop(&net);
             return Err(e);
         }
+    };
+    let started = if wait_sync {
+        // `SwitchToConsensus`.
+        cs.switch_to_consensus(state, skip_wal).map(|()| {
+            creactors.reactor.set_wait_sync(false);
+            propagation::Propagator::start_processing(&*creactors.propagation);
+            creactors
+                .reactor
+                .set_snapshot(consensus::service::snapshot_of(&cs));
+            creactors.reactor.broadcast_current_round_step();
+        })
+    } else {
+        cs.start()
+    };
+    if let Err(e) = started {
+        stop(&net);
+        return Err(anyhow!("consensus start: {e}"));
     }
-    let wal = FileWal::open(
-        home.join("data").join("cs.wal").join("wal"),
-        consensus::ticker::system_now(),
-    )
-    .map_err(|e| anyhow!("wal: {e}"))?;
-    let mut cs = ConsensusState::new(
-        opts.config.clone(),
-        state,
-        exec,
-        Box::new(wal),
-        Box::new(SystemClock),
-        Some(Box::new(pv)),
-    )
-    .map_err(|e| anyhow!("consensus: {e}"))?;
-    cs.start().map_err(|e| anyhow!("consensus start: {e}"))?;
     rpc.shared.update_round_state(cs.round_state());
-    let res = run(&mut cs, &pool, &inbox, opts.halt_height, &rpc);
-    if let Some((sw, _)) = &net {
-        sw.stop();
-    }
+    let res = run(&mut cs, &creactors, &pool, &inbox, opts.halt_height, &rpc);
+    stop(&net);
     res
+}
+
+/// The consensus and block propagation reactors around a state machine.
+pub(crate) struct ConsensusReactors {
+    reactor: Arc<consensus::reactor::Reactor>,
+    propagation: Arc<propagation::Reactor>,
+    inputs: std::sync::mpsc::Receiver<consensus::service::Input>,
+}
+
+/// Creates the consensus reactor and the propagation reactor (`RECOVERY`)
+/// for `cs` and connects them to its input channel. Propagation processes
+/// right away unless the node first syncs (Go: `StartProcessing` on
+/// `SwitchToConsensus`).
+fn consensus_reactors(
+    cs: &mut ConsensusState,
+    bs: &BlockStore,
+    pool: &Arc<mempool::TxPool>,
+    wait_sync: bool,
+    self_id: p2p::NodeId,
+) -> ConsensusReactors {
+    let prop = propagation::Reactor::new(
+        self_id,
+        propagation::Config {
+            store: bs.clone(),
+            mempool: pool.clone(),
+            chain_id: cs.state().chain_id.clone(),
+            block_max_bytes: cs.state().consensus_params.block.max_bytes,
+        },
+    );
+    if !wait_sync {
+        propagation::Propagator::start_processing(&*prop);
+    }
+    cs.set_propagator(prop.clone());
+    let (tx, rx) = std::sync::mpsc::channel::<consensus::service::Input>();
+    let reactor = consensus::reactor::Reactor::new(
+        consensus::reactor::ReactorConfig {
+            gossip_data_enabled: cs.gossip_data_enabled,
+            ..consensus::reactor::ReactorConfig::default()
+        },
+        bs.clone(),
+        consensus::service::snapshot_of(cs),
+        wait_sync,
+    );
+    reactor.set_inputs(tx.clone());
+    prop.set_output(Arc::new(move |o| {
+        let _ = tx.send(consensus::service::Input::Propagation(o));
+    }));
+    ConsensusReactors {
+        reactor,
+        propagation: prop,
+        inputs: rx,
+    }
 }
 
 /// Creates and starts the P2P switch with the mempool, block sync,
@@ -403,8 +480,13 @@ fn start_network(
     app: &Arc<Mutex<app::App>>,
     pool: &Arc<mempool::TxPool>,
     local_addr: &[u8],
+    consensus: &ConsensusReactors,
 ) -> anyhow::Result<(p2p::Switch, crate::sync::SyncReactors)> {
     let sw = crate::net::new_switch(home, chain_id, p2p_opts)?;
+    sw.add_reactor(consensus.reactor.clone())
+        .map_err(|e| anyhow!("{e}"))?;
+    sw.add_reactor(consensus.propagation.clone())
+        .map_err(|e| anyhow!("{e}"))?;
     let cfg = mempool::MempoolConfig::celestia_app();
     let mreactor = mempool::cat::Reactor::new(
         pool.clone(),
@@ -418,8 +500,6 @@ fn start_network(
     )
     .map_err(|e| anyhow!("mempool reactor: {e}"))?;
     sw.add_reactor(mempool::cat::P2pReactor::new(mreactor))
-        .map_err(|e| anyhow!("{e}"))?;
-    sw.add_reactor(Arc::new(crate::net::PropagationSink))
         .map_err(|e| anyhow!("{e}"))?;
     let reactors = crate::sync::add_sync_reactors(
         &sw,
@@ -435,55 +515,55 @@ fn start_network(
     Ok((sw, reactors))
 }
 
-/// The node loop: fire due timeouts, report commits, stop at the halt
-/// height or on a consensus failure.
+/// The node loop: the consensus thread (`consensus::service::run`) with
+/// the reactors, the local tx inbox fed from a helper thread; stops at the
+/// halt height or on a consensus failure.
 fn run(
     cs: &mut ConsensusState,
-    pool: &mempool::TxPool,
+    reactors: &ConsensusReactors,
+    pool: &Arc<mempool::TxPool>,
     inbox: &Path,
     halt_height: i64,
     rpc: &crate::rpc_service::Rpc,
 ) -> anyhow::Result<()> {
-    loop {
-        // The app's check state only has genesis state after the first
-        // commit (as in the SDK), so txs wait for block 1.
-        if cs.state().last_block_height > 0 {
-            feed_inbox(inbox, pool);
-        }
-        cs.tick();
-        for ev in cs.take_events() {
-            rpc.consensus_event(&ev, cs.round_state());
-            if let Event::NewBlock {
-                height,
-                block_id,
-                app_hash,
-            } = ev
-            {
-                tracing::info!(
-                    height,
-                    hash = %hex::encode_upper(&block_id.hash),
-                    app_hash = %hex::encode_upper(&app_hash),
-                    "committed block"
-                );
-                if halt_height > 0 && height >= halt_height {
-                    tracing::info!(height, "halt height reached");
-                    return Ok(());
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let feeder = {
+        let (pool, inbox, done) = (pool.clone(), inbox.to_path_buf(), done.clone());
+        std::thread::spawn(move || {
+            while !done.load(std::sync::atomic::Ordering::SeqCst) {
+                // The app's check state only has genesis state after the
+                // first commit (as in the SDK), so txs wait for block 1.
+                if pool.height() > 0 {
+                    feed_inbox(&inbox, &pool);
                 }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        })
+    };
+    let res = consensus::service::run(cs, &reactors.reactor, &reactors.inputs, |cs, ev| {
+        rpc.consensus_event(ev, cs.round_state());
+        if let Event::NewBlock {
+            height,
+            block_id,
+            app_hash,
+        } = ev
+        {
+            tracing::info!(
+                height,
+                hash = %hex::encode_upper(&block_id.hash),
+                app_hash = %hex::encode_upper(app_hash),
+                "committed block"
+            );
+            if halt_height > 0 && *height >= halt_height {
+                tracing::info!(height, "halt height reached");
+                return consensus::service::Flow::Stop;
             }
         }
-        if let Some(f) = cs.failure() {
-            return Err(anyhow!("CONSENSUS FAILURE: {f}"));
-        }
-        let now = consensus::ticker::system_now();
-        let wait = cs.next_timeout().map_or(100_000_000, |d| {
-            nodestore::state::sub_times(d, now).clamp(0, 100_000_000)
-        });
-        if wait > 0 {
-            std::thread::sleep(std::time::Duration::from_nanos(
-                u64::try_from(wait).unwrap_or(0),
-            ));
-        }
-    }
+        consensus::service::Flow::Continue
+    });
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = feeder.join();
+    res.map_err(|e| anyhow!(e))
 }
 
 /// `celestia-rs export-blocks`: blocks, commits, validator sets, params and

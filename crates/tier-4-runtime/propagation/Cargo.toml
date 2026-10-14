@@ -1,0 +1,32 @@
+[package]
+name = "propagation"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Port of celestia-core v0.42.3 consensus/propagation: compact blocks, erasure-coded recovery parts, have/want gossip and catch-up (the RECOVERY reactor)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hex = "0.4"
+mempool = { path = "../mempool" }
+nodestore = { path = "../nodestore" }
+p2p = { path = "../p2p" }
+privval = { path = "../privval" }
+prost = "0.13"
+rand = "0.9"
+reed-solomon-erasure = "6"
+reed-solomon-simd = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+crypto = { path = "../../tier-0-primitives/crypto" }
+hash = { path = "../../tier-0-primitives/hash" }
+serde_json = "1"

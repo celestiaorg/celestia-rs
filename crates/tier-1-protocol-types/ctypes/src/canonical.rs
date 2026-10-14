@@ -82,3 +82,32 @@ pub fn vote_extension_sign_bytes(chain_id: &str, vote: &pb::Vote) -> Vec<u8> {
 pub fn proposal_sign_bytes(chain_id: &str, p: &pb::Proposal) -> Result<Vec<u8>> {
     Ok(delimited(&canonicalize_proposal(chain_id, p)?))
 }
+
+/// `RawBytesSignBytesPrefix`: domain separator of raw-bytes signatures.
+pub const RAW_BYTES_SIGN_BYTES_PREFIX: &str = "COMET::RAW_BYTES::SIGN";
+
+/// `RawBytesMessageSignBytes`: the prefix followed by the length-delimited
+/// `privval.SignRawBytesRequest`.
+pub fn raw_bytes_message_sign_bytes(
+    chain_id: &str,
+    unique_id: &str,
+    raw_bytes: &[u8],
+) -> Result<Vec<u8>> {
+    if chain_id.is_empty() {
+        return Err(crate::Error::msg("chainID cannot be empty"));
+    }
+    if unique_id.is_empty() {
+        return Err(crate::Error::msg("uniqueID cannot be empty"));
+    }
+    if raw_bytes.is_empty() {
+        return Err(crate::Error::msg("rawBytes cannot be empty"));
+    }
+    let req = crate::proto::privval::SignRawBytesRequest {
+        chain_id: chain_id.to_owned(),
+        raw_bytes: raw_bytes.to_vec(),
+        unique_id: unique_id.to_owned(),
+    };
+    let mut out = RAW_BYTES_SIGN_BYTES_PREFIX.as_bytes().to_vec();
+    out.extend(delimited(&req));
+    Ok(out)
+}

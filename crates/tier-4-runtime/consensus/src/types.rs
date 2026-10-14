@@ -354,32 +354,44 @@ impl ConsensusMessage {
                 seconds_since_start_time: p.seconds_since_start_time,
                 last_commit_round: p.last_commit_round,
             },
-            Sum::NewValidBlock(p) => Self::NewValidBlock {
-                height: p.height,
-                round: p.round,
-                block_part_set_header: PartSetHeader::from_proto(
-                    &p.block_part_set_header.clone().unwrap_or_default(),
-                )
-                .map_err(e)?,
-                block_parts: p
-                    .block_parts
-                    .as_ref()
-                    .map(BitArray::from_proto)
-                    .unwrap_or_default(),
-                is_commit: p.is_commit,
-            },
+            Sum::NewValidBlock(p) => {
+                if let Some(b) = &p.block_parts {
+                    BitArray::validate_proto(b)
+                        .map_err(|e| format!("validating BlockParts: {e}"))?;
+                }
+                Self::NewValidBlock {
+                    height: p.height,
+                    round: p.round,
+                    block_part_set_header: PartSetHeader::from_proto(
+                        &p.block_part_set_header.clone().unwrap_or_default(),
+                    )
+                    .map_err(e)?,
+                    block_parts: p
+                        .block_parts
+                        .as_ref()
+                        .map(BitArray::from_proto)
+                        .unwrap_or_default(),
+                    is_commit: p.is_commit,
+                }
+            }
             Sum::Proposal(p) => Self::Proposal(
                 Proposal::from_proto(p.proposal.as_ref().ok_or("nil proposal")?).map_err(e)?,
             ),
-            Sum::ProposalPol(p) => Self::ProposalPol {
-                height: p.height,
-                proposal_pol_round: p.proposal_pol_round,
-                proposal_pol: p
-                    .proposal_pol
-                    .as_ref()
-                    .map(BitArray::from_proto)
-                    .unwrap_or_default(),
-            },
+            Sum::ProposalPol(p) => {
+                if let Some(b) = &p.proposal_pol {
+                    BitArray::validate_proto(b)
+                        .map_err(|e| format!("validating ProposalPOL: {e}"))?;
+                }
+                Self::ProposalPol {
+                    height: p.height,
+                    proposal_pol_round: p.proposal_pol_round,
+                    proposal_pol: p
+                        .proposal_pol
+                        .as_ref()
+                        .map(BitArray::from_proto)
+                        .unwrap_or_default(),
+                }
+            }
             Sum::BlockPart(p) => Self::BlockPart {
                 height: p.height,
                 round: p.round,
@@ -401,20 +413,179 @@ impl ConsensusMessage {
                 block_id: BlockId::from_proto(&p.block_id.clone().unwrap_or_default())
                     .map_err(e)?,
             },
-            Sum::VoteSetBits(p) => Self::VoteSetBits {
-                height: p.height,
-                round: p.round,
-                vote_type: p.r#type,
-                block_id: BlockId::from_proto(&p.block_id.clone().unwrap_or_default())
-                    .map_err(e)?,
-                votes: p
-                    .votes
-                    .as_ref()
-                    .map(BitArray::from_proto)
-                    .unwrap_or_default(),
-            },
+            Sum::VoteSetBits(p) => {
+                if let Some(b) = &p.votes {
+                    BitArray::validate_proto(b).map_err(|e| format!("validating Votes: {e}"))?;
+                }
+                Self::VoteSetBits {
+                    height: p.height,
+                    round: p.round,
+                    vote_type: p.r#type,
+                    block_id: BlockId::from_proto(&p.block_id.clone().unwrap_or_default())
+                        .map_err(e)?,
+                    votes: p
+                        .votes
+                        .as_ref()
+                        .map(BitArray::from_proto)
+                        .unwrap_or_default(),
+                }
+            }
         };
         Ok(msg)
+    }
+
+    /// `ValidateBasic` of the reactor message (the embedded proposal,
+    /// part and vote are validated when decoded).
+    pub fn validate_basic(&self) -> Result<(), String> {
+        use ctypes::commit::MAX_VOTES_COUNT;
+        use ctypes::part_set::MAX_BLOCK_PARTS_COUNT;
+        let valid_type =
+            |t: i32| t == ctypes::vote::PREVOTE_TYPE || t == ctypes::vote::PRECOMMIT_TYPE;
+        match self {
+            Self::NewRoundStep {
+                height,
+                round,
+                last_commit_round,
+                ..
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if *round < 0 {
+                    return Err("negative Round".into());
+                }
+                if *last_commit_round < -1 {
+                    return Err("invalid LastCommitRound (cannot be < -1)".into());
+                }
+            }
+            Self::NewValidBlock {
+                height,
+                round,
+                block_part_set_header,
+                block_parts,
+                ..
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if *round < 0 {
+                    return Err("negative Round".into());
+                }
+                block_part_set_header
+                    .validate_basic()
+                    .map_err(|e| format!("wrong BlockPartSetHeader: {e}"))?;
+                if block_parts.size() == 0 {
+                    return Err("empty blockParts".into());
+                }
+                if block_parts.size() != block_part_set_header.total as usize {
+                    return Err(format!(
+                        "blockParts bit array size {} not equal to BlockPartSetHeader.Total {}",
+                        block_parts.size(),
+                        block_part_set_header.total
+                    ));
+                }
+                if block_parts.size() > MAX_BLOCK_PARTS_COUNT as usize {
+                    return Err(format!(
+                        "blockParts bit array is too big: {}, max: {MAX_BLOCK_PARTS_COUNT}",
+                        block_parts.size()
+                    ));
+                }
+            }
+            Self::Proposal(_) | Self::BlockPart { .. } => {
+                if let Self::BlockPart { height, round, .. } = self {
+                    if *height < 0 {
+                        return Err("negative Height".into());
+                    }
+                    if *round < 0 {
+                        return Err("negative Round".into());
+                    }
+                }
+            }
+            Self::ProposalPol {
+                height,
+                proposal_pol_round,
+                proposal_pol,
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if *proposal_pol_round < 0 {
+                    return Err("negative ProposalPOLRound".into());
+                }
+                if proposal_pol.size() == 0 {
+                    return Err("empty ProposalPOL bit array".into());
+                }
+                if proposal_pol.size() > MAX_VOTES_COUNT {
+                    return Err(format!(
+                        "proposalPOL bit array is too big: {}, max: {MAX_VOTES_COUNT}",
+                        proposal_pol.size()
+                    ));
+                }
+            }
+            Self::Vote(v) => v.validate_basic().map_err(|e| e.to_string())?,
+            Self::HasVote {
+                height,
+                round,
+                vote_type,
+                index,
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if *round < 0 {
+                    return Err("negative Round".into());
+                }
+                if !valid_type(*vote_type) {
+                    return Err("invalid Type".into());
+                }
+                if *index < 0 {
+                    return Err("negative Index".into());
+                }
+            }
+            Self::VoteSetMaj23 {
+                height,
+                round,
+                vote_type,
+                block_id,
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if *round < 0 {
+                    return Err("negative Round".into());
+                }
+                if !valid_type(*vote_type) {
+                    return Err("invalid Type".into());
+                }
+                block_id
+                    .validate_basic()
+                    .map_err(|e| format!("wrong BlockID: {e}"))?;
+            }
+            Self::VoteSetBits {
+                height,
+                vote_type,
+                block_id,
+                votes,
+                ..
+            } => {
+                if *height < 0 {
+                    return Err("negative Height".into());
+                }
+                if !valid_type(*vote_type) {
+                    return Err("invalid Type".into());
+                }
+                block_id
+                    .validate_basic()
+                    .map_err(|e| format!("wrong BlockID: {e}"))?;
+                if votes.size() > MAX_VOTES_COUNT {
+                    return Err(format!(
+                        "votes bit array is too big: {}, max: {MAX_VOTES_COUNT}",
+                        votes.size()
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Encoded wire bytes.

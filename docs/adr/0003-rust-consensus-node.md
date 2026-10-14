@@ -61,11 +61,19 @@ environment is still blocked (`OPEN_QUESTIONS.md` #1).
 | Block store, state store (validator checkpointing, params, FinalizeBlock responses), `State`, MakeBlock / validation / ApplyBlock, evidence pool (duplicate votes), `Handshaker` replay matrix | `crates/tier-4-runtime/nodestore` | store / execution / crash-point handshake tests |
 | Round state machine, vote sets, timeouts from `TimeoutInfo` + delayed precommit, WAL (Go format) + catch-up replay, wire messages, gossip over an abstract `Network` | `crates/tier-4-runtime/consensus` | Go-ported unit tests; deterministic multi-validator simulation (`tests/sim.rs`: drops, delays, partitions, crash-restart, double-signer, valset changes) checking safety, liveness and no double signing |
 | CAT mempool (`TxPool`: signer sets, aggregated priority, eviction, TTL, caches, recheck, `ReapMaxBytesMaxGas`) and reactor (SeenTx/WantTx/Txs on 0x31/0x32, request scheduler, `QuerySequence` gap filling, sticky peers); `Mempool`/`MempoolLock` API for consensus | `crates/tier-4-runtime/mempool` | Go-ported cat tests; `conformance/devnet/mempool-interop.sh` (txs gossip both ways with a Go validator, Rust-submitted txs land in Go blocks) |
-| `celestia-rs start` (single validator, in-process app, local tx inbox), `export-blocks` | `crates/tier-5-node/celestia-rs` | `tests/node.rs`; `conformance/consensusvectors/verify/run.sh` (Go celestia-core verifies every block/commit/hash, Go celestia-appd accepts every proposal and reproduces every app hash, Go decodes the WAL) |
+| Consensus reactor on the `p2p` switch: State 0x20 / Vote 0x22 / VoteSetBits 0x23 (the legacy Data channel 0x21 only with `EnableLegacyBlockProp`, off by default in celestia-core v0.42.3), `PeerRoundState` tracking, `NewRoundStep` / `NewValidBlock` / `HasVote` / `VoteSetMaj23` / `VoteSetBits` / `ProposalPOL`, `gossipVotesRoutine` (incl. extended-commit catch-up), `queryMaj23Routine`, legacy `gossipDataRoutine`; peer state published to the CAT mempool and the propagation reactor; consensus thread (`service`) with `SwitchToConsensus` | `crates/tier-4-runtime/consensus` (`reactor`, `peer_state`, `service`) | peer-state unit tests; mixed devnet |
+| Block propagation (`RECOVERY`, 0x50/0x51): signed compact blocks, 2x erasure-coded parts (klauspost-compatible Reed-Solomon: `reed-solomon-erasure` GF(2^8) up to 256 shards, `reed-solomon-simd` leopard GF(2^16) above), have/want with per-peer request limits, recovery from the mempool, decoding from any half, catch-up (`AddCommitment`, `retryWants` with proofs served from the block store, unverified compact-block cache), and the consensus interplay (`SetConsensusState`, `ProposeBlock`, `Prune`, `IsCatchingUp` skipping the delayed precommit, `syncData`) | `crates/tier-4-runtime/propagation` | Go vectors (`conformance/consensusvectors/propagation`: parity of 1..300-part blocks, decoding, compact-block sign bytes / signature, proofs from leaf hashes, `TxsToParts`, wire messages) |
+| `celestia-rs start` (in-process app, P2P switch with consensus / propagation / CAT reactors, `--p2p-laddr`, `--persistent-peers`, node key; local tx inbox), `export-blocks` | `crates/tier-5-node/celestia-rs` | `tests/node.rs`; `conformance/consensusvectors/verify/run.sh` (Go celestia-core verifies every block/commit/hash, Go celestia-appd accepts every proposal and reproduces every app hash, Go decodes the WAL); `conformance/devnet/mixed-validators.sh` (M9) |
 
-Next: wire the consensus reactor (peer round states, `HasVote`, catch-up)
-to the `p2p` crate and the propagation reactor, then the mixed Rust+Go
-devnet.
+M9 acceptance (`conformance/devnet/mixed-validators.sh`): 2 Go + 2 Rust
+validators reach consensus for 100+ heights under bank / blob / staking
+load with Rust proposers, a Rust validator killed and restarted mid-run
+(WAL replay, catch-up), Go and Rust full nodes following; a second
+network where the Rust validators hold 80% of the power keeps committing
+after both Go validators stop, with a Go full node following. Block and
+app hashes agree on every node; no evidence, no conflicting votes.
+
+Next: block sync and evidence reactors (in progress separately), RPC.
 
 ## Implementation notes
 

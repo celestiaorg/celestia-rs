@@ -8,10 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, anyhow};
-use p2p::{
-    ChannelDescriptor, Envelope, MConnConfig, NodeInfo, NodeInfoOther, NodeKey, ProtocolVersion,
-    Switch, SwitchConfig,
-};
+use p2p::{MConnConfig, NodeInfo, NodeInfoOther, NodeKey, ProtocolVersion, Switch, SwitchConfig};
 
 /// The `[p2p]` options of `celestia-rs start`.
 #[derive(Debug, Clone, Default)]
@@ -89,31 +86,4 @@ pub fn start_switch(rt: &tokio::runtime::Handle, sw: &Switch) -> anyhow::Result<
         "p2p switch started"
     );
     Ok(())
-}
-
-/// Accepts and drops traffic on the block propagation channels
-/// (0x50/0x51) that celestia-core peers require us to advertise
-/// (`celestia_peer_filter`) until the propagation reactor is wired.
-pub struct PropagationSink;
-
-impl p2p::Reactor for PropagationSink {
-    fn name(&self) -> String {
-        "PROPAGATION-SINK".into()
-    }
-    fn channels(&self) -> Vec<ChannelDescriptor> {
-        [0x50u8, 0x51]
-            .iter()
-            .map(|&id| ChannelDescriptor {
-                send_queue_capacity: 100,
-                recv_message_capacity: 64 << 20,
-                ..ChannelDescriptor::new(id, 1)
-            })
-            .collect()
-    }
-    fn receive(&self, _env: Envelope) -> Result<(), String> {
-        Ok(())
-    }
-    fn queue_size(&self) -> usize {
-        1000
-    }
 }

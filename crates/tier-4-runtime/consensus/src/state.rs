@@ -11,6 +11,7 @@
 //! failure, stops processing and reports it through [`ConsensusState::failure`].
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use ctypes::proto::types as pb;
 use ctypes::vote::{PRECOMMIT_TYPE, PREVOTE_TYPE};
@@ -21,12 +22,13 @@ use ctypes::{
 use nodestore::state::{State, add_duration, sub_times};
 use nodestore::{BlockExecutor, BlockStore};
 use privval::PrivValidator;
+use propagation::{NoOpPropagator, Propagator, TxMetaData};
 use prost::Message as _;
 
 use crate::height_vote_set::HeightVoteSet;
 use crate::ticker::{Clock, TimeoutTicker};
 use crate::types::{ConsensusMessage, RoundState, RoundStep, TimeoutInfo};
-use crate::vote_set::{VoteError, VoteSet};
+use crate::vote_set::{BitArray, VoteError, VoteSet};
 use crate::wal::{TimedWalMessage, Wal, WalError, WalMessage};
 
 /// `cfg.ConsensusConfig` (durations in Go nanoseconds). The `timeout_*`
@@ -123,6 +125,10 @@ pub enum Event {
         round: i32,
         /// Step.
         step: RoundStep,
+        /// `StartTime` of the round state at that step.
+        start_time: Time,
+        /// `LastCommit.GetRound()` (-1 without a last commit).
+        last_commit_round: i32,
     },
     /// A vote was added (`EventVote`).
     Vote(Vote),
@@ -137,6 +143,8 @@ pub enum Event {
         parts_header: PartSetHeader,
         /// Whether we are in the commit step.
         is_commit: bool,
+        /// Parts of the proposal block we hold.
+        block_parts: BitArray,
     },
     /// An own message to broadcast (proposal, block part, vote).
     Broadcast(ConsensusMessage),
@@ -159,6 +167,7 @@ pub enum Event {
 }
 
 /// The consensus state machine.
+#[allow(clippy::struct_excessive_bools)]
 pub struct ConsensusState {
     config: ConsensusConfig,
     priv_validator: Option<Box<dyn PrivValidator>>,
@@ -181,6 +190,12 @@ pub struct ConsensusState {
     pub do_wal_catchup: bool,
     /// WAL records replayed by the last [`ConsensusState::start`].
     pub replayed_messages: usize,
+    propagator: Arc<dyn Propagator>,
+    synced_hr: (i64, i32, RoundStep, bool),
+    /// Whether the legacy data channel gossips proposals and parts
+    /// (`EnableLegacyBlockProp`); a failed `ProposeBlock` aborts the
+    /// proposal otherwise.
+    pub gossip_data_enabled: bool,
 }
 
 impl std::fmt::Debug for ConsensusState {
@@ -276,6 +291,9 @@ impl ConsensusState {
             failure: None,
             do_wal_catchup: true,
             replayed_messages: 0,
+            propagator: Arc::new(NoOpPropagator),
+            synced_hr: (0, -1, RoundStep::NewHeight, false),
+            gossip_data_enabled: false,
         };
         if let Some(pv) = priv_validator {
             cs.set_priv_validator(pv)?;
@@ -295,6 +313,27 @@ impl ConsensusState {
         self.priv_validator_pub_key = Some(pv.pub_key().map_err(|e| e.to_string())?);
         self.priv_validator = Some(pv);
         Ok(())
+    }
+
+    /// Installs the block propagation reactor (`propagator` of `NewState`)
+    /// and syncs it with the round state.
+    pub fn set_propagator(&mut self, p: Arc<dyn Propagator>) {
+        self.propagator = p;
+        self.sync_propagator_state();
+    }
+
+    /// The propagator.
+    #[must_use]
+    pub fn propagator(&self) -> &Arc<dyn Propagator> {
+        &self.propagator
+    }
+
+    /// `propagator.SetConsensusState(rs.Height, rs.Round, proposer)`.
+    fn sync_propagator_state(&self) {
+        if let Some(p) = self.rs.validators.peek_proposer() {
+            self.propagator
+                .set_consensus_state(self.rs.height, self.rs.round, &p.pub_key);
+        }
     }
 
     /// The round state.
@@ -388,6 +427,8 @@ impl ConsensusState {
             return Err(f.clone());
         }
         self.check_double_signing_risk(self.rs.height)?;
+        // Sync the propagator with the round state the WAL replay resumed at.
+        self.sync_propagator_state();
         let start = self.rs.start_time;
         self.schedule_round0(start, self.rs.height);
         self.drain_internal();
@@ -530,8 +571,58 @@ impl ConsensusState {
         }
     }
 
-    /// Processes own messages (WAL-synced first, as Go's internal queue).
+    /// Processes own messages (WAL-synced first, as Go's internal queue),
+    /// then hands parts the propagator already holds for a new height or
+    /// round to the state machine (`syncData` on `newHeightOrRoundChan`).
     fn drain_internal(&mut self) {
+        loop {
+            self.drain_internal_queue();
+            if self.failure.is_some() || self.replay_mode || !self.sync_data() {
+                return;
+            }
+        }
+    }
+
+    /// `syncData`'s new height/round case: queues the parts the propagator
+    /// has for the current height and round. Returns whether any were
+    /// queued.
+    fn sync_data(&mut self) -> bool {
+        let key = (
+            self.rs.height,
+            self.rs.round,
+            self.rs.step,
+            self.rs.proposal_block_parts.is_some(),
+        );
+        if key == self.synced_hr {
+            return false;
+        }
+        self.synced_hr = key;
+        let hr = (key.0, key.1);
+        let Some(current) = self.rs.proposal_block_parts.as_ref() else {
+            return false;
+        };
+        let Some((_, partset)) = self.propagator.get_proposal(hr.0, hr.1) else {
+            return false;
+        };
+        if current.is_complete() {
+            return false;
+        }
+        let missing: Vec<ctypes::Part> = (0..partset.total() as usize)
+            .filter(|&i| partset.has_part(i) && !current.has_part(i))
+            .filter_map(|i| partset.get_part(i))
+            .collect();
+        let queued = !missing.is_empty();
+        for part in missing {
+            self.send_internal(ConsensusMessage::BlockPart {
+                height: hr.0,
+                round: hr.1,
+                part,
+            });
+        }
+        queued
+    }
+
+    fn drain_internal_queue(&mut self) {
         while let Some(mi) = self.internal_queue.pop_front() {
             if self.failure.is_some() {
                 return;
@@ -708,6 +799,8 @@ impl ConsensusState {
             height: self.rs.height,
             round: self.rs.round,
             step: self.rs.step,
+            start_time: self.rs.start_time,
+            last_commit_round: self.rs.last_commit.as_ref().map_or(-1, VoteSet::round),
         });
     }
 
@@ -857,6 +950,7 @@ impl ConsensusState {
         }
         self.rs.votes.set_round(round.saturating_add(1));
         self.rs.triggered_timeout_precommit = false;
+        self.sync_propagator_state();
         let wait_for_txs =
             self.config.wait_for_txs() && round == 0 && !self.need_proof_block(height);
         if wait_for_txs {
@@ -965,6 +1059,27 @@ impl ConsensusState {
                 if !ok {
                     return;
                 }
+                let hashes: Vec<Vec<u8>> = block.data.txs.iter().map(ctypes::Tx::hash).collect();
+                let meta: Vec<TxMetaData> = parts
+                    .tx_pos
+                    .iter()
+                    .zip(&hashes)
+                    .map(|(pos, h)| TxMetaData {
+                        hash: h.clone(),
+                        start: pos.start,
+                        end: pos.end,
+                    })
+                    .collect();
+                let res = match self.priv_validator.as_deref() {
+                    Some(pv) => self.propagator.propose_block(&proposal, &parts, meta, pv),
+                    None => Err("no priv validator".into()),
+                };
+                if let Err(e) = res {
+                    tracing::error!(err = %e, "propagation reactor failed to propose the block");
+                    if !self.gossip_data_enabled {
+                        return;
+                    }
+                }
                 self.events
                     .push(Event::Broadcast(ConsensusMessage::Proposal(
                         proposal.clone(),
@@ -988,6 +1103,15 @@ impl ConsensusState {
                 }
             }
         }
+    }
+
+    /// `ProposalBlockParts.BitArray()` (nil without parts).
+    fn proposal_parts_bits(&self) -> BitArray {
+        self.rs
+            .proposal_block_parts
+            .as_ref()
+            .map(|p| BitArray(p.bit_array()))
+            .unwrap_or_default()
     }
 
     /// `isProposalComplete`.
@@ -1122,6 +1246,10 @@ impl ConsensusState {
         if d == 0 {
             return None;
         }
+        // When catching up, skip the delayed precommit timeout.
+        if self.propagator.is_catching_up() {
+            return None;
+        }
         Some(add_duration(self.rs.start_time, d))
     }
 
@@ -1214,6 +1342,8 @@ impl ConsensusState {
                     &block_id.part_set_header,
                     BLOCK_PART_SIZE_BYTES,
                 ));
+                self.propagator
+                    .add_commitment(height, round, &block_id.part_set_header);
             }
             self.sign_add_vote(PRECOMMIT_TYPE, Vec::new(), PartSetHeader::default(), None);
         }
@@ -1285,11 +1415,14 @@ impl ConsensusState {
                     &block_id.part_set_header,
                     BLOCK_PART_SIZE_BYTES,
                 ));
+                let psh = block_id.part_set_header.clone();
+                self.propagator.add_commitment(height, commit_round, &psh);
                 self.events.push(Event::ValidBlock {
                     height,
                     round: self.rs.round,
-                    parts_header: block_id.part_set_header.clone(),
+                    parts_header: psh,
                     is_commit: true,
+                    block_parts: self.proposal_parts_bits(),
                 });
             }
         }
@@ -1444,6 +1577,9 @@ impl ConsensusState {
                 self.priv_validator_pub_key = Some(pk);
             }
         }
+        // Prune the propagation reactor; the next height's round state is
+        // installed when enterNewRound(height+1, 0) runs.
+        self.propagator.prune(height);
         let (st, h) = (self.rs.start_time, self.rs.height);
         self.schedule_round0(st, h);
     }
@@ -1736,12 +1872,15 @@ impl ConsensusState {
                         &block_id.part_set_header,
                         BLOCK_PART_SIZE_BYTES,
                     ));
+                    self.propagator
+                        .add_commitment(height, vote_round, &block_id.part_set_header);
                 }
                 self.events.push(Event::ValidBlock {
                     height,
                     round: self.rs.round,
                     parts_header: block_id.part_set_header.clone(),
                     is_commit: self.rs.step == RoundStep::Commit,
+                    block_parts: self.proposal_parts_bits(),
                 });
             }
         }
@@ -1904,6 +2043,50 @@ impl ConsensusState {
 
     // ------------------------------------------------------------------
     // Gossip helpers
+
+    /// `VoteSetMaj23Message` handling: records the peer's claim and
+    /// returns our votes for that block (the `VoteSetBits` reply; `None`
+    /// when the claim is not for our height). `Err` disconnects the peer.
+    pub fn set_peer_maj23(
+        &mut self,
+        height: i64,
+        round: i32,
+        vote_type: i32,
+        peer: &str,
+        block_id: &BlockId,
+    ) -> Result<Option<BitArray>, String> {
+        if self.rs.height != height {
+            return Ok(None);
+        }
+        self.rs
+            .votes
+            .set_peer_maj23(round, vote_type, peer, block_id.clone())?;
+        let set = if vote_type == PREVOTE_TYPE {
+            self.rs.votes.prevotes(round)
+        } else {
+            self.rs.votes.precommits(round)
+        };
+        Ok(Some(
+            set.and_then(|s| s.bit_array_by_block_id(block_id))
+                .unwrap_or_default(),
+        ))
+    }
+
+    /// `Reactor.SwitchToConsensus`'s state-machine part: rebuild the last
+    /// commit from the synced state, move to its next height and start.
+    pub fn switch_to_consensus(&mut self, state: State, skip_wal: bool) -> Result<(), String> {
+        if state.last_block_height > 0 {
+            self.reconstruct_last_commit(&state)?;
+        }
+        self.update_to_state(state);
+        if let Some(f) = &self.failure {
+            return Err(f.clone());
+        }
+        if skip_wal {
+            self.do_wal_catchup = false;
+        }
+        self.start()
+    }
 
     /// Votes this node holds for its current height (all rounds) and the
     /// last commit (for re-gossip).

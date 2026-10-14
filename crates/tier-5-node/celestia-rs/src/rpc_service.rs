@@ -612,6 +612,7 @@ impl Rpc {
                 height,
                 round,
                 step,
+                ..
             } => {
                 bus.publish_type(
                     "NewRoundStep",

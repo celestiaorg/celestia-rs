@@ -2,81 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use ctypes::proto::libs::bits as pbbits;
 use ctypes::{
     BLOCK_ID_FLAG_COMMIT, BlockId, Commit, ExtendedCommit, ExtendedCommitSig, ValidatorSet, Vote,
     params::AbciParams,
 };
 
-/// `bits.BitArray` (Go's wire form: `bits` + little-endian `u64` words).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct BitArray(pub Vec<bool>);
-
-impl BitArray {
-    /// `NewBitArray(n)`.
-    #[must_use]
-    pub fn new(n: usize) -> Self {
-        Self(vec![false; n])
-    }
-    /// `Size`.
-    #[must_use]
-    pub fn size(&self) -> usize {
-        self.0.len()
-    }
-    /// `GetIndex`.
-    #[must_use]
-    pub fn get(&self, i: usize) -> bool {
-        self.0.get(i).copied().unwrap_or(false)
-    }
-    /// `SetIndex`.
-    pub fn set(&mut self, i: usize, v: bool) -> bool {
-        match self.0.get_mut(i) {
-            Some(b) => {
-                *b = v;
-                true
-            }
-            None => false,
-        }
-    }
-    /// `GetTrueIndices`.
-    #[must_use]
-    pub fn true_indices(&self) -> Vec<usize> {
-        self.0
-            .iter()
-            .enumerate()
-            .filter_map(|(i, b)| b.then_some(i))
-            .collect()
-    }
-    /// `ToProto`.
-    #[must_use]
-    pub fn to_proto(&self) -> pbbits::BitArray {
-        let mut elems = vec![0u64; self.0.len().div_ceil(64)];
-        for (i, b) in self.0.iter().enumerate() {
-            if *b {
-                elems[i / 64] |= 1 << (i % 64);
-            }
-        }
-        pbbits::BitArray {
-            bits: i64::try_from(self.0.len()).unwrap_or(0),
-            elems,
-        }
-    }
-    /// `FromProto` (invalid sizes give an empty array).
-    #[must_use]
-    pub fn from_proto(p: &pbbits::BitArray) -> Self {
-        let Ok(n) = usize::try_from(p.bits) else {
-            return Self::default();
-        };
-        if p.elems.len() != n.div_ceil(64) {
-            return Self::default();
-        }
-        Self(
-            (0..n)
-                .map(|i| p.elems[i / 64] & (1 << (i % 64)) != 0)
-                .collect(),
-        )
-    }
-}
+pub use ctypes::BitArray;
 
 /// Why a vote was not added.
 #[derive(Debug, Clone, PartialEq, Eq)]

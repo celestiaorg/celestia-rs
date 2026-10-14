@@ -14,13 +14,14 @@
 //! message. Go methods that memoize into the value (`Block.Hash`,
 //! `Data.Hash`, `Block.ValidateBasic`) take `&mut self`.
 //!
-//! Not ported here: `VoteSet`/`BitArray` (consensus crate), the
+//! Not ported here: `VoteSet` (consensus crate), the
 //! Reed-Solomon part-set `Encode`/`Decode` (propagation crate),
 //! `GenesisDoc`, events/event bus, `PrivValidator`, and the share/row proof
 //! RPC types.
 
 #![forbid(unsafe_code)]
 
+pub mod bits;
 pub mod block;
 pub mod block_id;
 pub mod block_meta;
@@ -47,6 +48,7 @@ pub mod vote;
 /// The celestia-core protobuf bindings used by this crate.
 pub use celestia_core_proto::tendermint as proto;
 
+pub use bits::BitArray;
 pub use block::{Block, Data, EvidenceData, max_data_bytes, max_data_bytes_no_evidence};
 pub use block_id::{BlockId, validate_hash};
 pub use block_meta::BlockMeta;

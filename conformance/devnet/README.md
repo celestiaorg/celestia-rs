@@ -228,3 +228,23 @@ client attacks, expiry, timestamps) are checked against celestia-core's
 cd conformance/evidencevectors
 GOPATH=... GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/evidence/vectors.json
 ```
+
+## Mixed validator set (M9)
+
+`mixed-validators.sh [heights] [heights-B]` runs Go `celestia-appd`
+validators next to Rust `celestia-rs start` validators on one P2P network
+(consensus reactor, `RECOVERY` block propagation, CAT mempool, block sync,
+evidence):
+
+- network A: 2 Go + 2 Rust validators (equal power), a Go and a Rust full
+  node; bank / blob (up to 64x64 squares) / staking workload; one Rust
+  validator is SIGKILLed and restarted mid-run (WAL replay, catch-up);
+- network B: the Rust validators hold 80% of the power; both Go validators
+  are stopped halfway and a Go full node keeps following.
+
+Every node must agree on every block hash and app hash, Rust validators
+must propose and sign their share, and no block may carry evidence.
+
+```bash
+DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=15000 conformance/devnet/mixed-validators.sh 100 30
+```

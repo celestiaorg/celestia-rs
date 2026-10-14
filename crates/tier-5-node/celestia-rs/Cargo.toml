@@ -36,6 +36,7 @@ mempool = { path = "../../tier-4-runtime/mempool" }
 nodestore = { path = "../../tier-4-runtime/nodestore" }
 p2p = { path = "../../tier-4-runtime/p2p" }
 privval = { path = "../../tier-4-runtime/privval" }
+propagation = { path = "../../tier-4-runtime/propagation" }
 prost = "0.13"
 rpc = { path = "../../tier-4-runtime/rpc" }
 sdk = { path = "../../tier-3-app-modules/sdk" }

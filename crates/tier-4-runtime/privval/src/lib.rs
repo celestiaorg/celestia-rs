@@ -74,6 +74,13 @@ pub trait PrivValidator: Send {
     fn sign_vote(&mut self, chain_id: &str, vote: &mut pb::Vote) -> Result<()>;
     /// `SignProposal`: sets `signature`; may rewrite `timestamp`.
     fn sign_proposal(&mut self, chain_id: &str, proposal: &mut pb::Proposal) -> Result<()>;
+    /// `SignRawBytes`: signs `RawBytesMessageSignBytes(chain_id, unique_id,
+    /// raw_bytes)` (no last-sign state; used for celestia's compact
+    /// blocks).
+    fn sign_raw_bytes(&self, chain_id: &str, unique_id: &str, raw_bytes: &[u8]) -> Result<Vec<u8>> {
+        let _ = (chain_id, unique_id, raw_bytes);
+        Err(Error::new("SignRawBytes is not supported by this signer"))
+    }
 }
 
 /// `voteToStep`.
@@ -549,6 +556,12 @@ impl PrivValidator for FilePv {
     fn sign_proposal(&mut self, chain_id: &str, proposal: &mut pb::Proposal) -> Result<()> {
         self.sign_proposal_inner(chain_id, proposal)
             .map_err(|e| Error::new(format!("error signing proposal: {e}")))
+    }
+
+    fn sign_raw_bytes(&self, chain_id: &str, unique_id: &str, raw_bytes: &[u8]) -> Result<Vec<u8>> {
+        let sb = ctypes::canonical::raw_bytes_message_sign_bytes(chain_id, unique_id, raw_bytes)
+            .map_err(|e| Error::new(format!("error signing raw bytes: {e}")))?;
+        self.key.sign(&sb)
     }
 }
 
