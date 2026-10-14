@@ -10,75 +10,7 @@
 
 #![allow(missing_docs, clippy::all, clippy::pedantic, rustdoc::all)]
 
-/// celestia-core protobuf packages (`tendermint.*`).
-pub mod tendermint {
-    /// `tendermint.abci`
-    pub mod abci {
-        include!("gen/tendermint.abci.rs");
-    }
-    /// `tendermint.blocksync`
-    pub mod blocksync {
-        include!("gen/tendermint.blocksync.rs");
-    }
-    /// `tendermint.consensus`
-    pub mod consensus {
-        include!("gen/tendermint.consensus.rs");
-    }
-    /// `tendermint.crypto`
-    pub mod crypto {
-        include!("gen/tendermint.crypto.rs");
-    }
-    /// `tendermint.libs`
-    pub mod libs {
-        /// `tendermint.libs.bits`
-        pub mod bits {
-            include!("gen/tendermint.libs.bits.rs");
-        }
-    }
-    /// `tendermint.mempool`
-    pub mod mempool {
-        include!("gen/tendermint.mempool.rs");
-    }
-    /// `tendermint.p2p`
-    pub mod p2p {
-        include!("gen/tendermint.p2p.rs");
-    }
-    /// `tendermint.privval`
-    pub mod privval {
-        include!("gen/tendermint.privval.rs");
-    }
-    /// `tendermint.propagation`
-    pub mod propagation {
-        include!("gen/tendermint.propagation.rs");
-    }
-    /// `tendermint.rpc`
-    pub mod rpc {
-        /// `tendermint.rpc.grpc`
-        pub mod grpc {
-            include!("gen/tendermint.rpc.grpc.rs");
-        }
-    }
-    /// `tendermint.state`
-    pub mod state {
-        include!("gen/tendermint.state.rs");
-    }
-    /// `tendermint.statesync`
-    pub mod statesync {
-        include!("gen/tendermint.statesync.rs");
-    }
-    /// `tendermint.store`
-    pub mod store {
-        include!("gen/tendermint.store.rs");
-    }
-    /// `tendermint.types`
-    pub mod types {
-        include!("gen/tendermint.types.rs");
-    }
-    /// `tendermint.version`
-    pub mod version {
-        include!("gen/tendermint.version.rs");
-    }
-}
+include!("gen/mod.rs");
 
 pub use tendermint::abci;
 

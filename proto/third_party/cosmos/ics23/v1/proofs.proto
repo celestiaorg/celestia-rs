@@ -1,0 +1,21 @@
+// Name-only stub of cosmos/ics23 proofs.proto. These types are mapped to the
+// `ics23` crate via prost `extern_path`, so only the names must resolve; no
+// Rust code is generated from this file.
+syntax = "proto3";
+package cosmos.ics23.v1;
+
+message ExistenceProof {}
+message NonExistenceProof {}
+message CommitmentProof {}
+message LeafOp {}
+message InnerOp {}
+message ProofSpec {}
+message InnerSpec {}
+message BatchProof {}
+message BatchEntry {}
+message CompressedBatchProof {}
+message CompressedBatchEntry {}
+message CompressedExistenceProof {}
+message CompressedNonExistenceProof {}
+enum HashOp { NO_HASH = 0; }
+enum LengthOp { NO_PREFIX = 0; }

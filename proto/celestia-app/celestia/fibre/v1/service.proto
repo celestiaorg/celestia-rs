@@ -1,0 +1,50 @@
+syntax = "proto3";
+package celestia.fibre.v1;
+
+import "celestia/fibre/v1/fibre.proto";
+
+option go_package = "github.com/celestiaorg/celestia-app/x/fibre/types";
+
+// BlobRow represents a row of data in a Fibre blob.
+message BlobRow {
+  uint32 index = 1;
+  bytes data = 2;
+  repeated bytes proof = 3;
+}
+
+// BlobShard represents a subset of rows of a Fibre blob.
+// Contains row data along with the RLC (random linear combination) vector
+// computed during upload: flattened, 16 bytes per original row.
+message BlobShard {
+  repeated BlobRow rows = 1;
+  bytes rlcs = 2; // flattened RLC vector, 16 bytes per original row
+}
+
+// UploadShardRequest is the request message for the UploadShard RPC method.
+message UploadShardRequest {
+  celestia.fibre.v1.PaymentPromise promise = 1;
+  BlobShard shard = 2;
+}
+
+// UploadShardResponse is the response message for the UploadShard RPC method.
+message UploadShardResponse {
+  bytes validator_signature = 1; // const len == 32
+}
+
+// DownloadShardRequest is the request message for the DownloadShard RPC method.
+message DownloadShardRequest {
+  bytes blob_id = 1; // const len == 33 (version + commitment)
+}
+
+// DownloadShardResponse is the response message for the DownloadShard RPC method.
+message DownloadShardResponse {
+  BlobShard shard = 1;
+}
+
+// Fibre defines the gRPC service for uploading and downloading fibre blob shards.
+service Fibre {
+  // UploadShard uploads a blob shard with its RLC vector to a validator.
+  rpc UploadShard(UploadShardRequest) returns (UploadShardResponse);
+  // DownloadShard downloads a blob shard with its RLC vector from a validator.
+  rpc DownloadShard(DownloadShardRequest) returns (DownloadShardResponse);
+}

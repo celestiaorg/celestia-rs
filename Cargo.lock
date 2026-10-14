@@ -301,6 +301,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "celestia-proto"
+version = "0.0.1"
+dependencies = [
+ "celestia-core-proto",
+ "ics23",
+ "prost",
+ "prost-types",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -7,6 +7,7 @@ members = [
     "crates/tier-0-primitives/merkle",
     "crates/tier-1-protocol-types/abci-types",
     "crates/tier-1-protocol-types/celestia-core-proto",
+    "crates/tier-1-protocol-types/celestia-proto",
     "crates/tier-1-protocol-types/cosmos-types",
     "crates/tier-1-protocol-types/nmt",
     "crates/tier-1-protocol-types/shares",

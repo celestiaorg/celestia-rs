@@ -12,3 +12,7 @@ publish = false
 [dependencies]
 prost = "0.13"
 prost-types = "0.13"
+
+[lib]
+# Generated code: proto comments are not Rust doctests.
+doctest = false

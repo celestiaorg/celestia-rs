@@ -1,0 +1,20 @@
+[package]
+name = "celestia-proto"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Prost bindings for celestia-app v10 state-machine protobufs (cosmos-sdk, ibc-go and hyperlane forks, celestia modules)."
+publish = false
+
+[dependencies]
+celestia-core-proto = { path = "../celestia-core-proto" }
+ics23 = { version = "0.12", default-features = false, features = ["std"] }
+prost = "0.13"
+prost-types = "0.13"
+
+[lib]
+# Generated code: proto comments are not Rust doctests.
+doctest = false
