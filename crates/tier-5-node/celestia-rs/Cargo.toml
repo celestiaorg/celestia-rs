@@ -12,11 +12,16 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["rocksdb"]
+# RocksDB state backend (default); `--no-default-features` builds redb only.
+rocksdb = ["app/rocksdb"]
+
 [dependencies]
 abci-server = { path = "../../tier-4-runtime/abci-server" }
 anyhow.workspace = true
 api-server = { path = "../../tier-4-runtime/api-server" }
-app = { path = "../../tier-4-runtime/app" }
+app = { path = "../../tier-4-runtime/app", default-features = false }
 consensus = { path = "../../tier-4-runtime/consensus" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 hex = "0.4"

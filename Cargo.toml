@@ -118,3 +118,9 @@ clap = { version = "4", features = ["derive"] }
 [profile.dev]
 debug = "line-tables-only"
 incremental = false
+
+# RocksDB's C++ build: optimized (tests replay many blocks through it) and
+# without debug info (~1.7 GB of objects otherwise).
+[profile.dev.package.librocksdb-sys]
+opt-level = 2
+debug = false

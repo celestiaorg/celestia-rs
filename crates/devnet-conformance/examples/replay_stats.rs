@@ -1,8 +1,8 @@
-//! Replays one devnet scenario and prints wall time, peak RSS and (for the
-//! redb backend) on-disk size. Run one process per measurement:
+//! Replays one devnet scenario and prints wall time, peak RSS and (for a
+//! persistent backend) on-disk size. Run one process per measurement:
 //!
 //! ```text
-//! cargo run -p devnet-conformance --example replay_stats -- <mem|redb> <scenario> [keep_recent]
+//! cargo run -p devnet-conformance --example replay_stats -- <mem|rocksdb|redb> <scenario> [keep_recent]
 //! ```
 
 #![allow(clippy::print_stdout, clippy::cast_precision_loss)]
@@ -32,17 +32,22 @@ fn main() -> anyhow::Result<()> {
     let home = std::env::temp_dir().join(format!("replay-stats-{}", std::process::id()));
     let start_rss = peak_rss_kib();
     let start = Instant::now();
-    let mut app = match backend {
-        "redb" => {
-            let mut options = AppOptions::default();
-            options.store.pruning.keep_recent = keep_recent;
-            App::open_with(&home, options)?
-        }
-        _ => App::new(),
+    let mut app = if backend == "mem" {
+        App::new()
+    } else {
+        let mut options = AppOptions::default();
+        options.db.backend = backend.parse().map_err(|e| anyhow::anyhow!("{e}"))?;
+        options.store.pruning.keep_recent = keep_recent;
+        App::open_with(&home, options)?
     };
     let report = replay_into(scenario, &mut app, 0, None)?;
     let elapsed = start.elapsed();
-    let disk = std::fs::metadata(app::state_db_path(&home)).map_or(0, |m| m.len());
+    let disk = app
+        .multistore()
+        .root()
+        .backend()
+        .and_then(|db| db.disk_size())
+        .unwrap_or(0);
     let cache = app.multistore().root().node_cache().stats();
     println!(
         "scenario={scenario} backend={backend} heights={} parity={} time_ms={} peak_rss_mib={:.1} rss_growth_mib={:.1} disk_kib={} cache_nodes={} hits={} misses={}",

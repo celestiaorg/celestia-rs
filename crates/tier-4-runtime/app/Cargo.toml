@@ -12,6 +12,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["rocksdb"]
+# RocksDB state backend (the default, ADR 0002). Without it the node builds
+# with no C/C++ toolchain and stores state in redb.
+rocksdb = ["multistore/rocksdb"]
+
 [dependencies]
 abci-server = { path = "../abci-server" }
 encoding = { path = "../../tier-0-primitives/encoding" }

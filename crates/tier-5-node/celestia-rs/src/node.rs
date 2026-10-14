@@ -9,8 +9,8 @@
 //! | `config/genesis.json` | genesis (SDK `AppGenesis` or CometBFT `GenesisDoc`) |
 //! | `config/priv_validator_key.json` | validator key (Go format) |
 //! | `data/priv_validator_state.json` | last-sign state (Go format) |
-//! | `data/application.redb` | app state (ADR 0002) |
-//! | `data/blockstore.redb`, `data/state.redb` | block / state stores |
+//! | `data/application.rocksdb/` | app state (ADR 0002; `.redb` files with the redb backend) |
+//! | `data/blockstore.rocksdb/`, `data/state.rocksdb/` | block / state stores |
 //! | `data/cs.wal/wal` | consensus WAL (Go format) |
 //! | `data/tx-inbox/*.tx` | raw txs submitted to the CAT mempool via CheckTx (until RPC exists) |
 //!
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context as _, anyhow};
 use consensus::{ConsensusConfig, ConsensusState, Event, FileWal, SystemClock};
 use ctypes::proto::abci;
-use kvdb::{KvBackend, RedbBackend, RedbOptions};
+use kvdb::{DbOptions, KvBackend};
 use nodestore::{
     AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, MemEvidencePool, StateStore,
 };
@@ -143,11 +143,15 @@ pub struct StartOptions {
     pub config: ConsensusConfig,
 }
 
-fn open_db(path: &Path) -> anyhow::Result<Arc<dyn KvBackend>> {
-    Ok(Arc::new(
-        RedbBackend::open(path, RedbOptions::default())
-            .map_err(|e| anyhow!("open {}: {e}", path.display()))?,
-    ))
+/// Opens node database `name` in `data` on the default backend (ADR 0002)
+/// with a 64 MiB cache: block and state store reads are mostly recent.
+fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBackend>> {
+    let options = DbOptions {
+        cache_size: 64 << 20,
+        ..DbOptions::default()
+    };
+    kvdb::open_backend(data, name, &options)
+        .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))
 }
 
 /// Loads the genesis document of a home directory.
@@ -161,9 +165,9 @@ pub fn load_genesis(home: &Path) -> anyhow::Result<GenesisDoc> {
 /// Opens the block and state stores of a home directory.
 pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
     let data = home.join("data");
-    let bs = BlockStore::new(open_db(&data.join("blockstore.redb"))?)
-        .map_err(|e| anyhow!("block store: {e}"))?;
-    let ss = StateStore::new(open_db(&data.join("state.redb"))?);
+    let bs =
+        BlockStore::new(open_db(&data, "blockstore")?).map_err(|e| anyhow!("block store: {e}"))?;
+    let ss = StateStore::new(open_db(&data, "state")?);
     Ok((bs, ss))
 }
 

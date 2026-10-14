@@ -1,6 +1,7 @@
 //! ADR 0002 acceptance: every devnet scenario replays with full parity on
-//! the redb-backed app, and a replay interrupted halfway (process restart)
-//! resumes from disk and still matches Go at every height.
+//! every persistent backend (RocksDB, redb), and a replay interrupted halfway
+//! (process restart) resumes from disk on the default backend and still
+//! matches Go at every height.
 
 use abci_server::record::Exchange;
 use app::{App, AppOptions};
@@ -67,21 +68,31 @@ fn go_app_hashes(exchanges: &[Exchange]) -> Vec<(i64, Vec<u8>)> {
 }
 
 #[test]
-fn all_scenarios_replay_on_redb() -> anyhow::Result<()> {
+fn all_scenarios_replay_on_every_backend() -> anyhow::Result<()> {
     let scenarios = scenarios();
     assert!(scenarios.len() >= 4, "{scenarios:?}");
     for scenario in &scenarios {
         let expected = reference(scenario)?;
-        let home = tempfile::tempdir()?;
-        let mut app = App::open_with(home.path(), options())?;
-        let r = replay_into(scenario, &mut app, 0, None)?;
-        assert_eq!(r.matched_heights, expected.matched_heights, "{scenario}");
-        assert_eq!(r.first_mismatch, expected.first_mismatch, "{scenario}");
-        assert_eq!(r.errors, expected.errors, "{scenario}");
-        assert!(
-            !r.matched_heights.is_empty(),
-            "{scenario}: nothing replayed"
-        );
+        for backend in multistore::kvdb::BackendKind::ALL {
+            let home = tempfile::tempdir()?;
+            let mut opts = options();
+            opts.db.backend = *backend;
+            let mut app = App::open_with(home.path(), opts)?;
+            let r = replay_into(scenario, &mut app, 0, None)?;
+            assert_eq!(
+                r.matched_heights, expected.matched_heights,
+                "{scenario} on {backend}"
+            );
+            assert_eq!(
+                r.first_mismatch, expected.first_mismatch,
+                "{scenario} on {backend}"
+            );
+            assert_eq!(r.errors, expected.errors, "{scenario} on {backend}");
+            assert!(
+                !r.matched_heights.is_empty(),
+                "{scenario}: nothing replayed"
+            );
+        }
     }
     Ok(())
 }

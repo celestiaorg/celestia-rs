@@ -6,7 +6,7 @@
 #     them, i.e. the Rust app restores Go-produced chunks, then follows the
 #     chain with celestia-core checking every app hash.
 #  2. Restart: the Rust follower (app and celestia-core) is killed and
-#     restarted; the ABCI handshake resumes it from its redb state.
+#     restarted; the ABCI handshake resumes it from its persistent state.
 #  3. Rust -> Go: the Rust follower takes its own snapshots; a fresh Go
 #     celestia-appd node whose ONLY peer is the Rust follower state-syncs from
 #     them and then follows the chain (Go verifies the restored app hash and

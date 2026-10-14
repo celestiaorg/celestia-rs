@@ -6,8 +6,10 @@
 //! over the ABCI socket protocol to a Go celestia-core process (`proxy_app`), plus
 //! the app's gRPC query server (`--grpc-address`, default port 9090) and
 //! REST API (`--api-address`, default port 1317). With
-//! `--home <dir>` state is persisted in `<dir>/data/application.redb`
-//! (ADR 0002) and a restarted node resumes from its last committed height;
+//! `--home <dir>` state is persisted in `<dir>/data` (RocksDB
+//! `application.rocksdb/` by default, or redb `application.redb` with
+//! `--db-backend redb`; ADR 0002) and a restarted node resumes from its last
+//! committed height;
 //! without it state is in memory and starts from genesis on every launch.
 
 use std::path::PathBuf;
@@ -67,12 +69,20 @@ enum Cmd {
         /// Also keep every version divisible by this (0 = none).
         #[arg(long, default_value_t = 0)]
         pruning_keep_every: u64,
-        /// Prune every N commits (0 = never prune, archive).
-        #[arg(long, default_value_t = 10)]
+        /// Prune every N commits (0 = never prune, archive). 1 spreads the
+        /// deletes over every commit (ADR 0002).
+        #[arg(long, default_value_t = 1)]
         pruning_interval: u64,
-        /// Decoded IAVL nodes kept in the LRU cache.
-        #[arg(long, default_value_t = 500_000)]
+        /// Decoded IAVL nodes kept in the LRU cache (~200 B each).
+        #[arg(long, default_value_t = 1_000_000)]
         node_cache_size: usize,
+        /// State database backend (`rocksdb` or `redb`).
+        #[arg(long, default_value_t = multistore::kvdb::BackendKind::default())]
+        db_backend: multistore::kvdb::BackendKind,
+        /// State database cache in MiB (RocksDB block cache / redb page
+        /// cache).
+        #[arg(long, default_value_t = 512)]
+        db_cache_mib: usize,
         /// Take a state-sync snapshot every N heights (0 = disabled).
         #[arg(long, default_value_t = 0)]
         snapshot_interval: u64,
@@ -127,6 +137,8 @@ async fn main() -> anyhow::Result<()> {
             pruning_keep_every,
             pruning_interval,
             node_cache_size,
+            db_backend,
+            db_cache_mib,
             snapshot_interval,
             snapshot_keep_recent,
             minimum_gas_prices,
@@ -146,6 +158,8 @@ async fn main() -> anyhow::Result<()> {
                         interval: pruning_interval,
                     };
                     options.store.node_cache_size = node_cache_size;
+                    options.db.backend = db_backend;
+                    options.db.cache_size = db_cache_mib << 20;
                     options.snapshots = snapshots::SnapshotOptions {
                         interval: snapshot_interval,
                         keep_recent: snapshot_keep_recent,

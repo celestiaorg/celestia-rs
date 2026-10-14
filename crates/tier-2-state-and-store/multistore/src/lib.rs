@@ -185,14 +185,17 @@ impl PruningOptions {
         }
     }
 
-    /// Validator default (ADR 0002): the latest 100 versions, pruned every
-    /// 10 commits.
+    /// Validator default (ADR 0002): the latest 100 versions, pruned after
+    /// every commit. Pruning every commit spreads the deletes evenly; with
+    /// the SDK's `interval = 10` each tenth commit deletes ten versions at
+    /// once (2–4 s commit spikes at heavy load in the ADR 0002
+    /// measurements).
     #[must_use]
     pub const fn validator() -> Self {
         Self {
             keep_recent: 100,
             keep_every: 0,
-            interval: 10,
+            interval: 1,
         }
     }
 
@@ -220,7 +223,8 @@ impl PruningOptions {
 pub struct StoreOptions {
     /// Pruning policy.
     pub pruning: PruningOptions,
-    /// Decoded IAVL nodes cached across all stores.
+    /// Decoded IAVL nodes cached across all stores (roughly 200–300 B of
+    /// memory each).
     pub node_cache_size: usize,
 }
 
@@ -228,7 +232,7 @@ impl Default for StoreOptions {
     fn default() -> Self {
         Self {
             pruning: PruningOptions::validator(),
-            node_cache_size: 500_000,
+            node_cache_size: 1_000_000,
         }
     }
 }

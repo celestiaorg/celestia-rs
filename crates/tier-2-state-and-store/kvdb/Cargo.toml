@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Ordered key/value backends (in-memory and redb) for celestia-rs state storage."
+description = "Ordered key/value backends (in-memory, RocksDB and redb) for celestia-rs state storage."
 publish = false
 
 [lints]
@@ -14,6 +14,11 @@ workspace = true
 
 [dependencies]
 redb = "=2.6.4"
+rocksdb = { version = "=0.24.0", default-features = false, features = ["zstd", "bindgen-runtime"], optional = true }
+
+[features]
+# RocksDB backend (C++ build: needs clang/libclang).
+rocksdb = ["dep:rocksdb"]
 
 [dev-dependencies]
 tempfile = "3"

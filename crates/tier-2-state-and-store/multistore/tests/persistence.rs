@@ -6,13 +6,30 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use kvdb::{FaultyBackend, KvBackend, MemBackend, RedbBackend, RedbOptions};
+use kvdb::{BackendKind, DbOptions, FaultyBackend, KvBackend, MemBackend};
 use multistore::{CommitId, PruningOptions, Store, StoreKind, StoreOptions};
 
 const STORES: &[&str] = &["acc", "bank", "empty", "staking"];
 
-fn redb(path: &Path) -> Arc<dyn KvBackend> {
-    Arc::new(RedbBackend::open(path.join("state.redb"), RedbOptions::default()).unwrap())
+/// A persistent backend of `kind` in `path` (reopened on every call).
+fn persistent(kind: BackendKind, path: &Path) -> Arc<dyn KvBackend> {
+    kvdb::open_backend(
+        path,
+        "state",
+        &DbOptions {
+            backend: kind,
+            cache_size: 8 << 20,
+            sync_writes: true,
+        },
+    )
+    .unwrap()
+}
+
+/// Runs `test` once per compiled-in persistent backend.
+fn on_every_backend(test: fn(BackendKind)) {
+    for kind in BackendKind::ALL {
+        test(*kind);
+    }
 }
 
 fn mount(mut store: Store) -> Store {
@@ -60,10 +77,14 @@ fn reference(heights: i64) -> Vec<CommitId> {
 
 #[test]
 fn restart_reproduces_last_commit_and_continues_in_lockstep() {
+    on_every_backend(restart_reproduces_last_commit_and_continues_in_lockstep_on);
+}
+
+fn restart_reproduces_last_commit_and_continues_in_lockstep_on(kind: BackendKind) {
     let expected = reference(30);
     let dir = tempfile::tempdir().unwrap();
     {
-        let mut store = open(redb(dir.path()), PruningOptions::nothing());
+        let mut store = open(persistent(kind, dir.path()), PruningOptions::nothing());
         for h in 1..=15 {
             block(&mut store, h);
             assert_eq!(
@@ -75,7 +96,7 @@ fn restart_reproduces_last_commit_and_continues_in_lockstep() {
         block(&mut store, 16);
         assert_eq!(store.commit().unwrap(), expected[15]);
     }
-    let mut store = open(redb(dir.path()), PruningOptions::nothing());
+    let mut store = open(persistent(kind, dir.path()), PruningOptions::nothing());
     assert_eq!(store.version(), 16);
     assert_eq!(store.last_commit_id().unwrap(), expected[15]);
     assert_eq!(
@@ -97,10 +118,14 @@ fn restart_reproduces_last_commit_and_continues_in_lockstep() {
 
 #[test]
 fn interrupted_commit_leaves_previous_height_intact() {
+    on_every_backend(interrupted_commit_leaves_previous_height_intact_on);
+}
+
+fn interrupted_commit_leaves_previous_height_intact_on(kind: BackendKind) {
     let expected = reference(8);
     let dir = tempfile::tempdir().unwrap();
     {
-        let faulty = Arc::new(FaultyBackend::new(redb(dir.path())));
+        let faulty = Arc::new(FaultyBackend::new(persistent(kind, dir.path())));
         let mut store = open(faulty.clone(), PruningOptions::nothing());
         for h in 1..=5 {
             block(&mut store, h);
@@ -112,7 +137,7 @@ fn interrupted_commit_leaves_previous_height_intact() {
         faulty.fail_writes(true);
         assert!(store.commit().is_err());
     }
-    let mut store = open(redb(dir.path()), PruningOptions::nothing());
+    let mut store = open(persistent(kind, dir.path()), PruningOptions::nothing());
     assert_eq!(store.version(), 5);
     assert_eq!(store.last_commit_id().unwrap(), expected[4]);
     // celestia-core replays height 6 after the handshake.
@@ -179,16 +204,20 @@ fn pruning_keeps_recent_and_every_versions_with_exact_hashes() {
 
 #[test]
 fn export_restore_round_trip_reproduces_app_hash() {
+    on_every_backend(export_restore_round_trip_reproduces_app_hash_on);
+}
+
+fn export_restore_round_trip_reproduces_app_hash_on(kind: BackendKind) {
     let expected = reference(14);
     let src_dir = tempfile::tempdir().unwrap();
-    let mut src = open(redb(src_dir.path()), PruningOptions::nothing());
+    let mut src = open(persistent(kind, src_dir.path()), PruningOptions::nothing());
     for h in 1..=12 {
         block(&mut src, h);
         src.commit().unwrap();
     }
     let dst_dir = tempfile::tempdir().unwrap();
     {
-        let mut dst = open(redb(dst_dir.path()), PruningOptions::nothing());
+        let mut dst = open(persistent(kind, dst_dir.path()), PruningOptions::nothing());
         let mut restorer = dst.restore(10).unwrap();
         for (name, exporter) in src.export(10).unwrap() {
             restorer.start_store(&name).unwrap();
@@ -199,7 +228,7 @@ fn export_restore_round_trip_reproduces_app_hash() {
         assert_eq!(restorer.finish().unwrap(), expected[9]);
     }
     // Restored state survives a restart and keeps producing Go-equal hashes.
-    let mut dst = open(redb(dst_dir.path()), PruningOptions::nothing());
+    let mut dst = open(persistent(kind, dst_dir.path()), PruningOptions::nothing());
     assert_eq!(dst.last_commit_id().unwrap(), expected[9]);
     for h in 11..=14 {
         block(&mut dst, h);
@@ -221,13 +250,17 @@ fn export_restore_round_trip_reproduces_app_hash() {
 
 #[test]
 fn store_added_after_restart_starts_at_next_version() {
+    on_every_backend(store_added_after_restart_starts_at_next_version_on);
+}
+
+fn store_added_after_restart_starts_at_next_version_on(kind: BackendKind) {
     let dir = tempfile::tempdir().unwrap();
     {
-        let mut store = open(redb(dir.path()), PruningOptions::nothing());
+        let mut store = open(persistent(kind, dir.path()), PruningOptions::nothing());
         block(&mut store, 1);
         store.commit().unwrap();
     }
-    let mut store = Store::open(redb(dir.path()), StoreOptions::default());
+    let mut store = Store::open(persistent(kind, dir.path()), StoreOptions::default());
     for name in STORES.iter().chain(&["newstore"]) {
         store.mount_store(*name, StoreKind::Iavl).unwrap();
     }

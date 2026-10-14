@@ -24,6 +24,10 @@ merkle = { path = "../../tier-0-primitives/merkle" }
 prost = "0.13"
 prost-types = "0.13"
 
+[features]
+# Build the RocksDB backend (benchmarks: `--features rocksdb`).
+rocksdb = ["kvdb/rocksdb"]
+
 [dev-dependencies]
 anyhow.workspace = true
 tempfile = "3"

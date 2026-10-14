@@ -32,7 +32,7 @@ use celestia_proto::celestia_core_proto::abci::{
     ResponseInitChain, TimeoutInfo, request, response,
 };
 use celestia_proto::celestia_core_proto::tendermint::types::{ConsensusParams, VersionParams};
-use multistore::kvdb::{KvBackend, RedbBackend, RedbOptions};
+use multistore::kvdb::{self, DbOptions, KvBackend};
 use pbjson_types::Duration;
 use sdk::{Context, ExecMode, Header, MultiStore, Result, SdkError};
 
@@ -71,8 +71,8 @@ const CHAIN_ID_KEY: &[u8] = b"chain_id";
 pub struct AppOptions {
     /// Multistore pruning and node-cache size.
     pub store: multistore::StoreOptions,
-    /// Database page cache and durability.
-    pub db: RedbOptions,
+    /// Database backend, cache size and durability.
+    pub db: DbOptions,
     /// Snapshot interval / retention (`interval == 0` disables snapshots).
     pub snapshots: snapshots::SnapshotOptions,
     /// Chain ID to use when the database does not know it yet (a node
@@ -80,10 +80,20 @@ pub struct AppOptions {
     pub chain_id: Option<String>,
 }
 
-/// State database of a node home directory.
+/// Directory holding the state database of a node home directory.
 #[must_use]
-pub fn state_db_path(home: &Path) -> PathBuf {
-    home.join("data").join("application.redb")
+pub fn data_dir(home: &Path) -> PathBuf {
+    home.join("data")
+}
+
+/// Name of the application state database inside [`data_dir`].
+pub const STATE_DB_NAME: &str = "application";
+
+/// State database of a node home directory for `backend`
+/// (`<home>/data/application.rocksdb/` or `<home>/data/application.redb`).
+#[must_use]
+pub fn state_db_path(home: &Path, backend: kvdb::BackendKind) -> PathBuf {
+    backend.db_path(&data_dir(home), STATE_DB_NAME)
 }
 
 /// Snapshot directory of a node home directory.
@@ -158,7 +168,7 @@ impl App {
     }
 
     /// Opens (or creates) the persistent state of node home `home`
-    /// (`<home>/data/application.redb`) with default options and resumes
+    /// ([`state_db_path`]) with default options and resumes
     /// from the last committed height.
     pub fn open(home: impl AsRef<Path>) -> Result<Self> {
         Self::open_with(home, AppOptions::default())
@@ -167,8 +177,9 @@ impl App {
     /// [`Self::open`] with explicit options.
     pub fn open_with(home: impl AsRef<Path>, options: AppOptions) -> Result<Self> {
         let home = home.as_ref();
-        let db = RedbBackend::open(state_db_path(home), options.db).map_err(store_err)?;
-        let mut app = Self::open_backend(Arc::new(db), &options)?;
+        let db =
+            kvdb::open_backend(&data_dir(home), STATE_DB_NAME, &options.db).map_err(store_err)?;
+        let mut app = Self::open_backend(db, &options)?;
         app.snapshots = Some(
             snapshots::Manager::new(snapshot_dir(home), options.snapshots).map_err(store_err)?,
         );
