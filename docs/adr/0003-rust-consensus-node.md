@@ -73,7 +73,13 @@ network where the Rust validators hold 80% of the power keeps committing
 after both Go validators stop, with a Go full node following. Block and
 app hashes agree on every node; no evidence, no conflicting votes.
 
-Next: block sync and evidence reactors (in progress separately), RPC.
+Live double-sign evidence (`conformance/devnet/double-sign-evidence.sh`):
+conflicting prevotes reach a Rust validator only; it verifies and gossips
+the evidence, the network commits it and slashes the signer.
+
+Next: Arabica / Mocha full node (M12-M13); remaining deferred items are in
+the M9 commit notes (peer stats / `MarkPeerAsGood`, `dump_consensus_state`
+peer round states).
 
 ## Implementation notes
 
