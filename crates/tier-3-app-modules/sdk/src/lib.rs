@@ -15,6 +15,7 @@ pub mod context;
 pub mod error;
 pub mod event;
 pub mod store;
+pub mod tx;
 
 pub use context::{Context, ExecMode, Header};
 pub use error::{Result, SdkError};
