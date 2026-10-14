@@ -37,7 +37,9 @@ x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-mint = { path = "../../tier-3-app-modules/x/mint" }
 x-params = { path = "../../tier-3-app-modules/x/params" }
+x-hyperlane = { path = "../../tier-3-app-modules/x/hyperlane" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
+x-warp = { path = "../../tier-3-app-modules/x/warp" }
 
 [dev-dependencies]
 hex = "0.4"

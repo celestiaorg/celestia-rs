@@ -112,7 +112,7 @@ pub const VERSION_MAP: &[(&str, u64)] = &[
     ("forwarding", 1),
     ("genutil", 1),
     ("gov", 5),
-    ("hyperlane", 1),
+    ("hyperlane", x_hyperlane::CONSENSUS_VERSION),
     ("ibc", 6),
     ("interchainaccounts", 3),
     ("minfee", 2),
@@ -126,7 +126,7 @@ pub const VERSION_MAP: &[(&str, u64)] = &[
     ("upgrade", x_upgrade::CONSENSUS_VERSION),
     ("valaddr", 1),
     ("vesting", 1),
-    ("warp", 1),
+    ("warp", x_warp::CONSENSUS_VERSION),
     ("zkism", 1),
 ];
 
@@ -142,7 +142,8 @@ pub fn init_genesis(
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
         // Go's module manager skips modules whose genesis section is null.
-        "blob" | "circuit" | "fibre" | "minfee" | "mint" if genesis.is_null() => {}
+        "blob" | "circuit" | "fibre" | "hyperlane" | "minfee" | "mint" | "warp"
+            if genesis.is_null() => {}
         "blob" => x_blob::init_genesis_json(ctx, genesis)?,
         "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
         "minfee" => x_minfee::init_genesis_json(ctx, genesis)?,
@@ -164,6 +165,8 @@ pub fn init_genesis(
                 crate::txpipe::apply_validator_set,
             );
         }
+        "hyperlane" => x_hyperlane::init_genesis_json(ctx, genesis)?,
+        "warp" => x_warp::init_genesis_json(ctx, genesis)?,
         _ => tracing::trace!(module, "init_genesis not ported"),
     }
     let _ = ctx;

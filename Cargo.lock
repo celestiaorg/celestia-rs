@@ -130,6 +130,7 @@ dependencies = [
  "x-circuit",
  "x-consensus",
  "x-fibre",
+ "x-hyperlane",
  "x-ibc",
  "x-icahost",
  "x-minfee",
@@ -138,6 +139,7 @@ dependencies = [
  "x-params",
  "x-transfer",
  "x-upgrade",
+ "x-warp",
 ]
 
 [[package]]
@@ -2411,6 +2413,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-hyperlane"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "encoding",
+ "hash",
+ "hex",
+ "k256",
+ "math",
+ "prost",
+ "sdk",
+ "serde_json",
+ "sha3",
+]
+
+[[package]]
 name = "x-ibc"
 version = "0.0.1"
 dependencies = [
@@ -2501,6 +2519,20 @@ dependencies = [
  "celestia-proto",
  "prost",
  "sdk",
+]
+
+[[package]]
+name = "x-warp"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hex",
+ "math",
+ "num-bigint",
+ "prost",
+ "sdk",
+ "serde_json",
+ "x-hyperlane",
 ]
 
 [[package]]

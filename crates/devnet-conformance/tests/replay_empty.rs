@@ -12,6 +12,7 @@ const EXPECTED_MATCHING_STORES: &[&str] = &[
     "consensus",
     "evidence",
     "feegrant",
+    "hyperlane",
     "ibc",
     "icahost",
     "fibre",
@@ -25,6 +26,7 @@ const EXPECTED_MATCHING_STORES: &[&str] = &[
     "transfer",
     "upgrade",
     "valaddr",
+    "warp",
     "zkism",
 ];
 
