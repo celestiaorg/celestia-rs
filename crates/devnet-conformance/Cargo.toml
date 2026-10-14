@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 abci-server = { path = "../tier-4-runtime/abci-server" }
 app = { path = "../tier-4-runtime/app" }
+api-server = { path = "../tier-4-runtime/api-server" }
 anyhow.workspace = true
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -32,3 +33,6 @@ multistore = { path = "../tier-2-state-and-store/multistore" }
 sdk = { path = "../tier-3-app-modules/sdk" }
 txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-staking = { path = "../tier-3-app-modules/x/staking" }
+http = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }

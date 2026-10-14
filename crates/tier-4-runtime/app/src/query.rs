@@ -8,7 +8,7 @@ use grpc_query::QueryError;
 use sdk::error::sdk as errs;
 use sdk::{Context, ExecMode, Header, MultiStore, SdkError};
 
-use crate::App;
+use crate::{AbciApp, App};
 
 /// `baseapp.QueryPathBroadcastTx`.
 pub const QUERY_PATH_BROADCAST_TX: &str = "/cosmos.tx.v1beta1.Service/BroadcastTx";
@@ -482,4 +482,13 @@ fn encode_bytes_field(out: &mut Vec<u8>, field: u32, bytes: &[u8]) {
     prost::encoding::encode_key(field, prost::encoding::WireType::LengthDelimited, out);
     prost::encoding::encode_varint(bytes.len() as u64, out);
     out.extend_from_slice(bytes);
+}
+
+impl AbciApp {
+    /// Runs `f` on the app under the ABCI lock (the gRPC and REST servers
+    /// share the app with the ABCI connections). `None` if the lock is
+    /// poisoned.
+    pub fn with_app<R>(&self, f: impl FnOnce(&mut App) -> R) -> Option<R> {
+        self.inner.lock().ok().map(|mut app| f(&mut app))
+    }
 }

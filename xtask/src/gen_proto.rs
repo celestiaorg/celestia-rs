@@ -462,19 +462,20 @@ fn write_services(
                 m.input().full_name().to_owned(),
                 m.output().full_name().to_owned(),
                 rules,
+                methods.len(),
             ));
         }
     }
     methods.sort();
     let mut body = String::new();
-    for (path, input, output, rules) in &methods {
+    for (path, input, output, rules, order) in &methods {
         let mut rs = String::new();
         for (verb, pattern, b) in rules {
             write!(rs, "H{{method:{verb:?},pattern:{pattern:?},body:{b:?}}},")?;
         }
         writeln!(
             body,
-            "Method{{path:{path:?},input:{input:?},output:{output:?},http:&[{rs}]}},"
+            "Method{{path:{path:?},input:{input:?},output:{output:?},order:{order},http:&[{rs}]}},"
         )?;
     }
     let mut messages: Vec<prost_reflect::MessageDescriptor> = pool.all_messages().collect();

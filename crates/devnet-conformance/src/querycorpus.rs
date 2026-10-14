@@ -347,6 +347,71 @@ pub fn check_abci(scenario: &str) -> anyhow::Result<Report> {
     Ok(report)
 }
 
+/// Result of replaying the REST part of a corpus.
+#[derive(Debug, Default)]
+pub struct RestReport {
+    /// Cases compared.
+    pub compared: usize,
+    /// Cases skipped ([`NEEDS_CONSENSUS`]).
+    pub skipped: usize,
+    /// Mismatches: (case, Rust status, Rust body).
+    pub mismatches: Vec<(RestCase, u16, serde_json::Value)>,
+}
+
+/// Replays `scenario` and answers every REST case of its corpus through
+/// the Rust REST gateway; bodies are compared as JSON values (field order
+/// is irrelevant), messages with Go frames stripped.
+pub fn check_rest(scenario: &str) -> anyhow::Result<RestReport> {
+    let corpus = load(scenario)?;
+    let mut app = app::App::new();
+    app.set_pruning(multistore_nothing());
+    let r = crate::replay::replay_into(scenario, &mut app, 0, None)?;
+    anyhow::ensure!(
+        r.errors.is_empty() && r.first_mismatch.is_none(),
+        "{scenario}: replay failed"
+    );
+    let mut report = RestReport::default();
+    for case in &corpus.rest {
+        if needs_consensus(&case.method) {
+            report.skipped += 1;
+            continue;
+        }
+        report.compared += 1;
+        let (path, query) = case.url.split_once('?').unwrap_or((&case.url, ""));
+        let height = case.height.map(|h| h.to_string());
+        let req = api_server::rest::Request {
+            method: "GET",
+            path,
+            query,
+            height: height.as_deref(),
+            body: &[],
+        };
+        let ours = api_server::rest::handle(&req, &mut |p, d, h| {
+            app.grpc_query(p, d, h)
+                .map_err(|e| api_server::grpc_error_status(p, e))
+        });
+        let norm = |v: &serde_json::Value| -> serde_json::Value {
+            let mut v = v.clone();
+            if let Some(serde_json::Value::String(m)) = v.get_mut("message") {
+                *m = strip_go_frames(m);
+            }
+            // Go map-order responses (see `canonical_value`).
+            for (list, key) in [("subspaces", "subspace"), ("rewards", "validator_address")] {
+                if let Some(serde_json::Value::Array(a)) = v.get_mut(list) {
+                    a.sort_by(|x, y| x[key].as_str().cmp(&y[key].as_str()));
+                }
+            }
+            v
+        };
+        if ours.status != case.status || norm(&ours.body) != norm(&case.body) {
+            report
+                .mismatches
+                .push((case.clone(), ours.status, ours.body));
+        }
+    }
+    Ok(report)
+}
+
 fn multistore_nothing() -> app::PruningOptions {
     app::PruningOptions::nothing()
 }

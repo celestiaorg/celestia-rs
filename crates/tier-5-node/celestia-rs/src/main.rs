@@ -1,7 +1,9 @@
 //! `celestia-rs`: the celestia-rs node.
 //!
 //! For now the only mode is `abci`: serve the Rust state machine over the
-//! ABCI socket protocol to a Go celestia-core process (`proxy_app`). With
+//! ABCI socket protocol to a Go celestia-core process (`proxy_app`), plus
+//! the app's gRPC query server (`--grpc-address`, default port 9090) and
+//! REST API (`--api-address`, default port 1317). With
 //! `--home <dir>` state is persisted in `<dir>/data/application.redb`
 //! (ADR 0002) and a restarted node resumes from its last committed height;
 //! without it state is in memory and starts from genesis on every launch.
@@ -56,6 +58,13 @@ enum Cmd {
         /// means `appconsts.DefaultMinGasPrice` (0.004utia).
         #[arg(long, default_value = "")]
         minimum_gas_prices: String,
+        /// gRPC query server address (Go `[grpc] address`); empty disables.
+        #[arg(long, default_value = "127.0.0.1:9090")]
+        grpc_address: String,
+        /// REST API (grpc-gateway) address (Go `[api] address`); empty
+        /// disables.
+        #[arg(long, default_value = "127.0.0.1:1317")]
+        api_address: String,
     },
 }
 
@@ -79,6 +88,8 @@ async fn main() -> anyhow::Result<()> {
             snapshot_interval,
             snapshot_keep_recent,
             minimum_gas_prices,
+            grpc_address,
+            api_address,
         } => {
             let mut app = match home {
                 None => app::App::new(),
@@ -111,7 +122,26 @@ async fn main() -> anyhow::Result<()> {
             };
             app.set_node_min_gas_price(utia_min_gas_price(&minimum_gas_prices)?);
             let listener = tokio::net::TcpListener::bind(&addr).await?;
-            abci_server::serve(listener, Arc::new(app::AbciApp::new(app))).await
+            let app = Arc::new(app::AbciApp::new(app));
+            if !grpc_address.is_empty() {
+                let addr: std::net::SocketAddr = grpc_address.parse()?;
+                let app = Arc::clone(&app);
+                tokio::spawn(async move {
+                    if let Err(e) = api_server::serve_grpc(addr, app).await {
+                        tracing::error!(error = %e, "gRPC server failed");
+                    }
+                });
+            }
+            if !api_address.is_empty() {
+                let addr: std::net::SocketAddr = api_address.parse()?;
+                let app = Arc::clone(&app);
+                tokio::spawn(async move {
+                    if let Err(e) = api_server::serve_rest(addr, app).await {
+                        tracing::error!(error = %e, "REST API failed");
+                    }
+                });
+            }
+            abci_server::serve(listener, app).await
         }
     }
 }

@@ -27,6 +27,9 @@ pub struct Method {
     pub input: &'static str,
     /// Response message full name.
     pub output: &'static str,
+    /// Declaration order (descriptor file, service, method): the order in
+    /// which grpc-gateway registers the method's routes.
+    pub order: u32,
     /// HTTP bindings (primary first).
     pub http: &'static [HttpRule],
 }

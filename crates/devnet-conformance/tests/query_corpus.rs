@@ -8,7 +8,7 @@
 //! reason). Responses in Go map order are compared canonically
 //! (`querycorpus::comparable`).
 
-use devnet_conformance::querycorpus::{check_abci, corpus_dir};
+use devnet_conformance::querycorpus::{check_abci, check_rest, corpus_dir};
 
 /// Methods whose handlers are not ported yet.
 const DEFERRED: &[&str] = &[
@@ -67,6 +67,44 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
         failures.join("\n")
     );
     Ok(())
+}
+
+fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
+    let r = check_rest(scenario)?;
+    assert!(r.compared > 500, "{scenario}: only {} cases", r.compared);
+    let failures: Vec<String> = r
+        .mismatches
+        .iter()
+        .filter(|(c, _, _)| !DEFERRED.iter().any(|p| c.method.starts_with(p)))
+        .map(|(c, status, body)| {
+            format!(
+                "{} {}\n  go:   {} {}\n  rust: {status} {body}",
+                c.method, c.url, c.status, c.body
+            )
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{scenario}: {} REST mismatches, first:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    Ok(())
+}
+
+#[test]
+fn rest_corpus_empty() -> anyhow::Result<()> {
+    assert_rest_corpus("empty")
+}
+
+#[test]
+fn rest_corpus_staking_lifecycle() -> anyhow::Result<()> {
+    assert_rest_corpus("staking-lifecycle")
 }
 
 #[test]
