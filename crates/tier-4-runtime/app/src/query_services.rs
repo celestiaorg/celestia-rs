@@ -236,8 +236,9 @@ fn node_status(_: &mut App, state: &mut QueryState, _: StatusRequest) -> QResult
 
 /// Whether `/custom/<route>` is registered (`CustomQueryRouter`).
 #[must_use]
-pub fn has_custom_route(_route: &str) -> bool {
-    false
+pub fn has_custom_route(route: &str) -> bool {
+    route == crate::inclusion_proof::TX_INCLUSION_QUERY_PATH
+        || route == crate::inclusion_proof::SHARE_INCLUSION_QUERY_PATH
 }
 
 /// Runs a `/custom/<route>/<args...>` query.
@@ -245,10 +246,18 @@ pub fn custom(
     _app: &mut App,
     _state: &mut QueryState,
     route: &str,
-    _args: &[&str],
-    _req: &RequestQuery,
+    args: &[&str],
+    req: &RequestQuery,
 ) -> Result<Vec<u8>, SdkError> {
-    Err(errs::unknown_request(format!(
-        "no custom querier found for route {route}"
-    )))
+    match route {
+        crate::inclusion_proof::TX_INCLUSION_QUERY_PATH => {
+            crate::inclusion_proof::query_tx_inclusion_proof(args, &req.data)
+        }
+        crate::inclusion_proof::SHARE_INCLUSION_QUERY_PATH => {
+            crate::inclusion_proof::query_share_inclusion_proof(args, &req.data)
+        }
+        _ => Err(errs::unknown_request(format!(
+            "no custom querier found for route {route}"
+        ))),
+    }
 }

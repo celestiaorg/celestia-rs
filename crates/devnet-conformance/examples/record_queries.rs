@@ -11,7 +11,8 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::format_push_string,
-    clippy::while_let_loop
+    clippy::while_let_loop,
+    clippy::too_many_lines
 )]
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -119,6 +120,7 @@ fn main() -> anyhow::Result<()> {
     let mut conns: BTreeMap<u32, (TcpStream, usize)> = BTreeMap::new();
     let mut last_height = 0i64;
     let mut txs: Vec<Vec<u8>> = Vec::new();
+    let mut blocks: Vec<Vec<Vec<u8>>> = Vec::new();
     for r in records.iter().filter(|r| r.dir == Direction::Request) {
         let req = Request::decode(r.bytes.as_slice())?;
         let is_flush = matches!(req.value, Some(request::Value::Flush(_)));
@@ -127,6 +129,9 @@ fn main() -> anyhow::Result<()> {
             Some(request::Value::FinalizeBlock(fb)) => {
                 let room = 12usize.saturating_sub(txs.len());
                 txs.extend(fb.txs.iter().take(room).cloned());
+                if !fb.txs.is_empty() && blocks.len() < 6 {
+                    blocks.push(fb.txs.clone());
+                }
             }
             _ => {}
         }
@@ -158,6 +163,7 @@ fn main() -> anyhow::Result<()> {
     let mut b = Builder::new(&mut querier, last_height);
     b.build();
     b.txs(&txs);
+    b.inclusion_proofs(&blocks);
     let reqs = std::mem::take(&mut b.reqs);
     drop(b);
     eprintln!("{} ABCI requests", reqs.len());

@@ -405,6 +405,52 @@ impl Builder {
         self.current_size
     }
 
+    /// `FindTxShareRange`: the `[start, end)` share range of the
+    /// `tx_index`-th tx (normal txs, then PFBs, then pay-for-fibre txs).
+    /// Call after [`Self::export`] (Go exports first when needed), so the
+    /// PFBs carry their final share indexes.
+    pub fn find_tx_share_range(&self, tx_index: usize) -> Result<(usize, usize)> {
+        let (n_txs, n_pfbs) = (self.txs.len(), self.pfbs.len());
+        if tx_index >= n_txs + n_pfbs + self.pff_txs.len() {
+            return Err(Error::Decode(format!("txIndex {tx_index} out of range")));
+        }
+        let mut tx_writer = CompactShareCounter::default();
+        let mut pfb_writer = CompactShareCounter::default();
+        let mut pff_writer = CompactShareCounter::default();
+        for i in 0..tx_index {
+            if i < n_txs {
+                tx_writer.add(self.txs[i].len());
+            } else if i < n_txs + n_pfbs {
+                pfb_writer.add(self.pfbs[i - n_txs].encode()?.len());
+            } else {
+                pff_writer.add(self.pff_txs[i - n_txs - n_pfbs].len());
+            }
+        }
+        // Go: `Size()` sum minus one, then plus one when the chosen
+        // writer's last share is full.
+        let mut start = tx_writer.size() + pfb_writer.size() + pff_writer.size();
+        let writer = if tx_index < n_txs {
+            &mut tx_writer
+        } else if tx_index < n_txs + n_pfbs {
+            &mut pfb_writer
+        } else {
+            &mut pff_writer
+        };
+        if writer.remainder() != 0 {
+            start -= 1;
+        }
+        let len = if tx_index < n_txs {
+            self.txs[tx_index].len()
+        } else if tx_index < n_txs + n_pfbs {
+            self.pfbs[tx_index - n_txs].encode()?.len()
+        } else {
+            self.pff_txs[tx_index - n_txs - n_pfbs].len()
+        };
+        writer.add(len);
+        let end = tx_writer.size() + pfb_writer.size() + pff_writer.size();
+        Ok((start, end))
+    }
+
     /// `Export`.
     pub fn export(&mut self) -> Result<Square> {
         if self.is_empty() {

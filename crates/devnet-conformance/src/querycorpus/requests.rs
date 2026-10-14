@@ -247,6 +247,64 @@ impl<'a> Builder<'a> {
         self.store_queries(&accounts);
     }
 
+    /// `/custom/txInclusionProof` and `/custom/shareInclusionProof` over
+    /// blocks of the chain (each given by its txs).
+    pub fn inclusion_proofs(&mut self, blocks: &[Vec<Vec<u8>>]) {
+        use celestia_proto::celestia_core_proto::tendermint::{types, version};
+        use prost::Message as _;
+        let encode = |txs: &[Vec<u8>]| {
+            types::Block {
+                header: Some(types::Header {
+                    version: Some(version::Consensus { block: 11, app: 10 }),
+                    ..Default::default()
+                }),
+                data: Some(types::Data {
+                    txs: txs.to_vec(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        };
+        let tx = "/custom/txInclusionProof";
+        let sh = "/custom/shareInclusionProof";
+        for txs in blocks {
+            let data = encode(txs);
+            for i in 0..=txs.len().min(8) {
+                self.push(&format!("{tx}/{i}"), data.clone(), 0, false);
+            }
+            for (b, e) in [
+                (0, 1),
+                (0, 2),
+                (1, 2),
+                (0, 4),
+                (2, 3),
+                (3, 9),
+                (0, 70),
+                (5, 2),
+                (2, 2),
+                (-1, 1),
+                (0, 100_000),
+            ] {
+                self.push(&format!("{sh}/{b}/{e}"), data.clone(), 0, false);
+            }
+        }
+        let data = blocks.first().map(|t| encode(t)).unwrap_or_default();
+        for p in [
+            tx.to_owned(),
+            format!("{tx}/-1"),
+            format!("{tx}/x"),
+            format!("{tx}/0/1"),
+            format!("{sh}/0"),
+            format!("{sh}/a/1"),
+        ] {
+            self.push(&p, data.clone(), 0, false);
+        }
+        self.push(&format!("{tx}/0"), b"\xff\xff".to_vec(), 0, false);
+        self.push(&format!("{tx}/0"), Vec::new(), 0, false);
+        self.push(&format!("{sh}/0/1"), Vec::new(), 0, false);
+    }
+
     /// Tx service and simulation requests over transactions of the chain.
     pub fn txs(&mut self, txs: &[Vec<u8>]) {
         use prost::Message as _;

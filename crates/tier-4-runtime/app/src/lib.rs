@@ -10,6 +10,7 @@ pub mod fibre_tx;
 pub mod genutil;
 pub mod hyperlane;
 pub mod ibc;
+pub mod inclusion_proof;
 pub mod modules;
 pub mod msg_count;
 pub mod proposal;

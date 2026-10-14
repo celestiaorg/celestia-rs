@@ -154,7 +154,7 @@ fn proto_size(tx: &[u8]) -> i64 {
 }
 
 /// `ClassifyTxs`, with go-square's blob-tx unmarshalling done here.
-fn classify_txs(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String> {
+pub(crate) fn classify_txs(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String> {
     txs.iter()
         .map(|raw| {
             if let Some(f) = fibre_tx::try_parse(raw)? {
