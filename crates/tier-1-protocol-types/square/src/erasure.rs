@@ -26,7 +26,18 @@ pub trait ErasureCodec {
     fn validate_chunk_size(&self, chunk_size: usize) -> Result<()>;
 }
 
-/// Leopard Reed-Solomon codec compatible with `rsmt2d` for 8-bit Leopard widths.
+/// Shard count (original + parity) up to which klauspost/reedsolomon
+/// (`reedsolomon.New(k, k, WithLeopardGF(true))`, rsmt2d's `LeoRSCodec`)
+/// uses leopard over GF(2^8); above it, leopard over GF(2^16).
+const MAX_GF8_SHARDS: usize = 256;
+
+/// Leopard Reed-Solomon codec compatible with `rsmt2d`'s `LeoRSCodec`
+/// (klauspost/reedsolomon v1.14.2): GF(2^8) leopard (`leopard-codec`) for
+/// rows of up to 256 shards (squares up to 128x128) and GF(2^16) leopard
+/// (`reed-solomon-simd`, byte-identical to klauspost's `leopardFF16`, as
+/// the propagation vectors check) for larger squares (v10 allows up to
+/// 512x512). Squares above 128x128 used to fail to extend (soak,
+/// 2026-10-14).
 #[derive(Debug, Default, Clone)]
 pub struct LeoRsCodec;
 
@@ -36,6 +47,45 @@ impl LeoRsCodec {
     pub const fn new() -> Self {
         Self
     }
+
+    /// GF(2^16) reconstruction: restores the missing originals, then
+    /// recomputes the parity (encoding is deterministic).
+    fn decode_gf16(&self, data: &mut [Option<Vec<u8>>]) -> Result<Vec<Vec<u8>>> {
+        let k = data.len() / 2;
+        let err = |error: String| Error::ErasureCodec {
+            codec: self.name(),
+            message: error,
+        };
+        if data[..k].iter().any(Option::is_none) {
+            let restored = reed_solomon_simd::decode(
+                k,
+                k,
+                data[..k]
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| s.as_deref().map(|s| (i, s))),
+                data[k..]
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| s.as_deref().map(|s| (i, s))),
+            )
+            .map_err(|e| err(e.to_string()))?;
+            for (i, s) in restored {
+                if let Some(slot) = data.get_mut(i) {
+                    *slot = Some(s);
+                }
+            }
+        }
+        let originals: Vec<Vec<u8>> = data[..k]
+            .iter()
+            .map(|s| s.clone().ok_or_else(|| err("unrecoverable shard".into())))
+            .collect::<Result<_>>()?;
+        let parity = self.encode(&originals)?;
+        for (slot, shard) in data[k..].iter_mut().zip(parity) {
+            *slot = Some(shard);
+        }
+        Ok(data.iter().map(|s| s.clone().unwrap_or_default()).collect())
+    }
 }
 
 impl ErasureCodec for LeoRsCodec {
@@ -43,6 +93,14 @@ impl ErasureCodec for LeoRsCodec {
         validate_codec_data(self.name(), data)?;
         self.validate_chunk_size(data[0].len())?;
         let data_shards = data.len();
+        if 2 * data_shards > MAX_GF8_SHARDS {
+            return reed_solomon_simd::encode(data_shards, data_shards, data).map_err(|error| {
+                Error::ErasureCodec {
+                    codec: self.name(),
+                    message: error.to_string(),
+                }
+            });
+        }
         let mut shards = Vec::with_capacity(data_shards * 2);
         shards.extend(data.iter().cloned());
         shards.extend((0..data_shards).map(|_| vec![0; data[0].len()]));
@@ -54,10 +112,13 @@ impl ErasureCodec for LeoRsCodec {
     }
 
     fn decode(&self, data: &mut [Option<Vec<u8>>]) -> Result<Vec<Vec<u8>>> {
-        if data.is_empty() || data.len() % 2 != 0 {
+        if data.is_empty() || !data.len().is_multiple_of(2) {
             return Err(Error::InvalidErasureShardCount { actual: data.len() });
         }
         let data_shards = data.len() / 2;
+        if data.len() > MAX_GF8_SHARDS {
+            return self.decode_gf16(data);
+        }
         let mut shards: Vec<Vec<u8>> = data
             .iter()
             .map(|shard| shard.clone().unwrap_or_default())
@@ -75,8 +136,7 @@ impl ErasureCodec for LeoRsCodec {
     }
 
     fn max_chunks(&self) -> usize {
-        let max_original_width = leopard_codec::ORDER / 2;
-        max_original_width * max_original_width
+        crate::v4::SQUARE_SIZE_UPPER_BOUND * crate::v4::SQUARE_SIZE_UPPER_BOUND
     }
 
     fn name(&self) -> &'static str {
@@ -84,7 +144,7 @@ impl ErasureCodec for LeoRsCodec {
     }
 
     fn validate_chunk_size(&self, chunk_size: usize) -> Result<()> {
-        if chunk_size == 0 || chunk_size % 64 != 0 {
+        if chunk_size == 0 || !chunk_size.is_multiple_of(64) {
             return Err(Error::InvalidErasureChunkSize { actual: chunk_size });
         }
         Ok(())
@@ -324,7 +384,7 @@ enum Axis {
 }
 
 fn validate_extended_width(width: usize) -> Result<()> {
-    if width == 0 || width % 2 != 0 || !is_power_of_two(width / 2) {
+    if width == 0 || !width.is_multiple_of(2) || !is_power_of_two(width / 2) {
         return Err(Error::InvalidErasureShardCount { actual: width });
     }
     Ok(())

@@ -80,6 +80,16 @@ impl ShareBuilder {
         Some(raw_data[pending_left..].to_vec())
     }
 
+    /// Append as much of `raw_data` as fits and return how many bytes were
+    /// taken ([`Self::add_data`] without copying the leftover: splitting a
+    /// blob share by share with `add_data` copies the remaining tail every
+    /// time, quadratic in the blob size).
+    pub fn add_data_prefix(&mut self, raw_data: &[u8]) -> usize {
+        let n = raw_data.len().min(self.available_bytes());
+        self.raw_share_data.extend_from_slice(&raw_data[..n]);
+        n
+    }
+
     /// Build a fixed-size share.
     pub fn build(&self) -> Result<Share> {
         Share::from_slice(&self.raw_share_data)

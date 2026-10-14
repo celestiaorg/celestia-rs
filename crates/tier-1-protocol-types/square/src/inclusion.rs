@@ -41,7 +41,7 @@ pub fn round_up_by_multiple_of(cursor: usize, value: usize) -> Result<usize> {
     if value == 0 {
         return Err(Error::ZeroDivisor);
     }
-    if cursor % value == 0 {
+    if cursor.is_multiple_of(value) {
         return Ok(cursor);
     }
     let quotient = cursor / value;

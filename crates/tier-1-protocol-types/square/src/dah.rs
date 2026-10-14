@@ -3,12 +3,17 @@
 use encoding::protobuf::Message;
 
 use crate::erasure::{ExtendedDataSquare, extend_shares};
-use crate::square::DEFAULT_MAX_SQUARE_SIZE;
 use crate::square::empty_square;
+use crate::v4::SQUARE_SIZE_UPPER_BOUND;
 use crate::{Error, Result};
 
 const MIN_EXTENDED_SQUARE_WIDTH: usize = shares::MIN_SQUARE_SIZE * 2;
-const MAX_EXTENDED_SQUARE_WIDTH: usize = DEFAULT_MAX_SQUARE_SIZE * 2;
+/// celestia-app `pkg/da`: `appconsts.SquareSizeUpperBound * 2` (v10: 1024).
+/// It used to be derived from the 128x128 default max square, so every
+/// 256x256 square (v10 `gov_max_square_size`) failed: the Rust proposer
+/// produced blocks without a data root and ProcessProposal rejected Go's
+/// 256x256 blocks, halting a mixed network (soak, 2026-10-14).
+const MAX_EXTENDED_SQUARE_WIDTH: usize = SQUARE_SIZE_UPPER_BOUND * 2;
 
 /// Size in bytes of a DAH hash.
 pub const DAH_HASH_SIZE: usize = crate::commitment::COMMITMENT_HASH_SIZE;
@@ -152,4 +157,40 @@ struct DataAvailabilityHeaderProto {
     row_roots: Vec<Vec<u8>>,
     #[prost(bytes = "vec", repeated, tag = "2")]
     column_roots: Vec<Vec<u8>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn roots(n: usize) -> Vec<[u8; DAH_ROOT_SIZE]> {
+        vec![[0; DAH_ROOT_SIZE]; n]
+    }
+
+    #[test]
+    fn root_counts_follow_the_v10_square_size_upper_bound() {
+        assert!(DataAvailabilityHeader::new(roots(1), roots(1)).is_err());
+        assert!(DataAvailabilityHeader::new(roots(2), roots(2)).is_ok());
+        // 128x128 (the default max) up to 512x512 (SquareSizeUpperBound,
+        // reachable through gov_max_square_size) are valid.
+        for w in [256, 512, 1024] {
+            assert!(
+                DataAvailabilityHeader::new(roots(w), roots(w)).is_ok(),
+                "{w}"
+            );
+        }
+        assert!(DataAvailabilityHeader::new(roots(2048), roots(2048)).is_err());
+    }
+
+    /// Regression (soak): a 256x256 square extends to a 512-wide EDS whose
+    /// DAH must be constructible.
+    #[test]
+    fn dah_of_a_256_square() {
+        let square = crate::Square::from_shares_unchecked(shares::tail_padding_shares(256 * 256));
+        let eds = extend_shares(square.as_shares()).expect("extend");
+        assert_eq!(eds.width(), 512);
+        let dah = new_data_availability_header(&eds).expect("dah");
+        assert_eq!(dah.row_roots.len(), 512);
+        assert_eq!(dah.column_roots.len(), 512);
+    }
 }

@@ -398,7 +398,7 @@ fn data_availability_header_rejects_invalid_shapes() -> Result<(), Box<dyn std::
             .is_err()
     );
     assert!(
-        DataAvailabilityHeader::new(vec![root_bytes(1); 257], vec![root_bytes(2); 257]).is_err()
+        DataAvailabilityHeader::new(vec![root_bytes(1); 1025], vec![root_bytes(2); 1025]).is_err()
     );
     let malformed_root = encode_test_dah(&TestDahProto {
         row_roots: vec![vec![1; DAH_ROOT_SIZE - 1], root_bytes(2).to_vec()],
@@ -420,7 +420,7 @@ fn leopard_codec_encodes_and_reconstructs_shards() -> Result<(), Box<dyn std::er
     let data = vec![vec![1; SHARE_SIZE], vec![2; SHARE_SIZE]];
 
     assert_eq!(codec.name(), "Leopard");
-    assert_eq!(codec.max_chunks(), 128 * 128);
+    assert_eq!(codec.max_chunks(), 512 * 512);
     codec.validate_chunk_size(SHARE_SIZE)?;
     assert!(codec.validate_chunk_size(7).is_err());
 

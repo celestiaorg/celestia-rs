@@ -107,14 +107,15 @@ impl CompactShareSplitter {
         }
 
         self.share_builder.maybe_write_reserved_bytes()?;
-        let mut pending = raw_data.to_vec();
+        // Go's `AddData` leftover loop on a moving slice (no tail copies).
+        let mut pending = raw_data;
         loop {
-            let leftover = self.share_builder.add_data(&pending);
-            let Some(leftover) = leftover else {
+            let fits = pending.len() <= self.share_builder.available_bytes();
+            pending = &pending[self.share_builder.add_data_prefix(pending)..];
+            if fits {
                 break;
-            };
+            }
             self.stack_pending()?;
-            pending = leftover;
         }
 
         if self.share_builder.available_bytes() == 0 {

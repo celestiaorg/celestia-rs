@@ -26,7 +26,7 @@ impl SparseShareSplitter {
             });
         }
 
-        let mut raw_data = blob.data().to_vec();
+        let raw_data = blob.data();
         let mut builder = ShareBuilder::new(blob.namespace(), blob.share_version(), true)?;
         builder
             .write_sequence_len(u32::try_from(raw_data.len()).map_err(|_| Error::InvalidBlob)?)?;
@@ -36,23 +36,26 @@ impl SparseShareSplitter {
         if blob.share_version() == SHARE_VERSION_TWO {
             // Fibre system blob: blob version + commitment (validated to be
             // exactly 36 bytes) fit in the first share.
-            builder.write_fibre_bytes(&raw_data);
+            builder.write_fibre_bytes(raw_data);
             builder.zero_pad_if_necessary();
             self.shares.push(builder.build()?);
             return Ok(());
         }
 
+        // Go's loop over `AddData` leftovers, on a moving slice: copying the
+        // leftover per share made a 7 MB blob take ~10 s to split (soak:
+        // 256x256 squares stalled the chain on Rust proposers / validators).
+        let mut rest = raw_data;
         loop {
-            let leftover = builder.add_data(&raw_data);
-            if leftover.is_none() {
+            rest = &rest[builder.add_data_prefix(rest)..];
+            if rest.is_empty() {
                 builder.zero_pad_if_necessary();
             }
             self.shares.push(builder.build()?);
-            let Some(leftover) = leftover else {
+            if rest.is_empty() {
                 break;
-            };
+            }
             builder = ShareBuilder::new(blob.namespace(), blob.share_version(), false)?;
-            raw_data = leftover;
         }
         Ok(())
     }
