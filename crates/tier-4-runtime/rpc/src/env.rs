@@ -123,6 +123,22 @@ pub trait NodeStatus: Send + Sync {
     fn wait_sync(&self) -> bool;
     /// `ConsensusReactor.IsCatchingUp`.
     fn is_catching_up(&self) -> bool;
+    /// `DialSeeds` (unsafe): the result log line.
+    fn dial_seeds(&self, seeds: &str) -> Result<String, String> {
+        let _ = seeds;
+        Err("dialing is not supported by this node".into())
+    }
+    /// `DialPeers` (unsafe): the result log line.
+    fn dial_peers(
+        &self,
+        peers: &str,
+        persistent: bool,
+        unconditional: bool,
+        private: bool,
+    ) -> Result<String, String> {
+        let _ = (peers, persistent, unconditional, private);
+        Err("dialing is not supported by this node".into())
+    }
     /// `GetRoundStateJSON` (dump_consensus_state).
     fn round_state_json(&self) -> String;
     /// `GetRoundStateSimpleJSON` (consensus_state).
@@ -736,7 +752,14 @@ impl Environment {
                 self.mempool.flush();
                 Ok(J::Obj(Vec::new()))
             }
-            "dial_seeds" | "dial_peers" => Err("dialing is not supported by this node".into()),
+            "dial_seeds" => self
+                .node
+                .dial_seeds(arg(0).str())
+                .map(|log| J::obj([("log", J::str(log))])),
+            "dial_peers" => self
+                .node
+                .dial_peers(arg(0).str(), arg(1).bool(), arg(2).bool(), arg(3).bool())
+                .map(|log| J::obj([("log", J::str(log))])),
             _ => Err(format!("unknown route {name}")),
         }
     }

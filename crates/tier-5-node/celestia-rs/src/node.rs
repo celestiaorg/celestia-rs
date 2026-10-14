@@ -323,6 +323,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         opts.p2p.is_some() && (state_sync_mode || (opts.block_sync && !only_validator_is_us));
     let self_id = crate::net::node_key(home)?.id();
     let creactors = consensus_reactors(&mut cs, &bs, &pool, wait_sync, self_id);
+    let _ = rpc.shared.consensus.set(creactors.reactor.clone());
+    let _ = rpc.shared.propagation.set(creactors.propagation.clone());
     let net = match &opts.p2p {
         None => None,
         Some(p2p_opts) => Some(start_network(
@@ -339,6 +341,9 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
             &creactors,
         )?),
     };
+    if let Some((sw, _)) = &net {
+        let _ = rpc.shared.switch.set(sw.clone());
+    }
     let result = (|| {
         let mut state_synced = false;
         let mut blocks_synced = 0;

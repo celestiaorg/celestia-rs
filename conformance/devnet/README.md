@@ -248,3 +248,14 @@ must propose and sign their share, and no block may carry evidence.
 ```bash
 DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=15000 conformance/devnet/mixed-validators.sh 100 30
 ```
+
+The blob workload of network A is submitted through the Rust validator's
+RPC, and the Go CLI queries it (`status`, `query block`, bank queries,
+`net_info`, `catching_up`) as an extra check.
+
+`double-sign-evidence.sh` runs 2 Go + 2 Rust validators and a byzantine
+peer (`cargo run -p celestia-rs --example double_sign`) that sends two
+conflicting prevotes of a Go validator to a Rust validator only. The Rust
+node detects them, verifies the `DuplicateVoteEvidence` and gossips it;
+the network commits it, the double signer is slashed out of the set, and
+all block / app hashes still agree.

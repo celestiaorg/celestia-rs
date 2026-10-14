@@ -260,7 +260,7 @@ fn node_id(home: &Path) -> String {
 }
 
 /// Node status shared between the consensus loop and the RPC.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct NodeShared {
     /// Own node info.
     pub info: NodeInfo,
@@ -268,6 +268,66 @@ pub struct NodeShared {
     pub round_state: Mutex<(String, String)>,
     /// Block / state sync running.
     pub syncing: AtomicBool,
+    /// The P2P switch (`net_info`, `dial_seeds`, `dial_peers`).
+    pub switch: std::sync::OnceLock<p2p::Switch>,
+    /// The consensus reactor (`WaitSync`, peer round states).
+    pub consensus: std::sync::OnceLock<Arc<consensus::reactor::Reactor>>,
+    /// The block propagation reactor (`IsCatchingUp`).
+    pub propagation: std::sync::OnceLock<Arc<propagation::Reactor>>,
+}
+
+impl std::fmt::Debug for NodeShared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeShared")
+            .field("info", &self.info)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Go's `p2p.ConnectionStatus` JSON.
+fn connection_status_json(st: &p2p::mconnection::ConnectionStatus) -> String {
+    let mon = |m: &p2p::flowrate::MonitorStatus| {
+        serde_json::json!({
+            "Start": "0001-01-01T00:00:00Z",
+            "Bytes": m.bytes.to_string(),
+            "Samples": "0",
+            "InstRate": "0",
+            "CurRate": "0",
+            "AvgRate": format!("{}", m.avg_rate.round()),
+            "PeakRate": "0",
+            "BytesRem": "0",
+            "Duration": m.duration.as_nanos().to_string(),
+            "Idle": "0",
+            "TimeRem": "0",
+            "Progress": 0,
+            "Active": true,
+        })
+    };
+    serde_json::json!({
+        "Duration": st.duration.as_nanos().to_string(),
+        "SendMonitor": mon(&st.send_monitor),
+        "RecvMonitor": mon(&st.recv_monitor),
+        "Channels": st.channels.iter().map(|c| serde_json::json!({
+            "ID": c.id,
+            "SendQueueCapacity": c.send_queue_capacity.to_string(),
+            "SendQueueSize": c.send_queue_size.to_string(),
+            "Priority": c.priority.to_string(),
+            "RecentlySent": c.recently_sent.to_string(),
+        })).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+/// `dial_seeds` / `dial_peers` take a list (JSON array or comma
+/// separated).
+fn split_addrs(s: &str) -> Vec<String> {
+    s.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(|a| a.trim().trim_matches('"').to_owned())
+        .filter(|a| !a.is_empty())
+        .collect()
 }
 
 impl rpc::NodeStatus for NodeShared {
@@ -281,13 +341,83 @@ impl rpc::NodeStatus for NodeShared {
         vec![format!("Listener(@{})", self.info.listen_addr)]
     }
     fn peers(&self) -> Vec<rpc::PeerInfo> {
-        Vec::new()
+        let Some(sw) = self.switch.get() else {
+            return Vec::new();
+        };
+        sw.peers()
+            .iter()
+            .map(|p| {
+                let ni = p.node_info();
+                rpc::PeerInfo {
+                    node_info: NodeInfo {
+                        p2p_version: ni.protocol_version.p2p,
+                        block_version: ni.protocol_version.block,
+                        app_version: ni.protocol_version.app,
+                        id: ni.id.clone(),
+                        listen_addr: ni.listen_addr.clone(),
+                        network: ni.network.clone(),
+                        version: ni.version.clone(),
+                        channels: ni.channels.clone(),
+                        moniker: ni.moniker.clone(),
+                        tx_index: ni.other.tx_index.clone(),
+                        rpc_address: ni.other.rpc_address.clone(),
+                    },
+                    is_outbound: p.is_outbound(),
+                    connection_status: connection_status_json(&p.status()),
+                    remote_ip: p.remote_ip().to_string(),
+                    socket_addr: p.remote_addr().to_string(),
+                    peer_state: None,
+                }
+            })
+            .collect()
     }
     fn wait_sync(&self) -> bool {
-        self.syncing.load(Ordering::SeqCst)
+        self.syncing.load(Ordering::SeqCst) || self.consensus.get().is_some_and(|r| r.wait_sync())
     }
     fn is_catching_up(&self) -> bool {
-        self.syncing.load(Ordering::SeqCst)
+        self.wait_sync()
+            || self
+                .propagation
+                .get()
+                .is_some_and(|p| propagation::Propagator::is_catching_up(&**p))
+    }
+    fn dial_seeds(&self, seeds: &str) -> Result<String, String> {
+        let seeds = split_addrs(seeds);
+        if seeds.is_empty() {
+            return Err("no seeds provided".into());
+        }
+        let sw = self.switch.get().ok_or("p2p is disabled")?;
+        sw.dial_peers_async(&seeds).map_err(|e| e.to_string())?;
+        Ok("Dialing seeds in progress. See /net_info for details".into())
+    }
+    fn dial_peers(
+        &self,
+        peers: &str,
+        persistent: bool,
+        unconditional: bool,
+        private: bool,
+    ) -> Result<String, String> {
+        let peers = split_addrs(peers);
+        if peers.is_empty() {
+            return Err("no peers provided".into());
+        }
+        let sw = self.switch.get().ok_or("p2p is disabled")?;
+        let ids: Vec<String> = peers
+            .iter()
+            .filter_map(|a| a.split('@').next().map(str::to_owned))
+            .collect();
+        if persistent {
+            sw.add_persistent_peers(&peers).map_err(|e| e.to_string())?;
+        }
+        if unconditional {
+            sw.add_unconditional_peer_ids(&ids)
+                .map_err(|e| e.to_string())?;
+        }
+        if private {
+            sw.add_private_peer_ids(&ids).map_err(|e| e.to_string())?;
+        }
+        sw.dial_peers_async(&peers).map_err(|e| e.to_string())?;
+        Ok("Dialing peers in progress. See /net_info for details".into())
     }
     fn round_state_json(&self) -> String {
         self.lock().0.clone()
