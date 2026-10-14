@@ -20,7 +20,7 @@ macro_rules! routes {
         #[must_use]
         pub fn has_handler(type_url: &str) -> bool {
             $( if type_url == <$ty>::type_url() { return true; } )*
-            false
+            crate::hyperlane::has_handler(type_url)
         }
 
         /// Executes `msg`, returning its packed response.
@@ -32,6 +32,9 @@ macro_rules! routes {
                     return Ok(Any::pack(&resp));
                 }
             )*
+            if let Some(r) = crate::hyperlane::route(ctx, msg) {
+                return r;
+            }
             Err(errs::unknown_request(format!("no message handler found for {}", msg.type_url)))
         }
     };

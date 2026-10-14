@@ -45,6 +45,28 @@ fn id_response<M: Message + Name>(m: &M) -> Any {
     Any::pack(m)
 }
 
+/// Type URLs of the Msg services handled by [`handle_msg`].
+pub const MSG_TYPE_URLS: &[&str] = &[
+    "/hyperlane.core.v1.MsgCreateMailbox",
+    "/hyperlane.core.v1.MsgSetMailbox",
+    "/hyperlane.core.v1.MsgProcessMessage",
+    "/hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsm",
+    "/hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm",
+    "/hyperlane.core.interchain_security.v1.MsgCreateNoopIsm",
+    "/hyperlane.core.interchain_security.v1.MsgCreateRoutingIsm",
+    "/hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomain",
+    "/hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomain",
+    "/hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner",
+    "/hyperlane.core.interchain_security.v1.MsgAnnounceValidator",
+    "/hyperlane.core.post_dispatch.v1.MsgCreateIgp",
+    "/hyperlane.core.post_dispatch.v1.MsgSetIgpOwner",
+    "/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig",
+    "/hyperlane.core.post_dispatch.v1.MsgPayForGas",
+    "/hyperlane.core.post_dispatch.v1.MsgClaim",
+    "/hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHook",
+    "/hyperlane.core.post_dispatch.v1.MsgCreateNoopHook",
+];
+
 /// Executes a hyperlane core message. Returns `None` if `any` is not a
 /// message of this module, otherwise the packed response.
 #[allow(clippy::too_many_lines)]

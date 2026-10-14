@@ -6,6 +6,7 @@
 //! socket server.
 
 pub mod genutil;
+pub mod hyperlane;
 pub mod modules;
 pub mod proposal;
 pub mod router;

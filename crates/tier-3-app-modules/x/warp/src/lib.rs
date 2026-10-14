@@ -738,6 +738,17 @@ pub fn remote_transfer_msg(
     }
 }
 
+/// Type URLs of the Msg service handled by [`Warp::handle_msg`].
+pub const MSG_TYPE_URLS: &[&str] = &[
+    "/hyperlane.warp.v1.MsgCreateCollateralToken",
+    "/hyperlane.warp.v1.MsgCreateSyntheticToken",
+    "/hyperlane.warp.v1.MsgCreateNativeSyntheticToken",
+    "/hyperlane.warp.v1.MsgSetToken",
+    "/hyperlane.warp.v1.MsgEnrollRemoteRouter",
+    "/hyperlane.warp.v1.MsgUnrollRemoteRouter",
+    "/hyperlane.warp.v1.MsgRemoteTransfer",
+];
+
 fn decode_err(e: impl ToString) -> SdkError {
     sdk::error::sdk::tx_decode(e.to_string())
 }
