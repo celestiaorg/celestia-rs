@@ -41,6 +41,16 @@ macro_rules! routes {
                     return Ok(Any::pack(&resp));
                 }
             )*
+            if crate::hyperlane::has_handler(&msg.type_url) {
+                // Same baseapp wrapper: hyperlane msgs have no ValidateBasic,
+                // so the circuit breaker check comes first.
+                if !x_circuit::is_allowed(ctx, &msg.type_url)? {
+                    return Err(sdk::address::undefined(format!(
+                        "circuit breaker disables execution of this message: {}",
+                        msg.type_url
+                    )));
+                }
+            }
             if let Some(r) = crate::hyperlane::route(ctx, msg) {
                 return r;
             }

@@ -213,10 +213,7 @@ impl App {
         }
         let mut events = ctx.events.take();
 
-        if !req.txs.is_empty() {
-            return Err(sdk::error::sdk::not_supported("transaction execution"));
-        }
-        let tx_results = Vec::new();
+        let tx_results = execute_txs_phased(&mut ctx, &req.txs);
 
         let mut validator_updates = Vec::new();
         for module in modules::END_BLOCKERS {
@@ -260,6 +257,41 @@ impl App {
         let _ = header;
         Ok(ResponseCommit { retain_height: 0 })
     }
+}
+
+/// `executeTxsPhased`: every tx's ante handler first, then every surviving
+/// tx's messages. Ante writes persist even when the messages fail.
+fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecTxResult> {
+    let mut results: Vec<Option<abci::ExecTxResult>> = vec![None; txs.len()];
+    let mut prepared: Vec<Option<tx::Prepared>> = Vec::with_capacity(txs.len());
+    for (i, raw) in txs.iter().enumerate() {
+        if txpipe::decode_tx(raw).is_err() {
+            // comet expects a result for every tx, even undecodable ones.
+            results[i] = Some(tx::error_result(
+                &sdk::error::sdk::tx_decode(""),
+                0,
+                0,
+                Vec::new(),
+            ));
+            prepared.push(None);
+            continue;
+        }
+        let (p, res) = tx::run_ante(ctx, raw, txpipe::decode_tx, txpipe::ante, false);
+        match res {
+            Ok(()) => prepared.push(Some(p)),
+            Err(e) => {
+                results[i] = Some(tx::exec_result(&p, Err(e)));
+                prepared.push(None);
+            }
+        }
+    }
+    for (i, p) in prepared.iter_mut().enumerate() {
+        if let Some(p) = p {
+            let res = tx::run_msgs(ctx, p, true);
+            results[i] = Some(tx::exec_result(p, res));
+        }
+    }
+    results.into_iter().map(Option::unwrap_or_default).collect()
 }
 
 fn sdk_empty_hash() -> Vec<u8> {

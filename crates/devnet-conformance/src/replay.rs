@@ -116,9 +116,37 @@ pub fn replay(scenario: &str) -> anyhow::Result<Report> {
             (request::Value::FinalizeBlock(r), Some(response::Value::FinalizeBlock(go))) => {
                 height = r.height;
                 match app.finalize_block(r) {
-                    Ok(ours) if ours.app_hash == go.app_hash => report.matched_heights.push(height),
-                    Ok(_) => {
-                        report.first_mismatch = Some(height);
+                    Ok(ours) => {
+                        let det =
+                            |r: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]| {
+                                r.iter()
+                                    .map(|t| {
+                                        (
+                                            t.code,
+                                            t.codespace.clone(),
+                                            t.data.clone(),
+                                            t.gas_wanted,
+                                            t.gas_used,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            };
+                        let (o, g) = (det(&ours.tx_results), det(&go.tx_results));
+                        if o != g {
+                            report.errors.push(format!(
+                                "FinalizeBlock h={height}: tx results differ: go={g:?} rust={o:?}"
+                            ));
+                        }
+                        if ours.validator_updates != go.validator_updates {
+                            report.errors.push(format!(
+                                "FinalizeBlock h={height}: validator updates differ"
+                            ));
+                        }
+                        if ours.app_hash == go.app_hash && o == g {
+                            report.matched_heights.push(height);
+                        } else {
+                            report.first_mismatch = Some(height);
+                        }
                     }
                     Err(e) => {
                         report.errors.push(format!("FinalizeBlock h={height}: {e}"));
