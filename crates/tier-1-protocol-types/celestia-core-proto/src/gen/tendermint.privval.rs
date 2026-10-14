@@ -16,7 +16,6 @@ impl ::prost::Name for RemoteSignerError {
         "/tendermint.privval.RemoteSignerError".into()
     }
 }
-/// PubKeyRequest requests the consensus public key from the remote signer.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PubKeyRequest {
     #[prost(string, tag = "1")]
@@ -32,7 +31,6 @@ impl ::prost::Name for PubKeyRequest {
         "/tendermint.privval.PubKeyRequest".into()
     }
 }
-/// PubKeyResponse is a response message containing the public key.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PubKeyResponse {
     #[prost(message, optional, tag = "1")]
@@ -50,7 +48,6 @@ impl ::prost::Name for PubKeyResponse {
         "/tendermint.privval.PubKeyResponse".into()
     }
 }
-/// SignVoteRequest is a request to sign a vote
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignVoteRequest {
     #[prost(message, optional, tag = "1")]
@@ -68,7 +65,6 @@ impl ::prost::Name for SignVoteRequest {
         "/tendermint.privval.SignVoteRequest".into()
     }
 }
-/// SignedVoteResponse is a response containing a signed vote or an error
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedVoteResponse {
     #[prost(message, optional, tag = "1")]
@@ -86,7 +82,6 @@ impl ::prost::Name for SignedVoteResponse {
         "/tendermint.privval.SignedVoteResponse".into()
     }
 }
-/// SignProposalRequest is a request to sign a proposal
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignProposalRequest {
     #[prost(message, optional, tag = "1")]
@@ -104,7 +99,6 @@ impl ::prost::Name for SignProposalRequest {
         "/tendermint.privval.SignProposalRequest".into()
     }
 }
-/// SignedProposalResponse is response containing a signed proposal or an error
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedProposalResponse {
     #[prost(message, optional, tag = "1")]
@@ -158,7 +152,6 @@ impl ::prost::Name for SignedRawBytesResponse {
         "/tendermint.privval.SignedRawBytesResponse".into()
     }
 }
-/// PingRequest is a request to confirm that the connection is alive.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PingRequest {}
 impl ::prost::Name for PingRequest {
@@ -171,7 +164,6 @@ impl ::prost::Name for PingRequest {
         "/tendermint.privval.PingRequest".into()
     }
 }
-/// PingResponse is a response to confirm that the connection is alive.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PingResponse {}
 impl ::prost::Name for PingResponse {

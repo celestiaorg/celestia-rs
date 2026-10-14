@@ -180,7 +180,6 @@ impl ::prost::Name for RequestCommit {
         "/tendermint.abci.RequestCommit".into()
     }
 }
-/// lists available snapshots
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct RequestListSnapshots {}
 impl ::prost::Name for RequestListSnapshots {
@@ -193,13 +192,10 @@ impl ::prost::Name for RequestListSnapshots {
         "/tendermint.abci.RequestListSnapshots".into()
     }
 }
-/// offers a snapshot to the application
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestOfferSnapshot {
-    /// snapshot offered by peers
     #[prost(message, optional, tag = "1")]
     pub snapshot: ::core::option::Option<Snapshot>,
-    /// light client-verified app hash for snapshot height
     #[prost(bytes = "vec", tag = "2")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint64, tag = "3")]
@@ -215,7 +211,6 @@ impl ::prost::Name for RequestOfferSnapshot {
         "/tendermint.abci.RequestOfferSnapshot".into()
     }
 }
-/// loads a snapshot chunk
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct RequestLoadSnapshotChunk {
     #[prost(uint64, tag = "1")]
@@ -235,7 +230,6 @@ impl ::prost::Name for RequestLoadSnapshotChunk {
         "/tendermint.abci.RequestLoadSnapshotChunk".into()
     }
 }
-/// Applies a snapshot chunk
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestApplySnapshotChunk {
     #[prost(uint32, tag = "1")]
@@ -257,11 +251,8 @@ impl ::prost::Name for RequestApplySnapshotChunk {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestPrepareProposal {
-    /// the modified transactions cannot exceed this size.
     #[prost(int64, tag = "1")]
     pub max_tx_bytes: i64,
-    /// txs is an array of transactions that will be included in a block,
-    /// sent to the app for possible modifications.
     #[prost(bytes = "vec", repeated, tag = "2")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
     #[prost(message, optional, tag = "3")]
@@ -274,7 +265,6 @@ pub struct RequestPrepareProposal {
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "7")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
-    /// address of the public key of the validator proposing the block.
     #[prost(bytes = "vec", tag = "8")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
@@ -296,7 +286,6 @@ pub struct RequestProcessProposal {
     pub proposed_last_commit: ::core::option::Option<CommitInfo>,
     #[prost(message, repeated, tag = "3")]
     pub misbehavior: ::prost::alloc::vec::Vec<Misbehavior>,
-    /// hash is the merkle root hash of the fields of the proposed block.
     #[prost(bytes = "vec", tag = "4")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(int64, tag = "5")]
@@ -305,15 +294,12 @@ pub struct RequestProcessProposal {
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "7")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
-    /// address of the public key of the original proposer of the block.
     #[prost(bytes = "vec", tag = "8")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint64, tag = "9")]
     pub square_size: u64,
     #[prost(bytes = "vec", tag = "10")]
     pub data_root_hash: ::prost::alloc::vec::Vec<u8>,
-    /// header is the header of the block that is being processed
-    /// this is needed for v3 to sync with multiplexer as the header is stored in state
     #[prost(message, optional, tag = "20")]
     pub header: ::core::option::Option<super::types::Header>,
 }
@@ -327,16 +313,12 @@ impl ::prost::Name for RequestProcessProposal {
         "/tendermint.abci.RequestProcessProposal".into()
     }
 }
-/// Extends a vote with application-injected data
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestExtendVote {
-    /// the hash of the block that this vote may be referring to
     #[prost(bytes = "vec", tag = "1")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
-    /// the height of the extended vote
     #[prost(int64, tag = "2")]
     pub height: i64,
-    /// info of the block that this vote may be referring to
     #[prost(message, optional, tag = "3")]
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", repeated, tag = "4")]
@@ -347,7 +329,6 @@ pub struct RequestExtendVote {
     pub misbehavior: ::prost::alloc::vec::Vec<Misbehavior>,
     #[prost(bytes = "vec", tag = "7")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
-    /// address of the public key of the original proposer of the block.
     #[prost(bytes = "vec", tag = "8")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
@@ -361,13 +342,10 @@ impl ::prost::Name for RequestExtendVote {
         "/tendermint.abci.RequestExtendVote".into()
     }
 }
-/// Verify the vote extension
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestVerifyVoteExtension {
-    /// the hash of the block that this received vote corresponds to
     #[prost(bytes = "vec", tag = "1")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
-    /// the validator that signed the vote extension
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(int64, tag = "3")]
@@ -393,7 +371,6 @@ pub struct RequestFinalizeBlock {
     pub decided_last_commit: ::core::option::Option<CommitInfo>,
     #[prost(message, repeated, tag = "3")]
     pub misbehavior: ::prost::alloc::vec::Vec<Misbehavior>,
-    /// hash is the merkle root hash of the fields of the decided block.
     #[prost(bytes = "vec", tag = "4")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(int64, tag = "5")]
@@ -402,11 +379,8 @@ pub struct RequestFinalizeBlock {
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(bytes = "vec", tag = "7")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
-    /// proposer_address is the address of the public key of the original proposer of the block.
     #[prost(bytes = "vec", tag = "8")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
-    /// header is the header of the block that is being finalized
-    /// this is needed for v3 to sync with multiplexer as the header is stored in state
     #[prost(message, optional, tag = "20")]
     pub header: ::core::option::Option<super::types::Header>,
 }
@@ -495,7 +469,6 @@ impl ::prost::Name for Response {
         "/tendermint.abci.Response".into()
     }
 }
-/// nondeterministic
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseException {
     #[prost(string, tag = "1")]
@@ -588,12 +561,8 @@ impl ::prost::Name for ResponseInitChain {
 pub struct ResponseQuery {
     #[prost(uint32, tag = "1")]
     pub code: u32,
-    /// bytes data = 2; // use "value" instead.
-    ///
-    /// nondeterministic
     #[prost(string, tag = "3")]
     pub log: ::prost::alloc::string::String,
-    /// nondeterministic
     #[prost(string, tag = "4")]
     pub info: ::prost::alloc::string::String,
     #[prost(int64, tag = "5")]
@@ -625,10 +594,8 @@ pub struct ResponseCheckTx {
     pub code: u32,
     #[prost(bytes = "vec", tag = "2")]
     pub data: ::prost::alloc::vec::Vec<u8>,
-    /// nondeterministic
     #[prost(string, tag = "3")]
     pub log: ::prost::alloc::string::String,
-    /// nondeterministic
     #[prost(string, tag = "4")]
     pub info: ::prost::alloc::string::String,
     #[prost(int64, tag = "5")]
@@ -639,7 +606,6 @@ pub struct ResponseCheckTx {
     pub events: ::prost::alloc::vec::Vec<Event>,
     #[prost(string, tag = "8")]
     pub codespace: ::prost::alloc::string::String,
-    /// these fields are used in the priority mempool
     #[prost(bytes = "vec", tag = "15")]
     pub address: ::prost::alloc::vec::Vec<u8>,
     #[prost(int64, tag = "16")]
@@ -707,17 +673,11 @@ pub mod response_offer_snapshot {
     )]
     #[repr(i32)]
     pub enum Result {
-        /// Unknown result, abort all snapshot restoration
         Unknown = 0,
-        /// Snapshot accepted, apply chunks
         Accept = 1,
-        /// Abort all snapshot restoration
         Abort = 2,
-        /// Reject this specific snapshot, try others
         Reject = 3,
-        /// Reject all snapshots of this format, try others
         RejectFormat = 4,
-        /// Reject all snapshots from the sender(s), try others
         RejectSender = 5,
     }
     impl Result {
@@ -778,10 +738,8 @@ impl ::prost::Name for ResponseLoadSnapshotChunk {
 pub struct ResponseApplySnapshotChunk {
     #[prost(enumeration = "response_apply_snapshot_chunk::Result", tag = "1")]
     pub result: i32,
-    /// Chunks to refetch and reapply
     #[prost(uint32, repeated, tag = "2")]
     pub refetch_chunks: ::prost::alloc::vec::Vec<u32>,
-    /// Chunk senders to reject and ban
     #[prost(string, repeated, tag = "3")]
     pub reject_senders: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
@@ -800,17 +758,11 @@ pub mod response_apply_snapshot_chunk {
     )]
     #[repr(i32)]
     pub enum Result {
-        /// Unknown result, abort all snapshot restoration
         Unknown = 0,
-        /// Chunk successfully accepted
         Accept = 1,
-        /// Abort all snapshot restoration
         Abort = 2,
-        /// Retry chunk (combine with refetch and reject)
         Retry = 3,
-        /// Retry snapshot (combine with refetch and reject)
         RetrySnapshot = 4,
-        /// Reject this snapshot, try others
         RejectSnapshot = 5,
     }
     impl Result {
@@ -965,10 +917,6 @@ pub mod response_verify_vote_extension {
     pub enum VerifyStatus {
         Unknown = 0,
         Accept = 1,
-        /// Rejecting the vote extension will reject the entire precommit by the sender.
-        /// Incorrectly implementing this thus has liveness implications as it may affect
-        /// CometBFT's ability to receive 2/3+ valid votes to finalize the block.
-        /// Honest nodes should never be rejected.
         Reject = 2,
     }
     impl VerifyStatus {
@@ -1006,21 +954,14 @@ impl ::prost::Name for ResponseVerifyVoteExtension {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseFinalizeBlock {
-    /// set of block events emmitted as part of executing the block
     #[prost(message, repeated, tag = "1")]
     pub events: ::prost::alloc::vec::Vec<Event>,
-    /// the result of executing each transaction including the events
-    /// the particular transction emitted. This should match the order
-    /// of the transactions delivered in the block itself
     #[prost(message, repeated, tag = "2")]
     pub tx_results: ::prost::alloc::vec::Vec<ExecTxResult>,
-    /// a list of updates to the validator set. These will reflect the validator set at current height + 2.
     #[prost(message, repeated, tag = "3")]
     pub validator_updates: ::prost::alloc::vec::Vec<ValidatorUpdate>,
-    /// updates to the consensus params, if any.
     #[prost(message, optional, tag = "4")]
     pub consensus_param_updates: ::core::option::Option<super::types::ConsensusParams>,
-    /// app_hash is the hash of the applications' state which is used to confirm that execution of the transactions was deterministic. It is up to the application to decide which algorithm to use.
     #[prost(bytes = "vec", tag = "5")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "6")]
@@ -1068,16 +1009,10 @@ impl ::prost::Name for CommitInfo {
         "/tendermint.abci.CommitInfo".into()
     }
 }
-/// ExtendedCommitInfo is similar to CommitInfo except that it is only used in
-/// the PrepareProposal request such that CometBFT can provide vote extensions
-/// to the application.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExtendedCommitInfo {
-    /// The round at which the block proposer decided in the previous height.
     #[prost(int32, tag = "1")]
     pub round: i32,
-    /// List of validators' addresses in the last validator set with their voting
-    /// information, including vote extensions.
     #[prost(message, repeated, tag = "2")]
     pub votes: ::prost::alloc::vec::Vec<ExtendedVoteInfo>,
 }
@@ -1091,9 +1026,6 @@ impl ::prost::Name for ExtendedCommitInfo {
         "/tendermint.abci.ExtendedCommitInfo".into()
     }
 }
-/// Event allows application developers to attach additional information to
-/// ResponseFinalizeBlock and ResponseCheckTx.
-/// Later, transactions may be queried using these events.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Event {
     #[prost(string, tag = "1")]
@@ -1111,14 +1043,12 @@ impl ::prost::Name for Event {
         "/tendermint.abci.Event".into()
     }
 }
-/// EventAttribute is a single key-value pair, associated with an event.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventAttribute {
     #[prost(string, tag = "1")]
     pub key: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub value: ::prost::alloc::string::String,
-    /// nondeterministic
     #[prost(bool, tag = "3")]
     pub index: bool,
 }
@@ -1132,26 +1062,20 @@ impl ::prost::Name for EventAttribute {
         "/tendermint.abci.EventAttribute".into()
     }
 }
-/// ExecTxResult contains results of executing one individual transaction.
-///
-/// * Its structure is equivalent to #ResponseDeliverTx which will be deprecated/deleted
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExecTxResult {
     #[prost(uint32, tag = "1")]
     pub code: u32,
     #[prost(bytes = "vec", tag = "2")]
     pub data: ::prost::alloc::vec::Vec<u8>,
-    /// nondeterministic
     #[prost(string, tag = "3")]
     pub log: ::prost::alloc::string::String,
-    /// nondeterministic
     #[prost(string, tag = "4")]
     pub info: ::prost::alloc::string::String,
     #[prost(int64, tag = "5")]
     pub gas_wanted: i64,
     #[prost(int64, tag = "6")]
     pub gas_used: i64,
-    /// nondeterministic
     #[prost(message, repeated, tag = "7")]
     pub events: ::prost::alloc::vec::Vec<Event>,
     #[prost(string, tag = "8")]
@@ -1169,9 +1093,6 @@ impl ::prost::Name for ExecTxResult {
         "/tendermint.abci.ExecTxResult".into()
     }
 }
-/// TxResult contains results of executing the transaction.
-///
-/// One usage is indexing transaction results.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxResult {
     #[prost(int64, tag = "1")]
@@ -1195,12 +1116,8 @@ impl ::prost::Name for TxResult {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Validator {
-    /// The first 20 bytes of SHA256(public key)
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
-    /// PubKey pub_key = 2 \[(gogoproto.nullable)=false\];
-    ///
-    /// The voting power
     #[prost(int64, tag = "3")]
     pub power: i64,
 }
@@ -1250,16 +1167,12 @@ impl ::prost::Name for VoteInfo {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExtendedVoteInfo {
-    /// The validator that sent the vote.
     #[prost(message, optional, tag = "1")]
     pub validator: ::core::option::Option<Validator>,
-    /// Non-deterministic extension provided by the sending validator's application.
     #[prost(bytes = "vec", tag = "3")]
     pub vote_extension: ::prost::alloc::vec::Vec<u8>,
-    /// Vote extension signature created by CometBFT
     #[prost(bytes = "vec", tag = "4")]
     pub extension_signature: ::prost::alloc::vec::Vec<u8>,
-    /// block_id_flag indicates whether the validator voted for a block, nil, or did not vote at all
     #[prost(enumeration = "super::types::BlockIdFlag", tag = "5")]
     pub block_id_flag: i32,
 }
@@ -1277,18 +1190,12 @@ impl ::prost::Name for ExtendedVoteInfo {
 pub struct Misbehavior {
     #[prost(enumeration = "MisbehaviorType", tag = "1")]
     pub r#type: i32,
-    /// The offending validator
     #[prost(message, optional, tag = "2")]
     pub validator: ::core::option::Option<Validator>,
-    /// The height when the offense occurred
     #[prost(int64, tag = "3")]
     pub height: i64,
-    /// The corresponding time where the offense occurred
     #[prost(message, optional, tag = "4")]
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
-    /// Total voting power of the validator set in case the ABCI application does
-    /// not store historical validators.
-    /// <https://github.com/tendermint/tendermint/issues/4581>
     #[prost(int64, tag = "5")]
     pub total_voting_power: i64,
 }
@@ -1304,19 +1211,14 @@ impl ::prost::Name for Misbehavior {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Snapshot {
-    /// The height at which the snapshot was taken
     #[prost(uint64, tag = "1")]
     pub height: u64,
-    /// The application-specific snapshot format
     #[prost(uint32, tag = "2")]
     pub format: u32,
-    /// Number of chunks in the snapshot
     #[prost(uint32, tag = "3")]
     pub chunks: u32,
-    /// Arbitrary snapshot hash, equal only if identical
     #[prost(bytes = "vec", tag = "4")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
-    /// Arbitrary application metadata
     #[prost(bytes = "vec", tag = "5")]
     pub metadata: ::prost::alloc::vec::Vec<u8>,
 }

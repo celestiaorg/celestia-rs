@@ -22,10 +22,8 @@ impl ::prost::Name for Proof {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValueOp {
-    /// Encoded in ProofOp.Key.
     #[prost(bytes = "vec", tag = "1")]
     pub key: ::prost::alloc::vec::Vec<u8>,
-    /// To encode in ProofOp.Data
     #[prost(message, optional, tag = "2")]
     pub proof: ::core::option::Option<Proof>,
 }
@@ -58,9 +56,6 @@ impl ::prost::Name for DominoOp {
         "/tendermint.crypto.DominoOp".into()
     }
 }
-/// ProofOp defines an operation used for calculating Merkle root
-/// The data could be arbitrary format, providing nessecary data
-/// for example neighbouring node hash
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProofOp {
     #[prost(string, tag = "1")]
@@ -80,7 +75,6 @@ impl ::prost::Name for ProofOp {
         "/tendermint.crypto.ProofOp".into()
     }
 }
-/// ProofOps is Merkle proof defined by the list of ProofOps
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProofOps {
     #[prost(message, repeated, tag = "1")]
@@ -96,7 +90,6 @@ impl ::prost::Name for ProofOps {
         "/tendermint.crypto.ProofOps".into()
     }
 }
-/// PublicKey defines the keys available for use with Validators
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
     #[prost(oneof = "public_key::Sum", tags = "1, 2")]

@@ -55,7 +55,6 @@ impl ::prost::Name for ResponseBroadcastTx {
         "/tendermint.rpc.grpc.ResponseBroadcastTx".into()
     }
 }
-/// BlockByHashRequest is a request to get a block by its hash.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockByHashRequest {
     #[prost(bytes = "vec", tag = "1")]
@@ -73,15 +72,10 @@ impl ::prost::Name for BlockByHashRequest {
         "/tendermint.rpc.grpc.BlockByHashRequest".into()
     }
 }
-/// BlockByHeightRequest is a request to get a block by its height.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BlockByHeightRequest {
-    /// Height the requested block height.
-    /// If height is equal to 0, the latest height stored in the block store
-    /// will be used.
     #[prost(int64, tag = "1")]
     pub height: i64,
-    /// Prove set to true to return the parts proofs.
     #[prost(bool, tag = "2")]
     pub prove: bool,
 }
@@ -95,12 +89,8 @@ impl ::prost::Name for BlockByHeightRequest {
         "/tendermint.rpc.grpc.BlockByHeightRequest".into()
     }
 }
-/// CommitRequest is a request to get the commit of a block.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct CommitRequest {
-    /// Height the requested block commit height.
-    /// If height is equal to 0, the latest height stored in the block store
-    /// will be used.
     #[prost(int64, tag = "1")]
     pub height: i64,
 }
@@ -114,12 +104,8 @@ impl ::prost::Name for CommitRequest {
         "/tendermint.rpc.grpc.CommitRequest".into()
     }
 }
-/// ValidatorSetRequest is a request to get the validator set of a block.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ValidatorSetRequest {
-    /// Height the requested validator set height.
-    /// If height is equal to 0, the latest height stored in the block store
-    /// will be used.
     #[prost(int64, tag = "1")]
     pub height: i64,
 }
@@ -133,7 +119,6 @@ impl ::prost::Name for ValidatorSetRequest {
         "/tendermint.rpc.grpc.ValidatorSetRequest".into()
     }
 }
-/// SubscribeNewHeightsRequest is a request to subscribe to new heights.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SubscribeNewHeightsRequest {}
 impl ::prost::Name for SubscribeNewHeightsRequest {
@@ -146,7 +131,6 @@ impl ::prost::Name for SubscribeNewHeightsRequest {
         "/tendermint.rpc.grpc.SubscribeNewHeightsRequest".into()
     }
 }
-/// StatusRequest is a request to get the status of the node.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct StatusRequest {}
 impl ::prost::Name for StatusRequest {
@@ -159,17 +143,12 @@ impl ::prost::Name for StatusRequest {
         "/tendermint.rpc.grpc.StatusRequest".into()
     }
 }
-/// BlockByHashResponse is a response to a BlockByHashRequest.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockByHashResponse {
     #[prost(message, optional, tag = "1")]
     pub block_part: ::core::option::Option<super::super::types::Part>,
-    /// Commit is only set in the first part, and
-    /// it stays nil in the remaining ones.
     #[prost(message, optional, tag = "2")]
     pub commit: ::core::option::Option<super::super::types::Commit>,
-    /// ValidatorSet is only set in the first part, and
-    /// it stays nil in the remaining ones.
     #[prost(message, optional, tag = "3")]
     pub validator_set: ::core::option::Option<super::super::types::ValidatorSet>,
     #[prost(bool, tag = "4")]
@@ -185,17 +164,12 @@ impl ::prost::Name for BlockByHashResponse {
         "/tendermint.rpc.grpc.BlockByHashResponse".into()
     }
 }
-/// BlockByHeightResponse is a response to a BlockByHeightRequest.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockByHeightResponse {
     #[prost(message, optional, tag = "1")]
     pub block_part: ::core::option::Option<super::super::types::Part>,
-    /// Commit is only set in the first part, and
-    /// it stays nil in the remaining ones.
     #[prost(message, optional, tag = "2")]
     pub commit: ::core::option::Option<super::super::types::Commit>,
-    /// ValidatorSet is only set in the first part, and
-    /// it stays nil in the remaining ones.
     #[prost(message, optional, tag = "3")]
     pub validator_set: ::core::option::Option<super::super::types::ValidatorSet>,
     #[prost(bool, tag = "4")]
@@ -211,7 +185,6 @@ impl ::prost::Name for BlockByHeightResponse {
         "/tendermint.rpc.grpc.BlockByHeightResponse".into()
     }
 }
-/// CommitResponse is a response to a CommitRequest.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommitResponse {
     #[prost(message, optional, tag = "1")]
@@ -227,14 +200,10 @@ impl ::prost::Name for CommitResponse {
         "/tendermint.rpc.grpc.CommitResponse".into()
     }
 }
-/// ValidatorSetResponse is a response to a ValidatorSetRequest.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSetResponse {
-    /// ValidatorSet the requested validator set.
     #[prost(message, optional, tag = "1")]
     pub validator_set: ::core::option::Option<super::super::types::ValidatorSet>,
-    /// Height the height corresponding to the returned
-    /// validator set.
     #[prost(int64, tag = "2")]
     pub height: i64,
 }
@@ -248,18 +217,14 @@ impl ::prost::Name for ValidatorSetResponse {
         "/tendermint.rpc.grpc.ValidatorSetResponse".into()
     }
 }
-/// NewHeightEvent is an event that indicates a new height.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeNewHeightsResponse {
     #[prost(int64, tag = "1")]
     pub height: i64,
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
-    /// Time is the block header time of the announced height.
     #[prost(message, optional, tag = "3")]
     pub time: ::core::option::Option<::pbjson_types::Timestamp>,
-    /// CatchingUp is true when the node was catching up through state/block sync
-    /// or block propagation when this height was emitted.
     #[prost(bool, tag = "4")]
     pub catching_up: bool,
 }
@@ -273,7 +238,6 @@ impl ::prost::Name for SubscribeNewHeightsResponse {
         "/tendermint.rpc.grpc.SubscribeNewHeightsResponse".into()
     }
 }
-/// StatusResponse is a response to a StatusRequest.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StatusResponse {
     #[prost(message, optional, tag = "1")]
@@ -293,7 +257,6 @@ impl ::prost::Name for StatusResponse {
         "/tendermint.rpc.grpc.StatusResponse".into()
     }
 }
-/// SyncInfo is information about the node's sync status.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SyncInfo {
     #[prost(bytes = "vec", tag = "1")]
@@ -325,7 +288,6 @@ impl ::prost::Name for SyncInfo {
         "/tendermint.rpc.grpc.SyncInfo".into()
     }
 }
-/// ValidatorInfo is information about a validator.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorInfo {
     #[prost(bytes = "vec", tag = "1")]
@@ -347,13 +309,10 @@ impl ::prost::Name for ValidatorInfo {
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct DataRootInclusionProofRequest {
-    /// Height the height of block we want to prove.
     #[prost(int64, tag = "1")]
     pub height: i64,
-    /// Start the start of the data commitment range containing the block.
     #[prost(uint64, tag = "2")]
     pub start: u64,
-    /// End the end exclusive of the data commitment range containing the block.
     #[prost(uint64, tag = "3")]
     pub end: u64,
 }

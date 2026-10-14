@@ -16,31 +16,22 @@ impl ::prost::Name for BlockStoreState {
         "/tendermint.store.BlockStoreState".into()
     }
 }
-/// TxInfo describes the location of a tx inside a committed block
-/// as well as the result of executing the transaction and the error log output.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxInfo {
     #[prost(int64, tag = "1")]
     pub height: i64,
     #[prost(uint32, tag = "2")]
     pub index: u32,
-    /// The response code of executing the tx. 0 means
-    /// successfully executed, all others are error codes.
     #[prost(uint32, tag = "3")]
     pub code: u32,
-    /// The error log output generated if the transaction execution fails.
     #[prost(string, tag = "4")]
     pub error: ::prost::alloc::string::String,
-    /// The error namespace/module
     #[prost(string, tag = "5")]
     pub codespace: ::prost::alloc::string::String,
-    /// Requested gas limit
     #[prost(int64, tag = "6")]
     pub gas_wanted: i64,
-    /// Actual gas consumed
     #[prost(int64, tag = "7")]
     pub gas_used: i64,
-    /// tx signers
     #[prost(string, repeated, tag = "8")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }

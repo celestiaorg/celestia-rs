@@ -73,8 +73,14 @@ pub fn run(dry_run: bool) -> Result<()> {
             continue;
         }
         let includes: Vec<PathBuf> = target.includes.iter().map(|i| root.join(i)).collect();
-        let fds =
-            protox::compile(&files, &includes).map_err(|e| anyhow::anyhow!("protox: {e:?}"))?;
+        let mut compiler =
+            protox::Compiler::new(&includes).map_err(|e| anyhow::anyhow!("protox: {e:?}"))?;
+        compiler.include_imports(true);
+        compiler
+            .open_files(&files)
+            .map_err(|e| anyhow::anyhow!("protox: {e:?}"))?;
+        let pool = compiler.descriptor_pool();
+        let fds = compiler.file_descriptor_set();
         let fds_bytes = prost::Message::encode_to_vec(&fds);
         if out.exists() {
             std::fs::remove_dir_all(&out)?;
@@ -142,6 +148,7 @@ pub fn run(dry_run: bool) -> Result<()> {
         }
         if target.any_registry {
             write_registry(&out, &messages)?;
+            write_signers(&out, &pool, &packages)?;
         }
     }
     Ok(())
@@ -180,6 +187,127 @@ fn write_registry(out: &Path, messages: &[(String, String)]) -> Result<()> {
              Some(match type_url {{\n{encode}        _ => return None,\n    }})\n}}\n"
     );
     std::fs::write(out.join("registry.rs"), src)?;
+    Ok(())
+}
+
+fn rust_path(full_name: &str, package: &str) -> String {
+    use heck::{ToSnakeCase as _, ToUpperCamelCase as _};
+    let module: Vec<String> = package.split('.').map(|s| s.to_snake_case()).collect();
+    let rest = &full_name[package.len() + 1..];
+    let mut parts: Vec<&str> = rest.split('.').collect();
+    let last = parts.pop().unwrap_or_default();
+    let mut path = format!("crate::{}", module.join("::"));
+    for p in parts {
+        path.push_str("::");
+        path.push_str(&p.to_snake_case());
+    }
+    format!("{path}::{}", last.to_upper_camel_case())
+}
+
+fn fn_name(full_name: &str) -> String {
+    format!("signers_{}", full_name.replace('.', "_").to_lowercase())
+}
+
+/// Writes `signers.rs`: `cosmos.msg.v1.signer` extraction per message type.
+fn write_signers(
+    out: &Path,
+    pool: &prost_reflect::DescriptorPool,
+    packages: &std::collections::BTreeSet<String>,
+) -> Result<()> {
+    use heck::ToSnakeCase as _;
+    use prost_reflect::{Kind, Value};
+    use std::fmt::Write as _;
+    let Some(ext) = pool.get_extension_by_name("cosmos.msg.v1.signer") else {
+        anyhow::bail!("cosmos.msg.v1.signer extension not found");
+    };
+    let signer_fields = |m: &prost_reflect::MessageDescriptor| -> Vec<String> {
+        let opts = m.options();
+        match opts.get_extension(&ext).as_ref() {
+            Value::List(l) => l
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            _ => Vec::new(),
+        }
+    };
+    let mut fns = String::new();
+    let mut arms = String::new();
+    let mut todo: Vec<prost_reflect::MessageDescriptor> = pool
+        .all_messages()
+        .filter(|m| packages.contains(m.package_name()) && !signer_fields(m).is_empty())
+        .collect();
+    let mut done = std::collections::BTreeSet::new();
+    let roots: Vec<String> = todo.iter().map(|m| m.full_name().to_owned()).collect();
+    while let Some(m) = todo.pop() {
+        if !done.insert(m.full_name().to_owned()) {
+            continue;
+        }
+        let ty = rust_path(m.full_name(), m.package_name());
+        let mut body = String::new();
+        for fname in signer_fields(&m) {
+            let Some(f) = m.get_field_by_name(&fname) else {
+                anyhow::bail!("{}: signer field {fname} missing", m.full_name());
+            };
+            let ident = match fname.to_snake_case().as_str() {
+                "type" => "r#type".to_owned(),
+                other => other.to_owned(),
+            };
+            match (f.kind(), f.is_list()) {
+                (Kind::String, false) => {
+                    writeln!(body, "    out.push(Signer::Str(m.{ident}.clone()));")?
+                }
+                (Kind::String, true) => writeln!(
+                    body,
+                    "    for s in &m.{ident} {{ out.push(Signer::Str(s.clone())); }}"
+                )?,
+                (Kind::Bytes, false) => {
+                    writeln!(body, "    out.push(Signer::Raw(m.{ident}.clone()));")?
+                }
+                (Kind::Message(inner), list) => {
+                    let inner_fn = fn_name(inner.full_name());
+                    if list {
+                        writeln!(body, "    for x in &m.{ident} {{ {inner_fn}(x, out); }}")?;
+                    } else {
+                        writeln!(
+                            body,
+                            "    if let Some(x) = &m.{ident} {{ {inner_fn}(x, out); }}"
+                        )?;
+                    }
+                    todo.push(inner);
+                }
+                (k, l) => anyhow::bail!(
+                    "{}: unsupported signer field kind {k:?} list={l}",
+                    m.full_name()
+                ),
+            }
+        }
+        writeln!(
+            fns,
+            "fn {}(m: &{ty}, out: &mut Vec<Signer>) {{\n{body}}}\n",
+            fn_name(m.full_name())
+        )?;
+    }
+    let mut sorted_roots = roots;
+    sorted_roots.sort();
+    for full in &sorted_roots {
+        let Some(m) = pool.get_message_by_name(full) else {
+            continue;
+        };
+        let ty = rust_path(m.full_name(), m.package_name());
+        writeln!(
+            arms,
+            "        \"/{full}\" => {{ let m = match <{ty} as prost::Message>::decode(bytes) {{ Ok(m) => m, Err(e) => return Some(Err(e)) }}; let mut out = Vec::new(); {}(&m, &mut out); out }}",
+            fn_name(full)
+        )?;
+    }
+    let src = format!(
+        "// @generated by `cargo xtask gen-proto`. Do not edit.\n\n{fns}\
+         /// Signers of the message named by `type_url` (per its\n\
+         /// `cosmos.msg.v1.signer` option). `None` for messages without one.\n\
+         pub fn get_signers(type_url: &str, bytes: &[u8]) -> Option<Result<Vec<Signer>, prost::DecodeError>> {{\n\
+             Some(Ok(match type_url {{\n{arms}        _ => return None,\n    }}))\n}}\n"
+    );
+    std::fs::write(out.join("signers.rs"), src)?;
     Ok(())
 }
 
