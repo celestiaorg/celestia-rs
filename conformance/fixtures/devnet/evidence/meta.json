@@ -1,0 +1,8 @@
+{
+  "scenario": "evidence",
+  "chain_id": "rs-devnet-1",
+  "derived_from": "staking",
+  "injected_misbehavior_heights": "20 30",
+  "committed_heights": 40,
+  "generated_at": "2026-10-14T08:38:38Z"
+}

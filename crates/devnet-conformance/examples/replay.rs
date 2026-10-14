@@ -18,6 +18,7 @@ fn main() -> anyhow::Result<()> {
     let r = devnet_conformance::replay::replay(&scenario)?;
     println!("matched heights: {:?}", r.matched_heights);
     println!("first mismatch: {:?}", r.first_mismatch);
+    println!("halted at: {:?}", r.halted_at);
     println!("errors: {:?}", r.errors);
     println!("init_chain diffs: {:?}", r.init_chain_diffs);
     println!(

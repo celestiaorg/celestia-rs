@@ -39,7 +39,7 @@ gen() {
   local f=$1
   shift
   celestia-appd tx "$@" "${K[@]}" --chain-id "$CHAIN_ID" --node "$NODE" \
-    --fees 20000utia --gas 400000 --generate-only -o json >"$f"
+    --fees ${FEES:-20000utia} --gas ${GAS:-400000} --generate-only -o json >"$f"
 }
 
 # rawtx <from> <messages-json>: sign and broadcast a tx with custom messages

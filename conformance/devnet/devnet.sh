@@ -6,6 +6,9 @@
 # usage: [DEVNET_PORT_OFFSET=n] [CHAIN_ID=id] [GENESIS_SETUP=script.sh] [GENESIS_PATCH=script.py] \
 #          conformance/devnet/devnet.sh <scenario> <blocks> [workload-script]
 #
+# ALLOW_HALT=1 accepts a workload that halts the chain (the fixture ends at
+# the last committed height; the halting FinalizeBlock is recorded).
+#
 # GENESIS_SETUP (bash) runs after the default keys and genesis accounts are
 # added and before gentx, with HOME_DIR and CHAIN_ID set (e.g. to add
 # vesting accounts). GENESIS_PATCH (python) is called with the path of the
@@ -110,9 +113,19 @@ until [ "$(height || echo 0)" -ge 2 ] 2>/dev/null; do kill -0 $CORE || { tail "$
 if [ -n "$WORKLOAD" ]; then
   HOME_DIR=$H CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$P_RPC bash "$WORKLOAD"
 fi
-until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do kill -0 $CORE || { tail "$WORK/core.log"; exit 1; }; sleep 1; done
+until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do
+  if ! kill -0 $CORE 2>/dev/null; then
+    # ALLOW_HALT=1: a workload that halts the chain (e.g. a missing upgrade
+    # handler) ends the run where Go stopped.
+    [ -n "${ALLOW_HALT:-}" ] && break
+    tail "$WORK/core.log"
+    exit 1
+  fi
+  [ -n "${ALLOW_HALT:-}" ] && [ -n "$WORKLOAD" ] && break
+  sleep 1
+done
 # Stop consensus first so the app commits nothing past what core saw.
-kill $CORE; sleep 2; cleanup; sleep 1
+kill $CORE 2>/dev/null || true; sleep 2; cleanup; sleep 1
 LAST=$(curl -s localhost:$P_RPC/status >/dev/null 2>&1 || true; python3 - "$WORK/abci.rec" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()

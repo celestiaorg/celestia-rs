@@ -1,0 +1,9 @@
+{
+  "scenario": "upgrade",
+  "chain_id": "test",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 99,
+  "workload": "upgrade.sh",
+  "generated_at": "2026-10-14T08:38:15Z"
+}

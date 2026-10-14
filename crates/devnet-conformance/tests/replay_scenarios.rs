@@ -48,3 +48,23 @@ fn authz_feegrant_parity() -> anyhow::Result<()> {
 fn vesting_parity() -> anyhow::Result<()> {
     assert_parity("vesting")
 }
+
+/// `staking` re-driven through Go with duplicate-vote evidence injected
+/// (conformance/devnet/inject-evidence.sh staking evidence 20 30): slash,
+/// jail, tombstone; unknown validator, unknown type and an already
+/// tombstoned validator are ignored.
+#[test]
+fn evidence_parity() -> anyhow::Result<()> {
+    assert_parity("evidence")
+}
+
+/// Gov-scheduled v10 upgrade (handler runs), schedule + cancel, a repeated
+/// completed upgrade, then a signalled v11 upgrade: the app version bumps
+/// and both Go and Rust refuse the next block (no v11 handler).
+#[test]
+fn upgrade_parity_and_halt() -> anyhow::Result<()> {
+    assert_parity("upgrade")?;
+    let r = devnet_conformance::replay::replay("upgrade")?;
+    assert!(r.halted_at.is_some(), "Go halted but Rust did not");
+    Ok(())
+}

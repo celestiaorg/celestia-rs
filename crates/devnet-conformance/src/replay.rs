@@ -40,6 +40,8 @@ pub struct Report {
     pub errors: Vec<String>,
     /// InitChain response differences.
     pub init_chain_diffs: Vec<String>,
+    /// Height at which both Go and Rust refused to finalize a block.
+    pub halted_at: Option<i64>,
 }
 
 fn compare_stores(app: &App, dump: &StateDump) -> (Vec<String>, Vec<StoreDiff>) {
@@ -93,6 +95,7 @@ pub fn replay(scenario: &str) -> anyhow::Result<Report> {
 /// must already be at height `from`; InitChain is only replayed when `from`
 /// is 0), stopping after the commit of height `until` when given, or at the
 /// first app-hash mismatch.
+#[allow(clippy::too_many_lines)]
 pub fn replay_into(
     scenario: &str,
     app: &mut App,
@@ -178,6 +181,21 @@ pub fn replay_into(
                         report.first_mismatch = Some(height);
                     }
                 }
+            }
+            (request::Value::FinalizeBlock(r), Some(response::Value::Exception(go))) => {
+                // Go halted the chain (e.g. a due upgrade without handler):
+                // the Rust app must refuse the block too.
+                height = r.height;
+                if app.finalize_block(r).is_ok() {
+                    report.errors.push(format!(
+                        "FinalizeBlock h={height}: Go halted ({}) but Rust did not",
+                        go.error
+                    ));
+                    report.first_mismatch = Some(height);
+                } else {
+                    report.halted_at = Some(height);
+                }
+                return Ok(report);
             }
             (request::Value::Commit(_), Some(response::Value::Commit(_))) => {
                 if let Err(e) = app.commit() {
