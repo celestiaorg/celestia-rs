@@ -19,6 +19,7 @@ use celestia_proto::cosmos::base::query::v1beta1::{PageRequest, PageResponse};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
+pub mod net;
 pub mod requests;
 
 /// Directory of the recorded corpora.
@@ -301,6 +302,18 @@ pub fn canonical_value(path: &str, value_hex: &str) -> String {
                     r.encode_to_vec()
                 })
         }
+        // Go reports its build (toolchain, module list); only the
+        // celestia-core node info is compared.
+        "/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo" => {
+            celestia_proto::cosmos::base::tendermint::v1beta1::GetNodeInfoResponse::decode(
+                bytes.as_slice(),
+            )
+            .ok()
+            .map(|mut r| {
+                r.application_version = None;
+                r.encode_to_vec()
+            })
+        }
         _ => None,
     };
     out.map_or_else(|| value_hex.to_owned(), hex::encode)
@@ -330,7 +343,47 @@ pub struct Report {
 /// Replays `scenario` into a fresh in-memory app that keeps every height
 /// and answers every ABCI case of its corpus.
 pub fn check_abci(scenario: &str) -> anyhow::Result<Report> {
+    use abci_server::Application as _;
+    use celestia_proto::celestia_core_proto::abci::{request, response};
     let corpus = load(scenario)?;
+    let (app, rpc) = replayed(scenario)?;
+    let mut report = Report::default();
+    for case in &corpus.abci {
+        if needs_consensus(&case.path) && !rpc {
+            report.skipped += 1;
+            continue;
+        }
+        report.compared += 1;
+        let ours = match app.handle(request::Value::Query(case.request())) {
+            response::Value::Query(q) => AbciResponse::from(&q),
+            other => anyhow::bail!("unexpected response {other:?}"),
+        };
+        if comparable(&case.path, &ours) != comparable(&case.path, &case.response) {
+            report.mismatches.push((case.clone(), ours));
+        }
+    }
+    Ok(report)
+}
+
+/// The recorded celestia-core RPC exchanges of a scenario
+/// (`rpc.json.gz` next to its ABCI recording), if any.
+pub fn load_rpc(scenario: &str) -> anyhow::Result<Option<Vec<net::RpcExchange>>> {
+    use std::io::Read;
+    let path = crate::scenario_dir(scenario).join("rpc.json.gz");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(std::fs::File::open(path)?).read_to_end(&mut out)?;
+    Ok(Some(serde_json::from_slice(&out)?))
+}
+
+/// The app after replaying `scenario` (pruning nothing), with the
+/// celestia-core RPC served from the scenario's recording when it has one
+/// (then `true`). The RPC address is process-wide: one recorded scenario
+/// is checked at a time.
+fn replayed(scenario: &str) -> anyhow::Result<(app::AbciApp, bool)> {
+    static RPC_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let mut app = app::App::new();
     app.set_pruning(multistore_nothing());
     let r = crate::replay::replay_into(scenario, &mut app, 0, None)?;
@@ -340,19 +393,15 @@ pub fn check_abci(scenario: &str) -> anyhow::Result<Report> {
         r.errors,
         r.first_mismatch
     );
-    let mut report = Report::default();
-    for case in &corpus.abci {
-        if needs_consensus(&case.path) {
-            report.skipped += 1;
-            continue;
+    let rpc = match load_rpc(scenario)? {
+        Some(ex) => {
+            let _guard = RPC_LOCK.lock();
+            app::comet::set_rpc_address(Some(net::spawn_replaying_mock(&ex)?));
+            true
         }
-        report.compared += 1;
-        let ours = AbciResponse::from(&app.query(&case.request()));
-        if comparable(&case.path, &ours) != comparable(&case.path, &case.response) {
-            report.mismatches.push((case.clone(), ours));
-        }
-    }
-    Ok(report)
+        None => false,
+    };
+    Ok((app::AbciApp::new(app), rpc))
 }
 
 /// Result of replaying the REST part of a corpus.
@@ -371,16 +420,10 @@ pub struct RestReport {
 /// is irrelevant), messages with Go frames stripped.
 pub fn check_rest(scenario: &str) -> anyhow::Result<RestReport> {
     let corpus = load(scenario)?;
-    let mut app = app::App::new();
-    app.set_pruning(multistore_nothing());
-    let r = crate::replay::replay_into(scenario, &mut app, 0, None)?;
-    anyhow::ensure!(
-        r.errors.is_empty() && r.first_mismatch.is_none(),
-        "{scenario}: replay failed"
-    );
+    let (app, rpc) = replayed(scenario)?;
     let mut report = RestReport::default();
     for case in &corpus.rest {
-        if needs_consensus(&case.method) {
+        if needs_consensus(&case.method) && !rpc {
             report.skipped += 1;
             continue;
         }
@@ -402,6 +445,9 @@ pub fn check_rest(scenario: &str) -> anyhow::Result<RestReport> {
             let mut v = v.clone();
             if let Some(serde_json::Value::String(m)) = v.get_mut("message") {
                 *m = strip_go_frames(m);
+            }
+            if let Some(o) = v.as_object_mut() {
+                o.remove("application_version");
             }
             // Go map-order responses (see `canonical_value`).
             for (list, key) in [("subspaces", "subspace"), ("rewards", "validator_address")] {

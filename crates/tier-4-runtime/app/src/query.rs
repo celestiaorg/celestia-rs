@@ -494,4 +494,24 @@ impl AbciApp {
     pub fn with_app<R>(&self, f: impl FnOnce(&mut App) -> R) -> Option<R> {
         self.inner.lock().ok().map(|mut app| f(&mut app))
     }
+
+    /// A gRPC query (the gRPC server path): celestia-core-backed services
+    /// outside the lock, every other service under it.
+    pub fn grpc_query(
+        &self,
+        path: &str,
+        data: &[u8],
+        height: i64,
+    ) -> Result<(Vec<u8>, i64), GrpcQueryError> {
+        if let Some(r) = crate::node_services::grpc_query(self, path, data, height) {
+            return r;
+        }
+        self.with_app(|a| a.grpc_query(path, data, height))
+            .unwrap_or_else(|| {
+                Err(GrpcQueryError::Handler(grpc_query::QueryError::Status(
+                    grpc_query::Code::Internal,
+                    "app lock poisoned".into(),
+                )))
+            })
+    }
 }

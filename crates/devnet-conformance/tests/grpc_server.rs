@@ -122,3 +122,114 @@ async fn rest_server_answers_like_go() -> anyhow::Result<()> {
     .await??;
     Ok(())
 }
+
+/// `BroadcastTx` over gRPC: celestia-core answers `broadcast_tx_sync` only
+/// after running `CheckTx` on the app, so the query must not hold the app
+/// lock while it waits (Go runs them concurrently).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broadcast_tx_reaches_check_tx() -> anyhow::Result<()> {
+    use abci_server::Application as _;
+    use celestia_proto::celestia_core_proto::abci::{RequestCheckTx, request, response};
+    use prost::Message as _;
+    use std::io::{BufRead as _, BufReader};
+
+    let app = app_for("empty")?;
+    // A celestia-core stand-in: CheckTx on the app, then the RPC result.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let rpc_addr = listener.local_addr()?;
+    let core = Arc::clone(&app);
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { continue };
+            let Ok(clone) = s.try_clone() else { continue };
+            let mut r = BufReader::new(clone);
+            let mut len = 0usize;
+            loop {
+                let mut line = String::new();
+                if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                    break;
+                }
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut body = vec![0u8; len];
+            if std::io::Read::read_exact(&mut r, &mut body).is_err() {
+                continue;
+            }
+            let req: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+            let tx = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                req["params"]["tx"].as_str().unwrap_or_default(),
+            )
+            .unwrap_or_default();
+            let out = core.handle(request::Value::CheckTx(RequestCheckTx {
+                tx: tx.clone(),
+                ..Default::default()
+            }));
+            let response::Value::CheckTx(res) = out else {
+                // celestia-core reports an ABCI error as an RPC error.
+                let out = serde_json::json!({"jsonrpc": "2.0", "id": req["id"], "error": {
+                    "code": -32603, "message": "Internal error", "data": format!("{out:?}")}})
+                .to_string();
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                    out.len()
+                );
+                continue;
+            };
+            let out = serde_json::json!({"jsonrpc": "2.0", "id": req["id"], "result": {
+                "code": res.code, "data": "", "log": res.log, "codespace": res.codespace,
+                "hash": hex::encode_upper(hash::sha256(&tx)),
+            }})
+            .to_string();
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                out.len()
+            );
+        }
+    });
+    app::comet::set_rpc_address(Some(format!("tcp://{rpc_addr}")));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    tokio::spawn(api_server::serve_grpc_on(listener, Arc::clone(&app)));
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))?
+        .connect()
+        .await?;
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await?;
+    // A tx that decodes but carries no message: CheckTx rejects it with
+    // `ErrInvalidRequest`.
+    let raw = celestia_proto::cosmos::tx::v1beta1::TxRaw {
+        body_bytes: celestia_proto::cosmos::tx::v1beta1::TxBody {
+            memo: "no messages".into(),
+            ..Default::default()
+        }
+        .encode_to_vec(),
+        auth_info_bytes: celestia_proto::cosmos::tx::v1beta1::AuthInfo::default().encode_to_vec(),
+        signatures: Vec::new(),
+    }
+    .encode_to_vec();
+    let req = celestia_proto::cosmos::tx::v1beta1::BroadcastTxRequest {
+        tx_bytes: raw.clone(),
+        mode: 2,
+    };
+    let path: http::uri::PathAndQuery = "/cosmos.tx.v1beta1.Service/BroadcastTx".parse()?;
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        client.unary(
+            tonic::Request::new(req.encode_to_vec()),
+            path,
+            api_server::RawCodec,
+        ),
+    )
+    .await??;
+    let resp =
+        celestia_proto::cosmos::tx::v1beta1::BroadcastTxResponse::decode(res.get_ref().as_slice())?;
+    let tx = resp.tx_response.unwrap_or_default();
+    assert_eq!((tx.codespace.as_str(), tx.code), ("sdk", 18), "{tx:?}");
+    assert_eq!(tx.txhash, hex::encode_upper(hash::sha256(&raw)));
+    Ok(())
+}

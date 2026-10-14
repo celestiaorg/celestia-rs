@@ -15,100 +15,15 @@
     clippy::too_many_lines
 )]
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use abci_server::record::{Direction, parse};
-use celestia_proto::celestia_core_proto::abci::{
-    Request, RequestFlush, RequestQuery, Response, ResponseQuery, request, response,
-};
+use celestia_proto::celestia_core_proto::abci::{Request, RequestQuery, Response, request};
+use devnet_conformance::querycorpus::net::{http_get, query, read_frame, write_frame};
 use devnet_conformance::querycorpus::{
     AbciCase, AbciResponse, Corpus, RestCase, requests::Builder, rest_url,
 };
 use prost::Message;
-
-fn write_frame(s: &mut TcpStream, payload: &[u8]) -> anyhow::Result<()> {
-    s.write_all(&abci_server::codec::encode_frame(payload))?;
-    Ok(())
-}
-
-fn read_frame(s: &mut TcpStream) -> anyhow::Result<Vec<u8>> {
-    let mut len = 0u64;
-    let mut shift = 0;
-    loop {
-        let mut b = [0u8; 1];
-        s.read_exact(&mut b)?;
-        len |= u64::from(b[0] & 0x7f) << shift;
-        if b[0] & 0x80 == 0 {
-            break;
-        }
-        shift += 7;
-    }
-    let mut buf = vec![0u8; usize::try_from(len)?];
-    s.read_exact(&mut buf)?;
-    Ok(buf)
-}
-
-fn query(s: &mut TcpStream, req: &RequestQuery) -> anyhow::Result<ResponseQuery> {
-    let q = Request {
-        value: Some(request::Value::Query(req.clone())),
-    };
-    let f = Request {
-        value: Some(request::Value::Flush(RequestFlush {})),
-    };
-    write_frame(s, &q.encode_to_vec())?;
-    write_frame(s, &f.encode_to_vec())?;
-    let r = Response::decode(read_frame(s)?.as_slice())?;
-    let _ = read_frame(s)?;
-    match r.value {
-        Some(response::Value::Query(q)) => Ok(q),
-        other => anyhow::bail!("unexpected response {other:?}"),
-    }
-}
-
-/// Minimal HTTP/1.1 GET (Connection: close), returning status and body.
-fn http_get(addr: &str, url: &str, height: Option<i64>) -> anyhow::Result<(u16, Vec<u8>)> {
-    let mut s = TcpStream::connect(addr)?;
-    let mut req = format!("GET {url} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
-    if let Some(h) = height {
-        req.push_str(&format!("x-cosmos-block-height: {h}\r\n"));
-    }
-    req.push_str("\r\n");
-    s.write_all(req.as_bytes())?;
-    let mut raw = Vec::new();
-    s.read_to_end(&mut raw)?;
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(|| anyhow::anyhow!("no header end"))?;
-    let head = String::from_utf8_lossy(&raw[..split]).to_string();
-    let mut body = raw[split + 4..].to_vec();
-    let status: u16 = head
-        .split_whitespace()
-        .nth(1)
-        .ok_or_else(|| anyhow::anyhow!("no status"))?
-        .parse()?;
-    if head
-        .to_ascii_lowercase()
-        .contains("transfer-encoding: chunked")
-    {
-        let mut out = Vec::new();
-        let mut rest = body.as_slice();
-        loop {
-            let Some(nl) = rest.windows(2).position(|w| w == b"\r\n") else {
-                break;
-            };
-            let size = usize::from_str_radix(String::from_utf8_lossy(&rest[..nl]).trim(), 16)?;
-            if size == 0 {
-                break;
-            }
-            out.extend_from_slice(&rest[nl + 2..nl + 2 + size]);
-            rest = &rest[nl + 2 + size + 2..];
-        }
-        body = out;
-    }
-    Ok((status, body))
-}
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();

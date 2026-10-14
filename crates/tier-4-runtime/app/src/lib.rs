@@ -6,6 +6,7 @@
 //! socket server.
 
 pub mod check_tx;
+pub mod comet;
 pub mod fibre_tx;
 pub mod genutil;
 pub mod hyperlane;
@@ -13,6 +14,7 @@ pub mod ibc;
 pub mod inclusion_proof;
 pub mod modules;
 pub mod msg_count;
+pub mod node_services;
 pub mod proposal;
 pub mod query;
 pub use multistore::PruningOptions;
@@ -165,6 +167,12 @@ impl App {
     /// Sets the node's minimum gas price (utia) used by CheckTx.
     pub fn set_node_min_gas_price(&mut self, price: Option<math::LegacyDec>) {
         self.node_min_gas_price = price;
+    }
+
+    /// The node's configured minimum gas price (utia), if any.
+    #[must_use]
+    pub fn node_min_gas_price(&self) -> Option<&math::LegacyDec> {
+        self.node_min_gas_price.as_ref()
     }
 
     /// Opens (or creates) the persistent state of node home `home`
@@ -645,6 +653,13 @@ fn exception(e: &SdkError) -> response::Value {
 
 impl Application for AbciApp {
     fn handle(&self, request: request::Value) -> response::Value {
+        // celestia-core-backed queries run outside the lock (see
+        // `node_services`).
+        if let request::Value::Query(r) = &request {
+            if let Some(resp) = node_services::abci_query(self, r) {
+                return response::Value::Query(resp);
+            }
+        }
         let Ok(mut app) = self.inner.lock() else {
             return response::Value::Exception(ResponseException {
                 error: "poisoned".into(),

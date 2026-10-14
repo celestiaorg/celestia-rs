@@ -24,7 +24,7 @@ open question 2).
 | S3  | in progress | State sync client + snapshot import (devnet Go↔Rust done); follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
 | M9  | in progress | Rust consensus engine (Tendermint BFT, celestia-core semantics) — `privval`, `nodestore`, `consensus` + single-validator `celestia-rs start` done (Go verifies and replays its chain); reactor wiring to `p2p` pending | Mixed Rust+Go private devnet reaches consensus |
 | M10 | pending     | Rust P2P (secret connection, MConn, PEX), mempool, block sync | Rust node peers with Go nodes and gossips blocks/txs |
-| M11 | pending     | RPC & gRPC | Responses match Go for a canned request corpus |
+| M11 | completed   | RPC & gRPC: ABCI `Query` (store proofs, historical heights, gRPC routing), every query service, gRPC server and REST gateway in `celestia-rs abci` | Responses match Go for a canned request corpus (13 scenarios, 46.8k ABCI + 30.6k REST requests, `devnet-conformance/tests/query_corpus.rs`) |
 | M12 | pending     | Node binary, CLI, keys, double-sign guard, pruning | `celestia-rs start --network mocha` works end-to-end |
 | M13 | pending     | Mocha validator soak; mainnet full node | Signs on Mocha without misses/double-signs; follows mainnet |
 | M14 | pending     | Mainnet validator | Signs mainnet blocks; no double-signs; no evidence |
@@ -52,7 +52,9 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 | IBC differential | `devnet/ibc` (two Go chains + cosmos/relayer) and `devnet/ibc-edge` (ibc-go testing package, `conformance/ibcvectors`) at full parity incl. CheckTx |
 | Deferred (IBC) | 06-solomachine verification, channel upgrades, IBCSoftwareUpgrade scheduling, ICA `proto3json` txs and `MsgModuleQuerySafe` |
 | Light client & state sync (ADR 0003) | `light` (verifier, bisection, detector, store, RPC provider; Go vectors 720 verifier + 196 client scenarios at parity) and `statesync` (reactor, syncer, state provider); a Rust node state-syncs from Go peers and serves snapshots to Go (`conformance/devnet/statesync-rust.sh`) |
-| Not started | queries/gRPC/REST (M11), testnet state sync (S3), Rust consensus/P2P (M9/M10) |
+| Queries (M11) | ABCI `Query` (store/ICS-23 proofs, app, p2p, custom inclusion proofs, gRPC routing at historical heights) and every query service incl. hyperlane/warp, zkism, forwarding, IBC, reflection, cmtservice/tx status/gas estimation over celestia-core RPC; gRPC server (`--grpc-address`) and REST gateway (`--api-address`) in `celestia-rs abci`; byte-identical to Go on the 13-scenario query corpus |
+| Deferred (M11) | Legacy amino tx codec (`TxDecodeAmino`/`TxEncodeAmino` beyond empty requests), reflection `v2alpha1`/`cosmos.reflection.v1`, the validator-local fibre promise cache, Go build info in `GetNodeInfo` |
+| Not started | testnet state sync (S3), Rust consensus/P2P (M9/M10) |
 
 M2's disk-backed IAVL and non-empty historical import landed with ADR 0002
 (snapshot import of Go state, verified against Go app hashes); S3 now only

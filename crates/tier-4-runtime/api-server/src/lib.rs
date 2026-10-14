@@ -117,10 +117,8 @@ pub fn grpc_call(
     data: &[u8],
     height: i64,
 ) -> Result<(Vec<u8>, i64), (grpc_query::Code, String)> {
-    let r = app
-        .with_app(|a| a.grpc_query(path, data, height))
-        .ok_or_else(|| (grpc_query::Code::Internal, "app lock poisoned".to_owned()))?;
-    r.map_err(|e| grpc_error_status(path, e))
+    app.grpc_query(path, data, height)
+        .map_err(|e| grpc_error_status(path, e))
 }
 
 /// Services Go's gRPC server registers that are answered outside the

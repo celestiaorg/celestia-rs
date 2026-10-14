@@ -27,9 +27,22 @@ fn deferred(path: &str, data: &str) -> bool {
         .any(|(p, d)| *p == path && *d == data)
 }
 
+/// The minimum corpus size (the celestia-core-backed corpus is smaller).
+fn min_cases(scenario: &str, full: usize) -> usize {
+    if scenario == "comet-queries" {
+        100
+    } else {
+        full
+    }
+}
+
 fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
     let r = check_abci(scenario)?;
-    assert!(r.compared > 1000, "{scenario}: only {} cases", r.compared);
+    assert!(
+        r.compared > min_cases(scenario, 1000),
+        "{scenario}: only {} cases",
+        r.compared
+    );
     let failures: Vec<String> = r
         .mismatches
         .iter()
@@ -56,7 +69,11 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
 
 fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
     let r = check_rest(scenario)?;
-    assert!(r.compared > 500, "{scenario}: only {} cases", r.compared);
+    assert!(
+        r.compared > min_cases(scenario, 500),
+        "{scenario}: only {} cases",
+        r.compared
+    );
     let failures: Vec<String> = r
         .mismatches
         .iter()
@@ -102,6 +119,7 @@ fn every_scenario_has_a_corpus_test() {
 const SCENARIOS: &[&str] = &[
     "authz-feegrant",
     "blob",
+    "comet-queries",
     "consensus",
     "empty",
     "evidence",
@@ -127,6 +145,7 @@ macro_rules! corpus_tests {
 corpus_tests! {
     corpus_authz_feegrant => "authz-feegrant";
     corpus_blob => "blob";
+    corpus_comet_queries => "comet-queries";
     corpus_consensus => "consensus";
     corpus_empty => "empty";
     corpus_evidence => "evidence";

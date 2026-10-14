@@ -101,6 +101,11 @@ enum Cmd {
         /// disables.
         #[arg(long, default_value = "127.0.0.1:1317")]
         api_address: String,
+        /// celestia-core RPC address the query services backed by the
+        /// node (blocks, tx index, broadcast, tx status, gas estimation)
+        /// call (Go: `config.toml` `[rpc] laddr`); empty disables them.
+        #[arg(long, default_value = "tcp://127.0.0.1:26657")]
+        rpc_address: String,
     },
 }
 
@@ -144,7 +149,9 @@ async fn main() -> anyhow::Result<()> {
             minimum_gas_prices,
             grpc_address,
             api_address,
+            rpc_address,
         } => {
+            app::comet::set_rpc_address((!rpc_address.is_empty()).then_some(rpc_address));
             let mut app = match home {
                 None => app::App::new(),
                 Some(home) => {

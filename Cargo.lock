@@ -165,6 +165,7 @@ name = "app"
 version = "0.0.1"
 dependencies = [
  "abci-server",
+ "base64 0.22.1",
  "celestia-proto",
  "encoding",
  "grpc-query",
@@ -1003,6 +1004,7 @@ dependencies = [
  "anyhow",
  "api-server",
  "app",
+ "base64 0.22.1",
  "celestia-proto",
  "encoding",
  "flate2",

@@ -305,6 +305,180 @@ impl<'a> Builder<'a> {
         self.push(&format!("{sh}/0/1"), Vec::new(), 0, false);
     }
 
+    /// Requests to the celestia-core-backed services (cmtservice, the tx
+    /// service's block/index/broadcast methods, tx status, gas estimation)
+    /// over the chain's `blocks` (height, txs), all at query height `at`
+    /// (the recording node keeps producing blocks).
+    #[allow(clippy::too_many_lines)]
+    pub fn comet(&mut self, blocks: &[(i64, Vec<Vec<u8>>)], at: i64) {
+        use base64::Engine as _;
+        let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+        let upper = |b: &[u8]| hex::encode_upper(b);
+        let last = self.last;
+        let mid = last / 2;
+        let cmt = "/cosmos.base.tendermint.v1beta1.Service/";
+        self.at(at, &format!("{cmt}GetNodeInfo"), &json!({}));
+        self.at(at, &format!("{cmt}GetSyncing"), &json!({}));
+        self.at(at, &format!("{cmt}GetLatestBlock"), &json!({}));
+        for h in [1, 2, mid, last, last + 5, -1] {
+            self.at(
+                at,
+                &format!("{cmt}GetBlockByHeight"),
+                &json!({"height": h.to_string()}),
+            );
+        }
+        for p in [
+            json!({}),
+            json!({"pagination": {"limit": "1"}}),
+            json!({"pagination": {"offset": "1", "limit": "1"}}),
+            json!({"pagination": {"offset": "5"}}),
+        ] {
+            self.at(at, &format!("{cmt}GetLatestValidatorSet"), &p);
+            for h in [1, last, last + 3] {
+                let mut q = p.clone();
+                q["height"] = json!(h.to_string());
+                self.at(at, &format!("{cmt}GetValidatorSetByHeight"), &q);
+            }
+        }
+        for q in [
+            json!({"path": "/app/version"}),
+            json!({"path": "/store/bank/key", "data": b64(&[0x02]), "height": mid.to_string(), "prove": true}),
+            json!({"path": "/store/acc/subspace", "data": b64(&[0x01])}),
+            json!({"path": "/cosmos.bank.v1beta1.Query/Params"}),
+            json!({"path": "custom/txInclusionProof/0"}),
+            json!({"path": "/nope"}),
+        ] {
+            // The nested query names a committed height (latest moves).
+            let mut q = q;
+            if q.get("height").is_none() {
+                q["height"] = json!(at.to_string());
+            }
+            self.at(at, &format!("{cmt}ABCIQuery"), &q);
+        }
+        let txs: Vec<(i64, Vec<u8>)> = blocks
+            .iter()
+            .flat_map(|(h, txs)| txs.iter().map(move |t| (*h, t.clone())))
+            .collect();
+        let hashes: Vec<String> = txs
+            .iter()
+            .take(6)
+            .map(|(_, t)| upper(&hash::sha256(t)))
+            .collect();
+        let zero = "00".repeat(32);
+        let svc = "/cosmos.tx.v1beta1.Service/";
+        for h in hashes.iter().map(String::as_str).chain([
+            zero.as_str(),
+            "nothex",
+            &hashes.first().map(|h| h.to_lowercase()).unwrap_or_default(),
+        ]) {
+            self.at(at, &format!("{svc}GetTx"), &json!({"hash": h}));
+        }
+        let heights: Vec<i64> = blocks.iter().map(|(h, _)| *h).take(4).collect();
+        for h in &heights {
+            self.at(
+                at,
+                &format!("{svc}GetTxsEvent"),
+                &json!({"query": format!("tx.height={h}")}),
+            );
+        }
+        for q in [
+            json!({"query": "message.action='/cosmos.bank.v1beta1.MsgSend'"}),
+            json!({"query": "tx.height>0", "limit": "2", "page": "2", "order_by": "ORDER_BY_DESC"}),
+            json!({"query": "tx.height>0", "order_by": "ORDER_BY_ASC", "limit": "3"}),
+            json!({"query": "tx.height>0", "page": "100"}),
+            json!({"query": "not a query"}),
+            json!({}),
+        ] {
+            self.at(at, &format!("{svc}GetTxsEvent"), &q);
+        }
+        for h in heights.iter().copied().chain([0, 1, last, last + 1]) {
+            for p in [
+                json!(null),
+                json!({"limit": "1"}),
+                json!({"offset": "1", "limit": "2"}),
+                json!({"offset": "1", "reverse": true}),
+                json!({"offset": "9"}),
+            ] {
+                let mut q = json!({"height": h.to_string()});
+                if !p.is_null() {
+                    q["pagination"] = p;
+                }
+                self.push(
+                    &format!("{svc}GetBlockWithTxs"),
+                    enc(&format!("{svc}GetBlockWithTxs"), &q),
+                    at,
+                    false,
+                );
+                self.push(
+                    &format!("{svc}GetBlockWithTxs"),
+                    enc(&format!("{svc}GetBlockWithTxs"), &q),
+                    mid,
+                    false,
+                );
+            }
+        }
+        let committed = txs.first().map(|(_, t)| t.clone()).unwrap_or_default();
+        for (bytes, mode) in [
+            (b"garbage".to_vec(), "BROADCAST_MODE_SYNC"),
+            (b"garbage2".to_vec(), "BROADCAST_MODE_ASYNC"),
+            (b"garbage".to_vec(), "BROADCAST_MODE_UNSPECIFIED"),
+            (b"garbage".to_vec(), "BROADCAST_MODE_BLOCK"),
+            (Vec::new(), "BROADCAST_MODE_SYNC"),
+            (committed.clone(), "BROADCAST_MODE_SYNC"),
+        ] {
+            self.at(
+                at,
+                &format!("{svc}BroadcastTx"),
+                &json!({"tx_bytes": b64(&bytes), "mode": mode}),
+            );
+        }
+        let ctx = "/celestia.core.v1.tx.Tx/";
+        for h in hashes
+            .iter()
+            .map(String::as_str)
+            .chain([zero.as_str(), "nothex", ""])
+        {
+            self.at(at, &format!("{ctx}TxStatus"), &json!({"tx_id": h}));
+        }
+        let many: Vec<String> = (0..21).map(|i| format!("{i:064x}")).collect();
+        let mut batch: Vec<String> = hashes.iter().take(3).cloned().collect();
+        batch.push(zero.clone());
+        for ids in [batch, many, Vec::new(), vec!["nothex".to_owned()]] {
+            self.at(at, &format!("{ctx}TxStatusBatch"), &json!({"tx_ids": ids}));
+        }
+        let ge = "/celestia.core.v1.gas_estimation.GasEstimator/";
+        for p in [
+            "TX_PRIORITY_UNSPECIFIED",
+            "TX_PRIORITY_LOW",
+            "TX_PRIORITY_MEDIUM",
+            "TX_PRIORITY_HIGH",
+        ] {
+            self.at(
+                at,
+                &format!("{ge}EstimateGasPrice"),
+                &json!({"tx_priority": p}),
+            );
+        }
+        for tx in txs
+            .iter()
+            .map(|(_, t)| t.clone())
+            .take(3)
+            .chain([Vec::new()])
+        {
+            self.at(
+                at,
+                &format!("{ge}EstimateGasPriceAndUsage"),
+                &json!({"tx_priority": "TX_PRIORITY_MEDIUM", "tx_bytes": b64(&tx)}),
+            );
+        }
+    }
+
+    /// `req` at `height`.
+    fn at(&mut self, height: i64, path: &str, req: &Value) {
+        let data = enc(path, req);
+        self.push(path, data, height, false);
+    }
+
     /// Tx service and simulation requests over transactions of the chain.
     pub fn txs(&mut self, txs: &[Vec<u8>]) {
         use prost::Message as _;

@@ -31,6 +31,30 @@ cd conformance/txdecode
 GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out ../fixtures/txdecode
 ```
 
+## Query corpus (M11)
+
+`querycorpus/<scenario>.json.gz` holds every query of a devnet scenario
+asked of Go celestia-appd and Go's answer: ABCI `Query` (gRPC methods of
+every registered service with empty, valid and malformed requests,
+pagination variants, historical heights and proofs, `/store`, `/app`,
+`/p2p`, `/custom` inclusion proofs) and the REST (grpc-gateway) GET form
+of each. `crates/devnet-conformance/tests/query_corpus.rs` replays the
+scenario through the Rust app and requires byte-identical ABCI responses
+and equal REST status and JSON bodies (Go map-order lists compared
+sorted; two documented divergences).
+
+```bash
+# re-drive a recorded scenario into a fresh Go app and record (no consensus)
+DEVNET_BIN=<dir> DEVNET_PORT_OFFSET=10000 conformance/querycorpus/record.sh empty gov ...
+# the celestia-core-backed services (cmtservice, tx index, tx status, gas
+# estimation): a live Go node, its RPC traffic recorded into
+# fixtures/devnet/comet-queries/rpc.json.gz and replayed by a mock
+DEVNET_BIN=<dir> DEVNET_PORT_OFFSET=10000 conformance/querycorpus/record-comet.sh
+```
+
+`crates/devnet-conformance/examples/query_diff.rs` and `rest_diff.rs` print
+the mismatches of one scenario grouped by method.
+
 ## Expanding cached mainnet blocks
 
 The `square-mainnet-blocks` fixture is generated from cached CometBFT block

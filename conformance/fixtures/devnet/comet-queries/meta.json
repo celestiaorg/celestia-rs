@@ -1,0 +1,9 @@
+{
+  "scenario": "comet-queries",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.4.0",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 16,
+  "workload": "comet-workload.sh",
+  "generated_at": "2026-10-14T12:50:50Z"
+}

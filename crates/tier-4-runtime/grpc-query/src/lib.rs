@@ -28,7 +28,7 @@ mod reflection_table;
 mod sdk_misc;
 mod slashing;
 mod staking;
-mod util;
+pub mod util;
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
