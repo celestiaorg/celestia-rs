@@ -88,6 +88,10 @@ pub struct Checkpoint {
 impl<'a> Context<'a> {
     /// Creates a context over `ms` with an infinite gas meter.
     pub fn new(ms: &'a mut MultiStore, header: Header, mode: ExecMode) -> Self {
+        ms.select(match mode {
+            ExecMode::Check | ExecMode::ReCheck => crate::store::Stack::Check,
+            _ => crate::store::Stack::Finalize,
+        });
         Self {
             ms,
             header,

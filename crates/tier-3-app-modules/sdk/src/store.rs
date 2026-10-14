@@ -39,7 +39,19 @@ pub struct MultiStore {
     kinds: BTreeMap<String, Kind>,
     /// Backing data for transient and memory stores.
     volatile: BTreeMap<String, BTreeMap<Vec<u8>, Vec<u8>>>,
-    layers: Vec<Layer>,
+    /// Layer stacks: `[finalize, check]` (`finalizeBlockState`, `checkState`).
+    stacks: [Vec<Layer>; 2],
+    /// Index of the stack used by reads/writes (set by the borrowing context).
+    active: usize,
+}
+
+/// Which branch of committed state a context operates on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stack {
+    /// Block execution (`finalizeBlockState`); flushed into IAVL each block.
+    Finalize = 0,
+    /// Mempool validation (`checkState`); discarded at every commit.
+    Check = 1,
 }
 
 /// Errors from the store layer.
@@ -82,7 +94,8 @@ impl MultiStore {
             root: multistore::Store::new(),
             kinds: BTreeMap::new(),
             volatile: BTreeMap::new(),
-            layers: vec![BTreeMap::new()],
+            stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
+            active: 0,
         }
     }
 
@@ -105,24 +118,34 @@ impl MultiStore {
             .ok_or_else(|| StoreError::UnknownStore(name.to_owned()))
     }
 
+    /// Selects the layer stack used by subsequent operations.
+    pub fn select(&mut self, stack: Stack) {
+        self.active = stack as usize;
+    }
+
+    /// Discards all check-state writes (`setState(execModeCheck)` at commit).
+    pub fn reset_check(&mut self) {
+        self.stacks[Stack::Check as usize] = vec![BTreeMap::new()];
+    }
+
     /// Current branch depth (1 = only the block layer).
     #[must_use]
     pub fn depth(&self) -> usize {
-        self.layers.len()
+        self.stacks[self.active].len()
     }
 
     /// Pushes a new cache layer.
     pub fn branch(&mut self) {
-        self.layers.push(BTreeMap::new());
+        self.stacks[self.active].push(BTreeMap::new());
     }
 
     /// Pops the top layer and merges it into the one below (`cache.Write()`).
     pub fn write_branch(&mut self) {
-        if self.layers.len() < 2 {
+        if self.stacks[self.active].len() < 2 {
             return;
         }
-        let top = self.layers.pop().unwrap_or_default();
-        let below = self.layers.last_mut();
+        let top = self.stacks[self.active].pop().unwrap_or_default();
+        let below = self.stacks[self.active].last_mut();
         if let Some(below) = below {
             for (store, writes) in top {
                 below.entry(store).or_default().extend(writes);
@@ -132,8 +155,8 @@ impl MultiStore {
 
     /// Pops and discards the top layer.
     pub fn discard_branch(&mut self) {
-        if self.layers.len() > 1 {
-            self.layers.pop();
+        if self.stacks[self.active].len() > 1 {
+            self.stacks[self.active].pop();
         }
     }
 
@@ -148,7 +171,7 @@ impl MultiStore {
 
     /// Reads `key`, walking cache layers top-down.
     pub fn get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
-        for layer in self.layers.iter().rev() {
+        for layer in self.stacks[self.active].iter().rev() {
             if let Some(v) = layer.get(store).and_then(|w| w.get(key)) {
                 return Ok(v.clone());
             }
@@ -183,11 +206,11 @@ impl MultiStore {
     }
 
     fn top(&mut self) -> &mut Layer {
-        if self.layers.is_empty() {
-            self.layers.push(BTreeMap::new());
+        if self.stacks[self.active].is_empty() {
+            self.stacks[self.active].push(BTreeMap::new());
         }
-        let n = self.layers.len() - 1;
-        &mut self.layers[n]
+        let n = self.stacks[self.active].len() - 1;
+        &mut self.stacks[self.active][n]
     }
 
     /// Returns all live entries in `[start, end)` merged across layers, in
@@ -216,7 +239,7 @@ impl MultiStore {
                 }
             }
         }
-        for layer in &self.layers {
+        for layer in &self.stacks[self.active] {
             if let Some(w) = layer.get(store) {
                 for (k, v) in w.range((lo.clone(), hi.clone())) {
                     merged.insert(k.clone(), v.clone());
@@ -235,10 +258,13 @@ impl MultiStore {
     /// order per store (stores in name order), and clears transient stores.
     /// Equivalent to `finalizeBlockState.ms.Write()`.
     pub fn flush(&mut self) -> Result<(), StoreError> {
-        while self.layers.len() > 1 {
+        let prev = self.active;
+        self.active = Stack::Finalize as usize;
+        while self.stacks[self.active].len() > 1 {
             self.write_branch();
         }
-        let block = std::mem::take(&mut self.layers[0]);
+        self.active = prev;
+        let block = std::mem::take(&mut self.stacks[Stack::Finalize as usize][0]);
         for (store, writes) in block {
             match self.kind(&store)? {
                 Kind::Iavl => {
@@ -354,5 +380,28 @@ mod tests {
         let mut m = ms();
         assert!(m.get("zz", b"k").is_err());
         assert!(m.set("a", vec![], vec![]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod stack_tests {
+    use super::*;
+
+    #[test]
+    fn check_stack_is_isolated_and_reset() -> Result<(), StoreError> {
+        let mut m = MultiStore::new();
+        m.mount("a", Kind::Iavl)?;
+        m.select(Stack::Check);
+        m.set("a", b"k".to_vec(), b"check".to_vec())?;
+        m.select(Stack::Finalize);
+        assert_eq!(m.get("a", b"k")?, None);
+        m.set("a", b"k".to_vec(), b"final".to_vec())?;
+        m.select(Stack::Check);
+        assert_eq!(m.get("a", b"k")?, Some(b"check".to_vec()));
+        m.flush()?;
+        m.commit()?;
+        m.reset_check();
+        assert_eq!(m.get("a", b"k")?, Some(b"final".to_vec()));
+        Ok(())
     }
 }

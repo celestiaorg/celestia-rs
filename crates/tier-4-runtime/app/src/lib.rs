@@ -250,6 +250,8 @@ impl App {
         // here is a no-op for already-flushed state.
         self.ms.flush()?;
         let id = self.ms.commit()?;
+        // setState(execModeCheck): mempool validation restarts from the new state.
+        self.ms.reset_check();
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         let _ = header;
