@@ -142,8 +142,8 @@ pub fn init_genesis(
         "auth" => x_auth::init_genesis(ctx, genesis)?,
         "bank" => x_bank::init_genesis(ctx, genesis)?,
         // Go's module manager skips modules whose genesis section is null.
-        "blob" | "circuit" | "fibre" | "gov" | "hyperlane" | "minfee" | "mint" | "valaddr"
-        | "warp"
+        "blob" | "circuit" | "fibre" | "forwarding" | "gov" | "hyperlane" | "minfee" | "mint"
+        | "valaddr" | "warp" | "zkism"
             if genesis.is_null() => {}
         "blob" => x_blob::init_genesis_json(ctx, genesis)?,
         "circuit" => x_circuit::init_genesis_json(ctx, genesis)?,
@@ -151,6 +151,8 @@ pub fn init_genesis(
         "mint" => x_mint::init_genesis_json(ctx, genesis)?,
         "fibre" => x_fibre::init_genesis_json(ctx, genesis)?,
         "gov" => x_gov::init_genesis_json(ctx, genesis)?,
+        "zkism" => x_zkism::init_genesis_json(ctx, genesis)?,
+        "forwarding" => x_forwarding::init_genesis_json(ctx, genesis)?,
         "valaddr" => x_valaddr::init_genesis_json(ctx, genesis)?,
         // x/params has no genesis state.
         "params" => x_params::init_genesis(ctx)?,

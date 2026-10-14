@@ -1,0 +1,18 @@
+[package]
+name = "x-forwarding"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "celestia x/forwarding: stateless module; genesis validation."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+sdk = { path = "../../sdk" }
+serde_json = "1"

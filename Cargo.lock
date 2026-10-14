@@ -132,6 +132,7 @@ dependencies = [
  "x-consensus",
  "x-distribution",
  "x-fibre",
+ "x-forwarding",
  "x-gov",
  "x-hyperlane",
  "x-ibc",
@@ -147,6 +148,7 @@ dependencies = [
  "x-upgrade",
  "x-valaddr",
  "x-warp",
+ "x-zkism",
 ]
 
 [[package]]
@@ -2497,6 +2499,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-forwarding"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "x-gov"
 version = "0.0.1"
 dependencies = [
@@ -2682,6 +2693,17 @@ dependencies = [
  "sdk",
  "serde_json",
  "x-hyperlane",
+]
+
+[[package]]
+name = "x-zkism"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto",
+ "hex",
+ "prost",
+ "sdk",
+ "serde_json",
 ]
 
 [[package]]

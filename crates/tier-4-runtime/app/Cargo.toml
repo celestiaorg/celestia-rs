@@ -35,6 +35,7 @@ x-packetforward = { path = "../../tier-3-app-modules/x/packetforward" }
 x-transfer = { path = "../../tier-3-app-modules/x/transfer" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
+x-forwarding = { path = "../../tier-3-app-modules/x/forwarding" }
 x-gov = { path = "../../tier-3-app-modules/x/gov" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-mint = { path = "../../tier-3-app-modules/x/mint" }
@@ -44,6 +45,7 @@ x-hyperlane = { path = "../../tier-3-app-modules/x/hyperlane" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }
 x-warp = { path = "../../tier-3-app-modules/x/warp" }
 x-valaddr = { path = "../../tier-3-app-modules/x/valaddr" }
+x-zkism = { path = "../../tier-3-app-modules/x/zkism" }
 x-staking = { path = "../../tier-3-app-modules/x/staking" }
 x-distribution = { path = "../../tier-3-app-modules/x/distribution" }
 x-slashing = { path = "../../tier-3-app-modules/x/slashing" }
