@@ -1,0 +1,18 @@
+[package]
+name = "x-consensus"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "x/consensus: consensus params store."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
+prost = "0.13"
+sdk = { path = "../../sdk" }

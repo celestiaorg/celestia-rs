@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 abci-server = { path = "../tier-4-runtime/abci-server" }
+app = { path = "../tier-4-runtime/app" }
 anyhow.workspace = true
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }

@@ -33,7 +33,7 @@ pub struct Header {
     /// Block height (0 during `InitChain`).
     pub height: i64,
     /// Block time.
-    pub time: prost_types::Timestamp,
+    pub time: pbjson_types::Timestamp,
     /// Proposer consensus address.
     pub proposer_address: Vec<u8>,
     /// Block hash (empty during `InitChain`).

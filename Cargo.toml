@@ -22,7 +22,10 @@ members = [
     "crates/tier-3-app-modules/bank",
     "crates/tier-3-app-modules/staking",
     "crates/tier-3-app-modules/sdk",
+    "crates/tier-3-app-modules/x/upgrade",
+    "crates/tier-3-app-modules/x/consensus",
     "crates/tier-4-runtime/abci-server",
+    "crates/tier-4-runtime/app",
     "crates/devnet-conformance",
     "crates/m1-integration",
     "crates/m2-integration",
@@ -57,6 +60,12 @@ missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 # New in clippy 1.99; `assert!(x.is_empty())` reads fine in tests.
 assert_is_empty = "allow"
+# Ported Go identifiers (InitChain, CometBFT, …) appear throughout docs.
+doc_markdown = "allow"
+# ABCI handlers take requests by value to mirror the protocol.
+needless_pass_by_value = "allow"
+# Keeper functions keep Result signatures uniform with their Go originals.
+unnecessary_wraps = "allow"
 
 [workspace.dependencies]
 anyhow = "1"

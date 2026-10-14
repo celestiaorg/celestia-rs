@@ -1,0 +1,168 @@
+//! Module ordering and dispatch (`app/modules.go`).
+//!
+//! Every module named in Go's order lists appears here. Modules not yet
+//! ported are explicit no-ops so the differential harness can attribute
+//! each diverging store to the module that owns it.
+
+use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
+use sdk::{Context, Result};
+
+/// `SetOrderInitGenesis` (also export order).
+pub const INIT_GENESIS: &[&str] = &[
+    "capability",
+    "consensus",
+    "auth",
+    "bank",
+    "distribution",
+    "staking",
+    "slashing",
+    "gov",
+    "mint",
+    "ibc",
+    "minfee",
+    "genutil",
+    "evidence",
+    "transfer",
+    "blob",
+    "vesting",
+    "feegrant",
+    "params",
+    "authz",
+    "signal",
+    "packetfowardmiddleware",
+    "interchainaccounts",
+    "upgrade",
+    "circuit",
+    "hyperlane",
+    "warp",
+    "zkism",
+    "forwarding",
+    "fibre",
+    "valaddr",
+];
+
+/// `SetOrderPreBlockers`.
+pub const PRE_BLOCKERS: &[&str] = &["upgrade"];
+
+/// `SetOrderBeginBlockers`.
+pub const BEGIN_BLOCKERS: &[&str] = &[
+    "capability",
+    "mint",
+    "distribution",
+    "slashing",
+    "evidence",
+    "staking",
+    "ibc",
+    "transfer",
+    "genutil",
+    "blob",
+    "params",
+    "authz",
+    "signal",
+    "minfee",
+    "interchainaccounts",
+    "packetfowardmiddleware",
+    "zkism",
+    "fibre",
+    "valaddr",
+];
+
+/// `SetOrderEndBlockers`.
+pub const END_BLOCKERS: &[&str] = &[
+    "gov",
+    "staking",
+    "capability",
+    "mint",
+    "distribution",
+    "slashing",
+    "evidence",
+    "ibc",
+    "transfer",
+    "feegrant",
+    "auth",
+    "bank",
+    "genutil",
+    "blob",
+    "params",
+    "authz",
+    "vesting",
+    "signal",
+    "minfee",
+    "packetfowardmiddleware",
+    "interchainaccounts",
+    "fibre",
+    "valaddr",
+];
+
+/// `ModuleManager.GetVersionMap()`: every module with its consensus version.
+pub const VERSION_MAP: &[(&str, u64)] = &[
+    ("06-solomachine", 0),
+    ("07-tendermint", 0),
+    ("auth", 5),
+    ("authz", 2),
+    ("bank", 4),
+    ("blob", 3),
+    ("capability", 1),
+    ("circuit", 1),
+    ("consensus", x_consensus::CONSENSUS_VERSION),
+    ("distribution", 4),
+    ("evidence", 1),
+    ("feegrant", 2),
+    ("fibre", 1),
+    ("forwarding", 1),
+    ("genutil", 1),
+    ("gov", 5),
+    ("hyperlane", 1),
+    ("ibc", 6),
+    ("interchainaccounts", 3),
+    ("minfee", 2),
+    ("mint", 1),
+    ("packetfowardmiddleware", 3),
+    ("params", 1),
+    ("signal", 3),
+    ("slashing", 4),
+    ("staking", 5),
+    ("transfer", 5),
+    ("upgrade", x_upgrade::CONSENSUS_VERSION),
+    ("valaddr", 1),
+    ("vesting", 1),
+    ("warp", 1),
+    ("zkism", 1),
+];
+
+/// Runs one module's `InitGenesis`.
+pub fn init_genesis(
+    ctx: &mut Context<'_>,
+    module: &str,
+    _genesis: &serde_json::Value,
+) -> Result<Vec<ValidatorUpdate>> {
+    match module {
+        // Consensus params are stored by baseapp before the init chainer.
+        "consensus" | "upgrade" => {}
+        _ => tracing::trace!(module, "init_genesis not ported"),
+    }
+    let _ = ctx;
+    Ok(Vec::new())
+}
+
+/// Runs one module's `PreBlock`.
+pub fn pre_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
+    match module {
+        "upgrade" => x_upgrade::pre_block(ctx),
+        _ => Ok(()),
+    }
+}
+
+/// Runs one module's `BeginBlock`.
+pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
+    let _ = ctx;
+    tracing::trace!(module, "begin_block not ported");
+    Ok(())
+}
+
+/// Runs one module's `EndBlock`.
+pub fn end_block(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
+    let _ = ctx;
+    tracing::trace!(module, "end_block not ported");
+    Ok(Vec::new())
+}

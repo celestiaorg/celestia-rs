@@ -1,6 +1,8 @@
 //! Loaders for `conformance/fixtures/devnet/<scenario>/` (see
 //! `conformance/devnet/README.md`).
 
+pub mod replay;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 

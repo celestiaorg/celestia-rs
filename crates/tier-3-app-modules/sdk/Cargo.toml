@@ -19,5 +19,5 @@ hash = { path = "../../tier-0-primitives/hash" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
 multistore = { path = "../../tier-2-state-and-store/multistore" }
 prost = "0.13"
-prost-types = "0.13"
+pbjson-types = "0.7"
 thiserror = "2"
