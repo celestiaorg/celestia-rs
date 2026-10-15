@@ -3,7 +3,7 @@
 //! `StdTx` whose `MsgExec` nests `MsgExec` thousands of levels deep. Go
 //! decodes 8000 levels (its stacks grow); the Rust codec must not abort.
 
-#![allow(clippy::unwrap_used, clippy::panic)]
+#![allow(clippy::unwrap_used, clippy::panic, clippy::cast_possible_truncation)]
 
 fn varint(mut v: u64, out: &mut Vec<u8>) {
     while v >= 0x80 {
