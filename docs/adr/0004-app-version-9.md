@@ -149,11 +149,13 @@ Code without a context (`ValidateBasic`) reads the app version the app
 sets per ABCI call (`sdk::version`).
 
 Not ported (no scenario reaches them; listed for completeness):
-distribution's reward-ratio overflow panic, hyperlane v1.1.0's string
-`receiver_contract` / hex-string multisig validator comparison / IGP
+distribution's reward-ratio overflow panic, hyperlane v1.1.0's
+hex-string multisig validator comparison / IGP
 multi-denom `maxFee` check / amino names in `SIGN_MODE_LEGACY_AMINO_JSON`,
 v9 query surface (fibre / valaddr services and `cosmos.reflection.v1`
-absent), x/zkism's paginated genesis export.
+absent), x/zkism's paginated genesis export. (hyperlane v1.1.0's string
+`receiver_contract` is ported since ADR 0005's work: stored as given,
+compared lowercased, decoded when dispatching.)
 
 ## Verification
 

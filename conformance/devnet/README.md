@@ -82,6 +82,7 @@ and runs the `v10` handler in the next PreBlocker.
 ```bash
 APP_V9=1 conformance/devnet/devnet.sh v9-staking 40 conformance/devnet/workloads/staking.sh
 APP_V9=1 conformance/devnet/devnet.sh v9-exec 30 conformance/devnet/workloads/v9-exec.sh
+APP_V9=1 conformance/devnet/devnet.sh v9-utf8 30 conformance/devnet/workloads/utf8.sh
 APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh v9-upgrade 40 conformance/devnet/workloads/v9-upgrade.sh
 ```
 
@@ -366,3 +367,14 @@ proposers, restarts, max RSS and disk per node, stalls, chaos events and
 the most frequent Rust warnings. `build-bins.sh` builds the Go binaries
 (with download retries); the nightly workflow runs the interop scripts and
 a 30-minute soak.
+
+`workloads/utf8.sh` (scenarios `utf8` and, with `APP_V9=1`, `v9-utf8`)
+sends txs whose strings carry invalid UTF-8 (ADR 0005). The CLI cannot
+build them (it round-trips strings through JSON), so `fuzz-diff craft`
+signs them with the devnet's test keyring (`SIGN_MODE_DIRECT` and
+`SIGN_MODE_LEGACY_AMINO_JSON`); the workload broadcasts them over RPC:
+
+```bash
+cargo build --release -p fuzz-diff
+conformance/devnet/devnet.sh utf8 30 conformance/devnet/workloads/utf8.sh
+```
