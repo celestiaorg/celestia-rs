@@ -33,6 +33,7 @@ validation works.
 | Signing | CometBFT-compatible local `priv_validator_key.json` / `priv_validator_state.json` with persistent double-sign guard. Remote signers are out of scope for now. |
 | Storage | Validator-minimal pruning by default (512 GB SSD budget). No archival mode required. |
 | Process | Go-generated fixtures and differential tests are **mandatory for consensus-critical code**. Short spec per milestone (no per-crate spec ceremony); coverage is a target, not a hard gate. |
+| Overnight scope (2026-10-15) | If the network allows, go as far as a **Mocha validator** (local key, faucet funds, testnet tokens only; no mainnet keys). On a usage-limit hit, pause and auto-resume at the reset. When blocked on the network, work on performance tuning, release-build hardening (macOS aarch64, packaging, service files) and fuzzing of consensus-critical code. |
 | Workflow | Single agent; push directly to `main` after the local gate (`fmt`, `clippy -D warnings`, `test`). Progress lives in `MILESTONES.md` + commit log; blockers go to `OPEN_QUESTIONS.md` and work continues on unblocked items using Go behavior as the default answer. |
 
 ## Consequences
