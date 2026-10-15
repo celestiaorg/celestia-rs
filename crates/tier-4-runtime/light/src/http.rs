@@ -452,10 +452,21 @@ pub fn parse_rfc3339(s: &str) -> RpcResult<Time> {
     }
     let offset = match &s[i..] {
         "Z" | "z" => 0,
-        tz if tz.len() == 6 => {
+        // `±hh:mm`; byte checks first: slicing a non-ASCII offset by byte
+        // index panicked (fuzzing, `light_json`).
+        tz if tz.len() == 6
+            && matches!(tz.as_bytes()[0], b'+' | b'-')
+            && tz.as_bytes()[3] == b':' =>
+        {
             let sign = if tz.starts_with('-') { -1 } else { 1 };
-            let oh: i64 = tz[1..3].parse().map_err(|_| bad())?;
-            let om: i64 = tz[4..6].parse().map_err(|_| bad())?;
+            let digits = |r: std::ops::Range<usize>| -> RpcResult<i64> {
+                tz.get(r)
+                    .filter(|x| x.bytes().all(|c| c.is_ascii_digit()))
+                    .and_then(|x| x.parse().ok())
+                    .ok_or_else(bad)
+            };
+            let oh = digits(1..3)?;
+            let om = digits(4..6)?;
             sign * (oh * 3600 + om * 60)
         }
         _ => return Err(bad()),
@@ -904,6 +915,17 @@ pub mod fuzzing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rfc3339_non_ascii_offset() {
+        // Regression (fuzzing, light_json): byte-index slicing of a
+        // non-ASCII offset panicked.
+        assert!(parse_rfc3339("2025-10-14T10:49:00.123\u{5c2}nd").is_err());
+        assert!(parse_rfc3339("2025-10-14T10:49:00+0\u{5c2}0").is_err());
+        assert!(parse_rfc3339("2025-10-14T10:49:00x01:00").is_err());
+        let t = parse_rfc3339("2026-10-14T10:49:00+01:00").unwrap_or_default();
+        assert_eq!(t.canonical_string(), "2026-10-14T09:49:00Z");
+    }
 
     #[test]
     fn rfc3339() {

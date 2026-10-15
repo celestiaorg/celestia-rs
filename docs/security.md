@@ -1,15 +1,129 @@
 # Dependency security triage
 
-Last triage: 2026-10-14. Rust: `cargo deny check advisories` (cargo-deny
-0.18.9, RustSec advisory DB of that day); Go: `govulncheck` v1.1.4 on every
-module under `conformance/` against the OSV Go database (symbol-level:
-*called* = reachable from the module's code, *imported* = package imported
-but vulnerable symbol not reached, *module* = only required).
+Last triage: 2026-10-15 (previous: 2026-10-14). Tools, all with the
+advisory data of that day:
+
+- Rust: `cargo audit` (cargo-audit 0.22.2) and `cargo deny check
+  advisories` (RustSec database).
+- Dependabot's view: `osv-scanner` v2.3.5 on every manifest and
+  `api.osv.dev` queries for every `require` of every `go.mod`. GitHub
+  advisories (GHSA) are part of OSV, so this reproduces what Dependabot
+  matches.
+- Reachability: `govulncheck` v1.1.4 on every module under `conformance/`
+  (symbol-level: *called* = reachable from the module's code, *imported* =
+  package imported but vulnerable symbol not reached, *module* = only
+  required).
 
 Nothing in this file affects the node binary except the Rust section: the
 Go modules are test tooling (fixture generators, oracles, recorders). Their
 outputs are committed fixtures, so a Go dependency is bumped only when the
-generator's output provably stays byte-identical.
+tool's output provably stays byte-identical.
+
+## Dependabot alerts (2026-10-15)
+
+GitHub showed 28 open alerts. The alert list cannot be read from the
+development container (the API needs the Dependabot-alerts permission), so
+the set was rebuilt from the same advisory data: GitHub-reviewed advisories
+(those with a GHSA record) matched against every manifest. That gives
+these 29 (manifest, package, advisory) alerts, all in Go test tools, none
+in `Cargo.lock`:
+
+| Manifest | Package | Advisories (GHSA) | Severity | Fixed in | Disposition |
+|---|---|---|---|---|---|
+| `conformance/antereplay` | google.golang.org/grpc v1.78.0 | GHSA-p77j-4mvh-x3m3; GHSA-hrxh-6v49-42gf, GHSA-vp52-pcj8-j9qc, GHSA-2v4p-qf9q-27wj; GHSA-qc2q-p7wx-3px3 | critical; high ×3; moderate | v1.83.2 | bumped to v1.83.2 |
+| `conformance/antereplay` | github.com/ethereum/go-ethereum v1.15.8 | GHSA-mq3p-rrmp-79jg, GHSA-mr7q-c9w9-wh4h, GHSA-2gjw-fg97-vg3r; GHSA-689v-6xwf-5jf3, GHSA-m6j8-rg6r-7mv8 | high ×3; moderate ×2 | v1.17.0 | bumped to v1.17.0 |
+| `conformance/antereplay` | go.opentelemetry.io/otel v1.39.0 | GHSA-mh2q-q3fh-2475 | high | v1.41.0 | bumped to v1.45.0 |
+| `conformance/antereplay` | go.opentelemetry.io/otel/sdk v1.39.0 | GHSA-9h8m-3fm2-qjrq, GHSA-hfvc-g4fc-pqhx; GHSA-8wmf-6v46-5gfg | high ×2; low | v1.45.0 | bumped to v1.45.0 |
+| `conformance/antereplay` | github.com/go-jose/go-jose/v4 v4.1.3 | GHSA-78h2-9frx-2jm8 | high | v4.1.4 | bumped |
+| `conformance/antereplay` | github.com/hashicorp/go-getter v1.7.9 | GHSA-92mm-2pjq-r785 | high | v1.8.6 | bumped |
+| `conformance/antereplay` | github.com/ulikunitz/xz v0.5.14 | GHSA-jc7w-c686-c4v9 | moderate | v0.5.15 | bumped |
+| `conformance/antereplay` | aws-sdk-go-v2 eventstream v1.7.4, service/s3 v1.95.1 | GHSA-xmrv-pmrh-hhx2 (×2) | moderate | v1.7.8 / v1.97.3 | bumped |
+| `conformance/antereplay` | filippo.io/edwards25519 v1.1.0 | GHSA-fw7p-63qq-7hpr | low | v1.1.1 | bumped |
+| `conformance/fixturegen` | google.golang.org/grpc v1.83.1 | GHSA-2v4p-qf9q-27wj | high | v1.83.2 | bumped |
+| `conformance/fixturegen` | github.com/dvsekhvalnov/jose2go v1.6.0 | GHSA-9mj6-hxhv-w67j | high | v1.7.0 | bumped |
+| `conformance/fixturegen` | filippo.io/edwards25519 v1.0.0 | GHSA-fw7p-63qq-7hpr | low | v1.1.1 | bumped |
+| `conformance/fuzzoracle/v9` | google.golang.org/grpc v1.82.1 | GHSA-2v4p-qf9q-27wj, GHSA-vp52-pcj8-j9qc; GHSA-qc2q-p7wx-3px3 | high ×2; moderate | v1.83.2 | bumped to v1.83.2 |
+| `conformance/fuzzoracle/v9` | otel/sdk, otlptrace, otlptracehttp v1.43.0 | GHSA-8wmf-6v46-5gfg (×3) | low | v1.45.0 | bumped to v1.45.0 |
+
+None of these modules is part of the behavior being reproduced (they are
+transport, telemetry, cloud-storage and Ethereum libraries that
+celestia-app's module graph pulls in), so they were bumped (category (a)).
+The reference modules themselves (celestia-app, the cosmos-sdk / ibc-go
+forks, celestia-core, go-square, hyperlane-cosmos) did not move. The same
+bumps also cleared Go-database-only findings Dependabot does not show:
+klauspost/compress GO-2026-5841 (antereplay, devnet-oracle, fuzzoracle/v9 →
+v1.18.7); x/net GO-2026-6603/6610/6611/6612/6617, x/crypto
+GO-2026-6303/6354/6355, x/text GO-2026-6629, x/mod GO-2026-6179/6180, otel
+GO-2026-5158 and the standard library (toolchain go1.26.6 → go1.26.9) in
+fuzzoracle/v9.
+
+Versions were raised with `go get <module>@<fixed>` only (no `go mod
+tidy`), so every other `require` line of the pinned graphs is unchanged.
+Verification, old binary vs new binary:
+
+- **antereplay** (celestia-app v6.4.10 ante oracle): every case of
+  `conformance/fixtures/ante/mainnet-tx-corpus.json.zst` (1,062 mainnet
+  txs, account / balance snapshots from the corpus) replayed through the
+  binary: output byte-identical before and after, and equal to the
+  committed `expected` outcomes; `go test ./...` passes. (The 2026-10-14
+  note that this needs mainnet RPC holds only for building a new corpus;
+  replaying the committed one is offline.)
+- **fixturegen**: all 73 `xtask refresh-fixtures` scenarios regenerated
+  into a temp dir, byte-identical to the committed fixtures; `go test`
+  passes.
+- **fuzzoracle/v9** (celestia-app v9.0.8 oracle): 10,226 oracle requests
+  (every input of `crates/fuzz-diff/tests/regressions.jsonl` plus seeded
+  byte mutations of the tx inputs, sent as `tx`, `blobtx`, `iw` and
+  `fibre`): responses byte-identical.
+- **devnet-oracle**: state dumps of a devnet `application.db` at four
+  heights: identical.
+
+### Alerts that may remain (dismiss in the GitHub UI)
+
+GitHub's Go dependency graph reads `require` lines; whether it applies
+`replace` directives decides if the alerts below exist at all (OSV
+tooling applies them and reports none). If they are listed, they stay
+by design. Dismiss each with the given reason (Security → Dependabot →
+alert → Dismiss):
+
+| Manifest(s) | Package | Advisory | Dismiss as | Justification |
+|---|---|---|---|---|
+| antereplay, antevectors, mintvectors, txdecode, fuzzoracle/v9, fuzzoracle/v10 | github.com/cosmos/cosmos-sdk v0.50.13 | GHSA-p22h-3m2v-cmgh | Vulnerable code is not actually used | `replace`d by the celestiaorg/cosmos-sdk fork the parity target ships (v0.52.12 for v10.4.0, v0.52.8 for v9.0.8, v0.51.8 for v6.4.10); upstream v0.50.13 is not in the build. |
+| antereplay, consensusvectors, ctypesvectors, evidencevectors, lightvectors, rpccorpus/recorder | github.com/cometbft/cometbft v0.38.17 | GHSA-c32p-wcqj-j677, GHSA-hrhf-2vcr-ghch | Vulnerable code is not actually used | `replace`d by celestia-core (v0.42.3 / v0.39.23); upstream cometbft is not in the build. |
+| fuzzoracle/v9 | github.com/tendermint/tendermint v0.0.0-00010101000000-000000000000 | GHSA-3fm3-m23v-5r46, GHSA-6jqj-f58p-mrw3, GHSA-v24h-pjjv-mcp6 | Vulnerable code is not actually used | Placeholder `require` of celestia-app v9.0.8's go.mod, `replace`d by celestia-core v1.55.0-tm-v0.34.35; no tendermint code at that version exists. |
+| Cargo.lock (only if GitHub lists it) | lru 0.7.8 | RUSTSEC-2026-0253 | Vulnerable code is not actually used | Only via reed-solomon-erasure 6.0.0 (latest), which calls `get` / `put`, never the unsound `pop()`; accepted in deny.toml. |
+
+Any other alert still open after this commit is new and needs triage.
+GitHub also offers auto-triage rules (Settings → Code security →
+Dependabot rules) that can auto-dismiss alerts by package name for the
+`conformance/` manifests, so the replaced-module alerts do not come back.
+
+### Dependabot configuration
+
+`.github/dependabot.yml` (there was none; the alerts' pull requests came
+from repository-level security updates):
+
+- **cargo** (root): weekly; all minor / patch version updates in one
+  grouped pull request, all security updates in one grouped pull request.
+  `flate2`, `blst` and `axum` (pinned with `=`) are ignored, and new
+  *major* versions of the consensus-sensitive families listed under
+  "Deferred majors" are ignored (migrated by hand).
+- **github-actions**: weekly, one grouped pull request.
+- **gomod** (all 16 `conformance/` modules in one entry): no version
+  updates (`open-pull-requests-limit: 0`); security updates grouped into
+  one pull request; the pinned reference modules (`github.com/celestiaorg/*`,
+  cosmos-sdk, `cosmossdk.io/*`, cometbft, tendermint, ibc-go, ibc-apps,
+  gogoproto, iavl, cosmos-db, hyperlane-cosmos) are ignored.
+
+How `ignore` and security updates interact: `ignore` conditions apply to
+security updates too (an ignored dependency still gets an *alert*, but no
+pull request), and `open-pull-requests-limit: 0` disables only version
+updates. So: pinned oracle modules raise alerts but no pull requests;
+every other Go and Rust advisory raises a grouped pull request. An
+advisory whose only fix is an ignored Rust major still shows up as an
+alert and fails `cargo deny check advisories` in CI (`ci.yml` on every
+push, `nightly.yml` job `advisories` daily, which catches new advisories
+without a commit).
 
 ## Rust (workspace)
 
@@ -25,12 +139,43 @@ parses CVSS 4.0 advisories, which crashed older versions).
 | RUSTSEC-2024-0384 (unmaintained) | instant 0.1.13 via parking_lot 0.11 via reed-solomon-erasure | **accepted**: no maintained release of reed-solomon-erasure |
 | RUSTSEC-2024-0436 (unmaintained) | paste 1.0.15 (proc macro) via ark-ff (x/zkism) and tendermint-proto | **accepted**: build-time only |
 
-The accepted ones are the `ignore` list of `deny.toml`, each with its reason.
+The accepted ones are the `ignore` list of `deny.toml`, each with its
+reason; re-check them at every triage (next: 2027-01-15, or when
+reed-solomon-erasure / ark-ff release). On 2026-10-15 `cargo audit`
+reported no vulnerability, only these three warnings.
+
+### Updates (2026-10-15)
+
+- `cargo update`: every dependency at its newest semver-compatible
+  release that supports rustc 1.88 (67 lockfile changes; among them
+  serde_json 1.0.154, bytes 1.12.1, regex 1.13.1, clap 4.6.7, libc
+  0.2.190, zeroize 1.9.1, blake3 1.8.7, proptest 1.12.0).
+- Majors taken: zstd 0.13 → 0.14 (test fixture decompression only), and
+  tikv-jemallocator / tikv-jemalloc-ctl 0.6 → 0.7 (jemalloc 5.3.1; the
+  optional `jemalloc` / `memstats` features of `celestia-rs`).
+- Kept below the latest semver-compatible release on purpose: `flate2
+  =1.1.2`, `blst =0.3.14`, `axum =0.7.9` (exact pins); `enum-ordinalize`
+  4.4 and `redb` 4 need rustc 1.89 / 1.90 (above the MSRV).
+
+### Deferred majors
+
+| Crates | Latest | Why not now |
+|---|---|---|
+| prost / prost-types / prost-build 0.13, prost-reflect 0.14, protox 0.7, pbjson* 0.7, tonic 0.12, cosmos-sdk-proto 0.26 | 0.14 / 0.16 / 0.10 / 0.9 / 0.14 / 0.27 | Protobuf encoding of every tx, block and query (consensus-critical); one coordinated migration with regenerated code, gated on the full parity suite. |
+| sha2, sha3, ripemd, digest, hmac, hkdf, pbkdf2 0.10 – 0.12; k256, p256 0.13; x25519-dalek 2; aes, aes-gcm, chacha20poly1305, argon2, bcrypt | digest-0.11 generation | One RustCrypto migration (the traits changed together): hashing, signatures, secret connection, keyring file encryption. No advisory against the current versions. |
+| rocksdb 0.24, redb 2 | 0.25, 4 | Storage engine of the node (on-disk format, compaction behavior); redb 4 needs rustc 1.90. |
+| bech32 0.9 | 0.12 | Address encoding; the API was rewritten (and Go's btcutil rules are ported in `encoding::bech32`). |
+| num-bigint 0.4, ark-* 0.5 | 0.5, 0.6 | `math` (cosmossdk.io/math port), `legacy-amino`, `x/warp`, `x/zkism` (Groth16 verification). |
+| rand 0.8 / 0.9, getrandom 0.2, bip39 2 | 0.10, 0.4, 3 | Key generation and mnemonics (Go keyring compatibility); rand 0.8 / 0.9 are both in use. |
+| axum 0.7.9 (exact), tokio-tungstenite 0.24, base64 0.22 | 0.8, 0.30, 0.23 | RPC / REST / gRPC-web surface at Go parity; tungstenite and base64 follow axum and tonic (taking them alone adds a second / third copy). |
+| toml 0.8 | 1.1 | Operator config files (TOML 1.1 parsing / serialization differences); bump with a config round-trip test. |
 
 ## Go (`conformance/*` test tools)
 
 ### Fixed
 
+- **2026-10-15**: the Dependabot alert set above (antereplay, fixturegen,
+  fuzzoracle/v9, devnet-oracle).
 - **Go toolchain** of every module: `toolchain go1.26.9` (was go1.24.7 to
   go1.26.6). This removes all *called* standard-library findings (net/http
   HTTP/2 and HTTP/1 desync / DoS, crypto/tls, crypto/x509, net/url,
@@ -45,8 +190,8 @@ The accepted ones are the `ignore` list of `deny.toml`, each with its reason.
   (GO-2026-4361, GO-2025-3443/4025), cosmossdk.io/math v1.3.0 → v1.4.0
   (GO-2024-3279), grpc v1.64.1 → v1.83.1, klauspost/compress → v1.18.7.
 
-Byte-identity of the outputs after the bumps (regenerated into a temp dir
-and compared with the committed fixtures):
+Byte-identity of the outputs after the 2026-10-14 bumps (regenerated into
+a temp dir and compared with the committed fixtures):
 
 - fixturegen: all 71 offline scenarios identical (`square-mainnet-blocks`
   and `m2-integration-state-diffs` fetch mainnet data and cannot run here;
@@ -64,10 +209,10 @@ and compared with the committed fixtures):
 
 | Module | Remaining findings | Why |
 |---|---|---|
-| `antereplay` | called: go-ethereum v1.15.8 (GO-2026-4314/4315/4507/4508), otel v1.39.0 (GO-2026-4394/5506/6505), grpc v1.78.0 (GO-2026-6061/6348), go-jose v4.1.3, go-getter v1.7.9, aws eventstream v1.7.4, ulikunitz/xz v0.5.14 | The M3 ante replay oracle pinned to celestia-app **v6.4.10**'s exact dependency set (its replace directives) so it reproduces v6's ante outcomes. It only regenerates the mainnet tx corpus, which needs public mainnet RPC access (`OPEN_QUESTIONS.md` #1), so byte-identity after a bump cannot be checked. The vulnerable code is reachable only through celestia-app's package initialisation; the tool reads fixture files and never serves the network. |
-| every module | golang.org/x/crypto `openpgp` (GO-2026-5932), *module* level | No fixed version (package deprecated); not imported. |
-| fixturegen | cometbft v0.38 blocksync (GO-2025-3442, fixed only in v1.0.1), cosmos-sdk x/crisis (GO-2023-1821/1881, no fix), grpc GO-2026-6443 (*imported*) | Not reachable from the generators; cometbft v1 would change the Go types the fixtures are generated from. |
-| antevectors, txdecode, mintvectors, consensusvectors, ctypesvectors, evidencevectors, lightvectors, p2pvectors, rpccorpus/recorder | only the x/crypto `openpgp` entry | Pinned to celestia-app v10.4.0 / celestia-core v0.42.3 (the parity target); nothing reachable remains. |
+| every module | golang.org/x/crypto `openpgp` (GO-2026-5932), *module* level | No fixed version (package deprecated); not imported; no GHSA, so no Dependabot alert. |
+| fixturegen, devnet-oracle | cometbft v0.38 blocksync (GO-2025-3442, fixed only in v1.0.1), cosmos-sdk x/crisis (GO-2023-1821/1881, no fix) | Not reachable from the generators; cometbft v1 would change the Go types the fixtures are generated from. The GHSA records (GHSA-22qq-3xwm-r5x4: fixed in v0.38.17; GHSA-qfc5-6r3j-jj22 / GHSA-w5w5-2882-47pc: last affected v0.47.2 / v0.50.0-alpha.1) do not cover these versions, so no Dependabot alert. |
+| antereplay, fuzzoracle/v9 | aws-sdk-go v1 S3 crypto client (GO-2022-0635/0646, no fix in v1) | *module* level; the S3 crypto client is not imported (the GHSA records list v1.34.0 as fixed, so no Dependabot alert). |
+| every module with celestia-app / celestia-core | cosmos-sdk / cometbft / tendermint `require` versions | Replaced by the celestiaorg forks; see "Alerts that may remain". |
 
 ## Fuzzing
 
@@ -154,6 +299,19 @@ Seed corpora (`fuzz/corpus/<target>`, < 1 MB) come from
 `fuzz-diff seed-corpus fuzz/corpus` (devnet txs, amino vectors, blocks) and
 hand-written network messages.
 
+### Runs (2026-10-15)
+
+| Harness | Inputs | Result |
+|---|---|---|
+| `fuzz-diff` v10 `tx,blobtx,iw,fibre` | 6 × 500 000 (seeds 1–8; ~13 000 decodable txs per run) | findings 1, 5 fixed; then clean |
+| `fuzz-diff` v9 `tx,blobtx,iw,fibre` | 4 × 500 000 | finding 4 fixed; then clean |
+| `fuzz-diff` `eds` v10 / v9 | 15 000 squares each (plus 8000 before the fixes) | findings 2, 3 fixed; then clean |
+| `fuzz-diff` `amino_*` + crafted deep inputs | vectors + mutations | findings 7, 8 |
+| `fuzz-diff pp` (ProcessProposal) | `blob` 610, `v9-blob` 800, `v9-exec` 600, `fibre` 2265, `v9-hyperlane` 600, `staking` 400 mutated proposals (≈ 60 % accepted by Go) | no mismatch |
+| cargo-fuzz `txdecode` / `amino` / `square` / `shares_parse` | 5 min each: 8.3 M / 14.1 M / 20.2 M / 66.6 M execs | no crash |
+| cargo-fuzz `p2p_msgs` / `mconn_recv` / `abci_frame` / `p2p_handshake` | 5 / 5 / 4 / 4 min: 51.0 M / 2.2 M / 4.6 M / 1.4 M execs | no crash |
+| cargo-fuzz `rpc_request` / `light_json` | until the first crash (12 k / 19.4 M execs) | findings 9, 10 fixed |
+
 ### Findings (2026-10-15)
 
 Fixed (each pinned by a test; consensus-relevant ones also by
@@ -169,6 +327,8 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 6 | RPC (`rpc::json`) | recursive JSON parser: a JSON-RPC body of nested `[` overflowed the worker stack and aborted the node; Go fails the 10 001st level with `exceeded max depth` | remote crash through the public RPC port | iterative parser with Go's limit, iterative drop and id formatting; `rpc/tests/deep_json.rs` |
 | 7 | `legacy-amino` JSON scanner (`TxEncodeAmino`) | same recursion | remote crash through ABCI / gRPC / REST queries | iterative scanner with Go's limit; `gojson` unit test |
 | 8 | `legacy-amino` codec | recursion per nested value: a `StdTx` with `MsgExec` nested a few thousand levels (Go decodes 8000) overflowed a 2 MiB query-handler stack | remote crash through queries | large-stack thread for inputs > 4 KB; `legacy-amino/tests/deep_nesting.rs` |
+| 9 | RPC URI arguments (`rpc::params::uri_arg`) | `arg[..2]` sliced inside a multi-byte character (`?height=aʰ`): handler panic | remote panic per request | byte-wise `0x` check (Go `strings.HasPrefix(strings.ToLower(arg), "0x")`); `params` unit test |
+| 10 | light client (`light::http::parse_rfc3339`) | a non-ASCII time-zone offset from an RPC provider was sliced by byte index: panic | malicious provider crashes the light client / state sync | byte checks of `±hh:mm` like Go's RFC 3339 layout; `http` unit test |
 
 Open:
 
@@ -195,9 +355,22 @@ Open:
 ```bash
 # Rust (fetch the advisory DB with git if cargo-deny cannot reach GitHub)
 cargo deny check advisories
+cargo audit
 
-# Go: govulncheck needs vuln.go.dev; without it, build a local database from
-# https://osv-vulnerabilities.storage.googleapis.com/Go/all.zip
+# Dependabot's view (GHSA / OSV data), one manifest at a time
+osv-scanner --format json -L Cargo.lock
+osv-scanner --format json -L conformance/<module>/go.mod
+
+# Go reachability: govulncheck needs vuln.go.dev; without it, build a local
+# database from https://osv-vulnerabilities.storage.googleapis.com/Go/all.zip
 # (index/db.json, index/modules.json, ID/<id>.json) and pass -db file://...
 cd conformance/<module> && GOFLAGS=-mod=mod govulncheck ./...
+cd conformance/<module> && GOFLAGS=-mod=mod govulncheck -scan module
+
+# Bump a Go test tool: `go get <module>@<fixed>` (no `go mod tidy` in the
+# pinned oracles), rebuild, and compare the tool's output with the old
+# binary's / the committed fixtures (antereplay: replay the cases of
+# conformance/fixtures/ante/mainnet-tx-corpus.json.zst; fixturegen: every
+# `xtask refresh-fixtures` scenario into a temp dir; fuzzoracle: the same
+# request lines to both binaries).
 ```

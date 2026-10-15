@@ -381,7 +381,10 @@ pub fn uri_arg(ty: ArgType, arg: &str) -> Result<Arg, String> {
         !b.is_empty() && b.bytes().all(|c| c.is_ascii_digit())
     };
     let is_quoted = arg.starts_with('"') && arg.ends_with('"');
-    let is_hex = arg.len() >= 2 && arg[..2].eq_ignore_ascii_case("0x");
+    let is_hex = arg
+        .as_bytes()
+        .get(..2)
+        .is_some_and(|p| p.eq_ignore_ascii_case(b"0x"));
     if is_int_string && ty.is_int() {
         return cmtjson_decode(&format!("\"{arg}\""), ty);
     }
@@ -638,6 +641,25 @@ mod tests {
         assert_eq!(
             uri_arg(ArgType::Str, "\"a\"").unwrap(),
             Arg::Str("a".into())
+        );
+    }
+
+    #[test]
+    fn uri_arg_non_ascii() {
+        // Regression (fuzzing, rpc_request): `arg[..2]` panicked inside a
+        // multi-byte character.
+        for ty in [
+            ArgType::Str,
+            ArgType::Bytes,
+            ArgType::I64,
+            ArgType::HexBytes,
+        ] {
+            let _ = uri_arg(ty, "a\u{2b0}");
+            let _ = uri_arg(ty, "\u{2b0}");
+        }
+        assert_eq!(
+            uri_arg(ArgType::Str, "0x6869").ok(),
+            Some(Arg::Str("hi".into()))
         );
     }
 

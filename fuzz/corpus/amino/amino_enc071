@@ -1,0 +1,1 @@
+{"type":"cosmos-sdk/StdTx","value":{"msg":[{"type":"hyperlane/warp/v1/MsgRemoteTransfer","value":{"token_id":"0xzz6f757465725f61707000000000000000000000000000010000000000000000"}}]}}

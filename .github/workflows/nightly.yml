@@ -17,6 +17,19 @@ env:
   GOPROXY: https://proxy.golang.org,direct
 
 jobs:
+  # RustSec advisories against the current Cargo.lock, every day: a new
+  # advisory fails this job even when no commit touched the dependencies
+  # (ci.yml's `deny` job only runs on push). Accepted advisories are the
+  # `ignore` list of deny.toml (reasons in docs/security.md).
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+          arguments: --all-features
+
   # Go binaries for the devnet scripts (celestia-app v10.4.0 / celestia-core
   # v0.42.3), built from module-proxy sources and cached by version.
   devnet-bins:

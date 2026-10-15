@@ -23,7 +23,7 @@ H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
 cp "$IN/genesis.json" "$H/config/genesis.json"
-"$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
+GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true; rm -rf "$WORK"' EXIT
 for _ in $(seq 1 60); do

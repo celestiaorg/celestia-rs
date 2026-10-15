@@ -40,4 +40,4 @@ protox = "0.7"
 crypto = { path = "../../../tier-0-primitives/crypto" }
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
-zstd = "0.13"
+zstd = "0.14"
