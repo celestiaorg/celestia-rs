@@ -166,3 +166,118 @@ maps it to keep 100 / every height).
 
 Everywhere else Rust is at or below Go: block execution 2-3.6x faster,
 CheckTx 1.6-2.1x, state sync 4x faster, and 30-55% less memory.
+
+## Tuning after B1 (2026-10-15, Linux shared VM)
+
+Same 4-vCPU shared VM as above (load average 4-7 from other jobs during
+these runs), so again compare ratios of runs taken back to back. Two
+tools that need no Go binaries or recorded chain:
+
+- `cargo run --release -p square --example eds_bench -- <iters> <widths…>`:
+  erasure extension + DAH of synthetic squares. It prints a digest of the
+  row and column roots; a Go program using rsmt2d v0.15.3 + nmt v0.24.5
+  with celestia-app's `ErasuredNamespacedMerkleTree` prints the same digest
+  for 32x32 up to 256x256 squares (parity check beyond the fixtures).
+- `cargo run --release -p celestia-rs --example proposal_bench`: a local
+  single-validator app on RocksDB driven in-process with `bench_load`'s
+  load (600 bank sends + 180 small PFBs per height, 4 x 1.9 MB or
+  4 x 7.3 MB PFBs every other height: 256x256 squares). CheckTx of every
+  tx, then PrepareProposal, ProcessProposal, FinalizeBlock, Commit;
+  `--keep` / `--open-only` time reopening the state, `--analyze` breaks
+  the state database down by store and key kind.
+
+### What changed
+
+| change | commit |
+|---|---|
+| EDS in one contiguous buffer; Q1 / Q2 / Q3 extension, row / column NMT roots and the subtree roots of large blobs' commitments on scoped threads (at most 10, the M4's cores; `CELESTIA_RS_SQUARE_THREADS` overrides); leaves hashed without building `namespace ‖ share` copies | `square: flat parallel EDS, …` |
+| Valid secp256k1 signatures remembered (65,536 entries; only successes, keyed by key, message digest and signature): a tx's signature is otherwise verified by CheckTx, PrepareProposal, ProcessProposal and FinalizeBlock | `x/ante: remember valid secp256k1 signatures` |
+| ProcessProposal reuses the data root of the square this node built in PrepareProposal when its own construction of the proposal's square is byte-identical (the root is a pure function of the shares; Go recomputes, acceptance is unchanged); PrepareProposal decodes normal txs once | `app: ProcessProposal reuses …` |
+| RocksDB: LZ4 above the bottommost level (was none), Zstd at the bottom; compact-on-deletion collector for pruned ranges; memtables written out on close | `kvdb: LZ4/Zstd …` |
+| `start` flushes every database when it returns, `abci` flushes on SIGTERM / SIGINT (the next start no longer replays up to 2 x 64 MiB of WAL per database) | `celestia-rs: flush every database at shutdown` |
+
+None of these changes consensus-visible output: the square / NMT / shares
+Go vectors, the rsmt2d and DAH fixtures, the mainnet DAH test
+(`m1-integration`), and every devnet replay (`replay_scenarios` incl. all
+v9 scenarios, `replay_empty`, `persistent_replay`) pass after each change.
+
+### Results
+
+**Extend + DAH** (`eds_bench`, median of 7, three interleaved rounds:
+range over rounds; Go = rsmt2d's own parallel extension and root
+computation, `GOMAXPROCS` = 4):
+
+| original width | Rust before | Rust after | Go rsmt2d | after / Go |
+|---|---|---|---|---|
+| 64 | 41-49 ms | 38-42 ms | 29-48 ms | ~1.0-1.3x |
+| 128 | 208-242 ms | 106-149 ms | 105-164 ms | ~0.9-1.0x |
+| 256 | 554-695 ms | 300-428 ms | 382-456 ms | ~0.8x |
+
+The DAH (hash-bound, SHA extensions on both sides) is now faster than Go's;
+extension of squares up to 128x128 (GF(2^8) leopard) is still ~2x Go's per
+core: `leopard-codec` multiplies with scalar table lookups where
+klauspost/reedsolomon uses AVX2 / NEON nibble shuffles. 256x256 squares use
+`reed-solomon-simd` (SIMD GF(2^16)) and are at par.
+
+**Proposal pipeline** (`proposal_bench --heights 8 --big-every 2 --reps 1`,
+two interleaved rounds, medians; "big" = 8 blocks of 8-30 MB in 256x256
+squares, "light" = 6 blocks of 780 txs / 0.4 MB):
+
+| | before | after | after / before |
+|---|---|---|---|
+| PrepareProposal, big | 913 ms | 543 ms | 0.59x |
+| ProcessProposal, big | 928 ms | 243 ms | 0.26x |
+| FinalizeBlock, big | 364 ms | 278 ms | 0.76x |
+| PrepareProposal, light | 209 ms | 102 ms | 0.49x |
+| ProcessProposal, light | 182 ms | 74 ms | 0.41x |
+| FinalizeBlock, light | 293 ms | 208 ms | 0.71x |
+| CheckTx of 780 new txs | 235 ms | 234 ms | 1.0x |
+| Commit | 49-59 ms | 52-53 ms | 1.0x |
+
+Applied to the B1 ratios, PrepareProposal on max-size squares goes from
+1.09x Go to roughly 0.65x and ProcessProposal from 0.96x to roughly 0.25x
+(own proposals; a Go-proposed block still pays one EDS + DAH, ~0.6x). The
+"before" binary was built before the release profile gained
+`overflow-checks = true`; the "after" one with it.
+
+Stack samples (gdb, main thread) of light blocks before this work: 24%
+secp256k1 verification (k256), 16% tx decoding, 13% fee deduction (bech32
+decoding of addresses in `x/bank`), ~20% allocator. After it, CheckTx (the
+first verification of each signature) is the one place still paying full
+price: next candidates are a faster secp256k1 verifier (libsecp256k1 is
+~2-3x k256) and caching decoded addresses.
+
+**Restart.** Reopening the application state of a 120-height run
+(`proposal_bench --keep`, then `--open-only`) took 553 ms when the run
+ended with 18 MB of WAL and 55 ms when it did not; B1's full node was
+SIGTERMed with up to 2 x 64 MiB of WAL in each of its RocksDB databases
+(application, blockstore, state, evidence), which is where its ~2 s
+before RPC went. With the shutdown flush the WAL is empty at the next
+start. The full-node restart (phase C) still has to be re-measured with
+these builds (Mac Mini run); the part that was slower than Go is gone.
+
+**App state on disk** (`proposal_bench --heights 120`, 93,600 txs, keep
+100 versions):
+
+| | before | after |
+|---|---|---|
+| `application.rocksdb` at rest | 303 MB (285 SST + 18 WAL) | 272 MB (all SST) |
+| same, Zstd on every level + 32 KiB blocks (experiment) | | 269 MB |
+
+Compression headroom is used up: the state holds 3.05 M IAVL nodes (avg
+~95 B of value, two 32-byte child hashes in every inner node) and 2.46 M
+orphan records (`o ‖ to-version ‖ node key`, 73 MB of keys before
+compression; IAVL v1 in Go keeps none and prunes by diffing versions).
+B1's 549 MB was measured with `du` after a SIGTERM that left the WAL
+(up to 128 MiB) on disk, so part of the 1.67x gap was WAL; the rest is the
+node layout. Closing it further needs a storage format change (no orphan
+records, or the node's own hash instead of its children's), which is not
+consensus-visible but needs a migration of existing homes; left for a
+follow-up. Projected for 512 GB: at the validator pruning defaults the
+state stays in the hundreds of MB, far inside the 350 GB budget
+(`docs/hardware.md`), which the block store dominates.
+
+**Not changed:** FinalizeBlock+Commit and CheckTx were already 1.8-3.6x and
+1.6-2.1x faster than Go in B1; the signature cache and the single decode
+also trim FinalizeBlock (above). The Mac Mini run should redo phases A and
+C with these builds.
