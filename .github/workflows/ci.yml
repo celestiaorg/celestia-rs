@@ -37,6 +37,43 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features
 
+  # The reference validator is a Mac Mini M4 (aarch64-apple-darwin): build
+  # the node in release mode on Apple silicon and run a fast smoke subset
+  # (unit tests of the core crates, one devnet-conformance replay, the CLI
+  # on a fresh home). The full suite runs on Linux above.
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-release
+      - name: Build celestia-rs (release)
+        run: cargo build --release --locked -p celestia-rs
+      - name: CLI smoke (init, keys, comet, open-files check)
+        run: |
+          set -eux
+          B=target/release/celestia-rs
+          H=$(mktemp -d)/node
+          $B version --long
+          $B init smoke --chain-id smoke-1 --home "$H"
+          test -s "$H/config/priv_validator_key.json"
+          test -s "$H/data/priv_validator_state.json"
+          $B keys add operator --keyring-backend test --home "$H" --no-backup
+          $B keys show operator -a --keyring-backend test --home "$H"
+          $B comet show-validator --home "$H"
+          $B start --network local --home "$(dirname "$H")/local" --stop-at-height 3
+      - name: Unit tests (core crates, release)
+        run: >-
+          cargo test --release --locked
+          -p hash -p merkle -p nmt -p shares -p square
+          -p kvdb -p iavl -p multistore -p privval -p keyring
+          -p celestia-rs --lib
+      - name: Devnet-conformance replay (staking, release)
+        run: cargo test --release --locked -p devnet-conformance --test replay_scenarios -- --exact staking_parity
+
   deny:
     runs-on: ubuntu-latest
     steps:
