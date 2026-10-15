@@ -1,0 +1,1 @@
+{"type":"cosmos-sdk/StdTx","value":{"fee":{"amount":[{"denom":"u","amount":"0x10"}]}}}

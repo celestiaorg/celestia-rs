@@ -1,0 +1,1 @@
+{"type":"cosmos-sdk/StdTx","value":{"signatures":[{"pub_key":{"type":"tendermint/PubKeyMultisigThreshold","value":{"threshold":"1","pubkeys":[]}}}]}}

@@ -1,0 +1,1 @@
+{"type":"cosmos-sdk/StdTx","value":{"msg":[{"type":"/celestia.blob.v1.MsgPayForBlobs","value":{"blob_sizes":[-1]}}]}}

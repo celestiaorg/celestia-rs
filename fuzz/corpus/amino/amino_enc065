@@ -1,0 +1,1 @@
+{"type":"cosmos-sdk/StdTx","value":{"msg":[{"type":"cosmos-sdk/MsgVote","value":{"option":3000000000}}]}}
