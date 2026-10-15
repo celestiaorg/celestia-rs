@@ -260,3 +260,31 @@ after a clean stop (halt height, `launchctl unload`).
   `tx blob pay-for-blob`, `tx signal signal|try-upgrade` (sign mode
   direct; `--fees` or `--gas-prices`, default 0.004 utia/gas; `--wait`
   polls `tx_status`).
+
+### Submitting transactions: use a synced node
+
+A node that lags behind the chain — just restarted, recovering from a
+partition, or still block-/state-syncing — runs `CheckTx` against its own
+stale state. It can accept a tx (`code 0`) whose account sequence the chain
+has already consumed, or hand a client a stale sequence from its `auth
+account` query. Such a tx is never included: once the node catches up, the
+mempool recheck evicts it (sequence mismatch) and nothing is reported to the
+submitter. celestia-appd behaves identically; this is not a celestia-rs
+divergence (the soak harness attributes these losses to Go and Rust nodes
+alike, `conformance/devnet/soak`).
+
+To avoid it, submit through a node that is in sync:
+
+- Check `celestia-rs status --node <rpc>`: `sync_info.catching_up` must be
+  `false` and `sync_info.latest_block_time` within a few block times of the
+  wall clock (or its `latest_block_height` level with a reference node /
+  explorer). The same fields are in the RPC `/status`; Prometheus
+  `cometbft_consensus_height` against a peer's gives an alert.
+- Query the account sequence from the same synced node you broadcast to.
+
+To detect a lost tx, poll celestia-core `tx_status` (`--wait` does this):
+`PENDING` that never turns `COMMITTED`, then `EVICTED` (dropped on recheck)
+or `UNKNOWN` (dropped without trace, e.g. node restarted). Re-query the
+account sequence from a synced node and re-sign; a tx re-broadcast with the
+old sequence fails `CheckTx` with code 32 (`account sequence mismatch,
+expected N, got M`).
