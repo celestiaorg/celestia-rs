@@ -281,3 +281,54 @@ fn json_msg_to_wire_rewrites_decimals() {
     assert_eq!(v["commission"]["rate"], "100000000000000000");
     assert_eq!(v["commission"]["max_change_rate"], "10000000000000000");
 }
+
+/// Redelegating away from an unbonded validator completes at once; Go's
+/// `getBeginInfo` returns its zero `time.Time`, so the response's
+/// `completion_time` is 0001-01-01T00:00:00Z (seconds -62135596800), not
+/// the Unix epoch. Found on mainnet block 14,894,680 (the tx's `data`, and
+/// so `LastResultsHash`, differed).
+#[test]
+fn redelegation_from_unbonded_validator_completes_at_go_zero_time() {
+    let mut m = ms();
+    let mut ctx = Context::new(&mut m, header(1, 1_000_000), ExecMode::Finalize);
+    setup(&mut ctx);
+    fund(&mut ctx, &acc(1), 10_000_000);
+    fund(&mut ctx, &acc(2), 10_000_000);
+    fund(&mut ctx, &acc(9), 10_000_000);
+    // No EndBlock: both validators stay unbonded.
+    create(&mut ctx, 1, 5_000_000);
+    create(&mut ctx, 2, 5_000_000);
+    let src = crate::addr::val_to_string(&acc(1)).unwrap();
+    let dst = crate::addr::val_to_string(&acc(2)).unwrap();
+    let del = x_auth::bech32(&acc(9)).unwrap();
+    crate::handle_delegate(
+        &mut ctx,
+        &pb::MsgDelegate {
+            delegator_address: del.clone(),
+            validator_address: src.clone(),
+            amount: coin(1_000_000),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        store::get_validator(&mut ctx, &acc(1))
+            .unwrap()
+            .unwrap()
+            .status,
+        BondStatus::Unbonded
+    );
+    let resp = crate::handle_begin_redelegate(
+        &mut ctx,
+        &pb::MsgBeginRedelegate {
+            delegator_address: del,
+            validator_src_address: src,
+            validator_dst_address: dst,
+            amount: coin(400_000),
+        },
+    )
+    .unwrap();
+    assert_eq!(resp.completion_time, Some(sdk::time::go_zero()));
+    let ev = ctx.events.events().last().unwrap();
+    assert_eq!(ev.r#type, "redelegate");
+    assert_eq!(ev.attributes[3].value, "0001-01-01T00:00:00Z");
+}

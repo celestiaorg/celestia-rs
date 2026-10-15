@@ -233,7 +233,9 @@ fn get_begin_info(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, 
                 ctx.header.height,
                 false,
             )),
-            BondStatus::Unbonded => Ok((Timestamp::default(), 0, true)),
+            // Go returns its zero `time.Time` (0001-01-01), which the
+            // msg response and the `redelegate` event carry.
+            BondStatus::Unbonded => Ok((sdk::time::go_zero(), 0, true)),
             BondStatus::Unbonding => Ok((v.unbonding_time, v.unbonding_height, false)),
             BondStatus::Unspecified => Err(sdk::error::go_panic("unknown validator status")),
         },
