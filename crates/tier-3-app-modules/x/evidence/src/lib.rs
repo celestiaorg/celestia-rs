@@ -82,7 +82,14 @@ pub fn from_abci(m: &Misbehavior) -> (Equivocation, Vec<u8>) {
 /// `handleEquivocationEvidence`.
 pub fn handle_equivocation(ctx: &mut Context<'_>, e: &Equivocation, cons: &[u8]) -> Result<()> {
     let Some(validator) = x_staking::store::get_validator_by_cons_addr(ctx, cons)? else {
-        // celestia: evidence for a removed validator is ignored.
+        // App version 9 (cosmossdk.io/x/evidence v0.1.1): `ValidatorByConsAddr`
+        // fails with ErrNoValidatorFound and BeginBlock returns it.
+        let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        if app_version != 0 && app_version < 10 {
+            return Err(sdk::SdkError::new("staking", 3, "validator does not exist"));
+        }
+        // celestia fork v0.1.2 (v10): evidence for a removed validator is
+        // ignored.
         return Ok(());
     };
     if validator.status == x_staking::types::BondStatus::Unbonded {

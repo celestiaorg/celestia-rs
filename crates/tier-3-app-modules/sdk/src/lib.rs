@@ -20,6 +20,7 @@ pub mod router;
 pub mod store;
 pub mod time;
 pub mod tx;
+pub mod version;
 
 pub use context::{Context, ExecMode, Header};
 pub use error::{Result, SdkError};

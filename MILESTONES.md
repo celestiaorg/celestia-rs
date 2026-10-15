@@ -7,8 +7,9 @@ Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 **End state:** a Rust Celestia mainnet validator that is consensus-compatible
 with Go celestia-app/celestia-core and runs on a Mac Mini M4 (16 GB / 512 GB).
 
-**Go parity target:** celestia-app **v10.4.0** / celestia-core v0.42.x (see
-open question 2).
+**Go parity target:** celestia-app **v10.4.0** / celestia-core v0.42.x, and
+app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004; see open
+question 2).
 
 | #   | Status      | Milestone | Acceptance test |
 |-----|-------------|-----------|-----------------|
@@ -21,6 +22,7 @@ open question 2).
 | R1  | completed   | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Done by the v10 parity work: go-square v4 builder, `x-ante` (Go v10 vectors), every module at v10 app-hash parity; the remaining v6-era fixtures (hash, NMT, shares, DAH of mainnet blocks, IAVL / multistore) cover algorithms unchanged in v10 |
 | S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
 | S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
+| V9  | in progress | **App version 9** (mainnet's celestia-app v9.0.8) at Go parity inside the same app, gated on the block's app version, and the v9→v10 upgrade exactly as the multiplexer runs it ([ADR 0004](docs/adr/0004-app-version-9.md)) | Every `v9-*` devnet scenario (recorded from Go v9.0.8; `v9-upgrade` switches binaries inside `Commit` like the multiplexer) replays at full parity (`devnet-conformance/tests/replay_scenarios.rs`) |
 | S3  | in progress | State sync client + snapshot import (devnet Go↔Rust done); follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
 | M9  | completed   | Rust consensus engine (Tendermint BFT, celestia-core semantics) — `privval`, `nodestore`, `consensus` (+ reactor on `p2p`), `propagation` (RECOVERY), `celestia-rs start` as a full network participant | Mixed Rust+Go private devnet reaches consensus (`conformance/devnet/mixed-validators.sh`) |
 | M10 | completed   | Rust P2P (secret connection, MConn, PEX), mempool, block sync — `p2p`, CAT `mempool`, `blocksync`, `evidence`, `statesync` done; `celestia-rs start` block-syncs / state-syncs from Go and serves Go (`blocksync-interop.sh`); propagation + consensus gossip with Go validators (`mixed-validators.sh`), txs both ways (`mempool-interop.sh`) | Rust node peers with Go nodes and gossips blocks/txs |
@@ -31,6 +33,27 @@ open question 2).
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
 ## Current focus
+
+**V9 (app version 9).** Mainnet runs celestia-app v9.0.8 and Mocha started
+at app version 9, so the state machine also executes app-version-9 blocks
+(ADR 0004: no fibre / valaddr stores, cosmos-sdk v0.52.8 sequential
+`deliverTx` with the block gas meter, v9's decoder registry and lenient
+BlobTx / IndexWrapper, `MsgExecDecorator`, multi-denom fee priority,
+duplicate-TxRaw-field CheckTx rejection, v9 PrepareProposal /
+ProcessProposal) and the v9→v10 upgrade (store loader adds fibre / valaddr
+at `H+1`, the v10 handler runs their default genesis). Recorded from Go
+v9.0.8 (`APP_V9=1 devnet.sh`, `UPGRADE_TO_V10=1` for the binary switch);
+at full parity (app hash, tx results, CheckTx, PrepareProposal /
+ProcessProposal): `v9-empty`, `v9-staking`, `v9-gov`, `v9-authz-feegrant`,
+`v9-vesting`, `v9-blob`, `v9-hyperlane`, `v9-ibc`, `v9-zkism-forwarding`
+(SP1 v5 proofs), `v9-exec` (sequential execution,
+multi-denom fees, `MsgExec` of `MsgSubmitProposal`) and `v9-upgrade`
+(v9 txs → signal + try-upgrade → binary switch → v10 handler → v10 txs).
+Real blocks: square size, data root and tx decoding match for 12 recent
+mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`).
+Open: the edge differences no scenario reaches (ADR 0004, "Not ported"),
+a v9 query corpus, state sync / snapshots of a v9 chain, and following
+Mocha from genesis over HTTPS (with the follower work).
 
 **S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
 exactly — app hash, every tx result's code/data/gas, validator updates — for

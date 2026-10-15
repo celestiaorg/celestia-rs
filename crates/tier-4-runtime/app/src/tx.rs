@@ -139,6 +139,18 @@ fn module_from_type_url(type_url: &str) -> Option<&str> {
 /// `runTxMsgs`: runs in a new branch; writes it (Finalize) on success.
 /// `ctx.gas` must hold the meter from the ante phase.
 pub fn run_msgs(ctx: &mut Context<'_>, p: &mut Prepared, write: bool) -> Result<MsgsResult> {
+    run_msgs_gated(ctx, p, write, |_| Ok(()))
+}
+
+/// [`run_msgs`] where `gate` runs after the messages succeeded and before
+/// their branch is written; an error from it discards the branch (v0.52.8
+/// `runTx` consumes block gas there, which may panic).
+pub fn run_msgs_gated(
+    ctx: &mut Context<'_>,
+    p: &mut Prepared,
+    write: bool,
+    gate: impl FnOnce(&GasMeter) -> Result<()>,
+) -> Result<MsgsResult> {
     let Some(tx) = p.tx.as_ref() else {
         return Err(errs::tx_decode(""));
     };
@@ -181,6 +193,11 @@ pub fn run_msgs(ctx: &mut Context<'_>, p: &mut Prepared, write: bool) -> Result<
     p.gas = ctx.gas.clone();
     ctx.events = sdk::event::EventManager::default();
     ctx.events.emit_all(outer_events.events().iter().cloned());
+    if result.is_ok()
+        && let Err(e) = gate(&p.gas)
+    {
+        result = Err(e);
+    }
     match result {
         Ok(()) => {
             if write {

@@ -107,8 +107,48 @@ pub fn encode_hex(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
 }
 
+/// celestia-app v9.0.8 `ValidateGroth16Vkey` (SP1 v5: 2 public inputs,
+/// G1.K of 3 points, 396 bytes, no compressed-point check).
+fn validate_groth16_vkey_v9(v: &[u8]) -> core::result::Result<(), String> {
+    const SIZE: usize = 396;
+    const G1K: u32 = 3;
+    const CK_OFFSET: usize = VKEY_CURVE_POINTS_SIZE + 4 + 3 * 32;
+    if v.len() != SIZE {
+        return Err(format!(
+            "groth16 vkey must be exactly {SIZE} bytes, got {}",
+            v.len()
+        ));
+    }
+    let be = |o: usize| u32::from_be_bytes([v[o], v[o + 1], v[o + 2], v[o + 3]]);
+    let g1k = be(VKEY_CURVE_POINTS_SIZE);
+    if g1k != G1K {
+        return Err(format!("groth16 vkey G1.K length must be {G1K}, got {g1k}"));
+    }
+    let ck = be(CK_OFFSET);
+    if ck != 0 {
+        return Err(format!(
+            "groth16 vkey CommitmentKeys length must be 0, got {ck}"
+        ));
+    }
+    let pc = be(CK_OFFSET + 4);
+    if pc != 0 {
+        return Err(format!(
+            "groth16 vkey PublicAndCommitmentCommitted length must be 0, got {pc}"
+        ));
+    }
+    Ok(())
+}
+
+/// Whether the executing app version is 9 (SP1 v5 proofs, ADR 0004).
+fn sp1_v5() -> bool {
+    sdk::version::is_v9(sdk::version::app_version())
+}
+
 /// `ValidateGroth16Vkey`.
 pub fn validate_groth16_vkey(v: &[u8]) -> core::result::Result<(), String> {
+    if sp1_v5() {
+        return validate_groth16_vkey_v9(v);
+    }
     if v.len() != GROTH16_VKEY_SIZE {
         return Err(format!(
             "groth16 vkey must be exactly {GROTH16_VKEY_SIZE} bytes, got {}",
@@ -180,9 +220,15 @@ fn validate_basic_proof(id: &str, proof: &[u8], values: &[u8], max_values: usize
     if decode_id(id)?.is_zero() {
         return Err(errs::invalid_request("ism identifier must be non-zero"));
     }
-    if proof.len() != PROOF_BYTES_LEN {
+    // v9 (SP1 v5): prefix + proof, no metadata.
+    let want = if sp1_v5() {
+        groth16::PREFIX_LEN + groth16::PROOF_SIZE
+    } else {
+        PROOF_BYTES_LEN
+    };
+    if proof.len() != want {
         return Err(invalid_proof_length(format!(
-            "expected {PROOF_BYTES_LEN}, got {}",
+            "expected {want}, got {}",
             proof.len()
         )));
     }
@@ -351,7 +397,13 @@ fn verify_proof(
     ctx.gas
         .consume(PROOF_VERIFY_COST_GROTH16, "groth16 verify")
         .map_err(|_| errs::out_of_gas(""))?;
-    groth16::sp1_verify(&vk, &ism.groth16_vkey, proof, program_vk, values).map_err(|e| match e {
+    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let verify = if sdk::version::is_v9(app_version) {
+        groth16::sp1_verify_v5
+    } else {
+        groth16::sp1_verify
+    };
+    verify(&vk, &ism.groth16_vkey, proof, program_vk, values).map_err(|e| match e {
         VerifyError::Length(l) => invalid_proof_length(l),
         VerifyError::Prefix(l) => invalid_proof_prefix(l),
         VerifyError::Invalid(l) => invalid_proof(l),

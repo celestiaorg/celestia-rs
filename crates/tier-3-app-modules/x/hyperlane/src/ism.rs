@@ -251,7 +251,13 @@ impl Ism {
     }
 }
 
+/// celestia's hyperlane-cosmos v1.3.0 (app version 10) charges 1000 gas per
+/// multisig signature; upstream v1.1.0 (app version 9) charges nothing.
 fn charge_signatures(ctx: &mut Context<'_>, n: usize) -> Result<()> {
+    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    if app_version != 0 && app_version < 10 {
+        return Ok(());
+    }
     consume_gas(ctx, 1000 * n as u64, "ism signature verification")
 }
 

@@ -120,16 +120,44 @@ pub fn default_min_gas_price() -> LegacyDec {
     LegacyDec::new_with_prec(4_000, 6).unwrap_or_else(|_| LegacyDec::zero())
 }
 
-/// celestia `ValidateTxFee`: utia-only fees, the node minimum in CheckTx,
-/// the network minimum always; returns the tx priority.
+/// celestia-app v9.0.8 `getTxPriority`: the lowest `amount * 1e6 / gas`
+/// over all fee coins (results that do not fit an int64 are skipped; a 0
+/// is replaced by the next coin's value). `Mul` overflow and `gas = 0`
+/// panic like Go's `math.Int`.
+fn get_tx_priority_v9(coins: &[FeeCoin], gas: u64) -> R<i64> {
+    let mut priority: i64 = 0;
+    for c in coins {
+        let scaled = c
+            .amount()?
+            .checked_mul(&Int::from_i64(PRIORITY_SCALING_FACTOR))
+            .or_else(|_| panic("Int overflow"))?;
+        if gas == 0 {
+            return panic("division by zero");
+        }
+        let p = scaled
+            .checked_quo(&Int::from_u64(gas))
+            .or_else(|_| panic("division by zero"))?;
+        let Some(p) = p.to_i64() else {
+            continue;
+        };
+        if priority == 0 || p < priority {
+            priority = p;
+        }
+    }
+    Ok(priority)
+}
+
+/// celestia `ValidateTxFee`: utia-only fees (v10), the node minimum in
+/// CheckTx, the network minimum always; returns the tx priority.
 fn validate_tx_fee(
     ctx: &mut Context<'_>,
     coins: &[FeeCoin],
     gas: u64,
     deps: &impl AnteDeps,
 ) -> R<i64> {
+    let v9 = crate::is_v9(ctx);
     for c in coins {
-        if c.denom != BOND_DENOM {
+        if !v9 && c.denom != BOND_DENOM {
             return Err(errs::invalid_coins(format!(
                 "fee must be denominated in {BOND_DENOM}, got {}",
                 c.denom
@@ -161,6 +189,9 @@ fn validate_tx_fee(
         &network,
         "insufficient gas price for the network",
     )?;
+    if v9 {
+        return get_tx_priority_v9(coins, gas);
+    }
     Ok(get_tx_priority(&fee, gas))
 }
 

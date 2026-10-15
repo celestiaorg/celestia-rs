@@ -81,6 +81,18 @@ pub fn upgrade_height_delay(chain_id: &str) -> i64 {
     }
 }
 
+/// celestia-app v9.0.8 `appconsts.GetUpgradeHeightDelay` (app version 9):
+/// arabica-11 instead of corto-1.
+#[must_use]
+pub fn upgrade_height_delay_v9(chain_id: &str) -> i64 {
+    match chain_id {
+        "test" => 3,
+        "arabica-11" => 33_231,
+        "mocha-5" => 66_462,
+        _ => 232_616,
+    }
+}
+
 /// `Threshold`: 5/6 for every app version.
 #[must_use]
 pub fn threshold_fraction() -> LegacyDec {
@@ -236,7 +248,12 @@ pub fn try_upgrade(
         }
         let upgrade = Upgrade {
             app_version: version,
-            upgrade_height: ctx.header.height + upgrade_height_delay(&ctx.header.chain_id),
+            upgrade_height: ctx.header.height
+                + if current != 0 && current < 10 {
+                    upgrade_height_delay_v9(&ctx.header.chain_id)
+                } else {
+                    upgrade_height_delay(&ctx.header.chain_id)
+                },
         };
         set_upgrade(ctx, &upgrade)?;
     }

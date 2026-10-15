@@ -170,3 +170,54 @@ fn ibc_edge_parity() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// App version 9 (celestia-app v9.0.8, ADR 0004): an empty chain started at
+/// app version 9.
+#[test]
+fn v9_empty_parity() -> anyhow::Result<()> {
+    assert_parity("v9-empty")
+}
+
+/// The v10 workloads recorded from Go v9.0.8 (`APP_V9=1`).
+#[test]
+fn v9_workloads_parity() -> anyhow::Result<()> {
+    for s in [
+        "v9-staking",
+        "v9-gov",
+        "v9-authz-feegrant",
+        "v9-vesting",
+        "v9-blob",
+        "v9-hyperlane",
+        // Two Go v9 chains linked by cosmos/relayer.
+        "v9-ibc",
+        // celestia-app v9's SP1 v5 Groth16 vectors (x/zkism testdata/v9).
+        "v9-zkism-forwarding",
+    ] {
+        assert_parity(s)?;
+    }
+    Ok(())
+}
+
+/// `workloads/v9-exec.sh`: v9-only behavior: sequential `deliverTx` (two
+/// txs of one account in one block, the second cannot pay its fee),
+/// multi-denom fees and their priority, `MsgExec` wrapping
+/// `MsgSubmitProposal`.
+#[test]
+fn v9_exec_parity() -> anyhow::Result<()> {
+    assert_parity("v9-exec")
+}
+
+/// App version 9 → 10 like mainnet / Mocha (`workloads/v9-upgrade.sh`):
+/// txs under v9, MsgSignalVersion + MsgTryUpgrade, the v9 EndBlocker bumps
+/// the app version, the recorder switches to the v10 binary after that
+/// Commit (as the multiplexer does), the v10 store loader adds fibre and
+/// valaddr, the v10 handler runs, then txs under v10.
+#[test]
+fn v9_upgrade_parity() -> anyhow::Result<()> {
+    let r = replay("v9-upgrade")?;
+    assert!(r.errors.is_empty(), "v9-upgrade: {:?}", r.errors);
+    assert_eq!(r.first_mismatch, None, "v9-upgrade: {:#?}", r.store_diffs);
+    assert!(r.matched_heights.len() >= 40, "{:?}", r.matched_heights);
+    assert!(r.compared.check_tx > 0, "{:?}", r.compared);
+    Ok(())
+}

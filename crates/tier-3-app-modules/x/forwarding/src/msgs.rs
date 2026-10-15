@@ -239,9 +239,16 @@ pub fn forward(
             ));
         }
     };
-    // SpendableCoin: GetBalance, then LockedCoins.
+    // SpendableCoin: GetBalance, then LockedCoins. App version 9
+    // (celestia-app v9.0.8) forwards GetBalance and never reads the
+    // account's locked coins.
     let balance = x_bank::get_balance(ctx, &forward_addr, &denom)?;
-    let locked = x_bank::locked_coins(ctx, &forward_addr)?.amount_of(&denom);
+    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let locked = if app_version != 0 && app_version < 10 {
+        math::Int::zero()
+    } else {
+        x_bank::locked_coins(ctx, &forward_addr)?.amount_of(&denom)
+    };
     let spendable = balance
         .amount
         .checked_sub(&locked)

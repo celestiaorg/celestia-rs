@@ -77,7 +77,10 @@ fn walk(
         if m < 0 {
             return Err(GoError::new("invalid length"));
         }
-        let field = u32::try_from(tag_num).ok().and_then(|n| msg.field(n));
+        let field = u32::try_from(tag_num)
+            .ok()
+            .filter(|n| registry::field_exists(msg.name, *n))
+            .and_then(|n| msg.field(n));
         if let Some(f) = field {
             {
                 if !can_encode_type(wire_type, f.ty) {

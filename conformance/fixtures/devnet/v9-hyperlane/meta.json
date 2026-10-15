@@ -1,0 +1,9 @@
+{
+  "scenario": "v9-hyperlane",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v9.0.8",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 60,
+  "workload": "hyperlane.sh",
+  "generated_at": "2026-10-15T08:26:39Z"
+}

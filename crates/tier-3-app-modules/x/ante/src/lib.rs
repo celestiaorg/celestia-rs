@@ -278,6 +278,14 @@ fn run_ante(
     }
 }
 
+/// Whether the context's app version runs celestia-app v9.0.8's ante
+/// handler (ADR 0004).
+#[must_use]
+pub fn is_v9(ctx: &Context<'_>) -> bool {
+    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    v != 0 && v < 10
+}
+
 fn run_chain(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
@@ -296,12 +304,21 @@ fn run_chain(
     sigverify::validate_sig_count(ctx, tx)?;
     sigverify::sig_gas_consume(ctx, tx, simulate)?;
     sigverify::sig_verification(ctx, tx, simulate, deps)?;
-    celestia::nested_msg(tx)?;
-    celestia::fibre_signature_gas(ctx, tx)?;
+    // celestia-app v9.0.8 (ADR 0004): `MsgExecDecorator`, no fibre
+    // decorators (fibre messages do not decode at app version 9).
+    let v9 = is_v9(ctx);
+    if v9 {
+        celestia::msg_exec_v9(tx)?;
+    } else {
+        celestia::nested_msg(tx)?;
+        celestia::fibre_signature_gas(ctx, tx)?;
+    }
     celestia::min_gas_pfb(ctx, tx)?;
     celestia::blob_share(ctx, tx, deps)?;
-    celestia::fibre_stateful_validation(ctx, tx, simulate, deps)?;
-    celestia::fibre_sig_verification(ctx, tx, simulate, deps)?;
+    if !v9 {
+        celestia::fibre_stateful_validation(ctx, tx, simulate, deps)?;
+        celestia::fibre_sig_verification(ctx, tx, simulate, deps)?;
+    }
     celestia::param_filter(tx, deps)?;
     sigverify::increment_sequence(ctx, tx)?;
     celestia::redundant_relay(ctx, tx, simulate, deps)?;

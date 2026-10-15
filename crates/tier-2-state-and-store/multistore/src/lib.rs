@@ -375,6 +375,38 @@ impl Store {
         Ok(())
     }
 
+    /// Mount a new, empty store whose first commit is `initial_version`:
+    /// a store added mid-chain by a store upgrade (Go `StoreUpgrades.Added`,
+    /// which loads the new IAVL store with `InitialVersion = version + 1`).
+    pub fn mount_store_at(
+        &mut self,
+        name: impl Into<String>,
+        kind: StoreKind,
+        initial_version: Version,
+    ) -> Result<()> {
+        let name = name.into();
+        self.mount_store(name.clone(), kind)?;
+        if let Some(store) = self.stores.get_mut(&name) {
+            store.tree_mut().set_initial_version(initial_version)?;
+        }
+        Ok(())
+    }
+
+    /// Unmount a store that holds no committed version (e.g. one the
+    /// state's app version does not have yet).
+    pub fn unmount_store(&mut self, name: &str) -> Result<()> {
+        let Some(store) = self.stores.get(name) else {
+            return Err(Error::UnknownStore(name.to_owned()));
+        };
+        if !store.tree().available_versions().is_empty() {
+            return Err(Error::Corrupted(format!(
+                "cannot unmount store {name} with committed versions"
+            )));
+        }
+        self.stores.remove(name);
+        Ok(())
+    }
+
     /// Load the latest committed version from storage (Go
     /// `LoadLatestVersion`) and return its commit ID. Every mounted store is
     /// positioned at that version and checked against the stored commit

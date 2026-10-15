@@ -1,0 +1,9 @@
+{
+  "scenario": "v9-authz-feegrant",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v9.0.8",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 90,
+  "workload": "authz-feegrant.sh",
+  "generated_at": "2026-10-15T08:15:16Z"
+}

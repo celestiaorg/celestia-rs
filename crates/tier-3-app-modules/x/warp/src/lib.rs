@@ -329,6 +329,10 @@ impl HyperlaneApp for Warp {
     ) -> Result<()> {
         let token = get_token(ctx, message.recipient.internal_id())?
             .ok_or_else(|| not_found(message.recipient.internal_id()))?;
+        // hyperlane-cosmos v1.1.0 (app version 9) accepts exactly 64 bytes.
+        if is_v9(ctx) && message.body.len() != 64 {
+            return Err(internal("payload is invalid"));
+        }
         let payload = WarpPayload::parse(&message.body).map_err(internal)?;
         if token.origin_mailbox != *mailbox_id {
             return Err(internal("invalid origin mailbox address"));
@@ -375,6 +379,13 @@ impl HyperlaneApp for Warp {
     }
 }
 
+/// Whether the context executes app version 9 (upstream hyperlane-cosmos
+/// v1.1.0, ADR 0004).
+fn is_v9(ctx: &Context<'_>) -> bool {
+    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    v != 0 && v < 10
+}
+
 /// `Keeper.RemoteReceiveCollateral`.
 pub fn remote_receive_collateral(
     ctx: &mut Context<'_>,
@@ -382,7 +393,12 @@ pub fn remote_receive_collateral(
     mut token: HypToken,
     payload: &WarpPayload,
 ) -> Result<()> {
-    let account = payload.cosmos_account();
+    // hyperlane-cosmos v1.1.0 (app version 9): always the last 20 bytes.
+    let account = if is_v9(ctx) {
+        payload.recipient[12..32.min(payload.recipient.len())].to_vec()
+    } else {
+        payload.cosmos_account()
+    };
     let amount = payload_amount(payload)?;
     token.collateral_balance = token
         .collateral_balance

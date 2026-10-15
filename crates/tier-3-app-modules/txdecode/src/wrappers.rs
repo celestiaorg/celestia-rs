@@ -162,6 +162,28 @@ pub fn unmarshal_blob_tx(tx: &[u8]) -> Option<Result<UnwrappedBlobTx, BlobTxErro
     Some(validate_blob_tx(tx, p))
 }
 
+/// go-square v4.0.0-rc4 `UnmarshalBlobTx` (celestia-app v9.0.8): like
+/// [`unmarshal_blob_tx`] without the canonical-encoding, unknown-field and
+/// nested-`BlobTx` checks.
+#[must_use]
+pub fn unmarshal_blob_tx_v9(tx: &[u8]) -> Option<Result<UnwrappedBlobTx, BlobTxError>> {
+    let p = parse_blob_tx(tx).ok()?;
+    if p.type_id != BLOB_TYPE_ID {
+        return None;
+    }
+    if p.blobs.is_empty() {
+        return Some(Err(BlobTxError::Invalid("no blobs provided".into())));
+    }
+    let mut blobs = Vec::with_capacity(p.blobs.len());
+    for b in p.blobs {
+        match new_blob_from_proto(b) {
+            Ok(b) => blobs.push(b),
+            Err(e) => return Some(Err(BlobTxError::Invalid(e))),
+        }
+    }
+    Some(Ok(UnwrappedBlobTx { tx: p.tx, blobs }))
+}
+
 fn validate_blob_tx(tx: &[u8], p: BlobTxProto) -> Result<UnwrappedBlobTx, BlobTxError> {
     if p.has_unknown {
         return Err(BlobTxError::NonCanonical);

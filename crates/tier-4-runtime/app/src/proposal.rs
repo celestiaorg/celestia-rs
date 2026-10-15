@@ -169,6 +169,29 @@ pub(crate) fn classify_txs(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String>
         .collect()
 }
 
+/// The square size and data root of a block's txs (`da.ConstructEDS` with
+/// `SquareSizeUpperBound`, as celestia-app's proof and DAH helpers build
+/// it): go-square rc4 classification at app version 9, the v10 one
+/// otherwise.
+pub fn block_data_root(app_version: u64, txs: &[Vec<u8>]) -> Result<(u64, Vec<u8>), String> {
+    let classified = if crate::stores::is_v9(app_version) {
+        txs.iter()
+            .map(|raw| match txdecode::unmarshal_blob_tx_v9(raw) {
+                Some(Ok(u)) => to_square_blob_tx(&u).map(ClassifiedTx::Blob),
+                Some(Err(e)) => Err(format!("unmarshalling blob tx: {e:?}")),
+                None => Ok(ClassifiedTx::Normal(raw.clone())),
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        classify_txs(txs)?
+    };
+    let size = usize::try_from(SQUARE_SIZE_UPPER_BOUND).map_err(|e| e.to_string())?;
+    let square =
+        v4::construct(&classified, size, SUBTREE_ROOT_THRESHOLD).map_err(|e| e.to_string())?;
+    let (width, root) = data_root(&square).map_err(|e| e.0)?;
+    Ok((width as u64, root))
+}
+
 /// Erasure-extends `square` and returns `(original width, data root)`.
 fn data_root(square: &square::Square) -> Result<(usize, Vec<u8>), Abort> {
     let eds = square::extend_shares(square.as_shares())?;
@@ -219,6 +242,7 @@ impl App {
             .ok()
             .flatten()
             .unwrap_or_default();
+        sdk::version::set_app_version(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
         let out = f(&mut ctx, &deps);
         while ctx.multistore().depth() > base {
             ctx.multistore().discard_branch();
@@ -327,8 +351,12 @@ fn prepare(
 ) -> Result<ResponsePrepareProposal, Abort> {
     let max_square_size = max_effective_square_size(ctx)?;
     let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
-    x_fibre::begin_block(ctx)?;
-    let txs = fill(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?;
+    let txs = if x_ante::is_v9(ctx) {
+        fill_v9(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
+    } else {
+        x_fibre::begin_block(ctx)?;
+        fill(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
+    };
     let square = builder.export()?;
     let (width, root) = data_root(&square)?;
     Ok(ResponsePrepareProposal {
@@ -429,6 +457,185 @@ fn fill(
     Ok(kept)
 }
 
+/// celestia-app v9.0.8 `FilteredSquareBuilder.Fill` (app version 9): txs
+/// sized by `len(tx)`, go-square rc4 blob unmarshalling, duplicate-field
+/// txs dropped, `len(msgs)` message counts, blob txs re-marshaled.
+fn fill_v9(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    builder: &mut Builder,
+    txs: &[Vec<u8>],
+    max_tx_bytes: i64,
+) -> Result<Vec<Vec<u8>>, Abort> {
+    let mut within_bytes: Vec<&[u8]> = Vec::with_capacity(txs.len());
+    let mut current = 0i64;
+    for tx in txs {
+        if max_tx_bytes > 0 {
+            let size = i64::try_from(tx.len()).unwrap_or(i64::MAX);
+            if current + size > max_tx_bytes {
+                continue;
+            }
+            current += size;
+        }
+        within_bytes.push(tx);
+    }
+    // separateTxs (v9): no fibre txs exist at app version 9.
+    let mut normal: Vec<&[u8]> = Vec::new();
+    let mut blobs: Vec<UnwrappedBlobTx> = Vec::new();
+    for raw in within_bytes {
+        if raw.len() > MAX_TX_SIZE {
+            continue;
+        }
+        let b = txdecode::unmarshal_blob_tx_v9(raw);
+        let sdk_bytes = match &b {
+            Some(Ok(u)) => u.tx.as_slice(),
+            _ => raw,
+        };
+        if txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
+            continue;
+        }
+        match b {
+            Some(Ok(u)) => blobs.push(u),
+            Some(Err(_)) => {}
+            None => {
+                if txdecode::decode_v9(raw).is_ok() {
+                    normal.push(raw);
+                }
+            }
+        }
+    }
+
+    let mut zeroed = false;
+    let mut kept = Vec::new();
+    let mut sdk_count = 0usize;
+    for raw in &normal {
+        let Ok(tx) = txdecode::decode_v9(raw) else {
+            continue;
+        };
+        ctx.tx_bytes = raw.to_vec();
+        let n = tx.msgs().len();
+        if sdk_count + n > MAX_SDK_MESSAGES {
+            continue;
+        }
+        if !builder.append_tx(raw) {
+            continue;
+        }
+        if zeroed {
+            let _ = builder.revert_last_tx();
+            continue;
+        }
+        if let Err(e) = ante(ctx, &tx, deps) {
+            zeroed |= e.zero_ctx;
+            let _ = builder.revert_last_tx();
+            continue;
+        }
+        sdk_count += n;
+        kept.push(raw.to_vec());
+    }
+
+    let mut blob_msgs = 0usize;
+    for u in &blobs {
+        let Ok(tx) = txdecode::decode_v9(&u.tx) else {
+            continue;
+        };
+        ctx.tx_bytes.clone_from(&u.tx);
+        if blob_msgs + tx.msgs().len() > MAX_PFB_MESSAGES {
+            continue;
+        }
+        let Ok(btx) = to_square_blob_tx(u) else {
+            continue;
+        };
+        match builder.append_blob_tx(&btx) {
+            Ok(true) => {}
+            Ok(false) | Err(_) => continue,
+        }
+        if zeroed {
+            let _ = builder.revert_last_blob_tx();
+            continue;
+        }
+        if let Err(e) = ante(ctx, &tx, deps) {
+            zeroed |= e.zero_ctx;
+            let _ = builder.revert_last_blob_tx();
+            continue;
+        }
+        blob_msgs += tx.msgs().len();
+        // encodeBlobTxs: MarshalBlobTx of the decoded blob tx.
+        kept.push(txdecode::marshal_blob_tx(&u.tx, &u.blobs));
+    }
+    Ok(kept)
+}
+
+/// celestia-app v9.0.8 `ProcessProposalHandler` (app version 9).
+fn process_v9(
+    ctx: &mut Context<'_>,
+    deps: &x_ante::StoreDeps,
+    req: &RequestProcessProposal,
+) -> Result<bool, Abort> {
+    let (mut sdk_msgs, mut blob_msgs) = (0usize, 0usize);
+    for raw in &req.txs {
+        if raw.len() > MAX_TX_SIZE {
+            return Ok(false);
+        }
+        let blob = match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Err(_)) => return Ok(false),
+            Some(Ok(u)) => Some(u),
+            None => None,
+        };
+        let sdk_bytes = blob.as_ref().map_or(raw.as_slice(), |u| u.tx.as_slice());
+        ctx.tx_bytes = sdk_bytes.to_vec();
+        let Ok(tx) = txdecode::decode_v9(sdk_bytes) else {
+            return Ok(false);
+        };
+        let Some(blob) = blob else {
+            if has_pfb(&tx) {
+                return Ok(false);
+            }
+            sdk_msgs += tx.msgs().len();
+            if sdk_msgs > MAX_SDK_MESSAGES {
+                return Ok(false);
+            }
+            if ante(ctx, &tx, deps).is_err() {
+                return Ok(false);
+            }
+            continue;
+        };
+        if validate_blob_tx(&tx, &blob).is_err() {
+            return Ok(false);
+        }
+        blob_msgs += tx.msgs().len();
+        if blob_msgs > MAX_PFB_MESSAGES {
+            return Ok(false);
+        }
+        if ante(ctx, &tx, deps).is_err() {
+            return Ok(false);
+        }
+    }
+    // v9 reads the max square size after the ante loop, on the gas meter
+    // the last ante handler left in the context; running out of gas there
+    // panics and the proposal is rejected.
+    let Ok(max_square_size) = max_effective_square_size(ctx) else {
+        return Ok(false);
+    };
+    let mut classified = Vec::with_capacity(req.txs.len());
+    for raw in &req.txs {
+        classified.push(match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Ok(u)) => match to_square_blob_tx(&u) {
+                Ok(b) => ClassifiedTx::Blob(b),
+                Err(_) => return Ok(false),
+            },
+            Some(Err(_)) => return Ok(false),
+            None => ClassifiedTx::Normal(raw.clone()),
+        });
+    }
+    let Ok(square) = v4::construct(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
+        return Ok(false);
+    };
+    let Ok((width, root)) = data_root(&square) else {
+        return Ok(false);
+    };
+    Ok(width as u64 == req.square_size && root == req.data_root_hash)
+}
+
 /// `processFibreTxsForSquare`.
 fn process_fibre_txs(
     ctx: &mut Context<'_>,
@@ -482,6 +689,9 @@ fn process(
     deps: &x_ante::StoreDeps,
     req: &RequestProcessProposal,
 ) -> Result<bool, Abort> {
+    if x_ante::is_v9(ctx) {
+        return process_v9(ctx, deps, req);
+    }
     let max_square_size = max_effective_square_size(ctx)?;
     if x_fibre::begin_block(ctx).is_err() {
         return Ok(false);

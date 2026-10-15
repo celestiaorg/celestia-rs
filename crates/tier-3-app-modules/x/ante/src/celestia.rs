@@ -106,6 +106,27 @@ fn reject_wrapped(msgs: &[Any], container: &str) -> R<()> {
     Ok(())
 }
 
+/// celestia-app v9.0.8 `MsgExecDecorator` (app version 9): a `MsgExec` may
+/// not wrap a `MsgExec` or a `MsgPayForBlobs`; `MsgSubmitProposal` is not
+/// inspected.
+pub fn msg_exec_v9(tx: &Tx) -> R<()> {
+    for m in tx.msgs() {
+        if let Some(nested) = txview::msg_exec_msgs(m)? {
+            for n in &nested {
+                let name = match n.type_url.as_str() {
+                    MSG_EXEC_TYPE_URL => "MsgExec",
+                    PFB_TYPE_URL => "MsgPayForBlobs",
+                    _ => continue,
+                };
+                return Err(
+                    errs::not_supported(format!("{name} inside MsgExec is not supported")).into(),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `NestedMsgDecorator`.
 pub fn nested_msg(tx: &Tx) -> R<()> {
     for m in tx.msgs() {

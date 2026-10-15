@@ -162,6 +162,7 @@ impl App {
 
     /// `Query`.
     pub fn query(&mut self, req: &RequestQuery) -> ResponseQuery {
+        sdk::version::set_app_version(self.app_version());
         let mut req = req.clone();
         if req.height == 0 {
             req.height = self.last_height;

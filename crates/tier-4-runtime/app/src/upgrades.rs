@@ -78,10 +78,11 @@ fn ensure_fibre_module_account(ctx: &mut Context<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `ModuleManager.RunMigrations`: every module of this binary is already at
-/// its consensus version (no migrations); modules missing from `from`
-/// would be initialized from default genesis, which is not ported.
-fn run_migrations(from: &VersionMap) -> Result<VersionMap> {
+/// `ModuleManager.RunMigrations` (`DefaultMigrationsOrder`: modules by
+/// name). No module changed its consensus version since v9; modules missing
+/// from `from` (fibre and valaddr, added by v10) run `InitGenesis` with
+/// their default genesis.
+fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap) -> Result<VersionMap> {
     let mut out = VersionMap::new();
     for (name, to) in crate::modules::VERSION_MAP {
         match from.get(*name) {
@@ -91,11 +92,24 @@ fn run_migrations(from: &VersionMap) -> Result<VersionMap> {
                     "migration of module {name} from version {v} to {to}"
                 )));
             }
-            None => {
-                return Err(sdk::error::sdk::not_supported(format!(
-                    "adding module {name} during an upgrade"
-                )));
-            }
+            None => match *name {
+                "fibre" => x_fibre::init_genesis(
+                    ctx,
+                    &celestia_proto::celestia::fibre::v1::GenesisState {
+                        params: Some(x_fibre::default_params()),
+                        ..Default::default()
+                    },
+                )?,
+                "valaddr" => x_valaddr::init_genesis(
+                    ctx,
+                    &celestia_proto::celestia::valaddr::v1::GenesisState::default(),
+                )?,
+                _ => {
+                    return Err(sdk::error::sdk::not_supported(format!(
+                        "adding module {name} during an upgrade"
+                    )));
+                }
+            },
         }
         out.insert((*name).to_owned(), *to);
     }
@@ -106,5 +120,5 @@ fn run_migrations(from: &VersionMap) -> Result<VersionMap> {
 fn v10(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
     set_evidence_params(ctx)?;
     ensure_fibre_module_account(ctx)?;
-    run_migrations(&from)
+    run_migrations(ctx, &from)
 }

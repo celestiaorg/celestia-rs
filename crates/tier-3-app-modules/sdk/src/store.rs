@@ -144,6 +144,28 @@ impl MultiStore {
         Ok(())
     }
 
+    /// Mounts a new IAVL store whose first commit is `initial_version` (a
+    /// store upgrade's `Added` store).
+    pub fn mount_iavl_at(&mut self, name: &str, initial_version: i64) -> Result<(), StoreError> {
+        self.root
+            .mount_store_at(name, StoreKind::Iavl, initial_version)?;
+        self.kinds.insert(name.to_owned(), Kind::Iavl);
+        Ok(())
+    }
+
+    /// Unmounts an IAVL store that holds no committed version.
+    pub fn unmount_iavl(&mut self, name: &str) -> Result<(), StoreError> {
+        self.root.unmount_store(name)?;
+        self.kinds.remove(name);
+        Ok(())
+    }
+
+    /// Whether a store is mounted.
+    #[must_use]
+    pub fn is_mounted(&self, name: &str) -> bool {
+        self.kinds.contains_key(name)
+    }
+
     /// Returns the kind of a mounted store.
     pub fn kind(&self, name: &str) -> Result<Kind, StoreError> {
         self.kinds

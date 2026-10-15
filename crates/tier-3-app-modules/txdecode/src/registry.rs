@@ -41,6 +41,15 @@ fn lookup(type_url: &[u8]) -> Option<&'static (&'static str, &'static str, u32)>
         .binary_search_by(|(u, _, _)| u.as_bytes().cmp(type_url))
         .ok()
         .map(|i| &TYPE_URLS[i])
+        .filter(|(u, _, _)| !(crate::v9() && added_in_v10(u)))
+}
+
+/// Type URLs celestia-app v9.0.8 (built without the `fibre` tag, with
+/// hyperlane-cosmos v1.1.0) does not register.
+pub(crate) fn added_in_v10(type_url: &str) -> bool {
+    type_url.starts_with("/celestia.fibre.v1.")
+        || type_url.starts_with("/celestia.valaddr.v1.")
+        || type_url.starts_with("/hyperlane.warp.v1.MsgCreateNativeSyntheticToken")
 }
 
 /// `interfaceRegistry.Resolve`: the message type registered under a type URL.
@@ -59,6 +68,13 @@ pub(crate) fn resolve_impl(type_url: &[u8], iface: u32) -> Option<&'static Messa
 /// entry). `TxExtensionOptionI` has none.
 pub(crate) fn has_impls(iface: u32) -> bool {
     TYPE_URLS.iter().any(|(_, _, bits)| bits & iface != 0)
+}
+
+/// Whether field `num` of `message` exists in the decoding schema: v9's
+/// `celestia.forwarding.v1.MsgForward` has no `custom_hook_id` (7) /
+/// `custom_hook_metadata` (8).
+pub(crate) fn field_exists(message: &str, num: u32) -> bool {
+    !(crate::v9() && message == "celestia.forwarding.v1.MsgForward" && num >= 7)
 }
 
 #[cfg(test)]

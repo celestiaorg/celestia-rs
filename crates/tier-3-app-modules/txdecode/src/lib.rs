@@ -45,7 +45,8 @@ use sdk::SdkError;
 use sdk::tx::Tx;
 
 pub use wrappers::{
-    BlobTxError, UnwrappedBlobTx, marshal_blob_tx, unmarshal_blob_tx, unmarshal_index_wrapper,
+    BlobTxError, UnwrappedBlobTx, marshal_blob_tx, unmarshal_blob_tx, unmarshal_blob_tx_v9,
+    unmarshal_index_wrapper,
 };
 
 use crate::gogo::{Dyn, GoError, Mode};
@@ -94,6 +95,86 @@ fn with_stack(len: usize, f: impl FnOnce() -> sdk::Result<Tx> + Send) -> sdk::Re
             Err(e) => Err(undefined(format!("spawning decoder thread: {e}"))),
         }
     })
+}
+
+std::thread_local! {
+    /// Set while decoding with celestia-app v9.0.8's decoder ([`decode_v9`]).
+    static V9: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the current decode runs with v9.0.8's registry and schema.
+pub(crate) fn v9() -> bool {
+    V9.with(std::cell::Cell::get)
+}
+
+fn with_v9<T>(f: impl FnOnce() -> T) -> T {
+    let prev = V9.with(|v| v.replace(true));
+    let out = f();
+    V9.with(|v| v.set(prev));
+    out
+}
+
+/// celestia-app v9.0.8's `TxConfig.TxDecoder()` (app version 9, ADR 0004).
+///
+/// Differs from [`decode`] in: no empty-tx rejection; go-square
+/// v4.0.0-rc4's `UnmarshalBlobTx` (no canonical / nested / unknown-field
+/// checks); an `IndexWrapper` may wrap any tx; the interface registry has no
+/// `celestia.fibre.v1` / `celestia.valaddr.v1` types and no
+/// `MsgCreateNativeSyntheticToken` (hyperlane-cosmos v1.1.0); `MsgForward`
+/// has no fields 7 / 8.
+pub fn decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
+    with_stack(raw.len(), || {
+        with_v9(|| {
+            // blobTxDecoder (rc4)
+            match unmarshal_blob_tx_v9(raw) {
+                Some(Ok(UnwrappedBlobTx { tx: inner, blobs })) => {
+                    let mut tx = index_wrapper_decode_v9(&inner)?;
+                    tx.blobs = blobs;
+                    Ok(tx)
+                }
+                Some(Err(e)) => Err(undefined(format!("{e:?}"))),
+                None => index_wrapper_decode_v9(raw),
+            }
+        })
+    })
+}
+
+/// v9 `indexWrapperDecoder`: decodes the wrapped tx, whatever it holds.
+fn index_wrapper_decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
+    let Some((inner, share_indexes)) = unmarshal_index_wrapper(raw) else {
+        return default_tx_decode_inner(raw);
+    };
+    let mut tx = default_tx_decode_inner(&inner)?;
+    tx.share_indexes = share_indexes;
+    Ok(tx)
+}
+
+/// celestia-app v9.0.8 `hasDuplicateTxRawField`: whether a top-level field
+/// other than `signatures` (3) appears more than once (undecodable bytes:
+/// `false`).
+#[must_use]
+pub fn has_duplicate_tx_raw_field(mut tx: &[u8]) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    while !tx.is_empty() {
+        let (num, _, n) = protowire::consume_field(tx);
+        if n < 0 {
+            return false;
+        }
+        if num != 3 && !seen.insert(num) {
+            return true;
+        }
+        tx = &tx[n as usize..];
+    }
+    false
+}
+
+/// [`decode`] or [`decode_v9`] by app version.
+pub fn decode_for(app_version: u64, raw: &[u8]) -> sdk::Result<Tx> {
+    if app_version != 0 && app_version < 10 {
+        decode_v9(raw)
+    } else {
+        decode(raw)
+    }
 }
 
 /// celestia-app's `TxConfig.TxDecoder()`: decodes raw block tx bytes.

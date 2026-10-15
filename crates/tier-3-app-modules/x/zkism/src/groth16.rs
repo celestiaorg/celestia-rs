@@ -297,6 +297,39 @@ pub enum VerifyError {
     Decode(String),
 }
 
+/// celestia-app v9.0.8 `SP1Groth16Verifier.VerifyProof` (SP1 v5, app
+/// version 9): `prefix(4) | proof(256)` and two public inputs
+/// `[vkey_hash, committed_values_digest]`.
+pub fn sp1_verify_v5(
+    vk: &VerifyingKey,
+    vk_bytes: &[u8],
+    proof_bz: &[u8],
+    program_vk: &[u8],
+    public_values: &[u8],
+) -> Result<(), VerifyError> {
+    let want = PREFIX_LEN + PROOF_SIZE;
+    if proof_bz.len() != want {
+        return Err(VerifyError::Length(format!(
+            "expected {want}, got {}",
+            proof_bz.len()
+        )));
+    }
+    let prefix = &hash::sha256(vk_bytes)[..PREFIX_LEN];
+    if prefix != &proof_bz[..PREFIX_LEN] {
+        return Err(VerifyError::Prefix(format!(
+            "expected {}, got {}",
+            hex::encode(prefix),
+            hex::encode(&proof_bz[..PREFIX_LEN])
+        )));
+    }
+    let proof = unmarshal_proof(&proof_bz[PREFIX_LEN..])
+        .map_err(|e| VerifyError::Decode(format!("failed to unmarshal proof: {e}")))?;
+    let fr = Fr::from_be_bytes_mod_order;
+    let public = [fr(program_vk), fr(&hash_bn254(public_values))];
+    verify(&proof, vk, &public)
+        .map_err(|e| VerifyError::Invalid(format!("failed to verify proof: {e}")))
+}
+
 /// `SP1Groth16Verifier.VerifyProof` with the verifier built from `vk_bytes`
 /// (the vkey was validated when the ISM was created).
 pub fn sp1_verify(
@@ -394,6 +427,40 @@ mod tests {
         let mut p = ST_PROOF.to_vec();
         p[200] ^= 1;
         assert!(sp1_verify(&vk, VK, &p, &vkey(ST_VKEY), ST_VALUES).is_err());
+        Ok(())
+    }
+
+    /// celestia-app v9.0.8's SP1 v5 vectors (`x/zkism/internal/testdata`,
+    /// program vkeys from its keeper tests).
+    #[test]
+    fn verifies_v9_sp1_v5_proofs() -> Result<(), String> {
+        const VK9: &[u8] = include_bytes!("../testdata/v9/groth16_vk.bin");
+        const ST9: &[u8] = include_bytes!("../testdata/v9/state_transition/proof.bin");
+        const ST9_VALUES: &[u8] =
+            include_bytes!("../testdata/v9/state_transition/public_values.bin");
+        const SM9: &[u8] = include_bytes!("../testdata/v9/state_membership/proof.bin");
+        const SM9_VALUES: &[u8] =
+            include_bytes!("../testdata/v9/state_membership/public_values.bin");
+        let transition_vkey =
+            vkey("0x0017bc91d53b93c46eb842d7f9020a94ea13d8877a21608b34b71fcc4da64f29");
+        let membership_vkey =
+            vkey("0x004959d5fb2c3d5bc1f98e032188dd94fbb5c6b6152df356c7c20be23be824a2");
+        let vk = new_verifying_key(VK9)?;
+        assert_eq!(vk.k.len(), 3);
+        assert_eq!(
+            sp1_verify_v5(&vk, VK9, ST9, &transition_vkey, ST9_VALUES),
+            Ok(())
+        );
+        assert_eq!(
+            sp1_verify_v5(&vk, VK9, SM9, &membership_vkey, SM9_VALUES),
+            Ok(())
+        );
+        assert!(sp1_verify_v5(&vk, VK9, ST9, &membership_vkey, ST9_VALUES).is_err());
+        // A v5 proof is the wrong length for the v10 (SP1 v6) verifier.
+        assert!(matches!(
+            sp1_verify(&vk, VK9, ST9, &transition_vkey, ST9_VALUES),
+            Err(VerifyError::Length(_))
+        ));
         Ok(())
     }
 }

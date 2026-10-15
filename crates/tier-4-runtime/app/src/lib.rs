@@ -312,8 +312,25 @@ impl App {
             ms.mount(name, kind).map_err(store_err)?;
         }
         ms.load_latest_version().map_err(store_err)?;
+        // A state committed at app version 9 has no fibre / valaddr stores
+        // (they are added by the v10 upgrade, ADR 0004).
+        let missing: Vec<&'static str> = ms
+            .root()
+            .last_commit_info()
+            .map(|info| {
+                stores::ADDED_IN_V10
+                    .iter()
+                    .copied()
+                    .filter(|s| info.store_info(s).is_none())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for name in missing {
+            ms.unmount_iavl(name).map_err(store_err)?;
+        }
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
+        app.mount_upgrade_stores()?;
         if app.chain_id.is_empty()
             && let Some(chain_id) = &options.chain_id
         {
@@ -416,6 +433,20 @@ impl App {
             ..Header::default()
         };
         self.check_header = header.clone();
+        let genesis_app_version = req
+            .consensus_params
+            .as_ref()
+            .and_then(|cp| cp.version.as_ref())
+            .map_or(INITIAL_APP_VERSION, |v| v.app);
+        sdk::version::set_app_version(genesis_app_version);
+        // celestia-app v9.0.8 has no fibre / valaddr stores (ADR 0004).
+        if stores::is_v9(genesis_app_version) {
+            for name in stores::ADDED_IN_V10 {
+                if self.ms.is_mounted(name) {
+                    self.ms.unmount_iavl(name).map_err(store_err)?;
+                }
+            }
+        }
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
 
         if let Some(mut cp) = req.consensus_params.clone() {
@@ -432,9 +463,18 @@ impl App {
         let genesis: serde_json::Value = serde_json::from_slice(&req.app_state_bytes)
             .map_err(|e| sdk::error::sdk::json_unmarshal(e.to_string()))?;
         let app_state = &genesis;
-        x_upgrade::set_module_version_map(&mut ctx, modules::VERSION_MAP.iter().copied())?;
+        x_upgrade::set_module_version_map(
+            &mut ctx,
+            modules::VERSION_MAP
+                .iter()
+                .copied()
+                .filter(|(m, _)| stores::exists_at(m, genesis_app_version)),
+        )?;
         let mut validators = Vec::new();
         for module in modules::INIT_GENESIS {
+            if !stores::exists_at(module, genesis_app_version) {
+                continue;
+            }
             let updates = modules::init_genesis(&mut ctx, module, &app_state[*module])?;
             if !updates.is_empty() {
                 if !validators.is_empty() {
@@ -476,6 +516,7 @@ impl App {
         };
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
         ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
+        sdk::version::set_app_version(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
         ctx.vote_infos = req
             .decided_last_commit
             .as_ref()
@@ -515,17 +556,29 @@ impl App {
                 a.index = false;
             }
         }
+        let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
         for module in modules::BEGIN_BLOCKERS {
-            modules::begin_block(&mut ctx, module)?;
+            if stores::exists_at(module, app_version) {
+                modules::begin_block(&mut ctx, module)?;
+            }
         }
         let mut begin = ctx.events.take();
         with_mode(&mut begin, "BeginBlock");
         events.extend(begin);
 
-        let tx_results = execute_txs_phased(&mut ctx, &req.txs);
+        // cosmos-sdk v0.52.8 (celestia-app v9) delivers each tx in turn;
+        // v0.52.12 (v10) runs every ante handler before any message.
+        let tx_results = if stores::is_v9(app_version) {
+            execute_txs_sequential(&mut ctx, &req.txs)
+        } else {
+            execute_txs_phased(&mut ctx, &req.txs)
+        };
 
         let mut validator_updates = Vec::new();
         for module in modules::END_BLOCKERS {
+            if !stores::exists_at(module, app_version) {
+                continue;
+            }
             let updates = modules::end_block(&mut ctx, module)?;
             if !updates.is_empty() {
                 validator_updates = updates;
@@ -581,10 +634,32 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
+        self.mount_upgrade_stores()?;
         self.snapshot_if_applicable();
         Ok(ResponseCommit {
             retain_height: self.block_retention_height(id.version),
         })
+    }
+
+    /// The v10 store loader (`UpgradeStoreLoader(H+1, Added: fibre,
+    /// valaddr)`): once the committed app version is 10 or more, the stores
+    /// v9 lacks are mounted empty with their first version at the next
+    /// height. In Go the multiplexer opens the v10 app right after the
+    /// commit that raised the app version, and that app's loader adds them.
+    fn mount_upgrade_stores(&mut self) -> Result<()> {
+        let version = self.app_version();
+        if stores::is_v9(version) || version == INITIAL_APP_VERSION {
+            return Ok(());
+        }
+        for name in stores::ADDED_IN_V10 {
+            if !self.ms.is_mounted(name) {
+                tracing::info!(store = name, height = self.last_height + 1, "adding store");
+                self.ms
+                    .mount_iavl_at(name, self.last_height + 1)
+                    .map_err(store_err)?;
+            }
+        }
+        Ok(())
     }
 
     /// Go `checkHalt`.
@@ -757,8 +832,8 @@ fn with_mode(events: &mut [abci::Event], mode: &str) {
 
 /// `BaseApp.extractSigners`: the bech32 addresses of the signer infos'
 /// public keys (nil on any error).
-fn extract_signers(tx_bytes: &[u8]) -> Vec<String> {
-    let Ok(tx) = txpipe::decode_tx(tx_bytes) else {
+fn extract_signers(decode: tx::DecodeFn, tx_bytes: &[u8]) -> Vec<String> {
+    let Ok(tx) = decode(tx_bytes) else {
         return Vec::new();
     };
     let Ok(sigs) = x_ante::txview::signatures_v2(&tx) else {
@@ -797,7 +872,7 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
             Ok(()) => prepared.push(Some(p)),
             Err(e) => {
                 let mut r = tx::exec_result(&p, Err(e));
-                r.signers = extract_signers(raw);
+                r.signers = extract_signers(txpipe::decode_tx, raw);
                 results[i] = Some(r);
                 prepared.push(None);
             }
@@ -807,7 +882,7 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
         if let Some(p) = p {
             let res = tx::run_msgs(ctx, p, true);
             let mut r = tx::exec_result(p, res);
-            r.signers = extract_signers(&p.tx_bytes);
+            r.signers = extract_signers(txpipe::decode_tx, &p.tx_bytes);
             results[i] = Some(r);
         }
     }
@@ -819,6 +894,102 @@ fn execute_txs_phased(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecT
     ctx.gas = kvstore::GasMeter::infinite();
     ctx.tx_bytes.clear();
     results.into_iter().map(Option::unwrap_or_default).collect()
+}
+
+/// cosmos-sdk v0.52.8 (celestia-app v9) `FinalizeBlock`: `deliverTx` per
+/// tx (`runTx`: ante, then messages), with the block gas meter of a finite
+/// `block.max_gas` (`getBlockGasMeter`; `-1`/`0` means infinite).
+fn execute_txs_sequential(ctx: &mut Context<'_>, txs: &[Vec<u8>]) -> Vec<abci::ExecTxResult> {
+    let max_gas = ctx
+        .consensus_params
+        .block
+        .as_ref()
+        .map_or(-1, |b| b.max_gas);
+    let block_limit = u64::try_from(max_gas).ok().filter(|l| *l > 0);
+    let mut block_used: u64 = 0;
+    let mut results = Vec::with_capacity(txs.len());
+    for raw in txs {
+        if txpipe::decode_tx_v9(raw).is_err() {
+            results.push(tx::error_result(
+                &sdk::error::sdk::tx_decode(""),
+                0,
+                0,
+                Vec::new(),
+            ));
+            continue;
+        }
+        let signers = extract_signers(txpipe::decode_tx_v9, raw);
+        // `runTx`: "only run the tx if there is block gas remaining".
+        if block_limit.is_some_and(|l| block_used >= l) {
+            let mut r = tx::error_result(
+                &sdk::error::sdk::out_of_gas("no block gas left to run tx"),
+                0,
+                0,
+                Vec::new(),
+            );
+            r.signers = signers;
+            results.push(r);
+            continue;
+        }
+        // `consumeBlockGas`: the tx's gas (capped at its limit) is added to
+        // the block meter after the tx; exceeding the block limit panics
+        // and the recovered error replaces the tx's result.
+        let block_overflow = |used: u64, gas: &kvstore::GasMeter, gas_wanted: u64| {
+            let total = used.saturating_add(gas.consumed_to_limit());
+            let over = block_limit.is_some_and(|l| total > l);
+            let err = over.then(|| {
+                sdk::error::sdk::out_of_gas(format!(
+                    "out of gas in location: block gas meter; gasWanted: {gas_wanted}, gasUsed: {}",
+                    gas.consumed()
+                ))
+            });
+            (total, err)
+        };
+        let (mut p, res) = tx::run_ante(ctx, raw, txpipe::decode_tx_v9, txpipe::ante, false);
+        let mut r = if let Err(e) = res {
+            let (total, over) = block_overflow(block_used, &p.gas, p.gas_wanted);
+            block_used = total;
+            let e = over.unwrap_or(e);
+            // A failed ante handler returns no events.
+            tx::error_result(
+                &e,
+                as_i64(p.gas_wanted),
+                as_i64(p.gas.consumed()),
+                Vec::new(),
+            )
+        } else {
+            let gas_wanted = p.gas_wanted;
+            let mut consumed = None;
+            let res = tx::run_msgs_gated(ctx, &mut p, true, |gas| {
+                let (total, over) = block_overflow(block_used, gas, gas_wanted);
+                consumed = Some(total);
+                over.map_or(Ok(()), Err)
+            });
+            if let Some(total) = consumed {
+                block_used = total;
+            } else {
+                let (total, over) = block_overflow(block_used, &p.gas, gas_wanted);
+                block_used = total;
+                if let (Some(e), Err(_)) = (over, &res) {
+                    let mut r = tx::exec_result(&p, Err(e));
+                    r.signers = signers;
+                    results.push(r);
+                    continue;
+                }
+            }
+            tx::exec_result(&p, res)
+        };
+        r.signers = signers;
+        results.push(r);
+    }
+    ctx.gas = kvstore::GasMeter::infinite();
+    ctx.tx_bytes.clear();
+    results
+}
+
+#[allow(clippy::cast_possible_wrap)]
+const fn as_i64(v: u64) -> i64 {
+    v as i64
 }
 
 fn multistore_timestamp(t: &pbjson_types::Timestamp) -> prost_types::Timestamp {

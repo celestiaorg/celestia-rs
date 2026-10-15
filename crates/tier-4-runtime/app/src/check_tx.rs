@@ -49,6 +49,10 @@ fn signer_data(tx: &Tx) -> Result<(Vec<u8>, u64), String> {
 impl App {
     /// `CheckTx`.
     pub fn check_tx(&mut self, req: &RequestCheckTx) -> Result<ResponseCheckTx, String> {
+        sdk::version::set_app_version(self.app_version());
+        if crate::stores::is_v9(self.app_version()) {
+            return self.check_tx_v9(req);
+        }
         let raw = &req.tx;
         if raw.len() > MAX_TX_SIZE {
             let e = SdkError::new(
@@ -67,7 +71,7 @@ impl App {
                 return Ok(error_response(&e, 0, 0));
             }
             Some(Err(BlobTxError::Invalid(e))) => return Err(e),
-            Some(Ok(u)) => return self.check_blob_tx(req, &u),
+            Some(Ok(u)) => return self.check_blob_tx(req, &u, crate::txpipe::decode_tx),
             None => {}
         }
         let sdk_tx = txdecode::decode(raw).map_err(|e| e.log)?;
@@ -92,7 +96,54 @@ impl App {
         if let Err(e) = fibre_tx::validate_shape(&sdk_tx) {
             return Ok(error_response(&e, 0, 0));
         }
-        self.forward_check_tx(req.r#type, raw, &sdk_tx)
+        self.forward_check_tx(req.r#type, raw, &sdk_tx, crate::txpipe::decode_tx)
+    }
+
+    /// celestia-app v9.0.8 `CheckTx` (app version 9, ADR 0004).
+    fn check_tx_v9(&mut self, req: &RequestCheckTx) -> Result<ResponseCheckTx, String> {
+        let raw = &req.tx;
+        if raw.len() > MAX_TX_SIZE {
+            let e = SdkError::new(
+                "app",
+                11_142,
+                format!(
+                    "tx size {} bytes is larger than the application's configured MaxTxSize of {MAX_TX_SIZE} bytes for version 9: transaction size exceeds maximum allowed limit",
+                    raw.len()
+                ),
+            );
+            return Ok(error_response(&e, 0, 0));
+        }
+        let blob = match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Err(BlobTxError::Invalid(e))) => return Err(e),
+            Some(Err(e)) => return Err(format!("{e:?}")),
+            Some(Ok(u)) => Some(u),
+            None => None,
+        };
+        // Txs repeating a top-level TxRaw field are rejected with an error.
+        let sdk_bytes = blob.as_ref().map_or(raw.as_slice(), |u| u.tx.as_slice());
+        if txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
+            return Err("transaction contains a duplicate TxRaw field".into());
+        }
+        if let Some(u) = blob {
+            return self.check_blob_tx(req, &u, crate::txpipe::decode_tx_v9);
+        }
+        let sdk_tx = txdecode::decode_v9(raw).map_err(|e| e.log)?;
+        let pfb = MsgPayForBlobs::type_url();
+        if sdk_tx.msgs().iter().any(|m| m.type_url == pfb) {
+            return Ok(error_response(&x_blob::errors::no_blobs(), 0, 0));
+        }
+        let count = sdk_tx.msgs().len();
+        if count > MAX_SDK_MESSAGES {
+            let e = SdkError::new(
+                "app",
+                11_143,
+                format!(
+                    "tx contains {count} messages, limit is {MAX_SDK_MESSAGES}: transaction exceeds maximum allowed SDK message count"
+                ),
+            );
+            return Ok(error_response(&e, 0, 0));
+        }
+        self.forward_check_tx(req.r#type, raw, &sdk_tx, crate::txpipe::decode_tx_v9)
     }
 
     /// `handleBlobCheckTx`.
@@ -100,17 +151,18 @@ impl App {
         &mut self,
         req: &RequestCheckTx,
         u: &UnwrappedBlobTx,
+        decode: tx::DecodeFn,
     ) -> Result<ResponseCheckTx, String> {
         match CheckTxType::try_from(req.r#type) {
             Ok(CheckTxType::New) => {
-                let inner = txdecode::decode(&u.tx).map_err(|e| e.log)?;
+                let inner = decode(&u.tx).map_err(|e| e.log)?;
                 validate_blob_tx(&inner, u).map_err(|e| e.log)?;
             }
             Ok(CheckTxType::Recheck) => {}
             Err(_) => return Err(format!("unknown RequestCheckTx type: {}", req.r#type)),
         }
-        let sdk_tx = txdecode::decode(&u.tx).map_err(|e| e.log)?;
-        self.forward_check_tx(req.r#type, &u.tx, &sdk_tx)
+        let sdk_tx = decode(&u.tx).map_err(|e| e.log)?;
+        self.forward_check_tx(req.r#type, &u.tx, &sdk_tx, decode)
     }
 
     /// `forwardCheckTx`: `BaseApp.CheckTx` plus the priority-mempool
@@ -120,13 +172,14 @@ impl App {
         check_type: i32,
         tx_bytes: &[u8],
         sdk_tx: &Tx,
+        decode: tx::DecodeFn,
     ) -> Result<ResponseCheckTx, String> {
         let mode = match CheckTxType::try_from(check_type) {
             Ok(CheckTxType::New) => ExecMode::Check,
             Ok(CheckTxType::Recheck) => ExecMode::ReCheck,
             Err(_) => return Err(format!("unknown RequestCheckTx type: {check_type}")),
         };
-        let res = self.run_check_tx(mode, tx_bytes);
+        let res = self.run_check_tx(mode, tx_bytes, decode);
         if res.code != 0 {
             return Ok(res);
         }
@@ -140,7 +193,12 @@ impl App {
 
     /// `BaseApp.CheckTx` → `runTx(execModeCheck|ReCheck)`.
     #[allow(clippy::cast_possible_wrap)]
-    fn run_check_tx(&mut self, mode: ExecMode, tx_bytes: &[u8]) -> ResponseCheckTx {
+    fn run_check_tx(
+        &mut self,
+        mode: ExecMode,
+        tx_bytes: &[u8],
+        decode: tx::DecodeFn,
+    ) -> ResponseCheckTx {
         let header = self.check_header.clone();
         let deps = x_ante::StoreDeps::new(self.node_min_gas_price.clone())
             .with_ibc(crate::ibc::ANTE_HOOKS);
@@ -150,7 +208,7 @@ impl App {
             .flatten()
             .unwrap_or_default();
         ctx.tx_bytes = tx_bytes.to_vec();
-        let decoded = match txdecode::decode(tx_bytes) {
+        let decoded = match decode(tx_bytes) {
             Ok(t) => t,
             Err(e) => return error_response(&e, 0, ctx.gas.consumed()),
         };
