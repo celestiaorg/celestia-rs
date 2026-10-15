@@ -22,6 +22,13 @@
 #   state/<h>.json      devnet-oracle statedump at heights 1 and <blocks>
 #   meta.json           versions used
 #
+# APP_V9=1 runs celestia-app v9.0.8 (app version 9; binary cached as
+# $DEVNET_BIN/v9/celestia-appd, which also serves the workload's CLI).
+# UPGRADE_TO_V10=1 (with APP_V9=1) reproduces the multiplexer's binary
+# switch: when a FinalizeBlock response raises the app version, the
+# recorder stops the v9 app after its Commit and starts the v10 app on the
+# same home and address (see abci-recorder).
+#
 # Requires Go and cargo. Binaries are cached in $DEVNET_BIN (default
 # target/devnet-bin). The workload script (if any) is run with
 # HOME_DIR, CHAIN_ID, NODE (rpc URL) and PATH set; it may submit txs.
@@ -31,6 +38,7 @@ SCENARIO=${1:?scenario}
 BLOCKS=${2:?blocks}
 WORKLOAD=${3:-}
 APP_VERSION=v10.4.0
+[ -n "${APP_V9:-}" ] && APP_VERSION=v9.0.8
 CORE_VERSION=v0.42.3
 CHAIN_ID=${CHAIN_ID:-rs-devnet-1}
 # Shift every listening port so concurrent devnets don't collide.
@@ -52,7 +60,12 @@ build_go() { # <module@version> <pkg> <name>
   rm -rf "$WORK/src" && cp -r "$src" "$WORK/src" && chmod -R u+w "$WORK/src"
   (cd "$WORK/src" && GOFLAGS=-mod=mod go build -o "$BIN/$3" "$2")
 }
-build_go github.com/celestiaorg/celestia-app/v10@$APP_VERSION ./cmd/celestia-appd celestia-appd
+build_go github.com/celestiaorg/celestia-app/v10@v10.4.0 ./cmd/celestia-appd celestia-appd
+if [ -n "${APP_V9:-}" ]; then
+  mkdir -p "$BIN/v9"
+  build_go github.com/celestiaorg/celestia-app/v9@v9.0.8 ./cmd/celestia-appd v9/celestia-appd
+  export PATH=$BIN/v9:$PATH
+fi
 build_go github.com/celestiaorg/celestia-core@$CORE_VERSION ./cmd/cometbft cometbft
 [ -x "$BIN/devnet-oracle" ] || (cd "$ROOT/conformance/devnet-oracle" && go build -o "$BIN/devnet-oracle" .)
 [ -x "$BIN/abci-recorder" ] || (cd "$ROOT" && cargo build -q --release -p abci-server --bin abci-recorder && cp target/release/abci-recorder "$BIN/")
@@ -79,7 +92,7 @@ if [ -n "${GENESIS_PATCH:-}" ]; then
 fi
 sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
 sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
-  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" \
+  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" -e "s#127.0.0.1:26659#127.0.0.1:$P_PRIVVAL_GRPC#" \
   -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$((9098 + OFF))#" "$H/config/config.toml"
 sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
 # Workloads that need tx results over RPC (e.g. the relayer) set
@@ -109,8 +122,21 @@ PIDS=()
 cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
 trap cleanup EXIT
 celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
-PIDS+=($!); sleep 4
-abci-recorder 127.0.0.1:$P_PROXY 127.0.0.1:$P_APP "$WORK/abci.rec" > "$WORK/rec.log" 2>&1 &
+APP_PID=$!; PIDS+=($APP_PID); sleep 4
+SWITCH=()
+if [ -n "${UPGRADE_TO_V10:-}" ]; then
+  # Run by the recorder inside the held Commit: stop v9 (its last commit is
+  # on disk), start the v10 app on the same home and address.
+  cat > "$WORK/switch.sh" <<SH
+set -e
+kill $APP_PID; while kill -0 $APP_PID 2>/dev/null; do sleep 0.2; done
+"$BIN/celestia-appd" start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >> "$WORK/app-v10.log" 2>&1 &
+echo \$! > "$WORK/app-v10.pid"
+until (exec 3<>/dev/tcp/127.0.0.1/$P_APP) 2>/dev/null; do sleep 0.2; done
+SH
+  SWITCH=("bash $WORK/switch.sh")
+fi
+abci-recorder 127.0.0.1:$P_PROXY 127.0.0.1:$P_APP "$WORK/abci.rec" "${SWITCH[@]}" > "$WORK/rec.log" 2>&1 &
 PIDS+=($!); sleep 1
 cometbft start --home "$H/core" --proxy_app tcp://127.0.0.1:$P_PROXY > "$WORK/core.log" 2>&1 &
 CORE=$!; PIDS+=($CORE)
@@ -132,7 +158,9 @@ until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do
   sleep 1
 done
 # Stop consensus first so the app commits nothing past what core saw.
-kill $CORE 2>/dev/null || true; sleep 2; cleanup; sleep 1
+kill $CORE 2>/dev/null || true; sleep 2; cleanup
+[ -f "$WORK/app-v10.pid" ] && kill "$(cat "$WORK/app-v10.pid")" 2>/dev/null || true
+sleep 1
 LAST=$(curl -s localhost:$P_RPC/status >/dev/null 2>&1 || true; python3 - "$WORK/abci.rec" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()

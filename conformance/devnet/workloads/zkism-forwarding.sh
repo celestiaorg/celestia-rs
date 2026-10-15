@@ -72,6 +72,22 @@ SM_VKEY=00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63
 # public input: the pairing check fails).
 BAD_POINT=${ST_PROOF:0:400}$(printf '%02x' $(( 0x${ST_PROOF:400:2} ^ 1 )))${ST_PROOF:402}
 BAD_NONCE=${ST_PROOF:0:190}$(printf '%02x' $(( 0x${ST_PROOF:190:2} ^ 1 )))${ST_PROOF:192}
+if [ -n "${APP_V9:-}" ]; then
+  # celestia-app v9.0.8 (SP1 v5): its own vectors (testdata/v9, program
+  # vkeys from its keeper tests); proofs are prefix + 256 bytes, so the
+  # second failure flips a bit of Krs (the pairing check fails).
+  TD=$TD/v9
+  ST_PROOF=$(hexfile "$TD/state_transition/proof.bin")
+  ST_VALUES=$(hexfile "$TD/state_transition/public_values.bin")
+  SM_PROOF=$(hexfile "$TD/state_membership/proof.bin")
+  SM_VALUES=$(hexfile "$TD/state_membership/public_values.bin")
+  STATE=$(python3 -c 'import sys; b=bytes.fromhex(sys.argv[1]); n=int.from_bytes(b[:8], "little"); print(b[8:8+n].hex())' "$ST_VALUES")
+  MERKLE_ADDR=${SM_VALUES:64:64}
+  ST_VKEY=0017bc91d53b93c46eb842d7f9020a94ea13d8877a21608b34b71fcc4da64f29
+  SM_VKEY=004959d5fb2c3d5bc1f98e032188dd94fbb5c6b6152df356c7c20be23be824a2
+  BAD_POINT=${ST_PROOF:0:8}$(printf '%02x' $(( 0x${ST_PROOF:8:2} ^ 1 )))${ST_PROOF:10}
+  BAD_NONCE=${ST_PROOF:0:500}$(printf '%02x' $(( 0x${ST_PROOF:500:2} ^ 1 )))${ST_PROOF:502}
+fi
 
 # ---- hyperlane infrastructure ----
 run user0 hyperlane ism create-noop

@@ -65,6 +65,36 @@ cargo build -p celestia-rs
 conformance/devnet/devnet.sh cli 40 conformance/devnet/workloads/cli.sh
 ```
 
+## App version 9 (ADR 0004)
+
+`APP_V9=1` records a scenario from Go celestia-app **v9.0.8** (mainnet's
+version; `$DEVNET_BIN/v9/celestia-appd`, also used by the workload's CLI)
+behind celestia-core v0.42.3, as the v10 multiplexer runs its embedded v9
+binary. `UPGRADE_TO_V10=1` additionally reproduces the multiplexer's switch:
+`abci-recorder <listen> <app> <out> <switch-cmd>` watches FinalizeBlock
+responses; after the one that raises `consensus_param_updates.version.app`
+it holds the following Commit response, lets every connection drain, runs
+the switch command (stop v9, start v10 on the same home and address) and
+reconnects all four connections before releasing the Commit. The v10 app
+then opens with the v10 store loader (fibre and valaddr added at `H+1`)
+and runs the `v10` handler in the next PreBlocker.
+
+```bash
+APP_V9=1 conformance/devnet/devnet.sh v9-staking 40 conformance/devnet/workloads/staking.sh
+APP_V9=1 conformance/devnet/devnet.sh v9-exec 30 conformance/devnet/workloads/v9-exec.sh
+APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh v9-upgrade 40 conformance/devnet/workloads/v9-upgrade.sh
+```
+
+A v9 CheckTx that returns a Go error (e.g. a non-canonical BlobTx or a
+duplicated TxRaw field) makes celestia-core stop its socket client, so
+v9 workloads do not send those (`blob.sh` skips its non-canonical BlobTx
+under `APP_V9`).
+
+`cargo run -p devnet-conformance --example real_dah -- 9 <block.json>...`
+rebuilds the square of real blocks (CometBFT `/block` responses from a
+mainnet or Mocha RPC) with the app version's rules and checks every tx
+decodes and the square size / data root match the header.
+
 ## Live mixed network
 
 `mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a

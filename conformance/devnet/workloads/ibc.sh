@@ -45,7 +45,8 @@ $P genesis gentx val0 5000000000utia --chain-id $PEER_ID "${PK[@]}" --fees 50000
 $P genesis collect-gentxs >/dev/null 2>&1
 sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#tcp://127.0.0.1:36658#tcp://127.0.0.1:$P_APP#" -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$P_RPCGRPC#" \
-  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL#" "$PEER/config/config.toml"
+  -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL#" \
+  -e "s#127.0.0.1:26659#127.0.0.1:$P_PRIVVAL#" "$PEER/config/config.toml"
 sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" \
   -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$PEER/config/app.toml"
 sed -i -e 's#^indexer = "null"#indexer = "kv"#' -e 's#^discard_abci_responses = true#discard_abci_responses = false#' \
