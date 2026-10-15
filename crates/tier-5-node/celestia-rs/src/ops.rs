@@ -193,12 +193,25 @@ pub fn log_filter(level: &str) -> String {
         .join(",")
 }
 
+/// Whether log lines get ANSI colors: only when stdout is a terminal, so a
+/// redirected log (a file, launchd's `StandardOutPath`, journald) stays
+/// plain text, and never when `NO_COLOR` is set to a non-empty value.
+fn use_ansi(stdout_is_terminal: bool, no_color: Option<String>) -> bool {
+    stdout_is_terminal && no_color.is_none_or(|v| v.is_empty())
+}
+
 /// Initializes logging: `RUST_LOG` wins over `level`; `format` is `plain`
 /// (default) or `json`.
 pub fn init_logging(level: &str, format: &str) {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_filter(level)));
-    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    let ansi = use_ansi(
+        std::io::IsTerminal::is_terminal(&std::io::stdout()),
+        std::env::var("NO_COLOR").ok(),
+    );
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(ansi);
     let _ = if format == "json" {
         builder.json().try_init()
     } else {
@@ -267,6 +280,16 @@ mod tests {
             "consensus=debug,error"
         );
         assert_eq!(log_filter(""), "info");
+    }
+
+    #[test]
+    fn ansi_only_on_a_terminal() {
+        // A file or launchd/systemd log must not get escape codes.
+        assert!(use_ansi(true, None));
+        assert!(!use_ansi(false, None));
+        // https://no-color.org: any non-empty NO_COLOR disables colors.
+        assert!(!use_ansi(true, Some("1".into())));
+        assert!(use_ansi(true, Some(String::new())));
     }
 
     #[test]
