@@ -857,6 +857,14 @@ because the key already signed at this or a later position. The node does
    `double_sign_check_height` > 0): wait `N` blocks with the node stopped
    after making sure of step 1, then start it again.
 
+One `failed signing vote … conflicting data` right after a restart, at the
+height the old process was stopped in, with signing resuming a few blocks
+later, was a known bug in builds before the fix for it (2026-10-15): the
+old process signed its delayed precommit after SIGTERM (Go aborts that
+wait on shutdown), so the restarted node's nil precommit at that height
+conflicted. The guard refused correctly; it cost 3 missed blocks on Mocha
+at height 1,721,185. Builds with the fix stop without signing.
+
 ### 11.12 Network upgrades (`halt-height`, `upgrade-info.json`)
 
 Celestia upgrades the app version by validator signalling (no governance
