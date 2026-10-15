@@ -1292,6 +1292,7 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
         app
     };
     app.set_node_min_gas_price(utia_min_gas_price(&a.minimum_gas_prices)?);
+    let state_db = app.multistore().root().backend().cloned();
     let listener = tokio::net::TcpListener::bind(&a.addr).await?;
     let app = Arc::new(app::AbciApp::new(app));
     if !a.grpc_address.is_empty() {
@@ -1312,7 +1313,31 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
             }
         });
     }
-    abci_server::serve(listener, app).await
+    // On SIGTERM / SIGINT write the memtables out before exiting, so the
+    // next start does not replay the WAL.
+    let shutdown = async {
+        #[cfg(unix)]
+        if let Ok(mut term) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+            return;
+        }
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    tokio::select! {
+        res = abci_server::serve(listener, app) => res,
+        () = shutdown => {
+            tracing::info!("shutting down (flushing state)");
+            if let Some(db) = state_db {
+                db.flush().map_err(|e| anyhow!("flush state: {e}"))?;
+            }
+            Ok(())
+        }
+    }
 }
 
 fn keyring_for(home: &Path, kr: &KeyringArgs) -> anyhow::Result<keyring::Keyring> {

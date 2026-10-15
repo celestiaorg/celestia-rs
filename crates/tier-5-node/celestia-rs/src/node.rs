@@ -205,7 +205,45 @@ pub(crate) fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBacke
     let db = kvdb::open_backend(data, name, &options)
         .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))?;
     crate::memstats::register_db(name, &db);
+    register_for_flush(&db);
     Ok(db)
+}
+
+/// Databases flushed by [`flush_databases`] (weak: closing one is fine).
+static OPEN_DBS: std::sync::Mutex<Vec<std::sync::Weak<dyn KvBackend>>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Adds `db` to the databases written out at shutdown.
+pub(crate) fn register_for_flush(db: &Arc<dyn KvBackend>) {
+    if let Ok(mut dbs) = OPEN_DBS.lock() {
+        dbs.retain(|d| d.strong_count() > 0);
+        dbs.push(Arc::downgrade(db));
+    }
+}
+
+/// Writes the in-memory buffers of every open database to its files
+/// (clean shutdown): RocksDB otherwise keeps them only in its WAL and the
+/// next start replays it before the node can serve (B1 phase C: ~2 s of
+/// a 2.1 s restart).
+pub(crate) fn flush_databases() {
+    let dbs: Vec<_> = OPEN_DBS
+        .lock()
+        .map(|dbs| dbs.iter().filter_map(std::sync::Weak::upgrade).collect())
+        .unwrap_or_default();
+    for db in dbs {
+        if let Err(e) = db.flush() {
+            tracing::warn!(error = %e, "flushing a database at shutdown");
+        }
+    }
+}
+
+/// Calls [`flush_databases`] when dropped (every return of `start`).
+struct FlushDatabasesOnExit;
+
+impl Drop for FlushDatabasesOnExit {
+    fn drop(&mut self) {
+        flush_databases();
+    }
 }
 
 /// Loads the genesis document of a home directory.
@@ -249,7 +287,9 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     app.set_node_min_gas_price(opts.min_gas_price.clone());
     if let Some(db) = app.multistore().root().backend() {
         crate::memstats::register_db("application", db);
+        register_for_flush(db);
     }
+    let _flush_on_exit = FlushDatabasesOnExit;
     {
         let nc = app.multistore().root().node_cache().clone();
         #[allow(clippy::cast_precision_loss)]

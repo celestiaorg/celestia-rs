@@ -144,6 +144,9 @@ fn main() -> anyhow::Result<()> {
         );
         return Ok(());
     }
+    if args.iter().any(|a| a == "--analyze") {
+        return analyze(&home);
+    }
     let keep = args.iter().any(|a| a == "--keep");
     let _ = std::fs::remove_dir_all(&home);
 
@@ -389,5 +392,47 @@ fn main() -> anyhow::Result<()> {
     if !keep {
         let _ = std::fs::remove_dir_all(&home);
     }
+    Ok(())
+}
+
+/// Key / value bytes of a kept state by kind: IAVL nodes (`n`), roots (`r`)
+/// and orphan records (`o`) per store, and everything else.
+fn analyze(home: &std::path::Path) -> anyhow::Result<()> {
+    let db = kvdb::open_backend(
+        &home.join("data"),
+        app::STATE_DB_NAME,
+        &kvdb::DbOptions::default(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    let mut by: std::collections::BTreeMap<String, (u64, u64, u64)> =
+        std::collections::BTreeMap::new();
+    for kv in db.range(None, None, false).map_err(|e| anyhow!("{e}"))? {
+        let (k, v) = kv.map_err(|e| anyhow!("{e}"))?;
+        let class = if let Some(rest) = k.strip_prefix(b"s/k:") {
+            let slash = rest.iter().position(|&b| b == b'/').unwrap_or(0);
+            let kind = rest.get(slash + 1).copied().unwrap_or(b'?') as char;
+            format!("{} {kind}", String::from_utf8_lossy(&rest[..slash]))
+        } else {
+            "other".into()
+        };
+        let e = by.entry(class).or_default();
+        e.0 += 1;
+        e.1 += k.len() as u64;
+        e.2 += v.len() as u64;
+    }
+    let (mut n, mut kb, mut vb) = (0, 0, 0);
+    println!(
+        "{:<28} {:>10} {:>12} {:>12}",
+        "store kind", "entries", "key bytes", "value bytes"
+    );
+    for (class, (c, k, v)) in &by {
+        n += c;
+        kb += k;
+        vb += v;
+        if k + v > 1 << 20 {
+            println!("{class:<28} {c:>10} {k:>12} {v:>12}");
+        }
+    }
+    println!("{:<28} {n:>10} {kb:>12} {vb:>12}", "total");
     Ok(())
 }
