@@ -16,7 +16,7 @@ workspace = true
 aes = "0.8"
 aes-gcm = "0.10"
 argon2 = "0.5"
-base64 = "0.22"
+base64 = "0.23"
 bcrypt = "0.15"
 bip39 = "2"
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }

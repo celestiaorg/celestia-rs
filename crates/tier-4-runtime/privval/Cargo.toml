@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 crypto = { path = "../../tier-0-primitives/crypto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 getrandom = "0.2"

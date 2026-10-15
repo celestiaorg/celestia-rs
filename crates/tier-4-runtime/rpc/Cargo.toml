@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 gostr = { path = "../../tier-0-primitives/gostr" }
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio", "ws"] }
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

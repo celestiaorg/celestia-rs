@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 gostr = { path = "../../../tier-0-primitives/gostr" }
-base64 = "0.22"
+base64 = "0.23"
 celestia-core-proto = { path = "../../../tier-1-protocol-types/celestia-core-proto" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 encoding = { path = "../../../tier-0-primitives/encoding" }
