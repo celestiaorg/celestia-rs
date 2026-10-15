@@ -115,6 +115,23 @@ Open: the edge differences no scenario reaches (ADR 0004, "Not ported"),
 a v9 query corpus, state sync / snapshots of a v9 chain, and following
 Mocha from genesis over HTTPS (with the follower work).
 
+**Go strings (ADR 0005, 2026-10-15).** Protobuf `string` fields carry
+any bytes, as gogoproto decodes them: Go executes and stores invalid UTF-8
+(validator descriptions, proposal titles, vote metadata, memos, grants,
+`MsgExec` / gov / ICA inner messages), which the Rust router rejected — a
+one-tx network split. Strings now hold Go's bytes losslessly (`gostr`
+Go forms, `prost-gostr` codec), with Go's semantics wherever bytes matter
+(lengths, store keys, JSON in / out, amino-JSON sign bytes). Evidence: the
+`utf8` / `v9-utf8` devnet scenarios (Go executes the txs, incl. two
+amino-JSON signed ones; Rust replays at full parity with logs and events
+byte for byte), the `utf8` query corpus, and `fuzz-diff exec` (Simulate
+differential: ~8 000 mutated txs over 12 scenarios, no code / gas / result
+mismatch after fixing what it found: nested-signer checks, gov deposit
+validation order and nil amounts, nil commission rates, unrouted bank
+messages, proposal message re-packing). Also fixed: v9 `x/warp`
+`receiver_contract` as a plain string. Open: error-text-only log
+differences (security.md).
+
 **S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
 exactly — app hash, every tx result's code/data/gas, validator updates — for
 every height of the `empty` (20), `staking` (40), `staking-lifecycle` (60) and

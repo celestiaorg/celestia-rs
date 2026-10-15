@@ -145,8 +145,10 @@ impl HypToken {
 pub struct RemoteRouter {
     /// Receiver domain.
     pub receiver_domain: u32,
-    /// Receiver contract.
-    pub receiver_contract: HexAddress,
+    /// Receiver contract as stored: a `HexAddress` (customtype, canonical
+    /// `0x` + lowercase hex) at app version 10; any string at app version 9
+    /// (hyperlane-cosmos v1.1.0 `string`), parsed where Go parses it.
+    pub receiver_contract: String,
     /// Default destination gas.
     pub gas: Int,
 }
@@ -156,7 +158,7 @@ impl RemoteRouter {
     pub fn from_proto(p: &pb::RemoteRouter) -> Result<Self> {
         Ok(Self {
             receiver_domain: p.receiver_domain,
-            receiver_contract: HexAddress::from_proto(&p.receiver_contract).map_err(internal)?,
+            receiver_contract: p.receiver_contract.clone(),
             gas: Int::unmarshal(p.gas.as_bytes()).map_err(|e| internal(e.to_string()))?,
         })
     }
@@ -166,7 +168,7 @@ impl RemoteRouter {
     pub fn to_proto(&self) -> pb::RemoteRouter {
         pb::RemoteRouter {
             receiver_domain: self.receiver_domain,
-            receiver_contract: self.receiver_contract.to_string(),
+            receiver_contract: self.receiver_contract.clone(),
             gas: self.gas.to_string(),
         }
     }
@@ -345,7 +347,16 @@ impl HyperlaneApp for Warp {
                 message.origin
             )));
         };
-        if message.sender != router.receiver_contract {
+        let matches = if is_v9(ctx) {
+            // v1.1.0: `message.Sender.String() !=
+            // strings.ToLower(remoteRouter.ReceiverContract)`; no non-ASCII
+            // char lowercases to `0x` + hex digits.
+            router.receiver_contract.is_ascii()
+                && message.sender.to_string() == router.receiver_contract.to_ascii_lowercase()
+        } else {
+            HexAddress::from_proto(&router.receiver_contract).map_err(internal)? == message.sender
+        };
+        if !matches {
             return Err(internal("invalid receiver contract"));
         }
         let result = match token.token_type {
@@ -376,6 +387,17 @@ impl HyperlaneApp for Warp {
                 ("amount", J::Str(amount.to_string())),
             ]));
         result
+    }
+}
+
+/// `MsgEnrollRemoteRouter`'s receiver contract: a plain string at app
+/// version 9 (hyperlane-cosmos v1.1.0), the `HexAddress` customtype (in
+/// canonical form) at app version 10.
+fn msg_receiver_contract(ctx: &Context<'_>, s: &str) -> Result<String> {
+    if is_v9(ctx) {
+        Ok(s.to_owned())
+    } else {
+        Ok(addr(s)?.to_string())
     }
 }
 
@@ -477,6 +499,17 @@ pub fn remote_transfer(
             args.destination_domain
         )));
     };
+    let receiver_contract = if is_v9(ctx) {
+        // v1.1.0 `util.DecodeHexAddress(remoteRouter.ReceiverContract)`.
+        HexAddress::decode(&router.receiver_contract).map_err(|_| {
+            internal(format!(
+                "failed to decode receiver contract address {}",
+                router.receiver_contract
+            ))
+        })?
+    } else {
+        HexAddress::from_proto(&router.receiver_contract).map_err(internal)?
+    };
     let gas = if args.gas_limit.is_zero() {
         router.gas.clone()
     } else {
@@ -503,7 +536,7 @@ pub fn remote_transfer(
         token.id,
         &max_fee,
         router.receiver_domain,
-        router.receiver_contract,
+        receiver_contract,
         payload.bytes(),
         &StandardHookMetadata {
             address: sender,
@@ -687,13 +720,20 @@ pub fn enroll_remote_router(
     let Some(router) = router else {
         return Err(internal("invalid remote router"));
     };
+    // hyperlane-cosmos v1.1.0 (app version 9) only rejects an empty string.
+    if is_v9(ctx) && router.receiver_contract.is_empty() {
+        return Err(internal("invalid receiver contract"));
+    }
     set_enrolled_router(ctx, token_id.internal_id(), &router)?;
     ctx.events
         .emit(typed_event::<pb::EventEnrollRemoteRouter>(vec![
             ("token_id", J::Str(token_id.to_string())),
             ("owner", J::Str(owner.to_string())),
             ("receiver_domain", J::Num(u64::from(router.receiver_domain))),
-            ("receiver_contract", J::addr(&router.receiver_contract)),
+            (
+                "receiver_contract",
+                J::Str(router.receiver_contract.clone()),
+            ),
             ("gas", J::Str(router.gas.to_string())),
         ]));
     Ok(())
@@ -836,7 +876,7 @@ impl Warp {
                     .map(|r| {
                         Ok::<_, SdkError>(RemoteRouter {
                             receiver_domain: r.receiver_domain,
-                            receiver_contract: addr(&r.receiver_contract)?,
+                            receiver_contract: msg_receiver_contract(ctx, &r.receiver_contract)?,
                             gas: int(&r.gas)?,
                         })
                     })

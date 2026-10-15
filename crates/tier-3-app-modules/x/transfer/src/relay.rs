@@ -148,24 +148,26 @@ impl PacketData {
         ]
         .into_iter()
         .filter(|(_, v)| !v.is_empty())
-        .map(|(k, v)| format!("\"{k}\":{}", q(v)))
+        // `MustSortJSON` re-decodes the jsonpb output: an invalid UTF-8
+        // byte (`\ufffd`) comes back as U+FFFD itself.
+        .map(|(k, v)| format!("\"{k}\":{}", q(&gostr::lossy(v))))
         .collect();
-        format!("{{{}}}", parts.join(",")).into_bytes()
+        gostr::to_go_bytes(&format!("{{{}}}", parts.join(","))).into_owned()
     }
 
     /// `ModuleCdc.MustMarshalJSON(&data)`: field order, defaults emitted.
     #[must_use]
     pub fn marshal_unsorted(&self) -> Vec<u8> {
         use x_ibc::gojson::escape_string as q;
-        format!(
+        let s = format!(
             "{{\"denom\":{},\"amount\":{},\"sender\":{},\"receiver\":{},\"memo\":{}}}",
             q(&self.denom),
             q(&self.amount),
             q(&self.sender),
             q(&self.receiver),
             q(&self.memo)
-        )
-        .into_bytes()
+        );
+        gostr::to_go_bytes(&s).into_owned()
     }
 
     /// `FungibleTokenPacketData.ValidateBasic`.
@@ -918,7 +920,7 @@ impl IbcModule for TransferModule {
             ierr::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
         })?;
         // `ModuleCdc.MustMarshalJSON(&ack)` must reproduce the bytes.
-        if ack.marshal().as_bytes() != acknowledgement {
+        if *gostr::to_go_bytes(&ack.marshal()) != *acknowledgement {
             return Err(ierr::invalid_type(
                 "acknowledgement did not marshal to expected bytes",
             ));
@@ -977,7 +979,7 @@ fn ack_text(ack: &x_ibc::channel::AckResponse) -> String {
         x_ibc::channel::AckResponse::Empty => String::new(),
         x_ibc::channel::AckResponse::Result(r) => format!("result:{} ", proto_text_bytes(r)),
         x_ibc::channel::AckResponse::Error(e) => {
-            format!("error:{} ", proto_text_bytes(e.as_bytes()))
+            format!("error:{} ", proto_text_bytes(&gostr::to_go_bytes(e)))
         }
     }
 }

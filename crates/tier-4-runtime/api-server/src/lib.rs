@@ -204,6 +204,13 @@ pub fn grpc_router(app: Arc<AbciApp>) -> axum::Router {
     axum::Router::new().fallback(grpc_handler).with_state(app)
 }
 
+/// The bytes of a REST response body. Strings are Go forms (`gostr`): Go's
+/// gateway (gogoproto `jsonpb`) writes each invalid UTF-8 byte as `\ufffd`.
+#[must_use]
+pub fn body_bytes(body: &serde_json::Value) -> Vec<u8> {
+    gostr::json_bytes(&body.to_string()).into_owned()
+}
+
 async fn rest_handler(State(app): State<Arc<AbciApp>>, req: Request<Body>) -> Response<Body> {
     let method = req.method().as_str().to_owned();
     let path = req.uri().path().to_owned();
@@ -232,7 +239,8 @@ async fn rest_handler(State(app): State<Arc<AbciApp>>, req: Request<Body>) -> Re
         status: 500,
         body: serde_json::json!({"code": 13, "message": e.to_string(), "details": []}),
     });
-    let mut resp = Response::new(Body::from(out.body.to_string()));
+    let body = body_bytes(&out.body);
+    let mut resp = Response::new(Body::from(body));
     *resp.status_mut() = StatusCode::from_u16(out.status).unwrap_or(StatusCode::OK);
     resp.headers_mut().insert(
         axum::http::header::CONTENT_TYPE,

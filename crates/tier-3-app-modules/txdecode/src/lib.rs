@@ -171,11 +171,31 @@ pub fn has_duplicate_tx_raw_field(mut tx: &[u8]) -> bool {
 /// gogoproto `Unmarshal` of `data` into the registered message `name` (full
 /// proto name, e.g. `cosmos.tx.v1beta1.TxRaw`) with Go's semantics (no UTF-8
 /// checks, customtype and stdtime validation, last-wins scalars), re-encoded
-/// so prost decodes the struct Go holds (invalid UTF-8 replaced). `Err` is
+/// so prost decodes the struct Go holds (strings in Go form, `gostr`). `Err` is
 /// Go's unmarshal error. `Any` fields are not unpacked.
 pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
     let d = gogo::unmarshal(name, data).map_err(|e| e.0)?;
     Ok(gogo::marshal(&d, Mode::Struct))
+}
+
+/// `codectypes.NewAnyWithValue(msg)` of a message Go holds as a decoded
+/// struct: gogoproto `Marshal(Unmarshal(any.value))`, which is what Go
+/// stores when it re-packs a message (gov `Proposal.Messages`, authz
+/// grants, feegrant allowances). Differs from the bytes as received when
+/// they are not gogoproto's canonical encoding (field order, repeated
+/// scalars, non-nullable `stdtime` / customtype fields left out, ...).
+/// `any` is returned unchanged when its type is unknown or does not
+/// decode (Go fails earlier in those cases).
+#[must_use]
+pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
+    let name = any.type_url.rsplit('/').next().unwrap_or_default();
+    match gogo::unmarshal(name, &any.value) {
+        Ok(d) => celestia_proto::Any {
+            type_url: any.type_url.clone(),
+            value: gogo::marshal(&d, Mode::Marshal),
+        },
+        Err(_) => any.clone(),
+    }
 }
 
 /// [`decode`] or [`decode_v9`] by app version.
@@ -312,7 +332,7 @@ fn build_tx(
             ));
         };
         normalized_msgs.push(celestia_proto::Any {
-            type_url: String::from_utf8_lossy(any.bytes(1)).into_owned(),
+            type_url: gostr::from_go_bytes(any.bytes(1)).into_owned(),
             value: gogo::marshal(cached, Mode::Struct),
         });
     }

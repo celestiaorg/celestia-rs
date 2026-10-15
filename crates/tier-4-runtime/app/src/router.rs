@@ -86,6 +86,8 @@ use celestia_proto::cosmos::vesting::v1beta1 as vesting;
 routes! {
     bank::MsgSend => x_bank::msgs::handle_send,
     bank::MsgMultiSend => x_bank::msgs::handle_multi_send,
+    bank::MsgUpdateParams => x_bank::msgs::handle_update_params,
+    bank::MsgSetSendEnabled => x_bank::msgs::handle_set_send_enabled,
     staking::MsgCreateValidator => x_staking::handle_create_validator,
     staking::MsgEditValidator => x_staking::handle_edit_validator,
     staking::MsgDelegate => x_staking::handle_delegate,

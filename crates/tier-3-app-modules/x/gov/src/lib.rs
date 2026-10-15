@@ -95,7 +95,11 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 
 /// `Constitution.Set`.
 pub fn set_constitution(ctx: &mut Context<'_>, c: &str) -> Result<()> {
-    ctx.set(STORE_KEY, vec![CONSTITUTION_KEY], c.as_bytes().to_vec())
+    ctx.set(
+        STORE_KEY,
+        vec![CONSTITUTION_KEY],
+        gostr::to_go_bytes(c).into_owned(),
+    )
 }
 
 fn pair_addr_key(prefix: u8, id: u64, addr: &[u8]) -> Vec<u8> {
@@ -217,7 +221,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
     }
     let constitution = ctx
         .get(STORE_KEY, &[CONSTITUTION_KEY])?
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .map(|b| gostr::from_go_bytes(&b).into_owned())
         .unwrap_or_default();
     Ok(GenesisState {
         starting_proposal_id: peek_proposal_id(ctx)?,

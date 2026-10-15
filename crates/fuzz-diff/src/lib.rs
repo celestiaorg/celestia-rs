@@ -12,12 +12,19 @@
 //! Differences found this way are fixed in the Rust crates and pinned by
 //! `tests/regressions.rs`, which replays recorded Go outcomes without Go.
 
-#![allow(clippy::cast_possible_truncation, clippy::many_single_char_names)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::many_single_char_names,
+    clippy::too_many_lines
+)]
 
 pub mod corpus;
+pub mod craft;
+pub mod exec;
 pub mod mutate;
 pub mod oracle;
 pub mod pp;
+pub mod simdiff;
 
 use serde::{Deserialize, Serialize};
 

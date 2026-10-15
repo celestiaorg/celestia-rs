@@ -143,9 +143,15 @@ pub fn quote(s: &str) -> String {
     out
 }
 
+/// `s` is a Go form (`gostr`, e.g. an event attribute or log decoded from
+/// ABCI): each invalid UTF-8 byte is written as `\ufffd`, as Go does.
 fn quote_into(s: &str, out: &mut String) {
     out.push('"');
-    for c in s.chars() {
+    for r in gostr::runes(s) {
+        let Some(c) = r else {
+            out.push_str("\\ufffd");
+            continue;
+        };
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),

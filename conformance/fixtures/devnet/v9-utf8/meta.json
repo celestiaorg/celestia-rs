@@ -1,0 +1,9 @@
+{
+  "scenario": "v9-utf8",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v9.0.8",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 57,
+  "workload": "utf8.sh",
+  "generated_at": "2026-10-15T21:54:43Z"
+}

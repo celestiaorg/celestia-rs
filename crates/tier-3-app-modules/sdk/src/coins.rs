@@ -37,6 +37,58 @@ pub fn is_valid_denom(d: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || b"/:._-".contains(c))
 }
 
+/// Go's recovered nil-pointer panic: a method of a nil `math.Int` (a coin
+/// whose `amount` field was empty or absent) dereferences it.
+fn nil_amount_panic() -> crate::SdkError {
+    crate::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
+}
+
+/// `coin.IsPositive()` on the coin as Go decoded it (`""` is a nil amount).
+fn raw_is_positive(c: &pb::Coin) -> Result<bool> {
+    if c.amount.is_empty() {
+        return Err(nil_amount_panic());
+    }
+    Ok(Amount::parse(&c.amount).is_ok_and(|a| a.is_positive()))
+}
+
+/// `sdk.Coins.IsValid()` of coins as Go decoded them (unsanitized, a nil
+/// amount for an empty `amount`): `Err` is the panic Go raises on a nil
+/// amount it reaches.
+pub fn raw_coins_is_valid(coins: &[pb::Coin]) -> Result<bool> {
+    let Some((first, rest)) = coins.split_first() else {
+        return Ok(true);
+    };
+    if !is_valid_denom(&first.denom) || !raw_is_positive(first)? {
+        return Ok(false);
+    }
+    let mut low = first.denom.as_str();
+    for c in rest {
+        if !is_valid_denom(&c.denom) || c.denom.as_str() <= low || !raw_is_positive(c)? {
+            return Ok(false);
+        }
+        low = &c.denom;
+    }
+    Ok(true)
+}
+
+/// `sdk.Coins.String()` of coins as Go decoded them (`<nil>` for a nil
+/// amount).
+#[must_use]
+pub fn raw_coins_string(coins: &[pb::Coin]) -> String {
+    coins
+        .iter()
+        .map(|c| {
+            let amount = if c.amount.is_empty() {
+                "<nil>".to_owned()
+            } else {
+                Amount::parse(&c.amount).map_or_else(|_| c.amount.clone(), |a| a.to_string())
+            };
+            format!("{amount}{}", c.denom)
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 impl Coin {
     /// Creates a coin.
     pub fn new(denom: impl Into<String>, amount: u64) -> Self {
@@ -216,6 +268,35 @@ impl fmt::Display for Coins {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Found by the execution differential (`fuzz-diff exec`): Go validates
+    /// the decoded coins as they are, and a nil amount panics once reached.
+    #[test]
+    fn raw_coins_like_go() {
+        let c = |d: &str, a: &str| pb::Coin {
+            denom: gostr::from_go_bytes(d.as_bytes()).into_owned(),
+            amount: a.into(),
+        };
+        assert!(raw_coins_is_valid(&[]).unwrap_or(false));
+        assert!(raw_coins_is_valid(&[c("atom", "1"), c("utia", "2")]).unwrap_or(false));
+        // unsorted, zero, invalid denom: invalid (no panic)
+        assert!(!raw_coins_is_valid(&[c("utia", "2"), c("atom", "1")]).unwrap_or(true));
+        assert!(!raw_coins_is_valid(&[c("utia", "0")]).unwrap_or(true));
+        assert!(!raw_coins_is_valid(&[c("u", "")]).unwrap_or(true));
+        // nil amount reached: panic (ErrPanic)
+        assert_eq!(
+            raw_coins_is_valid(&[c("utia", "")]).map_err(|e| e.code),
+            Err(111_222)
+        );
+        let bad = pb::Coin {
+            denom: gostr::from_go_bytes(b"x\xff").into_owned(),
+            amount: "007".into(),
+        };
+        assert_eq!(
+            gostr::to_go_bytes(&raw_coins_string(&[c("utia", ""), bad])).as_ref(),
+            b"<nil>utia,7x\xff"
+        );
+    }
 
     #[test]
     fn display_and_add() {

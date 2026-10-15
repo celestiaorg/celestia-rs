@@ -6,12 +6,18 @@
 use serde_json::Value;
 
 /// Go `encoding/json` string encoding (with `SetEscapeHTML(true)`, the
-/// `json.Marshal` default), including the surrounding quotes.
+/// `json.Marshal` default), including the surrounding quotes, of the Go
+/// string `s` (Go form, `gostr`): each invalid UTF-8 byte is written as
+/// `\ufffd`. Returns a Go form (bytes via `gostr::to_go_bytes`).
 #[must_use]
 pub fn escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
-    for c in s.chars() {
+    for r in gostr::runes(s) {
+        let Some(c) = r else {
+            out.push_str("\\ufffd");
+            continue;
+        };
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -26,7 +32,7 @@ pub fn escape_string(s: &str) -> String {
             c if (c as u32) < 0x20 => {
                 let _ = core::fmt::Write::write_fmt(&mut out, format_args!("\\u{:04x}", c as u32));
             }
-            c => out.push(c),
+            c => gostr::push_char(&mut out, c),
         }
     }
     out.push('"');
@@ -74,16 +80,25 @@ pub fn marshal_sorted(v: &Value) -> String {
     }
 }
 
+/// The text Go's JSON decoder reads from `bz`, as a Go form: invalid UTF-8
+/// inside a string decodes to U+FFFD (`encoding/json` `unquote`), and
+/// anywhere else stays an invalid character (a syntax error either way).
+#[must_use]
+pub fn go_json_input(bz: &[u8]) -> String {
+    gostr::lossy(&gostr::from_go_bytes(bz)).into_owned()
+}
+
 /// `sdk.MustSortJSON`: re-marshals JSON with sorted keys.
 pub fn sort_json(bz: &[u8]) -> Result<String, String> {
-    let v: Value = serde_json::from_slice(bz).map_err(|e| e.to_string())?;
+    let v: Value = serde_json::from_str(&go_json_input(bz)).map_err(|e| e.to_string())?;
     Ok(marshal_sorted(&v))
 }
 
 /// Decodes the first JSON value of `bz` (a `json.Decoder` reads one value
 /// and ignores whatever follows).
 pub fn first_value(bz: &[u8]) -> Result<Value, String> {
-    let mut it = serde_json::Deserializer::from_slice(bz).into_iter::<Value>();
+    let text = go_json_input(bz);
+    let mut it = serde_json::Deserializer::from_str(&text).into_iter::<Value>();
     match it.next() {
         Some(Ok(v)) => Ok(v),
         Some(Err(e)) => Err(e.to_string()),

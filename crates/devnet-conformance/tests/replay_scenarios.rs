@@ -221,3 +221,72 @@ fn v9_upgrade_parity() -> anyhow::Result<()> {
     assert!(r.compared.check_tx > 0, "{:?}", r.compared);
     Ok(())
 }
+
+/// Full parity plus byte-identical logs and events (non-consensus fields
+/// of `FinalizeBlock`): the strings of these scenarios carry invalid UTF-8.
+fn assert_full_parity(scenario: &str) -> anyhow::Result<()> {
+    assert_parity(scenario)?;
+    let r = replay(scenario)?;
+    assert!(
+        r.event_log_diffs.is_empty(),
+        "{scenario}: {:#?}",
+        r.event_log_diffs
+    );
+    Ok(())
+}
+
+/// `workloads/utf8.sh`: txs with invalid UTF-8 in validator descriptions,
+/// memos, gov proposals / votes, authz grants and `MsgExec`, feegrant
+/// allowed messages, amino-JSON signed txs (ADR 0005).
+#[test]
+fn utf8_parity() -> anyhow::Result<()> {
+    assert_full_parity("utf8")
+}
+
+/// The `utf8` workload on celestia-app v9.0.8.
+#[test]
+fn v9_utf8_parity() -> anyhow::Result<()> {
+    assert_full_parity("v9-utf8")
+}
+
+/// Scenarios whose (non-consensus) logs or events still differ from Go:
+/// error logs that embed gogoproto's text format of a message (authz
+/// `MsgExec`, v9 `MsgExec`), ICS-23 proof error text (ibc-edge),
+/// fibre / IBC-upgrade / consensus-param events. Ratchet: remove a
+/// scenario once it matches.
+const KNOWN_EVENT_LOG_GAPS: &[&str] = &[
+    "authz-feegrant",
+    "consensus",
+    "fibre",
+    "ibc-edge",
+    "ibc-upgrades",
+    "v9-authz-feegrant",
+    "v9-exec",
+];
+
+/// Logs and events of every tx result and block (non-consensus) match Go
+/// byte for byte in every scenario but the known gaps.
+#[test]
+fn events_and_logs_parity() -> anyhow::Result<()> {
+    let dir = devnet_conformance::scenario_dir("empty");
+    let root = dir
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("fixtures dir"))?;
+    let mut bad = Vec::new();
+    for e in std::fs::read_dir(root)? {
+        let e = e?;
+        if !e.path().join("abci.rec").exists() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        let r = replay(&name)?;
+        if KNOWN_EVENT_LOG_GAPS.contains(&name.as_str()) {
+            continue;
+        }
+        if let Some(d) = r.event_log_diffs.first() {
+            bad.push(format!("{name} ({}): {d}", r.event_log_diffs.len()));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+    Ok(())
+}

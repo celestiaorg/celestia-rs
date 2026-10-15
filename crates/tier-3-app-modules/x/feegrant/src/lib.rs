@@ -254,7 +254,7 @@ pub fn handle_grant_allowance(
     ctx: &mut Context<'_>,
     msg: &MsgGrantAllowance,
 ) -> Result<MsgGrantAllowanceResponse> {
-    if msg.grantee.eq_ignore_ascii_case(&msg.granter) {
+    if gostr::equal_fold(&msg.grantee, &msg.granter) {
         return Err(sdkerr::invalid_address(
             "cannot self-grant fee authorization",
         ));

@@ -61,7 +61,7 @@ pub fn is_send_enabled_coins(ctx: &mut Context<'_>, coins: &Coins) -> Result<()>
     }
     let default = get_params(ctx)?.default_send_enabled;
     for c in coins {
-        let key = sdk::codec::key(&[&[0x04], c.denom.as_bytes()]);
+        let key = sdk::codec::key(&[&[0x04], &gostr::to_go_bytes(&c.denom)]);
         let enabled = if ctx.has(STORE_KEY, &key)? {
             // BoolValue proto: empty = false.
             ctx.get(STORE_KEY, &key)?
@@ -186,3 +186,81 @@ pub fn handle_multi_send(
 
 /// Keeps `SdkError` in the public signature set used by the router.
 pub type HandlerResult<T> = core::result::Result<T, SdkError>;
+
+/// `govtypes.ErrInvalidSigner` (codespace `gov`, code 13).
+fn gov_invalid_signer() -> SdkError {
+    SdkError::new(
+        "gov",
+        13,
+        "expected gov account as only signer for proposal message",
+    )
+}
+
+fn check_authority(authority: &str) -> Result<()> {
+    let gov = x_auth::bech32(&x_auth::module_address("gov"))?;
+    if gov != authority {
+        return Err(gov_invalid_signer().wrap(format!(
+            "invalid authority; expected {gov}, got {authority}"
+        )));
+    }
+    Ok(())
+}
+
+/// `msgServer.UpdateParams`.
+pub fn handle_update_params(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::cosmos::bank::v1beta1::MsgUpdateParams,
+) -> Result<celestia_proto::cosmos::bank::v1beta1::MsgUpdateParamsResponse> {
+    check_authority(&msg.authority)?;
+    let params = msg.params.clone().unwrap_or_default();
+    #[allow(deprecated)]
+    if !params.send_enabled.is_empty() {
+        return Err(sdk::address::undefined(
+            "use of send_enabled in params is no longer supported",
+        ));
+    }
+    crate::set_params(ctx, params)?;
+    Ok(celestia_proto::cosmos::bank::v1beta1::MsgUpdateParamsResponse {})
+}
+
+/// `msgServer.SetSendEnabled` (errors quote denoms with Go's `%q`).
+pub fn handle_set_send_enabled(
+    ctx: &mut Context<'_>,
+    msg: &celestia_proto::cosmos::bank::v1beta1::MsgSetSendEnabled,
+) -> Result<celestia_proto::cosmos::bank::v1beta1::MsgSetSendEnabledResponse> {
+    check_authority(&msg.authority)?;
+    let mut seen = std::collections::BTreeSet::new();
+    for se in &msg.send_enabled {
+        if !seen.insert(se.denom.as_str()) {
+            return Err(errs::invalid_request(format!(
+                "duplicate denom entries found for {}",
+                gostr::quote(&se.denom)
+            )));
+        }
+        if !sdk::coins::is_valid_denom(&se.denom) {
+            return Err(errs::invalid_request(format!(
+                "invalid SendEnabled denom {}: invalid denom: {}",
+                gostr::quote(&se.denom),
+                se.denom
+            )));
+        }
+    }
+    for denom in &msg.use_default_for {
+        if !sdk::coins::is_valid_denom(denom) {
+            return Err(errs::invalid_request(format!(
+                "invalid UseDefaultFor denom {}: invalid denom: {denom}",
+                gostr::quote(denom)
+            )));
+        }
+    }
+    for se in &msg.send_enabled {
+        crate::set_send_enabled(ctx, &se.denom, se.enabled)?;
+    }
+    for denom in &msg.use_default_for {
+        ctx.delete(
+            STORE_KEY,
+            &sdk::codec::key(&[&[0x04], &gostr::to_go_bytes(denom)]),
+        )?;
+    }
+    Ok(celestia_proto::cosmos::bank::v1beta1::MsgSetSendEnabledResponse {})
+}

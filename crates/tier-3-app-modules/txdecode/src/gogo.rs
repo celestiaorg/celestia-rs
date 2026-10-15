@@ -586,7 +586,8 @@ pub(crate) enum Mode {
     /// Exactly gogoproto's `Marshal` output.
     Marshal,
     /// Bytes that prost decodes into the Rust equivalent of the Go struct:
-    /// strings are made valid UTF-8 (lossy), nil customtype values are
+    /// strings keep their bytes (the protobuf crates decode any bytes, see
+    /// `gostr`), nil customtype values are
     /// omitted, and unpacked `Any` values carry their normalized concrete
     /// message.
     Struct,
@@ -700,14 +701,6 @@ fn num_wire_type(f: &FieldInfo) -> u8 {
     }
 }
 
-fn string_bytes(f: &FieldInfo, b: &[u8], mode: Mode) -> Vec<u8> {
-    if mode == Mode::Struct && f.ty == ty::STRING {
-        String::from_utf8_lossy(b).into_owned().into_bytes()
-    } else {
-        b.to_vec()
-    }
-}
-
 fn encode_timestamp(secs: i64, nanos: i32) -> Vec<u8> {
     let mut b = Vec::new();
     if secs != 0 {
@@ -731,7 +724,7 @@ fn marshal_value(f: &FieldInfo, v: &Val, mode: Mode, oneof: bool, out: &mut Vec<
         }
         Val::Bytes(b) => {
             if oneof || !b.is_empty() || f.repeated {
-                protowire::append_bytes_field(out, f.number, &string_bytes(f, b, mode));
+                protowire::append_bytes_field(out, f.number, b);
             }
         }
         Val::Msg(m) => protowire::append_bytes_field(out, f.number, &marshal(m, mode)),

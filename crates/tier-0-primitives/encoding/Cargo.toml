@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+gostr = { path = "../gostr" }
 base64 = "0.22"
 bech32 = "0.9"
 bytes = "1"

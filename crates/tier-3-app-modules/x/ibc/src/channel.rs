@@ -1360,7 +1360,7 @@ pub fn decode_acknowledgement(bz: &[u8]) -> core::result::Result<AckResponse, St
 /// acknowledgement must re-marshal (sorted) to the same bytes.
 fn ack_marshalling_mismatch(ack: &[u8]) -> bool {
     match decode_acknowledgement(ack) {
-        Ok(a) => a.marshal().as_bytes() != ack,
+        Ok(a) => *gostr::to_go_bytes(&a.marshal()) != *ack,
         Err(_) => false,
     }
 }

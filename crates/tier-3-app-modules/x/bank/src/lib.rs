@@ -37,7 +37,7 @@ fn balance_key(addr: &[u8], denom: &str) -> Vec<u8> {
     sdk::codec::key(&[
         &[BALANCES],
         &sdk::codec::length_prefixed(addr),
-        denom.as_bytes(),
+        &gostr::to_go_bytes(denom),
     ])
 }
 
@@ -50,7 +50,7 @@ fn reverse_key(addr: &[u8], denom: &str) -> Vec<u8> {
 }
 
 fn denom_key(prefix: u8, denom: &str) -> Vec<u8> {
-    sdk::codec::key(&[&[prefix], denom.as_bytes()])
+    sdk::codec::key(&[&[prefix], &gostr::to_go_bytes(denom)])
 }
 
 fn parse_int(b: &[u8]) -> Result<Amount> {
@@ -104,7 +104,7 @@ pub fn get_all_balances(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
     let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
     let mut out = Vec::new();
     while let Some((k, v)) = it.next(ctx)? {
-        let denom = String::from_utf8_lossy(&k[prefix.len()..]).into_owned();
+        let denom = gostr::from_go_bytes(&k[prefix.len()..]).into_owned();
         out.push(Coin::with_amount(denom, parse_int(&v)?));
     }
     Ok(Coins(out))
@@ -560,7 +560,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
             .get(2..2 + n)
             .ok_or_else(|| errs::logic("balance key"))?
             .to_vec();
-        let denom = String::from_utf8_lossy(&k[2 + n..]).into_owned();
+        let denom = gostr::from_go_bytes(&k[2 + n..]).into_owned();
         let coin = PbCoin {
             denom,
             amount: parse_int(&v)?.to_string(),
@@ -581,7 +581,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
     let mut it = ctx.prefix_iter(STORE_KEY, &[SUPPLY])?;
     while let Some((k, v)) = it.next(ctx)? {
         supply.push(PbCoin {
-            denom: String::from_utf8_lossy(&k[1..]).into_owned(),
+            denom: gostr::from_go_bytes(&k[1..]).into_owned(),
             amount: parse_int(&v)?.to_string(),
         });
     }
@@ -595,7 +595,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
     let mut it = ctx.prefix_iter(STORE_KEY, &[SEND_ENABLED])?;
     while let Some((k, v)) = it.next(ctx)? {
         send_enabled.push(SendEnabled {
-            denom: String::from_utf8_lossy(&k[1..]).into_owned(),
+            denom: gostr::from_go_bytes(&k[1..]).into_owned(),
             enabled: v == pbjson_bool(true),
         });
     }

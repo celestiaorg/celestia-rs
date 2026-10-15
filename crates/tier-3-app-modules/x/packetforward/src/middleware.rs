@@ -344,7 +344,7 @@ fn write_refund_ack(
         timeout_height: Some(timeout_height),
         timeout_timestamp: ifp.packet_timeout_timestamp,
     };
-    x_ibc::channel::write_acknowledgement(ctx, cap, &packet, ack.marshal().as_bytes())
+    x_ibc::channel::write_acknowledgement(ctx, cap, &packet, &gostr::to_go_bytes(&ack.marshal()))
 }
 
 /// `TimeoutShouldRetry`: `None` when the packet was not forwarded; the

@@ -457,7 +457,10 @@ pub fn check_rest(scenario: &str) -> anyhow::Result<RestReport> {
             }
             v
         };
-        if ours.status != case.status || norm(&ours.body) != norm(&case.body) {
+        // What the server sends (Go strings' invalid bytes as `\ufffd`).
+        let served: serde_json::Value =
+            serde_json::from_slice(&api_server::body_bytes(&ours.body)).unwrap_or_default();
+        if ours.status != case.status || norm(&served) != norm(&case.body) {
             report
                 .mismatches
                 .push((case.clone(), ours.status, ours.body));

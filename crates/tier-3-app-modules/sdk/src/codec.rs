@@ -28,7 +28,7 @@ pub fn decode_i64_key(mut b: [u8; 8]) -> i64 {
 /// Non-terminal `StringKey`: bytes followed by a `0x00` delimiter.
 #[must_use]
 pub fn string_non_terminal(s: &str) -> Vec<u8> {
-    let mut out = s.as_bytes().to_vec();
+    let mut out = gostr::to_go_bytes(s).into_owned();
     out.push(0);
     out
 }

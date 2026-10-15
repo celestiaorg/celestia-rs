@@ -10,7 +10,8 @@ description = "Prost bindings for celestia-core v0.42 protobufs (ABCI++, consens
 publish = false
 
 [dependencies]
-prost = "0.13"
+prost = { package = "prost-gostr", path = "../../tier-0-primitives/prost-gostr" }
+gostr = { path = "../../tier-0-primitives/gostr" }
 pbjson = "0.7"
 pbjson-types = "0.7"
 serde = "1"

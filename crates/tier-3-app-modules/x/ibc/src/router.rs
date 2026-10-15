@@ -40,7 +40,11 @@ impl Acknowledgement {
     pub fn error_string(s: &str) -> Self {
         Self {
             success: false,
-            bytes: format!("{{\"error\":{}}}", crate::gojson::escape_string(s)).into_bytes(),
+            bytes: gostr::to_go_bytes(&format!(
+                "{{\"error\":{}}}",
+                crate::gojson::escape_string(s)
+            ))
+            .into_owned(),
         }
     }
 }

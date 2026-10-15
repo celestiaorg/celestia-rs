@@ -538,6 +538,15 @@ fn authenticate_tx(
                 m.type_url
             )));
         }
+        // `GetMsgV1Signers`: `anyutil.Unpack` (dynamicpb UTF-8 / varint
+        // checks) first; its plain error keeps code 1 through `Wrapf`.
+        let repacked = txdecode::gogo_repack(m);
+        if let Err(e) = celestia_proto::signers::unpack_check(&repacked.type_url, &repacked.value) {
+            return Err(sdk::address::undefined(format!(
+                "failed to obtain message signers for message type {}: {e}",
+                m.type_url
+            )));
+        }
         let signers = match celestia_proto::signers::get_signers(&m.type_url, &m.value) {
             Some(Ok(s)) => s,
             Some(Err(e)) => {

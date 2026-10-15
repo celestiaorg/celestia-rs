@@ -36,7 +36,7 @@ fn perm_key(addr: &[u8]) -> Vec<u8> {
 
 fn disable_key(url: &str) -> Vec<u8> {
     let mut k = vec![DISABLE_LIST_PREFIX];
-    k.extend_from_slice(url.as_bytes());
+    k.extend_from_slice(&gostr::to_go_bytes(url));
     k
 }
 
@@ -87,7 +87,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
     let mut disabled_type_urls = Vec::new();
     let mut it = ctx.prefix_iter(STORE_KEY, &[DISABLE_LIST_PREFIX])?;
     while let Some((k, _)) = it.next(ctx)? {
-        disabled_type_urls.push(String::from_utf8_lossy(&k[1..]).into_owned());
+        disabled_type_urls.push(gostr::from_go_bytes(&k[1..]).into_owned());
     }
     Ok(GenesisState {
         account_permissions,
@@ -106,7 +106,7 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
 /// escapes for `"`, `\`, control and non-ASCII bytes as octal).
 fn text_quote(s: &str) -> String {
     let mut out = String::from("\"");
-    for &b in s.as_bytes() {
+    for &b in gostr::to_go_bytes(s).iter() {
         match b {
             b'\n' => out.push_str("\\n"),
             b'\r' => out.push_str("\\r"),

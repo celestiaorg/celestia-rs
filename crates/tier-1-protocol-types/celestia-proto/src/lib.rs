@@ -19,6 +19,7 @@
 include!("gen/mod.rs");
 
 pub mod any;
+pub mod getsigners_schema;
 pub mod registry;
 pub mod services;
 pub mod signers;
@@ -45,6 +46,43 @@ mod tests {
         let _ = super::cosmos::bank::v1beta1::MsgSend::default();
         let _ = super::hyperlane::warp::v1::HypToken::default();
         let _ = super::ibc::core::client::v1::Params::default();
+    }
+
+    /// gogoproto keeps invalid UTF-8 in string fields (any bytes); the Go
+    /// form (`gostr`) round-trips them byte-for-byte, including repeated
+    /// strings, maps, oneofs and a valid char of the reserved set.
+    #[test]
+    fn strings_carry_any_bytes() {
+        use super::cosmos::staking::v1beta1::{Description, MsgEditValidator};
+        let desc: &[u8] = b"\x0a\x03a\xffb\x12\x04\xf4\x8f\xbf\xbf\x1a\x02\xe2\x82";
+        let d = Description::decode(desc).unwrap_or_default();
+        assert_eq!(gostr::to_go_bytes(&d.moniker).as_ref(), b"a\xffb");
+        assert_eq!(gostr::go_len(&d.moniker), 3);
+        assert_eq!(d.identity.chars().count(), 4);
+        assert_eq!(d.encode_to_vec(), desc);
+        let m = MsgEditValidator {
+            description: Some(d),
+            validator_address: "x".into(),
+            ..Default::default()
+        };
+        let wire = m.encode_to_vec();
+        assert_eq!(m.encoded_len(), wire.len());
+        assert_eq!(MsgEditValidator::decode(wire.as_slice()).ok(), Some(m));
+        // repeated strings and map<string, string>
+        let s = super::cosmos::authz::v1beta1::GenericAuthorization {
+            msg: gostr::from_go_bytes(b"/\x80").into_owned(),
+        };
+        assert_eq!(s.encode_to_vec(), b"\x0a\x02/\x80");
+        let st = super::cosmos::feegrant::v1beta1::AllowedMsgAllowance {
+            allowance: None,
+            allowed_messages: vec![gostr::from_go_bytes(b"\xc3").into_owned()],
+        };
+        let w = st.encode_to_vec();
+        assert_eq!(w, b"\x12\x01\xc3");
+        assert_eq!(
+            super::cosmos::feegrant::v1beta1::AllowedMsgAllowance::decode(w.as_slice()).ok(),
+            Some(st)
+        );
     }
 
     #[test]

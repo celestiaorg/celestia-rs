@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+gostr = { path = "../../../tier-0-primitives/gostr" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 encoding = { path = "../../../tier-0-primitives/encoding" }
 math = { path = "../../../tier-0-primitives/math" }
@@ -24,3 +25,4 @@ x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
 x-distribution = { path = "../distribution" }
 x-staking = { path = "../staking" }
+txdecode = { path = "../../txdecode" }

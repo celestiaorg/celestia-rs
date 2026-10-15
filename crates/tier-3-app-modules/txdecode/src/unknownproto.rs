@@ -131,7 +131,7 @@ fn walk(
             let resolved = registry::resolve(type_url).ok_or_else(|| {
                 GoError::new(format!(
                     "unable to resolve type URL {}",
-                    String::from_utf8_lossy(type_url)
+                    gostr::from_go_bytes(type_url)
                 ))
             })?;
             let value = any.bytes(2).to_vec();

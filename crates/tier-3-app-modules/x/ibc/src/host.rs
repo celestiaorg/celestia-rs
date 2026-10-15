@@ -187,10 +187,10 @@ fn default_identifier_validator(id: &str, min: usize, max: usize) -> Result<(), 
             "identifier {id} cannot contain separator '/'"
         )));
     }
-    if id.len() < min || id.len() > max {
+    let len = gostr::go_len(id);
+    if len < min || len > max {
         return Err(err_invalid_id(&format!(
-            "identifier {id} has invalid length: {}, must be between {min}-{max} characters",
-            id.len()
+            "identifier {id} has invalid length: {len}, must be between {min}-{max} characters"
         )));
     }
     if !is_valid_id(id) {

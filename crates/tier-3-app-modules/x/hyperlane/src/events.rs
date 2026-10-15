@@ -55,12 +55,17 @@ impl JsonValue {
     }
 }
 
-/// `encoding/json` string encoding with Go's HTML-safe escaping.
+/// `encoding/json` string encoding with Go's HTML-safe escaping of the Go
+/// string `s` (Go form, `gostr`): invalid UTF-8 bytes become `\ufffd`.
 #[must_use]
 pub fn go_json_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
-    for ch in s.chars() {
+    for r in gostr::runes(s) {
+        let Some(ch) = r else {
+            out.push_str("\\ufffd");
+            continue;
+        };
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -75,7 +80,7 @@ pub fn go_json_string(s: &str) -> String {
             c if u32::from(c) < 0x20 => {
                 let _ = write!(out, "\\u{:04x}", u32::from(c));
             }
-            c => out.push(c),
+            c => gostr::push_char(&mut out, c),
         }
     }
     out.push('"');
