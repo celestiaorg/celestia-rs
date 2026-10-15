@@ -4437,6 +4437,7 @@ dependencies = [
  "prost",
  "sdk",
  "serde_json",
+ "x-ante",
  "x-auth",
  "x-capability",
  "x-upgrade",

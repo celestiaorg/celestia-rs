@@ -22,7 +22,7 @@ pub const PARAMS_KEY: &[u8] = b"channelParams";
 /// `ChannelPrefix`.
 pub const CHANNEL_PREFIX: &str = "channel-";
 
-fn put_u64(ctx: &mut Context<'_>, key: Vec<u8>, v: u64) -> Result<()> {
+pub(crate) fn put_u64(ctx: &mut Context<'_>, key: Vec<u8>, v: u64) -> Result<()> {
     ctx.set(crate::STORE_KEY, key, v.to_be_bytes().to_vec())
 }
 
@@ -309,7 +309,7 @@ fn delete_packet_commitment(ctx: &mut Context<'_>, port: &str, chan: &str, seq: 
     )
 }
 
-fn channel_upgrade_path(kind: &str, port: &str, chan: &str) -> Vec<u8> {
+pub(crate) fn channel_upgrade_path(kind: &str, port: &str, chan: &str) -> Vec<u8> {
     format!("channelUpgrades/{kind}/ports/{port}/channels/{chan}").into_bytes()
 }
 
@@ -487,9 +487,9 @@ pub fn state_name(s: i32) -> &'static str {
 // Events
 // ---------------------------------------------------------------------------
 
-type Event = celestia_proto::celestia_core_proto::abci::Event;
+pub(crate) type Event = celestia_proto::celestia_core_proto::abci::Event;
 
-fn with_message(e: Event) -> [Event; 2] {
+pub(crate) fn with_message(e: Event) -> [Event; 2] {
     [e, sdk::event::event("message", [("module", "ibc_channel")])]
 }
 
@@ -502,7 +502,7 @@ fn hex_lower(b: &[u8]) -> String {
         })
 }
 
-fn hop(ch: &Channel) -> String {
+pub(crate) fn hop(ch: &Channel) -> String {
     ch.connection_hops.first().cloned().unwrap_or_default()
 }
 
@@ -586,11 +586,11 @@ fn emit_packet_event(
 // Handshake (`keeper/handshake.go`)
 // ---------------------------------------------------------------------------
 
-fn get_connection(ctx: &mut Context<'_>, id: &str) -> Result<ConnectionEnd> {
+pub(crate) fn get_connection(ctx: &mut Context<'_>, id: &str) -> Result<ConnectionEnd> {
     crate::connection::get_connection(ctx, id)?.ok_or_else(|| conerr::connection_not_found(id))
 }
 
-fn connection_open(c: &ConnectionEnd) -> Result<()> {
+pub(crate) fn connection_open(c: &ConnectionEnd) -> Result<()> {
     if c.state != ConnState::Open as i32 {
         return Err(conerr::invalid_connection_state(format!(
             "connection state is not OPEN (got {})",
@@ -600,7 +600,7 @@ fn connection_open(c: &ConnectionEnd) -> Result<()> {
     Ok(())
 }
 
-fn conn_state_name(s: i32) -> &'static str {
+pub(crate) fn conn_state_name(s: i32) -> &'static str {
     match ConnState::try_from(s) {
         Ok(ConnState::UninitializedUnspecified) => "STATE_UNINITIALIZED_UNSPECIFIED",
         Ok(ConnState::Init) => "STATE_INIT",
@@ -1450,16 +1450,8 @@ pub fn acknowledge_packet(
     }
     delete_packet_commitment(ctx, &p.source_port, &p.source_channel, p.sequence)?;
     emit_packet_event(ctx, "acknowledge_packet", p, &ch, None);
-    if ch.state == State::Flushing as i32 {
-        return Err(channel_upgrades_not_ported());
-    }
+    crate::upgrade::flush_on_ack(ctx, &p.source_port, &p.source_channel, ch)?;
     Ok(Outcome::Done)
-}
-
-/// Channel upgradability (flushing) is not ported yet.
-#[must_use]
-pub fn channel_upgrades_not_ported() -> sdk::SdkError {
-    sdk::error::sdk::not_supported("IBC channel upgrades are not ported yet")
 }
 
 /// `TimeoutPacket`.
@@ -1587,10 +1579,11 @@ pub fn timeout_executed(ctx: &mut Context<'_>, cap: &Capability, p: &Packet) -> 
         )));
     }
     delete_packet_commitment(ctx, &p.source_port, &p.source_channel, p.sequence)?;
-    if ch.state == State::Flushing as i32 {
-        return Err(channel_upgrades_not_ported());
-    }
+    crate::upgrade::flush_on_timeout(ctx, &p.source_port, &p.source_channel, &mut ch)?;
     if ch.ordering == Order::Ordered as i32 {
+        if ch.state == State::Flushing as i32 {
+            crate::upgrade::abort_on_ordered_timeout(ctx, &p.source_port, &p.source_channel)?;
+        }
         ch.state = State::Closed as i32;
         set_channel(ctx, &p.source_port, &p.source_channel, &ch)?;
         let cp = ch.counterparty.clone().unwrap_or_default();

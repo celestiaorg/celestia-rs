@@ -3,6 +3,7 @@
 //! ICA host), and the msg routes of IBC core, ICS-20 and the ICA host.
 
 use celestia_proto::Any;
+use celestia_proto::ibc::applications::interchain_accounts::host::v1::MsgModuleQuerySafe;
 use celestia_proto::ibc::applications::transfer::v1 as transfer;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
@@ -26,6 +27,13 @@ fn is_registered_msg(type_url: &str) -> bool {
         .any(|(u, _, bits)| *u == type_url && bits & 1 != 0)
 }
 
+/// Whether `type_url` resolves in the app's interface registry.
+fn is_registered_type(type_url: &str) -> bool {
+    txdecode::testing::type_urls()
+        .iter()
+        .any(|(u, _, _)| *u == type_url)
+}
+
 impl Default for IbcRouter {
     fn default() -> Self {
         Self {
@@ -36,7 +44,10 @@ impl Default for IbcRouter {
             },
             icahost: x_icahost::host::HostModule {
                 router: crate::router::AppRouter,
-                is_msg: is_registered_msg,
+                registry: x_icahost::host::Registry {
+                    is_registered: is_registered_type,
+                    is_msg: is_registered_msg,
+                },
             },
         }
     }
@@ -107,6 +118,9 @@ fn route_inner(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         let resp = x_transfer::relay::update_params(ctx, &decode(msg)?)?;
         return Ok(Any::pack(&resp));
     }
+    if msg.type_url == MsgModuleQuerySafe::type_url() {
+        return x_icahost::host::module_query_safe(ctx, &decode(msg)?, &mut module_query);
+    }
     if let Some(r) = x_icahost::host::handle(ctx, msg) {
         return r;
     }
@@ -117,6 +131,20 @@ fn route_inner(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
             msg.type_url
         )))
     })
+}
+
+/// A module query from a message handler (`GRPCQueryRouter` route): the
+/// handler's error is returned as Go's `err.Error()`.
+fn module_query(ctx: &mut Context<'_>, path: &str, data: &[u8]) -> Option<Result<Vec<u8>>> {
+    let handler = grpc_query::router().route(path)?;
+    Some(handler(ctx, data).map_err(|e| match e {
+        grpc_query::QueryError::Status(code, msg) => {
+            sdk::error::internal(format!("rpc error: code = {} desc = {msg}", code.name()))
+        }
+        grpc_query::QueryError::Sdk(e) => e,
+        grpc_query::QueryError::Plain(s) => sdk::error::internal(s),
+        grpc_query::QueryError::Panic(s) => sdk::error::go_panic(s),
+    }))
 }
 
 /// `RedundantRelayDecorator`'s checks for the ante handler.

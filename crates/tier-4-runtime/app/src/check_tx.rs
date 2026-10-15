@@ -152,10 +152,10 @@ impl App {
         ctx.tx_bytes = tx_bytes.to_vec();
         let decoded = match txdecode::decode(tx_bytes) {
             Ok(t) => t,
-            Err(e) => return error_response(&e, 0, 0),
+            Err(e) => return error_response(&e, 0, ctx.gas.consumed()),
         };
         if let Err(e) = tx::check_msgs(&decoded) {
-            return error_response(&e, 0, 0);
+            return error_response(&e, 0, ctx.gas.consumed());
         }
         match x_ante::ante_handle(&mut ctx, &decoded, false, &deps) {
             Ok(out) => ResponseCheckTx {

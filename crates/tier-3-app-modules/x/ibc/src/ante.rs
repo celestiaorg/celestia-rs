@@ -11,6 +11,7 @@ use sdk::{Context, Result};
 use crate::channel::{self, Outcome};
 use crate::client::{self, ClientMessage, ClientState, Status};
 use crate::errors::client as cerr;
+use crate::lightclients::solomachine as smc;
 use crate::lightclients::tendermint as tmc;
 use crate::router::Router;
 
@@ -41,18 +42,43 @@ pub fn update_client_check(ctx: &mut Context<'_>, msg: &Any, recheck: bool) -> R
             }
             Ok(())
         }
-        (ClientState::Tendermint(_), ClientMessage::Solomachine(_)) => {
-            if recheck {
+        (ClientState::Tendermint(_), ClientMessage::Solomachine(sm)) => {
+            if !recheck {
+                return Err(cerr::invalid_client_type(""));
+            }
+            match sm {
+                // Solo machine misbehaviour skips `UpdateState` in the ante.
+                smc::ClientMessage::Misbehaviour(_) => Ok(()),
                 // `UpdateState` panics on a foreign client message type.
-                Err(sdk::error::go_panic("invalid client message type"))
-            } else {
-                Err(cerr::invalid_client_type(""))
+                smc::ClientMessage::Header(_) => {
+                    Err(sdk::error::go_panic("invalid client message type"))
+                }
             }
         }
         (ClientState::Localhost(_), _) => Err(cerr::update_client_failed(
             "client message verification is unsupported by the localhost client",
         )),
-        (ClientState::Solomachine(_), _) => Err(client::solomachine_not_ported()),
+        (ClientState::Solomachine(c), ClientMessage::Solomachine(sm)) => {
+            if !recheck {
+                smc::verify_client_message(c, sm)?;
+            }
+            if let smc::ClientMessage::Header(h) = sm {
+                let (next, _) = smc::update_state(c, h);
+                client::set_client_state(ctx, id, &celestia_proto::Any::pack(&next))?;
+            }
+            Ok(())
+        }
+        (ClientState::Solomachine(_), ClientMessage::Tendermint(tm)) => {
+            if !recheck {
+                return Err(client::solomachine_foreign_message(&cm));
+            }
+            match tm {
+                tmc::ClientMessage::Misbehaviour(_) => Ok(()),
+                tmc::ClientMessage::Header(_) => Err(sdk::error::go_panic(
+                    "unsupported ClientMessage: *tendermint.Header",
+                )),
+            }
+        }
     }
 }
 

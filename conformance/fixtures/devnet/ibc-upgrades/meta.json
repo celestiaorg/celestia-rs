@@ -1,0 +1,8 @@
+{
+  "celestia_app": "v10.4.0",
+  "chain_id": "testchain1-1",
+  "committed_heights": 186,
+  "generated_at": "2026-10-15T02:21:59Z",
+  "scenario": "ibc-upgrades",
+  "workload": "conformance/ibcvectors upgrade_test.go (ibc-go testing package)"
+}

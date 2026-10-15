@@ -15,6 +15,7 @@ use sdk::{Context, Result, SdkError};
 use crate::errors::{client as cerr, ibc as ierr};
 use crate::height;
 use crate::host;
+use crate::lightclients::solomachine as smc;
 use crate::lightclients::tendermint as tmc;
 
 /// Sub-module name.
@@ -445,7 +446,7 @@ impl ClientState {
                 let Some(cons) = c.consensus_state.as_ref() else {
                     return Err(cerr::invalid_consensus("consensus state cannot be nil"));
                 };
-                validate_solomachine_consensus(cons)
+                smc::validate_consensus_state(cons)
             }
             Self::Localhost(c) => {
                 if c.latest_height.unwrap_or_default().revision_height == 0 {
@@ -455,22 +456,6 @@ impl ClientState {
             }
         }
     }
-}
-
-/// solomachine `ConsensusState.ValidateBasic`.
-fn validate_solomachine_consensus(c: &sm::ConsensusState) -> Result<()> {
-    if c.timestamp == 0 {
-        return Err(cerr::invalid_consensus("timestamp cannot be 0"));
-    }
-    if !c.diversifier.is_empty() && c.diversifier.trim().is_empty() {
-        return Err(cerr::invalid_consensus(
-            "diversifier cannot contain only spaces",
-        ));
-    }
-    if c.public_key.is_none() {
-        return Err(cerr::invalid_consensus("public key cannot be empty"));
-    }
-    Ok(())
 }
 
 /// `GetClientState` (decoded; undecodable state is a Go panic).
@@ -558,8 +543,8 @@ pub fn generate_client_identifier(ctx: &mut Context<'_>, client_type: &str) -> R
 pub enum ClientMessage {
     /// 07-tendermint header or misbehaviour.
     Tendermint(tmc::ClientMessage),
-    /// 06-solomachine header or misbehaviour (verification not ported).
-    Solomachine(Any),
+    /// 06-solomachine header or misbehaviour.
+    Solomachine(smc::ClientMessage),
 }
 
 impl ClientMessage {
@@ -571,8 +556,8 @@ impl ClientMessage {
         if let Some(r) = tmc::unpack_client_message(any) {
             return r.map(Self::Tendermint);
         }
-        if any.type_url == sm::Header::type_url() || any.type_url == sm::Misbehaviour::type_url() {
-            return Ok(Self::Solomachine(any.clone()));
+        if let Some(r) = smc::unpack_client_message(any) {
+            return r.map(Self::Solomachine);
         }
         Err(ierr::unpack_any(format!(
             "cannot unpack Any into ClientMessage {}",
@@ -584,7 +569,7 @@ impl ClientMessage {
     pub fn validate_basic(&self) -> Result<()> {
         match self {
             Self::Tendermint(m) => tmc::validate_client_message(m),
-            Self::Solomachine(_) => Err(solomachine_not_ported()),
+            Self::Solomachine(m) => smc::validate_client_message(m),
         }
     }
 
@@ -594,15 +579,30 @@ impl ClientMessage {
         match self {
             Self::Tendermint(tmc::ClientMessage::Header(h)) => Any::pack(h.as_ref()),
             Self::Tendermint(tmc::ClientMessage::Misbehaviour(m)) => Any::pack(m.as_ref()),
-            Self::Solomachine(a) => a.clone(),
+            Self::Solomachine(m) => m.to_any(),
         }
     }
 }
 
-/// 06-solomachine signature verification is not ported yet.
+impl ClientMessage {
+    /// Go `%T` of the message.
+    #[must_use]
+    pub fn go_type(&self) -> &'static str {
+        match self {
+            Self::Tendermint(tmc::ClientMessage::Header(_)) => "*tendermint.Header",
+            Self::Tendermint(tmc::ClientMessage::Misbehaviour(_)) => "*tendermint.Misbehaviour",
+            Self::Solomachine(m) => m.go_type(),
+        }
+    }
+}
+
+/// The solo machine's `VerifyClientMessage` error for a foreign message.
 #[must_use]
-pub fn solomachine_not_ported() -> SdkError {
-    sdk::error::sdk::not_supported("06-solomachine verification is not ported yet")
+pub fn solomachine_foreign_message(msg: &ClientMessage) -> SdkError {
+    cerr::invalid_client_type(format!(
+        "expected type of solomachine.Header or solomachine.Misbehaviour, got type {}",
+        msg.go_type()
+    ))
 }
 
 /// Type of a packed consensus state (`UnpackConsensusState`).
@@ -645,7 +645,7 @@ pub fn validate_create_client(
                 .unwrap_or(Ok(tmpb::ConsensusState::default()))
                 .map_err(dec)?,
         ),
-        _ => validate_solomachine_consensus(
+        _ => smc::validate_consensus_state(
             &any.unpack::<sm::ConsensusState>()
                 .unwrap_or(Ok(sm::ConsensusState::default()))
                 .map_err(dec)?,
@@ -772,27 +772,7 @@ pub fn update_client(ctx: &mut Context<'_>, client_id: &str, msg: &ClientMessage
                 return Ok(());
             }
             let heights = tmc::update_state(ctx, client_id, c, m)?;
-            let header = hex_lower(&msg.to_any().encode_to_vec());
-            ctx.events.emit_all(client_events(
-                "update_client",
-                vec![
-                    ("client_id", client_id.to_owned()),
-                    ("client_type", TENDERMINT.to_owned()),
-                    (
-                        "consensus_height",
-                        heights.first().map(height::to_string).unwrap_or_default(),
-                    ),
-                    (
-                        "consensus_heights",
-                        heights
-                            .iter()
-                            .map(height::to_string)
-                            .collect::<Vec<_>>()
-                            .join(","),
-                    ),
-                    ("header", header),
-                ],
-            ));
+            emit_update_client(ctx, client_id, TENDERMINT, &heights, msg);
             Ok(())
         }
         (ClientState::Localhost(_), _) => Err(cerr::update_client_failed(
@@ -802,8 +782,91 @@ pub fn update_client(ctx: &mut Context<'_>, client_id: &str, msg: &ClientMessage
         (ClientState::Tendermint(_), ClientMessage::Solomachine(_)) => {
             Err(cerr::invalid_client_type(""))
         }
-        (ClientState::Solomachine(_), _) => Err(solomachine_not_ported()),
+        (ClientState::Solomachine(c), ClientMessage::Solomachine(m)) => {
+            smc::verify_client_message(c, m)?;
+            match m {
+                smc::ClientMessage::Misbehaviour(_) => {
+                    let frozen = smc::update_state_on_misbehaviour(c);
+                    set_client_state(ctx, client_id, &Any::pack(&frozen))?;
+                    ctx.events.emit_all(client_events(
+                        "client_misbehaviour",
+                        vec![
+                            ("client_id", client_id.to_owned()),
+                            ("client_type", SOLOMACHINE.to_owned()),
+                        ],
+                    ));
+                }
+                smc::ClientMessage::Header(h) => {
+                    let (next, heights) = smc::update_state(c, h);
+                    set_client_state(ctx, client_id, &Any::pack(&next))?;
+                    emit_update_client(ctx, client_id, SOLOMACHINE, &heights, msg);
+                }
+            }
+            Ok(())
+        }
+        (ClientState::Solomachine(_), ClientMessage::Tendermint(_)) => {
+            Err(solomachine_foreign_message(msg))
+        }
     }
+}
+
+fn emit_update_client(
+    ctx: &mut Context<'_>,
+    client_id: &str,
+    client_type: &str,
+    heights: &[Height],
+    msg: &ClientMessage,
+) {
+    let header = hex_lower(&msg.to_any().encode_to_vec());
+    ctx.events.emit_all(client_events(
+        "update_client",
+        vec![
+            ("client_id", client_id.to_owned()),
+            ("client_type", client_type.to_owned()),
+            (
+                "consensus_height",
+                heights.first().map(height::to_string).unwrap_or_default(),
+            ),
+            (
+                "consensus_heights",
+                heights
+                    .iter()
+                    .map(height::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+            ("header", header),
+        ],
+    ));
+}
+
+/// Keeper `ScheduleIBCSoftwareUpgrade`: schedules the x/upgrade plan and
+/// stores the upgraded client (custom fields zeroed) at the plan height.
+pub fn schedule_ibc_software_upgrade(
+    ctx: &mut Context<'_>,
+    plan: &celestia_proto::cosmos::upgrade::v1beta1::Plan,
+    upgraded: &ClientState,
+) -> Result<()> {
+    let bz = match upgraded {
+        ClientState::Tendermint(c) => tmc::client_state_any(&tmc::zero_custom_fields(c)),
+        ClientState::Localhost(_) => upgraded.to_any(),
+        ClientState::Solomachine(_) => {
+            return Err(sdk::error::go_panic(
+                "ZeroCustomFields is not implemented as the solo machine implementation does not support upgrades",
+            ));
+        }
+    }
+    .encode_to_vec();
+    x_upgrade::schedule_upgrade(ctx, plan)?;
+    ctx.set(x_upgrade::STORE_KEY, upgraded_client_key(plan.height), bz)?;
+    ctx.events.emit_all(client_events(
+        "schedule_ibc_software_upgrade",
+        vec![
+            ("title", plan.name.clone()),
+            ("upgrade_plan_height", plan.height.to_string()),
+        ],
+    ));
+    Ok(())
 }
 
 /// Keeper `UpgradeClient`.
@@ -887,7 +950,15 @@ pub fn recover_client(ctx: &mut Context<'_>, subject_id: &str, substitute_id: &s
             substitute_id,
             &substitute.to_any(),
         ),
-        ClientState::Solomachine(_) => Err(solomachine_not_ported()),
+        ClientState::Solomachine(c) => {
+            let (sub, ty) = match &substitute {
+                ClientState::Solomachine(s) => (Some(s.as_ref()), "*solomachine.ClientState"),
+                ClientState::Tendermint(_) => (None, "*tendermint.ClientState"),
+                ClientState::Localhost(_) => (None, "*localhost.ClientState"),
+            };
+            smc::check_substitute_and_update_state(c, sub, ty)
+                .and_then(|next| set_client_state(ctx, subject_id, &Any::pack(&next)))
+        }
         ClientState::Localhost(_) => Err(cerr::update_client_failed(
             "cannot update localhost client with a proposal",
         )),
@@ -947,7 +1018,15 @@ pub fn verify_membership(
             path,
             value,
         ),
-        ClientState::Solomachine(_) => Err(solomachine_not_ported()),
+        ClientState::Solomachine(c) => {
+            if proof.is_empty() {
+                return Err(crate::errors::solomachine::invalid_proof(
+                    "proof cannot be empty",
+                ));
+            }
+            let next = smc::verify_membership(c, proof, path, value)?;
+            set_client_state(ctx, client_id, &Any::pack(&next))
+        }
         ClientState::Localhost(_) => {
             if proof != LOCALHOST_SENTINEL_PROOF {
                 return Err(crate::errors::commitment::invalid_proof(

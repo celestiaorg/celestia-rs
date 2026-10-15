@@ -7,7 +7,7 @@ use celestia_proto::ibc::core::connection::v1::{
     ClientPaths, ConnectionEnd, Counterparty, GenesisState, Params, State, Version,
 };
 use prost::Message;
-use sdk::{Context, Result};
+use sdk::{Context, Result, SdkError};
 
 use crate::client;
 use crate::errors::{client as clerr, connection as cerr};
@@ -627,6 +627,23 @@ pub fn verify(
     kind: Kind,
     wrap: &str,
 ) -> Result<()> {
+    verify_with(ctx, conn, h, proof, path, value, kind, |e, client_id| {
+        e.wrap(format!("{wrap} ({client_id})"))
+    })
+}
+
+/// [`verify`] with a custom wrapping of the verification error.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_with(
+    ctx: &mut Context<'_>,
+    conn: &ConnectionEnd,
+    h: &Height,
+    proof: &[u8],
+    path: &[String],
+    value: Option<&[u8]>,
+    kind: Kind,
+    wrap: impl FnOnce(SdkError, &str) -> SdkError,
+) -> Result<()> {
     let cs = verification_client(ctx, conn)?;
     let (delay_time, delay_block) = match kind {
         Kind::State => (0, 0),
@@ -645,7 +662,7 @@ pub fn verify(
         &merkle_path,
         value,
     )
-    .map_err(|e| e.wrap(format!("{wrap} ({})", conn.client_id)))
+    .map_err(|e| wrap(e, &conn.client_id))
 }
 
 /// `VerifyConnectionState`.

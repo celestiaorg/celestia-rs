@@ -81,6 +81,11 @@ pub fn run_ante(
         gas_wanted: 0,
         ante_events: Vec::new(),
     };
+    // `getContextForTx`: `ctx.WithConsensusParams(app.GetConsensusParams(ctx))`
+    // reads the params on the tx's fresh infinite meter; that gas is what
+    // Go reports for failures before the ante handler installs its meter.
+    let _ = x_consensus::get_params(ctx);
+    p.gas = ctx.gas.clone();
     let tx = match decode(tx_bytes) {
         Ok(tx) => tx,
         Err(e) => return (p, Err(e)),

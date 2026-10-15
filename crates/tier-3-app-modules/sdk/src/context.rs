@@ -220,6 +220,19 @@ impl<'a> Context<'a> {
         self.iter_dir(store, start, end, true)
     }
 
+    /// One `gaskv` iterator seek charge (iterator creation or `Next`) for
+    /// an iterator positioned at an entry with these key / value lengths
+    /// (`None`: the iterator is not valid). For callers that iterate a
+    /// snapshot themselves.
+    pub fn charge_iter_seek(&mut self, store: &str, entry: Option<(usize, usize)>) -> Result<()> {
+        let c = self.config(store)?;
+        if let Some((k, v)) = entry {
+            self.consume_bytes(c.read_cost_per_byte, k, "ValuePerByte")?;
+            self.consume_bytes(c.read_cost_per_byte, v, "ValuePerByte")?;
+        }
+        self.consume(c.iter_next_cost_flat, "IterNextFlat")
+    }
+
     /// Iterates all keys with `prefix`.
     pub fn prefix_iter(&mut self, store: &str, prefix: &[u8]) -> Result<Iter> {
         let end = prefix_end(prefix);

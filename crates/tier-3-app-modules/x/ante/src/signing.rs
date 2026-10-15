@@ -226,12 +226,25 @@ pub fn verify_signature(
     }
 }
 
-/// `LegacyAminoPubKey.VerifyMultisignature`.
+/// `LegacyAminoPubKey.VerifyMultisignature` over the tx sign bytes.
 fn verify_multisignature(
     pk: &PubKey,
     data: &SigData,
     sd: &SignerData,
     tx: &Tx,
+) -> R<Result<(), String>> {
+    verify_multisig_with(pk, data, &mut |mode| match api_sign_mode(mode) {
+        Ok(m) => get_sign_bytes(m, sd, tx),
+        Err(e) => Ok(Err(e)),
+    })
+}
+
+/// `LegacyAminoPubKey.VerifyMultisignature` with Go's `getSignBytes`
+/// callback (sign mode -> bytes, or the error it returns).
+pub fn verify_multisig_with(
+    pk: &PubKey,
+    data: &SigData,
+    get_sign_bytes: &mut dyn FnMut(i32) -> R<Result<Vec<u8>, String>>,
 ) -> R<Result<(), String>> {
     let (
         PubKey::Multisig {
@@ -271,11 +284,8 @@ fn verify_multisignature(
         let key = idx(keys, usize::try_from(i).unwrap_or(usize::MAX))?;
         match idx(signatures, sig_index)? {
             SigData::Single { mode, signature } => {
-                let bytes = match api_sign_mode(*mode) {
-                    Ok(m) => match get_sign_bytes(m, sd, tx)? {
-                        Ok(b) => b,
-                        Err(e) => return Ok(Err(e)),
-                    },
+                let bytes = match get_sign_bytes(*mode)? {
+                    Ok(b) => b,
                     Err(e) => return Ok(Err(e)),
                 };
                 if !key.verify_signature(&bytes, signature)? {
@@ -286,7 +296,7 @@ fn verify_multisignature(
                 if !matches!(key, PubKey::Multisig { .. }) {
                     return Ok(Err(format!("unable to parse pubkey of index {i}")));
                 }
-                if let Err(e) = verify_multisignature(key, nested, sd, tx)? {
+                if let Err(e) = verify_multisig_with(key, nested, get_sign_bytes)? {
                     return Ok(Err(e));
                 }
             }

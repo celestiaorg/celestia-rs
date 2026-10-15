@@ -28,6 +28,7 @@ pub mod lightclients;
 pub mod msgs;
 pub mod port;
 pub mod router;
+pub mod upgrade;
 
 use celestia_proto::ibc::core::types::v1::GenesisState;
 use sdk::{Context, Result};

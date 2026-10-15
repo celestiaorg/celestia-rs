@@ -161,6 +161,55 @@ pub trait IbcModule {
     fn upgradable(&self) -> bool {
         false
     }
+
+    /// `OnChanUpgradeInit` (upgradable modules): returns the version.
+    fn on_chan_upgrade_init(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _order: Order,
+        _connection_hops: &[String],
+        _version: &str,
+    ) -> Result<String> {
+        Err(sdk::error::sdk::not_supported("channel upgrades"))
+    }
+
+    /// `OnChanUpgradeTry` (upgradable modules): returns the version.
+    fn on_chan_upgrade_try(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _order: Order,
+        _connection_hops: &[String],
+        _counterparty_version: &str,
+    ) -> Result<String> {
+        Err(sdk::error::sdk::not_supported("channel upgrades"))
+    }
+
+    /// `OnChanUpgradeAck` (upgradable modules).
+    fn on_chan_upgrade_ack(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _counterparty_version: &str,
+    ) -> Result<()> {
+        Err(sdk::error::sdk::not_supported("channel upgrades"))
+    }
+
+    /// `OnChanUpgradeOpen` (upgradable modules).
+    fn on_chan_upgrade_open(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _order: Order,
+        _connection_hops: &[String],
+        _version: &str,
+    ) {
+    }
 }
 
 /// `porttypes.Router`: module name → application.

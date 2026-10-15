@@ -130,6 +130,23 @@ fn ibc_parity() -> anyhow::Result<()> {
 /// an expired client.
 /// ibctesting drives FinalizeBlock and Commit directly (no proposals or
 /// CheckTx), so only the block-level parity applies.
+/// `conformance/ibcvectors/upgrade_test.go`: 06-solomachine clients, ICS-27
+/// host channel upgrades, proto3json ICA txs, `MsgModuleQuerySafe` and the
+/// gov-executed `MsgIBCSoftwareUpgrade`, with CheckTx of every tx.
+#[test]
+fn ibc_upgrades_parity() -> anyhow::Result<()> {
+    let r = replay("ibc-upgrades")?;
+    assert!(r.errors.is_empty(), "ibc-upgrades: {:?}", r.errors);
+    assert_eq!(
+        r.first_mismatch, None,
+        "ibc-upgrades: stores {:#?}",
+        r.store_diffs
+    );
+    assert!(r.matched_heights.len() > 180, "{}", r.matched_heights.len());
+    assert!(r.compared.check_tx > 140, "{:?}", r.compared);
+    Ok(())
+}
+
 #[test]
 fn ibc_edge_parity() -> anyhow::Result<()> {
     let r = replay("ibc-edge")?;

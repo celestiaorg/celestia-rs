@@ -111,6 +111,10 @@ func (a *recApp) Commit() (*abci.ResponseCommit, error) {
 // lastResult is the result of the celestia chain's last delivered tx.
 var lastResult *abci.ExecTxResult
 
+// checkTxApp, when set, runs (and records) CheckTx of every celestia tx
+// before it is delivered.
+var checkTxApp *recApp
+
 // celestiaSendMsgs replaces TestChain.SendMsgs for the celestia chain so
 // that txs go through the recording app (the default calls BaseApp
 // directly) and pay fees in utia.
@@ -118,7 +122,12 @@ func celestiaSendMsgs(chain *ibctesting.TestChain) func(msgs ...sdk.Msg) (*abci.
 	return func(msgs ...sdk.Msg) (*abci.ExecTxResult, error) {
 		chain.Coordinator.UpdateTimeForChain(chain)
 		defer func() {
-			if err := chain.SenderAccount.SetSequence(chain.SenderAccount.GetSequence() + 1); err != nil {
+			next := chain.SenderAccount.GetSequence() + 1
+			if a := checkTxApp; a != nil {
+				// Txs failing in the ante handler do not bump the sequence.
+				next = a.AccountKeeper.GetAccount(chain.GetContext(), chain.SenderAccount.GetAddress()).GetSequence()
+			}
+			if err := chain.SenderAccount.SetSequence(next); err != nil {
 				panic(err)
 			}
 		}()
@@ -139,6 +148,15 @@ func celestiaSendMsgs(chain *ibctesting.TestChain) func(msgs ...sdk.Msg) (*abci.
 		txBytes, err := chain.TxConfig.TxEncoder()(tx)
 		if err != nil {
 			return nil, err
+		}
+		if a := checkTxApp; a != nil {
+			req := &abci.RequestCheckTx{Tx: txBytes, Type: abci.CheckTxType_New}
+			resp, err := a.App.CheckTx(req)
+			if err != nil {
+				return nil, err
+			}
+			a.rec.add(&abci.Request{Value: &abci.Request_CheckTx{CheckTx: req}},
+				&abci.Response{Value: &abci.Response_CheckTx{CheckTx: resp}})
 		}
 		res, err := chain.App.FinalizeBlock(&abci.RequestFinalizeBlock{
 			Height:             chain.App.LastBlockHeight() + 1,

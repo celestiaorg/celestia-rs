@@ -2,16 +2,15 @@
 //! (`host/keeper/handshake.go`, `relay.go`, `account.go`) and message
 //! server (`MsgUpdateParams`).
 //!
-//! Deferred: `proto3json`-encoded `CosmosTx` packets (decoding arbitrary
-//! messages from JSON) and `MsgModuleQuerySafe` (needs the gRPC query
-//! router); both fail with `ErrNotSupported`.
+//! `MsgModuleQuerySafe` runs the app's gRPC query router (supplied by the
+//! app, see [`module_query_safe`]).
 
 use celestia_proto::Any;
 use celestia_proto::capability::v1::Capability;
 use celestia_proto::cosmos::auth::v1beta1::BaseAccount;
 use celestia_proto::cosmos::base::abci::v1beta1::TxMsgData;
 use celestia_proto::ibc::applications::interchain_accounts::host::v1::{
-    MsgModuleQuerySafe, MsgUpdateParams, MsgUpdateParamsResponse,
+    MsgModuleQuerySafe, MsgModuleQuerySafeResponse, MsgUpdateParams, MsgUpdateParamsResponse,
 };
 use celestia_proto::ibc::applications::interchain_accounts::v1::{
     CosmosTx, InterchainAccount, Metadata,
@@ -435,7 +434,7 @@ fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
 fn keeper_on_recv_packet(
     ctx: &mut Context<'_>,
     router: &dyn MsgRouter,
-    is_msg: fn(&str) -> bool,
+    reg: Registry,
     p: &Packet,
 ) -> Result<Vec<u8>> {
     let (ty, data) = decode_packet_data(&p.data).map_err(|()| {
@@ -445,7 +444,7 @@ fn keeper_on_recv_packet(
     if ty != 1 {
         return Err(errors::unknown_data_type(""));
     }
-    let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, is_msg)
+    let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, reg)
         .map_err(|e| e.wrap("failed to deserialize interchain account transaction"))?;
     execute_tx(
         ctx,
@@ -459,19 +458,16 @@ fn keeper_on_recv_packet(
 }
 
 /// `DeserializeCosmosTx`.
-fn deserialize_cosmos_tx(
-    data: &[u8],
-    encoding: &str,
-    is_msg: fn(&str) -> bool,
-) -> Result<Vec<Any>> {
+fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<Vec<Any>> {
+    let is_msg = reg.is_msg;
     let tx = match encoding {
         ENCODING_PROTOBUF => CosmosTx::decode(data).map_err(|e| {
             x_ibc::errors::unregistered(format!("cannot unmarshal CosmosTx with protobuf: {e}"))
         })?,
         ENCODING_PROTO3_JSON => {
-            return Err(sdk::error::sdk::not_supported(
-                "proto3json interchain account transactions are not ported yet",
-            ));
+            unmarshal_cosmos_tx_json(data, reg.is_registered).ok_or_else(|| {
+                errors::unknown_data_type("cannot unmarshal CosmosTx with proto3 json")
+            })?
         }
         other => {
             return Err(errors::invalid_codec(&format!(
@@ -489,6 +485,37 @@ fn deserialize_cosmos_tx(
         }
     }
     Ok(tx.messages)
+}
+
+/// `ProtoCodec.UnmarshalJSON(data, &CosmosTx{})` (gogo `jsonpb` with the
+/// interface registry as `Any` resolver; the first JSON value is read):
+/// `None` on any failure. `Any` types must be in the registry's type map.
+fn unmarshal_cosmos_tx_json(data: &[u8], is_registered: fn(&str) -> bool) -> Option<CosmosTx> {
+    let v = x_ibc::gojson::first_value(data).ok()?;
+    match &v {
+        serde_json::Value::Null => return Some(CosmosTx::default()),
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::Array(msgs)) = map.get("messages") {
+                for m in msgs {
+                    let ty = m.get("@type").and_then(serde_json::Value::as_str)?;
+                    if !is_registered(ty) {
+                        return None;
+                    }
+                }
+            }
+        }
+        _ => return None,
+    }
+    serde_json::from_value(v).ok()
+}
+
+/// The app's interface registry (`codectypes.InterfaceRegistry`).
+#[derive(Debug, Clone, Copy)]
+pub struct Registry {
+    /// Whether a type URL resolves (`typeURLMap`).
+    pub is_registered: fn(&str) -> bool,
+    /// Whether a type URL is registered as `sdk.Msg`.
+    pub is_msg: fn(&str) -> bool,
 }
 
 /// `authenticateTx`.
@@ -610,9 +637,8 @@ fn packet_event(
 pub struct HostModule<R> {
     /// The app's message router (`baseapp.MsgServiceRouter`).
     pub router: R,
-    /// Whether a type URL is registered as `sdk.Msg` in the interface
-    /// registry.
-    pub is_msg: fn(&str) -> bool,
+    /// The app's interface registry.
+    pub registry: Registry,
 }
 
 fn flow(msg: &str) -> SdkError {
@@ -712,7 +738,7 @@ impl<R: MsgRouter> IbcModule for HostModule<R> {
             ));
             return Ok(Some(Acknowledgement::error(&e)));
         }
-        match keeper_on_recv_packet(ctx, &self.router, self.is_msg, p) {
+        match keeper_on_recv_packet(ctx, &self.router, self.registry, p) {
             Ok(res) => {
                 ctx.events.emit(packet_event(p, true, None));
                 Ok(Some(Acknowledgement::result(&res)))
@@ -751,6 +777,100 @@ impl<R: MsgRouter> IbcModule for HostModule<R> {
     fn upgradable(&self) -> bool {
         true
     }
+
+    fn on_chan_upgrade_init(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _order: Order,
+        _hops: &[String],
+        _version: &str,
+    ) -> Result<String> {
+        Err(flow(
+            "channel upgrade handshake must be initiated by controller chain",
+        ))
+    }
+
+    fn on_chan_upgrade_try(
+        &self,
+        ctx: &mut Context<'_>,
+        port_id: &str,
+        channel_id: &str,
+        _order: Order,
+        hops: &[String],
+        cp_version: &str,
+    ) -> Result<String> {
+        if !params(ctx)?.host_enabled {
+            return Err(errors::host_sub_module_disabled());
+        }
+        keeper_on_chan_upgrade_try(ctx, port_id, channel_id, hops, cp_version)
+    }
+
+    fn on_chan_upgrade_ack(
+        &self,
+        _ctx: &mut Context<'_>,
+        _port_id: &str,
+        _channel_id: &str,
+        _cp_version: &str,
+    ) -> Result<()> {
+        Err(flow(
+            "channel upgrade handshake must be initiated by controller chain",
+        ))
+    }
+}
+
+/// Keeper `OnChanUpgradeTry`.
+fn keeper_on_chan_upgrade_try(
+    ctx: &mut Context<'_>,
+    port_id: &str,
+    channel_id: &str,
+    hops: &[String],
+    cp_version: &str,
+) -> Result<String> {
+    if port_id != HOST_PORT_ID {
+        return Err(x_ibc::errors::port::invalid_port(format!(
+            "expected {HOST_PORT_ID}, got {port_id}"
+        )));
+    }
+    let Some(ch) = x_ibc::channel::get_channel(ctx, port_id, channel_id)? else {
+        return Err(cherr::channel_not_found(format!(
+            "port ID ({port_id}) channel ID ({channel_id})"
+        )));
+    };
+    let connection_id = ch.connection_hops.first().cloned().ok_or_else(|| {
+        sdk::error::go_panic("runtime error: index out of range [0] with length 0")
+    })?;
+    if hops.len() != 1 || hops[0] != connection_id {
+        return Err(cherr::invalid_upgrade(format!(
+            "expected connection hops [{connection_id}], got [{}]",
+            hops.join(" ")
+        )));
+    }
+    if cp_version.trim().is_empty() {
+        return Err(cherr::invalid_channel_version(
+            "counterparty version cannot be empty",
+        ));
+    }
+    let proposed = metadata_from_version(cp_version)?;
+    let current = app_metadata(ctx, port_id, channel_id)?;
+    validate_host_metadata(ctx, hops, &proposed).map_err(|e| e.wrap("invalid metadata"))?;
+    if current.address != proposed.address {
+        return Err(errors::invalid_account_address(
+            "interchain account address cannot be changed",
+        ));
+    }
+    if current.controller_connection_id != proposed.controller_connection_id {
+        return Err(conerr::invalid_connection(
+            "proposed controller connection ID must not change",
+        ));
+    }
+    if current.host_connection_id != hops[0] {
+        return Err(conerr::invalid_connection_identifier(
+            "proposed connection hop must not change",
+        ));
+    }
+    Ok(cp_version.to_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -809,12 +929,82 @@ pub fn handle(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
             Ok(Any::pack(&MsgUpdateParamsResponse {}))
         }));
     }
-    if msg.type_url == MsgModuleQuerySafe::type_url() {
-        return Some(Err(sdk::error::sdk::not_supported(
-            "MsgModuleQuerySafe (gRPC query router) is not ported yet",
-        )));
-    }
     None
+}
+
+/// Query paths labeled `cosmos.query.v1.module_query_safe` in the proto
+/// files linked into celestia-appd (`newModuleQuerySafeAllowList`).
+pub const MODULE_QUERY_SAFE: &[&str] = &[
+    "/cosmos.auth.v1beta1.Query/Accounts",
+    "/cosmos.auth.v1beta1.Query/Account",
+    "/cosmos.auth.v1beta1.Query/AccountAddressByID",
+    "/cosmos.auth.v1beta1.Query/Params",
+    "/cosmos.auth.v1beta1.Query/ModuleAccounts",
+    "/cosmos.auth.v1beta1.Query/ModuleAccountByName",
+    "/cosmos.auth.v1beta1.Query/AccountInfo",
+    "/cosmos.bank.v1beta1.Query/Balance",
+    "/cosmos.bank.v1beta1.Query/AllBalances",
+    "/cosmos.bank.v1beta1.Query/SpendableBalances",
+    "/cosmos.bank.v1beta1.Query/SpendableBalanceByDenom",
+    "/cosmos.bank.v1beta1.Query/TotalSupply",
+    "/cosmos.bank.v1beta1.Query/SupplyOf",
+    "/cosmos.bank.v1beta1.Query/Params",
+    "/cosmos.bank.v1beta1.Query/DenomMetadata",
+    "/cosmos.bank.v1beta1.Query/DenomMetadataByQueryString",
+    "/cosmos.bank.v1beta1.Query/DenomsMetadata",
+    "/cosmos.bank.v1beta1.Query/DenomOwners",
+    "/cosmos.bank.v1beta1.Query/DenomOwnersByQuery",
+    "/cosmos.bank.v1beta1.Query/SendEnabled",
+    "/cosmos.staking.v1beta1.Query/Validators",
+    "/cosmos.staking.v1beta1.Query/Validator",
+    "/cosmos.staking.v1beta1.Query/ValidatorDelegations",
+    "/cosmos.staking.v1beta1.Query/ValidatorUnbondingDelegations",
+    "/cosmos.staking.v1beta1.Query/Delegation",
+    "/cosmos.staking.v1beta1.Query/UnbondingDelegation",
+    "/cosmos.staking.v1beta1.Query/DelegatorDelegations",
+    "/cosmos.staking.v1beta1.Query/DelegatorUnbondingDelegations",
+    "/cosmos.staking.v1beta1.Query/Redelegations",
+    "/cosmos.staking.v1beta1.Query/DelegatorValidators",
+    "/cosmos.staking.v1beta1.Query/DelegatorValidator",
+    "/cosmos.staking.v1beta1.Query/HistoricalInfo",
+    "/cosmos.staking.v1beta1.Query/Pool",
+    "/cosmos.staking.v1beta1.Query/Params",
+    "/cosmos.circuit.v1.Query/Account",
+    "/cosmos.circuit.v1.Query/Accounts",
+    "/cosmos.circuit.v1.Query/DisabledList",
+    "/ibc.core.client.v1.Query/UpgradedConsensusState",
+    "/ibc.core.client.v1.Query/VerifyMembership",
+];
+
+/// A query router (`baseapp.GRPCQueryRouter.Route` + handler): `None`
+/// when no route exists, else the marshaled response or the handler error.
+pub type QueryFn<'a> = &'a mut dyn FnMut(&mut Context<'_>, &str, &[u8]) -> Option<Result<Vec<u8>>>;
+
+/// `msgServer.ModuleQuerySafe`.
+pub fn module_query_safe(
+    ctx: &mut Context<'_>,
+    m: &MsgModuleQuerySafe,
+    query: QueryFn<'_>,
+) -> Result<Any> {
+    let mut responses = Vec::with_capacity(m.requests.len());
+    for q in &m.requests {
+        if !MODULE_QUERY_SAFE.contains(&q.path.as_str()) {
+            return Err(ierr::invalid_request(format!(
+                "not module query safe: {}",
+                q.path
+            )));
+        }
+        let Some(res) = query(ctx, &q.path, &q.data) else {
+            return Err(ierr::invalid_request(format!(
+                "no route to query: {}",
+                q.path
+            )));
+        };
+        responses.push(res?);
+    }
+    #[allow(clippy::cast_sign_loss)]
+    let height = ctx.height() as u64;
+    Ok(Any::pack(&MsgModuleQuerySafeResponse { height, responses }))
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use celestia_proto::ibc::core::channel::v1 as chpb;
 use celestia_proto::ibc::core::client::v1 as clpb;
 use celestia_proto::ibc::core::connection::v1 as copb;
 use prost::{Message, Name};
-use sdk::{Context, Result, SdkError};
+use sdk::{Context, Result};
 
 use crate::channel::{self, Outcome};
 use crate::client::{self, ClientMessage};
@@ -17,6 +17,7 @@ use crate::errors::{
 };
 use crate::host;
 use crate::router::{Acknowledgement, Router};
+use crate::upgrade;
 
 /// Type URLs of every message the IBC core message server handles.
 #[must_use]
@@ -413,11 +414,148 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
             Ok(())
         }
     );
-    if is_ibc_msg(url) {
-        // Channel upgrade messages: handled (and rejected) by the server.
-        return Some(Ok(()));
-    }
+    vb!(
+        chpb::MsgChannelUpgradeInit,
+        |m: &chpb::MsgChannelUpgradeInit| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            check_signer(&m.signer)?;
+            validate_upgrade_fields(&m.fields.clone().unwrap_or_default())
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeTry,
+        |m: &chpb::MsgChannelUpgradeTry| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            if m.proposed_upgrade_connection_hops.is_empty() {
+                return Err(cherr::invalid_upgrade(
+                    "proposed connection hops cannot be empty",
+                ));
+            }
+            validate_upgrade_fields(&m.counterparty_upgrade_fields.clone().unwrap_or_default())
+                .map_err(|e| e.wrap("error validating counterparty upgrade fields"))?;
+            if m.counterparty_upgrade_sequence == 0 {
+                return Err(cherr::invalid_upgrade_sequence(
+                    "counterparty sequence cannot be 0",
+                ));
+            }
+            non_empty_proof(&m.proof_channel, "cannot submit an empty channel proof")?;
+            non_empty_proof(&m.proof_upgrade, "cannot submit an empty upgrade proof")?;
+            check_signer(&m.signer)
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeAck,
+        |m: &chpb::MsgChannelUpgradeAck| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            non_empty_proof(&m.proof_channel, "cannot submit an empty channel proof")?;
+            non_empty_proof(
+                &m.proof_upgrade,
+                "cannot submit an empty upgrade sequence proof",
+            )?;
+            check_signer(&m.signer)?;
+            validate_upgrade(&m.counterparty_upgrade.clone().unwrap_or_default())
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeConfirm,
+        |m: &chpb::MsgChannelUpgradeConfirm| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            let st = m.counterparty_channel_state;
+            if st != chpb::State::Flushing as i32 && st != chpb::State::Flushcomplete as i32 {
+                return Err(cherr::invalid_channel_state(format!(
+                    "expected channel state to be one of: STATE_FLUSHING or STATE_FLUSHCOMPLETE, got: {}",
+                    channel::state_name(st)
+                )));
+            }
+            non_empty_proof(&m.proof_channel, "cannot submit an empty channel proof")?;
+            non_empty_proof(&m.proof_upgrade, "cannot submit an empty upgrade proof")?;
+            check_signer(&m.signer)?;
+            validate_upgrade(&m.counterparty_upgrade.clone().unwrap_or_default())
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeOpen,
+        |m: &chpb::MsgChannelUpgradeOpen| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            non_empty_proof(&m.proof_channel, "cannot submit an empty channel proof")?;
+            let st = m.counterparty_channel_state;
+            if st != chpb::State::Flushcomplete as i32 && st != chpb::State::Open as i32 {
+                return Err(cherr::invalid_channel_state(format!(
+                    "expected channel state to be one of: [STATE_FLUSHCOMPLETE, STATE_OPEN], got: {}",
+                    channel::state_name(st)
+                )));
+            }
+            if m.counterparty_upgrade_sequence == 0 {
+                return Err(cherr::invalid_upgrade_sequence(
+                    "counterparty upgrade sequence must be non-zero",
+                ));
+            }
+            check_signer(&m.signer)
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeTimeout,
+        |m: &chpb::MsgChannelUpgradeTimeout| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            non_empty_proof(&m.proof_channel, "cannot submit an empty proof")?;
+            let st = m.counterparty_channel.clone().unwrap_or_default().state;
+            if st != chpb::State::Flushing as i32 && st != chpb::State::Open as i32 {
+                return Err(cherr::invalid_channel_state(format!(
+                    "expected counterparty channel state to be one of: [STATE_FLUSHING, STATE_OPEN], got: {}",
+                    channel::state_name(st)
+                )));
+            }
+            check_signer(&m.signer)
+        }
+    );
+    vb!(
+        chpb::MsgChannelUpgradeCancel,
+        |m: &chpb::MsgChannelUpgradeCancel| {
+            port_and_channel(&m.port_id, &m.channel_id)?;
+            check_signer(&m.signer)
+        }
+    );
     None
+}
+
+fn port_and_channel(port: &str, chan: &str) -> Result<()> {
+    host::port_identifier_validator(port).map_err(|e| e.wrap("invalid port ID"))?;
+    if !channel::is_valid_channel_id(chan) {
+        return Err(cherr::invalid_channel_identifier(""));
+    }
+    Ok(())
+}
+
+/// `UpgradeFields.ValidateBasic`.
+fn validate_upgrade_fields(f: &chpb::UpgradeFields) -> Result<()> {
+    if f.ordering != chpb::Order::Ordered as i32 && f.ordering != chpb::Order::Unordered as i32 {
+        return Err(cherr::invalid_channel_ordering(channel::order_name(
+            f.ordering,
+        )));
+    }
+    if f.connection_hops.len() != 1 {
+        return Err(cherr::too_many_connection_hops(
+            "current IBC version only supports one connection hop",
+        ));
+    }
+    if f.version.trim().is_empty() {
+        return Err(cherr::invalid_channel_version("version cannot be empty"));
+    }
+    Ok(())
+}
+
+/// `Upgrade.ValidateBasic`.
+fn validate_upgrade(u: &chpb::Upgrade) -> Result<()> {
+    validate_upgrade_fields(&u.fields.clone().unwrap_or_default())
+        .map_err(|e| e.wrap("proposed upgrade fields are invalid"))?;
+    let t = u.timeout.unwrap_or_default();
+    let h = t.height.unwrap_or_default();
+    if h.revision_number == 0 && h.revision_height == 0 && t.timestamp == 0 {
+        return Err(cherr::invalid_upgrade(
+            "upgrade timeout height and upgrade timeout timestamp cannot both be 0",
+        ));
+    }
+    Ok(())
 }
 
 /// `upgradetypes.Plan.ValidateBasic`.
@@ -504,53 +642,334 @@ pub fn handle(ctx: &mut Context<'_>, router: &dyn Router, msg: &Any) -> Option<R
     h!(chpb::MsgAcknowledgement, acknowledgement);
     h!(chpb::MsgUpdateParams, update_channel_params);
     h!(chpb::MsgPruneAcknowledgements, prune_acknowledgements);
-    h!(chpb::MsgChannelUpgradeInit, channel_upgrade);
-    h!(chpb::MsgChannelUpgradeTry, channel_upgrade);
-    h!(chpb::MsgChannelUpgradeAck, channel_upgrade);
-    h!(chpb::MsgChannelUpgradeConfirm, channel_upgrade);
-    h!(chpb::MsgChannelUpgradeOpen, channel_upgrade);
+    h!(chpb::MsgChannelUpgradeInit, upgrade_init);
+    h!(chpb::MsgChannelUpgradeTry, upgrade_try);
+    h!(chpb::MsgChannelUpgradeAck, upgrade_ack);
+    h!(chpb::MsgChannelUpgradeConfirm, upgrade_confirm);
+    h!(chpb::MsgChannelUpgradeOpen, upgrade_open);
     h!(chpb::MsgChannelUpgradeTimeout, upgrade_timeout);
     h!(chpb::MsgChannelUpgradeCancel, upgrade_cancel);
     None
 }
 
-fn get_upgrade(ctx: &mut Context<'_>, port: &str, chan: &str) -> Result<bool> {
-    let key = format!("channelUpgrades/upgrades/ports/{port}/channels/{chan}");
-    Ok(ctx.get(crate::STORE_KEY, key.as_bytes())?.is_some())
+/// The upgradable application of a channel (`LookupModuleByChannel`,
+/// `GetRoute`, `UpgradableModule`).
+fn upgradable_route<'r>(
+    ctx: &mut Context<'_>,
+    router: &'r dyn Router,
+    port: &str,
+    chan: &str,
+) -> Result<&'r dyn crate::router::IbcModule> {
+    let (module, _) = module_by_channel(ctx, port, chan)?;
+    let cbs = route(router, &module)?;
+    if !cbs.upgradable() {
+        return Err(porterr::invalid_route(format!(
+            "upgrade route not found to module: {module}"
+        )));
+    }
+    Ok(cbs)
 }
 
-/// `ChannelUpgradeTimeout`: no upgrade can be in flight without the
-/// (unported) upgrade handshake, so only its failure prologue runs.
+/// Runs an application callback on a discarded cache branch
+/// (`ctx.CacheContext()` without `writeCache`).
+fn in_cache<T>(ctx: &mut Context<'_>, f: impl FnOnce(&mut Context<'_>) -> Result<T>) -> Result<T> {
+    let cp = ctx.branch();
+    let r = f(ctx);
+    ctx.discard(cp);
+    r
+}
+
+fn order_of(f: &chpb::UpgradeFields) -> chpb::Order {
+    chpb::Order::try_from(f.ordering).unwrap_or(chpb::Order::NoneUnspecified)
+}
+
+fn upgrade_init(
+    ctx: &mut Context<'_>,
+    router: &dyn Router,
+    m: &chpb::MsgChannelUpgradeInit,
+) -> Result<Any> {
+    check_authority(&m.signer)?;
+    let cbs = upgradable_route(ctx, router, &m.port_id, &m.channel_id)?;
+    let up = upgrade::chan_upgrade_init(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        &m.fields.clone().unwrap_or_default(),
+    )
+    .map_err(|e| e.wrap("channel upgrade init failed"))?;
+    let f = up.fields.clone().unwrap_or_default();
+    let version = in_cache(ctx, |c| {
+        cbs.on_chan_upgrade_init(
+            c,
+            &m.port_id,
+            &m.channel_id,
+            order_of(&f),
+            &f.connection_hops,
+            &f.version,
+        )
+    })
+    .map_err(|e| {
+        e.wrap(format!(
+            "channel upgrade init callback failed for port ID: {}, channel ID: {}",
+            m.port_id, m.channel_id
+        ))
+    })?;
+    let (ch, up) =
+        upgrade::write_upgrade_init_channel(ctx, &m.port_id, &m.channel_id, up, &version)?;
+    ctx.events.emit_all(upgrade::emit_upgrade(
+        "channel_upgrade_init",
+        &m.port_id,
+        &m.channel_id,
+        &ch,
+        &up,
+    ));
+    Ok(Any::pack(&chpb::MsgChannelUpgradeInitResponse {
+        upgrade: Some(upgrade::normalize_upgrade(up)),
+        upgrade_sequence: ch.upgrade_sequence,
+    }))
+}
+
+fn upgrade_try(
+    ctx: &mut Context<'_>,
+    router: &dyn Router,
+    m: &chpb::MsgChannelUpgradeTry,
+) -> Result<Any> {
+    let cbs = upgradable_route(ctx, router, &m.port_id, &m.channel_id)?;
+    let res = upgrade::chan_upgrade_try(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        &m.proposed_upgrade_connection_hops,
+        &m.counterparty_upgrade_fields.clone().unwrap_or_default(),
+        m.counterparty_upgrade_sequence,
+        &m.proof_channel,
+        &m.proof_upgrade,
+        &m.proof_height.unwrap_or_default(),
+    );
+    let (_, up) = match res {
+        Ok(r) => r,
+        Err(upgrade::Failure::Upgrade(ue)) => {
+            upgrade::write_error_receipt(ctx, &m.port_id, &m.channel_id, &ue)?;
+            return Ok(Any::pack(&chpb::MsgChannelUpgradeTryResponse {
+                upgrade: Some(upgrade::normalize_upgrade(chpb::Upgrade::default())),
+                upgrade_sequence: 0,
+                result: chpb::ResponseResultType::Failure as i32,
+            }));
+        }
+        Err(upgrade::Failure::Err(e)) => return Err(e.wrap("channel upgrade try failed")),
+    };
+    let f = up.fields.clone().unwrap_or_default();
+    let version = in_cache(ctx, |c| {
+        cbs.on_chan_upgrade_try(
+            c,
+            &m.port_id,
+            &m.channel_id,
+            order_of(&f),
+            &f.connection_hops,
+            &f.version,
+        )
+    })
+    .map_err(|e| {
+        e.wrap(format!(
+            "channel upgrade try callback failed for port ID: {}, channel ID: {}",
+            m.port_id, m.channel_id
+        ))
+    })?;
+    let (ch, up) =
+        upgrade::write_upgrade_try_channel(ctx, &m.port_id, &m.channel_id, up, &version)?;
+    ctx.events.emit_all(upgrade::emit_upgrade(
+        "channel_upgrade_try",
+        &m.port_id,
+        &m.channel_id,
+        &ch,
+        &up,
+    ));
+    Ok(Any::pack(&chpb::MsgChannelUpgradeTryResponse {
+        upgrade: Some(upgrade::normalize_upgrade(up)),
+        upgrade_sequence: ch.upgrade_sequence,
+        result: chpb::ResponseResultType::Success as i32,
+    }))
+}
+
+fn upgrade_ack(
+    ctx: &mut Context<'_>,
+    router: &dyn Router,
+    m: &chpb::MsgChannelUpgradeAck,
+) -> Result<Any> {
+    let cbs = upgradable_route(ctx, router, &m.port_id, &m.channel_id)?;
+    let cp_up = m.counterparty_upgrade.clone().unwrap_or_default();
+    let failure = || {
+        Ok(Any::pack(&chpb::MsgChannelUpgradeAckResponse {
+            result: chpb::ResponseResultType::Failure as i32,
+        }))
+    };
+    match upgrade::chan_upgrade_ack(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        &cp_up,
+        &m.proof_channel,
+        &m.proof_upgrade,
+        &m.proof_height.unwrap_or_default(),
+    ) {
+        Ok(()) => {}
+        Err(f @ upgrade::Failure::Upgrade(_)) => {
+            upgrade::abort_upgrade(ctx, &m.port_id, &m.channel_id, f)
+                .map_err(|e| sdk::error::go_panic(e.log))?;
+            return failure();
+        }
+        Err(upgrade::Failure::Err(e)) => return Err(e.wrap("channel upgrade ack failed")),
+    }
+    let cp_version = cp_up.fields.clone().unwrap_or_default().version;
+    if let Err(e) = in_cache(ctx, |c| {
+        cbs.on_chan_upgrade_ack(c, &m.port_id, &m.channel_id, &cp_version)
+    }) {
+        let ch = channel::get_channel(ctx, &m.port_id, &m.channel_id)?.ok_or_else(|| {
+            cherr::channel_not_found(format!(
+                "channel not found for port ID ({}) channel ID ({})",
+                m.port_id, m.channel_id
+            ))
+        })?;
+        let f = upgrade::Failure::Upgrade(upgrade::UpgradeError {
+            sequence: ch.upgrade_sequence,
+            err: e,
+        });
+        upgrade::abort_upgrade(ctx, &m.port_id, &m.channel_id, f)
+            .map_err(|e| sdk::error::go_panic(e.log))?;
+        return failure();
+    }
+    let (ch, up) = upgrade::write_upgrade_ack_channel(ctx, &m.port_id, &m.channel_id, &cp_up)?;
+    ctx.events.emit_all(upgrade::emit_upgrade(
+        "channel_upgrade_ack",
+        &m.port_id,
+        &m.channel_id,
+        &ch,
+        &up,
+    ));
+    Ok(Any::pack(&chpb::MsgChannelUpgradeAckResponse {
+        result: chpb::ResponseResultType::Success as i32,
+    }))
+}
+
+fn open_after(
+    ctx: &mut Context<'_>,
+    cbs: &dyn crate::router::IbcModule,
+    port: &str,
+    chan: &str,
+) -> Result<()> {
+    let up = upgrade::get_upgrade(ctx, port, chan)?.ok_or_else(|| {
+        cherr::upgrade_not_found(format!(
+            "failed to retrieve channel upgrade: port ID ({port}) channel ID ({chan})"
+        ))
+    })?;
+    let f = up.fields.clone().unwrap_or_default();
+    cbs.on_chan_upgrade_open(
+        ctx,
+        port,
+        chan,
+        order_of(&f),
+        &f.connection_hops,
+        &f.version,
+    );
+    let ch = upgrade::write_upgrade_open_channel(ctx, port, chan)?;
+    ctx.events.emit_all(upgrade::emit_open(port, chan, &ch));
+    Ok(())
+}
+
+fn upgrade_confirm(
+    ctx: &mut Context<'_>,
+    router: &dyn Router,
+    m: &chpb::MsgChannelUpgradeConfirm,
+) -> Result<Any> {
+    let cbs = upgradable_route(ctx, router, &m.port_id, &m.channel_id)?;
+    let cp_up = m.counterparty_upgrade.clone().unwrap_or_default();
+    match upgrade::chan_upgrade_confirm(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        m.counterparty_channel_state,
+        &cp_up,
+        &m.proof_channel,
+        &m.proof_upgrade,
+        &m.proof_height.unwrap_or_default(),
+    ) {
+        Ok(()) => {}
+        Err(f @ upgrade::Failure::Upgrade(_)) => {
+            upgrade::abort_upgrade(ctx, &m.port_id, &m.channel_id, f)
+                .map_err(|e| sdk::error::go_panic(e.log))?;
+            return Ok(Any::pack(&chpb::MsgChannelUpgradeConfirmResponse {
+                result: chpb::ResponseResultType::Failure as i32,
+            }));
+        }
+        Err(upgrade::Failure::Err(e)) => return Err(e.wrap("channel upgrade confirm failed")),
+    }
+    let ch = upgrade::write_upgrade_confirm_channel(ctx, &m.port_id, &m.channel_id, &cp_up)?;
+    ctx.events
+        .emit_all(upgrade::emit_confirm(&m.port_id, &m.channel_id, &ch));
+    if ch.state == chpb::State::Flushcomplete as i32
+        && m.counterparty_channel_state == chpb::State::Flushcomplete as i32
+    {
+        open_after(ctx, cbs, &m.port_id, &m.channel_id)?;
+    }
+    Ok(Any::pack(&chpb::MsgChannelUpgradeConfirmResponse {
+        result: chpb::ResponseResultType::Success as i32,
+    }))
+}
+
+fn upgrade_open(
+    ctx: &mut Context<'_>,
+    router: &dyn Router,
+    m: &chpb::MsgChannelUpgradeOpen,
+) -> Result<Any> {
+    let cbs = upgradable_route(ctx, router, &m.port_id, &m.channel_id)?;
+    upgrade::chan_upgrade_open(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        m.counterparty_channel_state,
+        m.counterparty_upgrade_sequence,
+        &m.proof_channel,
+        &m.proof_height.unwrap_or_default(),
+    )
+    .map_err(|e| e.wrap("channel upgrade open failed"))?;
+    open_after(ctx, cbs, &m.port_id, &m.channel_id)?;
+    Ok(Any::pack(&chpb::MsgChannelUpgradeOpenResponse {}))
+}
+
 fn upgrade_timeout(
     ctx: &mut Context<'_>,
     _: &dyn Router,
     m: &chpb::MsgChannelUpgradeTimeout,
 ) -> Result<Any> {
-    let wrap = |e: SdkError| {
+    let mut cp = m.counterparty_channel.clone().unwrap_or_default();
+    if cp.counterparty.is_none() {
+        cp.counterparty = Some(chpb::Counterparty::default());
+    }
+    upgrade::chan_upgrade_timeout(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        &cp,
+        &m.proof_channel,
+        &m.proof_height.unwrap_or_default(),
+    )
+    .map_err(|e| {
         e.wrap(format!(
             "could not timeout upgrade for channel: {}",
             m.channel_id
         ))
-    };
-    let ch = channel::get_channel(ctx, &m.port_id, &m.channel_id)?.ok_or_else(|| {
-        wrap(cherr::channel_not_found(format!(
-            "port ID ({}) channel ID ({})",
-            m.port_id, m.channel_id
-        )))
     })?;
-    if ch.state != chpb::State::Flushing as i32 && ch.state != chpb::State::Flushcomplete as i32 {
-        return Err(wrap(cherr::invalid_channel_state(format!(
-            "expected one of [STATE_FLUSHING, STATE_FLUSHCOMPLETE], got {}",
-            channel::state_name(ch.state)
-        ))));
-    }
-    if !get_upgrade(ctx, &m.port_id, &m.channel_id)? {
-        return Err(wrap(cherr::upgrade_not_found("")));
-    }
-    Err(channel::channel_upgrades_not_ported())
+    let (ch, up) = upgrade::write_upgrade_timeout_channel(ctx, &m.port_id, &m.channel_id)?;
+    ctx.events.emit_all(upgrade::emit_upgrade(
+        "channel_upgrade_timeout",
+        &m.port_id,
+        &m.channel_id,
+        &ch,
+        &up,
+    ));
+    Ok(Any::pack(&chpb::MsgChannelUpgradeTimeoutResponse {}))
 }
 
-/// `ChannelUpgradeCancel`: failure prologue only (see `upgrade_timeout`).
 fn upgrade_cancel(
     ctx: &mut Context<'_>,
     _: &dyn Router,
@@ -563,20 +982,46 @@ fn upgrade_cancel(
         ))
     };
     let ch = channel::get_channel(ctx, &m.port_id, &m.channel_id)?.ok_or_else(not_found)?;
+    let upgrade_not_found = || {
+        cherr::upgrade_not_found(format!(
+            "failed to retrieve channel upgrade: port ID ({}) channel ID ({})",
+            m.port_id, m.channel_id
+        ))
+    };
     if authority() == m.signer && ch.state != chpb::State::Flushcomplete as i32 {
-        if !get_upgrade(ctx, &m.port_id, &m.channel_id)? {
-            return Err(cherr::upgrade_not_found(
-                "failed to retrieve channel upgrade",
-            ));
-        }
-        return Err(channel::channel_upgrades_not_ported());
+        let up =
+            upgrade::get_upgrade(ctx, &m.port_id, &m.channel_id)?.ok_or_else(upgrade_not_found)?;
+        upgrade::write_upgrade_cancel_channel(ctx, &m.port_id, &m.channel_id, ch.upgrade_sequence)?;
+        ctx.events.emit_all(upgrade::emit_upgrade(
+            "channel_upgrade_cancelled",
+            &m.port_id,
+            &m.channel_id,
+            &ch,
+            &up,
+        ));
+        return Ok(Any::pack(&chpb::MsgChannelUpgradeCancelResponse {}));
     }
-    let wrap = |e: SdkError| e.wrap("channel upgrade cancel failed");
-    channel::get_channel(ctx, &m.port_id, &m.channel_id)?.ok_or_else(|| wrap(not_found()))?;
-    if !get_upgrade(ctx, &m.port_id, &m.channel_id)? {
-        return Err(wrap(cherr::upgrade_not_found("")));
-    }
-    Err(channel::channel_upgrades_not_ported())
+    let receipt = m.error_receipt.clone().unwrap_or_default();
+    upgrade::chan_upgrade_cancel(
+        ctx,
+        &m.port_id,
+        &m.channel_id,
+        &receipt,
+        &m.proof_error_receipt,
+        &m.proof_height.unwrap_or_default(),
+    )
+    .map_err(|e| e.wrap("channel upgrade cancel failed"))?;
+    let up = upgrade::get_upgrade(ctx, &m.port_id, &m.channel_id)?.ok_or_else(upgrade_not_found)?;
+    upgrade::write_upgrade_cancel_channel(ctx, &m.port_id, &m.channel_id, receipt.sequence)?;
+    let ch = channel::get_channel(ctx, &m.port_id, &m.channel_id)?.ok_or_else(not_found)?;
+    ctx.events.emit_all(upgrade::emit_upgrade(
+        "channel_upgrade_cancelled",
+        &m.port_id,
+        &m.channel_id,
+        &ch,
+        &up,
+    ));
+    Ok(Any::pack(&chpb::MsgChannelUpgradeCancelResponse {}))
 }
 
 fn create_client(ctx: &mut Context<'_>, _: &dyn Router, m: &clpb::MsgCreateClient) -> Result<Any> {
@@ -647,17 +1092,21 @@ fn recover_client(
     Ok(Any::pack(&clpb::MsgRecoverClientResponse {}))
 }
 
+/// `IBCSoftwareUpgrade` (celestia's circuit breaker disables the message
+/// by default; it runs when gov resets the breaker).
 fn ibc_software_upgrade(
-    _ctx: &mut Context<'_>,
+    ctx: &mut Context<'_>,
     _: &dyn Router,
     m: &clpb::MsgIbcSoftwareUpgrade,
 ) -> Result<Any> {
     check_authority(&m.signer)?;
-    // Disabled by celestia's circuit breaker; scheduling upgrades through
-    // x/upgrade is not ported.
-    Err(sdk::error::sdk::not_supported(
-        "MsgIBCSoftwareUpgrade (x/upgrade ScheduleUpgrade) is not ported",
-    ))
+    let cs = client::ClientState::from_any(&m.upgraded_client_state.clone().unwrap_or_default())
+        .map_err(|e| {
+            clerr::invalid_client_type(format!("cannot unpack client state: {}", e.log))
+        })?;
+    client::schedule_ibc_software_upgrade(ctx, &m.plan.clone().unwrap_or_default(), &cs)
+        .map_err(|e| e.wrap("failed to schedule upgrade"))?;
+    Ok(Any::pack(&clpb::MsgIbcSoftwareUpgradeResponse {}))
 }
 
 fn update_client_params(
@@ -1149,68 +1598,4 @@ fn prune_acknowledgements(
         total_pruned_sequences: pruned,
         total_remaining_sequences: remaining,
     }))
-}
-
-/// Channel upgrade messages: transfer channels (PFM is not an
-/// `UpgradableModule`) fail the route lookup exactly like Go; ICA host
-/// channel upgrades are not ported.
-fn channel_upgrade<M: Message + Name>(
-    ctx: &mut Context<'_>,
-    router: &dyn Router,
-    m: &M,
-) -> Result<Any> {
-    let any = Any::pack(m);
-    let (port, chan, authority) = upgrade_ids(&any)?;
-    if let Some(signer) = authority {
-        check_authority(&signer)?;
-    }
-    let (module, _) = module_by_channel(ctx, &port, &chan)?;
-    let cbs = route(router, &module)?;
-    if !cbs.upgradable() {
-        return Err(porterr::invalid_route(format!(
-            "upgrade route not found to module: {module}"
-        )));
-    }
-    Err(channel::channel_upgrades_not_ported())
-}
-
-fn upgrade_ids(any: &Any) -> Result<(String, String, Option<String>)> {
-    macro_rules! ids {
-        ($ty:ty, $auth:expr) => {
-            if any.type_url == <$ty>::type_url() {
-                let m: $ty = decode(any)?;
-                let auth: Option<String> = $auth(&m);
-                return Ok((m.port_id, m.channel_id, auth));
-            }
-        };
-    }
-    ids!(
-        chpb::MsgChannelUpgradeInit,
-        |m: &chpb::MsgChannelUpgradeInit| Some(m.signer.clone())
-    );
-    ids!(
-        chpb::MsgChannelUpgradeTry,
-        |_m: &chpb::MsgChannelUpgradeTry| None
-    );
-    ids!(
-        chpb::MsgChannelUpgradeAck,
-        |_m: &chpb::MsgChannelUpgradeAck| None
-    );
-    ids!(
-        chpb::MsgChannelUpgradeConfirm,
-        |_m: &chpb::MsgChannelUpgradeConfirm| None
-    );
-    ids!(
-        chpb::MsgChannelUpgradeOpen,
-        |_m: &chpb::MsgChannelUpgradeOpen| None
-    );
-    ids!(
-        chpb::MsgChannelUpgradeTimeout,
-        |_m: &chpb::MsgChannelUpgradeTimeout| None
-    );
-    ids!(
-        chpb::MsgChannelUpgradeCancel,
-        |_m: &chpb::MsgChannelUpgradeCancel| None
-    );
-    Err(SdkError::new("sdk", 6, "unknown channel upgrade message"))
 }

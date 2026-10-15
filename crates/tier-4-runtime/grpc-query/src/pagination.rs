@@ -29,15 +29,15 @@ pub fn prefix_end(prefix: &[u8]) -> Option<Vec<u8>> {
 
 /// Entries of `store` under `prefix` in `[start, end)` (both relative to
 /// `prefix`; `end == None` means up to the end of the prefix), keys
-/// returned relative to `prefix`.
-pub fn range(
+/// returned relative to `prefix`, without gas.
+fn range_raw(
     ctx: &mut Context<'_>,
     store: &str,
     prefix: &[u8],
     start: Option<&[u8]>,
     end: Option<&[u8]>,
     reverse: bool,
-) -> QResult<Vec<Entry>> {
+) -> QResult<Option<Vec<Entry>>> {
     let abs_start = [prefix, start.unwrap_or_default()].concat();
     let abs_end = match end {
         Some(e) => Some([prefix, e].concat()),
@@ -46,7 +46,7 @@ pub fn range(
     if let Some(e) = &abs_end
         && abs_start.as_slice() > e.as_slice()
     {
-        return Ok(Vec::new());
+        return Ok(None);
     }
     let items = ctx
         .multistore()
@@ -57,10 +57,88 @@ pub fn range(
             reverse,
         )
         .map_err(|e| QueryError::Plain(e.to_string()))?;
-    Ok(items
-        .into_iter()
-        .map(|(k, v)| (k[prefix.len()..].to_vec(), v))
-        .collect())
+    Ok(Some(
+        items
+            .into_iter()
+            .map(|(k, v)| (k[prefix.len()..].to_vec(), v))
+            .collect(),
+    ))
+}
+
+/// Entries of `store` under `prefix` in `[start, end)` (both relative to
+/// `prefix`; `end == None` means up to the end of the prefix), keys
+/// returned relative to `prefix`. Gas is charged as a `gaskv` iterator
+/// walked to its end (`Walk`, `GetAll`, `IterateX`).
+pub fn range(
+    ctx: &mut Context<'_>,
+    store: &str,
+    prefix: &[u8],
+    start: Option<&[u8]>,
+    end: Option<&[u8]>,
+    reverse: bool,
+) -> QResult<Vec<Entry>> {
+    let Some(items) = range_raw(ctx, store, prefix, start, end, reverse)? else {
+        return Ok(Vec::new());
+    };
+    let mut c = Cursor::open(ctx, store, prefix.len(), items)?;
+    while c.valid() {
+        c.next(ctx)?;
+    }
+    Ok(c.items)
+}
+
+/// A `gaskv` iterator over a snapshot: creation and every `Next` charge
+/// the seek gas of the entry the iterator is positioned at.
+struct Cursor<'s> {
+    store: &'s str,
+    /// Length of the store prefix the entry keys are relative to.
+    plen: usize,
+    items: Vec<Entry>,
+    pos: usize,
+}
+
+impl<'s> Cursor<'s> {
+    fn open(
+        ctx: &mut Context<'_>,
+        store: &'s str,
+        plen: usize,
+        items: Vec<Entry>,
+    ) -> QResult<Self> {
+        let c = Self {
+            store,
+            plen,
+            items,
+            pos: 0,
+        };
+        c.seek(ctx)?;
+        Ok(c)
+    }
+
+    fn seek(&self, ctx: &mut Context<'_>) -> QResult<()> {
+        let entry = self
+            .items
+            .get(self.pos)
+            .map(|(k, v)| (self.plen + k.len(), v.len()));
+        ctx.charge_iter_seek(self.store, entry)
+            .map_err(QueryError::Sdk)
+    }
+
+    fn valid(&self) -> bool {
+        self.pos < self.items.len()
+    }
+
+    /// The current entry (cloned: callbacks need the context).
+    fn cur(&self) -> Entry {
+        self.items.get(self.pos).cloned().unwrap_or_default()
+    }
+
+    fn next(&mut self, ctx: &mut Context<'_>) -> QResult<()> {
+        self.seek(ctx)?;
+        if self.valid() {
+            self.pos += 1;
+        }
+        Ok(())
+    }
 }
 
 /// `initPageRequestDefaults`.
@@ -75,24 +153,31 @@ pub fn defaults(page: Option<&PageRequest>) -> PageRequest {
 }
 
 /// `getIterator` over a prefix store.
-fn prefix_iter(
+fn prefix_iter<'s>(
     ctx: &mut Context<'_>,
-    store: &str,
+    store: &'s str,
     prefix: &[u8],
     start: Option<&[u8]>,
     reverse: bool,
-) -> QResult<Vec<Entry>> {
+) -> QResult<Cursor<'s>> {
+    let plen = prefix.len();
     if reverse {
         let mut end = None;
         if let Some(start) = start {
-            let fwd = range(ctx, store, prefix, Some(start), None, false)?;
-            if let Some((k, _)) = fwd.get(1) {
-                end = Some(k.clone());
+            let fwd = range_raw(ctx, store, prefix, Some(start), None, false)?.unwrap_or_default();
+            let mut probe = Cursor::open(ctx, store, plen, fwd)?;
+            if probe.valid() {
+                probe.next(ctx)?;
+                if probe.valid() {
+                    end = Some(probe.cur().0);
+                }
             }
         }
-        return range(ctx, store, prefix, None, end.as_deref(), true);
+        let items = range_raw(ctx, store, prefix, None, end.as_deref(), true)?.unwrap_or_default();
+        return Cursor::open(ctx, store, plen, items);
     }
-    range(ctx, store, prefix, start, None, false)
+    let items = range_raw(ctx, store, prefix, start, None, false)?.unwrap_or_default();
+    Cursor::open(ctx, store, plen, items)
 }
 
 /// `query.Paginate` over `store` restricted to `prefix`; `on_result`
@@ -109,34 +194,37 @@ pub fn paginate(
     if p.offset > 0 && key.is_some() {
         return Err(QueryError::Plain(BOTH_OFFSET_AND_KEY.into()));
     }
-    let items = prefix_iter(ctx, store, prefix, key, p.reverse)?;
+    let mut it = prefix_iter(ctx, store, prefix, key, p.reverse)?;
     let mut count = 0u64;
     let mut next_key = Vec::new();
     if key.is_some() {
-        for (k, v) in &items {
+        while it.valid() {
+            let (k, v) = it.cur();
             if count == p.limit {
-                next_key.clone_from(k);
+                next_key = k;
                 break;
             }
-            on_result(ctx, k, v)?;
+            on_result(ctx, &k, &v)?;
             count += 1;
+            it.next(ctx)?;
         }
         return Ok(PageResponse { next_key, total: 0 });
     }
     let end = p.offset.saturating_add(p.limit);
-    for (k, v) in &items {
+    while it.valid() {
+        let (k, v) = it.cur();
         count += 1;
-        if count <= p.offset {
-            continue;
-        }
-        if count <= end {
-            on_result(ctx, k, v)?;
-        } else if count == end + 1 {
-            next_key.clone_from(k);
-            if !p.count_total {
-                break;
+        if count > p.offset {
+            if count <= end {
+                on_result(ctx, &k, &v)?;
+            } else if count == end + 1 {
+                next_key = k;
+                if !p.count_total {
+                    break;
+                }
             }
         }
+        it.next(ctx)?;
     }
     Ok(PageResponse {
         next_key,
@@ -158,18 +246,20 @@ pub fn filtered_paginate(
     if p.offset > 0 && key.is_some() {
         return Err(QueryError::Plain(BOTH_OFFSET_AND_KEY.into()));
     }
-    let items = prefix_iter(ctx, store, prefix, key, p.reverse)?;
+    let mut it = prefix_iter(ctx, store, prefix, key, p.reverse)?;
     let mut hits = 0u64;
     let mut next_key: Option<Vec<u8>> = None;
     if key.is_some() {
-        for (k, v) in &items {
+        while it.valid() {
+            let (k, v) = it.cur();
             if hits == p.limit {
-                next_key = Some(k.clone());
+                next_key = Some(k);
                 break;
             }
-            if on_result(ctx, k, v, true)? {
+            if on_result(ctx, &k, &v, true)? {
                 hits += 1;
             }
+            it.next(ctx)?;
         }
         return Ok(PageResponse {
             next_key: next_key.unwrap_or_default(),
@@ -177,19 +267,21 @@ pub fn filtered_paginate(
         });
     }
     let end = p.offset.saturating_add(p.limit);
-    for (k, v) in &items {
+    while it.valid() {
+        let (k, v) = it.cur();
         let accumulate = hits >= p.offset && hits < end;
-        if on_result(ctx, k, v, accumulate)? {
+        if on_result(ctx, &k, &v, accumulate)? {
             hits += 1;
         }
         if hits == end + 1 {
             if next_key.is_none() {
-                next_key = Some(k.clone());
+                next_key = Some(k);
             }
             if !p.count_total {
                 break;
             }
         }
+        it.next(ctx)?;
     }
     Ok(PageResponse {
         next_key: next_key.unwrap_or_default(),
@@ -211,20 +303,22 @@ pub fn generic_filtered_paginate<T>(
     if p.offset > 0 && key.is_some() {
         return Err(QueryError::Plain(BOTH_OFFSET_AND_KEY.into()));
     }
-    let items = prefix_iter(ctx, store, prefix, key, p.reverse)?;
+    let mut it = prefix_iter(ctx, store, prefix, key, p.reverse)?;
     let mut results = Vec::new();
     let mut hits = 0u64;
     let mut next_key: Option<Vec<u8>> = None;
     if key.is_some() {
-        for (k, v) in &items {
+        while it.valid() {
+            let (k, v) = it.cur();
             if hits == p.limit {
-                next_key = Some(k.clone());
+                next_key = Some(k);
                 break;
             }
-            if let Some(t) = on_result(ctx, k, v)? {
+            if let Some(t) = on_result(ctx, &k, &v)? {
                 results.push(t);
                 hits += 1;
             }
+            it.next(ctx)?;
         }
         return Ok((
             results,
@@ -235,8 +329,9 @@ pub fn generic_filtered_paginate<T>(
         ));
     }
     let end = p.offset.saturating_add(p.limit);
-    for (k, v) in &items {
-        if let Some(t) = on_result(ctx, k, v)? {
+    while it.valid() {
+        let (k, v) = it.cur();
+        if let Some(t) = on_result(ctx, &k, &v)? {
             if hits >= p.offset && hits < end {
                 results.push(t);
             }
@@ -244,12 +339,13 @@ pub fn generic_filtered_paginate<T>(
         }
         if hits == end + 1 {
             if next_key.is_none() {
-                next_key = Some(k.clone());
+                next_key = Some(k);
             }
             if !p.count_total {
                 break;
             }
         }
+        it.next(ctx)?;
     }
     Ok((
         results,
@@ -300,7 +396,10 @@ pub fn collection_filtered_paginate<T>(
         return Err(QueryError::Plain(BOTH_OFFSET_AND_KEY.into()));
     }
     let prefix = key_prefix.unwrap_or_default();
-    let items = coll_iter(ctx, coll, prefix, key.unwrap_or_default(), p.reverse)?;
+    // IterateRaw with start > end: ErrInvalidIterator → empty page response.
+    let Some(mut it) = coll_iter(ctx, coll, prefix, key.unwrap_or_default(), p.reverse)? else {
+        return Ok((Vec::new(), PageResponse::default()));
+    };
     let mut results = Vec::new();
     let mut next_key = Vec::new();
     let mut include = |ctx: &mut Context<'_>, k: &[u8], v: &[u8]| -> QResult<bool> {
@@ -310,44 +409,51 @@ pub fn collection_filtered_paginate<T>(
         }
     };
     if key.is_some() {
-        for (count, (k, v)) in (0u64..).zip(&items) {
+        let mut count = 0u64;
+        while it.valid() {
+            let (k, v) = it.cur();
             if count == p.limit {
-                next_key.clone_from(k);
+                next_key = k;
                 break;
             }
-            if include(ctx, k, v)? {
-                results.push(transform(ctx, k, v)?);
+            if include(ctx, &k, &v)? {
+                results.push(transform(ctx, &k, &v)?);
             }
+            count += 1;
+            it.next(ctx)?;
         }
-    } else {
-        if (items.len() as u64) < p.offset {
-            // advanceIter fails: ErrInvalidIterator → empty page response.
+        return Ok((results, strip(next_key, prefix, 0)));
+    }
+    // advanceIter.
+    for _ in 0..p.offset {
+        if !it.valid() {
             return Ok((Vec::new(), PageResponse::default()));
         }
-        let offset = usize::try_from(p.offset).unwrap_or(usize::MAX);
-        let mut count = 0u64;
-        for (k, v) in items.iter().skip(offset) {
-            if count < p.limit {
-                if include(ctx, k, v)? {
-                    results.push(transform(ctx, k, v)?);
-                    count += 1;
-                }
-                continue;
+        it.next(ctx)?;
+    }
+    let mut count = 0u64;
+    while it.valid() {
+        let (k, v) = it.cur();
+        if count < p.limit {
+            if include(ctx, &k, &v)? {
+                results.push(transform(ctx, &k, &v)?);
+                count += 1;
             }
+        } else {
             if count == p.limit {
-                next_key.clone_from(k);
+                next_key.clone_from(&k);
                 if !p.count_total {
                     return Ok((results, strip(next_key, prefix, 0)));
                 }
             }
-            if include(ctx, k, v)? {
+            if include(ctx, &k, &v)? {
                 count += 1;
             }
         }
-        let total = if p.count_total { count + p.offset } else { 0 };
-        return Ok((results, strip(next_key, prefix, total)));
+        it.next(ctx)?;
     }
-    Ok((results, strip(next_key, prefix, 0)))
+    let total = if p.count_total { count + p.offset } else { 0 };
+    Ok((results, strip(next_key, prefix, total)))
 }
 
 fn strip(next_key: Vec<u8>, prefix: &[u8], total: u64) -> PageResponse {
@@ -359,38 +465,43 @@ fn strip(next_key: Vec<u8>, prefix: &[u8], total: u64) -> PageResponse {
     PageResponse { next_key, total }
 }
 
-/// `getCollIter`: entries keyed relative to the collection prefix.
-fn coll_iter(
+/// `getCollIter`: entries keyed relative to the collection prefix (`None`:
+/// `ErrInvalidIterator`).
+fn coll_iter<'s>(
     ctx: &mut Context<'_>,
-    coll: Collection<'_>,
+    coll: Collection<'s>,
     prefix: &[u8],
     start: &[u8],
     reverse: bool,
-) -> QResult<Vec<Entry>> {
-    if reverse {
+) -> QResult<Option<Cursor<'s>>> {
+    let items = if reverse {
         let end = prefix_end(&[prefix, start].concat());
-        return range(
+        range_raw(
             ctx,
             coll.store,
             coll.prefix,
             (!prefix.is_empty()).then_some(prefix),
             end.as_deref(),
             true,
-        );
-    }
-    let (start, end) = if prefix.is_empty() {
-        (start.to_vec(), None)
+        )?
     } else {
-        ([prefix, start].concat(), prefix_end(prefix))
+        let (start, end) = if prefix.is_empty() {
+            (start.to_vec(), None)
+        } else {
+            ([prefix, start].concat(), prefix_end(prefix))
+        };
+        range_raw(
+            ctx,
+            coll.store,
+            coll.prefix,
+            (!start.is_empty()).then_some(start.as_slice()),
+            end.as_deref(),
+            false,
+        )?
     };
-    range(
-        ctx,
-        coll.store,
-        coll.prefix,
-        (!start.is_empty()).then_some(start.as_slice()),
-        end.as_deref(),
-        false,
-    )
+    items
+        .map(|items| Cursor::open(ctx, coll.store, coll.prefix.len(), items))
+        .transpose()
 }
 
 #[cfg(test)]
