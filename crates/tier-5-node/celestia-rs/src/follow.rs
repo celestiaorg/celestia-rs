@@ -1003,6 +1003,9 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
         waited += t0.elapsed();
         loop {
             let height = state.last_block_height + 1;
+            if opts.shutdown.is_triggered() {
+                return Ok(());
+            }
             if opts.stop_height > 0 && height > opts.stop_height {
                 tracing::info!(height = state.last_block_height, "stop height reached");
                 return Ok(());
@@ -1230,6 +1233,66 @@ mod tests {
         assert!(read_snapshot(dir.path(), Some(7)).is_err());
         std::fs::remove_file(fmt.join("0")).unwrap_or_else(|e| panic!("{e}"));
         assert!(read_snapshot(dir.path(), Some(1500)).is_err());
+    }
+
+    /// A block with duplicate-vote evidence survives the RPC JSON (our
+    /// Go-identical `/block` encoder) and the follower's decoder with the
+    /// same evidence hash and block hash.
+    #[test]
+    fn block_json_round_trip_with_evidence() {
+        use ctypes::evidence::DuplicateVoteEvidence;
+        let vote = |hash: u8| ctypes::Vote {
+            vote_type: 2,
+            height: 9,
+            round: 1,
+            block_id: BlockId {
+                hash: vec![hash; 32],
+                part_set_header: ctypes::PartSetHeader {
+                    total: 1,
+                    hash: vec![hash; 32],
+                },
+            },
+            timestamp: ctypes::Time {
+                seconds: 1_700_000_000,
+                nanos: 5,
+            },
+            validator_address: vec![7; 20],
+            validator_index: 3,
+            signature: vec![1; 64],
+            extension: Vec::new(),
+            extension_signature: Vec::new(),
+        };
+        let ev = ctypes::Evidence::DuplicateVote(DuplicateVoteEvidence {
+            vote_a: Some(vote(1)),
+            vote_b: Some(vote(2)),
+            total_voting_power: 100,
+            validator_power: 10,
+            timestamp: ctypes::Time {
+                seconds: 1_700_000_000,
+                nanos: 0,
+            },
+        });
+        let evidence = ctypes::EvidenceData { evidence: vec![ev] };
+        let header = Header {
+            chain_id: "c".into(),
+            height: 10,
+            evidence_hash: evidence.hash(),
+            data_hash: vec![3; 32],
+            ..Header::default()
+        };
+        let mut block = Block::new(
+            header.clone(),
+            ctypes::Data::new(vec![ctypes::Tx(vec![1, 2])], 1, Some(vec![3; 32])),
+            evidence,
+            Some(Commit::default()),
+        );
+        let mut s = String::new();
+        rpc::encode::block(&block).write(&mut s);
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
+        let mut back = light::http::block_from_json(&v).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(back.evidence, block.evidence);
+        assert_eq!(back.hash(), block.hash());
+        assert_eq!(back.data.txs, block.data.txs);
     }
 
     #[test]

@@ -12,10 +12,11 @@ This guide targets the reference machine, a **Mac Mini M4 (16 GB RAM,
 512 GB SSD)** on macOS; Linux works the same way (systemd instead of
 launchd).
 
-> Status: network-facing steps (`--network mainnet|mocha|arabica`, state
-> sync from public RPC servers, genesis downloads) are implemented but have
-> only been exercised offline — public networks are not reachable from the
-> development environment yet (`OPEN_QUESTIONS.md` #1). Everything else
+> Status: following a public network over HTTPS RPC (`follow`, section 10)
+> is verified against Mocha. P2P-facing steps (`start --network
+> mainnet|mocha|arabica`, state sync from peers) are implemented but have
+> only been exercised on local devnets — the development environment
+> cannot reach public P2P ports (`OPEN_QUESTIONS.md` #1). Everything else
 > below is covered by `crates/tier-5-node/celestia-rs/tests/` and
 > `conformance/devnet/operator.sh` (Rust validator + Go full node).
 
@@ -309,3 +310,79 @@ or `UNKNOWN` (dropped without trace, e.g. node restarted). Re-query the
 account sequence from a synced node and re-sign; a tx re-broadcast with the
 old sequence fails `CheckTx` with code 32 (`account sequence mismatch,
 expected N, got M`).
+
+## 10. Following a network over RPC (`follow`)
+
+`celestia-rs follow` tracks a public network through celestia-core
+JSON-RPC (HTTP or HTTPS, e.g. a provider's `https://rpc…` endpoint)
+instead of P2P, and checks block by block that the Rust state machine
+computes what the network committed. It is the tool for verifying
+parity against a live chain, and the way to run a full node where P2P
+ports are not reachable.
+
+```sh
+# First start: restore a Go state-sync snapshot (a Go node's
+# data/snapshots/<height>/3/<chunk>), then follow.
+celestia-rs follow --home ~/.celestia-rs/mocha-follow --chain-id mocha-5 \
+  --rpc https://rpc.celestia-mocha.com,https://celestia-testnet-rpc.polkachu.com \
+  --snapshot /path/to/data/snapshots [--trust-hash <header hash at the snapshot height>]
+
+# Later starts resume from the home (no --snapshot needed).
+celestia-rs follow --home ~/.celestia-rs/mocha-follow --chain-id mocha-5 \
+  --rpc https://rpc.celestia-mocha.com,https://celestia-testnet-rpc.polkachu.com
+```
+
+Per height `h` the follower
+
+1. fetches `/block` (many heights ahead in parallel, `--prefetch`, default
+   24; block `h+1` carries the canonical commit of `h`), from the first
+   server that has it;
+2. compares header `h` with the state its own execution of `h-1`
+   produced: `app_hash`, `last_results_hash` (tx codes, data, gas),
+   `validators_hash` / `next_validators_hash` (validator updates),
+   `consensus_hash` (param updates) and the app version;
+3. verifies header `h` with the light client against the previous
+   trusted header (`light::verify_adjacent`) and checks that the block id
+   (header hash and part set, so every tx) is the one 2/3+ of the
+   validator set signed; then runs `ValidateBlock` and the app's
+   `ProcessProposal` (`--no-verify-data` skips the latter);
+4. executes the block through the same block executor as `start`
+   (FinalizeBlock with the txs, misbehavior and DecidedLastCommit, then
+   Commit).
+
+Every `--witness-interval` heights (default 100) the header hash is
+compared with the other servers that still have that height.
+
+**First start.** The snapshot is verified like state sync: the light
+client takes the trusted header at the snapshot height (`--trust-hash`,
+or the primary's with a warning), `OfferSnapshot` carries the app hash
+of header `height+1`, and the restored app hash and app version must
+match. Polkachu's pruned Mocha tarballs
+(`snapshots.polkachu.com/testnet-snapshots/celestia/`) contain such a
+snapshot under `data/snapshots/`; only that directory is needed
+(about 170 MB for mocha-5).
+
+**Divergence.** The first mismatch stops the follower with a non-zero
+exit and writes `<home>/follow-diagnostics/<height>/`: `summary.json`
+(the mismatching header fields, a per-tx comparison of code / gas / data
+with the network's, and every store's root hash from the network — read
+from ICS-23 proofs of `abci_query` at that height — next to ours),
+`our_block_results.json`, `network_block_results.json` and `block.json`.
+A rejected `ProcessProposal` writes the same bundle.
+
+**Disk.** The follower keeps `--keep-blocks` blocks (default 1000; Go's
+3000 floor does not apply since it serves no peers), `--pruning-keep-recent`
+app versions (default 100) and takes no snapshots.
+
+**Header-only mode.** `--light-only` verifies headers without executing
+blocks (for a network whose app version this binary cannot execute yet):
+sequential light-client verification from `--trust-height` (default: the
+tip minus 1000) to `--stop-at-height`, then a skipping jump to the tip.
+
+```sh
+celestia-rs follow --light-only --chain-id celestia \
+  --rpc https://rpc.celestia.pops.one,https://celestia-rpc.publicnode.com
+```
+
+HTTPS goes through the system `curl` (TLS, `HTTPS_PROXY` and CA settings
+from the environment), as do `--node https://…` for `tx` / `query`.

@@ -14,11 +14,12 @@ use std::net::{TcpStream, ToSocketAddrs as _};
 use std::time::Duration;
 
 use base64::Engine as _;
+use ctypes::evidence::DuplicateVoteEvidence;
 use ctypes::params::{AbciParams, BlockParams, EvidenceParams, ValidatorParams, VersionParams};
 use ctypes::part_set::PartSetHeader;
 use ctypes::{
     Block, BlockId, Commit, CommitSig, ConsensusParams, Data, Evidence, EvidenceData, Header,
-    LightBlock, PubKey, SignedHeader, Time, Tx, Validator, ValidatorSet,
+    LightBlock, PubKey, SignedHeader, Time, Tx, Validator, ValidatorSet, Vote,
 };
 use serde_json::Value;
 
@@ -539,15 +540,15 @@ pub fn block_from_json(v: &Value) -> RpcResult<Block> {
         })
         .transpose()?
         .unwrap_or_default();
-    if v["evidence"]["evidence"]
+    let evidence = v["evidence"]["evidence"]
         .as_array()
-        .is_some_and(|e| !e.is_empty())
-    {
-        return Err(rpc_err(format!(
-            "block {} carries evidence; decoding evidence JSON is not implemented: {}",
-            header.height, v["evidence"]
-        )));
-    }
+        .map(|a| {
+            a.iter()
+                .map(evidence_from_json)
+                .collect::<RpcResult<Vec<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
     let last_commit = (!v["last_commit"].is_null())
         .then(|| commit_from_json(&v["last_commit"]))
         .transpose()?;
@@ -559,9 +560,48 @@ pub fn block_from_json(v: &Value) -> RpcResult<Block> {
     Ok(Block::new(
         header,
         data,
-        EvidenceData::default(),
+        EvidenceData { evidence },
         last_commit,
     ))
+}
+
+/// Decodes a `types.Vote` from CometBFT JSON.
+fn vote_from_json(v: &Value) -> RpcResult<Vote> {
+    Ok(Vote {
+        vote_type: i32::try_from(int_field(v, "type")?).map_err(|_| rpc_err("vote type"))?,
+        height: int_field(v, "height")?,
+        round: i32::try_from(int_field(v, "round")?).map_err(|_| rpc_err("vote round"))?,
+        block_id: block_id_from_json(&v["block_id"])?,
+        timestamp: parse_rfc3339(&str_field(v, "timestamp")?)?,
+        validator_address: hex_field(v, "validator_address")?,
+        validator_index: i32::try_from(int_field(v, "validator_index")?)
+            .map_err(|_| rpc_err("validator_index"))?,
+        signature: b64_field(v, "signature")?,
+        extension: b64_field(v, "extension")?,
+        extension_signature: b64_field(v, "extension_signature")?,
+    })
+}
+
+/// Decodes one entry of a block's evidence list (amino-JSON
+/// `{"type": .., "value": ..}`). Only `DuplicateVoteEvidence` is
+/// supported; light client attack evidence is refused.
+fn evidence_from_json(v: &Value) -> RpcResult<Evidence> {
+    match v["type"].as_str() {
+        Some("tendermint/DuplicateVoteEvidence") => {
+            let e = &v["value"];
+            let vote = |k: &str| (!e[k].is_null()).then(|| vote_from_json(&e[k])).transpose();
+            Ok(Evidence::DuplicateVote(DuplicateVoteEvidence {
+                vote_a: vote("vote_a")?,
+                vote_b: vote("vote_b")?,
+                total_voting_power: int_field(e, "TotalVotingPower")?,
+                validator_power: int_field(e, "ValidatorPower")?,
+                timestamp: parse_rfc3339(&str_field(e, "Timestamp")?)?,
+            }))
+        }
+        other => Err(rpc_err(format!(
+            "decoding {other:?} evidence from JSON is not implemented"
+        ))),
+    }
 }
 
 fn signed_header_from_json(v: &Value) -> RpcResult<SignedHeader> {
