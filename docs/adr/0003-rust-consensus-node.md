@@ -100,6 +100,13 @@ the chain under this load (Go 0.6 -> 2.2 GB over 140 min; the longest
 Rust lifetime, 83 min, went 0.8 -> 1.4 -> 1.0 GB); a multi-hour single
 lifetime run is still needed to rule out a slow leak.
 
+Memory soak (`SOAK_PROFILE=memory`, 2026-10-15, `docs/benchmarks/memory.md`):
+4.5 h single lifetimes, 4,855 heights, 385k txs. No leak: the Rust live
+heap levels off at ~340 MB (~245 MB of it bounded RocksDB caches, +4.5
+MB/h over the last 2 h). The earlier RSS swings were glibc malloc
+fragmentation (RSS 4.9x the live heap and still rising); the node now uses
+jemalloc by default (RSS ~430 MB vs 1.66 GB on glibc, Go validators 1.9 GB).
+
 ## Implementation notes
 
 - M12 operator binary (2026-10-14): `celestia-rs start` reads config.toml /

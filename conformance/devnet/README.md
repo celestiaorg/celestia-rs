@@ -335,6 +335,21 @@ links without iptables.
 DEVNET_BIN=<dir with celestia-appd> DEVNET_PORT_OFFSET=19000 conformance/devnet/soak.sh
 ```
 
+`SOAK_PROFILE=memory` runs the same workload without chaos on 2 Go + 2
+Rust validators and a Rust full node (every node keeps one lifetime) and
+samples every node every `$SOAK_MEM_SAMPLE` s (default 30) into
+`mem.jsonl`: RSS, threads, open files, disk, and the Prometheus memory
+gauges (Rust `memstats_*`: RocksDB caches per database, IAVL node cache,
+jemalloc heap with `--features memstats`; Go `go_memstats_*`).
+`SOAK_RS_N<i>` / `SOAK_ENV_N<i>` run node i on another binary / with extra
+environment (e.g. `MALLOC_CONF` heap profiling); `soak/memreport.py <dir>
+--svg rss.svg` summarizes the run (`docs/benchmarks/memory.md`):
+
+```bash
+cargo build --release -p celestia-rs --features memstats   # optional: heap gauges
+SOAK_PROFILE=memory SOAK_SECS=21600 DEVNET_BIN=<dir> DEVNET_PORT_OFFSET=21000 conformance/devnet/soak.sh
+```
+
 The report (`report.md` / `report.json`) lists heights, txs, block sizes,
 proposers, restarts, max RSS and disk per node, stalls, chaos events and
 the most frequent Rust warnings. `build-bins.sh` builds the Go binaries

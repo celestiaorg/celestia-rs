@@ -202,8 +202,10 @@ pub(crate) fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBacke
         cache_size: 64 << 20,
         ..DbOptions::default()
     };
-    kvdb::open_backend(data, name, &options)
-        .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))
+    let db = kvdb::open_backend(data, name, &options)
+        .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))?;
+    crate::memstats::register_db(name, &db);
+    Ok(db)
 }
 
 /// Loads the genesis document of a home directory.
@@ -245,6 +247,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let mut app =
         app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
     app.set_node_min_gas_price(opts.min_gas_price.clone());
+    if let Some(db) = app.multistore().root().backend() {
+        crate::memstats::register_db("application", db);
+    }
+    {
+        let nc = app.multistore().root().node_cache().clone();
+        #[allow(clippy::cast_precision_loss)]
+        crate::memstats::register_gauge("iavl_node_cache_nodes", move || nc.stats().len as f64);
+    }
     let (bs, ss) = open_stores(home)?;
     let state = ss
         .load_from_db_or_genesis(&genesis)
@@ -512,6 +522,7 @@ fn start_metrics(
     pool: &Arc<mempool::TxPool>,
 ) -> anyhow::Result<Arc<crate::metrics::Metrics>> {
     let metrics = crate::metrics::Metrics::new(&m.namespace, chain_id);
+    crate::memstats::register_probes(&metrics);
     {
         let pool1 = pool.clone();
         #[allow(clippy::cast_precision_loss)]

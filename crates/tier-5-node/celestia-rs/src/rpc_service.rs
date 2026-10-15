@@ -601,6 +601,7 @@ impl Rpc {
                 &kvdb::DbOptions::default(),
             )
             .map_err(|e| anyhow!("open tx_index: {e}"))?;
+            crate::memstats::register_db("tx_index", &db);
             (
                 Some(Arc::new(TxIndexer::new(db.clone()))),
                 Some(Arc::new(BlockIndexer::new(db))),

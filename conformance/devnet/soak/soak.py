@@ -69,6 +69,7 @@ class Node:
         self.p2p = 26656 + soak.off + 10 * i
         self.rpc = 26657 + soak.off + 10 * i
         self.url = f"http://127.0.0.1:{self.rpc}"
+        self.prom = 26660 + soak.off + 10 * i
         self.proc = None
         self.expected_up = False
         self.restarts = 0
@@ -100,8 +101,12 @@ class Node:
                 cmd = ["celestia-appd", "start", "--home", self.home]
             else:
                 env.setdefault("RUST_LOG", "info")
+                # Per-node overrides (memory profile: a jemalloc build, MALLOC_CONF).
+                for kv in filter(None, os.environ.get(f"SOAK_ENV_N{self.i}", "").split(";")):
+                    k, _, v = kv.partition("=")
+                    env[k] = v
                 cmd = [
-                    self.soak.rs, "start", "--home", self.home,
+                    os.environ.get(f"SOAK_RS_N{self.i}", self.soak.rs), "start", "--home", self.home,
                     "--p2p-laddr", f"127.0.0.1:{self.p2p}",
                     "--persistent-peers", self.peers(),
                     "--moniker", f"node{self.i}", "--allow-duplicate-ip", *extra,
@@ -171,7 +176,8 @@ class Soak:
         self.rng = random.Random(a.seed)
         self.n = len([d for d in os.listdir(self.dir) if re.fullmatch(r"n\d+", d)])
         self.node_ids = [open(f"{self.dir}/n{i}/node_id").read().strip() for i in range(self.n)]
-        self.validator_nodes = [0, 1, 2, 3, 4]
+        self.validator_nodes = [int(x) for x in a.validators.split(",")]
+        self.ref_i = a.ref_node  # Go node with the tx index (queries, hash reference)
         self.nodes = [Node(self, i) for i in range(self.n)]
         self.by_addr = {nd.val_addr: nd.i for nd in self.nodes}
         self.t0 = now()
@@ -234,13 +240,13 @@ class Soak:
         best, bh = None, -1
         for nd in self.up_nodes("go"):
             h = nd.height()
-            if h is not None and (h > bh or (h == bh and nd.i == 5)):
+            if h is not None and (h > bh or (h == bh and nd.i == self.ref_i)):
                 best, bh = nd, h
         return best, bh
 
     def tx_node(self):
         ups = self.up_nodes()
-        return self.rng.choice(ups) if ups else self.nodes[5]
+        return self.rng.choice(ups) if ups else self.nodes[self.ref_i]
 
     def cli(self, args, home=None, timeout=120):
         home = home or f"{self.dir}/n0"
@@ -299,8 +305,11 @@ class Soak:
             cfg = f"{nd.home}/config/config.toml"
             s = open(cfg).read()
             s = re.sub(r'(?m)^persistent_peers = .*$', f'persistent_peers = "{nd.peers()}"', s)
-            if nd.i == 5:
+            if nd.i == self.ref_i:
                 s = re.sub(r'(?m)^indexer = .*$', 'indexer = "kv"', s, count=1)
+            if self.a.mem_sample:
+                s = re.sub(r'(?m)^prometheus = .*$', 'prometheus = true', s, count=1)
+                s = re.sub(r'(?m)^prometheus_listen_addr = .*$', f'prometheus_listen_addr = "127.0.0.1:{nd.prom}"', s, count=1)
             open(cfg, "w").write(s)
 
     # ------------------------------------------------------------ monitor
@@ -365,6 +374,67 @@ class Soak:
             except Exception:
                 self.event("monitor-error", tb=traceback.format_exc()[-500:])
             self.stop.wait(5)
+
+    # ------------------------------------------------------------ memory
+    def mem_sample(self, nd):
+        """One memory sample of a node: /proc (RSS, threads, fds), disk and
+        its Prometheus memory gauges (Rust `memstats_*`, Go `go_memstats_*`)."""
+        row = {"rss_mb": round(nd.rss_mb(), 1), "disk_mb": round(du(f"{nd.home}/data") / 2**20, 1)}
+        if not nd.alive():
+            return row
+        pid = nd.proc.pid
+        try:
+            for line in open(f"/proc/{pid}/status"):
+                if line.startswith(("Threads:", "VmHWM:", "RssAnon:", "RssFile:")):
+                    k, v = line.split(":", 1)
+                    row[k.lower()] = int(v.split()[0]) / (1 if k == "Threads" else 1024.0)
+            row["fds"] = len(os.listdir(f"/proc/{pid}/fd"))
+        except Exception:
+            pass
+        try:
+            text = urllib.request.urlopen(f"http://127.0.0.1:{nd.prom}/metrics", timeout=5).read().decode()
+        except Exception:
+            return row
+        kv = {}
+        for line in text.splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            m = re.match(r'^(\S+?)(\{[^}]*\})?\s+(\S+)$', line)
+            if not m:
+                continue
+            name, labels, v = m.groups()
+            try:
+                v = float(v)
+            except ValueError:
+                continue
+            if "memstats_kvdb_" in name:
+                db = re.search(r'db="([^"]+)"', labels or "")
+                key = name.split("memstats_", 1)[1] + "." + (db.group(1) if db else "?")
+                kv[key] = kv.get(key, 0.0) + v
+            elif "memstats_" in name:
+                kv[name.split("memstats_", 1)[1]] = v
+            elif name.endswith(("mempool_size", "mempool_size_bytes", "p2p_peers")) or name in (
+                    "go_memstats_heap_inuse_bytes", "go_memstats_heap_alloc_bytes", "go_memstats_heap_sys_bytes",
+                    "go_memstats_heap_idle_bytes", "go_memstats_heap_released_bytes", "go_memstats_sys_bytes",
+                    "go_goroutines"):
+                short = name.split("_", 1)[1] if name.startswith(("cometbft_", "celestia_")) else name
+                kv[short] = kv.get(short, 0.0) + v
+        row.update({k: round(v, 1) for k, v in kv.items()})
+        return row
+
+    def mem_loop(self):
+        f = open(f"{self.dir}/mem.jsonl", "a")
+        while not self.stop.is_set():
+            t = now()
+            for nd in self.nodes:
+                try:
+                    row = self.mem_sample(nd)
+                except Exception:
+                    row = {"error": traceback.format_exc()[-200:]}
+                f.write(json.dumps({"t": round(t - self.t0), "h": self.max_height, "node": nd.i, "kind": nd.kind,
+                                    "life": len(nd.lifetimes), **row}) + "\n")
+            f.flush()
+            self.stop.wait(max(1.0, self.a.mem_sample - (now() - t)))
 
     # ------------------------------------------------------------ consistency
     def fetch_ref(self, ref, upto):
@@ -470,7 +540,7 @@ class Soak:
         with self.pending_lock:
             todo, self.pending_txs = self.pending_txs, []
         keep = []
-        idx = self.nodes[5]
+        idx = self.nodes[self.ref_i]
         for h, cat, t, ni in todo:
             try:
                 r = get_json(f"{idx.url}/tx?hash=0x{h}", timeout=5)
@@ -699,7 +769,7 @@ class Soak:
             return -1, ""
 
     def _latest_proposal(self):
-        out = self.cli(["query", "gov", "proposals", "--node", f"tcp://127.0.0.1:{self.nodes[5].rpc}", "-o", "json",
+        out = self.cli(["query", "gov", "proposals", "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json",
                         "--page-reverse", "--page-limit", "1"])
         try:
             d = json.loads(out[out.index("{"):])
@@ -708,7 +778,7 @@ class Soak:
             return None
 
     def _proposal_status(self, pid):
-        out = self.cli(["query", "gov", "proposal", str(pid), "--node", f"tcp://127.0.0.1:{self.nodes[5].rpc}", "-o", "json"])
+        out = self.cli(["query", "gov", "proposal", str(pid), "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
         try:
             d = json.loads(out[out.index("{"):])
             return (d.get("proposal") or d)["status"]
@@ -862,7 +932,7 @@ class Soak:
         valoper = self.addr("val4", home, val=True)
         self.stop.wait(self.a.warmup + 600)
         while not self.chaos_stop.is_set() and now() < self.deadline - 1200:
-            out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[5].rpc}", "-o", "json"])
+            out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
             try:
                 d = json.loads(out[out.index("{"):])
                 amt = int((d.get("delegation_response") or d)["balance"]["amount"])
@@ -895,7 +965,7 @@ class Soak:
             # An accepted unjail can still be lost (its node killed / wiped
             # before gossiping it): resubmit once, through a Go node, and
             # record it; failing is reserved for a re-bond that never lands.
-            for attempt, via in ((1, self.tx_node()), (2, self.nodes[5])):
+            for attempt, via in ((1, self.tx_node()), (2, self.nodes[self.ref_i])):
                 out = self.cli(["tx", "slashing", "unjail", "--from", "val4", "--chain-id", self.chain_id,
                                 "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
                 self.event("valset-unjail", attempt=attempt, via=via.i, out=out.strip()[-160:])
@@ -952,10 +1022,14 @@ class Soak:
         else:
             self.fail(f"network did not start: {self.in_sync()[1]}")
         self.last_progress = now()
-        threads = [threading.Thread(target=f, daemon=True, name=f.__name__) for f in (
-            self.monitor_loop, self.consistency_loop, self.bank_loop, self.pfb_loop, self.staking_loop,
-            self.gov_loop, self.chaos_loop, self.valset_loop)]
-        for th in threads:
+        work = [self.monitor_loop, self.consistency_loop, self.bank_loop, self.pfb_loop, self.staking_loop,
+                self.gov_loop]
+        if self.a.mem_sample:
+            work.append(self.mem_loop)
+        chaos = [] if self.a.no_chaos else [self.chaos_loop, self.valset_loop]
+        threads = [threading.Thread(target=f, daemon=True, name=f.__name__) for f in work]
+        chaos_threads = [threading.Thread(target=f, daemon=True, name=f.__name__) for f in chaos]
+        for th in threads + chaos_threads:
             th.start()
         last_report = now()
         while not (now() >= self.deadline and self.max_height >= self.a.min_heights):
@@ -968,13 +1042,14 @@ class Soak:
                 break
         self.event("draining")
         self.chaos_stop.set()
-        threads[6].join(timeout=900)
+        for th in chaos_threads[:1]:
+            th.join(timeout=900)
         self.heal()
         for nd in self.nodes:
             if not nd.alive():
                 nd.start()
         self.stop.set()  # workload stops
-        for th in threads[:6]:
+        for th in threads:
             th.join(timeout=120)
         self.stop.clear()
         self.wait_converged("end of soak", timeout=600)
@@ -1072,6 +1147,11 @@ def main():
     p.add_argument("--big-every", type=float, default=float(os.environ.get("SOAK_BIG_EVERY", "300")))
     p.add_argument("--warmup", type=float, default=float(os.environ.get("SOAK_WARMUP", "180")))
     p.add_argument("--print-load-addresses", action="store_true")
+    p.add_argument("--validators", default="0,1,2,3,4", help="node indices holding validator keys")
+    p.add_argument("--ref-node", type=int, default=5, help="Go node with the tx index (queries, hash reference)")
+    p.add_argument("--no-chaos", action="store_true", help="workload only: no kills, cuts or valset cycles")
+    p.add_argument("--mem-sample", type=float, default=0.0,
+                   help="seconds between memory samples (mem.jsonl: RSS, heap, threads, fds, disk, caches); 0 = off")
     a = p.parse_args()
     if a.print_load_addresses:
         for k in range(a.load_accounts):

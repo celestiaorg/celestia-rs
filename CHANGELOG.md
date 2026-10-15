@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Changed
+
+- `celestia-rs` uses jemalloc as its global allocator by default (feature
+  `jemalloc`): on glibc malloc a 4.5 h memory soak showed RSS at 4.9x the
+  live heap and rising, with jemalloc ~1.3x and flat
+  (`docs/benchmarks/memory.md`).
+
+### Added
+
+- `--features memstats` (jemalloc heap gauges and heap profiler) and always-on
+  `memstats_*` Prometheus gauges (RocksDB cache / data bytes per database,
+  IAVL node cache length, threads, open files).
+- `SOAK_PROFILE=memory` soak (no chaos, per-node memory samples,
+  `soak/memreport.py`) and the B1 benchmark harness `conformance/bench/`
+  (heavy-chain generator, app-only ABCI replay of Go vs Rust, block sync,
+  startup and state sync); reports in `docs/benchmarks/`.
+
 ### Fixed
 
 - Populated the standalone Go ante replay context's transaction bytes so

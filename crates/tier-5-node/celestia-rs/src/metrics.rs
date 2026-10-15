@@ -36,7 +36,7 @@ pub struct Metrics {
     namespace: String,
     chain_id: String,
     state: Mutex<State>,
-    probes: Mutex<Vec<(String, Probe)>>,
+    probes: Mutex<Vec<(String, String, Probe)>>,
 }
 
 impl std::fmt::Debug for Metrics {
@@ -128,10 +128,20 @@ impl Metrics {
 
     /// Registers a gauge sampled at scrape time (peers, mempool size).
     pub fn probe(&self, name: &str, f: impl Fn() -> f64 + Send + Sync + 'static) {
+        self.probe_labeled(name, "", f);
+    }
+
+    /// Registers a labeled gauge (`key="value"` list) sampled at scrape time.
+    pub fn probe_labeled(
+        &self,
+        name: &str,
+        labels: &str,
+        f: impl Fn() -> f64 + Send + Sync + 'static,
+    ) {
         self.probes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push((name.to_owned(), Box::new(f)));
+            .push((name.to_owned(), labels.to_owned(), Box::new(f)));
     }
 
     /// Records a committed block (`recordMetrics` in celestia-core).
@@ -185,13 +195,13 @@ impl Metrics {
         };
         let mut out = String::new();
         let mut gauges: BTreeMap<(String, String), f64> = self.st().gauges.clone();
-        for (name, f) in self
+        for (name, l, f) in self
             .probes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
         {
-            gauges.insert((name.clone(), String::new()), f());
+            gauges.insert((name.clone(), l.clone()), f());
         }
         let mut last = String::new();
         for ((name, l), v) in &gauges {

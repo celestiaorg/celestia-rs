@@ -10,6 +10,7 @@ pub mod genesis;
 pub mod init;
 pub mod keys;
 pub mod local;
+pub mod memstats;
 pub mod metrics;
 pub mod net;
 pub mod networks;

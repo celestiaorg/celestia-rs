@@ -33,7 +33,14 @@
 #
 # usage: [DEVNET_PORT_OFFSET=19000] [DEVNET_BIN=dir] [SOAK_SECS=7200]
 #        [SOAK_MIN_HEIGHTS=1500] [SOAK_SEED=n] [CELESTIA_RS=path]
-#        [SOAK_DIR=dir] conformance/devnet/soak.sh
+#        [SOAK_DIR=dir] [SOAK_PROFILE=chaos|memory] [SOAK_MEM_SAMPLE=30]
+#        [SOAK_RS_N<i>=path] [SOAK_ENV_N<i>="K=V;K2=V2"] conformance/devnet/soak.sh
+#
+# SOAK_PROFILE=memory: 2 Go + 2 Rust validators + a Rust full node, the
+# same workload, no chaos (single node lifetimes) and per-node memory
+# samples (mem.jsonl); SOAK_RS_N<i> / SOAK_ENV_N<i> run node i on another
+# binary / with extra environment (e.g. a `--features memstats` build with
+# MALLOC_CONF heap profiling).
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
@@ -54,10 +61,22 @@ echo "soak dir: $W"
 source "$ROOT/conformance/devnet/lib-mixed.sh"
 trap - EXIT
 
-KINDS="go go rs rs rs go rs"
 STAKE=5000000000
-make_net "$W" "$CHAIN_ID" "$KINDS" "$STAKE $STAKE $STAKE $STAKE $STAKE 0 0"
-N=7
+if [ "${SOAK_PROFILE:-chaos}" = memory ]; then
+  # Memory soak (docs/benchmarks/memory.md): V0, V1 Go, V2, V3 Rust
+  # validators, a Rust full node F4; no chaos, so every node keeps one
+  # lifetime; memory sampled every $SOAK_MEM_SAMPLE s into mem.jsonl. V1
+  # holds the tx index and is the hash reference.
+  KINDS="go go rs rs rs"
+  make_net "$W" "$CHAIN_ID" "$KINDS" "$STAKE $STAKE $STAKE $STAKE 0"
+  N=5
+  PROFILE_ARGS=(--no-chaos --validators 0,1,2,3 --ref-node 1 --mem-sample "${SOAK_MEM_SAMPLE:-30}")
+else
+  KINDS="go go rs rs rs go rs"
+  make_net "$W" "$CHAIN_ID" "$KINDS" "$STAKE $STAKE $STAKE $STAKE $STAKE 0 0"
+  N=7
+  PROFILE_ARGS=()
+fi
 
 # Workload accounts in node 0's keyring (CLI txs), funded in genesis.
 a="celestia-appd --home $W/n0"
@@ -85,18 +104,23 @@ json.dump(g, open(p, "w"), indent=1)
 PY
 for i in $(seq 1 $((N - 1))); do cp "$W/n0/config/genesis.json" "$W/n$i/config/genesis.json"; done
 # Bounded disk on every node (Go and Rust read app.toml): prune app state
-# to the last 100 versions and blocks below 500 heights back.
+# to the last 100 versions and blocks below 500 heights back. Note that
+# celestia-app raises min-retain-blocks to at least 3000 (both nodes log
+# "Overriding min-retain-blocks"), so block stores only start shrinking
+# after 3000 heights (~2.5 h at the soak's block time).
 for i in $(seq 0 $((N - 1))); do
   sed -i -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
     -e 's#^pruning-interval = .*#pruning-interval = "10"#' -e "s#^min-retain-blocks = .*#min-retain-blocks = ${SOAK_RETAIN_BLOCKS:-500}#" \
     "$W/n$i/config/app.toml"
 done
-# Go nodes take snapshots (state-sync source for the Rust validators).
+# Go nodes take snapshots (state-sync source for the Rust validators); in
+# the memory profile every node does (snapshot creation is part of the
+# steady state being measured).
 for i in $(seq 0 $((N - 1))); do
-  [ "$(cat "$W/n$i/kind")" = go ] || continue
+  [ "$(cat "$W/n$i/kind")" = go ] || [ "${SOAK_PROFILE:-chaos}" = memory ] || continue
   sed -i -e 's#^snapshot-interval = .*#snapshot-interval = 100#' -e 's#^snapshot-keep-recent = .*#snapshot-keep-recent = 3#' "$W/n$i/config/app.toml"
 done
 
 exec python3 "$ROOT/conformance/devnet/soak/soak.py" --dir "$W" --off "$OFF" --rs "$RS" --chain-id "$CHAIN_ID" \
   --secs "${SOAK_SECS:-7200}" --min-heights "${SOAK_MIN_HEIGHTS:-1500}" --seed "${SOAK_SEED:-1}" \
-  --load-accounts "${SOAK_LOAD_ACCOUNTS:-48}" --root "$ROOT"
+  --load-accounts "${SOAK_LOAD_ACCOUNTS:-48}" --root "$ROOT" "${PROFILE_ARGS[@]}"

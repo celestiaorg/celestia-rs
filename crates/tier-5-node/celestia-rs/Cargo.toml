@@ -13,9 +13,17 @@ publish = false
 workspace = true
 
 [features]
-default = ["rocksdb"]
+default = ["rocksdb", "jemalloc"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb"]
+# jemalloc as the global allocator (default; unprefixed on Linux, so
+# RocksDB's C++ allocations use it too). On glibc malloc the node's RSS
+# was 4-5x its live heap (docs/benchmarks/memory.md).
+jemalloc = ["dep:tikv-jemallocator"]
+# Memory diagnostics (docs/benchmarks/memory.md): jemalloc statistics on
+# the Prometheus endpoint (`memstats_heap_*`) and jemalloc's heap profiler
+# (`MALLOC_CONF=prof:true,...`). Not part of the default build.
+memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
 abci-server = { path = "../../tier-4-runtime/abci-server" }
@@ -63,6 +71,8 @@ clap = { workspace = true, features = ["env"] }
 math = { path = "../../tier-0-primitives/math" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "time"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tikv-jemallocator = { version = "0.6", optional = true, features = ["unprefixed_malloc_on_supported_platforms"] }
+tikv-jemalloc-ctl = { version = "0.6", optional = true, features = ["stats"] }
 
 [dev-dependencies]
 tempfile = "3"

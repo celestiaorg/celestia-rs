@@ -27,6 +27,12 @@ use celestia_rs::config::{ConfigFiles, File};
 use celestia_rs::{client, config, genesis, init, keys, networks, node, ops, util};
 use clap::{Args, Parser, Subcommand};
 
+/// jemalloc (default feature `jemalloc`; with `memstats` also its
+/// statistics and heap profiler, see `celestia_rs::memstats`).
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[derive(Parser, Debug)]
 #[command(name = "celestia-rs", version, about = "Rust Celestia consensus node")]
 struct Cli {
