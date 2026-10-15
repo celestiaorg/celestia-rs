@@ -1264,8 +1264,12 @@ impl ConsensusState {
         if let Some(until) = self.precommit_delay_until()
             && !self.replay_mode
             && until > self.now()
+            && !self.clock.sleep_until(until)
         {
-            self.clock.sleep_until(until);
+            // Stopping (`case <-cs.Quit(): return`): neither sign nor move
+            // to the precommit step, so the restarted node can still cast
+            // this precommit without the privval seeing conflicting data.
+            return;
         }
         let polka = self
             .rs

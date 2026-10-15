@@ -466,6 +466,24 @@ fn ticker_ignores_older_timeouts() {
 }
 
 #[test]
+fn system_clock_wait_ends_at_stop() {
+    use crate::ticker::{Clock, SystemClock, system_now};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let soon = nodestore::state::add_duration(system_now(), 1_000_000);
+    assert!(SystemClock::default().sleep_until(soon));
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut clock = SystemClock::with_stop(stop.clone());
+    stop.store(true, Ordering::SeqCst);
+    let started = std::time::Instant::now();
+    let far = nodestore::state::add_duration(system_now(), 10_000_000_000);
+    assert!(!clock.sleep_until(far));
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[test]
 fn consensus_message_wire_round_trip() {
     let (vs, keys) = val_set(4, 1);
     let msgs = vec![

@@ -390,12 +390,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         consensus::ticker::system_now(),
     )
     .map_err(|e| anyhow!("wal: {e}"))?;
+    // Set at shutdown: ends a delayed precommit wait without signing.
+    let cs_stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mut cs = ConsensusState::new(
         opts.config.clone(),
         state.clone(),
         exec,
         Box::new(wal),
-        Box::new(SystemClock),
+        Box::new(SystemClock::with_stop(cs_stopping.clone())),
         Some(Box::new(pv)),
     )
     .map_err(|e| anyhow!("consensus: {e}"))?;
@@ -435,6 +437,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         // Shutdown: stop consensus between steps (Go `OnStop`).
         let stop = creactors.stop.clone();
         opts.shutdown.on_trigger(move || {
+            cs_stopping.store(true, std::sync::atomic::Ordering::SeqCst);
             let _ = stop.send(consensus::service::Input::Stop);
         });
     }

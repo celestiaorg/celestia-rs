@@ -28,7 +28,7 @@ use consensus::{
     ConsensusConfig, ConsensusMessage, ConsensusState, Event, Gossip, MemWal, Network,
 };
 use ctypes::proto::abci;
-use ctypes::vote::PREVOTE_TYPE;
+use ctypes::vote::{PRECOMMIT_TYPE, PREVOTE_TYPE};
 use ctypes::{BlockId, PubKey, Time, Vote};
 use kvdb::{KvBackend, MemBackend};
 use nodestore::genesis::GenesisValidator;
@@ -238,6 +238,8 @@ impl mempool::AppConnMempool for AcceptAll {
 struct SimClock {
     global: Arc<Mutex<Time>>,
     busy: Time,
+    /// The node is stopping: waits are cut short (`<-cs.Quit()`).
+    interrupt: bool,
 }
 
 impl consensus::Clock for SimClock {
@@ -245,10 +247,14 @@ impl consensus::Clock for SimClock {
         let g = *self.global.lock().unwrap();
         if self.busy > g { self.busy } else { g }
     }
-    fn sleep_until(&mut self, t: Time) {
+    fn sleep_until(&mut self, t: Time) -> bool {
+        if self.interrupt {
+            return false;
+        }
         if t > self.busy {
             self.busy = t;
         }
+        true
     }
 }
 
@@ -270,6 +276,8 @@ struct Running {
     pool: Arc<mempool::TxPool>,
     gossip: Gossip,
     timer: Option<Time>,
+    /// This boot's clock cuts waits short (a stop arrived).
+    interrupted: bool,
 }
 
 struct Node {
@@ -277,6 +285,8 @@ struct Node {
     disks: Disks,
     running: Option<Running>,
     seed: [u8; 32],
+    /// The next boot gets a stop request during its first precommit wait.
+    stop_next_boot: bool,
 }
 
 fn seed_for(i: usize) -> [u8; 32] {
@@ -320,6 +330,9 @@ struct Scenario {
     val_updates: Vec<(i64, usize, i64)>,
     /// First height with vote extensions (0 = disabled).
     vote_extensions_height: i64,
+    /// A node whose first boot is asked to stop while it waits in the
+    /// delayed precommit (SIGTERM mid-height); `crashes` restarts it.
+    stop_in_precommit_wait: Option<usize>,
 }
 
 #[derive(Default)]
@@ -335,6 +348,8 @@ struct Outcome {
     txs: usize,
     /// Commit signatures carrying a verified vote extension.
     extended_sigs: usize,
+    /// Precommits signed by a node after its stop was requested.
+    precommits_while_stopping: usize,
 }
 
 struct Sim {
@@ -422,6 +437,7 @@ impl Sim {
                 },
                 running: None,
                 seed: seed_for(i),
+                stop_next_boot: sc.stop_in_precommit_wait == Some(i),
             });
         }
         let rng = Rng(sc.seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
@@ -491,9 +507,11 @@ impl Sim {
         let state = hs.handshake(&mut exec).unwrap();
         let wal = MemWal::open(node.disks.wal.clone(), now).unwrap();
         let pv = FilePv::load(&node.disks.key_path, &node.disks.state_path).unwrap();
+        let interrupted = std::mem::take(&mut self.nodes[i].stop_next_boot);
         let clock = SimClock {
             global: self.global.clone(),
             busy: Time::ZERO,
+            interrupt: interrupted,
         };
         let mut cs = ConsensusState::new(
             ConsensusConfig::default(),
@@ -516,6 +534,7 @@ impl Sim {
             pool,
             gossip: Gossip::new(),
             timer: None,
+            interrupted,
         });
         self.after(i);
         let at = self.now_ns() + 50_000_000;
@@ -535,7 +554,17 @@ impl Sim {
 
     fn record_events(&mut self, i: usize, events: &[Event]) {
         let honest = self.sc.byzantine != Some(i);
+        let stopping = self.nodes[i]
+            .running
+            .as_ref()
+            .is_some_and(|r| r.interrupted);
         for ev in events {
+            if stopping
+                && let Event::Broadcast(ConsensusMessage::Vote(v)) = ev
+                && v.vote_type == PRECOMMIT_TYPE
+            {
+                self.outcome.precommits_while_stopping += 1;
+            }
             match ev {
                 Event::Broadcast(ConsensusMessage::Vote(v)) if honest => {
                     self.signed
@@ -961,6 +990,28 @@ fn validator_set_changes() {
     };
     let o = Sim::new(sc).run();
     assert_live(&o, 14, &[0, 1, 2, 3]);
+}
+
+#[test]
+fn stop_during_delayed_precommit_does_not_sign() {
+    // SIGTERM while the validator waits in the delayed precommit: like Go
+    // (`case <-cs.Quit(): return` in `enterPrecommit`) it must not sign
+    // the precommit on its way out. A precommit signed after the stop
+    // makes the restarted node's vote at that height `conflicting data`
+    // (seen on Mocha, height 1,721,185).
+    let sc = Scenario {
+        n: 1,
+        seed: 16,
+        duration_s: 60,
+        target_height: 5,
+        crashes: vec![(0, 4, 1)],
+        stop_in_precommit_wait: Some(0),
+        ..Scenario::default()
+    };
+    let o = Sim::new(sc).run();
+    assert_eq!(o.precommits_while_stopping, 0);
+    assert_eq!(o.restarts, 1);
+    assert_live(&o, 5, &[0]);
 }
 
 #[test]

@@ -16,12 +16,31 @@ pub trait Clock: Send {
     /// Current time (UTC, canonical).
     fn now(&self) -> Time;
     /// Blocks consensus until `t` (the delayed precommit timeout).
-    fn sleep_until(&mut self, t: Time);
+    /// Returns `false` when the wait was cut short because the node is
+    /// stopping (Go's `<-cs.Quit()` in `enterPrecommit`).
+    fn sleep_until(&mut self, t: Time) -> bool;
 }
 
-/// The system clock.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct SystemClock;
+/// The system clock. With a stop flag (set when the node shuts down) the
+/// delayed precommit wait ends early, like Go's `<-cs.Quit()`.
+#[derive(Debug, Default, Clone)]
+pub struct SystemClock {
+    stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+impl SystemClock {
+    /// A system clock whose waits end as soon as `stop` is set.
+    #[must_use]
+    pub fn with_stop(stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        Self { stop: Some(stop) }
+    }
+
+    fn stopping(&self) -> bool {
+        self.stop
+            .as_ref()
+            .is_some_and(|s| s.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
 
 /// The current system time as a [`Time`].
 #[must_use]
@@ -40,12 +59,18 @@ impl Clock for SystemClock {
         system_now()
     }
 
-    fn sleep_until(&mut self, t: Time) {
-        let now = system_now();
-        let ns = nodestore::state::sub_times(t, now);
-        if ns > 0 {
+    fn sleep_until(&mut self, t: Time) -> bool {
+        const SLICE_NS: i128 = 10_000_000;
+        loop {
+            if self.stopping() {
+                return false;
+            }
+            let ns = i128::from(nodestore::state::sub_times(t, system_now()));
+            if ns <= 0 {
+                return true;
+            }
             std::thread::sleep(std::time::Duration::from_nanos(
-                u64::try_from(ns).unwrap_or(0),
+                u64::try_from(ns.min(SLICE_NS)).unwrap_or(0),
             ));
         }
     }
