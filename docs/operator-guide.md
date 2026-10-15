@@ -15,10 +15,10 @@ launchd).
 > **Running a Mocha validator on a Mac: section 11. Mainnet: section 12.**
 >
 > Status: following a public network over HTTPS RPC (`follow`, section 10)
-> is verified against Mocha and mainnet. P2P-facing steps (`start --network
-> mainnet|mocha|arabica`, state sync from peers) are implemented but have
-> only been exercised on local devnets — the development environment
-> cannot reach public P2P ports (`OPEN_QUESTIONS.md` #1). Everything else
+> is verified against Mocha and mainnet. On Mocha, `start` over P2P (state
+> sync from Go peers, block sync, consensus with outbound-only peering) is
+> verified on the reference Mac (2026-10-15, section 11.5); mainnet and
+> Arabica P2P have only been exercised on local devnets. Everything else
 > below is covered by `crates/tier-5-node/celestia-rs/tests/` and
 > `conformance/devnet/operator.sh` (Rust validator + Go full node).
 
@@ -63,7 +63,7 @@ every test checks); `dist` is `release` plus fat LTO and one codegen unit,
 for the binaries you deploy (the release workflow builds with it).
 `cargo build --release -p celestia-rs` (`target/release/celestia-rs`) is
 fine too and builds faster. The first build compiles RocksDB from source
-(~15 minutes on an M4; `dist` adds several minutes of linking). Only
+(a clean `dist` build took 4 minutes on the Mac Mini M4, 2026-10-15). Only
 `curl` is needed at runtime (genesis download, HTTPS RPC).
 
 Targets: `aarch64-apple-darwin` (the reference Mac Mini M4; CI builds and
@@ -502,7 +502,8 @@ to run a `mocha-5` validator. Mocha runs app version 10 (celestia-app
 v10.4.0-mocha). Every command below was checked against this binary's
 `--help`; the ones marked *(verified)* were also run against Mocha's
 public RPC from the development container, which cannot reach P2P ports
-(`OPEN_QUESTIONS.md` #1) — P2P steps are first exercised on the Mac.
+(`OPEN_QUESTIONS.md` #1); the P2P steps were first run on the Mac on
+2026-10-15 (11.5, route A).
 
 Mocha's parameters (queried 2026-10-15; re-check with the commands in
 11.8): `min_commission_rate` **0.20**, `max_validators` 100 (87 bonded,
@@ -536,13 +537,20 @@ binary: `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add
 /usr/local/bin/celestia-rs && sudo /usr/libexec/ApplicationFirewall/socketfilterfw
 --unblockapp /usr/local/bin/celestia-rs`. Without inbound connections the
 node still works through its outbound peers, but more peers make
-proposals and votes arrive sooner.
+proposals and votes arrive sooner. Outbound-only was enough on Mocha
+(2026-10-15): with 11 persistent peers the node reached 13 peers within
+two minutes and followed consensus. If macOS asks to "allow incoming
+connections", Deny only blocks inbound 26656; the local RPC and
+Prometheus are unaffected.
 
 ### 11.2 Initialize the home *(verified)*
 
 ```sh
-celestia-rs init <your-moniker> --network mocha --home $NODE_HOME
+celestia-rs init "<your-moniker>" --network mocha --home $NODE_HOME > /dev/null
 ```
+
+Like Go's `init`, it prints the whole genesis (~78 MB) to stdout, hence
+`> /dev/null`; errors still go to the terminal.
 
 This writes `config/{config,app,client}.toml` (chain ID `mocha-5`, the
 built-in seeds and persistent peer), a new consensus key
@@ -565,7 +573,11 @@ celestia-rs config view config --home $H | grep -E '^(seeds|persistent_peers|lad
 `init` already set `client.toml` `chain-id = "mocha-5"`; RPC stays on
 `127.0.0.1:26657` and P2P listens on `0.0.0.0:26656`.
 
-More peers if the built-in ones are slow (live peers of a public node):
+More peers if the built-in ones are slow (live peers of a public node;
+without inbound connections only these and PEX keep the node connected,
+so it is worth checking that each accepts a TCP connection, e.g.
+`nc -z -G 3 <ip> <port>`, and keeping the built-in itrocket peer in the
+list):
 
 ```sh
 PEERS=$(curl -s $RPC2/net_info | jq -r '[.result.peers[] | select(.remote_ip | test(":") | not)
@@ -623,7 +635,12 @@ ulimit -n 4096 && celestia-rs start --home $H 2>&1 | tee ~/mocha-first-start.log
 Expect `Discovering snapshots`, `Offering snapshot`, `Applied snapshot
 chunk`, `Snapshot restored`, then block sync. State sync over P2P is at
 parity with Go on local devnets (`conformance/devnet/statesync-rust.sh`)
-but has not yet run against Mocha's peers; if no snapshot is found or
+and worked against Mocha's peers on the first try (2026-10-15, Mac Mini
+M4, outbound-only, 11 persistent peers): first peer after 0.8 s, Go
+format-3 snapshots discovered after 3 s, the 1,716,000 snapshot (18
+chunks) offered when the 15 s discovery window closed and restored with
+its app hash verified in 7 s, then 221 blocks block-synced (~80 blocks/s)
+and consensus 47 s after start. If no snapshot is found or
 restored within ~15 minutes, stop the node (Ctrl-C), remove the partial
 state (`rm -rf $H/data/*.rocksdb $H/data/cs.wal $H/data/evidence*` —
 keep `data/priv_validator_state.json`), set `statesync.enable false` and
