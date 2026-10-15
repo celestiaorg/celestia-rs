@@ -311,6 +311,81 @@ pub fn verify_multisig_with(
 /// `ModNScalar.SetByteSlice`), high-S signatures are rejected.
 #[must_use]
 pub fn verify_secp256k1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
+    if sig.len() != 64 {
+        return false;
+    }
+    // A tx's signature is checked by CheckTx, PrepareProposal,
+    // ProcessProposal and FinalizeBlock: remember the valid ones.
+    let digest = hash::sha256(msg);
+    let entry = verified_cache_key(key, &digest, sig);
+    if VERIFIED.contains(&entry) {
+        return true;
+    }
+    let valid = verify_secp256k1_prehashed(key, &digest, sig);
+    if valid {
+        VERIFIED.insert(entry);
+    }
+    valid
+}
+
+/// Identifies one `(key, sha256(msg), sig)` verification.
+fn verified_cache_key(key: &[u8], digest: &[u8; 32], sig: &[u8]) -> [u8; 32] {
+    let mut h = hash::Sha256Hasher::new();
+    h.update(&(key.len() as u64).to_be_bytes());
+    h.update(key);
+    h.update(digest);
+    h.update(sig);
+    h.finalize()
+}
+
+/// Verifications that succeeded, so repeats skip the curve arithmetic.
+/// Verification is a pure function of its inputs and only successes are
+/// kept, so every result is the one a fresh verification returns.
+static VERIFIED: std::sync::LazyLock<VerifiedCache> =
+    std::sync::LazyLock::new(|| VerifiedCache::new(1 << 16));
+
+/// A bounded set (oldest entries evicted first).
+struct VerifiedCache {
+    capacity: usize,
+    inner: std::sync::Mutex<VerifiedSet>,
+}
+
+/// The entries, and their insertion order for eviction.
+#[derive(Default)]
+struct VerifiedSet(
+    std::collections::HashSet<[u8; 32]>,
+    std::collections::VecDeque<[u8; 32]>,
+);
+
+impl VerifiedCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            inner: std::sync::Mutex::new(VerifiedSet::default()),
+        }
+    }
+
+    fn contains(&self, entry: &[u8; 32]) -> bool {
+        self.inner.lock().is_ok_and(|g| g.0.contains(entry))
+    }
+
+    fn insert(&self, entry: [u8; 32]) {
+        if let Ok(mut g) = self.inner.lock() {
+            let VerifiedSet(set, order) = &mut *g;
+            if set.insert(entry) {
+                order.push_back(entry);
+                while order.len() > self.capacity {
+                    if let Some(old) = order.pop_front() {
+                        set.remove(&old);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// [`verify_secp256k1`] of a message with SHA-256 digest `digest`.
+fn verify_secp256k1_prehashed(key: &[u8], digest: &[u8; 32], sig: &[u8]) -> bool {
     use k256::elliptic_curve::ops::Reduce;
     use k256::elliptic_curve::scalar::IsHigh;
     use k256::{FieldBytes, Scalar, U256};
@@ -328,9 +403,7 @@ pub fn verify_secp256k1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     let Ok(signature) = k256::ecdsa::Signature::from_scalars(r, s) else {
         return false;
     };
-    let digest = hash::sha256(msg);
-    k256::ecdsa::signature::hazmat::PrehashVerifier::verify_prehash(&vk, &digest, &signature)
-        .is_ok()
+    k256::ecdsa::signature::hazmat::PrehashVerifier::verify_prehash(&vk, digest, &signature).is_ok()
 }
 
 /// `elliptic.UnmarshalCompressed(P256)` succeeds.
