@@ -1406,6 +1406,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzz-diff"
+version = "0.0.1"
+dependencies = [
+ "abci-server",
+ "anyhow",
+ "app",
+ "celestia-proto",
+ "devnet-conformance",
+ "hex",
+ "legacy-amino",
+ "prost",
+ "sdk",
+ "serde",
+ "serde_json",
+ "txdecode",
+ "x-ante",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

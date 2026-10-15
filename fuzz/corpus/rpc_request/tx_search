@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":3,"method":"tx_search","params":{"query":"tx.height>=1 AND message.sender='celestia1x'","page":"1","per_page":"30","order_by":"desc"}}

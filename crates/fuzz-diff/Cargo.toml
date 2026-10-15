@@ -1,0 +1,28 @@
+[package]
+name = "fuzz-diff"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Differential fuzzing of consensus-critical decoding against the pinned Go implementations (conformance/fuzzoracle)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+abci-server = { path = "../tier-4-runtime/abci-server" }
+anyhow.workspace = true
+app = { path = "../tier-4-runtime/app" }
+celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
+devnet-conformance = { path = "../devnet-conformance" }
+hex = "0.4"
+prost = "0.13"
+legacy-amino = { path = "../tier-1-protocol-types/legacy-amino" }
+sdk = { path = "../tier-3-app-modules/sdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+txdecode = { path = "../tier-3-app-modules/txdecode" }
+x-ante = { path = "../tier-3-app-modules/x/ante" }

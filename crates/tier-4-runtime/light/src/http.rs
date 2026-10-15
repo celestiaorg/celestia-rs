@@ -868,6 +868,39 @@ impl Provider for HttpProvider {
     }
 }
 
+/// Entry points for the crash-only fuzz targets (`fuzz/`): everything a
+/// light client parses from an untrusted RPC server's HTTP response.
+#[doc(hidden)]
+pub mod fuzzing {
+    use super::Value;
+
+    /// HTTP response splitting and chunked decoding.
+    #[must_use]
+    pub fn http_body(raw: &[u8]) -> bool {
+        super::http_body(raw).is_ok()
+    }
+
+    /// Every JSON decoder of the RPC client on one document.
+    pub fn decode_json(raw: &[u8]) {
+        let Ok(v) = serde_json::from_slice::<Value>(raw) else {
+            return;
+        };
+        let _ = super::signed_header_from_json(&v);
+        let _ = super::header_from_json(&v);
+        let _ = super::commit_from_json(&v);
+        let _ = super::block_from_json(&v);
+        let _ = super::block_id_from_json(&v);
+        let _ = super::validator_from_json(&v);
+        let _ = super::consensus_params_from_json(&v);
+        let _ = super::vote_from_json(&v);
+        let _ = super::evidence_from_json(&v);
+        let _ = super::pub_key_from_json(&v);
+        if let Value::String(s) = &v {
+            let _ = super::parse_rfc3339(s);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

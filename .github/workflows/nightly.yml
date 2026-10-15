@@ -114,6 +114,87 @@ jobs:
             ${{ runner.temp }}/soak/events.log
           retention-days: 14
 
+  # Differential fuzzing against the pinned Go implementations
+  # (crates/fuzz-diff vs conformance/fuzzoracle: celestia-app v10.4.0 and
+  # v9.0.8), bounded in time. A mismatch fails the job and uploads the
+  # inputs with both outcomes; docs/security.md ("Fuzzing").
+  fuzz-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GOFLAGS: -mod=mod
+      GOPROXY: https://proxy.golang.org,direct
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: conformance/fuzzoracle/v10/go.mod
+          cache-dependency-path: conformance/fuzzoracle/*/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the Go oracles
+        run: |
+          mkdir -p target/fuzzoracle
+          for v in v9 v10; do
+            (cd conformance/fuzzoracle/$v && go build -o "$GITHUB_WORKSPACE/target/fuzzoracle/fuzzoracle-$v" .)
+          done
+      - run: cargo build --release -p fuzz-diff
+      - name: Differential runs
+        run: |
+          set -e
+          seed=${{ github.run_number }}
+          for v in 10 9; do
+            target/release/fuzz-diff --app-version $v --ops tx,blobtx,iw,fibre --iters 1000000000 --max-secs 900 --seed $seed --findings findings
+            target/release/fuzz-diff --app-version $v --ops eds --batch 64 --iters 1000000000 --max-secs 600 --seed $seed --findings findings
+          done
+          target/release/fuzz-diff --app-version 10 --ops amino_dec,amino_enc --iters 1000000000 --max-secs 300 --seed $seed --findings findings
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-diff-findings
+          path: findings
+          retention-days: 14
+
+  # Crash-only libFuzzer targets (fuzz/, cargo-fuzz on nightly Rust): panics,
+  # stack overflows, OOM (> 2 GB) and timeouts from untrusted input.
+  cargo-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: txdecode, features: "" }
+          - { target: amino, features: "" }
+          - { target: square, features: "" }
+          - { target: shares_parse, features: "" }
+          - { target: abci_frame, features: net }
+          - { target: p2p_handshake, features: net }
+          - { target: mconn_recv, features: net }
+          - { target: p2p_msgs, features: net }
+          - { target: light_json, features: rpc }
+          - { target: rpc_request, features: rpc }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz ${{ matrix.target }}
+        run: |
+          features=""
+          if [ -n "${{ matrix.features }}" ]; then features="--features ${{ matrix.features }}"; fi
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo fuzz run --sanitizer none $features ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- \
+            -max_total_time=600 -rss_limit_mb=2048 -timeout=30
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-fuzz-${{ matrix.target }}
+          path: fuzz/artifacts
+          retention-days: 14
+
   coverage:
     runs-on: ubuntu-latest
     steps:

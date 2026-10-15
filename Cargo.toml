@@ -69,12 +69,15 @@ members = [
     "crates/tier-4-runtime/rpc",
     "crates/tier-4-runtime/propagation",
     "crates/devnet-conformance",
+    "crates/fuzz-diff",
     "crates/tier-5-node/celestia-rs",
     "crates/tier-5-node/keyring",
     "crates/m1-integration",
     "crates/m2-integration",
     "xtask",
 ]
+# libFuzzer targets (cargo-fuzz, nightly): their own workspace.
+exclude = ["fuzz"]
 
 [workspace.package]
 edition = "2024"

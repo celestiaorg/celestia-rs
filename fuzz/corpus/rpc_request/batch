@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","id":1,"method":"health"},{"jsonrpc":"2.0","id":2,"method":"abci_query","params":["/store/bank/key","0a0b",null,true]}]

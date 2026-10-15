@@ -1,0 +1,121 @@
+# Crash-only libFuzzer targets (cargo-fuzz; needs a nightly toolchain).
+# Not a workspace member: CI and `cargo build --workspace` stay on stable.
+#
+#   cargo +nightly fuzz run txdecode -- -max_total_time=300
+#
+# See docs/security.md ("Fuzzing").
+[package]
+name = "celestia-rs-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+celestia-proto = { path = "../crates/tier-1-protocol-types/celestia-proto" }
+celestia-core-proto = { path = "../crates/tier-1-protocol-types/celestia-core-proto", optional = true }
+legacy-amino = { path = "../crates/tier-1-protocol-types/legacy-amino" }
+shares = { path = "../crates/tier-1-protocol-types/shares" }
+square = { path = "../crates/tier-1-protocol-types/square" }
+txdecode = { path = "../crates/tier-3-app-modules/txdecode" }
+abci-server = { path = "../crates/tier-4-runtime/abci-server", optional = true }
+p2p = { path = "../crates/tier-4-runtime/p2p", optional = true }
+consensus = { path = "../crates/tier-4-runtime/consensus", optional = true }
+propagation = { path = "../crates/tier-4-runtime/propagation", optional = true }
+statesync = { path = "../crates/tier-4-runtime/statesync", optional = true }
+blocksync = { path = "../crates/tier-4-runtime/blocksync", optional = true }
+light = { path = "../crates/tier-4-runtime/light", optional = true }
+rpc = { path = "../crates/tier-4-runtime/rpc", optional = true }
+prost = "0.13"
+tokio = { version = "1", features = ["rt", "io-util", "macros", "time", "sync", "test-util"], optional = true }
+
+[features]
+# Targets are grouped so one build does not compile every crate (rpc pulls
+# in the app and RocksDB): `cargo +nightly fuzz build --features net`.
+net = ["dep:abci-server", "dep:p2p", "dep:consensus", "dep:propagation", "dep:statesync", "dep:blocksync", "dep:tokio", "dep:celestia-core-proto"]
+rpc = ["dep:light", "dep:rpc"]
+
+[workspace]
+
+[profile.release]
+debug = 1
+incremental = false
+
+[[bin]]
+name = "txdecode"
+path = "fuzz_targets/txdecode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "amino"
+path = "fuzz_targets/amino.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "square"
+path = "fuzz_targets/square.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shares_parse"
+path = "fuzz_targets/shares_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "abci_frame"
+path = "fuzz_targets/abci_frame.rs"
+required-features = ["net"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "p2p_handshake"
+path = "fuzz_targets/p2p_handshake.rs"
+required-features = ["net"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mconn_recv"
+path = "fuzz_targets/mconn_recv.rs"
+required-features = ["net"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "p2p_msgs"
+path = "fuzz_targets/p2p_msgs.rs"
+required-features = ["net"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "light_json"
+path = "fuzz_targets/light_json.rs"
+required-features = ["rpc"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rpc_request"
+path = "fuzz_targets/rpc_request.rs"
+required-features = ["rpc"]
+test = false
+doc = false
+bench = false

@@ -1,0 +1,1 @@
+tm.event = 'Tx' AND tx.height > 5 AND transfer.amount CONTAINS '10utia' AND block.time >= TIME 2024-01-01T00:00:00Z

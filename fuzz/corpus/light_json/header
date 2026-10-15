@@ -1,0 +1,1 @@
+{"version":{"block":"11","app":"10"},"chain_id":"c","height":"5","time":"2026-10-14T10:49:00.123456789Z","last_block_id":{"hash":"AB","parts":{"total":1,"hash":"CD"}},"last_commit_hash":"","data_hash":"","validators_hash":"00","next_validators_hash":"00","consensus_hash":"","app_hash":"","last_results_hash":"","evidence_hash":"","proposer_address":"0011"}

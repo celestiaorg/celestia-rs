@@ -102,6 +102,8 @@ jobs:
           - evidencevectors
           - fibre-client
           - fixturegen
+          - fuzzoracle/v9
+          - fuzzoracle/v10
           - lightvectors
           - mathvectors
           - mintvectors

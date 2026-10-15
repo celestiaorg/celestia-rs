@@ -69,6 +69,127 @@ and compared with the committed fixtures):
 | fixturegen | cometbft v0.38 blocksync (GO-2025-3442, fixed only in v1.0.1), cosmos-sdk x/crisis (GO-2023-1821/1881, no fix), grpc GO-2026-6443 (*imported*) | Not reachable from the generators; cometbft v1 would change the Go types the fixtures are generated from. |
 | antevectors, txdecode, mintvectors, consensusvectors, ctypesvectors, evidencevectors, lightvectors, p2pvectors, rpccorpus/recorder | only the x/crypto `openpgp` entry | Pinned to celestia-app v10.4.0 / celestia-core v0.42.3 (the parity target); nothing reachable remains. |
 
+## Fuzzing
+
+Two harnesses, both run nightly (`.github/workflows/nightly.yml`, jobs
+`fuzz-diff` and `cargo-fuzz`). Findings are fixed in the crates by porting
+Go and pinned by regression tests that run on stable without Go.
+
+### Differential fuzzing against Go (`crates/fuzz-diff`)
+
+`conformance/fuzzoracle/{v10,v9}` is celestia-app **v10.4.0** / **v9.0.8**
+(their exact module graphs, go-square v4.0.1 / v4.0.0-rc4, celestia-core
+v0.42.3 / v0.40.9) built as a line server: `<op> <hex>` in, one JSON
+outcome out. `fuzz-diff` sends the same inputs to it and to the Rust code
+and compares:
+
+| op | Go | Rust | compared |
+|---|---|---|---|
+| `tx` | `TxConfig.TxDecoder()` (panics recovered like `BaseApp`) + `GetSigners` | `txdecode::decode_for` + `x_ante::txview::signers` | accept/reject + ABCI code, inner tx, raw and gogoproto-re-encoded body / auth info / msgs, signatures, unknown-non-critical flag, blobs, share indexes, signers |
+| `blobtx` | go-square `tx.UnmarshalBlobTx` | `txdecode::unmarshal_blob_tx(_v9)` | is-blob, error kind, contents |
+| `iw` | celestia-core `UnmarshalIndexWrapper` | `txdecode::unmarshal_index_wrapper` | all |
+| `fibre` | `x/fibre/types.TryParseFibreTx` (v9: rc4 `tx.TryParseFibreTx`) | `app::fibre_tx::try_parse(_v9)` | is-fibre, error, system blob |
+| `eds` | `da.ConstructEDS` + `NewDataAvailabilityHeader` | `app::proposal::block_data_root_with_max` | square width + data root, or error |
+| `amino_dec` / `amino_enc` | authtx `TxDecodeAmino` / `TxEncodeAmino` | `legacy_amino` | output, error and panic text |
+
+Inputs: every tx of every devnet fixture (`CheckTx`, proposals, blocks),
+the txdecode and amino vectors, and any extra corpus directory
+(`--corpus`, e.g. a cargo-fuzz corpus), put through protobuf-aware
+mutations (`fuzz-diff/src/mutate.rs`: recursive field edits, boundary
+varints, unknown and non-critical fields, wrong wire types, non-minimal
+varints, groups, invalid UTF-8, splices). `eds` inputs are random tx sets
+(real txs, synthetic blob txs at share-boundary sizes, random max square
+sizes) and every devnet block.
+
+`fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
+ProcessProposal differential: the recorded scenario is re-driven into a Go
+`celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before
+each recorded `ProcessProposal` mutated variants (txs dropped, reordered,
+duplicated, mutated, borrowed from other heights; DAH recomputed) are sent
+to both at the same state.
+
+```bash
+# Go oracles (once; GOPATH/GOTOOLCHAIN as for the other conformance modules)
+for v in v9 v10; do (cd conformance/fuzzoracle/$v && GOFLAGS=-mod=mod \
+  go build -o ../../../target/fuzzoracle/fuzzoracle-$v .); done
+cargo build --release -p fuzz-diff
+target/release/fuzz-diff --app-version 10 --ops tx,blobtx,iw,fibre --iters 500000 --seed 1 --findings /tmp/f
+target/release/fuzz-diff --app-version 9  --ops eds --batch 64 --max-secs 600 --findings /tmp/f
+target/release/fuzz-diff --app-version 10 --ops amino_dec,amino_enc --iters 100000
+GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/pp-diff.sh blob 30
+# pin a finding: record Go's outcome into the regression file
+echo "tx <hex>" | target/release/fuzz-diff record 10 "what it shows" >> crates/fuzz-diff/tests/regressions.jsonl
+```
+
+`crates/fuzz-diff/tests/regressions.jsonl` holds every finding with Go's
+recorded outcome; `cargo test -p fuzz-diff` replays them without Go.
+
+### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
+
+libFuzzer targets for untrusted input; a panic, stack overflow, allocation
+above `-rss_limit_mb` or a timeout is a bug. Not a workspace member (needs
+nightly); targets are grouped by feature so a build compiles only what it
+needs.
+
+| target | feature | surface |
+|---|---|---|
+| `txdecode` | | full decoder chain at both app versions, wrappers, duplicate-field check |
+| `amino` | | `TxDecodeAmino` / `TxEncodeAmino` (ABCI / gRPC / REST query) |
+| `square` | | go-square v4 construction, erasure coding, DAH, share parsing |
+| `shares_parse` | | compact / sparse share parsing, namespace ranges |
+| `abci_frame` | `net` | ABCI socket framing and `Request` decoding |
+| `p2p_handshake` | `net` | SecretConnection handshake with a hostile remote |
+| `mconn_recv` | `net` | MConnection packet parsing and chunk reassembly |
+| `p2p_msgs` | `net` | every reactor's message decoding + `ValidateBasic` (consensus, propagation, state sync, block sync), node info, net addresses, PEX |
+| `light_json` | `rpc` | light / state-sync RPC client: HTTP framing, CometBFT JSON |
+| `rpc_request` | `rpc` | JSON-RPC bodies, params of every type, URI args, event queries |
+
+```bash
+rustup toolchain install nightly --profile minimal && cargo install cargo-fuzz
+cargo +nightly fuzz run --sanitizer none txdecode /tmp/corpus fuzz/corpus/txdecode -- -max_total_time=600
+cargo +nightly fuzz run --sanitizer none --features net mconn_recv /tmp/c fuzz/corpus/mconn_recv -- -max_total_time=600
+```
+
+Seed corpora (`fuzz/corpus/<target>`, < 1 MB) come from
+`fuzz-diff seed-corpus fuzz/corpus` (devnet txs, amino vectors, blocks) and
+hand-written network messages.
+
+### Findings (2026-10-15)
+
+Fixed (each pinned by a test; consensus-relevant ones also by
+`crates/fuzz-diff/tests/regressions.jsonl` with Go's recorded outcome):
+
+| # | Where | Finding | Impact | Fix / test |
+|---|---|---|---|---|
+| 1 | `x-ante` `GetSigners` (both versions) | Rust decoded every message with prost (strict UTF-8 everywhere). Go's `anyutil.Unpack` uses the generated pulsar unmarshal for the 116 types `protoregistry.GlobalTypes` knows (no UTF-8 check) and `dynamicpb` for the rest, which rejects invalid UTF-8 only in fields whose resolved descriptor is proto3 (ibc `UpgradeFields` is not) and rejects 10-byte varints with a last byte above 1 (gogoproto accepts them) | a signed tx Go runs (fees, sequence, execution) failed Rust's ante, or the reverse: app-hash divergence | `getsigners_schema.rs` dumped from the Go binary (`v2types`, `utf8schema`), `txview::tx_msg_signers`; regressions |
+| 2 | v9 `ProcessProposal` / `ConstructEDS` | go-square v4.0.0-rc4 `Construct` classifies txs itself with `TryParseFibreTx`, decoding go-square's trimmed `Tx{TxBody body}` with protobuf-go: a `TxRaw` repeating `body_bytes` (the SDK decoder keeps the last body) whose merged bodies start with a `MsgPayForFibre` is laid out as a pay-for-fibre tx with a system blob (or fails the square when malformed); Rust laid it out as a normal tx | a malicious v9 proposer's block: Go validators accept, Rust rejects (different data root) | `fibre_tx::try_parse_v9`, `proposal::classify_txs_v9`; regressions |
+| 3 | v9 square construction | rc4 has no `ClassifiedTx.Validate`: an empty normal tx is laid out; Rust rejected it | ConstructEDS / proof parity | `square::v4::construct_rc4`; regression |
+| 4 | v9 decoder | hyperlane-cosmos v1.1.0 `RemoteRouter.receiver_contract` is a plain string (v1.3.0: `HexAddress` customtype): Rust failed to decode `MsgEnrollRemoteRouter` with a non-hex receiver and re-encoded an empty one as a zero address | tx decode divergence at app version 9 | `txdecode` v9 schema patch; regressions |
+| 5 | v10 `TryParseFibreTx` | prost decoding of `TxRaw` / `TxBody` / `MsgPayForFibre` rejected invalid UTF-8 (e.g. in the memo) that gogoproto accepts, hiding a pay-for-fibre tx; the signer used the bech32 crate instead of btcutil `DecodeToBase256` (90-character limit) | square layout divergence | `txdecode::gogo_unmarshal`, `encoding::bech32::decode_to_base256`; regressions |
+| 6 | RPC (`rpc::json`) | recursive JSON parser: a JSON-RPC body of nested `[` overflowed the worker stack and aborted the node; Go fails the 10 001st level with `exceeded max depth` | remote crash through the public RPC port | iterative parser with Go's limit, iterative drop and id formatting; `rpc/tests/deep_json.rs` |
+| 7 | `legacy-amino` JSON scanner (`TxEncodeAmino`) | same recursion | remote crash through ABCI / gRPC / REST queries | iterative scanner with Go's limit; `gojson` unit test |
+| 8 | `legacy-amino` codec | recursion per nested value: a `StdTx` with `MsgExec` nested a few thousand levels (Go decodes 8000) overflowed a 2 MiB query-handler stack | remote crash through queries | large-stack thread for inputs > 4 KB; `legacy-amino/tests/deep_nesting.rs` |
+
+Open:
+
+- **Invalid UTF-8 in executed messages** (found while fixing #1): the
+  router decodes each message with prost, which rejects invalid UTF-8 in
+  any string, while Go's handlers get the gogoproto struct and store the
+  bytes (e.g. a validator moniker, a proposal title). Such a tx now passes
+  the ante handler like in Go but fails with `tx parse error` in Rust
+  where Go executes it: app-hash divergence a user can trigger with one
+  tx. An exact fix needs messages whose string fields keep arbitrary bytes
+  (prost `String` cannot); the decoded-struct normalization
+  (`Tx::normalized_msgs`) would only make the stored bytes differ.
+- The same for messages executed through `MsgExec` / gov proposals (their
+  signers are decoded from the raw inner bytes, which is stricter than Go
+  only where Go executes the message anyway).
+- v9 `x/warp` handlers still treat `receiver_contract` as a hex address
+  (ADR 0004 "Not ported").
+- Go itself: `TxDecodeAmino` of a 2 MB `StdTx` with ~20 000 nested
+  `MsgExec` grew the Go process past 10 GB (quadratic copying in
+  go-amino); the oracle caps amino inputs at 256 KB.
+
 ## Re-running the triage
 
 ```bash
