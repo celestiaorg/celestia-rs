@@ -550,7 +550,7 @@ pub fn query<Req: prost::Name>(
 /// Query commands (`query <module> <cmd> [args]`).
 #[allow(clippy::too_many_lines)]
 pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyhow::Result<Value> {
-    use celestia_proto::cosmos::{auth, bank, staking};
+    use celestia_proto::cosmos::{auth, bank, slashing, staking};
     let a = |i: usize| -> anyhow::Result<String> {
         args.get(i)
             .cloned()
@@ -633,6 +633,24 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             &staking::v1beta1::QueryParamsResponse::full_name(),
             height,
         ),
+        ["slashing", "signing-info", ..] => query(
+            home,
+            node,
+            "/cosmos.slashing.v1beta1.Query/SigningInfo",
+            &slashing::v1beta1::QuerySigningInfoRequest {
+                cons_address: a(2)?,
+            },
+            &slashing::v1beta1::QuerySigningInfoResponse::full_name(),
+            height,
+        ),
+        ["slashing", "params", ..] => query(
+            home,
+            node,
+            "/cosmos.slashing.v1beta1.Query/Params",
+            &slashing::v1beta1::QueryParamsRequest::default(),
+            &slashing::v1beta1::QueryParamsResponse::full_name(),
+            height,
+        ),
         ["tx", hash] => {
             let node = Node::new(&node_addr(home, node));
             let v = node.tx(&hash.to_uppercase()).or_else(|e| {
@@ -654,7 +672,7 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             Ok(v)
         }
         _ => bail!(
-            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, tx <hash>, block [height]",
+            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, slashing signing-info <valcons>|params, tx <hash>, block [height]",
             args.join(" ")
         ),
     }

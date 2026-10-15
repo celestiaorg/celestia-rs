@@ -1147,6 +1147,13 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         a.stop_at_height,
         consensus::ConsensusConfig {
             timeout_commit: a.timeout_commit_ms * 1_000_000,
+            // Go's `[consensus] double_sign_check_height`: refuse to start
+            // when our key signed one of the last N committed blocks.
+            double_sign_check_height: if configured {
+                files.int(File::Config, "consensus.double_sign_check_height")
+            } else {
+                0
+            },
             ..consensus::ConsensusConfig::default()
         },
     );
