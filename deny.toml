@@ -3,7 +3,8 @@ all-features = true
 
 # Advisories are checked in CI (cargo-deny >= 0.18 understands CVSS 4.0).
 # Every accepted advisory is listed here with its reason; see
-# docs/security.md for the full triage.
+# docs/security.md for the full triage. Re-check every entry at each triage
+# (next: 2027-01-15) or when reed-solomon-erasure / ark-ff release.
 [advisories]
 yanked = "deny"
 ignore = [
