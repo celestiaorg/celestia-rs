@@ -84,6 +84,13 @@ gp["expedited_voting_period"] = "30s"
 json.dump(g, open(p, "w"), indent=1)
 PY
 for i in $(seq 1 $((N - 1))); do cp "$W/n0/config/genesis.json" "$W/n$i/config/genesis.json"; done
+# Bounded disk on every node (Go and Rust read app.toml): prune app state
+# to the last 100 versions and blocks below 500 heights back.
+for i in $(seq 0 $((N - 1))); do
+  sed -i -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
+    -e 's#^pruning-interval = .*#pruning-interval = "10"#' -e "s#^min-retain-blocks = .*#min-retain-blocks = ${SOAK_RETAIN_BLOCKS:-500}#" \
+    "$W/n$i/config/app.toml"
+done
 # Go nodes take snapshots (state-sync source for the Rust validators).
 for i in $(seq 0 $((N - 1))); do
   [ "$(cat "$W/n$i/kind")" = go ] || continue

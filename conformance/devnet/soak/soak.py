@@ -274,7 +274,7 @@ class Soak:
         if code == 0 and h:
             m["submitted"] = m.get("submitted", 0) + 1
             with self.pending_lock:
-                self.pending_txs.append((h, category, now()))
+                self.pending_txs.append((h, category, now(), nd.i))
         else:
             k = str(code) if code != -1 else ("err:" + out.strip()[:80])
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
@@ -354,6 +354,11 @@ class Soak:
                     rss_f.flush()
                 if t - last_disk >= 60:
                     last_disk = t
+                    free = shutil.disk_usage(self.dir).free
+                    if free < float(os.environ.get("SOAK_MIN_FREE_GB", "3")) * 2**30 and now() < self.deadline:
+                        self.fail(f"only {free / 2**30:.1f} GiB disk left: ending the soak early")
+                        self.deadline = now()
+                        self.a.min_heights = 0
                     row = [f"{du(f'{nd.home}/data') / 2**20:.1f}" for nd in self.nodes]
                     disk_f.write(f"{t - self.t0:.0f},{self.max_height}," + ",".join(row) + "\n")
                     disk_f.flush()
@@ -466,7 +471,7 @@ class Soak:
             todo, self.pending_txs = self.pending_txs, []
         keep = []
         idx = self.nodes[5]
-        for h, cat, t in todo:
+        for h, cat, t, ni in todo:
             try:
                 r = get_json(f"{idx.url}/tx?hash=0x{h}", timeout=5)
             except Exception:
@@ -479,8 +484,11 @@ class Soak:
                     m["failed_exec"] += 1
             elif now() - t > 300:
                 self.metrics[cat]["lost"] += 1
+                lk = f"lost@n{ni}"  # node that accepted the tx (CheckTx 0)
+                self.metrics[cat][lk] = self.metrics[cat].get(lk, 0) + 1
+                self.event("tx-lost", category=cat, node=ni, hash=h, age_s=round(now() - t))
             else:
-                keep.append((h, cat, t))
+                keep.append((h, cat, t, ni))
         with self.pending_lock:
             self.pending_txs.extend(keep)
 
@@ -524,7 +532,8 @@ class Soak:
                     acc[1] += 1
                     m["ok"] += 1
                 else:
-                    m["rejected"][str(code)] = m["rejected"].get(str(code), 0) + 1
+                    rk = f"{code}@n{nd.i}"  # code and the node that rejected
+                    m["rejected"][rk] = m["rejected"].get(rk, 0) + 1
                     e = re.search(r"expected (\d+), got (\d+)", r.get("log", ""))
                     if code == 32 and e:
                         acc[1] = int(e.group(1))
@@ -580,7 +589,7 @@ class Soak:
         if code == 0 and h:
             m["submitted"] += 1
             with self.pending_lock:
-                self.pending_txs.append((h, "pfb", now()))
+                self.pending_txs.append((h, "pfb", now(), nd.i))
         else:
             k = str(code) if code != -1 else "err:" + out.strip()[-100:]
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
@@ -881,18 +890,26 @@ class Soak:
                             "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
             self.event("valset-delegate", out=out.strip()[-160:])
             time.sleep(15)
-            out = self.cli(["tx", "slashing", "unjail", "--from", "val4", "--chain-id", self.chain_id,
-                            "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
-            self.event("valset-unjail", out=out.strip()[-160:])
-            t = now()
             back = None
-            while now() - t < 180:
-                if self.in_valset(nd.val_addr):
-                    back = round(now() - t)
+            t = now()
+            # An accepted unjail can still be lost (its node killed / wiped
+            # before gossiping it): resubmit once, through a Go node, and
+            # record it; failing is reserved for a re-bond that never lands.
+            for attempt, via in ((1, self.tx_node()), (2, self.nodes[5])):
+                out = self.cli(["tx", "slashing", "unjail", "--from", "val4", "--chain-id", self.chain_id,
+                                "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
+                self.event("valset-unjail", attempt=attempt, via=via.i, out=out.strip()[-160:])
+                t1 = now()
+                while now() - t1 < 120:
+                    if self.in_valset(nd.val_addr):
+                        back = round(now() - t)
+                        break
+                    time.sleep(3)
+                if back is not None:
                     break
-                time.sleep(3)
+                rec["unjail_retried_after_loss_via_node"] = via.i
             if back is None:
-                self.fail("validator 4 did not rejoin the validator set within 180 s of re-bonding + unjail")
+                self.fail("validator 4 did not rejoin the validator set after re-bonding + two unjail attempts")
             else:
                 self.unbonded.discard(4)
                 # It must sign again.

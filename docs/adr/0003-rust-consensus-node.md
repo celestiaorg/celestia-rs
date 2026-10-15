@@ -81,6 +81,25 @@ Next: Arabica / Mocha full node (M12-M13); remaining deferred items are in
 the M9 commit notes (peer stats / `MarkPeerAsGood`, `dump_consensus_state`
 peer round states).
 
+Soak (`conformance/devnet/soak.sh`, 2026-10-14/15): 2 Go + 3 Rust
+validators, Go and Rust full nodes, links through a chaos proxy, 2.34 h,
+2,923 heights, 197k txs (bank load, 1,448 PFBs incl. 25 blocks over 8 MiB
+up to 20.9 MiB / 256x256 squares, staking churn, 39 gov proposals), 65
+chaos events (17 Rust validator SIGKILLs, 11 Rust full-node SIGKILLs, 10
+isolations, 12 latency injections, 5 halting splits, 10 state-sync
+restarts, 4 validator unbond / re-bond cycles). Every height's block and
+app hash agreed on all nodes, no evidence, no double-sign or rejected
+proposal, no stall over 60 s outside the planned splits (worst
+re-convergence after an event: 72 s). Three Rust bugs found and fixed
+before that run: EndBlock inherited the last tx's gas meter (gov proposal
+execution ran out of gas), squares above 128x128 could not be extended
+(GF(2^16) leopard missing, DAH bound too small), and quadratic blob share
+splitting (a 22 MB block took 5-40 s to prepare / apply; now 0.2 s).
+Peak RSS: Rust nodes 1.2-1.9 GB, Go nodes 2.2-2.3 GB, both growing with
+the chain under this load (Go 0.6 -> 2.2 GB over 140 min; the longest
+Rust lifetime, 83 min, went 0.8 -> 1.4 -> 1.0 GB); a multi-hour single
+lifetime run is still needed to rule out a slow leak.
+
 ## Implementation notes
 
 - M12 operator binary (2026-10-14): `celestia-rs start` reads config.toml /
