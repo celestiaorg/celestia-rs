@@ -23,7 +23,7 @@ question 2).
 | S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
 | S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
 | V9  | in progress | **App version 9** (mainnet's celestia-app v9.0.8) at Go parity inside the same app, gated on the block's app version, and the v9→v10 upgrade exactly as the multiplexer runs it ([ADR 0004](docs/adr/0004-app-version-9.md)) | Every `v9-*` devnet scenario (recorded from Go v9.0.8; `v9-upgrade` switches binaries inside `Commit` like the multiplexer) replays at full parity (`devnet-conformance/tests/replay_scenarios.rs`) |
-| S3  | in progress | State sync client + snapshot import (devnet Go↔Rust done); follow Arabica/Mocha as a full node behind celestia-core | Full node follows the testnet tip with matching app hashes |
+| S3  | completed   | State sync client + snapshot import (devnet Go↔Rust done); follow Mocha / mainnet — `celestia-rs follow` (HTTPS RPC, light-client verified, Go snapshot bootstrap) follows the Mocha tip and mainnet (app v9) with matching app hashes (P2P full node: OPEN_QUESTIONS #1) | Full node follows the testnet tip with matching app hashes |
 | M9  | completed   | Rust consensus engine (Tendermint BFT, celestia-core semantics) — `privval`, `nodestore`, `consensus` (+ reactor on `p2p`), `propagation` (RECOVERY), `celestia-rs start` as a full network participant | Mixed Rust+Go private devnet reaches consensus (`conformance/devnet/mixed-validators.sh`) |
 | M10 | completed   | Rust P2P (secret connection, MConn, PEX), mempool, block sync — `p2p`, CAT `mempool`, `blocksync`, `evidence`, `statesync` done; `celestia-rs start` block-syncs / state-syncs from Go and serves Go (`blocksync-interop.sh`); propagation + consensus gossip with Go validators (`mixed-validators.sh`), txs both ways (`mempool-interop.sh`) | Rust node peers with Go nodes and gossips blocks/txs |
 | M11 | completed   | RPC & gRPC: ABCI `Query` (store proofs, historical heights, gRPC routing), every query service, gRPC server and REST gateway in `celestia-rs abci` | Responses match Go for a canned request corpus (13 scenarios, 46.8k ABCI + 30.6k REST requests, `devnet-conformance/tests/query_corpus.rs`) |
@@ -33,6 +33,46 @@ question 2).
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
 ## Current focus
+
+**S3 — following public networks over HTTPS (2026-10-15).** P2P is
+blocked from the development container, so `celestia-rs follow`
+(`docs/operator-guide.md` §10) follows a network over celestia-core RPC:
+per height it light-client verifies the header (`light::verify_adjacent`),
+checks that the rebuilt block's id (header + part set, so every tx) is the
+one 2/3+ of our validator set signed, compares `app_hash`,
+`last_results_hash`, validator and consensus-param hashes with what our
+own execution produced, runs `ValidateBlock` + `ProcessProposal`, and
+executes the block through the `start` block executor; the first
+divergence stops it with a diagnostic bundle (per-tx results vs the
+network's `/block_results`, every store's root hash from the network's
+ICS-23 proofs vs ours). Bootstrap: the Go SDK state-sync snapshot inside
+Polkachu's pruned tarballs (`data/snapshots/<h>/3`, streamed out of the
+`.tar.lz4`: 167 MB for Mocha, 644 MB for mainnet), restored through
+`OfferSnapshot` / `ApplySnapshotChunk` with the light-client-trusted app
+hash.
+
+| Network | Range followed with matching app hash, results and validator sets | Notes |
+|---|---|---|
+| Mocha (`mocha-5`, app v10) | 1,624,501 → tip (1,710,000+), ~85,500 heights, at the tip since 11:09 UTC | PayForBlobs (~96k), PayForFibre, fibre escrow, bank, staking, authz, feegrant, unjail. No mismatch. Mocha's v10 era has no IBC or hyperlane traffic (hyperlane txs only at v9 heights 799,940–973,254) |
+| Mainnet (`celestia`, app v9) | 14,894,001 → 14,905,800+ (running) | PayForBlobs, IBC (update client, recv / ack, transfer), ICA host txs, hyperlane, staking, distribution, authz. Four bugs found and fixed (below) |
+
+Bugs found by following real networks (each with a regression test):
+v9 snapshots could not be state-synced (`unknown store: fibre`);
+mainnet's last completed upgrade `v9` had no handler at app version 9
+(halt at the first block); a redelegation from an unbonded validator
+returned the Unix epoch instead of Go's zero time (`LastResultsHash`);
+out of gas inside an ICA host tx was turned into an error ack and kept
+consuming gas instead of failing the tx at the first exceeding
+consumption like Go's panic (`LastResultsHash`). Mainnet headers are also
+verified light-client-only (`follow --light-only`, sequential + skipping
+to the tip, with witnesses).
+
+Throughput (release build, shared 4-core container under load): 7–14
+blocks/s on Mocha (execution-bound; debug build 1.5–2.5), 2–3 blocks/s on
+mainnet (heavier blocks; RPC fetch ~1/3 of the time). Open: the Mocha
+v9 era and mainnet before 14.89M need a v9 snapshot (or genesis replay);
+`LightClientAttackEvidence` JSON decoding; a release-mode long soak at the
+mainnet tip.
 
 **V9 (app version 9).** Mainnet runs celestia-app v9.0.8 and Mocha started
 at app version 9, so the state machine also executes app-version-9 blocks
@@ -80,7 +120,6 @@ through a staking workload (`conformance/devnet/mixed.sh`).
 | Light client & state sync (ADR 0003) | `light` (verifier, bisection, detector, store, RPC provider; Go vectors 720 verifier + 196 client scenarios at parity) and `statesync` (reactor, syncer, state provider); a Rust node state-syncs from Go peers and serves snapshots to Go (`conformance/devnet/statesync-rust.sh`) |
 | Queries (M11) | ABCI `Query` (store/ICS-23 proofs, app, p2p, custom inclusion proofs, gRPC routing at historical heights) and every query service incl. hyperlane/warp, zkism, forwarding, IBC, reflection (incl. `cosmos.reflection.v1` FileDescriptors on the empty corpus and the gRPC-only `v2alpha1` service, `reflection-v2alpha1.json` recorded from Go), the legacy amino tx codec (`TxDecodeAmino`/`TxEncodeAmino`: go-amino ported over a type schema dumped from celestia-appd, `conformance/aminoschema`; 77 Go vectors incl. errors and panics, all in the empty corpus), cmtservice/tx status/gas estimation over celestia-core RPC; gRPC server (`--grpc-address`) and REST gateway (`--api-address`) in `celestia-rs abci`; byte-identical to Go on the 13-scenario query corpus |
 | Deferred (M11) | The validator-local fibre promise cache, Go build info in `GetNodeInfo` |
-| Not started | testnet state sync (S3) |
 
 M2's disk-backed IAVL and non-empty historical import landed with ADR 0002
 (snapshot import of Go state, verified against Go app hashes); S3 now only
