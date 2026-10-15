@@ -150,10 +150,10 @@ fn sign_mode_name(m: i32) -> String {
 fn direct_aux_sign_bytes(sd: &SignerData, tx: &Tx) -> R<Result<Vec<u8>, String>> {
     let fee = txview::fee(tx)?;
     let fee_payer = if fee.payer.is_empty() {
-        let Some(first) = tx.body.messages.first() else {
+        if tx.body.messages.is_empty() {
             return Ok(Err("no signer found".into()));
-        };
-        let signers = match txview::msg_signers(first) {
+        }
+        let signers = match txview::tx_msg_signers(tx, 0) {
             Ok(s) => s,
             Err(e) => return Ok(Err(e.log)),
         };

@@ -572,9 +572,17 @@ pub fn write_square(
 
 /// `validateTxOrdering`: normal txs, then blob txs, then pay-for-fibre txs.
 pub fn validate_tx_ordering(txs: &[ClassifiedTx]) -> Result<()> {
+    validate_ordering(txs, true)
+}
+
+/// `validateTxOrdering`, with `ClassifiedTx.Validate` only if `check`
+/// (rc4 has none).
+fn validate_ordering(txs: &[ClassifiedTx], check: bool) -> Result<()> {
     let (mut seen_blob, mut seen_fibre) = (false, false);
     for (index, tx) in txs.iter().enumerate() {
-        tx.validate()?;
+        if check {
+            tx.validate()?;
+        }
         match tx {
             ClassifiedTx::Fibre(_) => seen_fibre = true,
             ClassifiedTx::Blob(_) => {
@@ -607,6 +615,27 @@ pub fn construct(
     subtree_root_threshold: usize,
 ) -> Result<Square> {
     validate_tx_ordering(txs)?;
+    build(txs, max_square_size, subtree_root_threshold)
+}
+
+/// go-square v4.0.0-rc4 `Construct(txs [][]byte, ...)` (celestia-app v9.0.8)
+/// over its own classification of the raw txs: like [`construct`] without
+/// `ClassifiedTx.Validate`, which rc4 does not have (an empty normal tx is
+/// laid out as a zero-length tx).
+pub fn construct_rc4(
+    txs: &[ClassifiedTx],
+    max_square_size: usize,
+    subtree_root_threshold: usize,
+) -> Result<Square> {
+    validate_ordering(txs, false)?;
+    build(txs, max_square_size, subtree_root_threshold)
+}
+
+fn build(
+    txs: &[ClassifiedTx],
+    max_square_size: usize,
+    subtree_root_threshold: usize,
+) -> Result<Square> {
     let mut builder = Builder::new(max_square_size, subtree_root_threshold)?;
     for (index, tx) in txs.iter().enumerate() {
         let added = match tx {

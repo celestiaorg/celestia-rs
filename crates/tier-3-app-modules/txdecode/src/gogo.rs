@@ -98,9 +98,36 @@ pub(crate) struct Dyn {
 
 /// Looks up a message type in the schema.
 pub(crate) fn info(name: &str) -> GoResult<&'static MessageInfo> {
+    if crate::v9() && name == V9_REMOTE_ROUTER.name {
+        return Ok(&V9_REMOTE_ROUTER);
+    }
     wire_table::message(name)
         .ok_or_else(|| GoError::new(format!("failed to retrieve the message of type {name:?}")))
 }
+
+/// hyperlane-cosmos v1.1.0's `hyperlane.warp.v1.RemoteRouter` (celestia-app
+/// v9.0.8): `receiver_contract` (2) is a plain string, not a `HexAddress`
+/// customtype; the only decoding-relevant schema difference from v1.3.0.
+static V9_REMOTE_ROUTER: std::sync::LazyLock<MessageInfo> = std::sync::LazyLock::new(|| {
+    let base = wire_table::message("hyperlane.warp.v1.RemoteRouter");
+    let fields: Vec<FieldInfo> = base
+        .map(|m| m.fields.to_vec())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut f| {
+            if f.number == 2 {
+                f.custom = "";
+                f.nullable = true;
+            }
+            f
+        })
+        .collect();
+    MessageInfo {
+        name: "hyperlane.warp.v1.RemoteRouter",
+        map_entry: false,
+        fields: Box::leak(fields.into_boxed_slice()),
+    }
+});
 
 impl Dyn {
     pub(crate) fn new(info: &'static MessageInfo) -> Self {

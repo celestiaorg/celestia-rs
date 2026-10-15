@@ -169,25 +169,53 @@ pub(crate) fn classify_txs(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String>
         .collect()
 }
 
+/// go-square v4.0.0-rc4 `populateBuilder`'s classification (app version 9):
+/// a `BlobTx` (an invalid one fails), else a pay-for-fibre tx by rc4's
+/// `TryParseFibreTx` (a malformed one fails), else a normal tx. A v9 block
+/// cannot hold a decodable `MsgPayForFibre` tx, but rc4 parses txs its own
+/// way and lays out a tx whose repeated `body_bytes` put a `MsgPayForFibre`
+/// first as a fibre tx ([`fibre_tx::try_parse_v9`]).
+pub(crate) fn classify_txs_v9(txs: &[Vec<u8>]) -> Result<Vec<ClassifiedTx>, String> {
+    txs.iter()
+        .enumerate()
+        .map(|(i, raw)| match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Ok(u)) => to_square_blob_tx(&u).map(ClassifiedTx::Blob),
+            Some(Err(e)) => Err(format!("unmarshalling blob tx at index {i}: {e:?}")),
+            None => match fibre_tx::try_parse_v9(raw) {
+                Ok(Some(f)) => Ok(ClassifiedTx::Fibre(f)),
+                Ok(None) => Ok(ClassifiedTx::Normal(raw.clone())),
+                Err(e) => Err(format!("parsing fibre tx at index {i}: {e}")),
+            },
+        })
+        .collect()
+}
+
 /// The square size and data root of a block's txs (`da.ConstructEDS` with
 /// `SquareSizeUpperBound`, as celestia-app's proof and DAH helpers build
 /// it): go-square rc4 classification at app version 9, the v10 one
 /// otherwise.
 pub fn block_data_root(app_version: u64, txs: &[Vec<u8>]) -> Result<(u64, Vec<u8>), String> {
-    let classified = if crate::stores::is_v9(app_version) {
-        txs.iter()
-            .map(|raw| match txdecode::unmarshal_blob_tx_v9(raw) {
-                Some(Ok(u)) => to_square_blob_tx(&u).map(ClassifiedTx::Blob),
-                Some(Err(e)) => Err(format!("unmarshalling blob tx: {e:?}")),
-                None => Ok(ClassifiedTx::Normal(raw.clone())),
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    } else {
-        classify_txs(txs)?
-    };
     let size = usize::try_from(SQUARE_SIZE_UPPER_BOUND).map_err(|e| e.to_string())?;
-    let square =
-        v4::construct(&classified, size, SUBTREE_ROOT_THRESHOLD).map_err(|e| e.to_string())?;
+    block_data_root_with_max(app_version, txs, size)
+}
+
+/// [`block_data_root`] with an explicit max square size
+/// (`da.ConstructEDS(txs, appVersion, maxSquareSize)`).
+pub fn block_data_root_with_max(
+    app_version: u64,
+    txs: &[Vec<u8>],
+    max_square_size: usize,
+) -> Result<(u64, Vec<u8>), String> {
+    let square = if crate::stores::is_v9(app_version) {
+        v4::construct_rc4(
+            &classify_txs_v9(txs)?,
+            max_square_size,
+            SUBTREE_ROOT_THRESHOLD,
+        )
+    } else {
+        v4::construct(&classify_txs(txs)?, max_square_size, SUBTREE_ROOT_THRESHOLD)
+    }
+    .map_err(|e| e.to_string())?;
     let (width, root) = data_root(&square).map_err(|e| e.0)?;
     Ok((width as u64, root))
 }
@@ -641,18 +669,11 @@ fn process_v9(
     let Ok(max_square_size) = max_effective_square_size(ctx) else {
         return Ok(false);
     };
-    let mut classified = Vec::with_capacity(req.txs.len());
-    for raw in &req.txs {
-        classified.push(match txdecode::unmarshal_blob_tx_v9(raw) {
-            Some(Ok(u)) => match to_square_blob_tx(&u) {
-                Ok(b) => ClassifiedTx::Blob(b),
-                Err(_) => return Ok(false),
-            },
-            Some(Err(_)) => return Ok(false),
-            None => ClassifiedTx::Normal(raw.clone()),
-        });
-    }
-    let Ok(square) = v4::construct(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
+    // rc4 `Construct(req.Txs)` classifies the raw txs itself.
+    let Ok(classified) = classify_txs_v9(&req.txs) else {
+        return Ok(false);
+    };
+    let Ok(square) = v4::construct_rc4(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
         return Ok(false);
     };
     let Ok((width, root)) = proposed.data_root(&square) else {

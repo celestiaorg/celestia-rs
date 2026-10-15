@@ -28,16 +28,22 @@ struct BlobTxProto {
 }
 
 /// One field as protobuf-go's fast-path decoder sees it.
-enum PgoField<'a> {
+pub enum PgoField<'a> {
+    /// A known length-delimited field: number and payload.
     Bytes(u32, &'a [u8]),
+    /// A known varint field: number and value.
     Varint(u32, u64),
+    /// Any other (well-formed) field.
     Unknown,
 }
 
-/// Iterates fields with protobuf-go `unmarshalPointer` semantics. `known`
-/// says which field numbers are bytes-typed (wire type 2) and which are
-/// varints; a known field with another wire type is an unknown field.
-fn pgo_fields<'a>(
+/// Iterates fields with protobuf-go `unmarshalPointer` semantics.
+/// `bytes_fields` / `varint_fields` say which field numbers are
+/// length-delimited (wire type 2) and which are varints; a known field with
+/// another wire type is an unknown field. `Err` where `proto.Unmarshal`
+/// fails (malformed wire data, field number 0, a stray end group).
+#[allow(clippy::result_unit_err)]
+pub fn pgo_fields<'a>(
     mut b: &'a [u8],
     bytes_fields: &[u32],
     varint_fields: &[u32],

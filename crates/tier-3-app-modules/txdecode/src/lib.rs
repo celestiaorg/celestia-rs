@@ -45,8 +45,8 @@ use sdk::SdkError;
 use sdk::tx::Tx;
 
 pub use wrappers::{
-    BlobTxError, UnwrappedBlobTx, marshal_blob_tx, unmarshal_blob_tx, unmarshal_blob_tx_v9,
-    unmarshal_index_wrapper,
+    BlobTxError, PgoField, UnwrappedBlobTx, marshal_blob_tx, pgo_fields, unmarshal_blob_tx,
+    unmarshal_blob_tx_v9, unmarshal_index_wrapper,
 };
 
 use crate::gogo::{Dyn, GoError, Mode};
@@ -166,6 +166,16 @@ pub fn has_duplicate_tx_raw_field(mut tx: &[u8]) -> bool {
         tx = &tx[n as usize..];
     }
     false
+}
+
+/// gogoproto `Unmarshal` of `data` into the registered message `name` (full
+/// proto name, e.g. `cosmos.tx.v1beta1.TxRaw`) with Go's semantics (no UTF-8
+/// checks, customtype and stdtime validation, last-wins scalars), re-encoded
+/// so prost decodes the struct Go holds (invalid UTF-8 replaced). `Err` is
+/// Go's unmarshal error. `Any` fields are not unpacked.
+pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
+    let d = gogo::unmarshal(name, data).map_err(|e| e.0)?;
+    Ok(gogo::marshal(&d, Mode::Struct))
 }
 
 /// [`decode`] or [`decode_v9`] by app version.
@@ -397,6 +407,21 @@ pub mod testing {
             auth_info: marshal(&auth, Mode::Marshal),
             msgs,
         })
+    }
+
+    /// [`canonical_tx`] with the registry and schema of `app_version`
+    /// (celestia-app v9.0.8's below 10).
+    #[must_use]
+    pub fn canonical_tx_for(
+        app_version: u64,
+        body_bytes: &[u8],
+        auth_info_bytes: &[u8],
+    ) -> Option<CanonicalTx> {
+        if app_version != 0 && app_version < 10 {
+            crate::with_v9(|| canonical_tx(body_bytes, auth_info_bytes))
+        } else {
+            canonical_tx(body_bytes, auth_info_bytes)
+        }
     }
 
     /// Message types the registry dump says implement

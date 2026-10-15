@@ -110,11 +110,144 @@ pub fn msg_signers(any: &Any) -> Result<Vec<Vec<u8>>, SdkError> {
         .collect()
 }
 
+/// protobuf-go `protowire.ConsumeVarint`: at most 10 bytes, the 10th at
+/// most 1 (gogoproto accepts any 10th byte).
+fn strict_varint(b: &mut &[u8]) -> Option<u64> {
+    let mut v = 0u64;
+    for i in 0..10 {
+        let (&x, rest) = b.split_first()?;
+        *b = rest;
+        if i == 9 && x > 1 {
+            return None;
+        }
+        v |= u64::from(x & 0x7f) << (7 * i);
+        if x < 0x80 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// What protobuf-go `dynamicpb` decoding rejects in bytes gogoproto
+/// accepted, for message `msg` ([`crate::getsigners_schema`]): invalid
+/// UTF-8 in a proto3 string field and varints protobuf-go cannot parse
+/// (also inside packed repeated scalars), depth first in wire order.
+fn dynamicpb_check(msg: &str, mut b: &[u8], depth: usize) -> Result<(), String> {
+    use crate::getsigners_schema::{MESSAGE_FIELDS, PACKED_FIELDS, STRING_FIELDS};
+    const WIRE: &str = "proto: cannot parse invalid wire-format data";
+    // protobuf-go's recursion limit.
+    if depth > 10_000 {
+        return Err("exceeded maximum recursion depth".into());
+    }
+    while !b.is_empty() {
+        let tag = strict_varint(&mut b).ok_or(WIRE)?;
+        let num = u32::try_from(tag >> 3).map_err(|_| WIRE)?;
+        if num == 0 || num > (1 << 29) - 1 {
+            return Err(WIRE.into());
+        }
+        match tag & 7 {
+            0 => {
+                strict_varint(&mut b).ok_or(WIRE)?;
+            }
+            1 | 5 => {
+                let n = if tag & 7 == 1 { 8 } else { 4 };
+                b = b.get(n..).ok_or(WIRE)?;
+            }
+            2 => {
+                let len = strict_varint(&mut b)
+                    .and_then(|l| usize::try_from(l).ok())
+                    .ok_or(WIRE)?;
+                let payload = b.get(..len).ok_or(WIRE)?;
+                b = &b[len..];
+                let key = |&(m, n, _): &(&str, u32, &str)| (m, n).cmp(&(msg, num));
+                if let Ok(i) = STRING_FIELDS.binary_search_by(key) {
+                    if std::str::from_utf8(payload).is_err() {
+                        return Err(format!(
+                            "proto: field {msg}.{} contains invalid UTF-8",
+                            STRING_FIELDS[i].2
+                        ));
+                    }
+                } else if let Ok(i) = MESSAGE_FIELDS.binary_search_by(key) {
+                    dynamicpb_check(MESSAGE_FIELDS[i].2, payload, depth + 1)?;
+                } else if let Ok(i) =
+                    PACKED_FIELDS.binary_search_by(|&(m, n, _)| (m, n).cmp(&(msg, num)))
+                {
+                    match PACKED_FIELDS[i].2 {
+                        0 => {
+                            let mut p = payload;
+                            while !p.is_empty() {
+                                strict_varint(&mut p).ok_or(WIRE)?;
+                            }
+                        }
+                        size if payload.len() % size != 0 => return Err(WIRE.into()),
+                        _ => {}
+                    }
+                }
+            }
+            3 => skip_group(&mut b, num, depth).ok_or(WIRE)?,
+            _ => return Err(WIRE.into()),
+        }
+    }
+    Ok(())
+}
+
+/// protobuf-go `ConsumeFieldValue` of a group's contents (after its start
+/// tag) through the matching end tag.
+fn skip_group(b: &mut &[u8], num: u32, depth: usize) -> Option<()> {
+    if depth > 10_000 {
+        return None;
+    }
+    loop {
+        let tag = strict_varint(b)?;
+        let n = u32::try_from(tag >> 3).ok()?;
+        if n == 0 || n > (1 << 29) - 1 {
+            return None;
+        }
+        match tag & 7 {
+            0 => {
+                strict_varint(b)?;
+            }
+            1 => *b = b.get(8..)?,
+            5 => *b = b.get(4..)?,
+            2 => {
+                let len = usize::try_from(strict_varint(b)?).ok()?;
+                *b = b.get(len..)?;
+            }
+            3 => skip_group(b, n, depth + 1)?,
+            4 if n == num => return Some(()),
+            _ => return None,
+        }
+    }
+}
+
+/// Signers of the tx's `i`-th message as `Tx.GetSigners` computes them
+/// (cosmos-proto `anyutil.Unpack`, then the signing context). A type with
+/// a registered protobuf-go (pulsar) Go type is decoded with its generated
+/// unmarshal, which keeps invalid UTF-8 in strings like gogoproto; any
+/// other type with `dynamicpb`, which rejects invalid UTF-8 only in the
+/// string fields whose resolved descriptor is proto3
+/// ([`crate::getsigners_schema`]). prost rejects it everywhere, so the
+/// signers are read from the normalized message (the decoded gogoproto
+/// struct, invalid UTF-8 replaced) after `dynamicpb`'s check on the bytes
+/// as received.
+pub fn tx_msg_signers(tx: &Tx, i: usize) -> Result<Vec<Vec<u8>>, SdkError> {
+    use crate::getsigners_schema::DYNAMIC_ROOTS;
+    let raw = &tx.body.messages[i];
+    if let Ok(r) = DYNAMIC_ROOTS.binary_search_by(|(u, _)| (*u).cmp(raw.type_url.as_str())) {
+        dynamicpb_check(DYNAMIC_ROOTS[r].1, &raw.value, 0)
+            .map_err(|e| internal(format!("cannot unmarshal msg {}: {e}", raw.type_url)))?;
+    }
+    match tx.normalized_msgs.get(i) {
+        Some(n) if n.type_url == raw.type_url => msg_signers(n),
+        _ => msg_signers(raw),
+    }
+}
+
 /// `Tx.GetSigners`: unique message signers in order, then the fee payer.
 pub fn signers(tx: &Tx) -> Result<Vec<Vec<u8>>, SdkError> {
     let mut out: Vec<Vec<u8>> = Vec::new();
-    for msg in tx.msgs() {
-        for s in msg_signers(msg)? {
+    for i in 0..tx.msgs().len() {
+        for s in tx_msg_signers(tx, i)? {
             if !out.contains(&s) {
                 out.push(s);
             }

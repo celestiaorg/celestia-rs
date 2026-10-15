@@ -122,8 +122,19 @@ fn checksum(hrp: &str, data: &[u8]) -> String {
 /// SDK's bech32 address codec) with Go's error strings
 /// (`decoding bech32 failed: ...`).
 pub fn decode_and_convert(input: &str) -> Result<(String, Vec<u8>), String> {
-    let fail = |e: String| Err(format!("decoding bech32 failed: {e}"));
-    if input.len() > 1023 || input.len() < 8 {
+    decode_with_limit(input, 1023).map_err(|e| format!("decoding bech32 failed: {e}"))
+}
+
+/// btcutil v1.0.5 `bech32.DecodeToBase256`: [`decode_and_convert`] with
+/// BIP-173's 90-character limit and Go's unwrapped error strings (go-square
+/// decodes fibre signers with it).
+pub fn decode_to_base256(input: &str) -> Result<(String, Vec<u8>), String> {
+    decode_with_limit(input, 90)
+}
+
+fn decode_with_limit(input: &str, limit: usize) -> Result<(String, Vec<u8>), String> {
+    let fail = |e: String| Err(e);
+    if input.len() > limit || input.len() < 8 {
         return fail(format!("invalid bech32 string length {}", input.len()));
     }
     let mut has_lower = false;
