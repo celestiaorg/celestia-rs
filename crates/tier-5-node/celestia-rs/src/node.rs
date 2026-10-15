@@ -33,7 +33,7 @@ use privval::FilePv;
 use prost::Message as _;
 
 /// The Rust app behind [`AppConn`].
-struct AppAdapter(Arc<Mutex<app::App>>);
+pub(crate) struct AppAdapter(pub(crate) Arc<Mutex<app::App>>);
 
 fn app_err(e: &sdk::SdkError) -> nodestore::Error {
     nodestore::Error::new(e.log.clone())

@@ -2,10 +2,12 @@
 //! client and state sync use) and the HTTP light block provider
 //! (`light/provider/http`).
 //!
-//! Requests are plain HTTP/1.1 `GET`s of the URI endpoints
-//! (`/commit?height=…`) over `std::net::TcpStream` with a timeout; responses
-//! are CometBFT JSON (`cmtjson`: 64-bit integers as strings, hashes as
-//! upper-case hex, signatures and keys as base64).
+//! Requests are HTTP/1.1 `GET`s of the URI endpoints (`/commit?height=…`)
+//! with a timeout: plain HTTP over `std::net::TcpStream`, and `https://`
+//! remotes through the system `curl` (TLS, `HTTPS_PROXY` and CA settings
+//! come from the environment, like the genesis download of the node
+//! binary). Responses are CometBFT JSON (`cmtjson`: 64-bit integers as
+//! strings, hashes as upper-case hex, signatures and keys as base64).
 
 use std::io::{Read as _, Write as _};
 use std::net::{TcpStream, ToSocketAddrs as _};
@@ -15,8 +17,8 @@ use base64::Engine as _;
 use ctypes::params::{AbciParams, BlockParams, EvidenceParams, ValidatorParams, VersionParams};
 use ctypes::part_set::PartSetHeader;
 use ctypes::{
-    BlockId, Commit, CommitSig, ConsensusParams, Evidence, Header, LightBlock, PubKey,
-    SignedHeader, Time, Validator, ValidatorSet,
+    Block, BlockId, Commit, CommitSig, ConsensusParams, Data, Evidence, EvidenceData, Header,
+    LightBlock, PubKey, SignedHeader, Time, Tx, Validator, ValidatorSet,
 };
 use serde_json::Value;
 
@@ -52,6 +54,7 @@ pub struct RpcClient {
     remote: String,
     host_port: String,
     timeout: Duration,
+    https: bool,
 }
 
 /// `/status` subset.
@@ -94,6 +97,7 @@ impl RpcClient {
         } else {
             format!("http://{remote}")
         };
+        let https = remote.starts_with("https://");
         let host_port = remote
             .split_once("://")
             .map_or(remote.as_str(), |(_, r)| r)
@@ -103,6 +107,7 @@ impl RpcClient {
             remote,
             host_port,
             timeout,
+            https,
         }
     }
 
@@ -112,7 +117,58 @@ impl RpcClient {
         &self.remote
     }
 
+    /// `GET path` → the JSON-RPC `result` (errors mapped to [`RpcError`]).
+    pub fn get_json(&self, path: &str) -> RpcResult<Value> {
+        self.get(path)
+    }
+
+    /// `GET path` over HTTPS with the system `curl`: the response body.
+    fn curl_body(&self, path: &str) -> RpcResult<Vec<u8>> {
+        let url = format!("https://{}{path}", self.host_port);
+        let secs = self.timeout.as_secs().max(1).to_string();
+        let out = std::process::Command::new("curl")
+            .args(["-sS", "--compressed", "--max-time", &secs])
+            .args(["-H", "Accept: application/json", &url])
+            .output()
+            .map_err(|e| rpc_err(format!("post failed: run curl: {e}")))?;
+        if out.status.success() {
+            return Ok(out.stdout);
+        }
+        let msg = String::from_utf8_lossy(&out.stderr).trim().to_owned();
+        // curl exit 28: operation timed out.
+        Err(if out.status.code() == Some(28) {
+            rpc_err(format!(
+                "post failed: Client.Timeout exceeded while awaiting headers ({msg})"
+            ))
+        } else {
+            rpc_err(format!("post failed: {url}: {msg}"))
+        })
+    }
+
     fn get(&self, path: &str) -> RpcResult<Value> {
+        let body = if self.https {
+            self.curl_body(path)?
+        } else {
+            self.http_get(path)?
+        };
+        let v: Value = serde_json::from_slice(&body)
+            .map_err(|e| rpc_err(format!("error unmarshalling: {e}")))?;
+        if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
+            let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
+            let message = err.get("message").and_then(Value::as_str).unwrap_or("");
+            let data = err.get("data").and_then(Value::as_str).unwrap_or("");
+            return Err(if data.is_empty() {
+                rpc_err(format!("RPC error {code} - {message}"))
+            } else {
+                rpc_err(format!("RPC error {code} - {message}: {data}"))
+            });
+        }
+        v.get("result")
+            .cloned()
+            .ok_or_else(|| rpc_err("missing result"))
+    }
+
+    fn http_get(&self, path: &str) -> RpcResult<Vec<u8>> {
         let addr = self
             .host_port
             .to_socket_addrs()
@@ -130,22 +186,7 @@ impl RpcClient {
         s.write_all(req.as_bytes()).map_err(|e| io_err(&e))?;
         let mut raw = Vec::new();
         s.read_to_end(&mut raw).map_err(|e| io_err(&e))?;
-        let body = http_body(&raw)?;
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| rpc_err(format!("error unmarshalling: {e}")))?;
-        if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
-            let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
-            let message = err.get("message").and_then(Value::as_str).unwrap_or("");
-            let data = err.get("data").and_then(Value::as_str).unwrap_or("");
-            return Err(if data.is_empty() {
-                rpc_err(format!("RPC error {code} - {message}"))
-            } else {
-                rpc_err(format!("RPC error {code} - {message}: {data}"))
-            });
-        }
-        v.get("result")
-            .cloned()
-            .ok_or_else(|| rpc_err("missing result"))
+        http_body(&raw)
     }
 
     /// `/status`.
@@ -211,6 +252,16 @@ impl RpcClient {
         Ok((
             int_field(&r, "block_height")?,
             consensus_params_from_json(&r["consensus_params"])?,
+        ))
+    }
+
+    /// `/block?height=h`: the block id and the block. Blocks carrying
+    /// evidence are refused (decoding evidence JSON is not implemented).
+    pub fn block(&self, height: i64) -> RpcResult<(BlockId, Block)> {
+        let r = self.get(&format!("/block?height={height}"))?;
+        Ok((
+            block_id_from_json(&r["block_id"])?,
+            block_from_json(&r["block"])?,
         ))
     }
 
@@ -443,6 +494,54 @@ pub fn commit_from_json(v: &Value) -> RpcResult<Commit> {
         block_id: block_id_from_json(&v["block_id"])?,
         signatures,
     })
+}
+
+/// Decodes a `types.Block` (celestia-core: `data` carries `square_size`;
+/// `Data.hash` is the header's data root, as for a block read from the
+/// store).
+pub fn block_from_json(v: &Value) -> RpcResult<Block> {
+    let header = header_from_json(&v["header"])?;
+    let txs = v["data"]["txs"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|t| {
+                    t.as_str()
+                        .ok_or_else(|| rpc_err("data.txs: expected string"))
+                        .and_then(|s| {
+                            base64::engine::general_purpose::STANDARD
+                                .decode(s.as_bytes())
+                                .map(Tx)
+                                .map_err(|e| rpc_err(format!("data.txs: invalid base64: {e}")))
+                        })
+                })
+                .collect::<RpcResult<Vec<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    if v["evidence"]["evidence"]
+        .as_array()
+        .is_some_and(|e| !e.is_empty())
+    {
+        return Err(rpc_err(format!(
+            "block {} carries evidence; decoding evidence JSON is not implemented: {}",
+            header.height, v["evidence"]
+        )));
+    }
+    let last_commit = (!v["last_commit"].is_null())
+        .then(|| commit_from_json(&v["last_commit"]))
+        .transpose()?;
+    let data = Data::new(
+        txs,
+        uint_field(&v["data"], "square_size")?,
+        Some(header.data_hash.clone()),
+    );
+    Ok(Block::new(
+        header,
+        data,
+        EvidenceData::default(),
+        last_commit,
+    ))
 }
 
 fn signed_header_from_json(v: &Value) -> RpcResult<SignedHeader> {

@@ -399,6 +399,31 @@ pub fn events(evs: &[abci::Event]) -> J {
     }
 }
 
+/// The `/block_results` result for a height's FinalizeBlock response.
+#[must_use]
+pub fn block_results(height: i64, r: &abci::ResponseFinalizeBlock) -> J {
+    J::obj([
+        ("height", J::i64s(height)),
+        (
+            "txs_results",
+            if r.tx_results.is_empty() {
+                J::Null
+            } else {
+                J::Arr(r.tx_results.iter().map(exec_tx_result).collect())
+            },
+        ),
+        ("finalize_block_events", events(&r.events)),
+        ("validator_updates", validator_updates(&r.validator_updates)),
+        (
+            "consensus_param_updates",
+            r.consensus_param_updates
+                .as_ref()
+                .map_or(J::Null, proto_consensus_params),
+        ),
+        ("app_hash", J::b64n(&r.app_hash)),
+    ])
+}
+
 /// `ExecTxResult` (jsonpb).
 #[must_use]
 pub fn exec_tx_result(r: &abci::ExecTxResult) -> J {

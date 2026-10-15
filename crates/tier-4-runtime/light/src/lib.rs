@@ -12,7 +12,8 @@
 //! - [`store`]: the trusted store (`light/store/db`) on a [`kvdb::KvBackend`].
 //! - [`provider`] / [`http`]: the provider trait, Go's mock providers and
 //!   the JSON-RPC provider talking to celestia-core RPC (`/commit`,
-//!   `/validators`, `/status`, `/consensus_params`).
+//!   `/validators`, `/status`, `/consensus_params`, `/block`; HTTPS
+//!   through the system `curl`).
 //!
 //! Outcomes are checked against celestia-core itself
 //! (`conformance/lightvectors`).

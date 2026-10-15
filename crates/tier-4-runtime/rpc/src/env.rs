@@ -1033,29 +1033,7 @@ impl Environment {
             .load_finalize_block_response(height)
             .map_err(s)?
             .ok_or_else(|| format!("could not find results for height #{height}"))?;
-        Ok(J::obj([
-            ("height", J::i64s(height)),
-            (
-                "txs_results",
-                if r.tx_results.is_empty() {
-                    J::Null
-                } else {
-                    J::Arr(r.tx_results.iter().map(encode::exec_tx_result).collect())
-                },
-            ),
-            ("finalize_block_events", encode::events(&r.events)),
-            (
-                "validator_updates",
-                encode::validator_updates(&r.validator_updates),
-            ),
-            (
-                "consensus_param_updates",
-                r.consensus_param_updates
-                    .as_ref()
-                    .map_or(J::Null, encode::proto_consensus_params),
-            ),
-            ("app_hash", J::b64n(&r.app_hash)),
-        ]))
+        Ok(encode::block_results(height, &r))
     }
 
     fn signed_block(&self, h: Option<i128>) -> Result<J, String> {

@@ -762,6 +762,7 @@ dependencies = [
  "evidence",
  "hash",
  "hex",
+ "ics23",
  "keyring",
  "kvdb",
  "light",

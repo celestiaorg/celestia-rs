@@ -33,6 +33,7 @@ encoding = { path = "../../tier-0-primitives/encoding" }
 evidence = { path = "../../tier-4-runtime/evidence" }
 hash = { path = "../../tier-0-primitives/hash" }
 hex = "0.4"
+ics23 = "0.12"
 keyring = { path = "../keyring" }
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
 light = { path = "../../tier-4-runtime/light" }

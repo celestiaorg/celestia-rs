@@ -7,6 +7,7 @@
 //! |---|---|
 //! | `init`, `download-genesis` | `celestia-appd init`, `download-genesis` |
 //! | `start [--network mainnet\|mocha\|arabica\|local]` | `celestia-appd start` (Rust consensus, P2P, mempool, RPC) |
+//! | `follow --rpc <url>[,<url>…]` | — (follow a network over RPC, checking every app hash) |
 //! | `keys add\|import\|import-hex\|export\|list\|show\|delete` | `celestia-appd keys …` (`test` / `file` keyrings) |
 //! | `genesis add-genesis-account\|gentx\|collect-gentxs\|validate` | `celestia-appd genesis …` |
 //! | `tx bank send`, `tx staking delegate`, `tx blob pay-for-blob`, `tx signal …` | `celestia-appd tx …` |
@@ -79,6 +80,10 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
+    /// P2P: verify every block with the light client, execute it and stop
+    /// at the first app hash / results / validator set divergence.
+    Follow(Box<FollowArgs>),
     /// Dump the block store (blocks, commits, validator sets, params,
     /// FinalizeBlock responses) as JSON for the Go verifier.
     ExportBlocks {
@@ -227,6 +232,52 @@ struct StartArgs {
     /// `[instrumentation]`).
     #[arg(long = "prometheus-listen-addr")]
     prometheus_listen_addr: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct FollowArgs {
+    /// Comma-separated RPC servers (`https://host`, `http://host:port`);
+    /// the first is the primary, the others are fallbacks and witnesses.
+    #[arg(long, value_delimiter = ',', required = true)]
+    rpc: Vec<String>,
+    /// Expected chain ID.
+    #[arg(long = "chain-id")]
+    chain_id: Option<String>,
+    /// First start: directory holding a Go SDK state-sync snapshot
+    /// (`<height>/3/<chunk>`, a Go node's `data/snapshots`).
+    #[arg(long)]
+    snapshot: Option<PathBuf>,
+    /// Snapshot height to restore (default: the highest in `--snapshot`).
+    #[arg(long)]
+    snapshot_height: Option<u64>,
+    /// Trusted header hash at the snapshot height (hex; default: the
+    /// primary's).
+    #[arg(long, default_value = "")]
+    trust_hash: String,
+    /// Light client trusting period in hours.
+    #[arg(long, default_value_t = 336)]
+    trust_period_hours: i64,
+    /// Stop after this height (0 = follow forever).
+    #[arg(long = "stop-at-height", default_value_t = 0)]
+    stop_at_height: i64,
+    /// Heights fetched ahead in parallel.
+    #[arg(long, default_value_t = 24)]
+    prefetch: usize,
+    /// Skip `ProcessProposal` (block data checks) on every block.
+    #[arg(long)]
+    no_verify_data: bool,
+    /// Compare headers with the witness servers every N heights (0 = never).
+    #[arg(long, default_value_t = 100)]
+    witness_interval: i64,
+    /// Blocks kept in the block store (`min-retain-blocks`; 0 = all).
+    #[arg(long, default_value_t = 1000)]
+    keep_blocks: u64,
+    /// App state versions kept (pruning-keep-recent).
+    #[arg(long, default_value_t = 100)]
+    pruning_keep_recent: u64,
+    /// State database cache in MiB.
+    #[arg(long, default_value_t = 512)]
+    db_cache_mib: usize,
 }
 
 #[derive(Args, Debug)]
@@ -822,6 +873,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Start(args) => start(&home, *args).await,
+        Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
         Cmd::Abci(args) => abci(&home, cli.home.is_some(), *args).await,
         Cmd::Keys(cmd) => keys_cmd(&home, cmd),
@@ -1002,6 +1054,46 @@ fn prepare_network(home: &Path, name: &str) -> anyhow::Result<()> {
         })?;
     }
     Ok(())
+}
+
+async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
+    let mut app = app::AppOptions::default();
+    app.store.pruning = multistore::PruningOptions {
+        keep_recent: a.pruning_keep_recent,
+        keep_every: 0,
+        interval: 1,
+    };
+    app.db.cache_size = a.db_cache_mib << 20;
+    // No snapshots; blocks below `height - keep_blocks` are pruned (the
+    // follower does not serve the network, so Go's 3000 floor is moot).
+    app.snapshots = snapshots::SnapshotOptions {
+        interval: 0,
+        keep_recent: 0,
+    };
+    app.node.min_retain_blocks = a.keep_blocks;
+    let trust_hash = if a.trust_hash.is_empty() {
+        None
+    } else {
+        Some(hex::decode(&a.trust_hash).context("--trust-hash")?)
+    };
+    let shutdown = ops::Shutdown::new();
+    ops::install_signal_handlers(&shutdown);
+    let opts = celestia_rs::follow::FollowOptions {
+        home: home.to_path_buf(),
+        rpc: a.rpc,
+        chain_id: a.chain_id,
+        snapshot: a.snapshot,
+        snapshot_height: a.snapshot_height,
+        trust_hash,
+        trust_period: a.trust_period_hours * 3600 * 1_000_000_000,
+        stop_height: a.stop_at_height,
+        prefetch: a.prefetch,
+        verify_data: !a.no_verify_data,
+        witness_interval: a.witness_interval,
+        app,
+        shutdown,
+    };
+    tokio::task::spawn_blocking(move || celestia_rs::follow::follow(&opts).map(|_| ())).await?
 }
 
 #[allow(clippy::too_many_lines)]
