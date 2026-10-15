@@ -714,6 +714,130 @@ fn write_diagnostics(
 
 // ---- the loop -----------------------------------------------------------------
 
+/// `follow --light-only`: header verification without execution (a
+/// network whose app version this binary cannot execute yet). The light
+/// client (`light::Client` over the RPC servers, the others as witnesses)
+/// starts from the trusted header at `trust_height` and verifies every
+/// height up to `stop_height` (0: the tip at start) sequentially, then
+/// jumps to the current tip with skipping verification.
+#[allow(clippy::too_many_lines)]
+pub fn light_only(
+    rpc: &[String],
+    chain_id: Option<&str>,
+    trust_height: i64,
+    trust_hash: Option<Vec<u8>>,
+    trust_period: i64,
+    stop_height: i64,
+    shutdown: &crate::ops::Shutdown,
+) -> anyhow::Result<FollowStats> {
+    let primary = RpcClient::new(&rpc[0], RPC_TIMEOUT);
+    let status = primary.status().map_err(|e| anyhow!("status: {e}"))?;
+    if let Some(want) = chain_id
+        && want != status.network
+    {
+        bail!(
+            "{} serves chain {:?}, expected {want:?}",
+            rpc[0],
+            status.network
+        );
+    }
+    let trust_height = if trust_height > 0 {
+        trust_height
+    } else {
+        status.latest_block_height - 1000
+    };
+    let hash = if let Some(h) = trust_hash {
+        h
+    } else {
+        let (sh, _) = primary
+            .commit(Some(trust_height))
+            .map_err(|e| anyhow!("header {trust_height}: {e}"))?;
+        sh.header
+            .as_ref()
+            .and_then(Header::hash)
+            .unwrap_or_default()
+    };
+    let provider = |r: &String| -> Arc<dyn light::Provider> {
+        Arc::new(light::HttpProvider::with_client(
+            status.network.clone(),
+            RpcClient::new(r, RPC_TIMEOUT),
+        ))
+    };
+    let witnesses = if rpc.len() > 1 {
+        rpc[1..].iter().map(provider).collect()
+    } else {
+        vec![provider(&rpc[0])]
+    };
+    let client = |height: i64, hash: Vec<u8>, mode: light::Mode| {
+        light::Client::new(
+            status.network.clone(),
+            &light::TrustOptions {
+                period: trust_period,
+                height,
+                hash,
+            },
+            provider(&rpc[0]),
+            witnesses.clone(),
+            Box::new(light::DbStore::in_memory()),
+            light::Options {
+                mode,
+                ..light::Options::default()
+            },
+        )
+        .map_err(|e| anyhow!("light client: {e}"))
+    };
+    let mut lc = client(trust_height, hash.clone(), light::Mode::Sequential)?;
+    let mut last_hash = hash;
+    let end = if stop_height > 0 {
+        stop_height
+    } else {
+        status.latest_block_height
+    };
+    let started = Instant::now();
+    let mut totals = FollowStats {
+        first: trust_height + 1,
+        last: trust_height,
+        ..FollowStats::default()
+    };
+    for h in trust_height + 1..=end {
+        if shutdown.is_triggered() {
+            break;
+        }
+        let lb = lc
+            .verify_light_block_at_height(h, light::verifier::now())
+            .map_err(|e| anyhow!("light client verification of {h}: {e}"))?;
+        totals.last = h;
+        totals.blocks += 1;
+        last_hash = light::lightblock_hash(&lb);
+        if totals.blocks.is_multiple_of(100) || h == end {
+            #[allow(clippy::cast_precision_loss)]
+            let rate = totals.blocks as f64 / started.elapsed().as_secs_f64().max(1e-9);
+            tracing::info!(
+                height = h,
+                hash = %hex::encode_upper(light::lightblock_hash(&lb)),
+                headers_per_sec = format!("{rate:.2}"),
+                "verified header"
+            );
+        }
+    }
+    if !shutdown.is_triggered() {
+        let tip = primary
+            .status()
+            .map_err(|e| anyhow!("status: {e}"))?
+            .latest_block_height;
+        let mut lc = client(totals.last, last_hash, light::Mode::Skipping)?;
+        let lb = lc
+            .verify_light_block_at_height(tip, light::verifier::now())
+            .map_err(|e| anyhow!("skipping verification of {tip}: {e}"))?;
+        tracing::info!(
+            height = tip,
+            hash = %hex::encode_upper(light::lightblock_hash(&lb)),
+            "verified the tip (skipping verification)"
+        );
+    }
+    Ok(totals)
+}
+
 /// Statistics of a run.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FollowStats {

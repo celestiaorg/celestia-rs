@@ -123,26 +123,46 @@ impl RpcClient {
     }
 
     /// `GET path` over HTTPS with the system `curl`: the response body.
+    /// Connection resets and other transport failures before a response
+    /// (common behind proxies and load balancers) are retried a few times.
     fn curl_body(&self, path: &str) -> RpcResult<Vec<u8>> {
+        let mut attempt = 0;
+        loop {
+            match self.curl_once(path) {
+                Err((code, e)) if attempt < 3 && matches!(code, Some(7 | 35 | 52 | 55 | 56)) => {
+                    attempt += 1;
+                    tracing::debug!(error = %e, attempt, "retrying HTTPS request");
+                    std::thread::sleep(Duration::from_millis(300 * attempt));
+                }
+                r => return r.map_err(|(_, e)| e),
+            }
+        }
+    }
+
+    fn curl_once(&self, path: &str) -> Result<Vec<u8>, (Option<i32>, RpcError)> {
         let url = format!("https://{}{path}", self.host_port);
         let secs = self.timeout.as_secs().max(1).to_string();
         let out = std::process::Command::new("curl")
             .args(["-sS", "--compressed", "--max-time", &secs])
             .args(["-H", "Accept: application/json", &url])
             .output()
-            .map_err(|e| rpc_err(format!("post failed: run curl: {e}")))?;
+            .map_err(|e| (None, rpc_err(format!("post failed: run curl: {e}"))))?;
         if out.status.success() {
             return Ok(out.stdout);
         }
         let msg = String::from_utf8_lossy(&out.stderr).trim().to_owned();
+        let code = out.status.code();
         // curl exit 28: operation timed out.
-        Err(if out.status.code() == Some(28) {
-            rpc_err(format!(
-                "post failed: Client.Timeout exceeded while awaiting headers ({msg})"
-            ))
-        } else {
-            rpc_err(format!("post failed: {url}: {msg}"))
-        })
+        Err((
+            code,
+            if code == Some(28) {
+                rpc_err(format!(
+                    "post failed: Client.Timeout exceeded while awaiting headers ({msg})"
+                ))
+            } else {
+                rpc_err(format!("post failed: {url}: {msg}"))
+            },
+        ))
     }
 
     fn get(&self, path: &str) -> RpcResult<Value> {

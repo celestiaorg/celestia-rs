@@ -250,10 +250,17 @@ struct FollowArgs {
     /// Snapshot height to restore (default: the highest in `--snapshot`).
     #[arg(long)]
     snapshot_height: Option<u64>,
-    /// Trusted header hash at the snapshot height (hex; default: the
-    /// primary's).
+    /// Trusted header hash at the snapshot (or `--trust-height`) height
+    /// (hex; default: the primary's).
     #[arg(long, default_value = "")]
     trust_hash: String,
+    /// Verify headers only, without executing blocks (light client,
+    /// sequential from `--trust-height` to `--stop-at-height` or the tip).
+    #[arg(long)]
+    light_only: bool,
+    /// `--light-only`: trusted height (default: the tip minus 1000).
+    #[arg(long, default_value_t = 0)]
+    trust_height: i64,
     /// Light client trusting period in hours.
     #[arg(long, default_value_t = 336)]
     trust_period_hours: i64,
@@ -1078,6 +1085,22 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
     };
     let shutdown = ops::Shutdown::new();
     ops::install_signal_handlers(&shutdown);
+    let trust_period = a.trust_period_hours * 3600 * 1_000_000_000;
+    if a.light_only {
+        return tokio::task::spawn_blocking(move || {
+            celestia_rs::follow::light_only(
+                &a.rpc,
+                a.chain_id.as_deref(),
+                a.trust_height,
+                trust_hash,
+                trust_period,
+                a.stop_at_height,
+                &shutdown,
+            )
+            .map(|_| ())
+        })
+        .await?;
+    }
     let opts = celestia_rs::follow::FollowOptions {
         home: home.to_path_buf(),
         rpc: a.rpc,
@@ -1085,7 +1108,7 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         snapshot: a.snapshot,
         snapshot_height: a.snapshot_height,
         trust_hash,
-        trust_period: a.trust_period_hours * 3600 * 1_000_000_000,
+        trust_period,
         stop_height: a.stop_at_height,
         prefetch: a.prefetch,
         verify_data: !a.no_verify_data,
