@@ -190,6 +190,19 @@ pub fn run_msgs_gated(
             }
         }
     }
+    // Go's `ConsumeGas` panics at the first consumption past the limit and
+    // `runTx` recovers it: the tx fails right there, with this log and gas
+    // used, even where Rust handled the error as a value afterwards (e.g.
+    // an IBC app turning it into an error acknowledgement).
+    if let Some((descriptor, used)) = ctx.gas.first_out_of_gas()
+        && p.gas.first_out_of_gas().is_none()
+    {
+        ctx.gas.rewind_to_first_out_of_gas();
+        let wanted = ctx.gas.limit().unwrap_or(0);
+        result = Err(sdk::error::sdk::out_of_gas(format!(
+            "out of gas in location: {descriptor}; gasWanted: {wanted}, gasUsed: {used}"
+        )));
+    }
     p.gas = ctx.gas.clone();
     ctx.events = sdk::event::EventManager::default();
     ctx.events.emit_all(outer_events.events().iter().cloned());

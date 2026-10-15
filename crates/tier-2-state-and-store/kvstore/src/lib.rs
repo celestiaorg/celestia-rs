@@ -577,6 +577,9 @@ impl GasConfig {
 pub struct GasMeter {
     limit: Option<Gas>,
     consumed: Gas,
+    /// The first consumption past the limit: its descriptor and the gas
+    /// consumed after it (Go panics right there with `ErrorOutOfGas`).
+    first_out_of_gas: Option<(&'static str, Gas)>,
 }
 
 impl GasMeter {
@@ -586,6 +589,7 @@ impl GasMeter {
         Self {
             limit: Some(limit),
             consumed: 0,
+            first_out_of_gas: None,
         }
     }
 
@@ -595,6 +599,7 @@ impl GasMeter {
         Self {
             limit: None,
             consumed: 0,
+            first_out_of_gas: None,
         }
     }
 
@@ -608,6 +613,23 @@ impl GasMeter {
     #[must_use]
     pub const fn consumed(&self) -> Gas {
         self.consumed
+    }
+
+    /// The first consumption that went past the limit (descriptor, gas
+    /// consumed after it). Go's `ConsumeGas` panics there, so nothing that
+    /// ran afterwards in Rust (an error turned into a value and handled)
+    /// would have run in Go: the transaction fails with this location.
+    #[must_use]
+    pub const fn first_out_of_gas(&self) -> Option<(&'static str, Gas)> {
+        self.first_out_of_gas
+    }
+
+    /// Rewinds the consumed gas to the moment of the first out-of-gas
+    /// consumption (Go's `GasConsumed()` when the panic was recovered).
+    pub fn rewind_to_first_out_of_gas(&mut self) {
+        if let Some((_, consumed)) = self.first_out_of_gas {
+            self.consumed = consumed;
+        }
     }
 
     /// Return consumed gas capped at the finite limit.
@@ -650,6 +672,9 @@ impl GasMeter {
         if let Some(limit) = self.limit
             && self.consumed > limit
         {
+            if self.first_out_of_gas.is_none() {
+                self.first_out_of_gas = Some((descriptor, self.consumed));
+            }
             return Err(Error::OutOfGas {
                 descriptor,
                 limit,
@@ -812,6 +837,25 @@ mod tests {
 
     fn entries(iter: impl Iterator<Item = Entry>) -> Vec<(Vec<u8>, Vec<u8>)> {
         iter.map(|entry| (entry.key, entry.value)).collect()
+    }
+
+    /// The first consumption past the limit is remembered (Go panics
+    /// there); later consumption by code that handled the error does not
+    /// move it, and rewinding restores Go's `GasConsumed()`.
+    #[test]
+    fn first_out_of_gas_is_sticky() {
+        let mut m = GasMeter::new(10);
+        assert!(m.consume(8, "ReadFlat").is_ok());
+        assert!(m.first_out_of_gas().is_none());
+        assert!(m.consume(5, "ReadPerByte").is_err());
+        assert!(m.consume(1000, "ReadFlat").is_err());
+        assert_eq!(m.first_out_of_gas(), Some(("ReadPerByte", 13)));
+        assert_eq!(m.consumed(), 1013);
+        m.rewind_to_first_out_of_gas();
+        assert_eq!(m.consumed(), 13);
+        let mut inf = GasMeter::infinite();
+        assert!(inf.consume(u64::MAX / 2, "x").is_ok());
+        assert!(inf.first_out_of_gas().is_none());
     }
 
     #[test]
