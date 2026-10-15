@@ -12,6 +12,7 @@ pub mod dah;
 pub mod erasure;
 pub mod error;
 pub mod inclusion;
+pub mod par;
 pub mod square;
 pub mod v4;
 

@@ -4,7 +4,10 @@ use hash::Sha256Hasher;
 use shares::{NAMESPACE_SIZE, Namespace, PARITY_SHARES_NAMESPACE};
 
 use crate::inclusion::{round_down_power_of_two, sub_tree_width};
-use crate::{Error, Result};
+use crate::{Error, Result, par};
+
+/// Blobs of fewer shares hash their subtree roots on the calling thread.
+const MIN_PARALLEL_BLOB_SHARES: usize = 1024;
 
 /// Size in bytes of a SHA-256 commitment hash.
 pub const COMMITMENT_HASH_SIZE: usize = 32;
@@ -29,23 +32,34 @@ pub fn create_commitment(
     let subtree_width = sub_tree_width(shares.len(), subtree_root_threshold)?;
     let tree_sizes = merkle_mountain_range_sizes(shares.len() as u64, subtree_width as u64)?;
 
-    let mut subtree_roots = Vec::with_capacity(tree_sizes.len());
+    // (start, end) share range of every subtree.
+    let mut ranges = Vec::with_capacity(tree_sizes.len());
     let mut cursor = 0usize;
     for tree_size in tree_sizes {
         let tree_size = usize::try_from(tree_size).map_err(|_| Error::ArithmeticOverflow)?;
         let end = cursor
             .checked_add(tree_size)
             .ok_or(Error::ArithmeticOverflow)?;
-        let mut leaves = Vec::with_capacity(tree_size);
-        for share in &shares[cursor..end] {
-            let mut leaf = Vec::with_capacity(NAMESPACE_SIZE + share.as_bytes().len());
-            leaf.extend_from_slice(blob.namespace().as_bytes());
-            leaf.extend_from_slice(share.as_bytes());
-            leaves.push(leaf);
-        }
-        subtree_roots.push(namespaced_merkle_root(&leaves)?.to_vec());
+        ranges.push((cursor, end));
         cursor = end;
     }
+
+    // Subtree roots are independent: hash them in parallel (large blobs).
+    let namespace = blob.namespace();
+    let namespace: &[u8] = namespace.as_bytes();
+    let mut roots = vec![[0u8; NMT_NODE_SIZE]; ranges.len()];
+    let min_per_thread = if shares.len() < MIN_PARALLEL_BLOB_SHARES {
+        usize::MAX
+    } else {
+        2
+    };
+    par::for_each_mut(&mut roots, min_per_thread, |i, root| {
+        let (start, end) = ranges[i];
+        let leaves = &shares[start..end];
+        *root = namespaced_merkle_root_of(leaves.len(), |j| (namespace, leaves[j].as_bytes()))?;
+        Ok(())
+    })?;
+    let subtree_roots: Vec<Vec<u8>> = roots.iter().map(|root| root.to_vec()).collect();
 
     Ok(merkle_root_fn(&subtree_roots))
 }
@@ -96,16 +110,23 @@ struct NamespacedRoot {
 }
 
 impl NamespacedRoot {
+    #[cfg(test)]
     fn leaf(leaf: &[u8]) -> Result<Self> {
         if leaf.len() < NAMESPACE_SIZE {
             return Err(Error::InvalidNamespacedMerkleTree(
                 "leaf shorter than namespace",
             ));
         }
-        let namespace = Namespace::from_slice(&leaf[..NAMESPACE_SIZE])?;
+        Self::leaf_parts(&leaf[..NAMESPACE_SIZE], &leaf[NAMESPACE_SIZE..])
+    }
+
+    /// [`Self::leaf`] of `namespace || data` without building the leaf.
+    fn leaf_parts(namespace_bytes: &[u8], data: &[u8]) -> Result<Self> {
+        let namespace = Namespace::from_slice(namespace_bytes)?;
         let mut hasher = Sha256Hasher::new();
         hasher.update(&[NMT_LEAF_PREFIX]);
-        hasher.update(leaf);
+        hasher.update(namespace_bytes);
+        hasher.update(data);
         Ok(Self {
             min_namespace: namespace,
             max_namespace: namespace,
@@ -148,6 +169,7 @@ impl NamespacedRoot {
     }
 }
 
+#[cfg(test)]
 fn nmt_root<T: AsRef<[u8]>>(leaves: &[T]) -> Result<NamespacedRoot> {
     match leaves {
         [] => Err(Error::InvalidNamespacedMerkleTree("empty tree")),
@@ -161,8 +183,33 @@ fn nmt_root<T: AsRef<[u8]>>(leaves: &[T]) -> Result<NamespacedRoot> {
     }
 }
 
-pub(crate) fn namespaced_merkle_root<T: AsRef<[u8]>>(leaves: &[T]) -> Result<[u8; NMT_NODE_SIZE]> {
-    Ok(nmt_root(leaves)?.to_bytes())
+/// The NMT root (29-byte namespaces, parity namespace ignored as a
+/// maximum) of `len` leaves where leaf `i` is
+/// `leaf(i) = (namespace, data)` (the leaf `namespace || data`), hashed in
+/// the same order without materializing the leaves.
+pub(crate) fn namespaced_merkle_root_of<'a, F>(len: usize, leaf: F) -> Result<[u8; NMT_NODE_SIZE]>
+where
+    F: Fn(usize) -> (&'a [u8], &'a [u8]),
+{
+    fn root<'a, F>(start: usize, end: usize, leaf: &F) -> Result<NamespacedRoot>
+    where
+        F: Fn(usize) -> (&'a [u8], &'a [u8]),
+    {
+        match end - start {
+            0 => Err(Error::InvalidNamespacedMerkleTree("empty tree")),
+            1 => {
+                let (namespace, data) = leaf(start);
+                NamespacedRoot::leaf_parts(namespace, data)
+            }
+            len => {
+                let split = start + nmt_split_point(len)?;
+                let left = root(start, split, leaf)?;
+                let right = root(split, end, leaf)?;
+                NamespacedRoot::node(&left, &right)
+            }
+        }
+    }
+    Ok(root(0, len, &leaf)?.to_bytes())
 }
 
 fn nmt_split_point(len: usize) -> Result<usize> {

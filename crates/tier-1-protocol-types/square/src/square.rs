@@ -23,18 +23,7 @@ pub struct Square {
 impl Square {
     /// Construct a square from validated shares.
     pub fn new(shares: Vec<Share>) -> Result<Self> {
-        if shares.is_empty() {
-            return Err(Error::InvalidSquareSize { actual: 0 });
-        }
-        let side = size(shares.len());
-        if !is_power_of_two(side) || side.checked_mul(side) != Some(shares.len()) {
-            return Err(Error::InvalidSquareSize {
-                actual: shares.len(),
-            });
-        }
-        for share in &shares {
-            share.validate()?;
-        }
+        validate_square_shares(&shares)?;
         Ok(Self { shares })
     }
 
@@ -111,6 +100,23 @@ impl TryFrom<Vec<Share>> for Square {
 #[must_use]
 pub fn size(share_count: usize) -> usize {
     round_up_power_of_two(ceil_sqrt(share_count))
+}
+
+/// The checks of [`Square::new`] without taking ownership of the shares.
+pub(crate) fn validate_square_shares(shares: &[Share]) -> Result<()> {
+    if shares.is_empty() {
+        return Err(Error::InvalidSquareSize { actual: 0 });
+    }
+    let side = size(shares.len());
+    if !is_power_of_two(side) || side.checked_mul(side) != Some(shares.len()) {
+        return Err(Error::InvalidSquareSize {
+            actual: shares.len(),
+        });
+    }
+    for share in shares {
+        share.validate()?;
+    }
+    Ok(())
 }
 
 /// Return the canonical empty original data square.
