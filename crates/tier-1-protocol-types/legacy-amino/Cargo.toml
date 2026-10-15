@@ -1,0 +1,22 @@
+[package]
+name = "legacy-amino"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "go-amino v0.16 binary/JSON codec for the legacy StdTx (TxEncodeAmino/TxDecodeAmino), driven by a type schema dumped from celestia-appd."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+math = { path = "../../tier-0-primitives/math" }
+num-bigint = "0.4"
+serde_json = "1"
+
+[dev-dependencies]
+hex = "0.4"

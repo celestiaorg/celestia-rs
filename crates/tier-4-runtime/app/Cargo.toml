@@ -24,6 +24,7 @@ encoding = { path = "../../tier-0-primitives/encoding" }
 grpc-query = { path = "../grpc-query" }
 ics23-proofs = { path = "../../tier-2-state-and-store/ics23-proofs" }
 kvstore = { path = "../../tier-2-state-and-store/kvstore" }
+legacy-amino = { path = "../../tier-1-protocol-types/legacy-amino" }
 multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }

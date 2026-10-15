@@ -41,12 +41,8 @@ pub fn route(path: &str) -> Option<AppHandler> {
         "/cosmos.tx.v1beta1.Service/Simulate" => typed!(simulate_grpc, SimulateRequest),
         "/cosmos.tx.v1beta1.Service/TxDecode" => typed!(tx_decode, TxDecodeRequest),
         "/cosmos.tx.v1beta1.Service/TxEncode" => typed!(tx_encode, TxEncodeRequest),
-        "/cosmos.tx.v1beta1.Service/TxDecodeAmino" => {
-            typed!(tx_decode_amino, TxDecodeAminoRequest)
-        }
-        "/cosmos.tx.v1beta1.Service/TxEncodeAmino" => {
-            typed!(tx_encode_amino, TxEncodeAminoRequest)
-        }
+        "/cosmos.tx.v1beta1.Service/TxDecodeAmino" => tx_decode_amino,
+        "/cosmos.tx.v1beta1.Service/TxEncodeAmino" => tx_encode_amino,
         "/cosmos.base.node.v1beta1.Service/Config" => typed!(node_config, ConfigRequest),
         "/cosmos.base.node.v1beta1.Service/Status" => typed!(node_status, StatusRequest),
         _ => return None,
@@ -155,41 +151,56 @@ fn tx_decode(_: &mut App, _: &mut QueryState, req: TxDecodeRequest) -> QResult<T
     })
 }
 
-/// The legacy amino codec of `StdTx` is not ported: only the request
-/// checks that precede it are answered like Go.
-fn amino_unsupported() -> QueryError {
-    QueryError::Status(
-        Code::Unimplemented,
-        "legacy amino tx codec is not supported".into(),
-    )
+fn amino_error(e: legacy_amino::Error) -> QueryError {
+    match e {
+        legacy_amino::Error::Go(s) => QueryError::Plain(s),
+        legacy_amino::Error::Panic(s) => QueryError::Panic(s),
+        legacy_amino::Error::Sdk(code, s) => QueryError::Sdk(SdkError::new("sdk", code, s)),
+    }
 }
 
-fn tx_decode_amino(
-    _: &mut App,
-    _: &mut QueryState,
-    req: TxDecodeAminoRequest,
-) -> QResult<TxDecodeAminoResponse> {
-    if req.amino_binary.is_empty() {
+/// Whether field 1 occurs in `data` (gogoproto sets a present but empty
+/// bytes field to `[]byte{}`, which Go's `== nil` check lets through).
+fn has_field_1(mut data: &[u8]) -> bool {
+    use prost::encoding::{DecodeContext, decode_key, skip_field};
+    while !data.is_empty() {
+        let Ok((tag, wt)) = decode_key(&mut data) else {
+            return false;
+        };
+        if tag == 1 {
+            return true;
+        }
+        if skip_field(wt, tag, &mut data, DecodeContext::default()).is_err() {
+            return false;
+        }
+    }
+    false
+}
+
+/// `TxDecodeAmino`: the legacy amino codec of `StdTx` (`legacy-amino`).
+fn tx_decode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<u8>> {
+    let req = TxDecodeAminoRequest::decode(data).map_err(|e| QueryError::Plain(e.to_string()))?;
+    if req.amino_binary.is_empty() && !has_field_1(data) {
         return Err(QueryError::Status(
             Code::InvalidArgument,
             "invalid empty tx bytes".into(),
         ));
     }
-    Err(amino_unsupported())
+    let json = legacy_amino::tx_decode_amino(&req.amino_binary).map_err(amino_error)?;
+    Ok(TxDecodeAminoResponse { amino_json: json }.encode_to_vec())
 }
 
-fn tx_encode_amino(
-    _: &mut App,
-    _: &mut QueryState,
-    req: TxEncodeAminoRequest,
-) -> QResult<TxEncodeAminoResponse> {
+/// `TxEncodeAmino`.
+fn tx_encode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<u8>> {
+    let req = TxEncodeAminoRequest::decode(data).map_err(|e| QueryError::Plain(e.to_string()))?;
     if req.amino_json.is_empty() {
         return Err(QueryError::Status(
             Code::InvalidArgument,
             "invalid empty tx json".into(),
         ));
     }
-    Err(amino_unsupported())
+    let bz = legacy_amino::tx_encode_amino(req.amino_json.as_bytes()).map_err(amino_error)?;
+    Ok(TxEncodeAminoResponse { amino_binary: bz }.encode_to_vec())
 }
 
 fn tx_encode(_: &mut App, _: &mut QueryState, req: TxEncodeRequest) -> QResult<TxEncodeResponse> {

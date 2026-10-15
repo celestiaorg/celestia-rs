@@ -54,7 +54,8 @@ fn sort_by_bytes<M: Message>(v: &mut [M]) {
 
 /// Puts the lists Go fills from map iteration (sign modes, interfaces and
 /// their implementers / accepting messages, query services, tx messages)
-/// in byte order, so answers can be compared.
+/// in byte order (query services also sort their methods), so answers can
+/// be compared.
 #[must_use]
 pub fn canonical_v2alpha1(method: &str, bytes: &[u8]) -> Option<Vec<u8>> {
     Some(match method {
@@ -79,6 +80,9 @@ pub fn canonical_v2alpha1(method: &str, bytes: &[u8]) -> Option<Vec<u8>> {
         "GetQueryServicesDescriptor" => {
             let mut r = v2::GetQueryServicesDescriptorResponse::decode(bytes).ok()?;
             if let Some(q) = r.queries.as_mut() {
+                for s in &mut q.query_services {
+                    sort_by_bytes(&mut s.methods);
+                }
                 sort_by_bytes(&mut q.query_services);
             }
             r.encode_to_vec()

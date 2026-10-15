@@ -29,6 +29,14 @@ pub use dec::{LEGACY_PRECISION, LegacyDec};
 pub use int::{Int, MAX_BIT_LEN};
 pub use uint::Uint;
 
+/// Parses `text` like Go `(*big.Int).UnmarshalText` (`SetString(text, 0)`:
+/// optional sign, `0x`/`0b`/`0o`/`0` prefixes, `_` separators), without a
+/// range check; `None` where Go fails.
+#[must_use]
+pub fn parse_big_int_text(text: &[u8]) -> Option<num_bigint::BigInt> {
+    parse::parse_go_big_int(text, parse::Base::Auto)
+}
+
 use std::fmt;
 
 /// Errors returned by the math types. Each variant corresponds to an error or

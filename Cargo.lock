@@ -194,6 +194,7 @@ dependencies = [
  "hex",
  "ics23-proofs",
  "kvstore",
+ "legacy-amino",
  "math",
  "merkle",
  "multistore",
@@ -1935,6 +1936,17 @@ name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
+
+[[package]]
+name = "legacy-amino"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "hex",
+ "math",
+ "num-bigint",
+ "serde_json",
+]
 
 [[package]]
 name = "leopard-codec"

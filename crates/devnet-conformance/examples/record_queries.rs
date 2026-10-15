@@ -86,6 +86,35 @@ fn main() -> anyhow::Result<()> {
         b.raw(fd, Vec::new(), 0, false);
         b.raw(fd, b"\x0a\x01x".to_vec(), 0, false);
         b.raw(fd, b"\xff".to_vec(), 0, false);
+        // The legacy amino tx codec: every Go vector of
+        // conformance/aminoschema (valid txs of each message family and
+        // malformed binary/JSON), plus a present-but-empty request.
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../conformance/aminoschema/vectors.json"
+        ))?;
+        for v in vectors.as_array().into_iter().flatten() {
+            let input = v["input"].as_str().unwrap_or_default();
+            let (path, payload) = if v["op"] == "decode" {
+                (
+                    "/cosmos.tx.v1beta1.Service/TxDecodeAmino",
+                    hex::decode(input)?,
+                )
+            } else {
+                (
+                    "/cosmos.tx.v1beta1.Service/TxEncodeAmino",
+                    input.as_bytes().to_vec(),
+                )
+            };
+            let mut data = Vec::new();
+            prost::encoding::bytes::encode(1, &payload, &mut data);
+            b.raw(path, data, 0, false);
+        }
+        b.raw(
+            "/cosmos.tx.v1beta1.Service/TxDecodeAmino",
+            vec![0x0a, 0x00],
+            0,
+            false,
+        );
     }
     let reqs = std::mem::take(&mut b.reqs);
     drop(b);
