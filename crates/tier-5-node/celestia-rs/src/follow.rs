@@ -161,12 +161,18 @@ impl Fetcher {
         self.cv.notify_all();
     }
 
-    /// One height from the first server that has it (primary first), with
-    /// retries on transport errors.
+    /// One height from the first server that has it, with retries on
+    /// transport errors. Heights are spread over the servers (height `h`
+    /// starts at server `h mod n`) so one slow server does not bound the
+    /// throughput; every block is verified the same way whichever server
+    /// returns it.
     fn fetch(&self, height: i64) -> Result<Fetched, String> {
         let mut last = String::new();
+        let n = self.clients.len();
+        let first = usize::try_from(height).unwrap_or(0) % n;
         for attempt in 0..8u32 {
-            for (i, c) in self.clients.iter().enumerate() {
+            for i in (0..n).map(|k| (first + k) % n) {
+                let c = &self.clients[i];
                 match c.block(height) {
                     Ok((block_id, block)) => {
                         return Ok(Fetched {
