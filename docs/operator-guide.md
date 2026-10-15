@@ -12,27 +12,65 @@ This guide targets the reference machine, a **Mac Mini M4 (16 GB RAM,
 512 GB SSD)** on macOS; Linux works the same way (systemd instead of
 launchd).
 
+> **Running a Mocha validator on a Mac: section 11. Mainnet: section 12.**
+>
 > Status: following a public network over HTTPS RPC (`follow`, section 10)
-> is verified against Mocha. P2P-facing steps (`start --network
+> is verified against Mocha and mainnet. P2P-facing steps (`start --network
 > mainnet|mocha|arabica`, state sync from peers) are implemented but have
 > only been exercised on local devnets — the development environment
 > cannot reach public P2P ports (`OPEN_QUESTIONS.md` #1). Everything else
 > below is covered by `crates/tier-5-node/celestia-rs/tests/` and
 > `conformance/devnet/operator.sh` (Rust validator + Go full node).
 
-## 1. Build
+## 1. Build or download
+
+**Download** (tagged releases; the repository is private, so through `gh`
+logged in with access to it). Each archive has a `.sha256` next to it and
+the release carries `SHA256SUMS`:
 
 ```sh
-# Rust stable (rust-toolchain.toml pins the channel) and a C++ toolchain
-# for RocksDB: `xcode-select --install` on macOS.
-git clone https://github.com/celestiaorg/celestia-rs && cd celestia-rs
-cargo build --release -p celestia-rs
-sudo cp target/release/celestia-rs /usr/local/bin/
+V=v0.1.0                 # the tag to install
+T=aarch64-apple-darwin   # or x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+gh release download $V --repo celestiaorg/celestia-rs --pattern "celestia-rs-$V-$T.tar.gz*"
+shasum -a 256 -c celestia-rs-$V-$T.tar.gz.sha256
+tar -xzf celestia-rs-$V-$T.tar.gz
+sudo install -m 755 celestia-rs-$V-$T/celestia-rs /usr/local/bin/celestia-rs
 celestia-rs version --long
 ```
 
-The release build takes ~15 minutes on an M4 (RocksDB is compiled from
-source). Only `curl` is needed at runtime (genesis downloads).
+The archive also holds `packaging/` (launchd plist, systemd unit,
+`check-apphash.sh`). The macOS binary is ad-hoc signed by the linker
+(required on Apple silicon); `gh` and `curl` do not set the quarantine
+attribute, so Gatekeeper does not interfere (after a browser download:
+`xattr -d com.apple.quarantine celestia-rs`).
+
+**Build from source:**
+
+```sh
+# Rust via rustup (rust-toolchain.toml pins the stable channel) and a
+# C/C++ toolchain + libclang for RocksDB: `xcode-select --install` on
+# macOS; `build-essential clang` on Debian/Ubuntu.
+git clone https://github.com/celestiaorg/celestia-rs && cd celestia-rs
+git checkout <tag or commit>
+cargo build --profile dist --locked -p celestia-rs
+sudo install -m 755 target/dist/celestia-rs /usr/local/bin/celestia-rs
+celestia-rs version --long
+```
+
+Profiles (`Cargo.toml`): `release` is what the tests, benchmarks and the
+followers run (`panic = "unwind"`, `overflow-checks = true`: the semantics
+every test checks); `dist` is `release` plus fat LTO and one codegen unit,
+for the binaries you deploy (the release workflow builds with it).
+`cargo build --release -p celestia-rs` (`target/release/celestia-rs`) is
+fine too and builds faster. The first build compiles RocksDB from source
+(~15 minutes on an M4; `dist` adds several minutes of linking). Only
+`curl` is needed at runtime (genesis download, HTTPS RPC).
+
+Targets: `aarch64-apple-darwin` (the reference Mac Mini M4; CI builds and
+smoke-tests it on `macos-14`), `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`. jemalloc is the allocator everywhere (on
+macOS for Rust allocations only; RocksDB's C++ uses the system allocator
+there).
 
 ## 2. Open-files limit
 
@@ -45,7 +83,7 @@ ulimit -n 65536   # in the shell that starts the node
 ```
 
 Under launchd set `SoftResourceLimits` / `HardResourceLimits` →
-`NumberOfFiles` (see the plist below).
+`NumberOfFiles` (the plist in section 8 does).
 
 ## 3. Quick starts
 
@@ -201,43 +239,113 @@ localhost or behind a firewall.
 With the defaults a mainnet validator stays well inside the 350 GB/year
 budget of `docs/hardware.md`.
 
-## 8. Running under launchd (macOS)
+## 8. Running as a service
 
-`~/Library/LaunchAgents/org.celestia.celestia-rs.plist`:
+### macOS: launchd
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>org.celestia.celestia-rs</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/celestia-rs</string>
-    <string>start</string>
-    <string>--home</string><string>/Users/me/.celestia-rs/mocha</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key>
-  <dict><key>SuccessfulExit</key><false/></dict>
-  <key>ExitTimeOut</key><integer>60</integer>
-  <key>SoftResourceLimits</key><dict><key>NumberOfFiles</key><integer>65536</integer></dict>
-  <key>HardResourceLimits</key><dict><key>NumberOfFiles</key><integer>65536</integer></dict>
-  <key>StandardOutPath</key><string>/Users/me/Library/Logs/celestia-rs.log</string>
-  <key>StandardErrorPath</key><string>/Users/me/Library/Logs/celestia-rs.log</string>
-  <key>EnvironmentVariables</key>
-  <dict><key>CELESTIA_RS_LOG_LEVEL</key><string>info</string></dict>
-</dict>
-</plist>
-```
+`packaging/macos/org.celestia.celestia-rs.plist` is a LaunchDaemon (it
+runs from boot without a login session, as your user): `KeepAlive`
+restarts the node after a crash or a non-zero exit but not after a clean
+stop (SIGTERM, `halt-height`), `ThrottleInterval` waits 30 s between
+restarts, `ExitTimeOut` gives SIGTERM 120 s before SIGKILL, the
+open-files limit is raised to 4096, and logs go to
+`~/Library/Logs/celestia-rs.log`.
 
 ```sh
-launchctl load -w ~/Library/LaunchAgents/org.celestia.celestia-rs.plist
-launchctl unload ~/Library/LaunchAgents/org.celestia.celestia-rs.plist   # SIGTERM → clean stop
+NODE_HOME=$HOME/.celestia-rs/mocha
+sed -e "s|__USER__|$(id -un)|g" -e "s|__NODE_HOME__|$NODE_HOME|g" \
+  packaging/macos/org.celestia.celestia-rs.plist \
+  | sudo tee /Library/LaunchDaemons/org.celestia.celestia-rs.plist >/dev/null
+sudo chown root:wheel /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+sudo chmod 644 /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+plutil -lint /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+
+sudo launchctl bootstrap system /Library/LaunchDaemons/org.celestia.celestia-rs.plist  # start now and at every boot
+sudo launchctl print system/org.celestia.celestia-rs | grep -E 'state|pid|last exit'
+tail -f ~/Library/Logs/celestia-rs.log
+sudo launchctl bootout system/org.celestia.celestia-rs       # stop (SIGTERM, clean shutdown)
+sudo launchctl kickstart -k system/org.celestia.celestia-rs  # restart
+sudo launchctl disable system/org.celestia.celestia-rs       # never start at boot (undo: enable)
 ```
 
-`KeepAlive/SuccessfulExit=false` restarts the node after a crash but not
-after a clean stop (halt height, `launchctl unload`).
+launchd opens the log in append mode, so it can be trimmed while the node
+runs: `cp ~/Library/Logs/celestia-rs.log{,.1} && : > ~/Library/Logs/celestia-rs.log`.
+
+A Mac used as a validator must not sleep and should come back after a
+power cut:
+
+```sh
+sudo pmset -a sleep 0 disksleep 0 powernap 0 autorestart 1 womp 1
+pmset -g | grep -E ' sleep|autorestart'
+```
+
+Turn off automatic installation of macOS updates (System Settings ->
+General -> Software Update -> Automatic Updates) so the machine never
+reboots unannounced; reboot deliberately with the node stopped. Keep "Set
+time and date automatically" on: consensus uses wall-clock timestamps
+(`sntp time.apple.com` prints the offset).
+
+### Linux: systemd
+
+`packaging/linux/celestia-rs.service`: user `celestia`, home
+`/var/lib/celestia-rs/mocha`, `Restart=on-failure` (a clean exit is not
+restarted), `TimeoutStopSec=120`, `LimitNOFILE=65536`, and it may only
+write below its home.
+
+```sh
+sudo useradd --system --create-home --home-dir /var/lib/celestia-rs celestia
+sudo -u celestia celestia-rs init <moniker> --network mocha --home /var/lib/celestia-rs/mocha
+sudo cp packaging/linux/celestia-rs.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now celestia-rs
+journalctl -u celestia-rs -f
+sudo systemctl stop celestia-rs    # SIGTERM, clean shutdown
+```
+
+### Shutdown, the sign state and backups
+
+**SIGTERM / SIGINT** (`launchctl bootout`, `systemctl stop`, Ctrl-C) stop
+consensus between steps, flush the consensus WAL (`data/cs.wal`), the
+sign state and the stores, log `node stopped` and exit 0. A second signal
+exits at once (exit 130); use it only if the first has not finished after
+a couple of minutes. The sign state is written before every signature, so
+even a SIGKILL or a power cut cannot make the node double sign when it
+restarts.
+
+**The double-sign guard** is `data/priv_validator_state.json` (Go's
+format): height, round and step of the last signature and its sign bytes.
+It is written and fsynced before a vote or proposal leaves the process,
+and the signer refuses anything that goes backwards (`height regression`,
+`round regression`, `step regression`) or different data at the same
+height/round/step (`conflicting data`). Never delete it and never replace
+it with an older copy (rules in §5). In addition, `config.toml
+[consensus] double_sign_check_height = N` (Go's option, default 0) makes
+the node refuse to start (`consensus start: found signature from the same
+key`) when the validator's key signed one of the last `N` committed
+blocks: set it to e.g. 20 for the first start after moving a validator,
+then back to 0 (otherwise every restart has to wait `N` blocks).
+
+**Backups.** What identifies a validator:
+
+| file | what | backup |
+|---|---|---|
+| `config/priv_validator_key.json` | consensus (block-signing) key | once, offline (encrypted USB stick, password manager); never present on two running machines |
+| `data/priv_validator_state.json` | last signed height/round/step | do **not** restore old copies; copy it from the *stopped* node only when moving the validator |
+| `keyring-file/` | operator account key (staking, unjail, signal) | the mnemonic, written down offline |
+| `config/node_key.json` | P2P identity | optional (a new one only changes the node ID) |
+
+```sh
+# Back up the consensus key (the node may be running):
+cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv_validator_key.json
+
+# Restore / move to another machine:
+#  1. stop the old node and make sure it cannot come back
+#     (launchctl disable / systemctl disable, remove its key);
+#  2. copy priv_validator_key.json and the old node's current
+#     data/priv_validator_state.json into the new home (same paths);
+#  3. start the new node. If the old state file is lost, set
+#     double_sign_check_height = 20 and start only once the chain is well
+#     past the last height the old node signed.
+```
 
 ## 9. Day-to-day operations
 
@@ -386,3 +494,403 @@ celestia-rs follow --light-only --chain-id celestia \
 
 HTTPS goes through the system `curl` (TLS, `HTTPS_PROXY` and CA settings
 from the environment), as do `--node https://…` for `tx` / `query`.
+
+## 11. Running a Mocha validator on a Mac (M13)
+
+Exact steps for the reference machine (Mac Mini M4, macOS, Apple silicon)
+to run a `mocha-5` validator. Mocha runs app version 10 (celestia-app
+v10.4.0-mocha). Every command below was checked against this binary's
+`--help`; the ones marked *(verified)* were also run against Mocha's
+public RPC from the development container, which cannot reach P2P ports
+(`OPEN_QUESTIONS.md` #1) — P2P steps are first exercised on the Mac.
+
+Mocha's parameters (queried 2026-10-15; re-check with the commands in
+11.8): `min_commission_rate` **0.20**, `max_validators` 100 (87 bonded,
+so any bonded validator is in the active set), unbonding 14 days,
+`signed_blocks_window` 10,000 with `min_signed_per_window` 0.001 (jailed
+after missing 9,990 of the last 10,000 blocks), `downtime_jail_duration`
+60 s, no downtime slash, 2% double-sign slash plus tombstoning.
+
+```sh
+# Used throughout:
+export NODE_HOME=$HOME/.celestia-rs/mocha
+export RPC=https://rpc.celestia-mocha.com                # archival public RPC
+export RPC2=https://celestia-testnet-rpc.polkachu.com     # second provider
+```
+
+### 11.1 Prepare the Mac
+
+```sh
+xcode-select --install                 # C/C++ toolchain, only to build from source
+brew install jq lz4                    # jq: the checks below; lz4: route B
+sudo pmset -a sleep 0 disksleep 0 powernap 0 autorestart 1 womp 1
+ulimit -n 4096                         # in every shell that runs the node by hand
+```
+
+Install the binary (§1: release download or `cargo build --profile dist
+--locked -p celestia-rs`), then `celestia-rs version --long`.
+
+Network: allow inbound TCP **26656** (the only port that must be public).
+On the router, forward 26656 to the Mac; in the macOS firewall allow the
+binary: `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add
+/usr/local/bin/celestia-rs && sudo /usr/libexec/ApplicationFirewall/socketfilterfw
+--unblockapp /usr/local/bin/celestia-rs`. Without inbound connections the
+node still works through its outbound peers, but more peers make
+proposals and votes arrive sooner.
+
+### 11.2 Initialize the home *(verified)*
+
+```sh
+celestia-rs init <your-moniker> --network mocha --home $NODE_HOME
+```
+
+This writes `config/{config,app,client}.toml` (chain ID `mocha-5`, the
+built-in seeds and persistent peer), a new consensus key
+`config/priv_validator_key.json`, `data/priv_validator_state.json`
+(height 0), `config/node_key.json`, and downloads the 56 MB genesis,
+rejected unless its SHA-256 is `82db3ac5…5d33`.
+
+Then:
+
+```sh
+H=$NODE_HOME
+celestia-rs config set config instrumentation.prometheus true --home $H
+celestia-rs config set config instrumentation.prometheus_listen_addr "127.0.0.1:26660" --home $H
+celestia-rs config set config p2p.external_address "<public-ip>:26656" --home $H   # if 26656 is forwarded
+celestia-rs config set client node "tcp://127.0.0.1:26657" --home $H
+celestia-rs config set client keyring-backend file --home $H
+celestia-rs config view config --home $H | grep -E '^(seeds|persistent_peers|laddr|external_address|prometheus)'
+```
+
+`init` already set `client.toml` `chain-id = "mocha-5"`; RPC stays on
+`127.0.0.1:26657` and P2P listens on `0.0.0.0:26656`.
+
+More peers if the built-in ones are slow (live peers of a public node):
+
+```sh
+PEERS=$(curl -s $RPC2/net_info | jq -r '[.result.peers[] | select(.remote_ip | test(":") | not)
+  | "\(.node_info.id)@\(.remote_ip):\(.node_info.listen_addr | split(":") | last)"][:10] | join(",")')
+celestia-rs config set config p2p.persistent_peers "$PEERS" --home $H
+```
+
+**Back up `config/priv_validator_key.json` now** (§8, "Backups").
+
+### 11.3 Operator key
+
+Created on the Mac, never copied elsewhere. The `file` keyring encrypts
+it with a passphrase (asked on the terminal; `CELESTIA_RS_KEYRING_PASSPHRASE`
+for scripts):
+
+```sh
+celestia-rs keys add operator --keyring-backend file --home $H
+# -> prints the address and the 24-word mnemonic ONCE: write it down offline.
+celestia-rs keys show operator -a --keyring-backend file --home $H              # celestia1… (asks the passphrase)
+celestia-rs keys show operator -a --bech val --keyring-backend file --home $H   # celestiavaloper1…
+```
+
+### 11.4 Testnet TIA
+
+Fund the `celestia1…` address from the Mocha faucet: the web faucet at
+<https://mocha.celenium.io/faucet>, or the `#mocha-faucet` channel of the
+Celestia Discord (`$request celestia1…`). You need the self-delegation
+(1 TIA is enough to be in the active set today) plus ~1 TIA for fees.
+
+```sh
+celestia-rs query bank balances <celestia1…> --node $RPC        # (verified)
+```
+
+### 11.5 Bootstrap the state
+
+A fresh node can block-sync Mocha from genesis, but that replays 1.7M+
+blocks. Two faster routes; try A first.
+
+**Route A — state sync from Mocha peers (P2P).** The node discovers Go
+nodes' state-sync snapshots over P2P, verifies them with the light client
+against the RPC servers, restores the app state and block-syncs the rest:
+
+```sh
+LATEST=$(curl -s $RPC/block | jq -r .result.block.header.height)
+TRUST_HEIGHT=$((LATEST - 3000))
+TRUST_HASH=$(curl -s "$RPC/block?height=$TRUST_HEIGHT" | jq -r .result.block_id.hash)
+curl -s "$RPC2/block?height=$TRUST_HEIGHT" | jq -r .result.block_id.hash   # must print the same hash
+celestia-rs config set config statesync.enable true --home $H
+celestia-rs config set config statesync.rpc_servers "$RPC:443,$RPC2:443" --home $H
+celestia-rs config set config statesync.trust_height $TRUST_HEIGHT --home $H
+celestia-rs config set config statesync.trust_hash $TRUST_HASH --home $H
+ulimit -n 4096 && celestia-rs start --home $H 2>&1 | tee ~/mocha-first-start.log
+```
+
+Expect `Discovering snapshots`, `Offering snapshot`, `Applied snapshot
+chunk`, `Snapshot restored`, then block sync. State sync over P2P is at
+parity with Go on local devnets (`conformance/devnet/statesync-rust.sh`)
+but has not yet run against Mocha's peers; if no snapshot is found or
+restored within ~15 minutes, stop the node (Ctrl-C), remove the partial
+state (`rm -rf $H/data/*.rocksdb $H/data/cs.wal $H/data/evidence*` —
+keep `data/priv_validator_state.json`), set `statesync.enable false` and
+use route B.
+
+**Route B — Polkachu snapshot + `follow`, then P2P.** The route the
+HTTPS follower uses (§10): restore the Go SDK snapshot inside Polkachu's
+pruned Mocha tarball, catch up over HTTPS with full verification, then
+switch to P2P. `follow` and `start` share the stores of a home, so the
+validator home itself is bootstrapped:
+
+```sh
+# Current file name: https://polkachu.com/testnets/celestia/snapshots
+URL=https://snapshots.polkachu.com/testnet-snapshots/celestia/celestia_<height>.tar.lz4
+mkdir -p ~/polkachu && curl -L "$URL" | lz4 -dc - | tar -x -C ~/polkachu data/snapshots
+ls ~/polkachu/data/snapshots          # <height>/3/<chunks>, ~170 MB
+SNAP=$(ls ~/polkachu/data/snapshots | grep -E '^[0-9]+$' | sort -n | tail -1)
+celestia-rs follow --home $H --chain-id mocha-5 --rpc $RPC,$RPC2 \
+  --snapshot ~/polkachu/data/snapshots \
+  --trust-hash $(curl -s "$RPC/block?height=$SNAP" | jq -r .result.block_id.hash)   # $RPC is archival
+```
+
+`follow` restores the snapshot (the app hash must equal the network's),
+then executes every block to the tip, comparing app hash, results and
+validator sets per height (stops with a diagnostic bundle on any
+difference). When it logs heights near the tip (`celestia-rs status
+--node $RPC` for the tip), stop it with Ctrl-C and start the node; block
+sync over P2P fetches the remaining blocks.
+
+As of 2026-10-15 the snapshot inside Polkachu's tarball
+(`celestia_1702915.tar.lz4`) is still at height **1,624,500**, so
+`follow` executes ~90k heights to reach the tip (7-14 blocks/s on a
+loaded 4-core cloud VM; expect an hour or two on the M4). The light
+client only trusts a header younger than the trusting period
+(`--trust-period-hours`, default 336 = Mocha's 14-day unbonding period):
+once that snapshot is older than 14 days, route B needs a newer snapshot.
+Verified from the development container: `init --network mocha`, the
+streamed extraction, `follow --snapshot` (restored app hash equal to the
+network's), then `start` on the same home (handshake at the follow
+height, RPC up, `check-apphash.sh` OK, block sync started; P2P peers are
+unreachable there).
+
+```sh
+rm -rf ~/polkachu
+ulimit -n 4096 && celestia-rs start --home $H 2>&1 | tee ~/mocha-first-start.log
+```
+
+### 11.6 Start as a full node and catch up
+
+Whichever route: the first start runs in the foreground. Once it is
+caught up, stop it (Ctrl-C) and run it under launchd (§8):
+
+```sh
+celestia-rs status --home $H | jq .sync_info.catching_up      # false when caught up
+celestia-rs status --home $H | jq -r .sync_info.latest_block_height
+celestia-rs status --node $RPC | jq -r .sync_info.latest_block_height
+curl -s localhost:26657/net_info | jq .result.n_peers
+```
+
+`catching_up` turns `false` when block sync hands over to consensus; the
+node then logs `committed block` every ~6 s.
+
+### 11.7 Verify it is synced and the app hashes match
+
+```sh
+packaging/check-apphash.sh http://127.0.0.1:26657 $RPC     # OK height=… app_hash=…
+```
+
+It compares the app hash our node computed for its latest height H
+(`/abci_info`) with the one the network committed in header H+1 (block
+sync and consensus already reject a block whose app hash differs, so a
+mismatch means the node has stopped advancing). Independently, the light
+client can verify the network's headers from the Mac:
+
+```sh
+celestia-rs follow --light-only --chain-id mocha-5 --rpc $RPC,$RPC2 --home /tmp/mocha-light   # (verified)
+```
+
+### 11.8 Create the validator
+
+Only when 11.7 is OK and the account is funded:
+
+```sh
+celestia-rs comet show-validator --home $H         # {"@type":"/cosmos.crypto.ed25519.PubKey","key":"…"}
+cat > ~/validator.json <<JSON
+{
+  "pubkey": $(celestia-rs comet show-validator --home $H),
+  "amount": "1000000utia",
+  "moniker": "<your-moniker>",
+  "identity": "",
+  "website": "",
+  "security": "",
+  "details": "celestia-rs (Rust) validator",
+  "commission-rate": "0.20",
+  "commission-max-rate": "0.30",
+  "commission-max-change-rate": "0.01",
+  "min-self-delegation": "1000000"
+}
+JSON
+# Inspect first (no key needed, nothing broadcast)   (verified on Mocha):
+celestia-rs tx staking create-validator ~/validator.json --from operator \
+  --keyring-backend file --home $H --chain-id mocha-5 --generate-only | jq .
+# Sign and broadcast through the local synced node:
+celestia-rs tx staking create-validator ~/validator.json --from operator \
+  --keyring-backend file --home $H --chain-id mocha-5 \
+  --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+```
+
+Commission: Mocha (and mainnet) enforce `min_commission_rate` 0.20, so
+0.20 is the lowest accepted rate; `commission-max-rate` can never change
+later and `commission-max-change-rate` bounds daily changes.
+`min-self-delegation` is in utia (1 TIA here): if the self-delegation
+drops below it the validator is jailed. Check the result:
+
+```sh
+VALOPER=$(celestia-rs keys show operator -a --bech val --keyring-backend file --home $H)
+celestia-rs query staking validator $VALOPER --node $RPC | jq '.validator | {status, jailed, tokens}'   # (verified)
+celestia-rs query staking params --node $RPC     # (verified)
+```
+
+`status` becomes `BOND_STATUS_BONDED` at the end of the block; from the
+next height the node signs (log `signed vote`/`committed block` with our
+address among the signers).
+
+### 11.9 Monitoring
+
+- **Prometheus** (`instrumentation.prometheus = true`, port 26660):
+  `curl -s localhost:26660/metrics | grep -E 'consensus_height|missed_blocks|p2p_peers'`.
+  Alert on: `cometbft_consensus_height` not increasing for 1 minute;
+  `cometbft_consensus_validator_missed_blocks` (per-validator counter,
+  present after the first miss) or a stale
+  `cometbft_consensus_validator_last_signed_height`, both labelled
+  `validator_address` = our consensus address in hex (`jq -r .address
+  $H/config/priv_validator_key.json`); `cometbft_p2p_peers` < 3.
+- **Missed blocks from the chain** (the slashing window counter):
+
+  ```sh
+  VALCONS=$(celestia-rs comet show-address --home $H)
+  celestia-rs query slashing signing-info $VALCONS --home $H | jq .val_signing_info   # (verified)
+  celestia-rs query slashing params --node $RPC | jq .params                         # (verified)
+  ```
+
+  `missed_blocks_counter` over the last `signed_blocks_window` (10,000);
+  `jailed_until` in the future means jailed.
+- **App hash:** run `packaging/check-apphash.sh` every few minutes (cron
+  or launchd `StartInterval`); exit code 1 is a parity bug — stop the
+  validator and keep `~/Library/Logs/celestia-rs.log`.
+- **Disk/memory:** `du -sh $H/data`, `ps -o rss= -p $(pgrep -x celestia-rs)`
+  (budgets in `docs/hardware.md`).
+
+**Jailed** (downtime): fix the cause (node down, clock, peers), wait until
+it is caught up (11.6) and `downtime_jail_duration` (60 s on Mocha) has
+passed, then:
+
+```sh
+celestia-rs tx slashing unjail --json "{\"validator_addr\":\"$VALOPER\"}" --from operator \
+  --keyring-backend file --home $H --chain-id mocha-5 \
+  --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+celestia-rs query staking validator $VALOPER --node $RPC | jq .validator.jailed   # false
+```
+
+A validator jailed for double signing is tombstoned and can never be
+unjailed: create a new validator with a new consensus key.
+
+### 11.10 Safe shutdown and binary upgrade
+
+```sh
+sudo launchctl bootout system/org.celestia.celestia-rs     # SIGTERM; waits for the clean exit
+grep -E 'node stopped|shutting down' ~/Library/Logs/celestia-rs.log | tail -2
+pgrep -x celestia-rs || echo stopped
+sudo install -m 755 ./celestia-rs /usr/local/bin/celestia-rs   # the new binary
+celestia-rs version --long
+sudo launchctl bootstrap system /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+tail -f ~/Library/Logs/celestia-rs.log     # handshake, then committed blocks
+```
+
+Keep the previous binary (`cp /usr/local/bin/celestia-rs ~/celestia-rs.prev`
+before installing) to roll back the same way. A stop costs a few missed
+blocks, far from the jail threshold. Never start a second copy of the
+node "to test" with the same `priv_validator_key.json`.
+
+### 11.11 Double-sign guard refusal
+
+Log lines `failed signing vote … height regression` / `round regression` /
+`step regression` / `conflicting data`, or the start-up error `consensus
+start: found signature from the same key`, mean the node refused to sign
+because the key already signed at this or a later position. The node does
+**not** sign until the chain moves past it. Do this:
+
+1. **Stop and check for a second signer.** Is another node (an old Mac
+   setup, a Go `celestia-appd`, a test copy) running with this
+   `priv_validator_key.json`? Stop and disable it first. Two signers is
+   the one way to get slashed 2% and tombstoned.
+2. If no other signer exists, the state file is simply ahead of the
+   node's chain state (e.g. after `celestia-rs rollback`, or a restore of
+   `data/` from an older copy while keeping the newer state file): start
+   the node again and let it catch up; it resumes signing once the chain
+   height passes the `height` in `data/priv_validator_state.json`.
+3. **Never** delete or edit `priv_validator_state.json` to make the error
+   go away, and never run `unsafe-reset-all`-style resets on a validator
+   home.
+4. For `found signature from the same key` (only with
+   `double_sign_check_height` > 0): wait `N` blocks with the node stopped
+   after making sure of step 1, then start it again.
+
+### 11.12 Network upgrades (`halt-height`, `upgrade-info.json`)
+
+Celestia upgrades the app version by validator signalling (no governance
+proposal): when a celestia-rs release supports app version N+1,
+validators signal, anyone tallies, and the upgrade happens at the height
+`try-upgrade` scheduled.
+
+```sh
+celestia-rs tx signal signal 11 --from operator --keyring-backend file --home $H \
+  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+celestia-rs tx signal try-upgrade --from operator --keyring-backend file --home $H \
+  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait   # once 5/6 signalled
+```
+
+celestia-rs is a single binary for every app version it supports (v9 and
+v10 today; the v9→v10 switch happens inside `Commit` exactly like Go's
+multiplexer), so the normal path is to install the release that supports
+the new version **before** the upgrade height (11.10); the node then
+crosses the upgrade without stopping. If the running binary has no
+handler for the new version, it stops consensus at the upgrade height,
+logs `UPGRADE "vN" NEEDED at height: H`, writes `data/upgrade-info.json`
+(Go/cosmovisor format, `{"name":"vN","height":H,…}`) and keeps RPC up:
+install the new binary and restart (11.10); it resumes at `H`.
+
+`halt-height` stops the node cleanly before executing a given block, for
+a coordinated halt announced by the Mocha operators:
+
+```sh
+celestia-rs config set app halt-height <H> --home $H   # takes effect at the next start
+sudo launchctl kickstart -k system/org.celestia.celestia-rs
+# … the node exits 0 before block <H> (launchd does not restart a clean exit)
+celestia-rs config set app halt-height 0 --home $H
+# install the new binary, then bootstrap the job again (11.10)
+```
+
+## 12. Mainnet validator (M14)
+
+Mainnet (`celestia`) runs app version **9** (celestia-app v9.0.8, ADR
+0004); celestia-rs executes v9 blocks at parity (followed over HTTPS with
+every app hash matching, `MILESTONES.md` S3) and v10 blocks, and performs
+the v9→v10 upgrade inside `Commit` like Go's multiplexer
+(`devnet-conformance` `v9-upgrade`). So the same binary runs a mainnet
+validator before and after the v10 upgrade, and no binary swap is needed
+at the upgrade height; when mainnet's validators signal v10 (`tx signal
+signal 10`) and `try-upgrade` schedules it, sign the signal from your
+operator key like everyone else and keep the node running.
+
+The procedure is section 11 with:
+
+- `export NODE_HOME=$HOME/.celestia-rs/mainnet`, `--network mainnet` (13
+  built-in seeds), `--chain-id celestia`, RPCs
+  `https://rpc.celestia.pops.one` and `https://celestia-rpc.polkachu.com`.
+- Real TIA (no faucet). Parameters (2026-10-15): `min_commission_rate`
+  0.20, `max_validators` 100 with 96 bonded — the active set is nearly
+  full, so the stake needed to enter it is whatever the 100th validator
+  has at that time:
+  `curl -s "https://celestia-rest.publicnode.com/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED&pagination.limit=200" | jq '[.validators[].tokens | tonumber] | sort | .[0]'`
+  (utia; `query staking validators` returns too much for public RPCs).
+- Route B with Polkachu's mainnet snapshot
+  (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
+- A separate machine or home from Mocha, its own consensus key and
+  operator key (a hardware-backed or offline-signing setup for the
+  operator key is advisable; `--generate-only` + offline signing works).
+- M14 starts only after the M13 soak (no misses or double-sign refusals
+  on Mocha for the agreed period) and the mainnet full-node run of M13.

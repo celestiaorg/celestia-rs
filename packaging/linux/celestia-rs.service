@@ -1,0 +1,43 @@
+# systemd unit for a celestia-rs node on Linux (docs/operator-guide.md §8).
+#
+#   sudo useradd --system --create-home --home-dir /var/lib/celestia-rs celestia
+#   sudo -u celestia celestia-rs init <moniker> --network mocha --home /var/lib/celestia-rs/mocha
+#   sudo cp packaging/linux/celestia-rs.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now celestia-rs
+#   journalctl -u celestia-rs -f
+#
+# `systemctl stop` sends SIGTERM: the node stops consensus between steps,
+# flushes the WAL, the sign state and the stores, and exits 0. A clean exit
+# (also at halt-height / halt-time) is not restarted; a crash is.
+
+[Unit]
+Description=celestia-rs node
+Documentation=https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md
+Wants=network-online.target
+After=network-online.target
+# At most 5 restarts in 10 minutes, then stay down for a human.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=celestia
+Group=celestia
+ExecStart=/usr/local/bin/celestia-rs start --home /var/lib/celestia-rs/mocha
+Environment=CELESTIA_RS_LOG_LEVEL=info
+Restart=on-failure
+RestartSec=30
+KillSignal=SIGTERM
+TimeoutStopSec=120
+LimitNOFILE=65536
+
+# Hardening: the node only writes below its home.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/celestia-rs
+
+[Install]
+WantedBy=multi-user.target

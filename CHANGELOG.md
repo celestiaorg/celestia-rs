@@ -11,6 +11,17 @@
 
 ### Added
 
+- Release readiness for the Mac Mini validator: `[profile.release]`
+  (`panic = "unwind"`, `overflow-checks = true`) and `[profile.dist]` (fat
+  LTO, one codegen unit); a `macos-14` CI job (release build, CLI smoke,
+  core unit tests, a devnet-conformance replay); a `v*`-tag release
+  workflow (aarch64-apple-darwin, x86_64 / aarch64 Linux, SHA-256); a
+  launchd plist, a systemd unit and `check-apphash.sh` under `packaging/`;
+  the Mocha (M13) and mainnet (M14) validator runbooks in
+  `docs/operator-guide.md` §11-12.
+- `query slashing signing-info <valcons>` / `query slashing params`; `start`
+  honors `config.toml [consensus] double_sign_check_height` (Go's start-up
+  double-sign check).
 - `--features memstats` (jemalloc heap gauges and heap profiler) and always-on
   `memstats_*` Prometheus gauges (RocksDB cache / data bytes per database,
   IAVL node cache length, threads, open files).

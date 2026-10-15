@@ -27,12 +27,28 @@ question 2).
 | M9  | completed   | Rust consensus engine (Tendermint BFT, celestia-core semantics) — `privval`, `nodestore`, `consensus` (+ reactor on `p2p`), `propagation` (RECOVERY), `celestia-rs start` as a full network participant | Mixed Rust+Go private devnet reaches consensus (`conformance/devnet/mixed-validators.sh`) |
 | M10 | completed   | Rust P2P (secret connection, MConn, PEX), mempool, block sync — `p2p`, CAT `mempool`, `blocksync`, `evidence`, `statesync` done; `celestia-rs start` block-syncs / state-syncs from Go and serves Go (`blocksync-interop.sh`); propagation + consensus gossip with Go validators (`mixed-validators.sh`), txs both ways (`mempool-interop.sh`) | Rust node peers with Go nodes and gossips blocks/txs |
 | M11 | completed   | RPC & gRPC: ABCI `Query` (store proofs, historical heights, gRPC routing), every query service, gRPC server and REST gateway in `celestia-rs abci` | Responses match Go for a canned request corpus (13 scenarios, 46.8k ABCI + 30.6k REST requests, `devnet-conformance/tests/query_corpus.rs`) |
-| M12 | in progress | Node binary, CLI, keys, double-sign guard, pruning — operator CLI at Go parity (`init`, `keys` on Go test/file keyrings, `genesis` add-account/gentx/collect/validate, `tx` (incl. staking create/edit-validator, unbond, redelegate, `--gas auto`, generic `tx <module> <msg> --json`; `--generate-only` identical to Go's, `devnet/cli`)/`query`/`status`, `config`, `rollback`, `export` = Go's export on 15 devnet scenarios), `--network mainnet\|mocha\|arabica\|local`, SIGTERM shutdown, `halt-height`/`halt-time`, upgrade halt with `upgrade-info.json`, pruning + `min-retain-blocks`, Prometheus metrics, ulimit check; `conformance/devnet/operator.sh`, `docs/operator-guide.md` | `celestia-rs start --network mocha` works end-to-end (public network access pending, OPEN_QUESTIONS #1) |
-| M13 | pending     | Mocha validator soak; mainnet full node | Signs on Mocha without misses/double-signs; follows mainnet |
+| M12 | completed   | Node binary, CLI, keys, double-sign guard, pruning — operator CLI at Go parity (`init`, `keys` on Go test/file keyrings, `genesis` add-account/gentx/collect/validate, `tx` (incl. staking create/edit-validator, unbond, redelegate, `--gas auto`, generic `tx <module> <msg> --json`; `--generate-only` identical to Go's, `devnet/cli`)/`query`/`status`, `config`, `rollback`, `export` = Go's export on 15 devnet scenarios), `--network mainnet\|mocha\|arabica\|local`, SIGTERM shutdown, `halt-height`/`halt-time`, upgrade halt with `upgrade-info.json`, pruning + `min-retain-blocks`, Prometheus metrics, ulimit check; `conformance/devnet/operator.sh`, `docs/operator-guide.md` | Release-ready for the Mac Mini: `release` / `dist` profiles, `macos-14` CI job (release build + smoke tests), tag-triggered release workflow (aarch64-apple-darwin, x86_64 / aarch64 Linux + SHA-256), launchd plist / systemd unit (`packaging/`), Mocha + mainnet validator runbooks (`docs/operator-guide.md` §11-12). `start --network mocha` over P2P is the first step of M13 on the Mac (OPEN_QUESTIONS #1) |
+| M13 | next        | Mocha validator soak; mainnet full node | Signs on Mocha without misses/double-signs; follows mainnet |
 | M14 | pending     | Mainnet validator | Signs mainnet blocks; no double-signs; no evidence |
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
 ## Current focus
+
+**M13 — Mocha validator on the owner's Mac Mini (next).** Everything that
+can be done from the development container is done (M12): the runbook is
+`docs/operator-guide.md` §11 ("Running a Mocha validator on a Mac"),
+mainnet in §12. Steps on the Mac, in order: (1) install (release archive
+or `cargo build --profile dist`), `init --network mocha`, operator key in
+the `file` keyring, faucet; (2) bootstrap — route A, P2P state sync from
+Mocha peers (never run against Mocha yet: the first real test of the Rust
+P2P stack on a public network), else route B, Polkachu snapshot +
+`follow` over HTTPS, then `start`; (3) catch up over P2P block sync and
+`packaging/check-apphash.sh` OK; (4) `tx staking create-validator`
+(commission >= 0.20, Mocha's minimum); (5) soak under launchd with
+Prometheus alerts on height, missed blocks and app hash. Report back:
+which bootstrap route worked, peers / block sync rate, missed blocks per
+day, RSS and disk per day, any `failed signing vote` line. Owner choices:
+OPEN_QUESTIONS #4.
 
 **S3 — following public networks over HTTPS (2026-10-15).** P2P is
 blocked from the development container, so `celestia-rs follow`

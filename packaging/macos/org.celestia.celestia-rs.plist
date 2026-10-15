@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for a celestia-rs node on macOS (docs/operator-guide.md §8).
+
+  Installed as a LaunchDaemon so the node runs from boot without a login
+  session, as an unprivileged user. Replace the placeholders, then:
+
+    sed -e "s|__USER__|$(id -un)|g" -e "s|__NODE_HOME__|$HOME/.celestia-rs/mocha|g" \
+      packaging/macos/org.celestia.celestia-rs.plist \
+      | sudo tee /Library/LaunchDaemons/org.celestia.celestia-rs.plist >/dev/null
+    sudo chown root:wheel /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+    sudo chmod 644 /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+    sudo launchctl bootstrap system /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+
+  Stop (SIGTERM, then SIGKILL after ExitTimeOut seconds):
+    sudo launchctl bootout system/org.celestia.celestia-rs
+  Restart:  sudo launchctl kickstart -k system/org.celestia.celestia-rs
+  Status:   sudo launchctl print system/org.celestia.celestia-rs | head -30
+  Never start at boot (e.g. while the key is being moved):
+    sudo launchctl disable system/org.celestia.celestia-rs
+
+  KeepAlive restarts the node after a crash or a non-zero exit, but not
+  after a clean stop (exit 0: SIGTERM, halt-height / halt-time).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.celestia.celestia-rs</string>
+
+  <key>UserName</key>
+  <string>__USER__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/celestia-rs</string>
+    <string>start</string>
+    <string>--home</string>
+    <string>__NODE_HOME__</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__NODE_HOME__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+
+  <!-- Wait at least 30 s between restarts (launchd's default is 10 s):
+       a node that fails at start-up retries without spinning. -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- SIGTERM stops consensus between steps and flushes the WAL, the
+       sign state and the stores; give it time before launchd's SIGKILL. -->
+  <key>ExitTimeOut</key>
+  <integer>120</integer>
+
+  <!-- macOS defaults to 256 open files; RocksDB alone keeps up to 512 SST
+       files open per database. The node warns below 4096. -->
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>4096</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>4096</integer>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Interactive</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/__USER__/Library/Logs/celestia-rs.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/__USER__/Library/Logs/celestia-rs.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CELESTIA_RS_LOG_LEVEL</key>
+    <string>info</string>
+    <!-- curl (genesis download, HTTPS RPC) is looked up on PATH. -->
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
