@@ -740,7 +740,8 @@ cat > ~/validator.json <<JSON
   "min-self-delegation": "1000000"
 }
 JSON
-# Inspect first (no key needed, nothing broadcast)   (verified on Mocha):
+# Inspect first (nothing signed or broadcast; with the file keyring it still
+# asks the passphrase, unlike Go, OPEN_QUESTIONS #5)   (verified on Mocha):
 celestia-rs tx staking create-validator ~/validator.json --from operator \
   --keyring-backend file --home $H --chain-id mocha-5 --generate-only | jq .
 # Sign and broadcast through the local synced node:
@@ -761,9 +762,19 @@ celestia-rs query staking validator $VALOPER --node $RPC | jq '.validator | {sta
 celestia-rs query staking params --node $RPC     # (verified)
 ```
 
-`status` becomes `BOND_STATUS_BONDED` at the end of the block; from the
-next height the node signs (log `signed vote`/`committed block` with our
-address among the signers).
+`status` becomes `BOND_STATUS_BONDED` at the end of the block that
+included the tx (height H); the node signs from height H+2 (the
+validator-set update delay). Signed votes are logged at `debug` only
+(like Go), so check the commits instead: the `last_commit` of block N+1
+lists our consensus address with `block_id_flag` 2 (COMMIT) when we
+signed N. Verified on Mocha 2026-10-15: tx at 1,720,896, first
+signature at 1,720,898, then every block.
+
+```sh
+CONS=$(jq -r .address $H/config/priv_validator_key.json)   # the address field only
+curl -s localhost:26657/block | jq --arg a "$CONS" \
+  '.result.block.last_commit.signatures[] | select(.validator_address==$a) | .block_id_flag'   # 2
+```
 
 ### 11.9 Monitoring
 
