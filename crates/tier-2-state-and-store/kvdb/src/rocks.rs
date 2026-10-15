@@ -42,6 +42,10 @@ impl Default for RocksOptions {
     }
 }
 
+/// Sliding window (entries) of the compact-on-deletion collector: a file
+/// with half of any window deleted is marked for compaction.
+const DELETION_WINDOW: usize = 32 * 1024;
+
 /// Entries fetched per RocksDB iterator refill (see [`RocksBackend::range`]).
 const RANGE_CHUNK: usize = 1024;
 
@@ -89,10 +93,16 @@ impl RocksBackend {
         opts.set_max_background_jobs(4);
         opts.set_bytes_per_sync(1 << 20);
         opts.set_max_open_files(options.max_open_files);
-        // IAVL nodes are mostly hashes (incompressible); compress only the
-        // bottommost level, where ~90% of the data lives.
-        opts.set_compression_type(DBCompressionType::None);
+        // LZ4 above the bottommost level (cheap; keys, account and balance
+        // protos, node keys and sizes compress even though hashes do not),
+        // Zstd at the bottom, where most of the data lives. goleveldb
+        // compresses every level (Snappy).
+        opts.set_compression_type(DBCompressionType::Lz4);
         opts.set_bottommost_compression_type(DBCompressionType::Zstd);
+        // IAVL pruning deletes old nodes in bulk: SST files whose entries are
+        // mostly tombstones are compacted soon instead of when their level
+        // happens to be picked, so the space comes back.
+        opts.add_compact_on_deletion_collector_factory(DELETION_WINDOW, DELETION_WINDOW / 2, 0.5);
         opts.set_keep_log_file_num(4);
         opts.set_max_log_file_size(16 << 20);
         let db = DB::open(&opts, &path).map_err(Error::new)?;
@@ -127,6 +137,15 @@ impl RocksBackend {
         self.db.flush().map_err(Error::new)?;
         self.db.compact_range::<&[u8], &[u8]>(None, None);
         Ok(())
+    }
+}
+
+impl Drop for RocksBackend {
+    /// Writes the memtables to SST files on close: RocksDB keeps them only
+    /// in the WAL otherwise, and the next open replays up to two memtables
+    /// (128 MiB) before the node can start.
+    fn drop(&mut self) {
+        let _ = self.db.flush();
     }
 }
 
@@ -170,6 +189,10 @@ impl KvBackend for RocksBackend {
 
     fn sync(&self) -> Result<()> {
         self.db.flush_wal(true).map_err(Error::new)
+    }
+
+    fn flush(&self) -> Result<()> {
+        self.db.flush().map_err(Error::new)
     }
 
     fn disk_size(&self) -> Option<u64> {

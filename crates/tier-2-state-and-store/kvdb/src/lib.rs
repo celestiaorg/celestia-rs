@@ -150,6 +150,13 @@ pub trait KvBackend: Send + Sync + fmt::Debug {
     /// Makes every completed write durable.
     fn sync(&self) -> Result<()>;
 
+    /// Persists in-memory write buffers to the backend's files, so that
+    /// reopening does not replay a write-ahead log (clean shutdown).
+    /// Defaults to [`Self::sync`].
+    fn flush(&self) -> Result<()> {
+        self.sync()
+    }
+
     /// Iterates all keys starting with `prefix`.
     fn prefix_range(&self, prefix: &[u8], reverse: bool) -> Result<KvIter> {
         let end = prefix_end(prefix);

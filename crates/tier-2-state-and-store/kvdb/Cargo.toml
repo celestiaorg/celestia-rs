@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 redb = "=2.6.4"
-rocksdb = { version = "=0.24.0", default-features = false, features = ["zstd", "bindgen-runtime"], optional = true }
+rocksdb = { version = "=0.24.0", default-features = false, features = ["lz4", "zstd", "bindgen-runtime"], optional = true }
 
 [features]
 # RocksDB backend (C++ build: needs clang/libclang).
