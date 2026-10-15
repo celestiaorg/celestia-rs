@@ -133,3 +133,26 @@ opt-level = 3
 
 [profile.dev.package.reed-solomon-simd]
 opt-level = 3
+
+# Release (also `cargo test --release`, the followers, benchmarks). Two
+# deliberate choices for a consensus node:
+# - `panic = "unwind"` (the default, stated explicitly): nothing in the
+#   state machine relies on catching panics (Go panics are ported as
+#   errors), but a panic in a peer / RPC thread must only end that thread,
+#   as Go's p2p recovers a peer goroutine's panic, not take the validator
+#   down. A panic on the consensus / execution path still ends the process
+#   with a non-zero exit (launchd / systemd restart it).
+# - `overflow-checks = true`: the semantics every test runs with (debug
+#   builds). An arithmetic overflow the port missed stops the node instead
+#   of wrapping silently into an app-hash divergence.
+[profile.release]
+panic = "unwind"
+overflow-checks = true
+
+# Shipped binaries (`cargo build --profile dist`, the release workflow):
+# release plus whole-program optimization. Slower to build (~2x), not for
+# day-to-day work.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
