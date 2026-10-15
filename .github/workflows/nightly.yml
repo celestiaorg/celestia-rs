@@ -24,7 +24,7 @@ jobs:
   advisories:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories
@@ -35,19 +35,19 @@ jobs:
   devnet-bins:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/devnet-oracle/go.mod
           cache-dependency-path: conformance/devnet-oracle/go.sum
       - id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/devnet-bin
           key: devnet-bin-app-v10.4.0-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         run: conformance/devnet/build-bins.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: devnet-bin
           path: target/devnet-bin
@@ -71,10 +71,10 @@ jobs:
           - mixed-validators.sh 60 20
           - double-sign-evidence.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: devnet-bin
           path: target/devnet-bin
@@ -89,7 +89,7 @@ jobs:
           mkdir -p "$TMPDIR"
           bash conformance/devnet/${{ matrix.script }}
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logs-${{ strategy.job-index }}
           path: ${{ runner.temp }}/devnet
@@ -102,10 +102,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: devnet-bin
           path: target/devnet-bin
@@ -118,7 +118,7 @@ jobs:
           SOAK_DIR: ${{ runner.temp }}/soak
         run: bash conformance/devnet/soak.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soak-report
           path: |
@@ -138,8 +138,8 @@ jobs:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/fuzzoracle/v10/go.mod
           cache-dependency-path: conformance/fuzzoracle/*/go.sum
@@ -162,7 +162,7 @@ jobs:
           done
           target/release/fuzz-diff --app-version 10 --ops amino_dec,amino_enc --iters 1000000000 --max-secs 300 --seed $seed --findings findings
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-diff-findings
           path: findings
@@ -188,7 +188,7 @@ jobs:
           - { target: light_json, features: rpc }
           - { target: rpc_request, features: rpc }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
@@ -202,7 +202,7 @@ jobs:
           cargo fuzz run --sanitizer none $features ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- \
             -max_total_time=600 -rss_limit_mb=2048 -timeout=30
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cargo-fuzz-${{ matrix.target }}
           path: fuzz/artifacts
@@ -211,7 +211,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools
