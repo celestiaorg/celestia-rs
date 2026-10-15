@@ -95,6 +95,17 @@ rebuilds the square of real blocks (CometBFT `/block` responses from a
 mainnet or Mocha RPC) with the app version's rules and checks every tx
 decodes and the square size / data root match the header.
 
+`genesis_replay` runs a public network from its genesis on the Rust app
+and checks every app hash (header `h+1`) and every tx result's code and
+gas against the network's `/block_results` (blocks are trusted, not light
+verified). Mocha (`mocha-5`) starts at app version 9:
+
+```bash
+conformance/devnet/fetch-chain.sh https://rpc.celestia-mocha.com /tmp/mocha5 200   # genesis + first blocks
+python3 conformance/devnet/fetch-chain.py https://rpc.celestia-mocha.com /tmp/mocha5 201 40000
+cargo run -p devnet-conformance --example genesis_replay -- /tmp/mocha5
+```
+
 ## Live mixed network
 
 `mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a

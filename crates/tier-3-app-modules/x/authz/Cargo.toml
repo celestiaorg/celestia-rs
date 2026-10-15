@@ -22,3 +22,5 @@ serde = "1"
 serde_json = "1"
 x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
+x-ibc = { path = "../ibc" }
+math = { path = "../../../tier-0-primitives/math" }

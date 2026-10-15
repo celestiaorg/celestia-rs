@@ -50,7 +50,10 @@ ProcessProposal): `v9-empty`, `v9-staking`, `v9-gov`, `v9-authz-feegrant`,
 multi-denom fees, `MsgExec` of `MsgSubmitProposal`) and `v9-upgrade`
 (v9 txs → signal + try-upgrade → binary switch → v10 handler → v10 txs).
 Real blocks: square size, data root and tx decoding match for 12 recent
-mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`).
+mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`), and
+Mocha replayed from its real genesis (InitChain of the 56 MB mocha-5
+genesis, incl. ibc-go `TransferAuthorization` grants, now ported) through
+height 40,000 with every app hash and tx result matching (`genesis_replay`).
 Open: the edge differences no scenario reaches (ADR 0004, "Not ported"),
 a v9 query corpus, state sync / snapshots of a v9 chain, and following
 Mocha from genesis over HTTPS (with the follower work).

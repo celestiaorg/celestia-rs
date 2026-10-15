@@ -7,6 +7,7 @@ use celestia_proto::cosmos::bank::v1beta1::{MsgSend, SendAuthorization};
 use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use celestia_proto::cosmos::staking::v1beta1::stake_authorization::Policy;
+use celestia_proto::ibc::applications::transfer::v1 as ibc_transfer;
 use prost::{Message, Name};
 use sdk::address::undefined;
 use sdk::coins::{Coin, Coins};
@@ -27,6 +28,8 @@ pub enum Authorization {
     Send(SendAuthorization),
     /// staking `StakeAuthorization`.
     Stake(staking::StakeAuthorization),
+    /// ibc-go `TransferAuthorization`.
+    Transfer(ibc_transfer::TransferAuthorization),
 }
 
 /// `authz.AcceptResponse`.
@@ -75,6 +78,7 @@ impl Authorization {
             u if u == GenericAuthorization::type_url() => Self::Generic(decode(v)?),
             u if u == SendAuthorization::type_url() => Self::Send(decode(v)?),
             u if u == staking::StakeAuthorization::type_url() => Self::Stake(decode(v)?),
+            u if u == ibc_transfer::TransferAuthorization::type_url() => Self::Transfer(decode(v)?),
             other => {
                 return Err(sdkerr::invalid_type(format!(
                     "expected authz.Authorization, got {other}"
@@ -99,6 +103,7 @@ impl Authorization {
             Self::Generic(a) => Any::pack(a),
             Self::Send(a) => Any::pack(a),
             Self::Stake(a) => Any::pack(a),
+            Self::Transfer(a) => Any::pack(a),
         }
     }
 
@@ -108,6 +113,7 @@ impl Authorization {
             Self::Generic(a) => a.msg.clone(),
             Self::Send(_) => MsgSend::type_url(),
             Self::Stake(a) => stake_msg_type(a.authorization_type)?,
+            Self::Transfer(_) => ibc_transfer::MsgTransfer::type_url(),
         })
     }
 
@@ -136,6 +142,7 @@ impl Authorization {
                 }
                 Ok(())
             }
+            Self::Transfer(a) => validate_transfer(a),
             Self::Stake(a) => {
                 if let Some(m) = &a.max_tokens {
                     let c = Coin::from_proto(m)?;
@@ -161,6 +168,7 @@ impl Authorization {
             }),
             Self::Send(a) => accept_send(ctx, a, msg),
             Self::Stake(a) => accept_stake(ctx, a, msg),
+            Self::Transfer(a) => accept_transfer(ctx, a, msg),
         }
     }
 }
@@ -212,6 +220,177 @@ fn accept_send(ctx: &mut Context<'_>, a: &SendAuthorization, msg: &Any) -> Resul
             allow_list: a.allow_list.clone(),
         })),
     })
+}
+
+/// ibc-go `ErrInvalidAuthorization` (transfer/10).
+fn invalid_transfer_authorization(log: &str) -> SdkError {
+    SdkError::new(
+        "transfer",
+        10,
+        if log.is_empty() {
+            "invalid transfer authorization".to_owned()
+        } else {
+            format!("{log}: invalid transfer authorization")
+        },
+    )
+}
+
+/// An ibc-go `ibcerrors` error (codespace `ibc`).
+fn ibc_err(code: u32, desc: &str, log: &str) -> SdkError {
+    SdkError::new("ibc", code, format!("{log}: {desc}"))
+}
+
+/// `TransferAuthorization.ValidateBasic` (ibc-go v8).
+fn validate_transfer(a: &ibc_transfer::TransferAuthorization) -> Result<()> {
+    if a.allocations.is_empty() {
+        return Err(invalid_transfer_authorization(
+            "allocations cannot be empty",
+        ));
+    }
+    let mut channels = std::collections::HashSet::new();
+    for al in &a.allocations {
+        if !channels.insert(al.source_channel.as_str()) {
+            return Err(SdkError::new(
+                "channel",
+                4,
+                format!(
+                    "duplicate source channel ID: {}: invalid channel",
+                    al.source_channel
+                ),
+            ));
+        }
+        if al.spend_limit.is_empty() {
+            return Err(ibc_err(6, "invalid coins", "spend limit cannot be nil"));
+        }
+        let valid = Coins::from_proto(&al.spend_limit).is_ok_and(|c| c.is_valid());
+        if !valid {
+            return Err(ibc_err(6, "invalid coins", "invalid spend limit"));
+        }
+        x_ibc::host::port_identifier_validator(&al.source_port)
+            .map_err(|e| e.wrap("invalid source port ID"))?;
+        x_ibc::host::channel_identifier_validator(&al.source_channel)
+            .map_err(|e| e.wrap("invalid source channel ID"))?;
+        let mut seen = std::collections::HashSet::new();
+        for addr in &al.allow_list {
+            if !seen.insert(addr) {
+                return Err(invalid_transfer_authorization(&format!(
+                    "duplicate entry in allow list {addr}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `KVGasConfig().IterNextCostFlat`.
+const ITER_NEXT_COST_FLAT: u64 = 30;
+
+/// `TransferAuthorization.Accept` (ibc-go v8).
+fn accept_transfer(
+    ctx: &mut Context<'_>,
+    a: &ibc_transfer::TransferAuthorization,
+    msg: &Any,
+) -> Result<AcceptResponse> {
+    if msg.type_url != ibc_transfer::MsgTransfer::type_url() {
+        return Err(ibc_err(12, "invalid type", "type mismatch"));
+    }
+    let m: ibc_transfer::MsgTransfer = decode(&msg.value)?;
+    let gas = |ctx: &mut Context<'_>| {
+        ctx.gas
+            .consume(ITER_NEXT_COST_FLAT, "transfer authorization")
+            .map_err(|_| sdkerr::out_of_gas(""))
+    };
+    for (index, al) in a.allocations.iter().enumerate() {
+        if !(al.source_channel == m.source_channel && al.source_port == m.source_port) {
+            continue;
+        }
+        // isAllowedAddress
+        if !al.allow_list.is_empty() {
+            let mut allowed = false;
+            for addr in &al.allow_list {
+                gas(ctx)?;
+                if *addr == m.receiver {
+                    allowed = true;
+                    break;
+                }
+            }
+            if !allowed {
+                return Err(ibc_err(
+                    5,
+                    "invalid address",
+                    "not allowed receiver address for transfer",
+                ));
+            }
+        }
+        // validateMemo
+        if al.allowed_packet_data.is_empty() {
+            if !m.memo.trim().is_empty() {
+                return Err(invalid_transfer_authorization(
+                    "memo must be empty because allowed packet data in allocation is empty",
+                ));
+            }
+        } else if !(al.allowed_packet_data.len() == 1 && al.allowed_packet_data[0] == "*") {
+            let mut ok = false;
+            for allowed in &al.allowed_packet_data {
+                gas(ctx)?;
+                if m.memo.trim() == allowed.trim() {
+                    ok = true;
+                    break;
+                }
+            }
+            if !ok {
+                return Err(invalid_transfer_authorization(&format!(
+                    "not allowed memo: {}",
+                    m.memo
+                )));
+            }
+        }
+        let token = Coin::from_proto(&m.token.clone().unwrap_or_default())?;
+        let limit = Coins::from_proto(&al.spend_limit)?;
+        let unbounded = math::Int::parse(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        );
+        if unbounded.is_ok_and(|u| limit.amount_of(&token.denom) == u) {
+            return Ok(AcceptResponse {
+                accept: true,
+                delete: false,
+                updated: None,
+            });
+        }
+        let (left, negative) = safe_sub(&limit, &Coins(vec![token]))?;
+        if negative {
+            return Err(ibc_err(
+                3,
+                "insufficient funds",
+                "requested amount is more than spend limit",
+            ));
+        }
+        let mut allocations = a.allocations.clone();
+        if left.is_empty() {
+            allocations.remove(index);
+            if allocations.is_empty() {
+                return Ok(AcceptResponse {
+                    accept: true,
+                    delete: true,
+                    updated: None,
+                });
+            }
+        } else {
+            allocations[index].spend_limit = left.to_proto();
+        }
+        return Ok(AcceptResponse {
+            accept: true,
+            delete: false,
+            updated: Some(Authorization::Transfer(
+                ibc_transfer::TransferAuthorization { allocations },
+            )),
+        });
+    }
+    Err(ibc_err(
+        16,
+        "not found",
+        "requested port and channel allocation does not exist",
+    ))
 }
 
 fn stake_msg_type(t: i32) -> Result<String> {

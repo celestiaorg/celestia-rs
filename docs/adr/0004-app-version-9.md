@@ -175,4 +175,7 @@ absent), x/zkism's paginated genesis export.
   the switch).
 - Real data: square size, data root and tx decoding match for 12 recent
   mainnet blocks (app version 9) and 10 Mocha blocks between genesis and
-  the v10 height (`examples/real_dah.rs`).
+  the v10 height (`examples/real_dah.rs`); Mocha replayed from its
+  genesis through height 40,000 (app hash of every height and every tx
+  result match; `examples/genesis_replay.rs`, data from
+  `conformance/devnet/fetch-chain.{sh,py}`).

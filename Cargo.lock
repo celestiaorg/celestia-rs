@@ -1130,6 +1130,7 @@ dependencies = [
  "http",
  "iavl",
  "multistore",
+ "pbjson-types",
  "prost",
  "sdk",
  "serde",
@@ -4292,6 +4293,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "math",
  "pbjson-types",
  "prost",
  "sdk",
@@ -4299,6 +4301,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-ibc",
 ]
 
 [[package]]

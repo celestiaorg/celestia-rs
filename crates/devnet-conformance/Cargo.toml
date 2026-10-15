@@ -31,6 +31,7 @@ hash = { path = "../tier-0-primitives/hash" }
 [dev-dependencies]
 snapshots = { path = "../tier-2-state-and-store/snapshots" }
 tempfile = "3"
+pbjson-types = "0.7"
 iavl = { path = "../tier-2-state-and-store/iavl" }
 multistore = { path = "../tier-2-state-and-store/multistore" }
 sdk = { path = "../tier-3-app-modules/sdk" }
