@@ -26,6 +26,13 @@ fn assert_parity(scenario: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `workloads/cli.sh`: txs built, signed and broadcast by the Rust CLI
+/// (checked identical to the Go CLI's) on a Go node.
+#[test]
+fn cli_parity() -> anyhow::Result<()> {
+    assert_parity("cli")
+}
+
 #[test]
 fn staking_parity() -> anyhow::Result<()> {
     assert_parity("staking")

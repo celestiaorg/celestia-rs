@@ -77,6 +77,7 @@ fn chain_id(home: &Path, flag: &str, node: &Node) -> anyhow::Result<String> {
 
 /// Builds, signs and broadcasts `msgs` from `f.from`; prints Go's
 /// `TxResponse` JSON. Returns the response.
+#[allow(clippy::too_many_lines)]
 pub fn send_tx(
     home: &Path,
     f: &TxFlags,
@@ -89,10 +90,35 @@ pub fn send_tx(
     let node = Node::new(&node_addr(home, &f.node));
     let mut fee = f.fee.clone();
     if fee.gas == 0
+        && !fee.gas_auto
         && let Some(b) = &blobs
     {
         let pfb = txs::msg_pay_for_blobs(&key.bech32(ACC_PREFIX), b)?;
         fee.gas = txs::pfb_gas(&pfb);
+    }
+    // `--gas auto` (`CalculateGas`): simulate the tx built at gas 0 with an
+    // empty signature, then use `gas_adjustment * gas_used`.
+    let mut account = None;
+    if fee.gas_auto {
+        let (an, seq) = match (f.account_number, f.sequence) {
+            (Some(a), Some(s)) => (a, s),
+            (a, s) => {
+                let (an, sq) = node.account(&key.bech32(ACC_PREFIX))?;
+                (a.unwrap_or(an), s.unwrap_or(sq))
+            }
+        };
+        account = Some((an, seq));
+        let sim = txs::sim_tx_bytes(
+            &msgs,
+            &f.memo,
+            f.timeout_height,
+            fee.fee_with_gas(0)?,
+            key.pubkey_any(),
+            seq,
+        );
+        let used = node.simulate(&sim)?;
+        fee.gas = fee.adjusted_gas(used);
+        util::err(format!("gas estimate: {}", fee.gas));
     }
     if f.generate_only {
         let body = celestia_proto::cosmos::tx::v1beta1::TxBody {
@@ -116,9 +142,10 @@ pub fn send_tx(
         return Ok(v);
     }
     let chain_id = chain_id(home, &f.chain_id, &node)?;
-    let (account_number, sequence) = match (f.account_number, f.sequence) {
-        (Some(a), Some(s)) => (a, s),
-        (a, s) => {
+    let (account_number, sequence) = match (account, f.account_number, f.sequence) {
+        (Some(acc), _, _) => acc,
+        (None, Some(a), Some(s)) => (a, s),
+        (None, a, s) => {
             let (an, sq) = node.account(&key.bech32(ACC_PREFIX))?;
             (a.unwrap_or(an), s.unwrap_or(sq))
         }
@@ -207,6 +234,258 @@ pub fn staking_delegate(
             None,
         ))
     })
+}
+
+fn single_coin(amount: &str, what: &str) -> anyhow::Result<Coin> {
+    let c = coins(amount)?;
+    let [c] = c.as_slice() else {
+        bail!("{what} must be a single coin");
+    };
+    Ok(c.clone())
+}
+
+/// `tx staking unbond <validator> <amount>` (`MsgUndelegate`).
+pub fn staking_unbond(
+    home: &Path,
+    f: &TxFlags,
+    validator: &str,
+    amount: &str,
+) -> anyhow::Result<Value> {
+    let c = single_coin(amount, "unbonding amount")?;
+    send_tx(home, f, |k| {
+        Ok((
+            vec![Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgUndelegate {
+                    delegator_address: k.bech32(ACC_PREFIX),
+                    validator_address: validator.to_owned(),
+                    amount: Some(c),
+                },
+            )],
+            None,
+        ))
+    })
+}
+
+/// `tx staking redelegate <src> <dst> <amount>` (`MsgBeginRedelegate`).
+pub fn staking_redelegate(
+    home: &Path,
+    f: &TxFlags,
+    src: &str,
+    dst: &str,
+    amount: &str,
+) -> anyhow::Result<Value> {
+    let c = single_coin(amount, "redelegation amount")?;
+    send_tx(home, f, |k| {
+        Ok((
+            vec![Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgBeginRedelegate {
+                    delegator_address: k.bech32(ACC_PREFIX),
+                    validator_src_address: src.to_owned(),
+                    validator_dst_address: dst.to_owned(),
+                    amount: Some(c),
+                },
+            )],
+            None,
+        ))
+    })
+}
+
+/// `LegacyDec` wire form (the scaled integer string) of a decimal flag.
+fn dec_wire(s: &str) -> anyhow::Result<String> {
+    Ok(math::LegacyDec::from_str_go(s)
+        .map_err(|e| anyhow!("invalid decimal {s:?}: {e:?}"))?
+        .as_scaled()
+        .to_string())
+}
+
+/// `math.NewIntFromString`, normalized.
+fn int_string(s: &str, what: &str) -> anyhow::Result<String> {
+    math::Int::parse(s)
+        .map(|i| i.to_string())
+        .map_err(|_| anyhow!("{what} must be a positive integer: invalid request"))
+}
+
+/// `tx staking create-validator <validator.json>` (Go's file format:
+/// `pubkey` (proto JSON with `@type`), `amount`, `moniker`, `identity`,
+/// `website`, `security`, `details`, `commission-rate`,
+/// `commission-max-rate`, `commission-max-change-rate`,
+/// `min-self-delegation`).
+pub fn staking_create_validator(home: &Path, f: &TxFlags, path: &Path) -> anyhow::Result<Value> {
+    use celestia_proto::cosmos::staking::v1beta1::{
+        CommissionRates, Description, MsgCreateValidator,
+    };
+    let v: Value = serde_json::from_slice(&std::fs::read(path)?)
+        .with_context(|| format!("parse {}", path.display()))?;
+    let field = |k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let amount = field("amount");
+    if amount.is_empty() {
+        bail!("must specify amount of coins to bond");
+    }
+    let value = single_coin(&amount, "amount")?;
+    let pubkey: Any = match v.get("pubkey") {
+        None | Some(Value::Null) => bail!("must specify the JSON encoded pubkey"),
+        Some(pk) => serde_json::from_value(pk.clone()).context("pubkey")?,
+    };
+    let moniker = field("moniker");
+    if moniker.is_empty() {
+        bail!("must specify the moniker name");
+    }
+    let (rate, max_rate, max_change) = (
+        field("commission-rate"),
+        field("commission-max-rate"),
+        field("commission-max-change-rate"),
+    );
+    if rate.is_empty() || max_rate.is_empty() || max_change.is_empty() {
+        bail!("must specify all validator commission parameters");
+    }
+    let min_self = field("min-self-delegation");
+    if min_self.is_empty() {
+        bail!("must specify minimum self delegation");
+    }
+    let min_self = int_string(&min_self, "minimum self delegation")?;
+    let commission = CommissionRates {
+        rate: dec_wire(&rate)?,
+        max_rate: dec_wire(&max_rate)?,
+        max_change_rate: dec_wire(&max_change)?,
+    };
+    send_tx(home, f, |k| {
+        Ok((
+            vec![Any::pack(&MsgCreateValidator {
+                description: Some(Description {
+                    moniker,
+                    identity: field("identity"),
+                    website: field("website"),
+                    security_contact: field("security"),
+                    details: field("details"),
+                }),
+                commission: Some(commission),
+                min_self_delegation: min_self,
+                #[allow(deprecated)]
+                delegator_address: String::new(),
+                validator_address: k.bech32(VAL_PREFIX),
+                pubkey: Some(pubkey),
+                value: Some(value),
+            })],
+            None,
+        ))
+    })
+}
+
+/// `tx staking edit-validator` flags.
+#[derive(Debug, Clone)]
+pub struct EditValidator {
+    /// `--new-moniker`, `--identity`, `--website`, `--security-contact`,
+    /// `--details` (`[do-not-modify]` keeps the current value).
+    pub description: [String; 5],
+    /// `--commission-rate` (empty: unchanged).
+    pub commission_rate: String,
+    /// `--min-self-delegation` (empty: unchanged).
+    pub min_self_delegation: String,
+}
+
+/// `tx staking edit-validator`.
+pub fn staking_edit_validator(
+    home: &Path,
+    f: &TxFlags,
+    e: &EditValidator,
+) -> anyhow::Result<Value> {
+    use celestia_proto::cosmos::staking::v1beta1::{Description, MsgEditValidator};
+    let rate = if e.commission_rate.is_empty() {
+        String::new()
+    } else {
+        dec_wire(&e.commission_rate).map_err(|err| anyhow!("invalid new commission rate: {err}"))?
+    };
+    let min_self = if e.min_self_delegation.is_empty() {
+        String::new()
+    } else {
+        int_string(&e.min_self_delegation, "minimum self delegation")?
+    };
+    let [moniker, identity, website, security_contact, details] = e.description.clone();
+    send_tx(home, f, |k| {
+        Ok((
+            vec![Any::pack(&MsgEditValidator {
+                description: Some(Description {
+                    moniker,
+                    identity,
+                    website,
+                    security_contact,
+                    details,
+                }),
+                validator_address: k.bech32(VAL_PREFIX),
+                commission_rate: rate,
+                min_self_delegation: min_self,
+            })],
+            None,
+        ))
+    })
+}
+
+/// `PascalCase` of a kebab-case message name (`multi-send` → `MultiSend`).
+fn pascal(s: &str) -> String {
+    s.split(['-', '_'])
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_ascii_uppercase().to_string() + c.as_str())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+/// The registered `sdk.Msg` type URL for `tx <module> <msg>`: the message
+/// `Msg<Name>` (or `<name>` as given) in a package containing `module`.
+pub fn resolve_msg_type(module: &str, msg: &str) -> anyhow::Result<String> {
+    let name = if msg.starts_with("Msg") {
+        msg.to_owned()
+    } else {
+        format!("Msg{}", pascal(msg))
+    };
+    let candidates: Vec<&str> = txdecode::testing::type_urls()
+        .iter()
+        .filter(|(_, _, bits)| bits & 1 != 0)
+        .map(|(u, _, _)| *u)
+        .filter(|u| {
+            let full = u.trim_start_matches('/');
+            let Some((pkg, n)) = full.rsplit_once('.') else {
+                return false;
+            };
+            n.eq_ignore_ascii_case(&name) && pkg.split('.').any(|p| p == module)
+        })
+        .collect();
+    match candidates.as_slice() {
+        [one] => Ok((*one).to_owned()),
+        [] => bail!("no registered message {name} in module {module}"),
+        many => bail!("ambiguous message {name}: {}", many.join(", ")),
+    }
+}
+
+/// `tx <module> <msg> --json '<fields>'` (or `--json @file`): any
+/// registered message from its proto3 JSON fields (an `@type` in the JSON
+/// is ignored in favour of the resolved type).
+pub fn generic_json(
+    home: &Path,
+    f: &TxFlags,
+    module: &str,
+    msg: &str,
+    json: &str,
+) -> anyhow::Result<Value> {
+    let type_url = resolve_msg_type(module, msg)?;
+    let text = match json.strip_prefix('@') {
+        Some(p) => std::fs::read_to_string(p).with_context(|| format!("read {p}"))?,
+        None => json.to_owned(),
+    };
+    let v: Value = serde_json::from_str(&text).context("--json")?;
+    let Value::Object(mut obj) = v else {
+        bail!("--json must be a JSON object");
+    };
+    obj.insert("@type".into(), Value::String(type_url));
+    let any: Any = serde_json::from_value(Value::Object(obj)).context("--json")?;
+    send_tx(home, f, |_| Ok((vec![any], None)))
 }
 
 /// `tx blob pay-for-blob <namespace-id hex> <blob hex>` (share version 0).

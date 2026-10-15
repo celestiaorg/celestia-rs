@@ -54,6 +54,17 @@ conformance/devnet/build-rly.sh
 DEVNET_TX_INDEX=kv conformance/devnet/devnet.sh ibc 10 conformance/devnet/workloads/ibc.sh
 ```
 
+`workloads/cli.sh` (fixture `cli`, needs `cargo build -p celestia-rs`)
+drives the Rust CLI against the Go node: every command's `--generate-only`
+tx must equal `celestia-appd`'s (fees, `--gas auto` estimates, create /
+edit-validator, unbond, redelegate, the generic `tx <module> <msg> --json`),
+and the Rust-signed txs must commit with code 0.
+
+```bash
+cargo build -p celestia-rs
+conformance/devnet/devnet.sh cli 40 conformance/devnet/workloads/cli.sh
+```
+
 ## Live mixed network
 
 `mixed.sh <blocks> [workload.sh]` runs a Go `celestia-appd` validator and a

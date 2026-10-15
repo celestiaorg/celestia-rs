@@ -466,6 +466,13 @@ enum GenesisCmd {
 struct TxArgs {
     #[command(subcommand)]
     cmd: TxCmd,
+    #[command(flatten)]
+    flags: TxFlagArgs,
+}
+
+/// Go's `flags.AddTxFlagsToCmd` (the subset the Rust client supports).
+#[derive(Args, Debug, Clone, Default)]
+struct TxFlagArgs {
     /// Key name or address of the signer.
     #[arg(long, global = true, default_value = "")]
     from: String,
@@ -478,24 +485,30 @@ struct TxArgs {
     /// Fees, e.g. `2000utia`.
     #[arg(long, global = true, default_value = "")]
     fees: String,
-    /// Gas price, e.g. `0.004utia` (used when `--fees` is not given).
+    /// Gas prices, e.g. `0.004utia` (fee = ceil(price * gas)).
     #[arg(long = "gas-prices", global = true, default_value = "")]
     gas_prices: String,
-    /// Gas limit (default 200000; PFBs: estimated).
-    #[arg(long, global = true, default_value_t = 0)]
-    gas: u64,
-    /// Memo.
+    /// Gas limit, or `auto` to simulate (default 200000; PFBs: estimated).
     #[arg(long, global = true, default_value = "")]
+    gas: String,
+    /// Factor applied to the simulated gas with `--gas auto`.
+    #[arg(long = "gas-adjustment", global = true)]
+    gas_adjustment: Option<f64>,
+    /// Memo (Go: `--note`).
+    #[arg(long, alias = "note", global = true, default_value = "")]
     memo: String,
     /// Fee granter.
     #[arg(long = "fee-granter", global = true, default_value = "")]
     fee_granter: String,
+    /// Fee payer.
+    #[arg(long = "fee-payer", global = true, default_value = "")]
+    fee_payer: String,
     /// Broadcast mode (sync, async).
     #[arg(
         long = "broadcast-mode",
         short = 'b',
         global = true,
-        default_value = "sync"
+        default_value = ""
     )]
     broadcast_mode: String,
     /// Print the unsigned tx instead of broadcasting.
@@ -522,6 +535,63 @@ struct TxArgs {
     /// Output format (json).
     #[arg(long, short = 'o', global = true, default_value = "json")]
     output: String,
+    /// Timeout height.
+    #[arg(long = "timeout-height", global = true, default_value_t = 0)]
+    timeout_height: u64,
+}
+
+impl TxFlagArgs {
+    /// `self` with the flags set in `later` (given after an external
+    /// subcommand) taking precedence.
+    fn merge(self, later: Self) -> Self {
+        let s = |a: String, b: String| if b.is_empty() { a } else { b };
+        Self {
+            from: s(self.from, later.from),
+            chain_id: s(self.chain_id, later.chain_id),
+            node: s(self.node, later.node),
+            fees: s(self.fees, later.fees),
+            gas_prices: s(self.gas_prices, later.gas_prices),
+            gas: s(self.gas, later.gas),
+            gas_adjustment: later.gas_adjustment.or(self.gas_adjustment),
+            memo: s(self.memo, later.memo),
+            fee_granter: s(self.fee_granter, later.fee_granter),
+            fee_payer: s(self.fee_payer, later.fee_payer),
+            broadcast_mode: s(self.broadcast_mode, later.broadcast_mode),
+            generate_only: self.generate_only || later.generate_only,
+            account_number: later.account_number.or(self.account_number),
+            sequence: later.sequence.or(self.sequence),
+            wait: self.wait || later.wait,
+            yes: self.yes || later.yes,
+            keyring_backend: later.keyring_backend.or(self.keyring_backend),
+            keyring_dir: later.keyring_dir.or(self.keyring_dir),
+            output: if later.output == "json" {
+                self.output
+            } else {
+                later.output
+            },
+            timeout_height: if later.timeout_height == 0 {
+                self.timeout_height
+            } else {
+                later.timeout_height
+            },
+        }
+    }
+}
+
+/// `tx <module> <msg> --json <JSON | @file>`: any registered message.
+#[derive(Parser, Debug)]
+#[command(no_binary_name = true)]
+struct GenericTxArgs {
+    /// Message name (`multi-send`, `MsgMultiSend`).
+    msg: String,
+    /// The message's proto3 JSON fields (or `@path` to a file).
+    #[arg(long)]
+    json: String,
+    /// Home directory (when given after the message name).
+    #[arg(long)]
+    home: Option<PathBuf>,
+    #[command(flatten)]
+    flags: TxFlagArgs,
 }
 
 #[derive(Subcommand, Debug)]
@@ -538,6 +608,9 @@ enum TxCmd {
     /// Version signalling.
     #[command(subcommand)]
     Signal(SignalTx),
+    /// Any registered message: `tx <module> <msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Generic(Vec<String>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -551,6 +624,9 @@ enum BankTx {
         /// Amount, e.g. `1000utia`.
         amount: String,
     },
+    /// Any other bank message: `<msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Other(Vec<String>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -562,6 +638,54 @@ enum StakingTx {
         /// Amount.
         amount: String,
     },
+    /// Unbond from a validator: `unbond <validator> <amount>`.
+    Unbond {
+        /// Validator operator address.
+        validator: String,
+        /// Amount.
+        amount: String,
+    },
+    /// Redelegate: `redelegate <src-validator> <dst-validator> <amount>`.
+    Redelegate {
+        /// Source validator operator address.
+        src: String,
+        /// Destination validator operator address.
+        dst: String,
+        /// Amount.
+        amount: String,
+    },
+    /// Create a validator from a JSON file (Go's `validator.json` format).
+    CreateValidator {
+        /// Path to the validator JSON.
+        path: PathBuf,
+    },
+    /// Edit the signer's validator.
+    EditValidator {
+        /// New moniker.
+        #[arg(long = "new-moniker", default_value = "[do-not-modify]")]
+        new_moniker: String,
+        /// Identity.
+        #[arg(long, default_value = "[do-not-modify]")]
+        identity: String,
+        /// Website.
+        #[arg(long, default_value = "[do-not-modify]")]
+        website: String,
+        /// Security contact.
+        #[arg(long = "security-contact", default_value = "[do-not-modify]")]
+        security_contact: String,
+        /// Details.
+        #[arg(long, default_value = "[do-not-modify]")]
+        details: String,
+        /// New commission rate.
+        #[arg(long = "commission-rate", default_value = "")]
+        commission_rate: String,
+        /// New minimum self delegation.
+        #[arg(long = "min-self-delegation", default_value = "")]
+        min_self_delegation: String,
+    },
+    /// Any other staking message: `<msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Other(Vec<String>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -1221,8 +1345,17 @@ fn genesis_cmd(home: &Path, cmd: GenesisCmd) -> anyhow::Result<()> {
     }
 }
 
-fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
-    let mut f = client::TxFlags {
+fn tx_flags(a: TxFlagArgs) -> anyhow::Result<client::TxFlags> {
+    let (gas, gas_auto) = match a.gas.trim() {
+        "" => (0, false),
+        "auto" => (0, true),
+        g => (
+            g.parse::<u64>()
+                .map_err(|_| anyhow!("gas must be either integer or \"auto\""))?,
+            false,
+        ),
+    };
+    Ok(client::TxFlags {
         from: a.from,
         chain_id: a.chain_id,
         node: a.node,
@@ -1231,9 +1364,11 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
         fee: celestia_rs::txs::FeeOptions {
             fees: a.fees,
             gas_prices: a.gas_prices,
-            gas: a.gas,
+            gas,
+            gas_auto,
+            gas_adjustment: a.gas_adjustment,
             granter: a.fee_granter,
-            payer: String::new(),
+            payer: a.fee_payer,
         },
         memo: a.memo,
         broadcast_mode: a.broadcast_mode,
@@ -1241,14 +1376,43 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
         account_number: a.account_number,
         sequence: a.sequence,
         wait: a.wait,
-        timeout_height: 0,
-    };
+        timeout_height: a.timeout_height,
+    })
+}
+
+fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
     let need_from = |f: &client::TxFlags| -> anyhow::Result<()> {
         if f.from.is_empty() {
             bail!("--from is required");
         }
         Ok(())
     };
+    let generic = match &a.cmd {
+        TxCmd::Generic(args) => Some(args.clone()),
+        TxCmd::Bank(BankTx::Other(args)) => Some(
+            std::iter::once("bank".to_owned())
+                .chain(args.iter().cloned())
+                .collect(),
+        ),
+        TxCmd::Staking(StakingTx::Other(args)) => Some(
+            std::iter::once("staking".to_owned())
+                .chain(args.iter().cloned())
+                .collect(),
+        ),
+        _ => None,
+    };
+    if let Some(args) = generic {
+        let [module, rest @ ..] = args.as_slice() else {
+            bail!("usage: tx <module> <msg> --json <fields>");
+        };
+        let g = GenericTxArgs::try_parse_from(rest).map_err(|e| anyhow!("{e}"))?;
+        let f = tx_flags(a.flags.merge(g.flags))?;
+        need_from(&f)?;
+        let home = g.home.as_deref().unwrap_or(home);
+        client::generic_json(home, &f, module, &g.msg, &g.json)?;
+        return Ok(());
+    }
+    let mut f = tx_flags(a.flags)?;
     match a.cmd {
         TxCmd::Bank(BankTx::Send { from, to, amount }) => {
             f.from = from;
@@ -1257,6 +1421,38 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
         TxCmd::Staking(StakingTx::Delegate { validator, amount }) => {
             need_from(&f)?;
             client::staking_delegate(home, &f, &validator, &amount)?;
+        }
+        TxCmd::Staking(StakingTx::Unbond { validator, amount }) => {
+            need_from(&f)?;
+            client::staking_unbond(home, &f, &validator, &amount)?;
+        }
+        TxCmd::Staking(StakingTx::Redelegate { src, dst, amount }) => {
+            need_from(&f)?;
+            client::staking_redelegate(home, &f, &src, &dst, &amount)?;
+        }
+        TxCmd::Staking(StakingTx::CreateValidator { path }) => {
+            need_from(&f)?;
+            client::staking_create_validator(home, &f, &path)?;
+        }
+        TxCmd::Staking(StakingTx::EditValidator {
+            new_moniker,
+            identity,
+            website,
+            security_contact,
+            details,
+            commission_rate,
+            min_self_delegation,
+        }) => {
+            need_from(&f)?;
+            client::staking_edit_validator(
+                home,
+                &f,
+                &client::EditValidator {
+                    description: [new_moniker, identity, website, security_contact, details],
+                    commission_rate,
+                    min_self_delegation,
+                },
+            )?;
         }
         TxCmd::Blob(BlobTx::PayForBlob { namespace, blob }) => {
             need_from(&f)?;
@@ -1269,6 +1465,9 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
         TxCmd::Signal(SignalTx::TryUpgrade) => {
             need_from(&f)?;
             client::try_upgrade(home, &f)?;
+        }
+        TxCmd::Generic(_) | TxCmd::Bank(BankTx::Other(_)) | TxCmd::Staking(StakingTx::Other(_)) => {
+            unreachable!("handled above")
         }
     }
     Ok(())

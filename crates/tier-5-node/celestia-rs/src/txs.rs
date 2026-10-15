@@ -59,48 +59,82 @@ pub struct FeeOptions {
     pub fees: String,
     /// `--gas-prices` (e.g. `0.004utia`; empty: the default min gas price).
     pub gas_prices: String,
-    /// `--gas`.
+    /// `--gas` (0: the default, or the simulated estimate with `gas_auto`).
     pub gas: u64,
+    /// `--gas auto`: simulate and use `gas_adjustment * gas_used`.
+    pub gas_auto: bool,
+    /// `--gas-adjustment` (`None`: Go's default 1.0).
+    pub gas_adjustment: Option<f64>,
     /// `--fee-granter`.
     pub granter: String,
     /// `--fee-payer`.
     pub payer: String,
 }
 
-impl FeeOptions {
-    /// The `Fee` for this tx.
-    pub fn fee(&self) -> anyhow::Result<Fee> {
-        let gas = if self.gas == 0 { DEFAULT_GAS } else { self.gas };
-        if !self.fees.is_empty() && !self.gas_prices.is_empty() {
-            bail!("cannot provide both fees and gas prices");
+/// `sdk.ParseDecCoins`: `<dec><denom>` entries, sorted, zero amounts
+/// dropped (`NewDecCoins`).
+pub fn parse_dec_coins(s: &str) -> anyhow::Result<Vec<(String, math::LegacyDec)>> {
+    let mut out = Vec::new();
+    for c in s.split(',').map(str::trim).filter(|c| !c.is_empty()) {
+        let split = c
+            .find(|ch: char| !(ch.is_ascii_digit() || ch == '.'))
+            .ok_or_else(|| anyhow!("invalid decimal coin expression: {c}"))?;
+        let (amount, denom) = (&c[..split], c[split..].trim());
+        if denom.len() < 3 || !denom.starts_with(|ch: char| ch.is_ascii_alphabetic()) {
+            bail!("invalid decimal coin expression: {c}");
         }
-        let amount = if self.fees.is_empty() {
-            let (price, denom) = if self.gas_prices.is_empty() {
-                (DEFAULT_MIN_GAS_PRICE, "utia".to_owned())
-            } else {
-                let s = self.gas_prices.trim();
-                let split = s
-                    .find(|c: char| c.is_ascii_alphabetic())
-                    .ok_or_else(|| anyhow!("invalid gas price {s:?}"))?;
-                (
-                    s[..split]
-                        .parse::<f64>()
-                        .map_err(|_| anyhow!("invalid gas price {s:?}"))?,
-                    s[split..].to_owned(),
-                )
-            };
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                clippy::cast_precision_loss
-            )]
-            let amount = (price * gas as f64).ceil() as u64;
-            vec![Coin {
-                denom,
-                amount: amount.to_string(),
-            }]
+        let amount = math::LegacyDec::from_str_go(amount)
+            .map_err(|e| anyhow!("failed to parse decimal coin amount: {amount}: {e:?}"))?;
+        if !amount.is_zero() {
+            out.push((denom.to_owned(), amount));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+impl FeeOptions {
+    /// The gas limit when not simulating (Go's `flags.DefaultGasLimit` for 0).
+    #[must_use]
+    pub fn gas_limit(&self) -> u64 {
+        if self.gas == 0 { DEFAULT_GAS } else { self.gas }
+    }
+
+    /// The `Fee` for this tx at the configured gas limit.
+    pub fn fee(&self) -> anyhow::Result<Fee> {
+        self.fee_with_gas(self.gas_limit())
+    }
+
+    /// `Factory.BuildUnsignedTx`'s fee for gas limit `gas`: `--fees`, or
+    /// `ceil(gasPrice * gas)` per gas price (`LegacyDec` arithmetic). With
+    /// neither flag the default min gas price (0.004utia) is used.
+    pub fn fee_with_gas(&self, gas: u64) -> anyhow::Result<Fee> {
+        let prices = if self.gas_prices.is_empty() && self.fees.is_empty() {
+            parse_dec_coins(&format!("{DEFAULT_MIN_GAS_PRICE}utia"))?
         } else {
+            parse_dec_coins(&self.gas_prices)?
+        };
+        let amount = if prices.is_empty() {
             parse_coins(&self.fees)?
+        } else {
+            if !self.fees.is_empty() {
+                bail!("cannot provide both fees and gas prices");
+            }
+            let gl = math::LegacyDec::new(i64::try_from(gas).unwrap_or(i64::MAX));
+            prices
+                .iter()
+                .map(|(denom, p)| {
+                    let fee = p
+                        .checked_mul(&gl)
+                        .and_then(|f| f.ceil())
+                        .and_then(|f| f.round_int())
+                        .map_err(|e| anyhow!("fee overflow: {e:?}"))?;
+                    Ok(Coin {
+                        denom: denom.clone(),
+                        amount: fee.to_string(),
+                    })
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?
         };
         Ok(Fee {
             amount,
@@ -109,6 +143,56 @@ impl FeeOptions {
             granter: self.granter.clone(),
         })
     }
+
+    /// `CalculateGas`: `uint64(gasAdjustment * float64(gasUsed))`.
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    pub fn adjusted_gas(&self, gas_used: u64) -> u64 {
+        (self.gas_adjustment.unwrap_or(1.0) * gas_used as f64) as u64
+    }
+}
+
+/// The simulation tx of `Factory.BuildSimTx`: the unsigned tx at gas 0
+/// with one signer info (the key's public key, `SIGN_MODE_UNSPECIFIED`,
+/// the account sequence) and an empty signature.
+#[must_use]
+pub fn sim_tx_bytes(
+    msgs: &[Any],
+    memo: &str,
+    timeout_height: u64,
+    fee: Fee,
+    pubkey: Any,
+    sequence: u64,
+) -> Vec<u8> {
+    let body = TxBody {
+        messages: msgs.to_vec(),
+        memo: memo.to_owned(),
+        timeout_height,
+        extension_options: Vec::new(),
+        non_critical_extension_options: Vec::new(),
+    };
+    #[allow(deprecated)]
+    let auth_info = AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(pubkey),
+            mode_info: Some(ModeInfo {
+                sum: Some(mode_info::Sum::Single(mode_info::Single { mode: 0 })),
+            }),
+            sequence,
+        }],
+        fee: Some(fee),
+        tip: None,
+    };
+    TxRaw {
+        body_bytes: body.encode_to_vec(),
+        auth_info_bytes: auth_info.encode_to_vec(),
+        signatures: vec![Vec::new()],
+    }
+    .encode_to_vec()
 }
 
 /// An unsigned tx: messages, memo, fee and the signer's account.
@@ -432,6 +516,25 @@ impl Node {
         find(&v).ok_or_else(|| anyhow!("cannot read account number of {address}"))
     }
 
+    /// `Service.Simulate` over ABCI: the simulated gas used.
+    pub fn simulate(&self, tx_bytes: &[u8]) -> anyhow::Result<u64> {
+        use celestia_proto::cosmos::tx::v1beta1::{SimulateRequest, SimulateResponse};
+        #[allow(deprecated)]
+        let req = SimulateRequest {
+            tx: None,
+            tx_bytes: tx_bytes.to_vec(),
+        };
+        let bz = self
+            .abci_query(
+                "/cosmos.tx.v1beta1.Service/Simulate",
+                &req.encode_to_vec(),
+                0,
+            )
+            .context("simulate")?;
+        let resp = SimulateResponse::decode(bz.as_slice()).context("simulate response")?;
+        Ok(resp.gas_info.map_or(0, |g| g.gas_used))
+    }
+
     /// `broadcast_tx_sync` / `broadcast_tx_async`: Go's `TxResponse`.
     pub fn broadcast(&self, raw: &[u8], mode: &str) -> anyhow::Result<Value> {
         let method = match mode {
@@ -539,6 +642,28 @@ mod tests {
         assert_eq!(c[1].amount, "100");
         assert!(parse_coins("utia").is_err());
         assert!(parse_coins("100").is_err());
+    }
+
+    #[test]
+    fn dec_fees() {
+        let f = FeeOptions {
+            gas_prices: "0.0025utia".into(),
+            ..FeeOptions::default()
+        };
+        assert_eq!(f.fee_with_gas(123_457).unwrap().amount[0].amount, "309");
+        assert_eq!(f.fee_with_gas(0).unwrap().amount[0].amount, "0");
+        let both = FeeOptions {
+            gas_prices: "0.1utia".into(),
+            fees: "1utia".into(),
+            ..FeeOptions::default()
+        };
+        assert!(both.fee().is_err());
+        assert_eq!(FeeOptions::default().adjusted_gas(1000), 1000);
+        let adj = FeeOptions {
+            gas_adjustment: Some(1.3),
+            ..FeeOptions::default()
+        };
+        assert_eq!(adj.adjusted_gas(100_001), 130_001);
     }
 
     #[test]

@@ -90,9 +90,22 @@ celestia-rs tx staking delegate <celestiavaloper…> 1000000utia --from operator
   --keyring-backend file --home $H --fees 2000utia --wait
 ```
 
-(`create-validator` is not wrapped by the Rust CLI yet; use
-`celestia-appd tx staking create-validator --home $H` — both binaries share
-the home, the keyring and the node.)
+Then create the validator from a JSON file in Go's format (the consensus
+public key from `celestia-rs comet show-validator --home $H`):
+
+```sh
+cat > validator.json <<JSON
+{"pubkey": <output of comet show-validator>, "amount": "1000000utia",
+ "moniker": "my-validator", "commission-rate": "0.1", "commission-max-rate": "0.2",
+ "commission-max-change-rate": "0.01", "min-self-delegation": "1"}
+JSON
+celestia-rs tx staking create-validator validator.json --from operator \
+  --keyring-backend file --home $H --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+```
+
+`tx staking edit-validator` (`--new-moniker`, `--identity`, `--website`,
+`--security-contact`, `--details`, `--commission-rate`,
+`--min-self-delegation`), `unbond` and `redelegate` work like Go's.
 
 Keyrings: `test` (unencrypted, `<home>/keyring-test`) and `file`
 (passphrase-encrypted, `<home>/keyring-file`, passphrase read from stdin
@@ -256,10 +269,18 @@ after a clean stop (halt height, `launchctl unload`).
   `cometbft_consensus_validator_missed_blocks`, `cometbft_p2p_peers`,
   `cometbft_mempool_size`, …, labelled `chain_id`), so Go dashboards and
   alerts work unchanged.
-- **Transactions:** `celestia-rs tx bank send`, `tx staking delegate`,
-  `tx blob pay-for-blob`, `tx signal signal|try-upgrade` (sign mode
-  direct; `--fees` or `--gas-prices`, default 0.004 utia/gas; `--wait`
-  polls `tx_status`).
+- **Transactions:** `celestia-rs tx bank send`, `tx staking
+  delegate|unbond|redelegate|create-validator|edit-validator`, `tx blob
+  pay-for-blob`, `tx signal signal|try-upgrade` (sign mode direct;
+  `--fees` or `--gas-prices` (fee = ceil(price x gas), default 0.004
+  utia/gas); `--gas auto` simulates on the node and applies
+  `--gas-adjustment`; `--note`/`--memo`; `--wait` polls `tx_status`). Any
+  other message: `celestia-rs tx <module> <msg> --json '<proto3 JSON
+  fields>'` (or `--json @file`), e.g. `tx distribution
+  withdraw-delegator-reward --json
+  '{"delegator_address":"...","validator_address":"..."}'`. Each command's
+  `--generate-only` output is identical to `celestia-appd`'s
+  (`conformance/devnet/workloads/cli.sh`).
 
 ### Submitting transactions: use a synced node
 
