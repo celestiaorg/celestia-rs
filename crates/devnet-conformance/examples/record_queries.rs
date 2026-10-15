@@ -79,6 +79,14 @@ fn main() -> anyhow::Result<()> {
     b.build();
     b.txs(&txs);
     b.inclusion_proofs(&blocks);
+    if scenario == "empty" {
+        // cosmos.reflection.v1 answers with every file descriptor linked into
+        // celestia-appd (~MBs): recorded once.
+        let fd = "/cosmos.reflection.v1.ReflectionService/FileDescriptors";
+        b.raw(fd, Vec::new(), 0, false);
+        b.raw(fd, b"\x0a\x01x".to_vec(), 0, false);
+        b.raw(fd, b"\xff".to_vec(), 0, false);
+    }
     let reqs = std::mem::take(&mut b.reqs);
     drop(b);
     eprintln!("{} ABCI requests", reqs.len());

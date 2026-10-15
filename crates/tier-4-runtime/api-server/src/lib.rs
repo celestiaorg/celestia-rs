@@ -183,7 +183,8 @@ impl tonic::server::UnaryService<Vec<u8>> for Unary {
                 .map_err(|e| Status::internal(e.to_string()))?;
             let (bytes, h) = res.map_err(|(c, m)| Status::new(code_of(c), m))?;
             let mut resp = tonic::Response::new(bytes);
-            if let Ok(v) = h.to_string().parse() {
+            // A negative height: a service outside the query router (no header).
+            if let Some(Ok(v)) = (h >= 0).then(|| h.to_string().parse()) {
                 resp.metadata_mut().insert(BLOCK_HEIGHT_HEADER, v);
             }
             Ok(resp)

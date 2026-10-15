@@ -502,6 +502,15 @@ impl AbciApp {
         data: &[u8],
         height: i64,
     ) -> Result<(Vec<u8>, i64), GrpcQueryError> {
+        if path.starts_with(grpc_query::reflection_extra::V2ALPHA1) {
+            let chain_id = self
+                .with_app(|a| a.chain_id().to_owned())
+                .unwrap_or_default();
+            if let Some(r) = grpc_query::reflection_extra::v2alpha1(path, data, &chain_id) {
+                // No `x-cosmos-block-height`: Go serves it outside the router.
+                return r.map(|b| (b, -1)).map_err(GrpcQueryError::Handler);
+            }
+        }
         if let Some(r) = crate::node_services::grpc_query(self, path, data, height) {
             return r;
         }

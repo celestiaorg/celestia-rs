@@ -34,6 +34,8 @@ async fn grpc_server_answers_like_go() -> anyhow::Result<()> {
             && !c.prove
             && !needs_consensus(&c.path)
             && c.height >= 0
+            // Go answers it on the gRPC server only (checked below).
+            && !c.path.starts_with(grpc_query::reflection_extra::V2ALPHA1)
     }) {
         client.ready().await?;
         let mut req = tonic::Request::new(hex::decode(&case.data)?);
@@ -74,6 +76,61 @@ async fn grpc_server_answers_like_go() -> anyhow::Result<()> {
         checked += 1;
     }
     assert!(checked > 500, "only {checked} cases");
+    Ok(())
+}
+
+/// `cosmos.base.reflection.v2alpha1` (Go registers it on the gRPC server
+/// only): every method's answer must equal Go's
+/// (`conformance/querycorpus/reflection-v2alpha1.json`, recorded from a Go
+/// node by `record.sh`), lists Go fills from map iteration compared in a
+/// canonical order.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reflection_v2alpha1_answers_like_go() -> anyhow::Result<()> {
+    let app = app_for("empty")?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    tokio::spawn(api_server::serve_grpc_on(listener, app));
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))?
+        .connect()
+        .await?;
+    let mut client = tonic::client::Grpc::new(channel);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/querycorpus/reflection-v2alpha1.json");
+    let go: std::collections::BTreeMap<String, String> =
+        serde_json::from_slice(&std::fs::read(path)?)?;
+    anyhow::ensure!(go.len() == 6, "{} methods", go.len());
+    for (method, want) in &go {
+        client.ready().await?;
+        let p: http::uri::PathAndQuery =
+            format!("{}{method}", grpc_query::reflection_extra::V2ALPHA1).parse()?;
+        let r = client
+            .unary(tonic::Request::new(Vec::new()), p, api_server::RawCodec)
+            .await?;
+        let canon = |b: &[u8]| grpc_query::reflection_extra::canonical_v2alpha1(method, b);
+        assert!(
+            r.metadata().get(api_server::BLOCK_HEIGHT_HEADER).is_none(),
+            "{method}: no height header outside the query router"
+        );
+        let got = canon(r.get_ref()).ok_or_else(|| anyhow::anyhow!("{method}: decode"))?;
+        assert_eq!(Some(got), canon(&hex::decode(want)?), "{method}");
+    }
+    // A malformed request fails in grpc-go's codec.
+    client.ready().await?;
+    let p: http::uri::PathAndQuery = format!(
+        "{}GetChainDescriptor",
+        grpc_query::reflection_extra::V2ALPHA1
+    )
+    .parse()?;
+    let err = client
+        .unary(tonic::Request::new(vec![0xff]), p, api_server::RawCodec)
+        .await
+        .err()
+        .ok_or_else(|| anyhow::anyhow!("malformed request accepted"))?;
+    assert_eq!(err.code(), tonic::Code::Internal);
+    assert_eq!(
+        err.message(),
+        "grpc: error unmarshalling request: unexpected EOF"
+    );
     Ok(())
 }
 

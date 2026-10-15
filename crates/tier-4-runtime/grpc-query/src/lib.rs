@@ -24,6 +24,7 @@ mod gov;
 mod hyperlane;
 mod ibc;
 mod reflection;
+pub mod reflection_extra;
 mod reflection_table;
 mod sdk_misc;
 mod slashing;
@@ -56,6 +57,11 @@ impl core::fmt::Debug for Router {
 }
 
 impl Router {
+    /// Registers a handler over raw request / response bytes.
+    pub fn add_raw(&mut self, path: &'static str, h: Handler) {
+        self.routes.insert(path, h);
+    }
+
     /// Registers a typed handler (`Unmarshal` → handler → `Marshal`).
     pub fn add<Req, Resp>(
         &mut self,
@@ -122,6 +128,7 @@ pub fn router() -> &'static Router {
         hyperlane::register(&mut r);
         ibc::register(&mut r);
         reflection::register(&mut r);
+        reflection_extra::register(&mut r);
         sdk_misc::register(&mut r);
         slashing::register(&mut r);
         staking::register(&mut r);

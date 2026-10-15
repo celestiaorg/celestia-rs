@@ -1120,6 +1120,7 @@ dependencies = [
  "celestia-proto",
  "encoding",
  "flate2",
+ "grpc-query",
  "hash",
  "hex",
  "http",
@@ -1479,6 +1480,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "flate2",
  "kvstore",
  "math",
  "pbjson-types",

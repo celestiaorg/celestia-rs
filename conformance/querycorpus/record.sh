@@ -20,7 +20,7 @@ export PATH=$BIN:$PATH
 OFF=${DEVNET_PORT_OFFSET:-0}
 P_APP=$((36658 + OFF)); P_API=$((1317 + OFF)); P_GRPC=$((9090 + OFF)); P_RPC=$((26657 + OFF))
 
-(cd "$ROOT" && CARGO_INCREMENTAL=0 cargo build -q -p devnet-conformance --example record_queries)
+(cd "$ROOT" && CARGO_INCREMENTAL=0 cargo build -q -p devnet-conformance --example record_queries --example record_grpc_reflection)
 REC=$ROOT/target/debug/examples/record_queries
 
 for SCENARIO in "$@"; do
@@ -57,6 +57,11 @@ PY
   sleep 2
   "$REC" "$SCENARIO" "127.0.0.1:$P_APP" "127.0.0.1:$P_API" "$ROOT/conformance/querycorpus/$SCENARIO.json"
   gzip -9 -n -f "$ROOT/conformance/querycorpus/$SCENARIO.json"
+  if [ "$SCENARIO" = empty ]; then
+    # v2alpha1 reflection is served by the gRPC server only.
+    "$ROOT/target/debug/examples/record_grpc_reflection" "127.0.0.1:$P_GRPC" \
+      "$ROOT/conformance/querycorpus/reflection-v2alpha1.json"
+  fi
   kill $APP 2>/dev/null || true
   wait $APP 2>/dev/null || true
   trap - EXIT
