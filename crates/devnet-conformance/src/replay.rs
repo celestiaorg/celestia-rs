@@ -44,6 +44,9 @@ pub struct Report {
     pub halted_at: Option<i64>,
     /// PrepareProposal / ProcessProposal / CheckTx responses compared.
     pub compared: Compared,
+    /// Non-consensus FinalizeBlock differences: tx result logs, infos and
+    /// events, block events (protobuf bytes, so invalid UTF-8 counts).
+    pub event_log_diffs: Vec<String>,
 }
 
 /// Counts of non-FinalizeBlock responses compared against Go.
@@ -343,6 +346,33 @@ fn compare_finalize(
             if o != g {
                 report.errors.push(format!(
                     "FinalizeBlock h={height}: tx results differ: go={g:?} rust={o:?}"
+                ));
+            }
+            let full = |r: &abci::ResponseFinalizeBlock| {
+                let txs: Vec<_> = r
+                    .tx_results
+                    .iter()
+                    .map(|t| {
+                        (
+                            t.log.clone(),
+                            t.info.clone(),
+                            t.events
+                                .iter()
+                                .map(prost::Message::encode_to_vec)
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect();
+                let block: Vec<_> = r.events.iter().map(prost::Message::encode_to_vec).collect();
+                (txs, block)
+            };
+            let (fo, fg) = (full(&ours), full(go));
+            if fo != fg {
+                let i = fo.0.iter().zip(&fg.0).position(|(a, b)| a != b);
+                report.event_log_diffs.push(format!(
+                    "FinalizeBlock h={height}: tx {i:?}: go={:?} rust={:?}",
+                    i.map(|i| &fg.0[i]),
+                    i.map(|i| &fo.0[i])
                 ));
             }
             if ours.validator_updates != go.validator_updates {

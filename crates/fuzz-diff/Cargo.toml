@@ -14,15 +14,23 @@ workspace = true
 
 [dependencies]
 abci-server = { path = "../tier-4-runtime/abci-server" }
+api-server = { path = "../tier-4-runtime/api-server" }
 anyhow.workspace = true
 app = { path = "../tier-4-runtime/app" }
 celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 devnet-conformance = { path = "../devnet-conformance" }
+encoding = { path = "../tier-0-primitives/encoding" }
+gostr = { path = "../tier-0-primitives/gostr" }
 hex = "0.4"
+http = "1"
+keyring = { path = "../tier-5-node/keyring" }
 prost = "0.13"
+prost-reflect = "0.14"
 legacy-amino = { path = "../tier-1-protocol-types/legacy-amino" }
 sdk = { path = "../tier-3-app-modules/sdk" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
 txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-ante = { path = "../tier-3-app-modules/x/ante" }

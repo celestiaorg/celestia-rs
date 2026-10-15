@@ -22,9 +22,9 @@ use prost::Message as _;
 use crate::mutate::Mutator;
 
 /// The Go app behind its ABCI socket, one stream per recorded connection.
-struct GoApp {
-    addr: String,
-    conns: BTreeMap<u32, (TcpStream, usize)>,
+pub(crate) struct GoApp {
+    pub(crate) addr: String,
+    pub(crate) conns: BTreeMap<u32, (TcpStream, usize)>,
 }
 
 impl GoApp {
@@ -39,7 +39,7 @@ impl GoApp {
     }
 
     /// Forwards a recorded request; responses are drained at each flush.
-    fn forward(&mut self, id: u32, bytes: &[u8], flush: bool) -> anyhow::Result<()> {
+    pub(crate) fn forward(&mut self, id: u32, bytes: &[u8], flush: bool) -> anyhow::Result<()> {
         let (s, pending) = self.conn(id)?;
         write_frame(s, bytes)?;
         *pending += 1;
@@ -53,7 +53,7 @@ impl GoApp {
     }
 
     /// Sends `req` on connection `id` and returns its response.
-    fn call(&mut self, id: u32, req: &Request) -> anyhow::Result<Response> {
+    pub(crate) fn call(&mut self, id: u32, req: &Request) -> anyhow::Result<Response> {
         let (s, pending) = self.conn(id)?;
         let flush = Request {
             value: Some(request::Value::Flush(RequestFlush {})),

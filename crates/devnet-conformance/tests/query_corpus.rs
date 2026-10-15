@@ -128,6 +128,7 @@ const SCENARIOS: &[&str] = &[
     "hyperlane",
     "ibc",
     "staking-lifecycle",
+    "utf8",
     "vesting",
     "zkism-forwarding",
 ];
@@ -154,6 +155,8 @@ corpus_tests! {
     corpus_hyperlane => "hyperlane";
     corpus_ibc => "ibc";
     corpus_staking_lifecycle => "staking-lifecycle";
+    // Validators, proposals, votes, grants with invalid UTF-8 (ADR 0005).
+    corpus_utf8 => "utf8";
     corpus_vesting => "vesting";
     corpus_zkism_forwarding => "zkism-forwarding";
 }

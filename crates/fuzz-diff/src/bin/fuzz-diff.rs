@@ -119,6 +119,38 @@ fn record(app_version: u64, note: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `fuzz-diff craft <home> list` prints `<case> <signer> <what>` per
+/// workload tx; `fuzz-diff craft <home> <chain id> <case> <account number>
+/// <sequence>` prints the signed tx (hex) of `case` (see
+/// `fuzz_diff::craft`, `conformance/devnet/workloads/utf8.sh`).
+fn craft(args: &[String]) -> anyhow::Result<()> {
+    use fuzz_diff::craft::{Accounts, cases, sign};
+    let home = PathBuf::from(args.first().context("home")?);
+    let mut kr = keyring::Keyring::new(&home, keyring::Backend::Test);
+    let val0 = kr.key("val0").map_err(|e| anyhow::anyhow!("{e}"))?;
+    let user0 = kr.key("user0").map_err(|e| anyhow::anyhow!("{e}"))?;
+    let a = Accounts {
+        val0: val0.bech32("celestia"),
+        val0_oper: val0.bech32("celestiavaloper"),
+        user0: user0.bech32("celestia"),
+    };
+    let cs = cases(&a);
+    if args.get(1).map(String::as_str) == Some("list") {
+        for (i, c) in cs.iter().enumerate() {
+            println!("{i} {} {}", c.signer, c.what);
+        }
+        return Ok(());
+    }
+    let chain_id = args.get(1).context("chain id")?;
+    let i: usize = args.get(2).context("case")?.parse()?;
+    let acc: u64 = args.get(3).context("account number")?.parse()?;
+    let seq: u64 = args.get(4).context("sequence")?.parse()?;
+    let c = cs.get(i).context("no such case")?;
+    let key = if c.signer == "val0" { &val0 } else { &user0 };
+    println!("{}", hex::encode(sign(c, key, chain_id, acc, seq)?));
+    Ok(())
+}
+
 /// `fuzz-diff seed-corpus <dir>`: small seed corpora for the cargo-fuzz
 /// targets (`fuzz/corpus/<target>/`) from the real-tx corpus: distinct txs
 /// (one per message-type mix and wrapper kind), the amino vectors and a
@@ -196,6 +228,36 @@ fn main() -> anyhow::Result<()> {
             st.compared,
             st.go_accepted,
             st.mismatches.len()
+        );
+        if !st.mismatches.is_empty() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if argv.get(1).map(String::as_str) == Some("craft") {
+        return craft(&argv[2..]);
+    }
+    if argv.get(1).map(String::as_str) == Some("exec") {
+        let scenario = argv.get(2).context("scenario")?;
+        let addr = argv.get(3).context("go abci address")?;
+        let grpc = argv.get(4).context("go grpc address")?;
+        let per_height = argv.get(5).map_or(Ok(20), |s| s.parse())?;
+        let seed = argv.get(6).map_or(Ok(1), |s| s.parse())?;
+        let st = fuzz_diff::exec::run(scenario, addr, grpc, per_height, seed)?;
+        for m in &st.mismatches {
+            println!("MISMATCH {m}");
+        }
+        for m in &st.log_mismatches {
+            println!("LOG {m}");
+        }
+        eprintln!(
+            "{scenario}: {} simulated txs, Go executed {}; {} with invalid UTF-8 ({} executed); {} mismatches, {} error-text-only differences",
+            st.compared,
+            st.go_ok,
+            st.invalid_utf8,
+            st.invalid_utf8_ok,
+            st.mismatches.len(),
+            st.log_mismatches.len()
         );
         if !st.mismatches.is_empty() {
             std::process::exit(1);
