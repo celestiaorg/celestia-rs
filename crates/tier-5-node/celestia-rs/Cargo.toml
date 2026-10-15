@@ -63,7 +63,7 @@ multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 statesync = { path = "../../tier-4-runtime/statesync" }
 toml = "0.8"
-toml_edit = "0.22"
+toml_edit = "0.25"
 txdecode = { path = "../../tier-3-app-modules/txdecode" }
 x-blob = { path = "../../tier-3-app-modules/x/blob" }
 tracing = "0.1"
