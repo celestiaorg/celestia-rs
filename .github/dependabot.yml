@@ -1,0 +1,149 @@
+# Dependabot configuration. Policy and the reasons for every ignore rule:
+# docs/security.md ("Dependabot").
+#
+# - `ignore` rules apply to security updates as well as version updates:
+#   an ignored dependency gets an alert but no pull request. Rust
+#   advisories are additionally caught by `cargo deny check advisories`
+#   (ci.yml on every push, nightly.yml daily).
+# - Security pull requests are grouped per ecosystem, so one advisory that
+#   hits many Go modules raises one pull request instead of one per
+#   directory.
+version: 2
+updates:
+  # Rust workspace (the node binary). One weekly pull request for every
+  # minor / patch update; majors arrive one per crate, except the
+  # consensus-sensitive families below, which are migrated by hand
+  # because a new major can change encoding, hashing or signatures
+  # (every bump must keep the parity suite green).
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      rust-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      # Pinned with `=` on purpose (byte-exact output / tested surface).
+      - dependency-name: flate2
+      - dependency-name: blst
+      - dependency-name: axum
+      # Major versions migrated by hand (docs/security.md, "Deferred majors").
+      - dependency-name: "prost*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pbjson*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: protox
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tonic
+        update-types: ["version-update:semver-major"]
+      - dependency-name: cosmos-sdk-proto
+        update-types: ["version-update:semver-major"]
+      - dependency-name: rocksdb
+        update-types: ["version-update:semver-major"]
+      - dependency-name: redb
+        update-types: ["version-update:semver-major"]
+      - dependency-name: bech32
+        update-types: ["version-update:semver-major"]
+      - dependency-name: num-bigint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ark-*"
+        update-types: ["version-update:semver-major"]
+      # RustCrypto / dalek: one coordinated migration (digest 0.11 family).
+      - dependency-name: sha2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: sha3
+        update-types: ["version-update:semver-major"]
+      - dependency-name: ripemd
+        update-types: ["version-update:semver-major"]
+      - dependency-name: digest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: hmac
+        update-types: ["version-update:semver-major"]
+      - dependency-name: hkdf
+        update-types: ["version-update:semver-major"]
+      - dependency-name: pbkdf2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: k256
+        update-types: ["version-update:semver-major"]
+      - dependency-name: p256
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ed25519*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: x25519-dalek
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "aes*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: chacha20poly1305
+        update-types: ["version-update:semver-major"]
+      - dependency-name: argon2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: bcrypt
+        update-types: ["version-update:semver-major"]
+      - dependency-name: bip39
+        update-types: ["version-update:semver-major"]
+      - dependency-name: rand
+        update-types: ["version-update:semver-major"]
+      - dependency-name: getrandom
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Go conformance modules: test-only generators and oracles, never shipped.
+  # No version updates (limit 0): several reproduce celestia-app v10.4.0 /
+  # v9.0.8 / v6.4.10 and celestia-core module graphs exactly, and their
+  # outputs are committed fixtures. Security updates still open (grouped
+  # into one pull request) for everything except the pinned reference
+  # modules ignored below, which must not move away from the versions the
+  # parity target ships; their remaining alerts are documented in
+  # docs/security.md.
+  - package-ecosystem: gomod
+    directories:
+      - /conformance/antereplay
+      - /conformance/antevectors
+      - /conformance/consensusvectors
+      - /conformance/ctypesvectors
+      - /conformance/devnet-oracle
+      - /conformance/evidencevectors
+      - /conformance/fibre-client
+      - /conformance/fixturegen
+      - /conformance/fuzzoracle/v9
+      - /conformance/fuzzoracle/v10
+      - /conformance/lightvectors
+      - /conformance/mathvectors
+      - /conformance/mintvectors
+      - /conformance/p2pvectors
+      - /conformance/rpccorpus/recorder
+      - /conformance/txdecode
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "github.com/celestiaorg/*"
+      - dependency-name: "github.com/cosmos/cosmos-sdk"
+      - dependency-name: "cosmossdk.io/*"
+      - dependency-name: "github.com/cometbft/*"
+      - dependency-name: "github.com/tendermint/tendermint"
+      - dependency-name: "github.com/cosmos/ibc-go*"
+      - dependency-name: "github.com/cosmos/ibc-apps/*"
+      - dependency-name: "github.com/cosmos/gogoproto"
+      - dependency-name: "github.com/cosmos/iavl"
+      - dependency-name: "github.com/cosmos/cosmos-db"
+      - dependency-name: "github.com/bcp-innovations/hyperlane-cosmos"
