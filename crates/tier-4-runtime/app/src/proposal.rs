@@ -199,6 +199,25 @@ fn data_root(square: &square::Square) -> Result<(usize, Vec<u8>), Abort> {
     Ok((eds.width() / 2, dah.hash().to_vec()))
 }
 
+/// The square this node built in its last PrepareProposal, with its
+/// [`data_root`]. The data root is a pure function of the square's shares,
+/// so ProcessProposal of a proposal whose (independently constructed)
+/// square is byte-identical reuses it instead of erasure-extending the
+/// square again: the proposer's own proposal skips the second EDS + DAH.
+/// Any other square is extended as before, so acceptance is unchanged.
+#[derive(Debug, Default)]
+pub(crate) struct ProposedSquare(Option<(square::Square, usize, Vec<u8>)>);
+
+impl ProposedSquare {
+    /// [`data_root`] of `square`, from the cache when it holds this square.
+    fn data_root(&self, square: &square::Square) -> Result<(usize, Vec<u8>), Abort> {
+        match &self.0 {
+            Some((cached, width, root)) if cached == square => Ok((*width, root.clone())),
+            _ => data_root(square),
+        }
+    }
+}
+
 fn ante(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> Result<(), x_ante::AnteError> {
     x_ante::ante_handle_in_place(ctx, tx, false, deps).map(|_| ())
 }
@@ -267,9 +286,12 @@ impl App {
             &req.proposer_address,
             &req.next_validators_hash,
         );
+        let mut proposed = std::mem::take(&mut self.proposed);
+        proposed.0 = None;
         let res = self.with_proposal_ctx(header, ExecMode::PrepareProposal, |ctx, deps| {
-            prepare(ctx, deps, req)
+            prepare(ctx, deps, req, &mut proposed)
         });
+        self.proposed = proposed;
         Ok(res.unwrap_or_else(|_| ResponsePrepareProposal {
             txs: req.txs.clone(),
             ..ResponsePrepareProposal::default()
@@ -292,11 +314,13 @@ impl App {
             &req.proposer_address,
             &req.next_validators_hash,
         );
+        let proposed = std::mem::take(&mut self.proposed);
         let accept = self
             .with_proposal_ctx(header, ExecMode::ProcessProposal, |ctx, deps| {
-                process(ctx, deps, req)
+                process(ctx, deps, req, &proposed)
             })
             .unwrap_or(false);
+        self.proposed = proposed;
         Ok(ResponseProcessProposal {
             status: if accept {
                 ProposalStatus::Accept
@@ -311,7 +335,8 @@ impl App {
 /// The SDK txs of a proposal, split like `separateTxs`.
 #[derive(Default)]
 struct Separated<'a> {
-    normal: Vec<&'a [u8]>,
+    /// With their decoding (`fill` would decode them again).
+    normal: Vec<(&'a [u8], Tx)>,
     blob: Vec<(&'a [u8], UnwrappedBlobTx)>,
     pff: Vec<&'a [u8]>,
 }
@@ -336,7 +361,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
                     }
                     continue;
                 }
-                s.normal.push(raw);
+                s.normal.push((raw, tx));
             }
         }
     }
@@ -348,6 +373,7 @@ fn prepare(
     ctx: &mut Context<'_>,
     deps: &x_ante::StoreDeps,
     req: &RequestPrepareProposal,
+    proposed: &mut ProposedSquare,
 ) -> Result<ResponsePrepareProposal, Abort> {
     let max_square_size = max_effective_square_size(ctx)?;
     let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
@@ -359,6 +385,7 @@ fn prepare(
     };
     let square = builder.export()?;
     let (width, root) = data_root(&square)?;
+    proposed.0 = Some((square, width, root.clone()));
     Ok(ResponsePrepareProposal {
         txs,
         square_size: width as u64,
@@ -395,10 +422,7 @@ fn fill(
     let mut kept = Vec::new();
 
     let mut sdk_count = 0usize;
-    for raw in &sep.normal {
-        let Ok(tx) = txdecode::decode(raw) else {
-            continue;
-        };
+    for (raw, tx) in &sep.normal {
         ctx.tx_bytes = raw.to_vec();
         let exec = count_executable_msgs((!zeroed).then_some(&mut *ctx), tx.msgs())
             .map_err(|_| Abort("nil multistore".into()))?;
@@ -412,13 +436,13 @@ fn fill(
             let _ = builder.revert_last_tx();
             continue;
         }
-        if let Err(e) = ante(ctx, &tx, deps) {
+        if let Err(e) = ante(ctx, tx, deps) {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_tx();
             continue;
         }
-        if fibre_tx::contains_fibre_state_msg(&tx) {
-            let _ = execute_tx_msgs(ctx, &tx);
+        if fibre_tx::contains_fibre_state_msg(tx) {
+            let _ = execute_tx_msgs(ctx, tx);
         }
         sdk_count += exec;
         kept.push(raw.to_vec());
@@ -570,6 +594,7 @@ fn process_v9(
     ctx: &mut Context<'_>,
     deps: &x_ante::StoreDeps,
     req: &RequestProcessProposal,
+    proposed: &ProposedSquare,
 ) -> Result<bool, Abort> {
     let (mut sdk_msgs, mut blob_msgs) = (0usize, 0usize);
     for raw in &req.txs {
@@ -630,7 +655,7 @@ fn process_v9(
     let Ok(square) = v4::construct(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
         return Ok(false);
     };
-    let Ok((width, root)) = data_root(&square) else {
+    let Ok((width, root)) = proposed.data_root(&square) else {
         return Ok(false);
     };
     Ok(width as u64 == req.square_size && root == req.data_root_hash)
@@ -688,9 +713,10 @@ fn process(
     ctx: &mut Context<'_>,
     deps: &x_ante::StoreDeps,
     req: &RequestProcessProposal,
+    proposed: &ProposedSquare,
 ) -> Result<bool, Abort> {
     if x_ante::is_v9(ctx) {
-        return process_v9(ctx, deps, req);
+        return process_v9(ctx, deps, req, proposed);
     }
     let max_square_size = max_effective_square_size(ctx)?;
     if x_fibre::begin_block(ctx).is_err() {
@@ -758,7 +784,7 @@ fn process(
     let Ok(square) = v4::construct(&classified, max_square_size, SUBTREE_ROOT_THRESHOLD) else {
         return Ok(false);
     };
-    let Ok((width, root)) = data_root(&square) else {
+    let Ok((width, root)) = proposed.data_root(&square) else {
         return Ok(false);
     };
     Ok(width as u64 == req.square_size && root == req.data_root_hash)
@@ -776,6 +802,23 @@ mod tests {
         assert_eq!(
             hex::encode(root),
             "3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353"
+        );
+    }
+
+    #[test]
+    fn proposed_square_is_reused_only_for_the_same_square() {
+        let empty = square::empty_square();
+        let other = square::Square::from_shares_unchecked(shares::tail_padding_shares(4));
+        let fresh = |s: &square::Square| data_root(s).unwrap_or_default();
+        // A cached entry with a deliberately wrong root shows which path ran.
+        let cached = ProposedSquare(Some((empty.clone(), 1, vec![7])));
+        assert_eq!(cached.data_root(&empty).unwrap_or_default(), (1, vec![7]));
+        assert_eq!(cached.data_root(&other).unwrap_or_default(), fresh(&other));
+        assert_eq!(
+            ProposedSquare::default()
+                .data_root(&empty)
+                .unwrap_or_default(),
+            fresh(&empty)
         );
     }
 }

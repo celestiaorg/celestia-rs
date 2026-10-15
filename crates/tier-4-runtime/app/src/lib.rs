@@ -66,6 +66,9 @@ pub struct App {
     node_min_gas_price: Option<math::LegacyDec>,
     /// Node-local block retention, halt and upgrade-info settings.
     node: NodeOptions,
+    /// The square of this node's last PrepareProposal and its data root,
+    /// reused by ProcessProposal of the same square.
+    proposed: proposal::ProposedSquare,
 }
 
 /// Node-local settings of `app.toml` that do not affect consensus state.
@@ -229,6 +232,7 @@ impl App {
             check_header: Header::default(),
             node_min_gas_price: None,
             node: NodeOptions::default(),
+            proposed: proposal::ProposedSquare::default(),
         }
     }
 
@@ -622,6 +626,8 @@ impl App {
             .finalize_header
             .take()
             .ok_or_else(|| sdk::error::sdk::logic("commit without finalized block"))?;
+        // The height's proposals are decided: free the cached square.
+        self.proposed = proposal::ProposedSquare::default();
         // InitChain writes are flushed with the first block; flushing again
         // here is a no-op for already-flushed state.
         self.ms.flush()?;
