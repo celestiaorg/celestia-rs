@@ -167,13 +167,26 @@ impl RpcClient {
     }
 
     fn get(&self, path: &str) -> RpcResult<Value> {
-        let body = if self.https {
-            self.curl_body(path)?
+        let v: Value = if self.https {
+            // Public HTTPS endpoints answer overload and gateway errors
+            // (429, 502-504) with HTML pages: retry those a few times.
+            let mut attempt = 0;
+            loop {
+                let body = self.curl_body(path)?;
+                match serde_json::from_slice(&body) {
+                    Ok(v) => break v,
+                    Err(e) if attempt < 3 => {
+                        attempt += 1;
+                        tracing::debug!(error = %e, attempt, "non-JSON HTTPS response; retrying");
+                        std::thread::sleep(Duration::from_millis(1000 * attempt));
+                    }
+                    Err(e) => return Err(rpc_err(format!("error unmarshalling: {e}"))),
+                }
+            }
         } else {
-            self.http_get(path)?
+            serde_json::from_slice(&self.http_get(path)?)
+                .map_err(|e| rpc_err(format!("error unmarshalling: {e}")))?
         };
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| rpc_err(format!("error unmarshalling: {e}")))?;
         if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
             let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
             let message = err.get("message").and_then(Value::as_str).unwrap_or("");

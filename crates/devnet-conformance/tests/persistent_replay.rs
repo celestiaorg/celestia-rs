@@ -137,7 +137,19 @@ fn restart_halfway_resumes_from_disk_with_full_parity() -> anyhow::Result<()> {
 
 #[test]
 fn snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
-    let scenario = "staking";
+    snapshot_restore_resumes_replay("staking", 0)
+}
+
+/// A snapshot of an app-version-9 state (no fibre / valaddr stores) restores
+/// into a fresh node when the offer carries the trusted app version 9, as
+/// state sync from mainnet (v9.0.8) does. Regression: the restore used to
+/// fail at the last chunk with `unknown store: fibre`.
+#[test]
+fn v9_snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
+    snapshot_restore_resumes_replay("v9-staking", 9)
+}
+
+fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::Result<()> {
     let hashes = go_app_hashes(&load_exchanges(scenario)?);
     let last = hashes.last().map_or(0, |(h, _)| *h);
     let at = last / 2;
@@ -164,7 +176,7 @@ fn snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
         celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
             snapshot: Some(snapshot.clone()),
             app_hash: Vec::new(),
-            app_version: 0,
+            app_version,
         },
     );
     assert_eq!(offer.result, 1, "accept");

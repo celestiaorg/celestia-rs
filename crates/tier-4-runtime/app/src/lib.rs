@@ -745,6 +745,22 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
+        // A state at app version 9 has no fibre / valaddr stores (ADR
+        // 0004): restore it into the v9 store set, as Go does with its v9
+        // app. Without this every store of a v9 snapshot restores but the
+        // final commit misses the v10-only stores mounted by a fresh app.
+        if self.last_height == 0 && stores::is_v9(req.app_version) {
+            for name in stores::ADDED_IN_V10 {
+                if self.ms.is_mounted(name)
+                    && let Err(e) = self.ms.unmount_iavl(name)
+                {
+                    tracing::error!(store = name, error = %e, "failed to unmount store");
+                    return abci::ResponseOfferSnapshot {
+                        result: R::Abort as i32,
+                    };
+                }
+            }
+        }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
             (Some(_), None) => R::Reject,
