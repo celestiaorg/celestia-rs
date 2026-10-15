@@ -53,8 +53,8 @@ hash.
 
 | Network | Range followed with matching app hash, results and validator sets | Notes |
 |---|---|---|
-| Mocha (`mocha-5`, app v10) | 1,624,501 → tip (1,710,000+), ~85,500 heights, at the tip since 11:09 UTC | PayForBlobs (~96k), PayForFibre, fibre escrow, bank, staking, authz, feegrant, unjail. No mismatch. Mocha's v10 era has no IBC or hyperlane traffic (hyperlane txs only at v9 heights 799,940–973,254) |
-| Mainnet (`celestia`, app v9) | 14,894,001 → 14,905,800+ (running) | PayForBlobs, IBC (update client, recv / ack, transfer), ICA host txs, hyperlane, staking, distribution, authz. Four bugs found and fixed (below) |
+| Mocha (`mocha-5`, app v10) | 1,624,501 → tip (1,711,100+ at 15:32 UTC), ~86,600 heights, at the tip since 11:09 UTC | PayForBlobs (~96k), PayForFibre, fibre escrow, bank, staking, authz, feegrant, unjail. No mismatch. Mocha's v10 era has no IBC or hyperlane traffic (hyperlane txs only at v9 heights 799,940–973,254) |
+| Mainnet (`celestia`, app v9) | 14,894,001 → 14,914,200+ (still running), ~20,200 heights | PayForBlobs, IBC (update client, recv / ack, transfer), ICA host txs, hyperlane, staking, distribution, authz. Four bugs found and fixed (below) |
 
 Bugs found by following real networks (each with a regression test):
 v9 snapshots could not be state-synced (`unknown store: fibre`);
