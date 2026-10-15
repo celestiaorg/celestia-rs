@@ -113,7 +113,7 @@ pub fn timeout_height(ctx: &Context<'_>, tx: &Tx) -> R<()> {
 /// `ValidateMemoDecorator`: memo length in bytes against
 /// `MaxMemoCharacters` (params are only read for a non-empty memo).
 pub fn validate_memo(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
-    let len = tx.body.memo.len() as u64;
+    let len = gostr::go_len(&tx.body.memo) as u64;
     if len > 0 {
         let params = x_auth::get_params(ctx)?;
         if len > params.max_memo_characters {

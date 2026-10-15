@@ -45,8 +45,8 @@ pub struct Tx {
     /// values after `UnpackInterfaces`): same type URLs as `body.messages`,
     /// but each value re-encoded from the decoded Go struct, so prost decodes
     /// it to the same content Go holds (customtype amounts normalized, e.g.
-    /// `"0x10"` -> `"16"`; invalid UTF-8 in strings replaced, which Go keeps
-    /// but prost cannot decode). `body.messages` keeps the bytes as received.
+    /// `"0x10"` -> `"16"`; strings keep their bytes, see `gostr`).
+    /// `body.messages` keeps the bytes as received.
     pub normalized_msgs: Vec<Any>,
 }
 

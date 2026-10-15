@@ -1,0 +1,17 @@
+[package]
+name = "prost-gostr"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "prost with gogoproto string semantics: string fields carry any bytes (Go form, see gostr). Used as `prost` by the generated protobuf crates."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+gostr = { path = "../gostr" }
+prost = "0.13"

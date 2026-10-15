@@ -254,7 +254,7 @@ pub fn validate_header(h: &tm::Header) -> LResult<()> {
     if h.version.as_ref().map_or(0, |v| v.block) != BLOCK_PROTOCOL {
         return Err("block protocol is incorrect".into());
     }
-    if h.chain_id.len() > MAX_CHAIN_ID_LEN {
+    if gostr::go_len(&h.chain_id) > MAX_CHAIN_ID_LEN {
         return Err("chainID is too long".into());
     }
     if h.height <= 0 {

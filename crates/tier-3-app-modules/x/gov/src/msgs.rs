@@ -17,20 +17,6 @@ fn invalid_address(what: &str, e: &sdk::SdkError) -> sdk::SdkError {
     sdkerr::invalid_address(format!("invalid {what} address: {}", e.log))
 }
 
-/// `sdk.NewCoins(coins...)`: sanitizes; panics (ErrPanic) on invalid coins.
-fn new_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
-    let c = Coins::from_proto(coins).map_err(|e| sdk::error::go_panic(e.log))?;
-    let mut v = c.0;
-    v.retain(|c| !c.is_zero());
-    v.sort_by(|a, b| a.denom.cmp(&b.denom));
-    let out = Coins(v);
-    let dup = out.0.windows(2).any(|w| w[0].denom == w[1].denom);
-    if dup || !out.is_valid() {
-        return Err(sdk::error::go_panic(format!("invalid coins: {out}")));
-    }
-    Ok(out)
-}
-
 /// `ProposalMetadata` JSON check: `Ok(Some((title, summary)))` when Go's
 /// `json.Unmarshal` into the struct succeeds.
 fn metadata_title_summary(metadata: &str) -> Option<(String, String)> {
@@ -99,7 +85,7 @@ pub fn submit_proposal(
         );
     }
     if !msg.metadata.is_empty()
-        && let Some((title, summary)) = metadata_title_summary(&msg.metadata)
+        && let Some((title, summary)) = metadata_title_summary(&gostr::lossy(&msg.metadata))
     {
         if title != msg.title {
             return Err(errors::invalid_proposal_content().wrap(format!(
@@ -114,9 +100,16 @@ pub fn submit_proposal(
             )));
         }
     }
-    let initial = new_coins(&msg.initial_deposit)?;
+    // `GetInitialDeposit()` is the decoded slice as is; `validateInitialDeposit`
+    // checks it after reading the params.
     let params = crate::get_params(ctx)
         .map_err(|e| undefined(format!("failed to get governance parameters: {}", e.log)))?;
+    if !sdk::coins::raw_coins_is_valid(&msg.initial_deposit)? {
+        return Err(sdkerr::invalid_coins(sdk::coins::raw_coins_string(
+            &msg.initial_deposit,
+        )));
+    }
+    let initial = Coins::from_proto(&msg.initial_deposit)?;
     keeper::validate_initial_deposit(&params, &initial, msg.expedited)?;
     keeper::validate_deposit_denom(&params, &initial)?;
     let proposal = keeper::submit_proposal(
@@ -262,10 +255,14 @@ pub fn vote_weighted(
 pub fn deposit(ctx: &mut Context<'_>, msg: &v1::MsgDeposit) -> Result<v1::MsgDepositResponse> {
     let depositor =
         acc_from_bech32(&msg.depositor).map_err(|e| invalid_address("depositor", &e))?;
-    let amount = Coins::from_proto(&msg.amount)?;
-    if !amount.is_valid() || amount.iter().any(|c| !c.amount.is_positive()) {
-        return Err(sdkerr::invalid_coins(amount.to_string()));
+    // `validateDeposit`: `IsValid` (and `IsAllPositive`) of the coins as
+    // decoded.
+    if !sdk::coins::raw_coins_is_valid(&msg.amount)? {
+        return Err(sdkerr::invalid_coins(sdk::coins::raw_coins_string(
+            &msg.amount,
+        )));
     }
+    let amount = Coins::from_proto(&msg.amount)?;
     if keeper::add_deposit(ctx, msg.proposal_id, &depositor, &amount)? {
         ctx.events.emit(event(
             "proposal_deposit",
@@ -384,7 +381,8 @@ pub fn legacy_submit_proposal(
     let (title, description) = legacy_content_title_description(content)?;
     let gov = x_auth::bech32(&keeper::module_address())?;
     let exec = v1::MsgExecLegacyContent {
-        content: Some(content.clone()),
+        // `NewLegacyContent`: `NewAnyWithValue(content)` re-packs it.
+        content: Some(txdecode::gogo_repack(content)),
         authority: gov,
     };
     let v1msg = v1::MsgSubmitProposal {
@@ -428,14 +426,14 @@ fn legacy_content_title_description(content: &Any) -> Result<(String, String)> {
     if tp.title.trim().is_empty() {
         return Err(errors::invalid_proposal_content().wrap("proposal title cannot be blank"));
     }
-    if tp.title.len() > 140 {
+    if gostr::go_len(&tp.title) > 140 {
         return Err(errors::invalid_proposal_content()
             .wrap("proposal title is longer than max length of 140"));
     }
     if tp.description.is_empty() {
         return Err(errors::invalid_proposal_content().wrap("proposal description cannot be blank"));
     }
-    if tp.description.len() > 10000 {
+    if gostr::go_len(&tp.description) > 10000 {
         return Err(errors::invalid_proposal_content()
             .wrap("proposal description is longer than max length of 10000"));
     }

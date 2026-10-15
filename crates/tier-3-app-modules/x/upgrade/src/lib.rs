@@ -71,7 +71,7 @@ pub fn set_module_version_map<'n>(
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (name, version) in sorted {
         let mut key = vec![VERSION_MAP_BYTE];
-        key.extend_from_slice(name.as_bytes());
+        key.extend_from_slice(&gostr::to_go_bytes(name));
         ctx.set(STORE_KEY, key, version.to_be_bytes().to_vec())?;
     }
     Ok(())
@@ -82,7 +82,7 @@ pub fn get_module_version_map(ctx: &mut Context<'_>) -> Result<VersionMap> {
     let mut it = ctx.prefix_iter(STORE_KEY, &[VERSION_MAP_BYTE])?;
     let mut vm = VersionMap::new();
     while let Some((k, v)) = it.next(ctx)? {
-        let name = String::from_utf8_lossy(&k[1..]).into_owned();
+        let name = gostr::from_go_bytes(&k[1..]).into_owned();
         let ver = <[u8; 8]>::try_from(v.as_slice()).map_or(0, u64::from_be_bytes);
         vm.insert(name, ver);
     }
@@ -127,7 +127,7 @@ fn done_key(name: &str, height: i64) -> Vec<u8> {
     let mut k = vec![DONE_BYTE];
     #[allow(clippy::cast_sign_loss)]
     k.extend_from_slice(&(height as u64).to_be_bytes());
-    k.extend_from_slice(name.as_bytes());
+    k.extend_from_slice(&gostr::to_go_bytes(name));
     k
 }
 
@@ -137,7 +137,7 @@ fn parse_done_key(k: &[u8]) -> Result<(String, i64)> {
     }
     let h = <[u8; 8]>::try_from(&k[1..9]).map_or(0, u64::from_be_bytes);
     #[allow(clippy::cast_possible_wrap)]
-    Ok((String::from_utf8_lossy(&k[9..]).into_owned(), h as i64))
+    Ok((gostr::from_go_bytes(&k[9..]).into_owned(), h as i64))
 }
 
 /// `GetDoneHeight` (0 when the upgrade never completed).

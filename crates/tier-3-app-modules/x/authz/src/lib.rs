@@ -78,7 +78,7 @@ pub fn grant_key(grantee: &[u8], granter: &[u8], msg_type: &str) -> Vec<u8> {
     let mut k = vec![GRANT_PREFIX];
     k.extend_from_slice(&length_prefixed(granter));
     k.extend_from_slice(&length_prefixed(grantee));
-    k.extend_from_slice(msg_type.as_bytes());
+    k.extend_from_slice(&gostr::to_go_bytes(msg_type));
     k
 }
 
@@ -104,7 +104,7 @@ pub fn parse_grant_key(key: &[u8]) -> (Vec<u8>, Vec<u8>, String) {
     };
     let granter = take(&mut i);
     let grantee = take(&mut i);
-    let msg = String::from_utf8_lossy(key.get(i..).unwrap_or_default()).into_owned();
+    let msg = gostr::from_go_bytes(key.get(i..).unwrap_or_default()).into_owned();
     (granter, grantee, msg)
 }
 
@@ -250,7 +250,7 @@ pub fn delete_grant(
     let Some(grant) = get_grant(ctx, &key)? else {
         return Err(errors::no_authorization_found().wrap(format!(
             "failed to delete grant with key {}",
-            String::from_utf8_lossy(&key)
+            gostr::from_go_bytes(&key)
         )));
     };
     if let Some(exp) = &grant.expiration {
@@ -284,13 +284,15 @@ fn update(
 }
 
 fn signers(msg: &Any) -> Result<Vec<Vec<u8>>> {
-    let Some(s) = celestia_proto::signers::get_signers(&msg.type_url, &msg.value) else {
+    // `GetMsgV1Signers` re-packs the decoded message, then unpacks it.
+    let msg = &txdecode::gogo_repack(msg);
+    let Some(s) = celestia_proto::signers::get_signers_go(&msg.type_url, &msg.value) else {
         return Err(undefined(format!(
             "no cosmos.msg.v1.signer option found for message {}",
             msg.type_url
         )));
     };
-    s.map_err(|e| undefined(e.to_string()))?
+    s.map_err(undefined)?
         .into_iter()
         .map(|s| match s {
             celestia_proto::signers::Signer::Str(s) => encoding::bech32::decode(&s)
@@ -374,7 +376,7 @@ pub fn handle_grant(
     router: &dyn MsgRouter,
     msg: &MsgGrant,
 ) -> Result<MsgGrantResponse> {
-    if msg.grantee.eq_ignore_ascii_case(&msg.granter) {
+    if gostr::equal_fold(&msg.grantee, &msg.granter) {
         return Err(errors::grantee_is_granter());
     }
     let grantee = acc_from_bech32(&msg.grantee).map_err(|e| invalid_address("grantee", &e))?;
@@ -405,7 +407,7 @@ pub fn handle_grant(
 
 /// `MsgRevoke`.
 pub fn handle_revoke(ctx: &mut Context<'_>, msg: &MsgRevoke) -> Result<MsgRevokeResponse> {
-    if msg.grantee.eq_ignore_ascii_case(&msg.granter) {
+    if gostr::equal_fold(&msg.grantee, &msg.granter) {
         return Err(errors::grantee_is_granter());
     }
     let grantee = acc_from_bech32(&msg.grantee).map_err(|e| invalid_address("grantee", &e))?;

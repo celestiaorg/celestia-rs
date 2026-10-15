@@ -91,7 +91,7 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
         w.push_str(&format!(",\"timeout_height\":\"{}\"", body.timeout_height));
     }
     w.push('}');
-    Ok(w.into_bytes())
+    Ok(gostr::to_go_bytes(&w).into_owned())
 }
 
 struct Exts {
@@ -152,7 +152,8 @@ impl Encoder {
     pub fn marshal_any(&self, type_url: &str, value: &[u8], w: &mut String) -> Res<()> {
         let name = type_url.rsplit('/').next().unwrap_or(type_url);
         let desc = message(name)?;
-        let msg = DynamicMessage::decode(desc, value).map_err(|e| e.to_string())?;
+        let value = go_form_strings(&desc, value, 0).unwrap_or_else(|| value.to_vec());
+        let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
         self.begin_marshal(&msg, w, true)
     }
 
@@ -400,7 +401,7 @@ impl Encoder {
                     return Ok(None);
                 }
                 let bytes: Vec<u8> = match v {
-                    Value::String(s) => s.clone().into_bytes(),
+                    Value::String(s) => gostr::to_go_bytes(s).into_owned(),
                     Value::Bytes(b) => b.to_vec(),
                     other => return Err(format!("unsupported type {other:?}")),
                 };
@@ -631,11 +632,84 @@ fn to_camel(s: &str) -> String {
     out
 }
 
+fn wire_varint(b: &mut &[u8]) -> Option<u64> {
+    let mut v = 0u64;
+    for i in 0..10 {
+        let (&x, rest) = b.split_first()?;
+        *b = rest;
+        v |= u64::from(x & 0x7f) << (7 * i);
+        if x < 0x80 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        out.push((v as u8) | 0x80);
+        v >>= 7;
+    }
+    out.push(v as u8);
+}
+
+/// The message bytes with every string field (in nested messages too)
+/// re-encoded in Go form (`gostr`), so `prost-reflect` decodes the strings
+/// Go's protobuf-go unmarshal keeps (pulsar types do not check UTF-8; the
+/// `dynamicpb` types were already checked by `GetSigners`). `None` when
+/// the bytes are not well-formed (decoding then reports the error).
+fn go_form_strings(desc: &MessageDescriptor, mut b: &[u8], depth: usize) -> Option<Vec<u8>> {
+    use prost_reflect::Kind;
+    if depth > 100 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(b.len());
+    while !b.is_empty() {
+        let start = b;
+        let tag = wire_varint(&mut b)?;
+        let num = u32::try_from(tag >> 3).ok()?;
+        match tag & 7 {
+            0 => {
+                wire_varint(&mut b)?;
+            }
+            1 => b = b.get(8..)?,
+            5 => b = b.get(4..)?,
+            2 => {
+                let len = usize::try_from(wire_varint(&mut b)?).ok()?;
+                let payload = b.get(..len)?;
+                b = &b[len..];
+                let f = desc.get_field(num);
+                let new: Option<Vec<u8>> = match f.as_ref().map(FieldDescriptor::kind) {
+                    Some(Kind::String) => Some(gostr::from_go_bytes(payload).as_bytes().to_vec()),
+                    Some(Kind::Message(m)) => Some(go_form_strings(&m, payload, depth + 1)?),
+                    _ => None,
+                };
+                if let Some(n) = new {
+                    put_varint(&mut out, tag);
+                    put_varint(&mut out, n.len() as u64);
+                    out.extend_from_slice(&n);
+                    continue;
+                }
+            }
+            // Groups and invalid wire types: left to the decoder.
+            _ => return None,
+        }
+        out.extend_from_slice(&start[..start.len() - b.len()]);
+    }
+    Some(out)
+}
+
 /// Go `encoding/json` string encoding (HTML-safe escaping, `\b`/`\f`
-/// short escapes as of Go 1.22).
+/// short escapes as of Go 1.22) of the Go string `s` (Go form): each
+/// invalid UTF-8 byte is written as `�`. `w` is a Go form.
 pub fn json_string(w: &mut String, s: &str) {
     w.push('"');
-    for c in s.chars() {
+    for r in gostr::runes(s) {
+        let Some(c) = r else {
+            w.push_str("\\ufffd");
+            continue;
+        };
         match c {
             '"' => w.push_str("\\\""),
             '\\' => w.push_str("\\\\"),
@@ -650,7 +724,7 @@ pub fn json_string(w: &mut String, s: &str) {
             '\u{2028}' => w.push_str("\\u2028"),
             '\u{2029}' => w.push_str("\\u2029"),
             c if (c as u32) < 0x20 => w.push_str(&format!("\\u{:04x}", c as u32)),
-            c => w.push(c),
+            c => gostr::push_char(w, c),
         }
     }
     w.push('"');
@@ -675,5 +749,32 @@ mod tests {
         let mut w = String::new();
         json_string(&mut w, "a<b>&\"\u{1}\u{8}");
         assert_eq!(w, "\"a\\u003cb\\u003e\\u0026\\\"\\u0001\\b\"");
+    }
+
+    /// `json.Marshal` writes each invalid UTF-8 byte as `�`; a valid
+    /// char of the Go form's reserved set is written as itself.
+    #[test]
+    fn go_json_invalid_utf8() {
+        let mut w = String::new();
+        json_string(&mut w, &gostr::from_go_bytes(b"a\xe2\x82b\xf4\x8f\xbf\xbf"));
+        assert_eq!(
+            gostr::to_go_bytes(&w).as_ref(),
+            b"\"a\\ufffd\\ufffdb\xf4\x8f\xbf\xbf\""
+        );
+        // A message string field with invalid UTF-8 decodes (pulsar types
+        // keep the bytes) and is written the same way.
+        let msg = celestia_proto::cosmos::bank::v1beta1::MsgSend {
+            from_address: gostr::from_go_bytes(b"x\xff").into_owned(),
+            ..Default::default()
+        };
+        let enc = Encoder::new().unwrap_or_else(|e| unreachable!("{e}"));
+        let mut w = String::new();
+        enc.marshal_any(
+            "/cosmos.bank.v1beta1.MsgSend",
+            &prost::Message::encode_to_vec(&msg),
+            &mut w,
+        )
+        .unwrap_or_else(|e| unreachable!("{e}"));
+        assert!(w.contains("\"from_address\":\"x\\ufffd\""), "{w}");
     }
 }

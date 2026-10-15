@@ -67,8 +67,9 @@ pub fn handle_set_withdraw_address(
         )
     ) {
         return Err(errs::invalid_request(format!(
+            // Go formats the address bytes (`[]byte`) with `%s`.
             "cannot set withdraw address for vesting account {}",
-            msg.delegator_address
+            gostr::from_go_bytes(del.as_ref())
         )));
     }
     let to = acc(&msg.withdraw_address).map_err(|e| invalid_addr("withdraw", &e))?;

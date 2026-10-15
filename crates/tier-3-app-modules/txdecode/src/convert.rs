@@ -1,5 +1,5 @@
 //! Converts decoded [`Dyn`] trees of `TxBody` / `AuthInfo` into the prost
-//! types, mirroring the Go struct contents (strings made valid UTF-8 lossily,
+//! types, mirroring the Go struct contents (strings in Go form, `gostr`,
 //! nil `math.Int` amounts as empty strings). Done by hand rather than with
 //! prost decoding because Go accepts nesting (e.g. multisig `ModeInfo`) far
 //! beyond prost's recursion limit.
@@ -21,7 +21,7 @@ fn num(d: &Dyn, n: u32) -> u64 {
 }
 
 fn string(d: &Dyn, n: u32) -> String {
-    String::from_utf8_lossy(d.bytes(n)).into_owned()
+    gostr::from_go_bytes(d.bytes(n)).into_owned()
 }
 
 fn msg(d: &Dyn, n: u32) -> Option<&Dyn> {
@@ -42,7 +42,7 @@ fn coin(d: &Dyn) -> Coin {
     Coin {
         denom: string(d, 1),
         amount: match d.fields.get(&2) {
-            Some(Val::Custom(Some(b))) => String::from_utf8_lossy(b).into_owned(),
+            Some(Val::Custom(Some(b))) => gostr::from_go_bytes(b).into_owned(),
             _ => String::new(),
         },
     }

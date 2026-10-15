@@ -85,8 +85,9 @@ impl EventManager {
 /// defaults emitted) becomes an attribute whose value is the field's compact
 /// JSON, in sorted key order.
 ///
-/// Go's `jsonpb` escapes `<`, `>` and `&` in strings as `<` etc.; this
-/// helper applies the same escaping so values match byte-for-byte.
+/// Go's `jsonpb` escapes `<`, `>` and `&` in strings as `\u003c` etc., and
+/// each invalid UTF-8 byte of a Go string as `\ufffd`; this helper applies
+/// the same escaping so values match byte-for-byte.
 pub fn typed_event<T: prost::Name + serde::Serialize>(msg: &T) -> Result<Event, serde_json::Error> {
     typed_event_from_json(T::full_name(), serde_json::to_value(msg)?)
 }
@@ -105,7 +106,9 @@ pub fn typed_event_from_json(
                 .replace('<', "\\u003c")
                 .replace('>', "\\u003e")
                 .replace('&', "\\u0026");
-            attrs.push((k, s));
+            // `json.Marshal` writes each invalid UTF-8 byte of a Go string
+            // as `\ufffd` (strings here are Go forms, see `gostr`).
+            attrs.push((k, gostr::json_escape_invalid(&s).into_owned()));
         }
     }
     attrs.sort_by(|a, b| a.0.cmp(&b.0));

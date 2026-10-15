@@ -32,14 +32,14 @@ pub(crate) fn unmarshal(
             if data.is_empty() {
                 return Ok(prev);
             }
-            let v = math::Int::unmarshal(data).map_err(|e| GoError::new(e.to_string()))?;
+            let v = math::Int::unmarshal(data).map_err(|e| big_err(data, &e))?;
             Ok(Some(v.marshal()))
         }
         LEGACY_DEC => {
             if data.is_empty() {
                 return Ok(prev);
             }
-            let v = math::LegacyDec::unmarshal(data).map_err(|e| GoError::new(e.to_string()))?;
+            let v = math::LegacyDec::unmarshal(data).map_err(|e| big_err(data, &e))?;
             Ok(Some(v.marshal()))
         }
         HEX_ADDRESS => Ok(Some(hex_address(data)?)),
@@ -48,6 +48,18 @@ pub(crate) fn unmarshal(
             Ok(Some(data.to_vec()))
         }
         other => Err(GoError::new(format!("unsupported customtype {other}"))),
+    }
+}
+
+/// `big.Int.UnmarshalText`'s error (`%q` of the bytes) for unparsable
+/// digits; other errors (range) as they are.
+fn big_err(data: &[u8], e: &math::MathError) -> GoError {
+    match e {
+        math::MathError::InvalidInt(_) => GoError::new(format!(
+            "math/big: cannot unmarshal {} into a *big.Int",
+            gostr::quote(&gostr::from_go_bytes(data))
+        )),
+        other => GoError::new(other.to_string()),
     }
 }
 

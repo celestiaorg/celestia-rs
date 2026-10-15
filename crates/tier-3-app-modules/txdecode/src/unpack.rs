@@ -60,7 +60,7 @@ impl Unpacker<'_> {
         let Some(info) = registry::resolve_impl(&type_url, iface) else {
             return Err(GoError::new(format!(
                 "no concrete type registered for type URL {} against interface",
-                String::from_utf8_lossy(&type_url)
+                gostr::from_go_bytes(&type_url)
             ))
             .into());
         };

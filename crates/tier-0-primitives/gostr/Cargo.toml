@@ -1,0 +1,13 @@
+[package]
+name = "gostr"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Go strings (arbitrary bytes) carried losslessly in Rust Strings (see ADR 0005)."
+publish = false
+
+[lints]
+workspace = true

@@ -170,6 +170,7 @@ dependencies = [
  "axum",
  "bytes",
  "celestia-proto",
+ "gostr",
  "grpc-query",
  "math",
  "prost",
@@ -743,9 +744,10 @@ dependencies = [
 name = "celestia-core-proto"
 version = "0.0.1"
 dependencies = [
+ "gostr",
  "pbjson",
  "pbjson-types",
- "prost",
+ "prost-gostr",
  "serde",
  "serde_json",
 ]
@@ -755,10 +757,11 @@ name = "celestia-proto"
 version = "0.0.1"
 dependencies = [
  "celestia-core-proto",
+ "gostr",
  "ics23",
  "pbjson",
  "pbjson-types",
- "prost",
+ "prost-gostr",
  "serde",
  "serde_json",
 ]
@@ -1291,6 +1294,7 @@ dependencies = [
  "base64 0.22.1",
  "bech32",
  "bytes",
+ "gostr",
  "hex",
  "proptest",
  "prost",
@@ -1458,15 +1462,23 @@ version = "0.0.1"
 dependencies = [
  "abci-server",
  "anyhow",
+ "api-server",
  "app",
  "celestia-proto",
  "devnet-conformance",
+ "encoding",
+ "gostr",
  "hex",
+ "http",
+ "keyring",
  "legacy-amino",
  "prost",
+ "prost-reflect",
  "sdk",
  "serde",
  "serde_json",
+ "tokio",
+ "tonic",
  "txdecode",
  "x-ante",
 ]
@@ -1532,6 +1544,10 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "gostr"
+version = "0.0.1"
 
 [[package]]
 name = "group"
@@ -2808,6 +2824,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-gostr"
+version = "0.0.1"
+dependencies = [
+ "gostr",
+ "prost",
+]
+
+[[package]]
 name = "prost-reflect"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3085,6 +3109,7 @@ dependencies = [
  "ctypes",
  "flate2",
  "futures-util",
+ "gostr",
  "hex",
  "hyper-util",
  "kvdb",
@@ -3160,6 +3185,7 @@ dependencies = [
  "celestia-core-proto",
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "kvstore",
  "math",
@@ -3989,6 +4015,7 @@ name = "txdecode"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "hex",
  "math",
  "p256",
@@ -4248,6 +4275,7 @@ dependencies = [
  "crypto",
  "ed25519-consensus",
  "encoding",
+ "gostr",
  "hash",
  "hex",
  "k256",
@@ -4288,12 +4316,14 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "math",
  "pbjson-types",
  "prost",
  "sdk",
  "serde",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-bank",
  "x-ibc",
@@ -4304,6 +4334,7 @@ name = "x-bank"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "math",
  "prost",
  "sdk",
@@ -4330,6 +4361,7 @@ name = "x-capability"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "kvstore",
  "prost",
  "sdk",
@@ -4342,6 +4374,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "prost",
  "sdk",
  "serde_json",
@@ -4362,6 +4395,7 @@ name = "x-distribution"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "hash",
  "math",
  "pbjson-types",
@@ -4392,6 +4426,7 @@ name = "x-feegrant"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "pbjson-types",
  "prost",
  "sdk",
@@ -4408,6 +4443,7 @@ dependencies = [
  "celestia-proto",
  "crypto",
  "curve25519-dalek-ng",
+ "gostr",
  "hash",
  "hex",
  "k256",
@@ -4442,11 +4478,13 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "math",
  "pbjson-types",
  "prost",
  "sdk",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-bank",
  "x-distribution",
@@ -4459,6 +4497,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "hex",
  "k256",
@@ -4475,6 +4514,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "crypto",
+ "gostr",
  "hash",
  "hex",
  "ics23",
@@ -4495,11 +4535,13 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "hex",
  "prost",
  "sdk",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-capability",
  "x-ibc",
@@ -4539,6 +4581,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "prost",
  "sdk",
@@ -4588,6 +4631,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "math",
  "pbjson-types",
@@ -4604,6 +4648,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gostr",
  "hash",
  "hex",
  "math",
@@ -4621,6 +4666,7 @@ name = "x-upgrade"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "prost",
  "sdk",
 ]

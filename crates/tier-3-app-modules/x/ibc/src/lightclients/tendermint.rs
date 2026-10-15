@@ -375,10 +375,10 @@ pub fn validate(cs: &ClientState) -> Result<()> {
     if cs.chain_id.trim().is_empty() {
         return Err(tmerr::invalid_chain_id("chain id cannot be empty string"));
     }
-    if cs.chain_id.len() > light::MAX_CHAIN_ID_LEN {
+    if gostr::go_len(&cs.chain_id) > light::MAX_CHAIN_ID_LEN {
         return Err(tmerr::invalid_chain_id(format!(
             "chainID is too long; got: {}, max: {}",
-            cs.chain_id.len(),
+            gostr::go_len(&cs.chain_id),
             light::MAX_CHAIN_ID_LEN
         )));
     }

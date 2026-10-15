@@ -134,12 +134,14 @@ pub fn decode_to_base256(input: &str) -> Result<(String, Vec<u8>), String> {
 
 fn decode_with_limit(input: &str, limit: usize) -> Result<(String, Vec<u8>), String> {
     let fail = |e: String| Err(e);
-    if input.len() > limit || input.len() < 8 {
-        return fail(format!("invalid bech32 string length {}", input.len()));
+    // `input` is a Go string in Go form (`gostr`): Go checks its bytes.
+    let raw = gostr::to_go_bytes(input);
+    if raw.len() > limit || raw.len() < 8 {
+        return fail(format!("invalid bech32 string length {}", raw.len()));
     }
     let mut has_lower = false;
     let mut has_upper = false;
-    for &c in input.as_bytes() {
+    for &c in raw.iter() {
         if !(33..=126).contains(&c) {
             return fail(format!("invalid character in string: '{}'", c as char));
         }

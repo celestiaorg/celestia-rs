@@ -67,11 +67,17 @@ pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, S
                 celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(r.data.as_slice())
                     .map(|d| d.msg_responses)
                     .unwrap_or_default();
+            // Go marks events for indexing only in CheckTx / FinalizeBlock
+            // (`MarkEventsToIndex`); a simulation returns them unmarked.
+            let mut events = r.events;
+            for a in events.iter_mut().flat_map(|e| e.attributes.iter_mut()) {
+                a.index = false;
+            }
             #[allow(deprecated)]
             SdkResult {
                 data: r.data,
                 log: String::new(),
-                events: r.events,
+                events,
                 msg_responses,
             }
         }),

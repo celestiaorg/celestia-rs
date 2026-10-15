@@ -25,6 +25,14 @@ Port behavior exactly: store keys and value encodings, write order within a
 call, gas consumption (every KV access goes through `sdk::Context` metering),
 error codespace/code, and events (type, attribute keys/values, order).
 
+Strings are Go strings (ADR 0005): a message's `String` field holds Go's
+bytes in Go form (`gostr`), which equals the text for valid UTF-8. Where Go
+uses the bytes, use `gostr`: `go_len` for `len(s)`, `to_go_bytes` /
+`from_go_bytes` for store keys and raw values, `lossy` before parsing JSON
+from a string, `runes` / `quote` / `equal_fold` for `range`, `%q` and
+`strings.EqualFold`. Never `as_bytes()` / `len()` a message string where Go
+would see the bytes.
+
 ## Layout
 
 - One crate per module: `crates/tier-3-app-modules/x/<name>/`, package

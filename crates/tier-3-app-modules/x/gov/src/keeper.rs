@@ -65,32 +65,33 @@ pub fn module_address() -> Vec<u8> {
 }
 
 fn assert_metadata_length(metadata: &str) -> Result<()> {
-    if !metadata.is_empty() && metadata.len() > MAX_METADATA_LEN {
-        return Err(errors::metadata_too_long()
-            .wrap(format!("got metadata with length {}", metadata.len())));
+    let len = gostr::go_len(metadata);
+    if !metadata.is_empty() && len > MAX_METADATA_LEN {
+        return Err(errors::metadata_too_long().wrap(format!("got metadata with length {len}")));
     }
     Ok(())
 }
 
 fn assert_summary_length(summary: &str) -> Result<()> {
-    if !summary.is_empty() && summary.len() > 40 * MAX_METADATA_LEN {
-        return Err(
-            errors::summary_too_long().wrap(format!("got summary with length {}", summary.len()))
-        );
+    let len = gostr::go_len(summary);
+    if !summary.is_empty() && len > 40 * MAX_METADATA_LEN {
+        return Err(errors::summary_too_long().wrap(format!("got summary with length {len}")));
     }
     Ok(())
 }
 
 /// Signer address bytes of a message (`GetMsgV1Signers`).
 pub fn msg_signers(msg: &Any) -> Result<Vec<Vec<u8>>> {
-    let Some(signers) = celestia_proto::signers::get_signers(&msg.type_url, &msg.value) else {
+    // `GetMsgV1Signers` re-packs the decoded message, then unpacks it.
+    let msg = &txdecode::gogo_repack(msg);
+    let Some(signers) = celestia_proto::signers::get_signers_go(&msg.type_url, &msg.value) else {
         return Err(undefined(format!(
             "no cosmos.msg.v1.signer option found for message {}",
             msg.type_url
         )));
     };
     signers
-        .map_err(|e| undefined(e.to_string()))?
+        .map_err(undefined)?
         .into_iter()
         .map(|s| match s {
             celestia_proto::signers::Signer::Str(s) => encoding::bech32::decode(&s)
@@ -160,7 +161,8 @@ pub fn submit_proposal(
     let deposit_end = add_duration(&submit_time, &params.max_deposit_period.unwrap_or_default());
     let proposal = Proposal {
         id,
-        messages: messages.to_vec(),
+        // `SetMsgs`: Go re-packs the decoded messages (gogoproto Marshal).
+        messages: messages.iter().map(txdecode::gogo_repack).collect(),
         status: ProposalStatus::DepositPeriod as i32,
         final_tally_result: Some(empty_tally()),
         submit_time: Some(submit_time),

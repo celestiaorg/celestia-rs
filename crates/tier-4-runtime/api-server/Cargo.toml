@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+gostr = { path = "../../tier-0-primitives/gostr" }
 app = { path = "../app" }
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
 bytes = "1"

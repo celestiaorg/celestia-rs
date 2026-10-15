@@ -43,6 +43,51 @@ fn parse_coin(c: Option<&PbCoin>) -> (Coin, bool) {
     }
 }
 
+/// `CommissionRates.Validate` of the decoded rates. An empty customtype
+/// field is a nil `LegacyDec` in Go, which `Validate` dereferences (panic)
+/// as soon as it reaches it, after any earlier failing check.
+fn commission_rates(
+    rates: &pb::CommissionRates,
+    update_time: pbjson_types::Timestamp,
+) -> Result<Commission> {
+    let nil_dec = |s: &str| -> Result<LegacyDec> {
+        if s.is_empty() {
+            Ok(LegacyDec::zero())
+        } else {
+            wire_dec(s)
+        }
+    };
+    let commission = Commission {
+        rate: nil_dec(&rates.rate)?,
+        max_rate: nil_dec(&rates.max_rate)?,
+        max_change_rate: nil_dec(&rates.max_change_rate)?,
+        update_time,
+    };
+    let one = LegacyDec::one();
+    if rates.max_rate.is_empty() {
+        return Err(nil_deref());
+    }
+    if !(commission.max_rate.is_negative() || commission.max_rate > one) && rates.rate.is_empty() {
+        return Err(nil_deref());
+    }
+    if !(commission.max_rate.is_negative()
+        || commission.max_rate > one
+        || commission.rate.is_negative()
+        || commission.rate > commission.max_rate)
+        && rates.max_change_rate.is_empty()
+    {
+        return Err(nil_deref());
+    }
+    commission.validate_rates()?;
+    Ok(commission)
+}
+
+/// Go's recovered nil-pointer panic (a method on a nil `math.Int` /
+/// `LegacyDec`): `sdkerrors.ErrPanic`.
+fn nil_deref() -> sdk::SdkError {
+    sdk::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
+}
+
 fn wire_dec(s: &str) -> Result<LegacyDec> {
     types::dec(s, Repr::Wire)
 }
@@ -74,13 +119,10 @@ pub fn handle_create_validator(
     if rates == pb::CommissionRates::default() {
         return Err(errs::invalid_request("empty commission"));
     }
-    let mut commission = Commission {
-        rate: wire_dec(&rates.rate)?,
-        max_rate: wire_dec(&rates.max_rate)?,
-        max_change_rate: wire_dec(&rates.max_change_rate)?,
-        update_time: ctx.header.time,
-    };
-    commission.validate_rates()?;
+    let mut commission = commission_rates(&rates, ctx.header.time)?;
+    if msg.min_self_delegation.is_empty() {
+        return Err(nil_deref());
+    }
     let min_self = wire_int(&msg.min_self_delegation)?;
     if !min_self.is_positive() {
         return Err(errs::invalid_request(

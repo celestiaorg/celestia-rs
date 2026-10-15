@@ -844,11 +844,11 @@ impl Params {
 /// `Description.EnsureLength`.
 pub fn ensure_description_length(d: &pb::Description) -> Result<()> {
     let checks = [
-        ("moniker", d.moniker.len(), 70),
-        ("identity", d.identity.len(), 3000),
-        ("website", d.website.len(), 140),
-        ("security contact", d.security_contact.len(), 140),
-        ("details", d.details.len(), 280),
+        ("moniker", gostr::go_len(&d.moniker), 70),
+        ("identity", gostr::go_len(&d.identity), 3000),
+        ("website", gostr::go_len(&d.website), 140),
+        ("security contact", gostr::go_len(&d.security_contact), 140),
+        ("details", gostr::go_len(&d.details), 280),
     ];
     for (name, got, max) in checks {
         if got > max {
