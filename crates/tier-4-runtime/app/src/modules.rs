@@ -200,7 +200,10 @@ pub fn pre_block(
     upgrade: &mut x_upgrade::NodeState,
 ) -> Result<bool> {
     match module {
-        "upgrade" => x_upgrade::pre_block(ctx, &crate::upgrades::Handlers, upgrade),
+        "upgrade" => {
+            let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+            x_upgrade::pre_block(ctx, &crate::upgrades::Handlers::at(app_version), upgrade)
+        }
         _ => Ok(false),
     }
 }
