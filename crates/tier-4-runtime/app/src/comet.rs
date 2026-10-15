@@ -19,8 +19,9 @@ static RPC_ADDRESS: RwLock<Option<String>> = RwLock::new(None);
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Sets the celestia-core RPC address (`tcp://host:port` or
-/// `http://host:port`); `None` makes every call fail.
+/// Sets the celestia-core RPC address (`tcp://host:port`,
+/// `http://host:port` or `https://host[:port]`); `None` makes every call
+/// fail.
 pub fn set_rpc_address(addr: Option<String>) {
     if let Ok(mut a) = RPC_ADDRESS.write() {
         *a = addr;
@@ -38,20 +39,29 @@ pub fn rpc_address() -> Option<String> {
 pub struct Client {
     url: String,
     host_port: String,
+    https: bool,
 }
 
 /// `clientCtx.GetNode()`.
 pub fn client() -> Result<Client, String> {
     let addr = rpc_address().ok_or("no RPC client is defined in offline mode")?;
+    Ok(client_for(&addr))
+}
+
+/// A client for `addr` (`tcp://`, `http://` or `https://`).
+#[must_use]
+pub fn client_for(addr: &str) -> Client {
     let rest = addr
         .split_once("://")
-        .map_or(addr.as_str(), |(_, r)| r)
+        .map_or(addr, |(_, r)| r)
         .trim_end_matches('/')
         .to_owned();
-    Ok(Client {
-        url: format!("http://{rest}"),
+    let https = addr.starts_with("https://");
+    Client {
+        url: format!("{}://{rest}", if https { "https" } else { "http" }),
         host_port: rest,
-    })
+        https,
+    }
 }
 
 fn http_status_text(code: u16) -> &'static str {
@@ -71,32 +81,11 @@ impl Client {
         let body =
             json!({"jsonrpc": "2.0", "id": 0, "method": method, "params": params}).to_string();
         let post_failed = |e: String| format!("post failed: Post \"{}\": {e}", self.url);
-        let addr = self
-            .host_port
-            .to_socket_addrs()
-            .map_err(|e| post_failed(format!("dial tcp: lookup {}: {e}", self.host_port)))?
-            .next()
-            .ok_or_else(|| post_failed(format!("dial tcp: lookup {}", self.host_port)))?;
-        let mut s = TcpStream::connect_timeout(&addr, TIMEOUT).map_err(|e| {
-            let reason = match e.kind() {
-                std::io::ErrorKind::ConnectionRefused => "connection refused".to_owned(),
-                std::io::ErrorKind::TimedOut => "i/o timeout".to_owned(),
-                _ => e.to_string(),
-            };
-            post_failed(format!("dial tcp {addr}: connect: {reason}"))
-        })?;
-        s.set_read_timeout(Some(TIMEOUT)).ok();
-        s.set_write_timeout(Some(TIMEOUT)).ok();
-        let req = format!(
-            "POST / HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            self.host_port,
-            body.len()
-        );
-        s.write_all(req.as_bytes())
-            .map_err(|e| post_failed(e.to_string()))?;
-        let mut raw = Vec::new();
-        s.read_to_end(&mut raw)
-            .map_err(|e| post_failed(e.to_string()))?;
+        let raw = if self.https {
+            curl_post(&self.url, body.as_bytes()).map_err(post_failed)?
+        } else {
+            self.http_post(&body).map_err(post_failed)?
+        };
         let (status, proto, body) = split_http(&raw).map_err(post_failed)?;
         let prefix = format!(
             "error in json rpc client, with http response metadata: (Status: {status} {}, Protocol {proto})",
@@ -116,6 +105,71 @@ impl Client {
         }
         Ok(v.get("result").cloned().unwrap_or(Value::Null))
     }
+
+    /// Plain HTTP/1.1 POST over a TCP stream: the raw response.
+    fn http_post(&self, body: &str) -> Result<Vec<u8>, String> {
+        let addr = self
+            .host_port
+            .to_socket_addrs()
+            .map_err(|e| format!("dial tcp: lookup {}: {e}", self.host_port))?
+            .next()
+            .ok_or_else(|| format!("dial tcp: lookup {}", self.host_port))?;
+        let mut s = TcpStream::connect_timeout(&addr, TIMEOUT).map_err(|e| {
+            let reason = match e.kind() {
+                std::io::ErrorKind::ConnectionRefused => "connection refused".to_owned(),
+                std::io::ErrorKind::TimedOut => "i/o timeout".to_owned(),
+                _ => e.to_string(),
+            };
+            format!("dial tcp {addr}: connect: {reason}")
+        })?;
+        s.set_read_timeout(Some(TIMEOUT)).ok();
+        s.set_write_timeout(Some(TIMEOUT)).ok();
+        let req = format!(
+            "POST / HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            self.host_port,
+            body.len()
+        );
+        s.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
+        let mut raw = Vec::new();
+        s.read_to_end(&mut raw).map_err(|e| e.to_string())?;
+        Ok(raw)
+    }
+}
+
+/// HTTPS POST through the system `curl` (TLS, `HTTPS_PROXY` and CA
+/// settings from the environment, like the node's RPC follower): the raw
+/// response with headers, proxy CONNECT headers suppressed.
+fn curl_post(url: &str, body: &[u8]) -> Result<Vec<u8>, String> {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("curl")
+        .args([
+            "-sS",
+            "--http1.1",
+            "--include",
+            "--suppress-connect-headers",
+        ])
+        .arg("--compressed")
+        .args(["--max-time", &TIMEOUT.as_secs().to_string()])
+        .args([
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+            url,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("run curl: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(body).map_err(|e| e.to_string())?;
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_owned());
+    }
+    Ok(out.stdout)
 }
 
 /// Splits an HTTP/1.1 response: status code, protocol, de-chunked body.
@@ -424,6 +478,31 @@ mod tests {
         );
         let t = time(&json!("1970-01-01T00:00:01+01:00"))?;
         assert_eq!(t.seconds, 1 - 3600);
+        Ok(())
+    }
+
+    #[test]
+    fn https_nodes() -> Result<(), String> {
+        let c = client_for("https://rpc.example.org:443/");
+        assert!(c.https);
+        assert_eq!(c.url, "https://rpc.example.org:443");
+        let c = client_for("tcp://localhost:26657");
+        assert!(!c.https);
+        assert_eq!(c.url, "http://localhost:26657");
+        // What `curl --include --http1.1` prints (CONNECT headers suppressed).
+        let raw = b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"error\":{\"code\":-32603,\"message\":\"Internal error\"}}";
+        let (status, proto, body) = split_http(raw)?;
+        assert_eq!((status, proto.as_str()), (500, "HTTP/1.1"));
+        assert!(serde_json::from_slice::<Value>(&body).is_ok());
+        Ok(())
+    }
+
+    /// A live call over HTTPS (needs network access; run with `--ignored`).
+    #[test]
+    #[ignore = "needs network access to a public RPC server"]
+    fn https_live_status() -> Result<(), String> {
+        let v = client_for("https://rpc.celestia-mocha.com").call("status", Map::new())?;
+        assert_eq!(v["node_info"]["network"], "mocha-5");
         Ok(())
     }
 
