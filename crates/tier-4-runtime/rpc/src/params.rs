@@ -169,7 +169,7 @@ fn go_quote(s: &str) -> String {
 fn unmarshal_int(num_text: &str, ty: ArgType) -> Result<i128, String> {
     let type_name = ty.go_kind();
     let n = json::parse(num_text)?;
-    match n.v {
+    match n.into_val() {
         Val::Num(t) => {
             let err =
                 || format!("json: cannot unmarshal number {t} into Go value of type {type_name}");
@@ -291,7 +291,7 @@ pub fn cmtjson_decode(bz: &str, ty: ArgType) -> Result<Arg, String> {
         }
         ArgType::Bool => {
             let n = json::parse(bz)?;
-            match n.v {
+            match n.into_val() {
                 Val::Bool(b) => Ok(Arg::Bool(b)),
                 Val::Null => Ok(Arg::Bool(false)),
                 other => Err(format!(
@@ -302,7 +302,7 @@ pub fn cmtjson_decode(bz: &str, ty: ArgType) -> Result<Arg, String> {
         }
         ArgType::Str => {
             let n = json::parse(bz)?;
-            match n.v {
+            match n.into_val() {
                 Val::Str(s) => Ok(Arg::Str(s)),
                 Val::Null => Ok(Arg::Str(String::new())),
                 other => Err(format!(
@@ -330,11 +330,14 @@ pub fn cmtjson_decode(bz: &str, ty: ArgType) -> Result<Arg, String> {
         }),
         ArgType::BytesList => {
             let n = json::parse(bz)?;
-            let Val::Arr(items) = n.v else {
-                return Err(format!(
-                    "json: cannot unmarshal {} into Go value of type []json.RawMessage",
-                    n.v.kind()
-                ));
+            let items = match n.into_val() {
+                Val::Arr(items) => items,
+                other => {
+                    return Err(format!(
+                        "json: cannot unmarshal {} into Go value of type []json.RawMessage",
+                        other.kind()
+                    ));
+                }
             };
             let mut out = Vec::new();
             for it in items {
@@ -361,7 +364,7 @@ fn unreachable_evidence() -> Result<Arg, String> {
 /// `json.Unmarshal(bz, *[]byte)`.
 fn decode_bytes(bz: &str) -> Result<Vec<u8>, String> {
     let n = json::parse(bz)?;
-    match n.v {
+    match n.into_val() {
         Val::Str(s) => go_base64(&s),
         Val::Null => Ok(Vec::new()),
         other => Err(format!(

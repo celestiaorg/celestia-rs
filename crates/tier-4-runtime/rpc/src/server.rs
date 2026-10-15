@@ -153,32 +153,54 @@ pub struct RpcRequest {
 
 const UNSAFE_REQ_TYPE: &str = "struct { JSONRPC string \"json:\\\"jsonrpc\\\"\"; ID interface {} \"json:\\\"id,omitempty\\\"\"; Method string \"json:\\\"method\\\"\"; Params json.RawMessage \"json:\\\"params\\\"\" }";
 
+/// Go `fmt` `%v` of a decoded `interface{}`, without recursion (an id may
+/// nest 10 000 levels deep).
 fn go_value_string(n: &Node<'_>) -> String {
-    match &n.v {
-        Val::Bool(b) => b.to_string(),
-        Val::Arr(items) => format!(
-            "[{}]",
-            items
-                .iter()
-                .map(go_value_string)
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        Val::Obj(f) => {
-            let mut keys: Vec<_> = f.iter().collect();
-            keys.sort_by(|a, b| a.0.cmp(&b.0));
-            format!(
-                "map[{}]",
-                keys.iter()
-                    .map(|(k, v)| format!("{k}:{}", go_value_string(v)))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )
-        }
-        Val::Num(t) => (*t).to_owned(),
-        Val::Str(s) => s.clone(),
-        Val::Null => "<nil>".into(),
+    enum Item<'b, 'a> {
+        Node(&'b Node<'a>),
+        Text(String),
     }
+    let mut out = String::new();
+    let mut stack = vec![Item::Node(n)];
+    while let Some(item) = stack.pop() {
+        let n = match item {
+            Item::Text(s) => {
+                out.push_str(&s);
+                continue;
+            }
+            Item::Node(n) => n,
+        };
+        match &n.v {
+            Val::Bool(b) => out.push_str(&b.to_string()),
+            Val::Arr(items) => {
+                out.push('[');
+                stack.push(Item::Text("]".into()));
+                for (i, x) in items.iter().enumerate().rev() {
+                    stack.push(Item::Node(x));
+                    if i > 0 {
+                        stack.push(Item::Text(" ".into()));
+                    }
+                }
+            }
+            Val::Obj(f) => {
+                let mut keys: Vec<_> = f.iter().collect();
+                keys.sort_by(|a, b| a.0.cmp(&b.0));
+                out.push_str("map[");
+                stack.push(Item::Text("]".into()));
+                for (i, (k, v)) in keys.iter().enumerate().rev() {
+                    stack.push(Item::Node(v));
+                    stack.push(Item::Text(format!("{k}:")));
+                    if i > 0 {
+                        stack.push(Item::Text(" ".into()));
+                    }
+                }
+            }
+            Val::Num(t) => out.push_str(t),
+            Val::Str(s) => out.push_str(s),
+            Val::Null => out.push_str("<nil>"),
+        }
+    }
+    out
 }
 
 fn go_type_string(n: &Node<'_>) -> &'static str {
@@ -227,7 +249,7 @@ fn request_from_node(n: &Node<'_>) -> Result<RpcRequest, String> {
                     method = m;
                 }
             }
-            "id" => id = Some(v.clone()),
+            "id" => id = Some(v),
             "params" => params = v.raw.to_owned(),
             _ => {}
         }
@@ -248,8 +270,8 @@ fn request_from_node(n: &Node<'_>) -> Result<RpcRequest, String> {
             _ => {
                 return Err(format!(
                     "json-rpc ID ({}) is of unknown type ({})",
-                    go_value_string(&v),
-                    go_type_string(&v)
+                    go_value_string(v),
+                    go_type_string(v)
                 ));
             }
         },

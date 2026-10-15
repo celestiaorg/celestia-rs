@@ -107,21 +107,54 @@ pub(crate) enum AnyV {
 
 /// `TxDecodeAmino`: amino binary `StdTx` to amino JSON.
 pub fn tx_decode_amino(bz: &[u8]) -> Result<String, Error> {
-    let s = Schema::get();
-    let root = s.root;
-    let mut v = s.unmarshal_binary_bare(bz, root)?;
-    s.unpack(root, &mut v, unpack::Mode::Binary)?;
-    let out = s.marshal_json(root, &v)?;
-    Ok(String::from_utf8_lossy(&out).into_owned())
+    with_stack(bz.len(), || {
+        let s = Schema::get();
+        let root = s.root;
+        let mut v = s.unmarshal_binary_bare(bz, root)?;
+        s.unpack(root, &mut v, unpack::Mode::Binary)?;
+        let out = s.marshal_json(root, &v)?;
+        Ok(String::from_utf8_lossy(&out).into_owned())
+    })
 }
 
 /// `TxEncodeAmino`: amino JSON `StdTx` to amino binary.
 pub fn tx_encode_amino(json: &[u8]) -> Result<Vec<u8>, Error> {
-    let s = Schema::get();
-    let root = s.root;
-    let mut v = s.unmarshal_json(json, root)?;
-    s.unpack(root, &mut v, unpack::Mode::Json)?;
-    s.marshal_binary_bare(root, &v)
+    with_stack(json.len(), || {
+        let s = Schema::get();
+        let root = s.root;
+        let mut v = s.unmarshal_json(json, root)?;
+        s.unpack(root, &mut v, unpack::Mode::Json)?;
+        s.marshal_binary_bare(root, &v)
+    })
+}
+
+/// Inputs longer than this are processed on a thread with a large stack:
+/// the codec recurses once per nested value (e.g. `MsgExec` in `MsgExec`),
+/// Go's goroutine stacks grow to 1 GB and decode thousands of levels, and
+/// a query handler's 2 MiB stack overflowed (aborting the node) on a few
+/// hundred KB of nesting.
+const LARGE_INPUT: usize = 4 * 1024;
+const LARGE_STACK: usize = 256 * 1024 * 1024;
+
+fn with_stack<T: Send>(
+    len: usize,
+    f: impl FnOnce() -> Result<T, Error> + Send,
+) -> Result<T, Error> {
+    if len <= LARGE_INPUT {
+        return f();
+    }
+    std::thread::scope(|s| {
+        match std::thread::Builder::new()
+            .stack_size(LARGE_STACK)
+            .spawn_scoped(s, f)
+        {
+            Ok(h) => match h.join() {
+                Ok(v) => v,
+                Err(e) => std::panic::resume_unwind(e),
+            },
+            Err(e) => Err(Error::Go(format!("spawning codec thread: {e}"))),
+        }
+    })
 }
 
 /// Go `fmt` `%X` of a byte slice.

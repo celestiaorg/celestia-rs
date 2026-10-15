@@ -94,6 +94,9 @@ fn syntax(c: u8, ctx: &str) -> String {
 
 const EOF: &str = "unexpected end of JSON input";
 
+/// Go `encoding/json` `maxNestingDepth`.
+const MAX_NESTING_DEPTH: usize = 10_000;
+
 fn ws(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | b'\r')
 }
@@ -128,19 +131,73 @@ impl Scan<'_> {
         Ok(c)
     }
 
+    /// Scans one value without recursion (an explicit stack of open
+    /// containers), failing like Go's scanner at the 10 001st nested
+    /// container (`exceeded max depth`). The recursive scanner overflowed
+    /// the stack on a deeply nested `TxEncodeAmino` request.
     fn value(&mut self) -> Result<(), String> {
+        let mut open: Vec<u8> = Vec::new();
+        loop {
+            self.skip_ws();
+            let c = self.next()?;
+            match c {
+                b'{' | b'[' => {
+                    if open.len() >= MAX_NESTING_DEPTH {
+                        return Err(syntax(c, "exceeded max depth"));
+                    }
+                    self.skip_ws();
+                    if c == b'[' {
+                        if self.peek() == Some(b']') {
+                            self.i += 1;
+                        } else {
+                            open.push(b'[');
+                            continue;
+                        }
+                    } else if self.peek() == Some(b'}') {
+                        self.i += 1;
+                    } else {
+                        self.object_key()?;
+                        open.push(b'{');
+                        continue;
+                    }
+                }
+                b'"' => self.string()?,
+                b'-' | b'0'..=b'9' => self.number(c)?,
+                b't' => self.literal(b"rue", "true")?,
+                b'f' => self.literal(b"alse", "false")?,
+                b'n' => self.literal(b"ull", "null")?,
+                _ => return Err(syntax(c, "looking for beginning of value")),
+            }
+            // A value ended: close the containers that end with it.
+            loop {
+                match open.last() {
+                    None => return Ok(()),
+                    Some(b'[') => {
+                        if self.end_value(Ctx::Arr)? != Some(b']') {
+                            break;
+                        }
+                    }
+                    Some(_) => {
+                        if self.end_value(Ctx::ObjVal)? != Some(b'}') {
+                            self.object_key()?;
+                            break;
+                        }
+                    }
+                }
+                open.pop();
+            }
+        }
+    }
+
+    /// An object key and its colon.
+    fn object_key(&mut self) -> Result<(), String> {
         self.skip_ws();
         let c = self.next()?;
-        match c {
-            b'{' => self.object(),
-            b'[' => self.array(),
-            b'"' => self.string(),
-            b'-' | b'0'..=b'9' => self.number(c),
-            b't' => self.literal(b"rue", "true"),
-            b'f' => self.literal(b"alse", "false"),
-            b'n' => self.literal(b"ull", "null"),
-            _ => Err(syntax(c, "looking for beginning of value")),
+        if c != b'"' {
+            return Err(syntax(c, "looking for beginning of object key string"));
         }
+        self.string()?;
+        self.end_value(Ctx::ObjKey).map(|_| ())
     }
 
     fn end_value(&mut self, ctx: Ctx) -> Result<Option<u8>, String> {
@@ -170,42 +227,6 @@ impl Scan<'_> {
                 Ctx::Arr => "after array element",
             },
         ))
-    }
-
-    fn object(&mut self) -> Result<(), String> {
-        self.skip_ws();
-        let c = self.next()?;
-        if c == b'}' {
-            return Ok(());
-        }
-        let mut c = c;
-        loop {
-            if c != b'"' {
-                return Err(syntax(c, "looking for beginning of object key string"));
-            }
-            self.string()?;
-            self.end_value(Ctx::ObjKey)?;
-            self.value()?;
-            if self.end_value(Ctx::ObjVal)? == Some(b'}') {
-                return Ok(());
-            }
-            self.skip_ws();
-            c = self.next()?;
-        }
-    }
-
-    fn array(&mut self) -> Result<(), String> {
-        self.skip_ws();
-        if self.peek() == Some(b']') {
-            self.i += 1;
-            return Ok(());
-        }
-        loop {
-            self.value()?;
-            if self.end_value(Ctx::Arr)? == Some(b']') {
-                return Ok(());
-            }
-        }
     }
 
     fn string(&mut self) -> Result<(), String> {
@@ -636,6 +657,37 @@ mod tests {
             check_valid(b" {\"a\": [1, -0.5e+3, \"x\\u00e9\"]} "),
             Ok(())
         );
+    }
+
+    /// Regression (fuzzing): the recursive scanner overflowed the stack on
+    /// a deeply nested `TxEncodeAmino` request; Go fails the 10 001st level
+    /// with `exceeded max depth`.
+    #[test]
+    fn nesting_depth_without_recursion() {
+        let run = || {
+            let ok = format!("{}{}", "[".repeat(10_000), "]".repeat(10_000));
+            assert_eq!(check_valid(ok.as_bytes()), Ok(()));
+            let obj = format!("{}1{}", "{\"a\":".repeat(10_000), "}".repeat(10_000));
+            assert_eq!(check_valid(obj.as_bytes()), Ok(()));
+            assert_eq!(value_end(ok.as_bytes(), 0), ok.len());
+            assert_eq!(
+                check_valid("[".repeat(10_001).as_bytes()),
+                Err("invalid character '[' exceeded max depth".into())
+            );
+            assert_eq!(
+                check_valid("[".repeat(1_000_000).as_bytes()),
+                Err("invalid character '[' exceeded max depth".into())
+            );
+            assert_eq!(
+                check_valid(b"{\"a\":1,}"),
+                Err("invalid character '}' looking for beginning of object key string".into())
+            );
+        };
+        let ok = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(run)
+            .map(|h| h.join().is_ok());
+        assert_eq!(ok.ok(), Some(true));
     }
 
     #[test]

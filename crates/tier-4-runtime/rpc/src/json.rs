@@ -252,6 +252,41 @@ pub enum Val<'a> {
     Obj(Vec<(String, Node<'a>)>),
 }
 
+impl<'a> Node<'a> {
+    /// Moves the value out (a `Node` cannot be destructured: it implements
+    /// `Drop`).
+    #[must_use]
+    pub fn into_val(mut self) -> Val<'a> {
+        std::mem::replace(&mut self.v, Val::Null)
+    }
+}
+
+impl Drop for Node<'_> {
+    /// Drops nested containers iteratively: a tree as deep as Go accepts
+    /// (10 000 levels) must not overflow a worker thread's stack.
+    fn drop(&mut self) {
+        if !matches!(self.v, Val::Arr(_) | Val::Obj(_)) {
+            return;
+        }
+        let mut stack = vec![std::mem::replace(&mut self.v, Val::Null)];
+        while let Some(mut v) = stack.pop() {
+            match &mut v {
+                Val::Arr(items) => {
+                    for n in items {
+                        stack.push(std::mem::replace(&mut n.v, Val::Null));
+                    }
+                }
+                Val::Obj(fields) => {
+                    for (_, n) in fields {
+                        stack.push(std::mem::replace(&mut n.v, Val::Null));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 impl Val<'_> {
     /// Go's name of the JSON value kind in `UnmarshalTypeError`.
     #[must_use]
@@ -322,6 +357,9 @@ struct Parser<'a> {
 
 const EOF: &str = "unexpected end of JSON input";
 
+/// Go `encoding/json` `maxNestingDepth`.
+const MAX_NESTING_DEPTH: usize = 10_000;
+
 fn invalid(c: u8, ctx: &str) -> String {
     format!("invalid character {} {ctx}", quote_char(c))
 }
@@ -337,99 +375,156 @@ impl<'a> Parser<'a> {
         self.b.get(self.i).copied()
     }
 
+    /// Parses one value without recursion (an explicit stack of open
+    /// containers), enforcing Go's `maxNestingDepth`: the 10001st open
+    /// array or object fails with `exceeded max depth`, exactly where Go's
+    /// scanner stops. Recursion here let a JSON-RPC body of a million `[`
+    /// overflow the stack and abort the node.
     fn value(&mut self) -> Result<Node<'a>, String> {
-        self.ws();
-        let start = self.i;
-        let c = self.peek().ok_or(EOF)?;
-        let v = match c {
-            b'{' => {
-                self.i += 1;
-                self.ws();
-                let mut fields = Vec::new();
-                if self.peek() == Some(b'}') {
+        enum Open<'a> {
+            Arr(usize, Vec<Node<'a>>),
+            Obj(usize, Vec<(String, Node<'a>)>, String),
+        }
+        let mut stack: Vec<Open<'a>> = Vec::new();
+        'value: loop {
+            self.ws();
+            let start = self.i;
+            let c = self.peek().ok_or(EOF)?;
+            let mut node = match c {
+                b'{' | b'[' => {
+                    if stack.len() >= MAX_NESTING_DEPTH {
+                        return Err(invalid(c, "exceeded max depth"));
+                    }
                     self.i += 1;
-                } else {
-                    loop {
-                        self.ws();
-                        match self.peek() {
-                            None => return Err(EOF.into()),
-                            Some(b'"') => {}
-                            Some(c) => {
-                                return Err(invalid(
-                                    c,
-                                    "looking for beginning of object key string",
-                                ));
+                    self.ws();
+                    if c == b'[' {
+                        if self.peek() == Some(b']') {
+                            self.i += 1;
+                            Node {
+                                raw: &self.s[start..self.i],
+                                v: Val::Arr(Vec::new()),
                             }
+                        } else {
+                            stack.push(Open::Arr(start, Vec::new()));
+                            continue 'value;
                         }
-                        let k = self.string()?;
+                    } else if self.peek() == Some(b'}') {
+                        self.i += 1;
+                        Node {
+                            raw: &self.s[start..self.i],
+                            v: Val::Obj(Vec::new()),
+                        }
+                    } else {
+                        let k = self.object_key()?;
+                        stack.push(Open::Obj(start, Vec::new(), k));
+                        continue 'value;
+                    }
+                }
+                b'"' => Node {
+                    v: Val::Str(self.string()?),
+                    raw: "",
+                },
+                b'-' | b'0'..=b'9' => {
+                    self.number()?;
+                    Node {
+                        raw: "",
+                        v: Val::Num(&self.s[start..self.i]),
+                    }
+                }
+                b't' => {
+                    self.literal("true")?;
+                    Node {
+                        raw: "",
+                        v: Val::Bool(true),
+                    }
+                }
+                b'f' => {
+                    self.literal("false")?;
+                    Node {
+                        raw: "",
+                        v: Val::Bool(false),
+                    }
+                }
+                b'n' => {
+                    self.literal("null")?;
+                    Node {
+                        raw: "",
+                        v: Val::Null,
+                    }
+                }
+                c => return Err(invalid(c, "looking for beginning of value")),
+            };
+            if node.raw.is_empty() {
+                node.raw = &self.s[start..self.i];
+            }
+            // Attach the finished value to the open containers, closing
+            // those that end here.
+            loop {
+                match stack.last_mut() {
+                    None => return Ok(node),
+                    Some(Open::Arr(_, items)) => {
+                        items.push(node);
                         self.ws();
                         match self.peek() {
                             None => return Err(EOF.into()),
-                            Some(b':') => self.i += 1,
-                            Some(c) => return Err(invalid(c, "after object key")),
-                        }
-                        let v = self.value()?;
-                        fields.push((k, v));
-                        self.ws();
-                        match self.peek() {
-                            None => return Err(EOF.into()),
-                            Some(b',') => self.i += 1,
-                            Some(b'}') => {
+                            Some(b',') => {
                                 self.i += 1;
-                                break;
+                                continue 'value;
                             }
+                            Some(b']') => self.i += 1,
+                            Some(c) => return Err(invalid(c, "after array element")),
+                        }
+                    }
+                    Some(Open::Obj(_, fields, key)) => {
+                        fields.push((std::mem::take(key), node));
+                        self.ws();
+                        match self.peek() {
+                            None => return Err(EOF.into()),
+                            Some(b',') => {
+                                self.i += 1;
+                                *key = self.object_key()?;
+                                continue 'value;
+                            }
+                            Some(b'}') => self.i += 1,
                             Some(c) => return Err(invalid(c, "after object key:value pair")),
                         }
                     }
                 }
-                Val::Obj(fields)
+                node = match stack.pop() {
+                    Some(Open::Arr(start, items)) => Node {
+                        raw: &self.s[start..self.i],
+                        v: Val::Arr(items),
+                    },
+                    Some(Open::Obj(start, fields, _)) => Node {
+                        raw: &self.s[start..self.i],
+                        v: Val::Obj(fields),
+                    },
+                    None => return Err(EOF.into()),
+                };
             }
-            b'[' => {
+        }
+    }
+
+    /// An object key and its colon (after `{` or `,`).
+    fn object_key(&mut self) -> Result<String, String> {
+        self.ws();
+        match self.peek() {
+            None => return Err(EOF.into()),
+            Some(b'"') => {}
+            Some(c) => {
+                return Err(invalid(c, "looking for beginning of object key string"));
+            }
+        }
+        let k = self.string()?;
+        self.ws();
+        match self.peek() {
+            None => Err(EOF.into()),
+            Some(b':') => {
                 self.i += 1;
-                self.ws();
-                let mut items = Vec::new();
-                if self.peek() == Some(b']') {
-                    self.i += 1;
-                } else {
-                    loop {
-                        items.push(self.value()?);
-                        self.ws();
-                        match self.peek() {
-                            None => return Err(EOF.into()),
-                            Some(b',') => self.i += 1,
-                            Some(b']') => {
-                                self.i += 1;
-                                break;
-                            }
-                            Some(c) => return Err(invalid(c, "after array element")),
-                        }
-                    }
-                }
-                Val::Arr(items)
+                Ok(k)
             }
-            b'"' => Val::Str(self.string()?),
-            b'-' | b'0'..=b'9' => {
-                self.number()?;
-                Val::Num(&self.s[start..self.i])
-            }
-            b't' => {
-                self.literal("true")?;
-                Val::Bool(true)
-            }
-            b'f' => {
-                self.literal("false")?;
-                Val::Bool(false)
-            }
-            b'n' => {
-                self.literal("null")?;
-                Val::Null
-            }
-            c => return Err(invalid(c, "looking for beginning of value")),
-        };
-        Ok(Node {
-            raw: &self.s[start..self.i],
-            v,
-        })
+            Some(c) => Err(invalid(c, "after object key")),
+        }
     }
 
     fn literal(&mut self, lit: &str) -> Result<(), String> {
@@ -591,6 +686,44 @@ mod tests {
             quote("a<b>&\"\\\n\u{1}\u{8}\u{2028}é"),
             r#""a\u003cb\u003e\u0026\"\\\n\u0001\b\u2028é""#
         );
+    }
+
+    /// Regression (fuzzing): a request body of nested arrays overflowed the
+    /// stack of the recursive parser and aborted the node. Go accepts
+    /// 10 000 levels and fails the next with `exceeded max depth`.
+    #[test]
+    fn nesting_depth_matches_go_without_recursion() {
+        let run = || {
+            let ok = format!("{}{}", "[".repeat(10_000), "]".repeat(10_000));
+            assert!(parse(&ok).is_ok());
+            let obj = format!("{}1{}", "{\"a\":".repeat(10_000), "}".repeat(10_000));
+            assert!(parse(&obj).is_ok());
+            assert_eq!(
+                parse(&"[".repeat(10_001)).err().as_deref(),
+                Some("invalid character '[' exceeded max depth")
+            );
+            assert_eq!(
+                parse(&format!("{}{{}}", "[".repeat(10_000)))
+                    .err()
+                    .as_deref(),
+                Some("invalid character '{' exceeded max depth")
+            );
+            assert_eq!(
+                parse(&"[".repeat(1_000_000)).err().as_deref(),
+                Some("invalid character '[' exceeded max depth")
+            );
+            // An earlier syntax error wins, as in Go's scanner.
+            assert_eq!(
+                parse(&format!("[x{}", "[".repeat(20_000))).err().as_deref(),
+                Some("invalid character 'x' looking for beginning of value")
+            );
+        };
+        // A tokio worker's stack size.
+        std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(run)
+            .map(|h| h.join().is_ok())
+            .map_or_else(|_| panic!("spawn"), |ok| assert!(ok));
     }
 
     #[test]
