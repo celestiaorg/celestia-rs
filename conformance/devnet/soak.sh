@@ -41,6 +41,23 @@
 # samples (mem.jsonl); SOAK_RS_N<i> / SOAK_ENV_N<i> run node i on another
 # binary / with extra environment (e.g. a `--features memstats` build with
 # MALLOC_CONF heap profiling).
+#
+# SOAK_PROFILE=long: a restart-tolerant multi-hour soak. V0, V1 Go and V2,
+# V3 Rust validators, a Rust full node F4 (V1 holds the tx index; V3 runs
+# the valset cycle; V2 runs with tiny WAL group limits, so its WAL rotates
+# every few blocks). Besides the chaos workload: authz / feegrant
+# (grants, MsgExec, fee-granted txs, revokes, prunes), txs with invalid
+# UTF-8 strings (`fuzz-diff craft`, CheckTx compared on a Go and a Rust
+# node), hyperlane + warp (mailbox, hooks, collateral token, transfers,
+# inbound messages). Chaos adds SIGTERM / SIGKILL of Go validators, SIGTERM
+# of a Rust validator inside the delayed-precommit wait, long downtimes
+# (block sync), and state sync of Rust and Go nodes from the Rust nodes'
+# background snapshots (only Rust nodes take snapshots). Disk is bounded:
+# above SOAK_DISK_SOFT_GB of soak data the largest node is state-synced
+# afresh. The cumulative state lives in $W/state.json + hashes.jsonl;
+# SOAK_RESUME=1 with the same SOAK_DIR continues a soak whose processes
+# were killed (machine restart), restarting every node from its home
+# (recorded as a whole-network crash). SOAK_SECS is cumulative.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
@@ -53,6 +70,23 @@ fi
 RS=$CELESTIA_RS
 W=${SOAK_DIR:-$(mktemp -d)}
 mkdir -p "$W"
+PROFILE=${SOAK_PROFILE:-chaos}
+if [ "$PROFILE" = long ]; then
+  # Load sized for ~3 GB of chain data on 5 nodes and ~6 GB of RSS.
+  : "${SOAK_TX_RATE:=10}" "${SOAK_BIG_EVERY:=900}" "${SOAK_DELEGATE_MAX_TIA:=10}"
+  : "${SOAK_PFB_SIZES:=1,478,5000,20000,60000,150000}" "${SOAK_BIG_PLANS:=3x1900000:3,8x1900000:2,3x7300000:1}"
+  : "${SOAK_DISK_SOFT_GB:=2.4}" "${SOAK_RSS_BUDGET_MB:=6000}" "${SOAK_GOMEMLIMIT:=1500MiB}"
+  : "${SOAK_ENV_N2:=CELESTIA_RS_TEST_WAL_HEAD_SIZE_LIMIT=1048576;CELESTIA_RS_TEST_WAL_TOTAL_SIZE_LIMIT=16777216;CELESTIA_RS_TEST_WAL_CHECK_INTERVAL_MS=1000}"
+  export SOAK_TX_RATE SOAK_BIG_EVERY SOAK_DELEGATE_MAX_TIA SOAK_PFB_SIZES SOAK_BIG_PLANS SOAK_DISK_SOFT_GB \
+    SOAK_RSS_BUDGET_MB SOAK_GOMEMLIMIT SOAK_ENV_N2
+  FUZZ_DIFF=${FUZZ_DIFF:-$(dirname "$RS")/fuzz-diff}
+  LONG_ARGS=(--long --validators 0,1,2,3 --ref-node 1 --valset-node 3 --fuzz-diff "$FUZZ_DIFF")
+  if [ "${SOAK_RESUME:-0}" = 1 ]; then
+    exec python3 "$ROOT/conformance/devnet/soak/soak.py" --dir "$W" --off "$OFF" --rs "$RS" --chain-id "$CHAIN_ID" \
+      --secs "${SOAK_SECS:-21600}" --min-heights "${SOAK_MIN_HEIGHTS:-0}" --seed "${SOAK_SEED:-1}$(date +%s)" \
+      --load-accounts "${SOAK_LOAD_ACCOUNTS:-48}" --root "$ROOT" "${LONG_ARGS[@]}" --resume
+  fi
+fi
 FAIL=()
 CHAIN_ID=rs-soak-1
 echo "soak dir: $W"
@@ -62,7 +96,12 @@ source "$ROOT/conformance/devnet/lib-mixed.sh"
 trap - EXIT
 
 STAKE=5000000000
-if [ "${SOAK_PROFILE:-chaos}" = memory ]; then
+if [ "$PROFILE" = long ]; then
+  KINDS="go go rs rs rs"
+  make_net "$W" "$CHAIN_ID" "$KINDS" "$STAKE $STAKE $STAKE $STAKE 0"
+  N=5
+  PROFILE_ARGS=("${LONG_ARGS[@]}")
+elif [ "$PROFILE" = memory ]; then
   # Memory soak (docs/benchmarks/memory.md): V0, V1 Go, V2, V3 Rust
   # validators, a Rust full node F4; no chaos, so every node keeps one
   # lifetime; memory sampled every $SOAK_MEM_SAMPLE s into mem.jsonl. V1
@@ -80,7 +119,7 @@ fi
 
 # Workload accounts in node 0's keyring (CLI txs), funded in genesis.
 a="celestia-appd --home $W/n0"
-for k in blob1 blob2 blob3 blob4 blob5 blob6 blob7 blob8 stake1 stake2 stake3 gov1; do
+for k in blob1 blob2 blob3 blob4 blob5 blob6 blob7 blob8 stake1 stake2 stake3 gov1 az1 az2 az3 hyp1; do
   $a keys add $k --keyring-backend test >/dev/null 2>&1
   $a genesis add-genesis-account "$($a keys show $k -a --keyring-backend test)" 100000000000000utia >/dev/null 2>&1
 done
@@ -118,7 +157,13 @@ done
 # the memory profile every node does (snapshot creation is part of the
 # steady state being measured).
 for i in $(seq 0 $((N - 1))); do
-  [ "$(cat "$W/n$i/kind")" = go ] || [ "${SOAK_PROFILE:-chaos}" = memory ] || continue
+  if [ "$PROFILE" = long ]; then
+    # Only the Rust nodes take snapshots (written in the background): every
+    # state sync, of a Rust or a Go node, restores a Rust snapshot.
+    [ "$(cat "$W/n$i/kind")" = rs ] || continue
+  else
+    [ "$(cat "$W/n$i/kind")" = go ] || [ "$PROFILE" = memory ] || continue
+  fi
   sed -i.bak -e 's#^snapshot-interval = .*#snapshot-interval = 100#' -e 's#^snapshot-keep-recent = .*#snapshot-keep-recent = 3#' "$W/n$i/config/app.toml"
   rm -f "$W/n$i/config/app.toml.bak"
 done

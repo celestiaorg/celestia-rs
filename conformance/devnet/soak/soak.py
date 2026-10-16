@@ -78,6 +78,8 @@ class Node:
         self.max_rss = 0
         self.lifetimes = []  # [(start_t, [(t, rss_mb)])]
         self.log_off = 0
+        self.sync_pending = None  # state sync in progress: {"kind": ..., "since": t}
+        self.wal_max = {}  # largest WAL group sample: head / total / files
         self.lock = threading.Lock()
         k = json.load(open(f"{self.home}/config/priv_validator_key.json"))
         self.val_addr = k["address"].upper()
@@ -99,6 +101,8 @@ class Node:
             env = dict(os.environ)
             if self.kind == "go":
                 cmd = ["celestia-appd", "start", "--home", self.home]
+                if os.environ.get("SOAK_GOMEMLIMIT"):
+                    env["GOMEMLIMIT"] = os.environ["SOAK_GOMEMLIMIT"]
             else:
                 env.setdefault("RUST_LOG", "info")
                 # Per-node overrides (memory profile: a jemalloc build, MALLOC_CONF).
@@ -112,6 +116,7 @@ class Node:
                     "--moniker", f"node{self.i}", "--allow-duplicate-ip", *extra,
                 ]
             self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
+            self.write_pid()
             self.expected_up = True
             self.lifetimes.append((now(), []))
         # Ports above 32767 can be taken as ephemeral source ports.
@@ -125,6 +130,43 @@ class Node:
             self.soak.event("port-race-restart", node=self.i)
             with self.lock:
                 self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
+                self.write_pid()
+
+    def write_pid(self):
+        """`soak.pid`: lets a resumed orchestrator stop a node left running
+        by a previous one (by PID, after checking its command line)."""
+        open(f"{self.home}/soak.pid", "w").write(str(self.proc.pid))
+
+    def kill_stale(self):
+        try:
+            pid = int(open(f"{self.home}/soak.pid").read())
+            cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode(errors="replace")
+        except (OSError, ValueError):
+            return False
+        if self.home not in cmdline.split("\0"):
+            return False
+        os.kill(pid, signal.SIGKILL)
+        for _ in range(100):
+            if not os.path.exists(f"/proc/{pid}"):
+                break
+            time.sleep(0.1)
+        return True
+
+    def wal(self):
+        """The consensus WAL group: head size, total size, file count."""
+        d = f"{self.home}/data/cs.wal"
+        head = total = files = 0
+        try:
+            for e in os.listdir(d):
+                if e == "wal" or re.fullmatch(r"wal\.\d{3,}", e):
+                    sz = os.path.getsize(f"{d}/{e}")
+                    total += sz
+                    files += 1
+                    if e == "wal":
+                        head = sz
+        except OSError:
+            pass
+        return {"head": head, "total": total, "files": files}
 
     def kill(self, sig=signal.SIGKILL):
         with self.lock:
@@ -209,6 +251,29 @@ class Soak:
         self.blocks = {"txs": 0, "max_bytes": 0, "over_8mb": 0, "count": 0}
         self.log_hits = {}
         self.unbonded = set()
+        self.valset_node = a.valset_node
+        # Long profile (restart-tolerant): new workloads and their state.
+        for k in ("authz", "feegrant", "hyperlane", "utf8"):
+            self.metrics[k] = {"submitted": 0, "rejected": {}, "included": 0, "failed_exec": 0, "lost": 0}
+        self.metrics["utf8"]["checktx_parity"] = {"same": 0, "diff": []}
+        self.metrics["precommit_stop"] = {"cut_short": 0, "signed_before_stop": 0, "unknown": 0}
+        self.metrics["sign_refusals"] = {}
+        self.metrics["wal"] = {}
+        self.metrics["disk"] = {"max_total_mb": 0, "pressure_syncs": 0}
+        self.metrics["rss"] = {"max_total_mb": 0, "pressure_restarts": 0}
+        self.long = {"hyperlane_step": 0, "hyperlane_nonce": 0}
+        self.segment = 1
+        self.segments = []
+        self.index_gaps = []  # [t0, t1] windows the tx-index node missed blocks in
+        self.key_locks = {k: threading.Lock() for k in ("val0", "user0", "az1", "az2", "hyp1")}
+        self.state_lock = threading.Lock()
+        self.val_lock = threading.Lock()  # valset cycle vs validator-affecting chaos
+        self.disk_pressure = self.rss_pressure = False
+        self.hashes_f = None
+        if a.resume:
+            self.load_state()
+        self.seg_start = now()
+        self.seg_t0 = self.elapsed()
 
     # ------------------------------------------------------------ utils
     def elapsed(self):
@@ -225,6 +290,98 @@ class Soak:
         self.failures.append(f"[t={self.elapsed():.0f}s h={self.max_height}] {msg}")
         self.event("FAIL", msg=msg)
 
+    # ------------------------------------------------------------ persistence
+    # A long soak runs in segments (`--resume` after the machine restarted
+    # and killed every process): `state.json` carries the cumulative
+    # counters, `hashes.jsonl` every reference height's block / app hash.
+    def save_state(self):
+        st = {
+            "cum_elapsed": round(self.elapsed(), 1), "segment": self.segment,
+            "segments": self.segments + [{"segment": self.segment, "wall_start": round(self.seg_start),
+                                          "wall_end": round(now()), "t_start": round(self.seg_t0)}],
+            "max_height": self.max_height, "metrics": self.metrics, "failures": self.failures,
+            "stalls": [{k: v for k, v in x.items() if not k.startswith("_")} for x in self.stalls],
+            "log_hits": self.log_hits, "unbonded": sorted(self.unbonded), "long": self.long,
+            "index_gaps": self.index_gaps,
+            "pending": list(self.pending_txs),
+            "nodes": {str(nd.i): {"checked": nd.checked, "restarts": nd.restarts, "statesyncs": nd.statesyncs,
+                                  "max_rss": nd.max_rss, "log_off": nd.log_off, "sync_pending": nd.sync_pending,
+                                  "wal_max": nd.wal_max} for nd in self.nodes},
+        }
+        with self.state_lock:
+            for _ in range(5):
+                try:
+                    data = json.dumps(st, indent=1)
+                    break
+                except RuntimeError:  # a dict changed size while dumping
+                    time.sleep(0.05)
+            else:
+                return
+            tmp = f"{self.dir}/state.json.tmp"
+            with open(tmp, "w") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, f"{self.dir}/state.json")
+
+    def load_state(self):
+        st = json.load(open(f"{self.dir}/state.json"))
+        cum = st["cum_elapsed"]
+        self.t0 = now() - cum
+        self.deadline = self.t0 + self.a.secs
+        self.segment = st["segment"] + 1
+        self.segments = st["segments"]
+        self.max_height = st["max_height"]
+        for k, v in st["metrics"].items():
+            if isinstance(v, dict) and isinstance(self.metrics.get(k), dict):
+                self.metrics[k].update(v)
+            else:
+                self.metrics[k] = v
+        self.failures = st["failures"]
+        self.stalls = st["stalls"]
+        self.log_hits = st["log_hits"]
+        self.unbonded = set(st["unbonded"])
+        self.long.update(st["long"])
+        self.index_gaps = st.get("index_gaps", [])
+        self.pending_txs = [tuple(x) for x in st.get("pending", [])]
+        for i, ns in st["nodes"].items():
+            nd = self.nodes[int(i)]
+            nd.checked, nd.restarts, nd.statesyncs = ns["checked"], ns["restarts"], ns["statesyncs"]
+            nd.max_rss, nd.log_off, nd.sync_pending = ns["max_rss"], ns["log_off"], ns["sync_pending"]
+            nd.wal_max = ns.get("wal_max", {})
+        # Reference hashes and block counters from hashes.jsonl (written
+        # before `ref_checked` moves, so nothing is counted twice).
+        try:
+            lines = open(f"{self.dir}/hashes.jsonl").read().splitlines()
+        except FileNotFoundError:
+            lines = []
+        kept = []
+        for line in lines:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue  # torn last line
+            ht = r["h"]
+            if ht != self.ref_checked + 1:
+                continue
+            self.ref_cache[ht] = {"hash": r["hash"], "app_hash": r["app"], "proposer": r["p"]}
+            self._count_block(r["p"], r["ntx"], r["size"])
+            self.ref_checked = ht
+            kept.append(line)
+        self.max_height = max(self.max_height, self.ref_checked)
+        # Drop a torn last line.
+        if len(kept) != len(lines):
+            with open(f"{self.dir}/hashes.jsonl", "w") as f:
+                f.write("".join(x + "\n" for x in kept))
+
+    def _count_block(self, proposer, ntx, size):
+        self.blocks["txs"] += ntx
+        self.blocks["count"] += 1
+        self.blocks["max_bytes"] = max(self.blocks["max_bytes"], size)
+        self.blocks["over_8mb"] += size > 8 * 2**20
+        p = self.by_addr.get(proposer, -1)
+        self.proposed[p] = self.proposed.get(p, 0) + 1
+
     def proxy_port(self, i, j):
         return 26656 + self.off + 500 + 10 * i + j
 
@@ -237,11 +394,20 @@ class Soak:
         return [nd for nd in self.nodes if nd.expected_up and nd.alive() and (kind is None or nd.kind == kind)]
 
     def ref_node(self):
+        """The highest Go node (else any node) that still holds the next
+        height to check (a state-synced node starts at its snapshot)."""
         best, bh = None, -1
-        for nd in self.up_nodes("go"):
-            h = nd.height()
-            if h is not None and (h > bh or (h == bh and nd.i == self.ref_i)):
-                best, bh = nd, h
+        need = self.ref_checked + 1
+        for kind in ("go", None):
+            for nd in self.up_nodes(kind):
+                st = nd.status()
+                if st is None or st[1] > need:
+                    continue
+                h = st[0]
+                if h > bh or (h == bh and nd.i == self.ref_i):
+                    best, bh = nd, h
+            if best is not None:
+                break
         return best, bh
 
     def tx_node(self):
@@ -263,7 +429,7 @@ class Soak:
         args = ["keys", "show", key, "-a"] + (["--bech", "val"] if val else [])
         return self.cli(args, home).strip().splitlines()[-1]
 
-    def tx(self, category, key, args, home=None, gas=400000, fees=20000):
+    def tx(self, category, key, args, home=None, gas=400000, fees=20000, track=True):
         nd = self.tx_node()
         out = self.cli(
             ["tx", *args, "--from", key, "--chain-id", self.chain_id, "--node", f"tcp://127.0.0.1:{nd.rpc}",
@@ -279,12 +445,51 @@ class Soak:
             code, h = -1, ""
         if code == 0 and h:
             m["submitted"] = m.get("submitted", 0) + 1
-            with self.pending_lock:
-                self.pending_txs.append((h, category, now(), nd.i))
+            if track:
+                with self.pending_lock:
+                    self.pending_txs.append((h, category, now(), nd.i))
         else:
             k = str(code) if code != -1 else ("err:" + out.strip()[:80])
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
         return code, h
+
+    def wait_included(self, h, timeout=120):
+        """Exec code and result of tx `h` from the tx-index node, or (None,
+        None) if it was not found within `timeout`."""
+        t = now()
+        while now() - t < timeout and not self.stop.is_set():
+            try:
+                r = get_json(f"{self.nodes[self.ref_i].url}/tx?hash=0x{h}", timeout=5).get("result")
+                if r:
+                    return int(r["tx_result"].get("code", 0)), r
+            except Exception:
+                pass
+            self.stop.wait(2)
+        return None, None
+
+    def tx_wait(self, category, key, args, op=None, gas=400000, fees=20000):
+        """A CLI tx, then its inclusion; counts per category and per op.
+        Returns the exec code (None: rejected by CheckTx or not found)."""
+        code, h = self.tx(category, key, args, gas=gas, fees=fees, track=False)
+        m = self.metrics[category]
+        ops = m.setdefault("ops", {})
+        o = ops.setdefault(op or args[1], {"ok": 0, "exec_fail": {}, "checktx_fail": 0, "lost": 0})
+        if code != 0 or not h:
+            o["checktx_fail"] += 1
+            return None
+        ec, _ = self.wait_included(h)
+        if ec is None:
+            if not self.stop.is_set():
+                m["lost"] += 1
+                o["lost"] += 1
+            return None
+        m["included"] += 1
+        if ec == 0:
+            o["ok"] += 1
+        else:
+            m["failed_exec"] += 1
+            o["exec_fail"][str(ec)] = o["exec_fail"].get(str(ec), 0) + 1
+        return ec
 
     # ------------------------------------------------------------ setup
     def setup(self):
@@ -295,11 +500,19 @@ class Soak:
                     routes.append({"listen": self.proxy_port(i, j), "target": self.nodes[j].p2p, "src": i, "dst": j})
         json.dump(routes, open(f"{self.dir}/proxy-routes.json", "w"))
         self.write_control()
+        try:  # a proxy left by a previous orchestrator
+            pid = int(open(f"{self.dir}/proxy.pid").read())
+            if f"{self.dir}/proxy-routes.json" in open(f"/proc/{pid}/cmdline", "rb").read().decode(errors="replace"):
+                os.kill(pid, signal.SIGKILL)
+                time.sleep(0.5)
+        except (OSError, ValueError):
+            pass
         self.proxy = subprocess.Popen(
             [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "netproxy.py"),
              f"{self.dir}/proxy-routes.json", f"{self.dir}/proxy-control.json"],
             stdout=open(f"{self.dir}/proxy.log", "a"), stderr=subprocess.STDOUT, start_new_session=True,
         )
+        open(f"{self.dir}/proxy.pid", "w").write(str(self.proxy.pid))
         time.sleep(1)
         for nd in self.nodes:
             cfg = f"{nd.home}/config/config.toml"
@@ -314,7 +527,7 @@ class Soak:
 
     # ------------------------------------------------------------ monitor
     def monitor_loop(self):
-        last_rss = last_disk = 0.0
+        last_rss = last_disk = last_save = 0.0
         rss_f = open(f"{self.dir}/rss.csv", "a")
         disk_f = open(f"{self.dir}/disk.csv", "a")
         rss_f.write("t,height," + ",".join(f"n{i}_{nd.kind}" for i, nd in enumerate(self.nodes)) + "\n")
@@ -353,14 +566,24 @@ class Soak:
                 if t - last_rss >= 15:
                     last_rss = t
                     row = []
+                    total_rss = 0.0
                     for nd in self.nodes:
                         r = nd.rss_mb()
+                        total_rss += r
                         nd.max_rss = max(nd.max_rss, r)
                         if r and nd.lifetimes:
                             nd.lifetimes[-1][1].append((t, r))
                         row.append(f"{r:.1f}")
                     rss_f.write(f"{t - self.t0:.0f},{self.max_height}," + ",".join(row) + "\n")
                     rss_f.flush()
+                    self.metrics["rss"]["max_total_mb"] = max(self.metrics["rss"]["max_total_mb"], round(total_rss))
+                    budget = float(os.environ.get("SOAK_RSS_BUDGET_MB", "0"))
+                    if budget and total_rss > budget:
+                        self.rss_pressure = True
+                if t - last_save >= 30:
+                    last_save = t
+                    self.check_wal()
+                    self.save_state()
                 if t - last_disk >= 60:
                     last_disk = t
                     free = shutil.disk_usage(self.dir).free
@@ -369,11 +592,59 @@ class Soak:
                         self.deadline = now()
                         self.a.min_heights = 0
                     row = [f"{du(f'{nd.home}/data') / 2**20:.1f}" for nd in self.nodes]
-                    disk_f.write(f"{t - self.t0:.0f},{self.max_height}," + ",".join(row) + "\n")
+                    total = du(self.dir) / 2**20
+                    disk_f.write(f"{t - self.t0:.0f},{self.max_height}," + ",".join(row) + f",{total:.1f}\n")
                     disk_f.flush()
+                    self.metrics["disk"]["max_total_mb"] = max(self.metrics["disk"]["max_total_mb"], round(total))
+                    soft = float(os.environ.get("SOAK_DISK_SOFT_GB", "0"))
+                    min_free = float(os.environ.get("SOAK_MIN_FREE_GB", "3"))
+                    if soft and (total > soft * 1024 or free < (min_free + 0.7) * 2**30):
+                        self.disk_pressure = True
+                    self.rotate_logs()
             except Exception:
                 self.event("monitor-error", tb=traceback.format_exc()[-500:])
             self.stop.wait(5)
+
+    def check_wal(self):
+        """WAL group sizes against the group limits (Go's autofile.Group:
+        the head rotates at the head limit, the oldest files go once the
+        total passes the total limit; the head itself is never removed)."""
+        for nd in self.nodes:
+            w = nd.wal()
+            for k, v in w.items():
+                nd.wal_max[k] = max(nd.wal_max.get(k, 0), v)
+            env = dict(kv.partition("=")[::2] for kv in filter(None, os.environ.get(f"SOAK_ENV_N{nd.i}", "").split(";")))
+            head_lim = int(env.get("CELESTIA_RS_TEST_WAL_HEAD_SIZE_LIMIT", 10 * 1024 * 1024))
+            total_lim = int(env.get("CELESTIA_RS_TEST_WAL_TOTAL_SIZE_LIMIT", 1024 * 1024 * 1024))
+            over = w["total"] - w["head"] > total_lim + head_lim
+            key = f"n{nd.i}"
+            m = self.metrics["wal"].setdefault(key, {"over_samples": 0, "max_files": 0, "max_total": 0, "max_head": 0})
+            m["max_files"] = max(m["max_files"], w["files"])
+            m["max_total"] = max(m["max_total"], w["total"])
+            m["max_head"] = max(m["max_head"], w["head"])
+            if over:
+                m["over_samples"] += 1
+                if m["over_samples"] >= 3:
+                    self.fail(f"node {nd.i} WAL group over its limits: {w} (head {head_lim}, total {total_lim})")
+            else:
+                m["over_samples"] = 0
+
+    def rotate_logs(self):
+        cap = int(float(os.environ.get("SOAK_LOG_CAP_MB", "200")) * 2**20)
+        for nd in self.nodes:
+            p = f"{nd.home}/node.log"
+            try:
+                if os.path.getsize(p) > cap:
+                    # The node appends (O_APPEND): keep the last 20 MB in node.log.1 and truncate.
+                    with open(p, "rb") as f:
+                        f.seek(-20 * 2**20, 2)
+                        tail = f.read()
+                    open(p + ".1", "wb").write(tail)
+                    os.truncate(p, 0)
+                    nd.log_off = 0
+                    self.event("log-rotated", node=nd.i)
+            except OSError:
+                pass
 
     # ------------------------------------------------------------ memory
     def mem_sample(self, nd):
@@ -454,12 +725,14 @@ class Soak:
                     self.fail(f"block {ht} carries evidence (evidence_hash {hdr['evidence_hash']})")
                 ntx = int(m.get("num_txs", 0))
                 size = int(m.get("block_size", 0))
-                self.blocks["txs"] += ntx
-                self.blocks["count"] += 1
-                self.blocks["max_bytes"] = max(self.blocks["max_bytes"], size)
-                self.blocks["over_8mb"] += size > 8 * 2**20
-                p = self.by_addr.get(hdr["proposer_address"].upper(), -1)
-                self.proposed[p] = self.proposed.get(p, 0) + 1
+                if self.hashes_f is None:
+                    self.hashes_f = open(f"{self.dir}/hashes.jsonl", "a")
+                r = self.ref_cache[ht]
+                self.hashes_f.write(json.dumps({"h": ht, "hash": r["hash"], "app": r["app_hash"], "p": r["proposer"],
+                                                "ntx": ntx, "size": size, "by": ref.i}) + "\n")
+                self._count_block(r["proposer"], ntx, size)
+            if self.hashes_f is not None:
+                self.hashes_f.flush()
             h = hi + 1
             self.ref_checked = hi
 
@@ -505,6 +778,8 @@ class Soak:
         for nd in self.nodes:
             p = f"{nd.home}/node.log"
             try:
+                if os.path.getsize(p) < nd.log_off:
+                    nd.log_off = 0
                 with open(p, "rb") as f:
                     f.seek(nd.log_off)
                     data = f.read()
@@ -520,6 +795,12 @@ class Soak:
             pats = GO_FATAL if nd.kind == "go" else RS_FATAL
             for line in text.splitlines():
                 low = line.lower()
+                ref = sign_refusal(line)
+                if ref:
+                    k = f"n{nd.i} {ref}"
+                    self.metrics["sign_refusals"][k] = self.metrics["sign_refusals"].get(k, 0) + 1
+                    if "conflicting data" in ref and self.a.strict_sign:
+                        self.fail(f"node {nd.i} ({nd.kind}) signing refusal: {line.strip()[:300]}")
                 for pat in pats:
                     if pat.lower() in low:
                         self.fail(f"node {nd.i} ({nd.kind}) log: {line.strip()[:300]}")
@@ -552,6 +833,10 @@ class Soak:
                 m["included"] += 1
                 if int(res["tx_result"].get("code", 0)) != 0:
                     m["failed_exec"] += 1
+            elif now() - t > 300 and any(g[0] - 300 <= t <= g[1] for g in self.index_gaps):
+                # Submitted while the tx-index node was down / state syncing:
+                # its inclusion cannot be looked up.
+                self.metrics[cat]["unverifiable"] = self.metrics[cat].get("unverifiable", 0) + 1
             elif now() - t > 300:
                 self.metrics[cat]["lost"] += 1
                 lk = f"lost@n{ni}"  # node that accepted the tx (CheckTx 0)
@@ -674,10 +959,19 @@ class Soak:
                 # Near the max: 256x256 squares hold 65,536 shares (~31 MB);
                 # alternate ~15 MB rounds of 8 x 1.9 MB and ~22 MB rounds of
                 # 3 x 7.3 MB blobs (max tx size 8 MiB).
-                p_max = float(os.environ.get("SOAK_P_MAX_ROUND", "0.5"))
-                plan = [[7_300_000]] * 3 if self.rng.random() < p_max else [[1_900_000]] * 8
+                plans = os.environ.get("SOAK_BIG_PLANS")
+                if plans:
+                    # "<txs>x<bytes>:<weight>,...", e.g. 3x7300000:1,3x1900000:3
+                    opts = [(int(a.split("x")[0]), int(a.split("x")[1]), float(w))
+                            for a, w in (x.split(":") for x in plans.split(","))]
+                    n_tx, size, _ = self.rng.choices(opts, weights=[o[2] for o in opts])[0]
+                    plan = [[size]] * n_tx
+                else:
+                    p_max = float(os.environ.get("SOAK_P_MAX_ROUND", "0.5"))
+                    plan = [[7_300_000]] * 3 if self.rng.random() < p_max else [[1_900_000]] * 8
             else:
-                plan = [[self.rng.choice([1, 478, 5_000, 40_000, 200_000, 600_000]) for _ in range(self.rng.randint(1, 3))]
+                sizes = [int(x) for x in os.environ.get("SOAK_PFB_SIZES", "1,478,5000,40000,200000,600000").split(",")]
+                plan = [[self.rng.choice(sizes) for _ in range(self.rng.randint(1, 3))]
                         for _ in range(self.rng.randint(1, 4))]
             total = sum(sum(p) for p in plan)
             self.metrics["pfb"]["max_round_bytes"] = max(self.metrics["pfb"]["max_round_bytes"], total)
@@ -704,7 +998,8 @@ class Soak:
             op = self.rng.random()
             if op < 0.5 or not delegated[a]:
                 v = self.rng.choice(vs)
-                code, _ = self.tx("staking", a, ["staking", "delegate", v, f"{self.rng.randint(1, 100) * 1_000_000}utia"])
+                mx = int(os.environ.get("SOAK_DELEGATE_MAX_TIA", "100"))
+                code, _ = self.tx("staking", a, ["staking", "delegate", v, f"{self.rng.randint(1, mx) * 1_000_000}utia"])
                 if code == 0:
                     delegated[a].append(v)
             elif op < 0.75:
@@ -746,10 +1041,17 @@ class Soak:
             for i in self.validator_nodes:
                 if i in self.unbonded:
                     continue
-                out = self.cli(["tx", "gov", "vote", str(pid), "yes" if yes else "no", "--from", f"val{i}",
-                                "--chain-id", self.chain_id, "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}",
-                                "--fees", "20000utia", "--gas", "300000", "-y", "-o", "json"], f"{self.dir}/n{i}")
-                self.metrics["gov"]["votes"] += '"code":0' in out.replace(" ", "")
+                lk = self.key_locks["val0"] if i == 0 else threading.Lock()
+                with lk:
+                    out = self.cli(["tx", "gov", "vote", str(pid), "yes" if yes else "no", "--from", f"val{i}",
+                                    "--chain-id", self.chain_id, "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}",
+                                    "--fees", "20000utia", "--gas", "300000", "-y", "-o", "json"], f"{self.dir}/n{i}")
+                    ok = '"code":0' in out.replace(" ", "")
+                    self.metrics["gov"]["votes"] += ok
+                    if ok and i == 0:
+                        hm = re.search(r'"txhash":\s*"([0-9A-F]+)"', out)
+                        if hm:
+                            self.wait_included(hm.group(1), timeout=60)
             self.stop.wait(75)
             st = self._proposal_status(pid)
             want = "PROPOSAL_STATUS_PASSED" if yes else "PROPOSAL_STATUS_REJECTED"
@@ -925,48 +1227,537 @@ class Soak:
             self.event("chaos-done", **rec)
             self.chaos_stop.wait(self.rng.uniform(30, 90))
 
-    def valset_loop(self):
-        nd = self.nodes[4]
-        home = nd.home
-        acc = self.addr("val4", home)
-        valoper = self.addr("val4", home, val=True)
-        self.stop.wait(self.a.warmup + 600)
-        while not self.chaos_stop.is_set() and now() < self.deadline - 1200:
-            out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
+    # ------------------------------------------------------------ long profile: workloads
+    def _work(self, name, fn):
+        try:
+            fn()
+        except Exception:
+            self.event("workload-error", w=name, tb=traceback.format_exc()[-600:])
+
+    def _gen(self, path, args):
+        """An unsigned tx (`--generate-only`) of n0's keyring for MsgExec."""
+        out = self.cli(["tx", *args, "--chain-id", self.chain_id, "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}",
+                        "--fees", "20000utia", "--gas", "300000", "--generate-only", "-o", "json"])
+        json.dump(json.loads(out[out.index("{"):]), open(path, "w"))
+
+    def authz_loop(self):
+        """authz grants / execs / revokes and feegrant allowances / fee-granted
+        txs / revokes between three accounts of n0's keyring."""
+        self.stop.wait(60)
+        az1, az2, az3 = (self.addr(k) for k in ("az1", "az2", "az3"))
+        val = self.valopers()[0]
+        f = f"{self.dir}/authz-msg.json"
+
+        def rfc3339(secs):
+            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + secs))
+
+        ops = {
+            "grant-send": lambda: self.tx_wait("authz", "az1", ["authz", "grant", az2, "send", "--spend-limit", "50000utia",
+                                                               "--expiration", str(int(time.time()) + self.rng.choice([45, 900]))], "grant-send"),
+            "grant-generic": lambda: self.tx_wait("authz", "az1", ["authz", "grant", az2, "generic", "--msg-type",
+                                                                  "/cosmos.staking.v1beta1.MsgDelegate"], "grant-generic"),
+            "exec-send": lambda: (self._gen(f, ["bank", "send", az1, az3, f"{self.rng.randint(1, 20000)}utia", "--from", az1]),
+                                  self.tx_wait("authz", "az2", ["authz", "exec", f], "exec-send")),
+            "exec-delegate": lambda: (self._gen(f, ["staking", "delegate", val, "1000utia", "--from", az1]),
+                                      self.tx_wait("authz", "az2", ["authz", "exec", f], "exec-delegate")),
+            "revoke": lambda: self.tx_wait("authz", "az1", ["authz", "revoke", az2,
+                                                           self.rng.choice(["/cosmos.bank.v1beta1.MsgSend",
+                                                                            "/cosmos.staking.v1beta1.MsgDelegate"])], "revoke"),
+            "fg-basic": lambda: self.tx_wait("feegrant", "az1", ["feegrant", "grant", az1, az2, "--spend-limit", "100000utia",
+                                                                "--expiration", rfc3339(self.rng.choice([40, 900]))], "fg-basic"),
+            "fg-periodic": lambda: self.tx_wait("feegrant", "az1", ["feegrant", "grant", az1, az2, "--spend-limit", "200000utia",
+                                                                   "--period", "30", "--period-limit", "50000utia"], "fg-periodic"),
+            "fg-allowed": lambda: self.tx_wait("feegrant", "az1", ["feegrant", "grant", az1, az2, "--allowed-messages",
+                                                                  "/cosmos.bank.v1beta1.MsgSend", "--spend-limit", "100000utia"], "fg-allowed"),
+            "fg-use": lambda: self.tx_wait("feegrant", "az2", ["bank", "send", az2, az3, "1utia", "--fee-granter", az1], "fg-use"),
+            "fg-revoke": lambda: self.tx_wait("feegrant", "az1", ["feegrant", "revoke", az1, az2], "fg-revoke"),
+            "fg-prune": lambda: self.tx_wait("feegrant", "az2", ["feegrant", "prune"], "fg-prune"),
+        }
+        weights = {"fg-use": 4, "exec-send": 3, "exec-delegate": 2}
+        names = list(ops)
+        while not self.stop.is_set():
+            op = self.rng.choices(names, weights=[weights.get(n, 1) for n in names])[0]
+            self._work("authz", ops[op])
+            self.stop.wait(self.rng.uniform(10, 40))
+
+    def utf8_loop(self):
+        """Txs with invalid UTF-8 in string fields (`fuzz-diff craft`): CheckTx
+        compared on a Go and a Rust node (`/check_tx`), then broadcast."""
+        fd = self.a.fuzz_diff
+        if not fd:
+            return
+        home = f"{self.dir}/n0"
+        out = subprocess.run([fd, "craft", home, "list"], capture_output=True, text=True, timeout=60).stdout
+        cases = []
+        for line in out.splitlines():
+            i, signer, what = line.split(" ", 2)
+            cases.append((int(i), signer, what))
+        addrs = {"val0": self.addr("val0"), "user0": self.addr("user0")}
+        m = self.metrics["utf8"]
+        self.stop.wait(120)
+        while not self.stop.is_set():
+            i, signer, what = self.rng.choice(cases)
+            with self.key_locks[signer]:
+                self._work("utf8", lambda: self._utf8_case(fd, home, i, signer, addrs[signer], m))
+            self.stop.wait(self.rng.uniform(20, 60))
+
+    def _utf8_case(self, fd, home, i, signer, address, m):
+        nd = self.tx_node()
+        an, seq = ctx.query_account(nd.url, address)
+        raw = subprocess.run([fd, "craft", home, self.chain_id, str(i), str(an), str(seq)],
+                             capture_output=True, text=True, timeout=60).stdout.strip()
+        tx = bytes.fromhex(raw)
+        self.checktx_parity(tx, f"utf8 case {i}")
+        r = ctx.broadcast(nd.url, tx)
+        code = int(r.get("code", 0))
+        cs = m.setdefault("cases", {}).setdefault(str(i), {"ok": 0, "exec_fail": {}, "checktx_fail": {}})
+        if code != 0:
+            k = f"{code}@{nd.kind}"
+            m["rejected"][k] = m["rejected"].get(k, 0) + 1
+            cs["checktx_fail"][str(code)] = cs["checktx_fail"].get(str(code), 0) + 1
+            return
+        m["submitted"] += 1
+        ec, _ = self.wait_included(r["hash"])
+        if ec is None:
+            m["lost"] += 1
+            return
+        m["included"] += 1
+        if ec == 0:
+            cs["ok"] += 1
+        else:
+            m["failed_exec"] += 1
+            cs["exec_fail"][str(ec)] = cs["exec_fail"].get(str(ec), 0) + 1
+
+    def checktx_parity(self, tx, label):
+        """CheckTx of `tx` on a Go and a Rust node (no mempool insert)."""
+        got = {}
+        for kind in ("go", "rs"):
+            ups = self.up_nodes(kind)
+            if not ups:
+                return
+            nd = self.rng.choice(ups)
             try:
-                d = json.loads(out[out.index("{"):])
-                amt = int((d.get("delegation_response") or d)["balance"]["amount"])
-            except Exception:
-                self.event("valset-query-failed", out=out[-200:])
-                self.stop.wait(60)
+                r = ctx.rpc_call(nd.url, "check_tx", {"tx": base64.b64encode(tx).decode()})
+            except Exception as e:
+                got[kind] = f"error {str(e)[:80]}"
                 continue
-            rec = {"t": round(self.elapsed()), "node": 4, "self_delegation": amt}
-            out = self.cli(["tx", "staking", "unbond", valoper, f"{amt}utia", "--from", "val4", "--chain-id", self.chain_id,
-                            "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
-            self.event("valset-unbond", amount=amt, out=out.strip()[-160:])
-            t = now()
-            gone = None
-            while now() - t < 180:
-                if not self.in_valset(nd.val_addr):
-                    gone = round(now() - t)
-                    break
-                time.sleep(3)
-            if gone is None:
-                self.fail("validator 4 still in the validator set 180 s after unbonding its self-delegation")
-            self.unbonded.add(4)
-            rec["left_set_s"] = gone
-            self.stop.wait(self.rng.uniform(240, 420))
-            out = self.cli(["tx", "staking", "delegate", valoper, f"{amt}utia", "--from", "val4", "--chain-id", self.chain_id,
-                            "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
-            self.event("valset-delegate", out=out.strip()[-160:])
-            time.sleep(15)
+            got[kind] = (int(r.get("code", 0)), r.get("codespace", ""), int(r.get("gas_wanted", 0) or 0),
+                         int(r.get("gas_used", 0) or 0))
+        p = self.metrics["utf8"]["checktx_parity"]
+        if len(got) == 2 and got["go"] == got["rs"]:
+            p["same"] += 1
+        else:
+            p["diff"].append({"what": label, "go": got.get("go"), "rs": got.get("rs")})
+            p["diff"] = p["diff"][-20:]
+            self.event("checktx-diff", what=label, go=str(got.get("go")), rs=str(got.get("rs")))
+
+    def hyperlane_loop(self):
+        """Hyperlane + warp: the devnet workload's mailbox / hooks / collateral
+        token set up once (ids are deterministic: router sequences start at 0),
+        then outbound warp transfers, inbound messages processed through the
+        noop ISM (new nonces; sometimes a replay, which fails), IGP claims."""
+        self.stop.wait(90)
+
+        def ident(name, typ, seq):
+            return "0x" + (name.encode().ljust(20, b"\0") + typ.to_bytes(4, "big") + seq.to_bytes(8, "big")).hex()
+
+        ism, merkle, igp = ident("router_ism", 0, 0), ident("router_post_dispatch", 3, 1), ident("router_post_dispatch", 4, 2)
+        mailbox, token = ident("hyperlane", 0, 0), ident("router_app", 1, 0)
+        remote = "0x000000000000000000000000ee00000000000000000000000000000000000001"
+        steps = [
+            ["hyperlane", "ism", "create-noop"],
+            ["hyperlane", "hooks", "noop", "create"],
+            ["hyperlane", "mailbox", "create", ism, "69420"],
+            ["hyperlane", "hooks", "merkle", "create", mailbox],
+            ["hyperlane", "hooks", "igp", "create", "utia"],
+            ["hyperlane", "hooks", "igp", "set-destination-gas-config", igp, "1", "10000000000", "1", "100"],
+            ["hyperlane", "mailbox", "set", mailbox, "--required-hook", merkle, "--default-hook", igp],
+            ["warp", "create-collateral-token", mailbox, "utia"],
+            ["warp", "enroll-remote-router", token, "1", remote, "50000"],
+        ]
+        while self.long["hyperlane_step"] < len(steps) and not self.stop.is_set():
+            st = steps[self.long["hyperlane_step"]]
+            ec = self.tx_wait("hyperlane", "hyp1", st, "setup:" + " ".join(st[:3]))
+            if ec == 0:
+                self.long["hyperlane_step"] += 1
+                self.save_state()
+            elif ec is not None:
+                self.event("hyperlane-setup-failed", step=st, code=ec)
+                return
+            else:
+                self.stop.wait(30)
+        hyp_hex = bech32_decode(self.addr("hyp1")).hex()
+        last = None
+        while not self.stop.is_set():
+            op = self.rng.choices(["out", "in", "replay", "claim"], weights=[4, 3, 1, 1])[0]
+            if op == "out":
+                self._work("hyperlane", lambda: self.tx_wait(
+                    "hyperlane", "hyp1", ["warp", "transfer", token, "1", "0x" + "00" * 30 + "0abc",
+                                          str(self.rng.randint(1000, 5000)), "--max-hyperlane-fee", "100000utia"], "warp-transfer"))
+                self.long["hyperlane_out"] = self.long.get("hyperlane_out", 0) + 1
+            elif op == "in" and self.long.get("hyperlane_out", 0) > self.long["hyperlane_nonce"]:
+                n = self.long["hyperlane_nonce"]
+                self.long["hyperlane_nonce"] += 1
+                body = "00" * 12 + hyp_hex + f"{250:064x}"
+                msg = "0x03" + f"{n:08x}{1:08x}" + remote[2:] + f"{69420:08x}" + token[2:] + body
+                last = msg
+                self._work("hyperlane", lambda: self.tx_wait("hyperlane", "hyp1", ["hyperlane", "mailbox", "process", mailbox, "0x", msg],
+                                                             "mailbox-process"))
+            elif op == "replay" and last:
+                self._work("hyperlane", lambda: self.tx_wait("hyperlane", "hyp1", ["hyperlane", "mailbox", "process", mailbox, "0x", last],
+                                                             "mailbox-process-replay"))
+            elif op == "claim":
+                self._work("hyperlane", lambda: self.tx_wait("hyperlane", "hyp1", ["hyperlane", "hooks", "igp", "claim", igp], "igp-claim"))
+            self.stop.wait(self.rng.uniform(20, 60))
+
+    # ------------------------------------------------------------ long profile: chaos
+    def wipe_data(self, nd):
+        data = f"{nd.home}/data"
+        for e in os.listdir(data):
+            if e == "priv_validator_state.json":
+                continue
+            p = f"{data}/{e}"
+            shutil.rmtree(p) if os.path.isdir(p) else os.unlink(p)
+
+    def go_statesync_config(self, nd, servers=None, th=None, thash=None):
+        """Turns the [statesync] section of a Go node's config.toml on (with
+        the given light-client servers and trust root) or off."""
+        cfg = f"{nd.home}/config/config.toml"
+        s = open(cfg).read()
+        head, sep, rest = s.partition("[statesync]")
+        body, nxt, tail = rest.partition("\n[")
+        on = servers is not None
+
+        def kv(b, k, v):
+            return re.sub(rf'(?m)^{k} = .*$', f'{k} = {v}', b, count=1)
+        body = kv(body, "enable", "true" if on else "false")
+        if on:
+            body = kv(body, "rpc_servers", f'"{servers}"')
+            body = kv(body, "trust_height", str(th))
+            body = kv(body, "trust_hash", f'"{thash}"')
+            body = kv(body, "trust_period", '"168h0m0s"')
+            body = kv(body, "discovery_time", '"10s"')
+        open(cfg, "w").write(head + sep + body + nxt + tail)
+
+    def ev_statesync2(self, nd, reason="chaos"):
+        """Wipes `nd` (keeping its sign state) and state-syncs it: snapshots
+        from the Rust nodes (only they take snapshots in the long profile,
+        in the background), light-client RPC from one Go and one Rust node."""
+        others = [x for x in self.up_nodes() if x is not nd and x.i not in self.syncing()]
+        go = [x for x in others if x.kind == "go"]
+        rs = [x for x in others if x.kind == "rs"]
+        if not go or not rs:
+            return None
+        hs = [x.height() or 0 for x in others]
+        rh = max(hs) if hs else 0
+        if rh < 260:
+            return None
+        th = rh - 5
+        thash = get_json(f"{go[0].url}/commit?height={th}")["result"]["signed_header"]["commit"]["block_id"]["hash"]
+        servers = f"127.0.0.1:{self.rng.choice(go).rpc},127.0.0.1:{self.rng.choice(rs).rpc}"
+        t_kill = now()
+        nd.kill(signal.SIGKILL)
+        nd.sync_pending = {"since": round(self.elapsed()), "reason": reason}
+        self.save_state()
+        self.wipe_data(nd)
+        self.event("statesync-restart", node=nd.i, kind=nd.kind, trust_height=th, servers=servers, reason=reason)
+        with open(f"{nd.home}/node.log", "ab") as f:
+            f.write(b"--- soak state sync restart ---\n")
+        nd.checked = 0
+        if nd.kind == "go":
+            self.go_statesync_config(nd, servers, th, thash)
+            nd.start()
+        else:
+            nd.start(["--statesync-rpc-servers", servers, "--statesync-trust-height", str(th),
+                      "--statesync-trust-hash", thash, "--statesync-discovery-secs", "10"])
+        nd.restarts += 1
+        nd.statesyncs += 1
+        t = now()
+        res = {"node": nd.i, "node_kind": nd.kind, "trust_height": th, "reason": reason}
+        while now() - t < 600:
+            st = nd.status()
+            if st and st[1] > 1 and not st[2] and st[0] >= self.max_height - 3:
+                res.update({"base": st[1], "synced_s": round(now() - t)})
+                break
+            if not nd.alive():
+                break
+            time.sleep(3)
+        else:
+            self.fail(f"node {nd.i} ({nd.kind}) did not finish state sync + catch up within 600 s")
+            res["failed"] = True
+        if nd.kind == "go":
+            self.go_statesync_config(nd)
+        nd.sync_pending = None
+        if nd.i == self.ref_i:
+            self.index_gaps.append([round(t_kill - 1), round(now() + 1)])
+        self.save_state()
+        return res
+
+    def syncing(self):
+        return {nd.i for nd in self.nodes if nd.sync_pending}
+
+    def ev_kill2(self, nd, sig, down=None, extra=()):
+        down = self.rng.uniform(5, 60) if down is None else down
+        h = nd.height()
+        t_kill = now()
+        nd.kill(sig)
+        self.event("kill", node=nd.i, kind=nd.kind, sig=int(sig), at=h, down_s=round(down), restart_flags=list(extra))
+        self.chaos_stop.wait(down)
+        with open(f"{nd.home}/node.log", "ab") as f:
+            f.write(b"--- soak restart ---\n")
+        nd.start(list(extra))
+        nd.restarts += 1
+        if nd.i == self.ref_i:
+            self.index_gaps.append([round(t_kill - 1), round(now() + 5)])
+        return {"node": nd.i, "node_kind": nd.kind, "sig": signal.Signals(sig).name, "at": h, "down_s": round(down),
+                "flags": list(extra)}
+
+    def ev_term_in_precommit_delay(self, nd):
+        """SIGTERM a Rust validator while it waits out the delayed precommit
+        (round step Prevote, 1.0-1.9 s after the round's start time; the
+        delay ends at start + 2.1 s), then read its sign state: the fix in
+        ea301ac (`enterPrecommit` returns on Quit) leaves the last signed step
+        at prevote for that height / round."""
+        target = None
+        t_end = now() + 90
+        while now() < t_end and target is None:
+            try:
+                rs = get_json(f"{nd.url}/consensus_state", timeout=1)["result"]["round_state"]
+                h, r, st = (int(x) for x in rs["height/round/step"].split("/"))
+                start = parse_rfc3339(rs["start_time"])
+            except Exception:
+                time.sleep(0.05)
+                continue
+            dt = time.time() - start
+            if st == 4 and 1.0 <= dt <= 1.9:
+                target = (h, r, round(dt, 2))
+                break
+            time.sleep(0.02)
+        if target is None:
+            return self.ev_kill2(nd, signal.SIGTERM)
+        t_sig = now()
+        nd.kill(signal.SIGTERM)
+        stop_s = round(now() - t_sig, 2)
+        try:
+            pv = json.load(open(f"{nd.home}/data/priv_validator_state.json"))
+            ph, pr, ps = int(pv["height"]), int(pv["round"]), int(pv["step"])
+        except Exception:
+            ph = pr = ps = -1
+        m = self.metrics["precommit_stop"]
+        if (ph, pr) == target[:2] and ps == 2:
+            outcome = "cut_short"
+        elif (ph, pr) == target[:2] and ps == 3:
+            outcome = "signed_before_stop"
+        else:
+            outcome = "unknown"
+        m[outcome] += 1
+        rec = {"node": nd.i, "at": list(target), "privval_after": [ph, pr, ps], "outcome": outcome, "stop_s": stop_s}
+        self.event("term-in-precommit-delay", **rec)
+        down = self.rng.uniform(3, 20)
+        self.chaos_stop.wait(down)
+        with open(f"{nd.home}/node.log", "ab") as f:
+            f.write(b"--- soak restart ---\n")
+        nd.start()
+        nd.restarts += 1
+        # It must sign the next heights again (no refusal of its own precommit).
+        time.sleep(30)
+        try:
+            rec["signed_last_8_after_restart"] = self.signed_recent(nd.val_addr, 8)
+        except Exception:
+            pass
+        rec["down_s"] = round(down)
+        return rec
+
+    def ev_split2(self, a):
+        secs = self.rng.uniform(20, 45)
+        self.control["cut"] = [[i, j] for i in range(self.n) for j in range(self.n) if i < j and ((i in a) != (j in a))]
+        self.write_control()
+        self.halt_until = now() + secs + 60
+        self.event("split", group_a=sorted(a), secs=round(secs))
+        time.sleep(secs)
+        self.heal()
+        h0 = self.max_height
+        t = now()
+        while now() - t < 120 and self.max_height <= h0 + 2:
+            time.sleep(2)
+        if self.max_height <= h0 + 2:
+            self.fail("chain did not resume within 120 s after healing the split")
+        return {"group_a": sorted(a), "secs": round(secs), "resume_s": round(now() - t, 1)}
+
+    def chaos_loop_long(self):
+        self.stop.wait(self.a.warmup)
+        vals = [nd for nd in self.nodes if nd.i in self.validator_nodes]
+        rs_vals = [nd for nd in vals if nd.kind == "rs"]
+        go_vals = [nd for nd in vals if nd.kind == "go"]
+        rs_full = [nd for nd in self.nodes if nd.kind == "rs" and nd.i not in self.validator_nodes]
+        wal_nodes = [nd for nd in rs_vals if "WAL_HEAD" in os.environ.get(f"SOAK_ENV_N{nd.i}", "")]
+        kinds = {"kill_val_rs": 3, "term_val_rs": 1, "term_precommit": 3, "kill_val_go": 1, "term_val_go": 1,
+                 "kill_wal_node": 2, "kill_full": 2, "long_down": 1, "isolate": 2, "delay": 2, "split": 1,
+                 "statesync_rs": 2, "statesync_go": 1}
+        # Events that can take a validator down (exclusive with the valset
+        # cycle: with 4 validators, one unbonded and another down halts).
+        val_kinds = {"kill_val_rs", "term_val_rs", "term_precommit", "kill_val_go", "term_val_go", "kill_wal_node", "split",
+                     "statesync_go", "statesync_rs", "isolate", "long_down"}
+        while not self.chaos_stop.is_set() and now() < self.deadline - 300:
+            rec = {"t": round(self.elapsed()), "h": self.max_height}
+            got_val = False
+            try:
+                if getattr(self, "disk_pressure", False):
+                    self.disk_pressure = False
+                    cands = [nd for nd in self.nodes if nd.i not in self.unbonded]
+                    nd = max(cands, key=lambda x: du(f"{x.home}/data"))
+                    need_val = nd.i in self.validator_nodes
+                    if need_val and not self.val_lock.acquire(blocking=False):
+                        continue
+                    got_val = need_val
+                    rec["kind"] = "disk_statesync"
+                    rec["data_mb"] = round(du(f"{nd.home}/data") / 2**20)
+                    r = self.ev_statesync2(nd, reason="disk")
+                    if r is None:
+                        self.chaos_stop.wait(10)
+                        continue
+                    self.metrics["disk"]["pressure_syncs"] += 1
+                    rec.update(r)
+                elif getattr(self, "rss_pressure", False):
+                    self.rss_pressure = False
+                    nd = max(self.up_nodes(), key=lambda x: x.rss_mb())
+                    need_val = nd.i in self.validator_nodes
+                    if need_val and not self.val_lock.acquire(blocking=False):
+                        continue
+                    got_val = need_val
+                    rec["kind"] = "rss_restart"
+                    rec["rss_mb"] = round(nd.rss_mb())
+                    self.metrics["rss"]["pressure_restarts"] += 1
+                    rec.update(self.ev_kill2(nd, signal.SIGTERM, down=3))
+                else:
+                    k = self.rng.choices(list(kinds), weights=list(kinds.values()))[0]
+                    if k in val_kinds:
+                        if not self.val_lock.acquire(blocking=False):
+                            k = self.rng.choice(["kill_full", "isolate", "delay", "statesync_rs"])
+                        else:
+                            got_val = True
+                    rec["kind"] = k
+                    if k == "kill_val_rs":
+                        rec.update(self.ev_kill2(self.rng.choice(rs_vals), signal.SIGKILL,
+                                                 extra=[] if self.rng.random() < 0.7 else ["--no-block-sync"]))
+                    elif k == "term_val_rs":
+                        rec.update(self.ev_kill2(self.rng.choice(rs_vals), signal.SIGTERM))
+                    elif k == "term_precommit":
+                        rec.update(self.ev_term_in_precommit_delay(self.rng.choice(rs_vals)))
+                    elif k in ("kill_val_go", "term_val_go"):
+                        nd = self.rng.choice(go_vals)
+                        sig = signal.SIGKILL if k == "kill_val_go" else signal.SIGTERM
+                        rec.update(self.ev_kill2(nd, sig, down=self.rng.uniform(5, 40)))
+                    elif k == "kill_wal_node":
+                        rec.update(self.ev_kill2(self.rng.choice(wal_nodes or rs_vals),
+                                                 self.rng.choice([signal.SIGKILL, signal.SIGTERM]), down=self.rng.uniform(2, 20)))
+                    elif k == "kill_full":
+                        rec.update(self.ev_kill2(self.rng.choice(rs_full), signal.SIGKILL))
+                    elif k == "long_down":
+                        # Down 5-10 min, then block sync over a few hundred heights.
+                        nd = self.rng.choice(rs_full + (rs_vals if got_val else []))
+                        rec.update(self.ev_kill2(nd, signal.SIGKILL, down=self.rng.uniform(300, 600)))
+                    elif k == "isolate":
+                        rec.update(self.ev_isolate(self.rng.choice(rs_full + (vals if got_val else []))))
+                    elif k == "delay":
+                        rec.update(self.ev_delay(self.rng.choice(self.nodes)))
+                    elif k == "split":
+                        rec.update(self.ev_split2(set(self.rng.choice([[0, 2], [0, 3], [1, 2, 4], [0, 1, 4]]))))
+                    elif k == "statesync_rs":
+                        r = self.ev_statesync2(self.rng.choice(rs_full * 3 + (rs_vals if got_val else [])))
+                        if r is None:
+                            self.chaos_stop.wait(10)
+                            continue
+                        rec.update(r)
+                    elif k == "statesync_go":
+                        # Not the tx-index node.
+                        r = self.ev_statesync2(self.rng.choice([nd for nd in go_vals if nd.i != self.ref_i] or go_vals))
+                        if r is None:
+                            self.chaos_stop.wait(10)
+                            continue
+                        rec.update(r)
+            except Exception:
+                self.event("chaos-error", tb=traceback.format_exc()[-600:])
+                self.heal()
+            finally:
+                if got_val:
+                    self.val_lock.release()
+            rec["converge_s"] = self.wait_converged(rec.get("kind", "?"))
+            self.metrics["chaos"].append(rec)
+            self.event("chaos-done", **rec)
+            self.save_state()
+            self.chaos_stop.wait(self.rng.uniform(30, 90))
+
+    def valset_loop(self):
+        vi = self.valset_node
+        nd = self.nodes[vi]
+        home = nd.home
+        acc = self.addr(f"val{vi}", home)
+        valoper = self.addr(f"val{vi}", home, val=True)
+        resume_cycle = vi in self.unbonded  # the previous segment ended mid-cycle
+        if not resume_cycle:
+            self.stop.wait(self.a.warmup + 600)
+        while not self.chaos_stop.is_set() and now() < self.deadline - 1200:
+            self.val_lock.acquire()
+            try:
+                self._valset_cycle(vi, nd, home, acc, valoper, resume_cycle)
+            finally:
+                self.val_lock.release()
+            resume_cycle = False
+            self.stop.wait(self.rng.uniform(900, 1500))
+
+    def _valset_cycle(self, vi, nd, home, acc, valoper, resume_cycle):
+        if True:
+            if resume_cycle:
+                amt = self.long.get("valset_amt", 5_000_000_000)
+                rec = {"t": round(self.elapsed()), "node": vi, "self_delegation": amt, "resumed_mid_cycle": True}
+            else:
+                out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
+                try:
+                    d = json.loads(out[out.index("{"):])
+                    amt = int((d.get("delegation_response") or d)["balance"]["amount"])
+                except Exception:
+                    self.event("valset-query-failed", out=out[-200:])
+                    self.stop.wait(60)
+                    return
+                self.long["valset_amt"] = amt
+                rec = {"t": round(self.elapsed()), "node": vi, "self_delegation": amt}
+                out = self.cli(["tx", "staking", "unbond", valoper, f"{amt}utia", "--from", f"val{vi}", "--chain-id", self.chain_id,
+                                "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
+                self.event("valset-unbond", amount=amt, out=out.strip()[-160:])
+                t = now()
+                gone = None
+                while now() - t < 180:
+                    if not self.in_valset(nd.val_addr):
+                        gone = round(now() - t)
+                        break
+                    time.sleep(3)
+                if gone is None:
+                    self.fail(f"validator {vi} still in the validator set 180 s after unbonding its self-delegation")
+                self.unbonded.add(vi)
+                self.save_state()
+                rec["left_set_s"] = gone
+                self.stop.wait(self.rng.uniform(240, 420))
+            rebonded = 0
+            if resume_cycle:
+                out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
+                try:
+                    d = json.loads(out[out.index("{"):])
+                    rebonded = int((d.get("delegation_response") or d)["balance"]["amount"])
+                except Exception:
+                    pass
+            if rebonded < amt // 2:
+                out = self.cli(["tx", "staking", "delegate", valoper, f"{amt}utia", "--from", f"val{vi}", "--chain-id", self.chain_id,
+                                "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
+                self.event("valset-delegate", out=out.strip()[-160:])
+                time.sleep(15)
             back = None
             t = now()
             # An accepted unjail can still be lost (its node killed / wiped
             # before gossiping it): resubmit once, through a Go node, and
             # record it; failing is reserved for a re-bond that never lands.
             for attempt, via in ((1, self.tx_node()), (2, self.nodes[self.ref_i])):
-                out = self.cli(["tx", "slashing", "unjail", "--from", "val4", "--chain-id", self.chain_id,
+                out = self.cli(["tx", "slashing", "unjail", "--from", f"val{vi}", "--chain-id", self.chain_id,
                                 "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
                 self.event("valset-unjail", attempt=attempt, via=via.i, out=out.strip()[-160:])
                 t1 = now()
@@ -979,19 +1770,18 @@ class Soak:
                     break
                 rec["unjail_retried_after_loss_via_node"] = via.i
             if back is None:
-                self.fail("validator 4 did not rejoin the validator set after re-bonding + two unjail attempts")
+                self.fail(f"validator {vi} did not rejoin the validator set after re-bonding + two unjail attempts")
             else:
-                self.unbonded.discard(4)
+                self.unbonded.discard(vi)
                 # It must sign again.
                 time.sleep(60)
                 signed = self.signed_recent(nd.val_addr, 20)
                 rec["signed_last_20_after_rejoin"] = signed
                 if signed < 10:
-                    self.fail(f"validator 4 signed only {signed} of the last 20 blocks after rejoining")
+                    self.fail(f"validator {vi} signed only {signed} of the last 20 blocks after rejoining")
             rec["rejoined_s"] = back
             self.metrics["valset"].append(rec)
             self.event("valset-cycle", **rec)
-            self.stop.wait(self.rng.uniform(900, 1500))
 
     def in_valset(self, addr):
         ref, _ = self.ref_node()
@@ -1008,25 +1798,49 @@ class Soak:
 
     # ------------------------------------------------------------ run
     def run(self):
-        self.setup()
-        self.event("start", nodes=[nd.kind for nd in self.nodes], secs=self.a.secs)
         for nd in self.nodes:
+            if nd.kill_stale():
+                self.event("killed-stale-node", node=nd.i)
+        self.setup()
+        self.event("start" if not self.a.resume else "resume", nodes=[nd.kind for nd in self.nodes], secs=self.a.secs,
+                   segment=self.segment, cum_elapsed=round(self.elapsed()))
+        resync = [nd for nd in self.nodes if nd.sync_pending]
+        for nd in self.nodes:
+            if nd in resync:
+                continue
             threading.Thread(target=nd.start, daemon=True).start()
         time.sleep(15)
         t = now()
-        while now() - t < 180:
+        limit = 600 if self.a.resume else 180
+        while now() - t < limit:
             ok, hs = self.in_sync()
-            if ok and min(hs.values()) >= 3:
+            if ok and min(hs.values()) >= 3 and (not self.a.resume or max(hs.values()) > self.max_height):
                 break
             time.sleep(3)
         else:
-            self.fail(f"network did not start: {self.in_sync()[1]}")
+            self.fail(f"network did not {'resume' if self.a.resume else 'start'}: {self.in_sync()[1]}")
+        if self.a.resume:
+            # The machine restart killed every node at once: a whole-network
+            # crash / restart (every node replays its WAL).
+            rec = {"t": round(self.elapsed()), "h": self.max_height, "kind": "crash_all", "segment": self.segment,
+                   "restart_s": round(now() - t, 1)}
+            for nd in self.nodes:
+                nd.restarts += 1
+            for nd in resync:  # killed mid state sync: start over
+                self.event("statesync-redo", node=nd.i)
+                rec.setdefault("statesync_redone", []).append(self.ev_statesync2(nd, reason="resume"))
+            rec["converge_s"] = self.wait_converged("crash_all", timeout=600)
+            self.metrics["chaos"].append(rec)
+            self.event("chaos-done", **rec)
         self.last_progress = now()
+        self.save_state()
         work = [self.monitor_loop, self.consistency_loop, self.bank_loop, self.pfb_loop, self.staking_loop,
                 self.gov_loop]
+        if self.a.long:
+            work += [self.authz_loop, self.utf8_loop, self.hyperlane_loop]
         if self.a.mem_sample:
             work.append(self.mem_loop)
-        chaos = [] if self.a.no_chaos else [self.chaos_loop, self.valset_loop]
+        chaos = [] if self.a.no_chaos else [self.chaos_loop_long if self.a.long else self.chaos_loop, self.valset_loop]
         threads = [threading.Thread(target=f, daemon=True, name=f.__name__) for f in work]
         chaos_threads = [threading.Thread(target=f, daemon=True, name=f.__name__) for f in chaos]
         for th in threads + chaos_threads:
@@ -1061,6 +1875,8 @@ class Soak:
                 self.check_node(nd, limit=10**9)
         self.scan_logs()
         self.stop.set()
+        self.done = True
+        self.save_state()
         self.write_report(final=True)
         for nd in self.nodes:
             nd.kill(signal.SIGTERM)
@@ -1100,6 +1916,11 @@ class Soak:
               f"max block {self.blocks['max_bytes'] / 2**20:.1f} MiB, blocks > 8 MiB: {self.blocks['over_8mb']}",
               f"- bank: {self.metrics['bank']}", f"- pfb: {self.metrics['pfb']}", f"- staking: {self.metrics['staking']}",
               f"- gov: {self.metrics['gov']}", f"- chaos events: {len(self.metrics['chaos'])}, valset cycles: {len(self.metrics['valset'])}",
+              f"- chaos by kind: {chaos_kinds(self.metrics['chaos'])}",
+              f"- segments: {self.segment}", f"- authz: {self.metrics['authz']}", f"- feegrant: {self.metrics['feegrant']}",
+              f"- hyperlane: {self.metrics['hyperlane']}", f"- utf8: {self.metrics['utf8']}",
+              f"- precommit-delay stops: {self.metrics['precommit_stop']}", f"- signing refusals: {self.metrics['sign_refusals']}",
+              f"- WAL: {self.metrics['wal']}", f"- disk: {self.metrics['disk']}", f"- rss: {self.metrics['rss']}",
               f"- stalls: {rep['stalls']}", f"- proposed by node: {rep['proposed_by_node']}", "",
               "| node | kind | restarts | state syncs | max RSS MB | disk MB | RSS growth (MB/h per lifetime) |",
               "|---|---|---|---|---|---|---|"]
@@ -1111,6 +1932,45 @@ class Soak:
         md += ["", "## Valset cycles", ""] + [f"- {json.dumps(c)}" for c in self.metrics["valset"]]
         md += ["", "## Rust log warnings/errors (top)", ""] + [f"- {v} x {k}" for k, v in rep["log_hits"].items()]
         open(f"{self.dir}/report.md", "w").write("\n".join(md) + "\n")
+
+
+def parse_rfc3339(ts):
+    """Unix time of an RFC 3339 UTC timestamp with up to nanoseconds."""
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?Z", ts)
+    import calendar
+    base = calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+    return base + (float("0." + m.group(2)) if m.group(2) else 0.0)
+
+
+def bech32_decode(addr):
+    data = [ctx.CHARSET.index(c) for c in addr.rsplit("1", 1)[1][:-6]]
+    acc, bits, out = 0, 0, bytearray()
+    for v in data:
+        acc = (acc << 5) | v
+        bits += 5
+        if bits >= 8:
+            bits -= 8
+            out.append((acc >> bits) & 0xFF)
+    return bytes(out)
+
+
+def sign_refusal(line):
+    """A privval refusal in a node log, normalized: Go `failed signing vote`
+    / `failed signing proposal`, Rust `failed signing ...`."""
+    low = line.lower()
+    if "failed signing" not in low and "error signing" not in low:
+        return None
+    what = "proposal" if "proposal" in low else "vote"
+    m = re.search(r"(conflicting data|step regression|round regression|height regression|"
+                  r"no sign bytes|unexpected step)", low)
+    return f"{what}: {m.group(1) if m else 'other'}"
+
+
+def chaos_kinds(chaos):
+    out = {}
+    for c in chaos:
+        out[c.get("kind", "?")] = out.get(c.get("kind", "?"), 0) + 1
+    return dict(sorted(out.items()))
 
 
 def slope(pts):
@@ -1150,6 +2010,13 @@ def main():
     p.add_argument("--validators", default="0,1,2,3,4", help="node indices holding validator keys")
     p.add_argument("--ref-node", type=int, default=5, help="Go node with the tx index (queries, hash reference)")
     p.add_argument("--no-chaos", action="store_true", help="workload only: no kills, cuts or valset cycles")
+    p.add_argument("--long", action="store_true",
+                   help="long profile: authz / feegrant / invalid-UTF-8 / hyperlane workloads, Go + Rust chaos, WAL and disk checks")
+    p.add_argument("--resume", action="store_true",
+                   help="continue a soak in --dir from state.json (restart every node from its home)")
+    p.add_argument("--valset-node", type=int, default=4, help="validator that unbonds / re-bonds in the valset cycle")
+    p.add_argument("--fuzz-diff", default="", help="fuzz-diff binary (invalid-UTF-8 txs via `fuzz-diff craft`)")
+    p.add_argument("--strict-sign", action="store_true", help="fail on any privval `conflicting data` refusal")
     p.add_argument("--mem-sample", type=float, default=0.0,
                    help="seconds between memory samples (mem.jsonl: RSS, heap, threads, fds, disk, caches); 0 = off")
     a = p.parse_args()
@@ -1160,8 +2027,12 @@ def main():
     s = Soak(a)
 
     def on_signal(*_):
-        s.fail("interrupted")
+        if s.a.long:
+            s.event("segment-interrupted")
+        else:
+            s.fail("interrupted")
         s.stop.set()
+        s.save_state()
         s.write_report(final=True)
         for nd in s.nodes:
             nd.kill(signal.SIGTERM)
