@@ -523,12 +523,14 @@ async fn ws_call(addr: std::net::SocketAddr, send: &[String]) -> Vec<String> {
             out.push("<none>".into());
             continue;
         }
-        ws.send(tokio_tungstenite::tungstenite::Message::Text(m.clone()))
-            .await
-            .unwrap();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+            m.clone().into(),
+        ))
+        .await
+        .unwrap();
         let r = tokio::time::timeout(std::time::Duration::from_millis(1500), ws.next()).await;
         if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(t)))) = r {
-            out.push(t);
+            out.push(t.to_string());
         } else {
             broken = true;
             out.push("<none>".into());
