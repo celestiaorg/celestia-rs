@@ -23,6 +23,23 @@ pub const MAX_TOTAL_VOTING_POWER: i64 = i64::MAX / 8;
 /// Go's zero `time.Time` as a protobuf timestamp (0001-01-01T00:00:00Z).
 pub const GO_ZERO_TIME_SECONDS: i64 = -62_135_596_800;
 
+/// `types.MaxBlockPartsCount`: `MaxBlockSizeBytes / BlockPartSizeBytes + 1`
+/// (128 MiB / 64 KiB + 1), computed once at package init.
+pub const MAX_BLOCK_PARTS_COUNT: u32 = 2049;
+
+thread_local! {
+    static MAX_BLOCK_PARTS: std::cell::Cell<u32> =
+        const { std::cell::Cell::new(MAX_BLOCK_PARTS_COUNT) };
+}
+
+/// Overrides `types.MaxBlockPartsCount` for the light client's part-set
+/// checks on this thread: celestia-app's `test/interop` setup (the
+/// ibctesting fixtures `ibc-edge` / `ibc-upgrades` were recorded with it)
+/// sets it to 10 000. Nodes keep [`MAX_BLOCK_PARTS_COUNT`].
+pub fn set_max_block_parts_count(n: u32) {
+    MAX_BLOCK_PARTS.with(|c| c.set(n));
+}
+
 /// Result alias (Go error strings).
 pub type LResult<T> = Result<T, String>;
 
@@ -237,10 +254,19 @@ fn part_set_header(b: Option<&tm::BlockId>) -> tm::PartSetHeader {
         .unwrap_or_default()
 }
 
-/// `BlockIDFromProto` + `BlockID.ValidateBasic`.
+/// `BlockIDFromProto` + `BlockID.ValidateBasic`: `PartSetHeaderFromProto`
+/// (`PartSetHeader.ValidateBasic`: the part count, then the hash) first.
 fn validate_block_id(b: &tm::BlockId) -> LResult<()> {
-    validate_hash(&b.hash)?;
-    validate_hash(&part_set_header(Some(b)).hash)
+    let psh = part_set_header(Some(b));
+    let max = MAX_BLOCK_PARTS.with(std::cell::Cell::get);
+    if psh.total > max {
+        return Err(format!(
+            "total {} exceeds MaxBlockPartsCount {max}",
+            psh.total
+        ));
+    }
+    validate_hash(&psh.hash).map_err(|e| format!("wrong Hash: {e}"))?;
+    validate_hash(&b.hash).map_err(|_| "wrong Hash".to_owned())
 }
 
 fn block_id_is_zero(b: &tm::BlockId) -> bool {

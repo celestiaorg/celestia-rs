@@ -16,6 +16,7 @@ pub const OPS: &[&str] = &[
     "json_pfm_next",
     "json_ica_tx",
     "json_ica_vb",
+    "json_ica_pb",
     "json_ica_pd",
     "json_ica_md",
     "json_ics20",
@@ -45,6 +46,8 @@ fn fail(err: impl Into<String>) -> Out {
 /// The Rust outcome of a `json_*` op.
 #[must_use]
 pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
+    // `ValidateBasic` (zkism proof sizes, ...) follows the app version.
+    sdk::version::set_app_version(app_version);
     let text = gostr::from_go_bytes(input);
     match op {
         "json_count" => match app::msg_count::count_json_msgs(input) {
@@ -82,43 +85,56 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
             Ok(Ok(s)) => ok(h(&s)),
             Ok(Err(e)) | Err(e) => fail(e),
         },
-        "json_ica_tx" | "json_ica_vb" => match x_icahost::host::deserialize_cosmos_tx(
-            input,
-            x_icahost::host::ENCODING_PROTO3_JSON,
-            app::ibc::ica_registry(),
-            app_version != 0 && app_version < 10,
-        ) {
-            Ok(msgs) => Out {
-                ok: true,
-                msgs: msgs
-                    .iter()
-                    .map(|m| {
-                        let Some(m) = m else { return "nil".to_owned() };
-                        // Go prints `Marshal` of the unpacked message.
-                        let v9 = app_version != 0 && app_version < 10;
-                        let bz = txdecode::scoped_v9(v9, || txdecode::gogo_repack(m)).value;
-                        let mut s = format!("{}:{}", h(&m.type_url), hex::encode(bz));
-                        if op == "json_ica_vb" {
-                            match app::router::validate_basic(m) {
-                                Ok(()) => s.push_str("|vb:ok"),
-                                Err(e) if e.is_panic() => s.push_str("|vb:panic"),
-                                Err(e) => {
-                                    use std::fmt::Write as _;
-                                    let _ = write!(s, "|vb:{}/{}", e.codespace, e.code);
+        "json_ica_tx" | "json_ica_vb" | "json_ica_pb" => {
+            match x_icahost::host::deserialize_cosmos_tx(
+                input,
+                if op == "json_ica_pb" {
+                    x_icahost::host::ENCODING_PROTOBUF
+                } else {
+                    x_icahost::host::ENCODING_PROTO3_JSON
+                },
+                app::ibc::ica_registry(),
+                app_version != 0 && app_version < 10,
+            ) {
+                Ok(msgs) => Out {
+                    ok: true,
+                    msgs: msgs
+                        .iter()
+                        .map(|m| {
+                            let Some(m) = m else { return "nil".to_owned() };
+                            // Go prints `Marshal` of the unpacked message.
+                            let v9 = app_version != 0 && app_version < 10;
+                            let bz = txdecode::scoped_v9(v9, || txdecode::gogo_repack(m)).value;
+                            let mut s = format!("{}:{}", h(&m.type_url), hex::encode(bz));
+                            if op == "json_ica_vb" || op == "json_ica_pb" {
+                                // Go's `Marshal` above zeroed the nil `Int`s, as
+                                // the host's `GetMsgV1Signers` does before
+                                // `ValidateBasic` on chain.
+                                let m = txdecode::scoped_v9(v9, || txdecode::gogo_marshaled(m));
+                                match app::router::validate_basic(&m) {
+                                    Ok(()) => s.push_str("|vb:ok"),
+                                    Err(e) if e.is_panic() => s.push_str("|vb:panic"),
+                                    Err(e) => {
+                                        use std::fmt::Write as _;
+                                        let _ = write!(s, "|vb:{}/{}", e.codespace, e.code);
+                                        if std::env::var("FUZZ_DIFF_VB_LOG").is_ok() {
+                                            let _ = write!(s, " {}", e.log);
+                                        }
+                                    }
                                 }
                             }
-                        }
-                        s
-                    })
-                    .collect(),
-                ..Out::default()
-            },
-            Err(e) if e.is_panic() => Out {
-                panic: e.log,
-                ..Out::default()
-            },
-            Err(e) => fail(e.log),
-        },
+                            s
+                        })
+                        .collect(),
+                    ..Out::default()
+                },
+                Err(e) if e.is_panic() => Out {
+                    panic: e.log,
+                    ..Out::default()
+                },
+                Err(e) => fail(e.log),
+            }
+        }
         "json_ica_pd" => match x_icahost::host::packet_data(input) {
             Some((ty, data)) => ok(format!("{ty} {}", hex::encode(data))),
             None => fail("unmarshal failed"),
@@ -303,9 +319,100 @@ const ICA_TX_MSGS: &[&str] = &[
     r#"{"@type":"/cosmos.vesting.v1beta1.MsgCreatePeriodicVestingAccount","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","start_time":"-5","vesting_periods":[null,{"length":"10","amount":[null]}]}"#,
 ];
 
+/// Protobuf `CosmosTx` seeds (`json_ica_pb`): messages whose nested `Any`s
+/// are not in canonical form (`+5` amounts) and carry field keys past
+/// `u32::MAX` (gogoproto truncates the field number to `int32`; 1024 is a
+/// non-critical unknown field) at every level.
+#[must_use]
+pub fn ica_pb_seeds() -> Vec<Vec<u8>> {
+    fn ld(num: u64, b: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        prost::encoding::encode_varint(num << 3 | 2, &mut out);
+        prost::encoding::encode_varint(b.len() as u64, &mut out);
+        out.extend_from_slice(b);
+        out
+    }
+    fn any(url: &str, v: &[u8]) -> Vec<u8> {
+        [ld(1, url.as_bytes()), ld(2, v)].concat()
+    }
+    let mut wide = Vec::new();
+    prost::encoding::encode_varint((1 << 35) + (1024 << 3), &mut wide);
+    wide.push(1);
+    let w = |on: bool| if on { wide.clone() } else { Vec::new() };
+    let (a, b) = (
+        "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+        "celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj",
+    );
+    let coin = |amt: &str| [ld(1, b"utia"), ld(2, amt.as_bytes())].concat();
+    let mut out = Vec::new();
+    for mask in 0..16u8 {
+        let on = |bit: u8| mask & (1 << bit) != 0;
+        let basic = [ld(1, &coin("+5")), w(on(0))].concat();
+        let ama = [
+            ld(1, &any("/cosmos.feegrant.v1beta1.BasicAllowance", &basic)),
+            ld(2, b"/cosmos.bank.v1beta1.MsgSend"),
+            w(on(1)),
+        ]
+        .concat();
+        let grant = [
+            ld(1, a.as_bytes()),
+            ld(2, b.as_bytes()),
+            ld(
+                3,
+                &any("/cosmos.feegrant.v1beta1.AllowedMsgAllowance", &ama),
+            ),
+            w(on(2)),
+        ]
+        .concat();
+        let msg = any("/cosmos.feegrant.v1beta1.MsgGrantAllowance", &grant);
+        let exec = [ld(1, b.as_bytes()), ld(2, &msg), w(on(3))].concat();
+        out.push(ld(1, &msg));
+        out.push(ld(1, &any("/cosmos.authz.v1beta1.MsgExec", &exec)));
+        let send = [
+            ld(1, a.as_bytes()),
+            ld(2, b.as_bytes()),
+            ld(3, &coin("+1")),
+            w(on(0)),
+        ]
+        .concat();
+        let inner = any("/cosmos.bank.v1beta1.MsgSend", &send);
+        let exec = [ld(1, a.as_bytes()), ld(2, &inner), w(on(1))].concat();
+        let prop = [
+            ld(1, &any("/cosmos.authz.v1beta1.MsgExec", &exec)),
+            ld(2, &coin("+3")),
+            ld(3, a.as_bytes()),
+            ld(5, b"t"),
+            ld(6, b"s"),
+            w(on(2)),
+        ]
+        .concat();
+        out.push(ld(1, &any("/cosmos.gov.v1.MsgSubmitProposal", &prop)));
+        let auth = [ld(1, &coin("+4")), w(on(0))].concat();
+        let g = [
+            ld(1, &any("/cosmos.bank.v1beta1.SendAuthorization", &auth)),
+            w(on(1)),
+        ]
+        .concat();
+        let mg = [
+            ld(1, a.as_bytes()),
+            ld(2, b.as_bytes()),
+            ld(3, &g),
+            w(on(2)),
+        ]
+        .concat();
+        out.push(ld(1, &any("/cosmos.authz.v1beta1.MsgGrant", &mg)));
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Seeds of `op`: valid documents of its shape and the depth cases.
 #[must_use]
 pub fn seeds(op: &str) -> Vec<Vec<u8>> {
+    if op == "json_ica_pb" {
+        return ica_pb_seeds();
+    }
     let base: &[&str] = match op {
         "json_count" => &[
             r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","amount":[{"denom":"utia","amount":"1"}]},{}]}"#,

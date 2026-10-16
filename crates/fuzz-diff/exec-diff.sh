@@ -23,7 +23,14 @@ WORK=$(mktemp -d)
 H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
-cp "$IN/genesis.json" "$H/config/genesis.json"
+FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
+# Scenarios recorded without a genesis file (the ibctesting fixtures): one
+# from the recorded InitChain.
+if [ -f "$IN/genesis.json" ]; then
+  cp "$IN/genesis.json" "$H/config/genesis.json"
+else
+  "$FUZZ_DIFF" genesis "$SCENARIO" >"$H/config/genesis.json"
+fi
 # Simulate is served on the gRPC server only (not through ABCI Query).
 python3 - "$H/config/app.toml" "$GRPC" <<'PY'
 import re, sys

@@ -78,7 +78,11 @@ pub fn sparse_shares_needed(len: u32, contains_signer: bool) -> u64 {
     1 + u64::from(n)
 }
 
+/// The message as Go's decorators see it (gogoproto's decoding; see
+/// `txdecode::prost_compatible`).
 fn decode<M: Message + Default>(any: &Any) -> R<M> {
+    let fixed = txdecode::prost_compatible(any);
+    let any = fixed.as_ref().unwrap_or(any);
     M::decode(any.value.as_slice()).map_err(|e| Fail::Err(errs::tx_decode(e.to_string())))
 }
 

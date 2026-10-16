@@ -85,6 +85,12 @@ pub fn has_handler(type_url: &str) -> bool {
         || x_icahost::host::is_host_msg(type_url)
 }
 
+/// See [`x_ibc::lightclients::light::set_max_block_parts_count`] (fixture
+/// replay of the ibctesting scenarios only).
+pub fn set_max_block_parts_count(n: u32) {
+    x_ibc::lightclients::light::set_max_block_parts_count(n);
+}
+
 /// `ValidateBasic` of the IBC messages (`None` for other messages).
 #[must_use]
 pub fn validate_basic(msg: &Any) -> Option<Result<()>> {

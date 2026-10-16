@@ -405,4 +405,52 @@ mod tests {
         let stored = AllowedMsgAllowance::decode(g.allowance.unwrap().value.as_slice()).unwrap();
         assert_eq!(stored.allowance, Some(inner));
     }
+
+    #[test]
+    fn allowances_with_wide_field_keys_decode_as_gogoproto_does() {
+        // An ICA host tx (no unknown-field check) carrying a field key past
+        // u32::MAX: gogoproto truncates the field number to int32 (1024, an
+        // unknown field it skips) at any depth; Go grants the allowance and
+        // stores the inner one as received.
+        let mut wide = Vec::new();
+        prost::encoding::encode_varint((1 << 35) + (1024 << 3), &mut wide);
+        wide.push(1);
+        let mut m = MultiStore::new();
+        for s in [STORE_KEY, x_auth::STORE_KEY, x_bank::STORE_KEY] {
+            m.mount(s, Kind::Iavl).unwrap();
+        }
+        let mut ctx = Context::new(&mut m, Header::default(), ExecMode::Finalize);
+        let granter = [1u8; 20];
+        for (k, (inner_wide, outer_wide)) in [(true, false), (false, true), (true, true)]
+            .into_iter()
+            .enumerate()
+        {
+            let mut inner = allowance("+1");
+            if inner_wide {
+                inner.value.extend_from_slice(&wide);
+            }
+            let mut outer = Any::pack(&AllowedMsgAllowance {
+                allowance: Some(inner.clone()),
+                allowed_messages: vec!["/cosmos.bank.v1beta1.MsgSend".into()],
+            });
+            if outer_wide {
+                outer.value.extend_from_slice(&wide);
+            }
+            let grantee = [10 + u8::try_from(k).unwrap_or(0); 20];
+            handle_grant_allowance(
+                &mut ctx,
+                &MsgGrantAllowance {
+                    granter: bech32(&granter),
+                    grantee: bech32(&grantee),
+                    allowance: Some(outer),
+                },
+            )
+            .unwrap();
+            let g = get_grant(&mut ctx, &granter, &grantee).unwrap();
+            let stored =
+                AllowedMsgAllowance::decode(g.allowance.unwrap().value.as_slice()).unwrap();
+            assert_eq!(stored.allowance, Some(inner));
+            assert!(get_allowance(&mut ctx, &granter, &grantee).is_ok());
+        }
+    }
 }

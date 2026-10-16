@@ -268,6 +268,17 @@ fn main() -> anyhow::Result<()> {
         print!("{}", fuzz_diff::deliver::coverage());
         return Ok(());
     }
+    if argv.get(1).map(String::as_str) == Some("genesis") {
+        let scenario = argv.get(2).context("scenario")?;
+        println!("{}", fuzz_diff::deliver::genesis_json(scenario)?);
+        return Ok(());
+    }
+    if argv.get(1).map(String::as_str) == Some("accounts") {
+        for (i, a) in fuzz_diff::deliver::account_addresses().iter().enumerate() {
+            println!("{i} {a}");
+        }
+        return Ok(());
+    }
     if argv.get(1).map(String::as_str) == Some("deliver") {
         let scenario = argv.get(2).context("scenario")?;
         let addr = argv.get(3).context("go abci address")?;
@@ -287,8 +298,11 @@ fn main() -> anyhow::Result<()> {
         for (c, n) in &st.codes {
             println!("CODE {n} {c}");
         }
+        for l in &st.script {
+            println!("SCRIPT {l}");
+        }
         eprintln!(
-            "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} mismatches, {} log-only differences{}",
+            "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
             st.replayed,
             st.blocks,
             st.checked,
@@ -297,6 +311,7 @@ fn main() -> anyhow::Result<()> {
             st.multisig.1,
             st.delivered,
             st.delivered_ok,
+            st.swept,
             st.mismatches.len(),
             st.log_mismatches.len(),
             if st.split { "; stopped at a split" } else { "" }
@@ -333,6 +348,22 @@ fn main() -> anyhow::Result<()> {
             "aminosign" => {
                 let mut v = fuzz_diff::deliver::amino_sign_seeds(a.app_version, a.seed, 4000);
                 v.extend(tx_seeds.iter().cloned());
+                v
+            }
+            "json_ica_pb" => {
+                // Also every devnet tx's messages as an ICA `CosmosTx`.
+                let mut v = fuzz_diff::jsonops::seeds(op);
+                for t in &tx_seeds {
+                    if let Ok(tx) = txdecode::decode_for(a.app_version, t) {
+                        let mut b = Vec::new();
+                        for m in &tx.body.messages {
+                            prost::encoding::message::encode(1, m, &mut b);
+                        }
+                        v.push(b);
+                    }
+                }
+                v.sort();
+                v.dedup();
                 v
             }
             op if op.starts_with("json_") => fuzz_diff::jsonops::seeds(op),
@@ -407,6 +438,8 @@ fn main() -> anyhow::Result<()> {
                     if m.rng.one_in(4) { m.mutate(&x) } else { x }
                 } else if op == "amino_enc" && !m.rng.one_in(4) {
                     json_mutate(&mut m, &s)
+                } else if op == "json_ica_pb" {
+                    m.mutate_n(&s, k)
                 } else if op.starts_with("json_") {
                     let mut x = s;
                     for _ in 0..k {

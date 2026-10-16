@@ -62,7 +62,7 @@ pub(crate) fn resolve(type_url: &[u8]) -> Option<&'static MessageInfo> {
 pub(crate) fn resolve_impl(type_url: &[u8], iface: u32) -> Option<&'static MessageInfo> {
     lookup(type_url)
         .filter(|(_, _, bits)| bits & iface != 0)
-        .and_then(|(_, name, _)| celestia_proto::wire_table::message(name))
+        .and_then(|(_, name, _)| crate::gogo::info(name).ok())
 }
 
 /// Whether `iface` has any registered implementation (`interfaceImpls`

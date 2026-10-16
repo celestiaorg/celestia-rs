@@ -269,9 +269,12 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
         host::port_identifier_validator(&m.port_id).map_err(|e| e.wrap("invalid port ID"))?;
         let ch = m.channel.clone().unwrap_or_default();
         if ch.state != chpb::State::Init as i32 {
-            return Err(cherr::invalid_channel_state(
-                "channel state must be INIT in MsgChannelOpenInit",
-            ));
+            // `%s` of the enum: its proto name, else the number.
+            let got = chpb::State::try_from(ch.state)
+                .map_or_else(|_| ch.state.to_string(), |s| s.as_str_name().to_owned());
+            return Err(cherr::invalid_channel_state(format!(
+                "channel state must be INIT in MsgChannelOpenInit. expected: STATE_INIT, got: {got}"
+            )));
         }
         if !ch
             .counterparty

@@ -81,6 +81,69 @@ fn wide_field_keys_are_decoded_as_gogoproto_does() {
     assert!(MsgSend::decode(any.value.as_slice()).is_err());
     let fixed = txdecode::prost_compatible(&any).unwrap();
     assert_eq!(MsgSend::decode(fixed.value.as_slice()).unwrap(), msg);
-    // Bytes prost decodes are left alone.
-    assert!(txdecode::prost_compatible(&celestia_proto::Any::pack(&msg)).is_none());
+    // Bytes prost decodes the same way come back as the same message.
+    let same = txdecode::prost_compatible(&celestia_proto::Any::pack(&msg)).unwrap();
+    assert_eq!(MsgSend::decode(same.value.as_slice()).unwrap(), msg);
+}
+
+#[test]
+fn repeated_std_time_fields_are_replaced_as_gogoproto_does() {
+    use celestia_proto::cosmos::authz::v1beta1::{GenericAuthorization, Grant, MsgGrant};
+    use celestia_proto::cosmos::feegrant::v1beta1::BasicAllowance;
+    // `Grant.expiration` (nullable stdtime) sent twice, the last occurrence
+    // empty: gogoproto's `StdTimeUnmarshal` overwrites it (Unix 0), prost
+    // merges the two (the first time). Go v10.4.0 rejects the grant
+    // (`expiration must be after the current block time`).
+    let far = {
+        let mut t = celestia_proto::cosmos::feegrant::v1beta1::BasicAllowance::default()
+            .expiration
+            .unwrap_or_default();
+        t.seconds = 4_000_000_000;
+        t
+    };
+    let auth = celestia_proto::Any::pack(&GenericAuthorization {
+        msg: "/cosmos.bank.v1beta1.MsgSend".into(),
+    });
+    let mut grant = Grant {
+        authorization: Some(auth),
+        expiration: Some(far),
+    }
+    .encode_to_vec();
+    grant.extend_from_slice(&[0x12, 0x00]);
+    let mut value = Vec::new();
+    prost::encoding::string::encode(1, &"a".to_owned(), &mut value);
+    prost::encoding::string::encode(2, &"b".to_owned(), &mut value);
+    prost::encoding::bytes::encode(3, &grant, &mut value);
+    let any = celestia_proto::Any {
+        type_url: "/cosmos.authz.v1beta1.MsgGrant".into(),
+        value,
+    };
+    let prost_view = MsgGrant::decode(any.value.as_slice()).unwrap();
+    assert_eq!(prost_view.grant.unwrap().expiration, Some(far));
+    let go_view =
+        MsgGrant::decode(txdecode::prost_compatible(&any).unwrap().value.as_slice()).unwrap();
+    let zero = {
+        let mut t = far;
+        t.seconds = 0;
+        t
+    };
+    assert_eq!(go_view.grant.unwrap().expiration, Some(zero));
+    // The same inside a nested `Any` (a fee allowance's expiration).
+    let mut basic = BasicAllowance {
+        spend_limit: Vec::new(),
+        expiration: Some(far),
+    }
+    .encode_to_vec();
+    basic.extend_from_slice(&[0x12, 0x00]);
+    let allowance = celestia_proto::Any {
+        type_url: "/cosmos.feegrant.v1beta1.BasicAllowance".into(),
+        value: basic,
+    };
+    let fixed = txdecode::prost_compatible(&allowance).unwrap();
+    assert_eq!(
+        BasicAllowance::decode(fixed.value.as_slice())
+            .unwrap()
+            .expiration,
+        Some(zero)
+    );
 }

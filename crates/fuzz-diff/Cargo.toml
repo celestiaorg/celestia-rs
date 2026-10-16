@@ -31,6 +31,7 @@ gojson = { path = "../tier-0-primitives/gojson" }
 hex = "0.4"
 http = "1"
 keyring = { path = "../tier-5-node/keyring" }
+k256 = { version = "0.13", features = ["ecdsa"] }
 prost = "0.13"
 prost-reflect = "0.14"
 legacy-amino = { path = "../tier-1-protocol-types/legacy-amino" }
@@ -42,6 +43,7 @@ tonic = { version = "=0.12.3", default-features = false, features = ["transport"
 txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-ante = { path = "../tier-3-app-modules/x/ante" }
 x-gov = { path = "../tier-3-app-modules/x/gov" }
+x-hyperlane = { path = "../tier-3-app-modules/x/hyperlane" }
 x-ibc = { path = "../tier-3-app-modules/x/ibc" }
 x-icahost = { path = "../tier-3-app-modules/x/icahost" }
 x-packetforward = { path = "../tier-3-app-modules/x/packetforward" }

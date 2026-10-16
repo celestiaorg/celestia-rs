@@ -75,6 +75,33 @@ fn hl_kind(response_type_url: &str) -> Option<u8> {
     })
 }
 
+/// Hyperlane objects the fuzz accounts created, as far as messages that
+/// target them successfully need to know.
+#[derive(Default)]
+struct HlState {
+    /// Mailbox id -> local domain.
+    mailbox_domain: BTreeMap<String, u32>,
+    /// Noop ISMs (they verify every message).
+    noop_isms: BTreeSet<String>,
+    /// Token id -> origin mailbox.
+    token_mailbox: BTreeMap<String, String>,
+    /// Enrolled remote routers: (token id, domain, receiver contract).
+    routers: Vec<(String, u32, String)>,
+    /// IGP id -> denom.
+    igp_denom: BTreeMap<String, String>,
+    /// Destination gas configs set: (IGP id, domain).
+    igp_domains: Vec<(String, u32)>,
+    /// Message ids dispatched (`MsgRemoteTransfer` responses).
+    message_ids: Vec<String>,
+}
+
+fn push_capped<T>(v: &mut Vec<T>, x: T) {
+    v.push(x);
+    if v.len() > 64 {
+        v.remove(0);
+    }
+}
+
 /// The multisig public key type URL.
 const MULTISIG_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 /// Their utia balance each.
@@ -113,6 +140,10 @@ pub struct Stats {
     pub log_mismatches: Vec<String>,
     /// The run stopped at an app-hash split.
     pub split: bool,
+    /// Gas-sweep copies sent to `CheckTx` (`DELIVER_SWEEP`).
+    pub swept: u64,
+    /// Results of the scripted txs (`DELIVER_SCRIPT`).
+    pub script: Vec<String>,
 }
 
 /// A funded account.
@@ -794,6 +825,8 @@ struct Gen {
     /// index); kinds [`HL_MAILBOX`], [`HL_ISM`], [`HL_ROUTING_ISM`],
     /// [`HL_HOOK`], [`HL_IGP`], [`HL_TOKEN`].
     hl_objects: Vec<(u8, String, usize)>,
+    /// What the fuzz accounts' hyperlane objects are wired to.
+    hl: HlState,
     hex_ids: Vec<String>,
     chain_id: String,
     app_version: u64,
@@ -1631,6 +1664,10 @@ impl Gen {
                 let gw = Self::gov_who();
                 let mut msgs = Vec::new();
                 for _ in 0..n {
+                    if self.m.rng.one_in(3) {
+                        msgs.push(self.valid_gov_msg());
+                        continue;
+                    }
                     if t.is_empty() {
                         break;
                     }
@@ -1659,13 +1696,62 @@ impl Gen {
         }
     }
 
+    /// A gov-authority message Go executes when the proposal passes:
+    /// `MsgExecLegacyContent` of a text proposal, staking `MsgUpdateParams`
+    /// within celestia's parameter filter (sometimes outside it).
+    fn valid_gov_msg(&mut self) -> Any {
+        use celestia_proto::cosmos::gov::v1 as gov;
+        use celestia_proto::cosmos::gov::v1beta1 as gov1b;
+        use celestia_proto::cosmos::staking::v1beta1 as staking;
+        if self.m.rng.one_in(2) {
+            let content = Any::pack(&gov1b::TextProposal {
+                title: "t".into(),
+                description: "d".into(),
+            });
+            return Any::pack(&gov::MsgExecLegacyContent {
+                content: Some(content),
+                authority: if self.m.rng.one_in(8) {
+                    self.accts[0].acc.clone()
+                } else {
+                    GOV.into()
+                },
+            });
+        }
+        let unbonding = if self.m.rng.one_in(6) {
+            3600
+        } else {
+            337 * 3600
+        };
+        Any::pack(&staking::MsgUpdateParams {
+            authority: GOV.into(),
+            params: Some(staking::Params {
+                unbonding_time: Some(pbjson_types::Duration {
+                    seconds: unbonding,
+                    nanos: 0,
+                }),
+                max_validators: [100, 100, 3, 0][self.m.rng.below(4)],
+                max_entries: 1 + self.m.rng.below(10) as u32,
+                historical_entries: self.m.rng.below(10_001) as u32,
+                bond_denom: if self.m.rng.one_in(8) {
+                    "uatom".into()
+                } else {
+                    "utia".into()
+                },
+                min_commission_rate: ["50000000000000000", "0", "1000000000000000000"]
+                    [self.m.rng.below(3)]
+                .into(),
+            }),
+        })
+    }
+
     /// A hyperlane object of `kind` owned by account `i` (mostly), else any
     /// object of that kind, else a random id.
     fn hl_object(&mut self, kind: u8, i: usize) -> String {
+        let anyone = self.m.rng.one_in(8);
         let own: Vec<String> = self
             .hl_objects
             .iter()
-            .filter(|o| o.0 == kind && (o.2 == i || self.m.rng.one_in(6)))
+            .filter(|o| o.0 == kind && (o.2 == i || anyone))
             .map(|o| o.1.clone())
             .collect();
         if let Some(id) = self.pick(&own) {
@@ -1704,7 +1790,47 @@ impl Gen {
         let domain = 1 + self.m.rng.below(5) as u32;
         let empty_or =
             |s: String, rng: &mut crate::mutate::Rng| if rng.one_in(4) { String::new() } else { s };
-        match self.m.rng.below(13) {
+        match self.m.rng.below(19) {
+            13..=15 => {
+                if let Some(m) = self.hl_process(i) {
+                    return m;
+                }
+                Any::pack(&pd::MsgClaim {
+                    sender: me,
+                    igp_id: self.hl_object(HL_IGP, i),
+                })
+            }
+            16 => {
+                if let Some(m) = self.hl_pay_for_gas(i) {
+                    return m;
+                }
+                Any::pack(&pd::MsgClaim {
+                    sender: me,
+                    igp_id: self.hl_object(HL_IGP, i),
+                })
+            }
+            17 => self.hl_announce(i),
+            18 => {
+                // A mailbox whose default ISM verifies everything, and a
+                // synthetic token on it: what `MsgProcessMessage` needs to
+                // succeed (with a remote router enrolled).
+                let noop: Vec<String> = self.hl.noop_isms.iter().cloned().collect();
+                let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+                match self.m.rng.below(3) {
+                    0 if !noop.is_empty() => Any::pack(&core::MsgCreateMailbox {
+                        owner: me,
+                        local_domain: 1 + self.m.rng.below(5) as u32,
+                        default_ism: self.pick(&noop).unwrap_or_default(),
+                        default_hook: String::new(),
+                        required_hook: String::new(),
+                    }),
+                    1 if !mailboxes.is_empty() => Any::pack(&warp::MsgCreateSyntheticToken {
+                        owner: me,
+                        origin_mailbox: self.pick(&mailboxes).unwrap_or_default(),
+                    }),
+                    _ => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+                }
+            }
             0 => {
                 let ism_id = self.hl_object(HL_ROUTING_ISM, i);
                 let target = self.hl_object(HL_ISM, i);
@@ -1839,6 +1965,166 @@ impl Gen {
                 }
             }
         }
+    }
+
+    /// `MsgProcessMessage` of a warp transfer to a token the fuzz accounts
+    /// created, from one of its enrolled routers (sometimes with a field
+    /// off: version, destination, sender, body).
+    fn hl_process(&mut self, i: usize) -> Option<Any> {
+        use celestia_proto::hyperlane::core::v1 as core;
+        let routers = self.hl.routers.clone();
+        let (token, origin, sender) = self.pick(&routers)?;
+        let mailbox = self.hl.token_mailbox.get(&token)?.clone();
+        let domain = *self.hl.mailbox_domain.get(&mailbox)?;
+        let hex32 = |s: &str| {
+            let b = hex::decode(s.trim_start_matches("0x")).unwrap_or_default();
+            let mut out = [0u8; 32];
+            let n = b.len().min(32);
+            out[32 - n..].copy_from_slice(&b[b.len() - n..]);
+            out
+        };
+        let mut msg = Vec::new();
+        let version = if self.m.rng.one_in(12) { 1 } else { 3 };
+        msg.push(version);
+        msg.extend_from_slice(&(self.m.rng.next_u64() as u32).to_be_bytes());
+        msg.extend_from_slice(&origin.to_be_bytes());
+        let mut snd = hex32(&sender);
+        if self.m.rng.one_in(12) {
+            snd[31] ^= 1;
+        }
+        msg.extend_from_slice(&snd);
+        let dest = if self.m.rng.one_in(12) {
+            domain.wrapping_add(1)
+        } else {
+            domain
+        };
+        msg.extend_from_slice(&dest.to_be_bytes());
+        msg.extend_from_slice(&hex32(&token));
+        // Warp body: recipient (32 bytes) and amount (uint256).
+        let mut rcpt = [0u8; 32];
+        let k = self.acct_idx();
+        let addr = self.accts[k].addr.clone();
+        if self.m.rng.one_in(6) {
+            for b in &mut rcpt {
+                *b = self.m.rng.next_u64() as u8;
+            }
+        } else {
+            let n = addr.len().min(20);
+            rcpt[12..12 + n].copy_from_slice(&addr[..n]);
+        }
+        msg.extend_from_slice(&rcpt);
+        let mut amount = [0u8; 32];
+        let a: u128 = match self.m.rng.below(6) {
+            0 => 0,
+            1 => u128::MAX,
+            _ => 1 + self.m.rng.below(10_000_000) as u128,
+        };
+        amount[16..].copy_from_slice(&a.to_be_bytes());
+        if self.m.rng.one_in(10) {
+            amount[0] = 0xff;
+        }
+        msg.extend_from_slice(&amount);
+        if self.m.rng.one_in(10) {
+            let cut = 1 + self.m.rng.below(40);
+            msg.truncate(msg.len() - cut);
+        }
+        let mailbox_id = if self.m.rng.one_in(12) {
+            self.hl_object(HL_MAILBOX, i)
+        } else {
+            mailbox
+        };
+        Some(Any::pack(&core::MsgProcessMessage {
+            mailbox_id,
+            relayer: self.accts[i].acc.clone(),
+            metadata: if self.m.rng.one_in(10) {
+                "0xzz".into()
+            } else {
+                String::new()
+            },
+            message: format!("0x{}", hex::encode(msg)),
+        }))
+    }
+
+    /// `MsgPayForGas` to an IGP with a gas config for the domain, in its
+    /// denom (sometimes another one or zero).
+    fn hl_pay_for_gas(&mut self, i: usize) -> Option<Any> {
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        let configs = self.hl.igp_domains.clone();
+        let (igp, domain) = self.pick(&configs)?;
+        let denom = self.hl.igp_denom.get(&igp).cloned().unwrap_or_default();
+        let ids = self.hl.message_ids.clone();
+        let message_id = self.pick(&ids).unwrap_or_else(|| self.hex_id());
+        let destination_domain = if self.m.rng.one_in(8) {
+            domain.wrapping_add(7)
+        } else {
+            domain
+        };
+        let denom = if self.m.rng.one_in(8) {
+            "uatom".into()
+        } else {
+            denom
+        };
+        Some(Any::pack(&pd::MsgPayForGas {
+            sender: self.accts[i].acc.clone(),
+            igp_id: igp,
+            message_id,
+            destination_domain,
+            gas_limit: (self.m.rng.below(2_000_000)).to_string(),
+            amount: Some(Coin {
+                denom,
+                amount: (self.m.rng.below(100_000)).to_string(),
+            }),
+        }))
+    }
+
+    /// `MsgAnnounceValidator` signed with an Ethereum key from a small set
+    /// for a mailbox the fuzz accounts created (sometimes a location
+    /// announced before, a wrong validator or a corrupted signature).
+    fn hl_announce(&mut self, i: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        let mailboxes: Vec<(String, u32)> = self
+            .hl
+            .mailbox_domain
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        let (mailbox, domain) = match self.pick(&mailboxes) {
+            Some(m) => m,
+            None => (self.hex_id(), 1),
+        };
+        let mut secret = [0u8; 32];
+        secret[31] = 1 + self.m.rng.below(4) as u8;
+        let Ok(sk) = k256::ecdsa::SigningKey::from_slice(&secret) else {
+            return Any::default();
+        };
+        let point = sk.verifying_key().to_encoded_point(false);
+        let h = x_hyperlane::util::keccak256(&[&point.as_bytes()[1..]]);
+        let mut validator = h[12..].to_vec();
+        let location = format!("s3://bucket/{}", self.m.rng.below(4));
+        let mbox = hex::decode(mailbox.trim_start_matches("0x")).unwrap_or_default();
+        let digest = x_hyperlane::ism::announcement_digest(&location, domain, &mbox);
+        let hash = x_hyperlane::util::eth_signing_hash(&digest);
+        let mut sig = match sk.sign_prehash_recoverable(&hash) {
+            Ok((s, rid)) => {
+                let mut v = s.to_bytes().to_vec();
+                v.push(27 + rid.to_byte());
+                v
+            }
+            Err(_) => vec![0u8; 65],
+        };
+        if self.m.rng.one_in(10) {
+            sig[3] ^= 1;
+        }
+        if self.m.rng.one_in(10) {
+            validator[0] ^= 1;
+        }
+        Any::pack(&ism::MsgAnnounceValidator {
+            validator: format!("0x{}", hex::encode(validator)),
+            storage_location: location,
+            signature: format!("0x{}", hex::encode(sig)),
+            mailbox_id: mailbox,
+            creator: self.accts[i].acc.clone(),
+        })
     }
 
     /// A random account address (no account yet).
@@ -2676,6 +2962,7 @@ pub fn run(
         proposers: Vec::new(),
         gas_seen: BTreeMap::new(),
         hl_objects: Vec::new(),
+        hl: HlState::default(),
         hex_ids: Vec::new(),
         chain_id,
         app_version,
@@ -2748,6 +3035,15 @@ pub fn run(
     valsets.insert(template.height, initial.clone());
     valsets.insert(template.height + 1, initial);
     let mut times: BTreeMap<i64, pbjson_types::Timestamp> = BTreeMap::new();
+    // Gas sweep: successful single-signer txs re-sent with gas limits
+    // spread below what Go used, so they run out of gas at many points of
+    // the message handlers (store access order and iterator charges).
+    let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
+    let mut script = match std::env::var("DELIVER_SCRIPT") {
+        Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
+        Err(_) => std::collections::VecDeque::new(),
+    };
+    let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
     for b in 0..blocks {
         height += 1;
         gn.height = height;
@@ -2761,6 +3057,7 @@ pub fn run(
             a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
+        let mut scripted = false;
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
@@ -2778,7 +3075,22 @@ pub fn run(
                     }
                 }
             }
+        } else if let Some(block) = script.pop_front() {
+            scripted = true;
+            for (i, msg, gas) in block {
+                if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
+                    gn.accts[i].seq += 1;
+                    txs.push(t);
+                }
+            }
         } else {
+            if sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+                let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
+                for t in sweep_txs(&mut gn, i, &msgs, used) {
+                    stats.swept += 1;
+                    txs.push(t);
+                }
+            }
             let k = match gn.m.rng.below(20) {
                 0 => 0,
                 1 => per_block * 4,
@@ -2811,6 +3123,9 @@ pub fn run(
             if multisig {
                 stats.multisig.0 += 1;
             }
+            if scripted && !matches!(&g, response::Value::CheckTx(c) if c.code == 0) {
+                stats.script.push(format!("h={height} CheckTx: go {g:?}"));
+            }
             let response::Value::CheckTx(g) = g else {
                 // Go's CheckTx returned an error (undecodable tx, ...).
                 check_rejected.push(true);
@@ -2842,6 +3157,14 @@ pub fn run(
                 }
             }
             check_rejected.push(g.code != 0);
+            if scripted && g.code != 0 {
+                stats.script.push(format!(
+                    "h={height} CheckTx code {}/{}: {}",
+                    g.codespace,
+                    g.code,
+                    gostr::to_go_bytes(&g.log).escape_ascii()
+                ));
+            }
             match &o {
                 Ok(o) if check_fields(o) == check_fields(&g) => {
                     if o.log != g.log {
@@ -3030,7 +3353,7 @@ pub fn run(
         } else {
             Vec::new()
         };
-        if gn.m.rng.one_in(3) && !txs.is_empty() {
+        if (scripted || gn.m.rng.one_in(3)) && !txs.is_empty() {
             let mut raw = proc.clone();
             raw.txs.clone_from(&txs);
             if let Ok((size, root)) = app::proposal::block_data_root(app_version, &raw.txs) {
@@ -3057,8 +3380,15 @@ pub fn run(
                         .collect::<Vec<_>>()
                         .join(",")
                 ));
-            } else if g == accepted && gn.m.rng.one_in(2) {
+            } else if g == accepted && (scripted || gn.m.rng.one_in(2)) {
                 final_txs.clone_from(&raw.txs);
+            }
+            if scripted {
+                stats.script.push(format!(
+                    "h={height} {} txs, {} after PrepareProposal, unfiltered proposal: {g:?}",
+                    txs.len(),
+                    gp.txs.len()
+                ));
             }
         }
         let fb = abci::RequestFinalizeBlock {
@@ -3103,6 +3433,16 @@ pub fn run(
         valsets.retain(|h, _| *h + 8 > height);
         times.retain(|h, _| *h + 8 > height);
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
+            if scripted {
+                stats.script.push(format!(
+                    "h={height} {:?} code {}/{} gas {}: {}",
+                    type_urls(app_version, t),
+                    res.codespace,
+                    res.code,
+                    res.gas_used,
+                    gostr::to_go_bytes(&res.log).escape_ascii()
+                ));
+            }
             stats.delivered += 1;
             if res.code == 0 {
                 stats.delivered_ok += 1;
@@ -3138,6 +3478,12 @@ pub fn run(
             }
             if res.code == 0 {
                 learn(&mut gn, app_version, t, res, height);
+                if sweep_on && let Some(tpl) = sweep_template(&gn, app_version, t, res) {
+                    sweeps.push(tpl);
+                    if sweeps.len() > 64 {
+                        sweeps.remove(gn.m.rng.below(64));
+                    }
+                }
             }
             gn.dict.harvest_events(&res.events);
         }
@@ -3389,6 +3735,7 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, he
             }
         }
     }
+    learn_hyperlane(gn, &t.body.messages, &res.data);
     for (id, p) in submitted.iter().zip(&proposers) {
         if let Some(k) = gn.accts.iter().position(|x| x.acc == *p) {
             gn.proposers.push((*id, k));
@@ -3421,6 +3768,205 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, he
             _ => {}
         }
     }
+}
+
+/// Blocks of scripted txs (`DELIVER_SCRIPT`), run before the generated
+/// ones: one tx per line, `<account index> <type URL> <hex value> [gas]`
+/// (one message, signed in direct mode); a line `---` ends a block; `#`
+/// starts a comment.
+type Script = std::collections::VecDeque<Vec<(usize, Any, u64)>>;
+
+fn read_script(text: &str, accounts: usize) -> anyhow::Result<Script> {
+    let mut out = Script::new();
+    let mut cur = Vec::new();
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line == "---" {
+            out.push_back(std::mem::take(&mut cur));
+            continue;
+        }
+        let f: Vec<&str> = line.split_whitespace().collect();
+        let [i, url, val, rest @ ..] = f.as_slice() else {
+            anyhow::bail!("bad script line {line:?}");
+        };
+        let i: usize = i.parse()?;
+        anyhow::ensure!(i < accounts, "account index {i} out of range");
+        let gas = rest.first().map_or(Ok(4_000_000), |g| g.parse())?;
+        cur.push((
+            i,
+            Any {
+                type_url: (*url).to_owned(),
+                value: hex::decode(val)?,
+            },
+            gas,
+        ));
+    }
+    if !cur.is_empty() {
+        out.push_back(cur);
+    }
+    Ok(out)
+}
+
+/// A `genesis.json` for a scenario recorded without one (the ibctesting
+/// fixtures): chain id, genesis time, initial height and app state of the
+/// recorded `InitChain`, the consensus section of the `ibc` scenario's
+/// genesis (the Go app takes the consensus parameters of `InitChain`).
+pub fn genesis_json(scenario: &str) -> anyhow::Result<String> {
+    let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
+    let ic = parse(&data)?
+        .into_iter()
+        .filter(|r| r.dir == Direction::Request)
+        .find_map(|r| match Request::decode(r.bytes.as_slice()).ok()?.value {
+            Some(request::Value::InitChain(ic)) => Some(ic),
+            _ => None,
+        })
+        .ok_or_else(|| anyhow::anyhow!("no InitChain in {scenario}"))?;
+    let tpl = std::fs::read(devnet_conformance::scenario_dir("ibc").join("genesis.json"))?;
+    let mut g: serde_json::Value = serde_json::from_slice(&tpl)?;
+    let t = ic.time.unwrap_or_default();
+    let secs = t.seconds;
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // Civil date from days since the epoch (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    g["genesis_time"] = serde_json::Value::String(format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:09}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60,
+        t.nanos
+    ));
+    g["chain_id"] = serde_json::Value::String(ic.chain_id.clone());
+    g["initial_height"] = serde_json::Value::from(ic.initial_height.max(1));
+    g["app_state"] = serde_json::from_slice(&ic.app_state_bytes)?;
+    Ok(serde_json::to_string_pretty(&g)?)
+}
+
+/// The fuzz accounts' addresses (bech32), in index order.
+#[must_use]
+pub fn account_addresses() -> Vec<String> {
+    accounts(1).into_iter().map(|a| a.acc).collect()
+}
+
+/// Hyperlane wiring from a successful tx's messages and responses.
+fn learn_hyperlane(gn: &mut Gen, msgs: &[Any], data: &[u8]) {
+    use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+    use celestia_proto::hyperlane::core::v1 as core;
+    use celestia_proto::hyperlane::warp::v1 as warp;
+    let Ok(d) = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(data) else {
+        return;
+    };
+    let resp_id = |r: &Any| {
+        parse_fields(&r.value)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|f| f.num == 1 && f.wt == 2)
+            .map(|f| String::from_utf8_lossy(&f.val).into_owned())
+    };
+    for (r, m) in d.msg_responses.iter().zip(msgs) {
+        let v = m.value.as_slice();
+        let id = resp_id(r);
+        match (m.type_url.as_str(), id) {
+            ("/hyperlane.core.v1.MsgCreateMailbox", Some(id)) => {
+                if let Ok(x) = core::MsgCreateMailbox::decode(v) {
+                    gn.hl.mailbox_domain.insert(id, x.local_domain);
+                }
+            }
+            ("/hyperlane.core.interchain_security.v1.MsgCreateNoopIsm", Some(id)) => {
+                gn.hl.noop_isms.insert(id);
+            }
+            ("/hyperlane.warp.v1.MsgCreateSyntheticToken", Some(id)) => {
+                if let Ok(x) = warp::MsgCreateSyntheticToken::decode(v) {
+                    gn.hl.token_mailbox.insert(id, x.origin_mailbox);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgCreateCollateralToken", Some(id)) => {
+                if let Ok(x) = warp::MsgCreateCollateralToken::decode(v) {
+                    gn.hl.token_mailbox.insert(id, x.origin_mailbox);
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgCreateIgp", Some(id)) => {
+                if let Ok(x) = pd::MsgCreateIgp::decode(v) {
+                    gn.hl.igp_denom.insert(id, x.denom);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgRemoteTransfer", Some(id)) => {
+                push_capped(&mut gn.hl.message_ids, id);
+            }
+            ("/hyperlane.warp.v1.MsgEnrollRemoteRouter", _) => {
+                if let Ok(x) = warp::MsgEnrollRemoteRouter::decode(v)
+                    && let Some(r) = x.remote_router
+                {
+                    push_capped(
+                        &mut gn.hl.routers,
+                        (x.token_id, r.receiver_domain, r.receiver_contract),
+                    );
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig", _) => {
+                if let Ok(x) = pd::MsgSetDestinationGasConfig::decode(v)
+                    && let Some(c) = x.destination_gas_config
+                {
+                    push_capped(&mut gn.hl.igp_domains, (x.igp_id, c.remote_domain));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A sweep template from a tx Go executed successfully: its only signer
+/// (a fuzz account), its messages and the gas Go used.
+fn sweep_template(
+    gn: &Gen,
+    app_version: u64,
+    tx: &[u8],
+    res: &abci::ExecTxResult,
+) -> Option<(usize, Vec<Any>, u64)> {
+    if txdecode::unmarshal_blob_tx(tx).is_some() {
+        return None;
+    }
+    let t = txdecode::decode_for(app_version, tx).ok()?;
+    let signers = x_ante::txview::signers(&t).ok()?;
+    let [s] = signers.as_slice() else {
+        return None;
+    };
+    let i = gn.accts.iter().position(|a| a.addr == *s)?;
+    Some((i, t.body.messages.clone(), res.gas_used.unsigned_abs()))
+}
+
+/// Copies of a sweep template signed by account `i` with consecutive
+/// sequences and decreasing gas limits below `used` (a copy that runs out
+/// of gas in the ante handler fails `CheckTx`, and so do the rest).
+fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
+    let n = 3 + gn.m.rng.below(8);
+    let mut limits: Vec<u64> = (0..n)
+        .map(|_| match gn.m.rng.below(4) {
+            // Near the end of the handler.
+            0 => used.saturating_sub(1 + gn.m.rng.below(4000) as u64),
+            _ => used / 3 + gn.m.rng.below((used - used / 3).max(1) as usize) as u64,
+        })
+        .collect();
+    limits.sort_unstable_by(|a, b| b.cmp(a));
+    let mut out = Vec::new();
+    for l in limits {
+        if let Some(t) = sign_simple(gn, i, msgs.to_vec(), l) {
+            out.push(t);
+            gn.accts[i].seq += 1;
+        }
+    }
+    out
 }
 
 /// A plain direct-mode tx of `msgs` signed by account `i`.
@@ -3495,6 +4041,7 @@ pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
         proposers: Vec::new(),
         gas_seen: BTreeMap::new(),
         hl_objects: Vec::new(),
+        hl: HlState::default(),
         hex_ids: Vec::new(),
         chain_id: "c".into(),
         app_version,
@@ -3644,6 +4191,7 @@ mod tests {
             proposers: Vec::new(),
             gas_seen: BTreeMap::new(),
             hl_objects: Vec::new(),
+            hl: HlState::default(),
             hex_ids: Vec::new(),
             chain_id: "c".into(),
             app_version: 10,

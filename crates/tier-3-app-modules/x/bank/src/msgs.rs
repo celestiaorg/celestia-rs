@@ -109,12 +109,14 @@ pub(crate) fn valid_raw_coins(
 }
 
 fn validate_input(i: &Input) -> Result<Coins> {
-    x_auth::parse_bech32(&i.address)?;
+    sdk::address::acc_from_bech32_go(&i.address)
+        .map_err(|e| errs::invalid_address(format!("invalid input address: {e}")))?;
     valid_raw_coins(&i.coins)
 }
 
 fn validate_output(o: &Output) -> Result<Coins> {
-    x_auth::parse_bech32(&o.address)?;
+    sdk::address::acc_from_bech32_go(&o.address)
+        .map_err(|e| errs::invalid_address(format!("invalid output address: {e}")))?;
     valid_raw_coins(&o.coins)
 }
 

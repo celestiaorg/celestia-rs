@@ -37,6 +37,8 @@ import (
 //	json_ica_tx icatypes.DeserializeCosmosTx(cdc, data, proto3json): Msgs
 //	            are "<type url hex>:<gogoproto Marshal hex>", "nil" for a
 //	            nil sdk.Msg (a null message); a panic is reported as such
+//	json_ica_pb json_ica_vb with icatypes.EncodingProtobuf (not JSON: the
+//	            messages' nested Anys as the packet carried them)
 //	json_ica_vb json_ica_tx, each message followed by its ValidateBasic
 //	            outcome: "|vb:ok" (also without the method), "|vb:panic",
 //	            "|vb:<codespace>/<code>"
@@ -111,8 +113,12 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 			return fail(err)
 		}
 		o.Ok, o.Out = true, hex.EncodeToString(bz)
-	case "json_ica_tx", "json_ica_vb":
-		msgs, err := icatypes.DeserializeCosmosTx(cdc, input, icatypes.EncodingProto3JSON)
+	case "json_ica_tx", "json_ica_vb", "json_ica_pb":
+		encoding := icatypes.EncodingProto3JSON
+		if op == "json_ica_pb" {
+			encoding = icatypes.EncodingProtobuf
+		}
+		msgs, err := icatypes.DeserializeCosmosTx(cdc, input, encoding)
 		if err != nil {
 			return fail(err)
 		}
@@ -129,7 +135,7 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 				continue
 			}
 			s := h(sdk.MsgTypeURL(m)) + ":" + hex.EncodeToString(bz)
-			if op == "json_ica_vb" {
+			if op == "json_ica_vb" || op == "json_ica_pb" {
 				s += validateBasic(m)
 			}
 			o.Msgs = append(o.Msgs, s)

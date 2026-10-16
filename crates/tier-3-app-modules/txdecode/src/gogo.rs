@@ -101,6 +101,9 @@ pub(crate) fn info(name: &str) -> GoResult<&'static MessageInfo> {
     if crate::v9() && name == V9_REMOTE_ROUTER.name {
         return Ok(&V9_REMOTE_ROUTER);
     }
+    if crate::v9() && name == V9_MSG_FORWARD.name {
+        return Ok(&V9_MSG_FORWARD);
+    }
     wire_table::message(name)
         .ok_or_else(|| GoError::new(format!("failed to retrieve the message of type {name:?}")))
 }
@@ -124,6 +127,25 @@ static V9_REMOTE_ROUTER: std::sync::LazyLock<MessageInfo> = std::sync::LazyLock:
         .collect();
     MessageInfo {
         name: "hyperlane.warp.v1.RemoteRouter",
+        map_entry: false,
+        fields: Box::leak(fields.into_boxed_slice()),
+    }
+});
+
+/// celestia-app v9.0.8's `celestia.forwarding.v1.MsgForward`: fields 1-6
+/// (v10 added `custom_hook_id` (7) and `custom_hook_metadata` (8)), so a
+/// message carrying them (an ICA host tx: no unknown-field check) holds
+/// neither at app version 9.
+static V9_MSG_FORWARD: std::sync::LazyLock<MessageInfo> = std::sync::LazyLock::new(|| {
+    let base = wire_table::message("celestia.forwarding.v1.MsgForward");
+    let fields: Vec<FieldInfo> = base
+        .map(|m| m.fields.to_vec())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|f| f.number <= 6)
+        .collect();
+    MessageInfo {
+        name: "celestia.forwarding.v1.MsgForward",
         map_entry: false,
         fields: Box::leak(fields.into_boxed_slice()),
     }
@@ -673,7 +695,7 @@ fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
         if !value.is_empty() {
             protowire::append_bytes_field(out, 2, &value);
         }
-        out.extend_from_slice(&d.unknown);
+        out.extend_from_slice(&unknown_for(d, mode));
         return;
     }
     // gogoproto emits a oneof at the position of its highest-numbered member.
@@ -695,12 +717,145 @@ fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
             }
             continue;
         }
-        match d.fields.get(&f.number) {
+        let normalized;
+        let v = match d.fields.get(&f.number) {
+            Some(v) if mode == Mode::Struct && f.is_any() && !keeps_raw_anys(d.info.name) => {
+                normalized = normalize_anys(v);
+                Some(normalized.as_ref().unwrap_or(v))
+            }
+            v => v,
+        };
+        match v {
             Some(v) => marshal_value(f, v, mode, false, out),
             None => marshal_absent(f, mode, out),
         }
     }
-    out.extend_from_slice(&d.unknown);
+    out.extend_from_slice(&unknown_for(d, mode));
+}
+
+/// Messages whose `Any` fields [`Mode::Struct`] keeps as received even
+/// when prost cannot decode them: their consumers decode the inner value
+/// the gogoproto way themselves (the router's `txdecode::prost_compatible`
+/// for messages, the fee-grant module for allowances), and Go keeps the
+/// bytes as received where it stores them (an `AllowedMsgAllowance`'s
+/// inner allowance, the messages nested in a proposal's messages).
+fn keeps_raw_anys(name: &str) -> bool {
+    matches!(
+        name,
+        "cosmos.feegrant.v1beta1.AllowedMsgAllowance"
+            | "cosmos.feegrant.v1beta1.MsgGrantAllowance"
+            | "cosmos.authz.v1beta1.MsgExec"
+            | "cosmos.gov.v1.MsgSubmitProposal"
+            | "ibc.applications.interchain_accounts.v1.CosmosTx"
+    )
+}
+
+/// An `Any` value (or a list of them) with the value replaced by
+/// gogoproto's decoding of the registered type re-encoded
+/// ([`Mode::Struct`]: what prost decodes into the struct Go holds); `None`
+/// when the type is unknown or does not decode.
+fn normalize_anys(v: &Val) -> Option<Val> {
+    match v {
+        Val::List(items) => {
+            let out: Vec<Option<Val>> = items.iter().map(normalize_anys).collect();
+            out.iter().any(Option::is_some).then(|| {
+                Val::List(
+                    out.into_iter()
+                        .zip(items)
+                        .map(|(n, v)| n.unwrap_or_else(|| v.clone()))
+                        .collect(),
+                )
+            })
+        }
+        Val::Msg(any) => {
+            let raw = any.bytes(2);
+            let info = crate::registry::resolve(any.bytes(1)).and_then(|i| info(i.name).ok())?;
+            let mut inner = Dyn::new(info);
+            unmarshal_into(&mut inner, raw).ok()?;
+            let mut any = any.clone();
+            any.fields
+                .insert(2, Val::Bytes(marshal(&inner, Mode::Struct)));
+            Some(Val::Msg(any))
+        }
+        _ => None,
+    }
+}
+
+/// `XXX_unrecognized` as [`marshal`] writes it: in [`Mode::Struct`]
+/// without the fields prost cannot skip but gogoproto did (prost drops
+/// unknown fields anyway): keys past `u32::MAX` (gogoproto truncates the
+/// field number to `int32`), groups (gogoproto counts start and end group
+/// tags without matching their numbers) and 10-byte varints whose last
+/// byte is above 1.
+fn unknown_for(d: &Dyn, mode: Mode) -> std::borrow::Cow<'_, [u8]> {
+    if mode == Mode::Marshal {
+        return std::borrow::Cow::Borrowed(&d.unknown);
+    }
+    std::borrow::Cow::Owned(strip_prost_incompatible(&d.unknown))
+}
+
+fn strip_prost_incompatible(b: &[u8]) -> Vec<u8> {
+    /// A varint and its length; `bad`: 10 bytes with a last byte above 1.
+    fn varint(b: &[u8]) -> Option<(u64, usize, bool)> {
+        let mut v = 0u64;
+        for (i, &x) in b.iter().enumerate().take(10) {
+            v |= u64::from(x & 0x7f).checked_shl(7 * i as u32).unwrap_or(0);
+            if x < 0x80 {
+                return Some((v, i + 1, i == 9 && x > 1));
+            }
+        }
+        None
+    }
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    // Depth of open groups (gogoproto `skip`: numbers are not matched).
+    let mut depth = 0usize;
+    let mut drop_from: Option<usize> = None;
+    while i < b.len() {
+        let start = i;
+        let Some((key, n, bad_key)) = varint(&b[i..]) else {
+            break;
+        };
+        i += n;
+        let (len, bad) = match key & 7 {
+            0 => match varint(&b[i..]) {
+                Some((_, n, bad)) => (n, bad),
+                None => break,
+            },
+            1 => (8, false),
+            5 => (4, false),
+            2 => match varint(&b[i..]) {
+                Some((l, n, bad)) => match usize::try_from(l).ok().and_then(|l| l.checked_add(n)) {
+                    Some(t) => (t, bad),
+                    None => break,
+                },
+                None => break,
+            },
+            3 => {
+                if depth == 0 {
+                    drop_from = Some(start);
+                }
+                depth += 1;
+                continue;
+            }
+            4 => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    drop_from = None;
+                }
+                continue;
+            }
+            _ => break,
+        };
+        if i + len > b.len() {
+            break;
+        }
+        i += len;
+        if depth == 0 && drop_from.is_none() && !bad_key && !bad && u32::try_from(key).is_ok() {
+            out.extend_from_slice(&b[start..i]);
+        }
+    }
+    out
 }
 
 /// Fields Go always marshals even when they were never decoded.

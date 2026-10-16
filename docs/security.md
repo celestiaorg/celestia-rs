@@ -378,6 +378,52 @@ keys): with the old gov code 161 of 940 simulated txs differed from Go
 v10.4.0 in code or gas (Go fails at the metadata title check, Rust went on
 to the signer check); after the fix none of 940.
 
+### Store access order in transactions (2026-10-16)
+
+Finding 60 was a loop that collected an iterator's entries before
+processing them: same total gas, but a tx running out of gas inside the
+loop stops at a different point (`gas_used`, `LastResultsHash`). Every
+gas-metered iteration reachable from a tx (and the begin / end blockers,
+where only the final state counts) was compared with the Go source, both
+app versions. `sdk::context::Iter` charges like `gaskv` (the seek of the
+first element at creation, each `Next` charges the element it leaves, a
+`break` before `Next` charges nothing more), so a loop is exact when it
+calls `next` where Go calls `Next` and does its reads and writes in
+between.
+
+| Keeper | Loop (tx path unless noted) | Go | Rust | Divergent? |
+|---|---|---|---|---|
+| distribution | `IterateValidatorSlashEventsBetween` (rewards of `MsgDelegate`, `MsgUndelegate`, `MsgWithdrawDelegatorReward`, ...) | handler per event before `Next` | `for_each_slash_event_between` | fixed (60) |
+| distribution | `DeleteValidatorSlashEvents`, `DeleteValidatorHistoricalRewards` (`AfterValidatorRemoved`, last undelegation of an unbonded validator) | delete inside the loop | `delete_prefix` | no |
+| gov | `ChargeDeposit` (`MsgCancelProposal`) | `GetDeposits` (collect), then refund / delete per deposit | `get_deposits`, then the same | no |
+| gov | `deleteVotes` (`MsgCancelProposal`) | `Votes.Clear`: collect keys, then delete | same | no |
+| gov | `RefundAndDeleteDeposits`, `DeleteAndBurnDeposits`, tally (end blocker) | walk with refund / delete inside | same | no |
+| feegrant | `RemoveExpiredAllowances` (`MsgPruneAllowances`, limit 75; end blocker 200) | two deletes per entry, stop at the limit before `Next` | same | no |
+| authz | `DequeueAndDeleteExpiredGrants` (begin blocker) | walk, delete inside | same | no |
+| staking | `HasReceivingRedelegation` (`MsgBeginRedelegate`) | prefix iterator, `Valid` only | first `next` | no |
+| staking | `GetValidatorDelegations`, `GetUnbondingDelegationsFromValidator`, `GetRedelegationsFromSrcValidator` (slashing: begin blocker) | collect with a read per index entry | same | no |
+| staking | power index (reverse), last validators, unbonding / redelegation queues (end blocker) | as Go | same | no |
+| bank | `GetAllBalances` (`SpendableCoins`) | `Balances.Walk` | same | no |
+| signal | `TallyVotingPower` (`MsgTryUpgrade`) | validator read, delete of removed validators' signals and power read inside the loop, return at the threshold | same | no |
+| signal | `ResetTally` | delete inside | same | no |
+| fibre | `ReduceWithdrawalsForPayment` (`MsgPayForFibre`) | `for ; Valid() && remaining.IsPositive(); Next()` (the post `Next` runs before the condition) | same, `next` before the `break` | no |
+| fibre / valaddr | withdrawals, processed payments, stale providers (begin / end blockers) | as Go | same | no |
+| hyperlane | `AnnounceValidator`: storage locations (`Iterate` + `Values`) | collect | same | no (the only iteration in hyperlane-cosmos tx paths) |
+| IBC 07-tendermint | `pruneOldestConsensusState` (`MsgUpdateClient`; not in CheckTx) | first element, callback stops before `Next` | first `next` only | no |
+| IBC 07-tendermint | `GetNextConsensusState` / `GetPreviousConsensusState` (misbehaviour checks) | `Valid`, `Value`, one `Next` / reverse iterator | same | no |
+| IBC channel | `HasInflightPackets` (upgrades, timeouts on close) | `Valid` only | first `next` | no |
+| auth, slashing, upgrade, mint, circuit, consensus, blob, minfee, zkism, forwarding, evidence, capability, transfer, ICA host, PFM, warp | no iteration on a tx path (genesis export, queries, begin / end blockers only) | | | no |
+
+Beyond loops, every read, write and charge sequence of a successful tx is
+checked by the gas sweep of `fuzz-diff deliver` (`DELIVER_SWEEP`): each tx
+Go executes successfully (single signer, a fuzz account) becomes a
+template that later blocks re-send with consecutive sequences and gas
+limits spread below what Go used (a quarter of them within 4 000 of it),
+so the copies run out of gas at many points of the ante handler and the
+message handlers; `gas_used` of an out-of-gas tx is the first charge past
+the limit, so any difference in the order or size of the charges shows as
+a result mismatch.
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation
@@ -503,6 +549,9 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 59 | ante logs (both versions; log only) | `SetUpContextDecorator` recovers a later decorator's out-of-gas panic as `out of gas in location: <descriptor>; gasWanted: N, gasUsed: N`; Rust logged `out of gas` (store reads) or the location only. `DeductFeeDecorator` prints the fee payer `[]byte` with `%s` (raw bytes), not bech32 | `CheckTx` / `DeliverTx` log text | `run_ante` rewrites the out-of-gas error; `gostr::from_go_bytes` |
 | 60 | distribution `CalculateDelegationRewards` (both versions) | `IterateValidatorSlashEventsBetween` runs the handler (historical-rewards reads of `calculateDelegationRewardsBetween`) while the iterator stands on the event, before the `Next` that charges it; Rust collected every event first and then read. Same total gas, but a tx running out of gas inside the loop (a `MsgDelegate` to a slashed validator with a tight gas limit) stopped at a different point: `gas_used` differed (`LastResultsHash`) | result split from one tx | `store::for_each_slash_event_between` |
 | 61 | message field keys past `u32::MAX` (both versions) | gogoproto truncates a field number to `int32` (`fieldNum := int32(wire >> 3)`): a key past `u32::MAX` is an unknown field to skip (or aliases a known field); prost rejects it (`invalid key value`). The tx decoder ports gogoproto, but the router decoded each message's bytes with prost again: Rust failed a message Go executes (`ValidateBasic` and handlers) | code split; a valid message with such a field executes on Go only: state split | `txdecode::prost_compatible` (gogoproto's decoding re-encoded) before `route` / `validate_basic` |
+| 62 | ICA host protobuf `CosmosTx` (both versions) | the host decodes the packet's messages with gogoproto and runs them without the tx decoder's unknown-field check. gogoproto skips what prost cannot: a field key past `u32::MAX`, a group whose end tag does not match its start, a 10-byte varint whose last byte is above 1. In the `Any` of a message (kept as `XXX_unrecognized`) Rust failed the whole `CosmosTx`; inside a nested `Any` (a fee allowance, an IBC client message, an authorization) Rust failed decoding that value. At app version 9 `MsgForward` has no fields 7 and 8: Go skips them, Rust read them as v10's custom hook (or failed on another wire type) | an ICA packet executes on Go and fails on Rust (different acknowledgement: state split); `MsgGrantAllowance` is in celestia's default host allow list | `gogo::Mode::Struct` drops the unknown fields prost cannot skip and re-encodes nested `Any`s with gogoproto's decoding (except where Go stores them as received: an `AllowedMsgAllowance`'s inner allowance, the messages of `MsgExec`, of a proposal and of the `CosmosTx`); fee-grant allowances decode through `prost_compatible`; v9 `MsgForward` schema; new oracle op `json_ica_pb` (protobuf `CosmosTx` + `ValidateBasic`), regressions |
+| 63 | IBC `ValidateBasic` (both versions) | (a) 07-tendermint: `PartSetHeaderFromProto` rejects a part-set total above `MaxBlockPartsCount` (2049) in a header's `LastBlockID` or its commit's `BlockID`; Rust did not check it, so a `MsgUpdateClient` / misbehaviour Go rejects in `ValidateBasic` (CheckTx, code 1) went on to the handler in Rust (another code and gas). (b) 06-solomachine: `len(publicKey.Bytes())` of a multisig key amino-encodes it, which panics on a sub-key that was never unpacked (empty type URL) or has no amino registration (secp256r1); Rust returned `ErrInvalidHeader` / `ErrInvalidConsensus` or passed | (a) code / gas split from one tx anyone can send; (b) panic vs error | `light::validate_block_id` checks the count first (the ibctesting fixtures were recorded on celestia's `test/interop` setup, which raises it to 10 000: their replay sets that); `solomachine::key_missing` |
+| 64 | repeated `stdtime` / `stdduration` fields (both versions) | gogoproto's `StdTimeUnmarshal` / `StdDurationUnmarshal` overwrite the field on each occurrence; prost merges the occurrences (an empty last one leaves the first). A `MsgGrant` whose `grant.expiration` repeats with an empty last occurrence expires at Unix 0 in Go (`expiration must be after the current block time`) and was granted in Rust; the same in a nested `Any` (a fee allowance's expiration or period), and in the ante handler's parameter filter (`unbonding_time` of a gov-proposed staking `MsgUpdateParams`) | state split from one tx anyone can send | the router, `ValidateBasic` and the ante decorators decode messages through `txdecode::prost_compatible`, now always gogoproto's decoding re-encoded (nested `Any`s too); found with the new `DELIVER_SCRIPT` |
 
 Open:
 

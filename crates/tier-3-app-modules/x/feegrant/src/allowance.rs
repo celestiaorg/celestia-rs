@@ -75,6 +75,10 @@ fn basic_validate(a: &BasicAllowance) -> Result<()> {
 impl Allowance {
     /// Decodes a packed allowance.
     pub fn from_any(any: &Any) -> Result<Self> {
+        // gogoproto's decoding: a nested inner allowance is kept as the tx
+        // carried it (see `txdecode::prost_compatible`).
+        let fixed = txdecode::prost_compatible(any);
+        let any = fixed.as_ref().unwrap_or(any);
         let v = any.value.as_slice();
         Ok(match any.type_url.as_str() {
             u if u == BasicAllowance::type_url() => Self::Basic(decode(v)?),
@@ -99,6 +103,8 @@ impl Allowance {
     /// resolves the whole tree first, so the grant handler runs this
     /// before it.
     pub fn check_shape(any: &Any) -> Result<()> {
+        let fixed = txdecode::prost_compatible(any);
+        let any = fixed.as_ref().unwrap_or(any);
         if any.type_url == AllowedMsgAllowance::type_url() {
             let a: AllowedMsgAllowance = decode(any.value.as_slice())?;
             let Some(inner) = a.allowance.as_ref() else {

@@ -549,13 +549,22 @@ pub fn validate_header_basic(h: &Header) -> Result<()> {
     let Some(th) = sh.header.as_ref() else {
         return Err(cerr::invalid_header("tendermint header cannot be nil"));
     };
+    light::signed_header_from_proto(Some(sh)).map_err(|e| {
+        crate::errors::unregistered(format!("header is not a tendermint header: {e}"))
+    })?;
     light::validate_signed_header(Some(sh), &th.chain_id)
         .map_err(|e| crate::errors::unregistered(format!("header failed basic validation: {e}")))?;
     let hh = header_height(h)?;
-    if height::gte(&h.trusted_height.unwrap_or_default(), &hh) {
-        return Err(tmerr::invalid_header_height(
-            "TrustedHeight must be less than header height",
-        ));
+    let trusted = h.trusted_height.unwrap_or_default();
+    if height::gte(&trusted, &hh) {
+        // `%d` of the `Height` structs.
+        return Err(tmerr::invalid_header_height(format!(
+            "TrustedHeight {{{} {}}} must be less than header height {{{} {}}}",
+            trusted.revision_number,
+            trusted.revision_height,
+            hh.revision_number,
+            hh.revision_height
+        )));
     }
     if h.validator_set.is_none() {
         return Err(cerr::invalid_header("validator set is nil"));

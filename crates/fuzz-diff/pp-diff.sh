@@ -22,7 +22,14 @@ WORK=$(mktemp -d)
 H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
-cp "$IN/genesis.json" "$H/config/genesis.json"
+FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
+# Scenarios recorded without a genesis file (the ibctesting fixtures): one
+# from the recorded InitChain.
+if [ -f "$IN/genesis.json" ]; then
+  cp "$IN/genesis.json" "$H/config/genesis.json"
+else
+  "$FUZZ_DIFF" genesis "$SCENARIO" >"$H/config/genesis.json"
+fi
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true; rm -rf "$WORK"' EXIT
