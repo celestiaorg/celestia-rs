@@ -397,6 +397,17 @@ records such a stall after a machine restart and recovers by restarting
 two stuck validators so that their peers' prevotes arrive after their
 propose timeout.
 
+`latency-stall.sh` puts 1.5 s of latency on one validator's links (all
+through the soak proxy) and then removes it: an all-Go network leaves
+that validator in the commit step of a height without the block's parts
+for good (until a peer reconnects), as the long soak saw on a Rust
+validator after 700 ms of latency. Wants that reach peers after they have
+committed are not answered (normal wants only serve the current height),
+and the propagation reactor never re-requests parts from a peer it has
+already asked (`retryWants` subtracts outstanding requests, which only a
+commit or a peer removal clears). The long soak records such a stall and
+reconnects the node.
+
 `statesync-traffic.sh` state-syncs fresh Go nodes (from Go and from Rust
 snapshots) and a fresh Rust node while txs are broadcast to them: both Go
 nodes panic on the first block after the snapshot (`collections: not

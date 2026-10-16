@@ -1120,15 +1120,47 @@ class Soak:
 
     def wait_converged(self, label, timeout=420):
         t = now()
+        unstuck = set()
         while now() - t < timeout and not self.stop.is_set():
             ok, hs = self.in_sync()
             if ok:
                 return round(now() - t, 1)
+            if self.a.long and now() - t > 90:
+                self.unstick_commit_step(hs, unstuck, label)
             time.sleep(3)
         ok, hs = self.in_sync()
         if not ok:
             self.fail(f"network did not converge {timeout}s after {label}: heights {hs}")
         return None
+
+    def unstick_commit_step(self, hs, done, label):
+        """A node left behind in the commit step without the committed
+        block's parts stays there (celestia-core v0.42.3 too, see
+        conformance/devnet/latency-stall.sh): the propagation reactor never
+        re-requests parts from a peer it already asked, until the node
+        commits or the peer reconnects. Record it and reconnect the node."""
+        top = max((h for h in hs.values() if h is not None), default=0)
+        for i, h in hs.items():
+            if h is None or h >= top - 3 or i in done:
+                continue
+            nd = self.nodes[i]
+            try:
+                rs = get_json(f"{nd.url}/consensus_state", timeout=3)["result"]["round_state"]
+                hh, rr, st = (int(x) for x in rs["height/round/step"].split("/"))
+            except Exception:
+                continue
+            if st != 8 or hh != h + 1:
+                continue
+            done.add(i)
+            self.event("commit-step-stall", node=i, kind=nd.kind, height=hh, round=rr, after=label)
+            self.metrics.setdefault("commit_stalls", []).append(
+                {"t": round(self.elapsed()), "node": i, "kind": nd.kind, "height": hh, "round": rr, "after": label})
+            cut = [[i, j] for j in range(self.n) if j != i]
+            self.control["cut"] = self.control.get("cut", []) + cut
+            self.write_control()
+            time.sleep(6)
+            self.control["cut"] = [c for c in self.control["cut"] if c not in cut]
+            self.write_control()
 
     def cut_node(self, i):
         self.control["cut"] = [[i, j] for j in range(self.n) if j != i]
