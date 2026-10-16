@@ -249,20 +249,10 @@ fn v9_utf8_parity() -> anyhow::Result<()> {
     assert_full_parity("v9-utf8")
 }
 
-/// Scenarios whose (non-consensus) logs or events still differ from Go:
-/// error logs that embed gogoproto's text format of a message (authz
-/// `MsgExec`, v9 `MsgExec`), ICS-23 proof error text (ibc-edge),
-/// fibre / IBC-upgrade / consensus-param events. Ratchet: remove a
-/// scenario once it matches.
-const KNOWN_EVENT_LOG_GAPS: &[&str] = &[
-    "authz-feegrant",
-    "consensus",
-    "fibre",
-    "ibc-edge",
-    "ibc-upgrades",
-    "v9-authz-feegrant",
-    "v9-exec",
-];
+/// Scenarios whose (non-consensus) logs or events still differ from Go.
+/// Ratchet: empty since every scenario matches (2026-10-16); a new
+/// scenario with a known gap is listed here until it matches.
+const KNOWN_EVENT_LOG_GAPS: &[&str] = &[];
 
 /// Logs and events of every tx result and block (non-consensus) match Go
 /// byte for byte in every scenario but the known gaps.

@@ -57,6 +57,7 @@ pub mod basic;
 pub mod celestia;
 pub mod deps;
 pub mod fee;
+pub mod gogotext;
 pub use celestia_proto::getsigners_schema;
 pub mod pubkey;
 pub mod setup;

@@ -113,7 +113,7 @@ pub fn get_all_balances(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
 /// `setBalance`: zero balances are removed (with their index entry).
 pub fn set_balance(ctx: &mut Context<'_>, addr: &[u8], coin: &Coin) -> Result<()> {
     if !coin.is_valid() {
-        return Err(errs::invalid_coins(coin.to_string()));
+        return Err(errs::invalid_coins("").wrap(coin.to_string()));
     }
     if coin.is_zero() {
         // IndexedMap.Remove: unreference then remove.
@@ -178,7 +178,7 @@ pub fn spendable_coins(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
 /// `subUnlockedCoins`.
 pub fn sub_unlocked_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Result<()> {
     if !amt.is_valid() {
-        return Err(errs::invalid_coins(amt.to_string()));
+        return Err(errs::invalid_coins("").wrap(amt.to_string()));
     }
     let locked = locked_coins(ctx, addr)?;
     for coin in amt {
@@ -218,7 +218,7 @@ pub fn sub_unlocked_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Re
 /// `addCoins`.
 pub fn add_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Result<()> {
     if !amt.is_valid() {
-        return Err(errs::invalid_coins(amt.to_string()));
+        return Err(errs::invalid_coins("").wrap(amt.to_string()));
     }
     for coin in amt {
         let balance = get_balance(ctx, addr, &coin.denom)?;
@@ -290,7 +290,8 @@ pub fn send_from_module_to_account(
     send_coins(ctx, &from, to, amt)
 }
 
-fn module_account_addr(ctx: &mut Context<'_>, module: &str) -> Result<Address> {
+/// `GetModuleAccount(..).GetAddress()`.
+pub fn module_account_addr(ctx: &mut Context<'_>, module: &str) -> Result<Address> {
     let acc = x_auth::get_module_account(ctx, module)?
         .ok_or_else(|| errs::unknown_address(format!("module account {module} does not exist")))?;
     x_auth::Account::Module(acc).address()
@@ -423,7 +424,7 @@ pub fn delegate_coins(
         )));
     }
     if !amt.is_valid() {
-        return Err(errs::invalid_coins(amt.to_string()));
+        return Err(errs::invalid_coins("").wrap(amt.to_string()));
     }
     let mut balances = Coins::new();
     for coin in amt {
@@ -462,7 +463,7 @@ pub fn undelegate_coins(
         )));
     }
     if !amt.is_valid() {
-        return Err(errs::invalid_coins(amt.to_string()));
+        return Err(errs::invalid_coins("").wrap(amt.to_string()));
     }
     sub_unlocked_coins(ctx, module_addr, amt)?;
     track_undelegation(ctx, del, amt).map_err(|e| e.wrap("failed to track undelegation"))?;

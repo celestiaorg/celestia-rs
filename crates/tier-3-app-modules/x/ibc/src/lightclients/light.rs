@@ -633,9 +633,11 @@ pub fn verify(
         }
         verify_new_header_and_vals(untrusted, untrusted_vals, trusted, p)?;
         if h.validators_hash != trusted.next_validators_hash {
-            return Err(
-                "expected old header next validators to match those from new header".into(),
-            );
+            return Err(format!(
+                "expected old header next validators ({}) to match those from new header ({})",
+                hex::encode_upper(&trusted.next_validators_hash),
+                hex::encode_upper(&h.validators_hash)
+            ));
         }
     }
     verify_commit_light(

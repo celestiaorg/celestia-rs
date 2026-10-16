@@ -17,4 +17,9 @@ pub trait MsgRouter {
     /// The registered handler: `ValidateBasic`, circuit breaker, then the
     /// msg server. Returns the packed response; events are emitted on `ctx`.
     fn handle(&self, ctx: &mut Context<'_>, msg: &Any) -> Result<Any>;
+    /// `fmt.Sprintf("%v", msg)` of the unpacked message: gogoproto's
+    /// compact text format (the type URL when the router cannot render it).
+    fn msg_text(&self, msg: &Any) -> String {
+        msg.type_url.clone()
+    }
 }

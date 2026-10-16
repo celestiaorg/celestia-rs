@@ -461,9 +461,32 @@ fn keeper_on_recv_packet(
 fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<Vec<Any>> {
     let is_msg = reg.is_msg;
     let tx = match encoding {
-        ENCODING_PROTOBUF => CosmosTx::decode(data).map_err(|e| {
-            x_ibc::errors::unregistered(format!("cannot unmarshal CosmosTx with protobuf: {e}"))
-        })?,
+        ENCODING_PROTOBUF => {
+            let wrap = |e: String| {
+                x_ibc::errors::unregistered(format!("cannot unmarshal CosmosTx with protobuf: {e}"))
+            };
+            // `ProtoCodec.Unmarshal`: gogoproto's generated `Unmarshal`
+            // (Go's error text), then `UnpackInterfaces`: each message is
+            // resolved as an `sdk.Msg` and unmarshaled.
+            let canon =
+                txdecode::gogo_unmarshal("ibc.applications.interchain_accounts.v1.CosmosTx", data)
+                    .map_err(wrap)?;
+            let tx = CosmosTx::decode(canon.as_slice()).map_err(|e| wrap(e.to_string()))?;
+            for m in &tx.messages {
+                if m.type_url.is_empty() {
+                    continue;
+                }
+                if !is_msg(&m.type_url) {
+                    return Err(wrap(format!(
+                        "no concrete type registered for type URL {} against interface *types.Msg",
+                        m.type_url
+                    )));
+                }
+                let name = m.type_url.rsplit('/').next().unwrap_or_default();
+                txdecode::gogo_unmarshal(name, &m.value).map_err(wrap)?;
+            }
+            tx
+        }
         ENCODING_PROTO3_JSON => {
             unmarshal_cosmos_tx_json(data, reg.is_registered).ok_or_else(|| {
                 errors::unknown_data_type("cannot unmarshal CosmosTx with proto3 json")

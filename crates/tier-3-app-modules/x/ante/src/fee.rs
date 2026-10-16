@@ -226,11 +226,13 @@ fn check_deduct_fee(
                 if is_out_of_gas(&e) {
                     return Err(e.into());
                 }
+                // `%s` of the `[]byte` addresses `FeeTx` returns: the raw
+                // bytes.
                 return Err(e
                     .wrap(format!(
                         "{} does not allow to pay fees for {}",
-                        txview::bytes_to_bech32(&granter),
-                        txview::bytes_to_bech32(&fee_payer)
+                        gostr::from_go_bytes(&granter),
+                        gostr::from_go_bytes(&fee_payer)
                     ))
                     .into());
             }

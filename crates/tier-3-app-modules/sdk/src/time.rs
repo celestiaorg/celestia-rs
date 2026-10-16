@@ -157,6 +157,77 @@ pub fn format_rfc3339_nano(ts: &Timestamp) -> String {
     out
 }
 
+/// Go `time.Time.String()` of a UTC time (`%v` / `%s`):
+/// `2006-01-02 15:04:05.999999999 +0000 UTC`.
+#[must_use]
+pub fn go_time_string(ts: &Timestamp) -> String {
+    let s = format_rfc3339_nano(ts);
+    let body = s.strip_suffix('Z').unwrap_or(&s).replacen('T', " ", 1);
+    format!("{body} +0000 UTC")
+}
+
+/// Go `time.Duration(n).String()` (`72h3m0.5s`, `1.5ms`, `0s`); `n` is
+/// clamped to the `int64` range.
+#[must_use]
+pub fn go_duration_string(n: i128) -> String {
+    let dur = i64::try_from(n).unwrap_or(if n < 0 { i64::MIN } else { i64::MAX });
+    let mut rem = dur.unsigned_abs();
+    let mut out = String::new();
+    if rem < 1_000_000_000 {
+        if rem == 0 {
+            return "0s".to_owned();
+        }
+        let (prec, unit) = if rem < 1_000 {
+            (0, "ns")
+        } else if rem < 1_000_000 {
+            (3, "\u{b5}s")
+        } else {
+            (6, "ms")
+        };
+        let (frac, rest) = fmt_frac(rem, prec);
+        let _ = write!(out, "{rest}{frac}{unit}");
+    } else {
+        let (frac, secs) = fmt_frac(rem, 9);
+        rem = secs;
+        let sec = format!("{}{frac}s", rem % 60);
+        rem /= 60;
+        if rem > 0 {
+            let m = format!("{}m", rem % 60);
+            rem /= 60;
+            if rem > 0 {
+                let _ = write!(out, "{rem}h");
+            }
+            out.push_str(&m);
+        }
+        out.push_str(&sec);
+    }
+    if dur < 0 {
+        out.insert(0, '-');
+    }
+    out
+}
+
+/// Go `fmtFrac`: the fractional digits of `v / 10^prec` without trailing
+/// zeros (with a leading '.' when non-empty) and the integer part.
+fn fmt_frac(mut v: u64, prec: u32) -> (String, u64) {
+    let mut digits = Vec::new();
+    let mut print = false;
+    for _ in 0..prec {
+        let digit = v % 10;
+        print = print || digit != 0;
+        if print {
+            digits.push(char::from(b'0' + u8::try_from(digit).unwrap_or(0)));
+        }
+        v /= 10;
+    }
+    let mut s = String::new();
+    if print {
+        s.push('.');
+        s.extend(digits.iter().rev());
+    }
+    (s, v)
+}
+
 fn digits(b: &[u8]) -> Option<u32> {
     if b.is_empty() || !b.iter().all(u8::is_ascii_digit) {
         return None;

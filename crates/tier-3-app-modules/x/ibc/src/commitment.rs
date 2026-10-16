@@ -21,7 +21,8 @@ pub fn apply_prefix(prefix: Option<&MerklePrefix>, path: &[String]) -> Result<Me
     if p.is_empty() {
         return Err(errs::invalid_prefix("prefix can't be empty"));
     }
-    let mut key_path = vec![String::from_utf8_lossy(p).into_owned()];
+    // `string(prefix.Bytes())`: the bytes as they are (Go form).
+    let mut key_path = vec![gostr::from_go_bytes(p).into_owned()];
     key_path.extend(path.iter().cloned());
     Ok(MerklePath { key_path })
 }
@@ -70,6 +71,23 @@ fn validate_args(proof: &MerkleProof, specs: &[ics23::ProofSpec], root: &[u8]) -
     Ok(())
 }
 
+/// `%s` of a `MerklePath` value (its `String` has a pointer receiver):
+/// `{[a b]}`.
+fn path_text(keys: &MerklePath) -> String {
+    format!("{{[{}]}}", keys.key_path.join(" "))
+}
+
+/// `%T` of a `CommitmentProof.Proof` (the oneof wrapper type).
+fn proof_type(p: Option<&Proof>) -> &'static str {
+    match p {
+        Some(Proof::Exist(_)) => "*ics23.CommitmentProof_Exist",
+        Some(Proof::Nonexist(_)) => "*ics23.CommitmentProof_Nonexist",
+        Some(Proof::Batch(_)) => "*ics23.CommitmentProof_Batch",
+        Some(Proof::Compressed(_)) => "*ics23.CommitmentProof_Compressed",
+        None => "<nil>",
+    }
+}
+
 fn verify_chained_membership(
     root: &[u8],
     specs: &[ics23::ProofSpec],
@@ -96,27 +114,37 @@ fn verify_chained_membership(
                     &proofs[i],
                     &specs[i],
                     &subroot,
-                    key.as_bytes(),
+                    &gostr::to_go_bytes(key),
                     &value,
                 ) {
                     return Err(errs::invalid_proof(format!(
-                        "chained membership proof failed to verify membership of value in subroot at index {i}"
+                        "chained membership proof failed to verify membership of value: {} in subroot {} at index {i}. Please ensure the path and value are both correct.",
+                        hex::encode_upper(&value),
+                        hex::encode_upper(&subroot)
                     )));
                 }
                 value.clone_from(&subroot);
             }
             Some(Proof::Nonexist(_)) => {
                 return Err(errs::invalid_proof(format!(
-                    "chained membership proof contains nonexistence proof at index {i}"
+                    "chained membership proof contains nonexistence proof at index {i}. If this is unexpected, please ensure that proof was queried from a height that contained the value in store and was queried with the correct key. The key used: {}",
+                    path_text(keys)
                 )));
             }
-            _ => {
-                return Err(errs::invalid_proof("expected proof type: exist"));
+            other => {
+                return Err(errs::invalid_proof(format!(
+                    "expected proof type: *ics23.CommitmentProof_Exist, got: {}",
+                    proof_type(other.as_ref())
+                )));
             }
         }
     }
     if root != subroot.as_slice() {
-        return Err(errs::invalid_proof("proof did not commit to expected root"));
+        return Err(errs::invalid_proof(format!(
+            "proof did not commit to expected root: {}, got: {}. Please ensure proof was submitted with correct proofHeight and to the correct chain.",
+            hex::encode_upper(root),
+            hex::encode_upper(&subroot)
+        )));
     }
     Ok(())
 }
@@ -173,7 +201,7 @@ pub fn verify_non_membership(
                 &proof.proofs[0],
                 &specs[0],
                 &subroot,
-                key.as_bytes(),
+                &gostr::to_go_bytes(key),
             ) {
                 return Err(errs::invalid_proof(format!(
                     "could not verify absence of key {key}. Please ensure that the path is correct."
@@ -184,7 +212,10 @@ pub fn verify_non_membership(
         Some(Proof::Exist(_)) => Err(errs::invalid_proof(
             "got ExistenceProof in VerifyNonMembership. If this is unexpected, please ensure that proof was queried with the correct key.",
         )),
-        _ => Err(errs::invalid_proof("expected proof type: exist")),
+        other => Err(errs::invalid_proof(format!(
+            "expected proof type: *ics23.CommitmentProof_Exist, got: {}",
+            proof_type(other.as_ref())
+        ))),
     }
 }
 

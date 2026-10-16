@@ -89,7 +89,114 @@ impl EventManager {
 /// each invalid UTF-8 byte of a Go string as `\ufffd`; this helper applies
 /// the same escaping so values match byte-for-byte.
 pub fn typed_event<T: prost::Name + serde::Serialize>(msg: &T) -> Result<Event, serde_json::Error> {
-    typed_event_from_json(T::full_name(), serde_json::to_value(msg)?)
+    // Serialized directly (not through `serde_json::Value`, whose maps
+    // sort their keys): nested messages keep jsonpb's field order.
+    let s = serde_json::to_string(msg)?;
+    let Some(members) = object_members(&s) else {
+        return typed_event_from_json(T::full_name(), serde_json::from_str(&s)?);
+    };
+    let mut attrs: Vec<(String, String)> = members
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), attr_value(&go_timestamps(v))))
+        .collect();
+    attrs.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(event(T::full_name(), attrs))
+}
+
+/// The members of the compact JSON object `s` (keys without escapes, raw
+/// values), or `None` when `s` is not such an object.
+fn object_members(s: &str) -> Option<Vec<(&str, &str)>> {
+    let bytes = s.as_bytes();
+    if bytes.first() != Some(&b'{') || bytes.last() != Some(&b'}') {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut pos = 1;
+    while pos < bytes.len() - 1 {
+        // Key.
+        if bytes[pos] != b'"' {
+            return None;
+        }
+        let ks = pos + 1;
+        let ke = ks + bytes[ks..].iter().position(|&c| c == b'"' || c == b'\\')?;
+        if bytes[ke] != b'"' || bytes.get(ke + 1) != Some(&b':') {
+            return None;
+        }
+        // Value: up to the next top-level ',' or the closing '}'.
+        let vs = ke + 2;
+        let (mut depth, mut in_str, mut esc) = (0i32, false, false);
+        let mut end = vs;
+        while end < bytes.len() - 1 {
+            let c = bytes[end];
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                } else if c == b'"' {
+                    in_str = false;
+                }
+            } else {
+                match c {
+                    b'"' => in_str = true,
+                    b'{' | b'[' => depth += 1,
+                    b'}' | b']' => depth -= 1,
+                    b',' if depth == 0 => break,
+                    _ => {}
+                }
+            }
+            end += 1;
+        }
+        out.push((&s[ks..ke], &s[vs..end]));
+        pos = end + 1;
+    }
+    Some(out)
+}
+
+/// pbjson writes a `Timestamp` as RFC 3339 with a `+00:00` offset; Go's
+/// jsonpb ends it with `Z` (same 0 / 3 / 6 / 9 fractional digits).
+fn go_timestamps(v: &str) -> std::borrow::Cow<'_, str> {
+    const SUFFIX: &str = "+00:00\"";
+    if !v.contains(SUFFIX) {
+        return v.into();
+    }
+    let is_ts = |t: &[u8]| {
+        // YYYY-MM-DDTHH:MM:SS[.fraction]
+        t.len() >= 19
+            && t.iter().enumerate().take(19).all(|(i, &c)| match i {
+                4 | 7 => c == b'-',
+                10 => c == b'T',
+                13 | 16 => c == b':',
+                _ => c.is_ascii_digit(),
+            })
+            && (t.len() == 19
+                || (t[19] == b'.' && t.len() > 20 && t[20..].iter().all(u8::is_ascii_digit)))
+    };
+    let mut out = String::with_capacity(v.len());
+    let mut rest = v;
+    while let Some(p) = rest.find(SUFFIX) {
+        let head = &rest[..p];
+        let start = head.rfind('"').map_or(0, |q| q + 1);
+        out.push_str(head);
+        if head.len() > start && is_ts(&head.as_bytes()[start..]) {
+            out.push_str("Z\"");
+        } else {
+            out.push_str(SUFFIX);
+        }
+        rest = &rest[p + SUFFIX.len()..];
+    }
+    out.push_str(rest);
+    out.into()
+}
+
+/// An attribute value: Go's jsonpb escaping of `<`, `>`, `&` and of each
+/// invalid UTF-8 byte.
+fn attr_value(json: &str) -> String {
+    let s = json
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026");
+    gostr::json_escape_invalid(&s).into_owned()
 }
 
 /// [`typed_event`] from an already-built proto3-JSON object, for messages
@@ -102,13 +209,9 @@ pub fn typed_event_from_json(
     let mut attrs: Vec<(String, String)> = Vec::new();
     if let serde_json::Value::Object(map) = value {
         for (k, v) in map {
-            let s = serde_json::to_string(&v)?
-                .replace('<', "\\u003c")
-                .replace('>', "\\u003e")
-                .replace('&', "\\u0026");
             // `json.Marshal` writes each invalid UTF-8 byte of a Go string
             // as `\ufffd` (strings here are Go forms, see `gostr`).
-            attrs.push((k, gostr::json_escape_invalid(&s).into_owned()));
+            attrs.push((k, attr_value(&serde_json::to_string(&v)?)));
         }
     }
     attrs.sort_by(|a, b| a.0.cmp(&b.0));
@@ -118,6 +221,43 @@ pub fn typed_event_from_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Nested messages keep jsonpb's field order and timestamps end in
+    /// `Z` (devnet `fibre`, celestia-app v10.4.0).
+    #[test]
+    fn typed_event_nested_order_and_time() {
+        use celestia_proto::celestia::fibre::v1::EventWithdrawFromEscrowRequest;
+        let e = typed_event(&EventWithdrawFromEscrowRequest {
+            signer: "s".into(),
+            amount: Some(celestia_proto::cosmos::base::v1beta1::Coin {
+                denom: "utia".into(),
+                amount: "1000000".into(),
+            }),
+            requested_at: Some(pbjson_types::Timestamp {
+                seconds: 1_791_969_985,
+                nanos: 444_152_280,
+            }),
+            available_at: Some(pbjson_types::Timestamp {
+                seconds: 1_791_970_045,
+                nanos: 0,
+            }),
+        })
+        .unwrap_or_default();
+        let kv: Vec<_> = e
+            .attributes
+            .iter()
+            .map(|a| (a.key.as_str(), a.value.as_str()))
+            .collect();
+        assert_eq!(
+            kv,
+            [
+                ("amount", "{\"denom\":\"utia\",\"amount\":\"1000000\"}"),
+                ("available_at", "\"2026-10-14T09:27:25Z\""),
+                ("requested_at", "\"2026-10-14T09:26:25.444152280Z\""),
+                ("signer", "\"s\""),
+            ]
+        );
+    }
 
     #[test]
     fn typed_event_sorted_json_attrs() {

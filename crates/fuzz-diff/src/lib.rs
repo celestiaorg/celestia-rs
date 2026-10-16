@@ -120,6 +120,7 @@ pub const OPS: &[&str] = &[
     "eds",
     "amino_dec",
     "amino_enc",
+    "text",
 ];
 
 fn blob_out(b: &sdk::tx::Blob) -> BlobOut {
@@ -153,6 +154,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
         "eds" => rust_eds(app_version, input),
         "amino_dec" => rust_amino(legacy_amino::tx_decode_amino(input)),
         "amino_enc" => rust_amino(legacy_amino::tx_encode_amino(input).map(hex::encode)),
+        "text" => rust_text(app_version, input),
         _ => Out {
             err: format!("unknown op {op}"),
             ..Out::default()
@@ -362,6 +364,55 @@ fn rust_eds(app_version: u64, input: &[u8]) -> Out {
     }
 }
 
+/// `text`: gogoproto's compact text of the message in the encoded `Any`
+/// `input` (`x_ante::gogotext`), as hex.
+fn rust_text(app_version: u64, input: &[u8]) -> Out {
+    use prost::Message as _;
+    let Ok(any) = celestia_proto::Any::decode(input) else {
+        return Out {
+            err: "input".into(),
+            ..Out::default()
+        };
+    };
+    match x_ante::gogotext::compact_text(&any.type_url, &any.value, app_version) {
+        Some(t) => Out {
+            ok: true,
+            out: hex::encode(t),
+            ..Out::default()
+        },
+        None => Out {
+            err: "not rendered".into(),
+            ..Out::default()
+        },
+    }
+}
+
+/// The messages of `tx` and every message nested in them (`MsgExec`, gov
+/// proposals) as encoded `Any`s: the `text` op's seeds.
+#[must_use]
+pub fn text_seeds(tx: &[u8]) -> Vec<Vec<u8>> {
+    use prost::Message as _;
+    let Ok(t) = txdecode::decode(tx).or_else(|_| txdecode::decode_v9(tx)) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut stack: Vec<celestia_proto::Any> = t.msgs().to_vec();
+    while let Some(a) = stack.pop() {
+        if let Some(fs) = mutate::parse(&a.value) {
+            for f in fs.iter().filter(|f| f.wt == 2) {
+                if let Ok(inner) = celestia_proto::Any::decode(f.val.as_slice())
+                    && inner.type_url.starts_with('/')
+                    && out.len() < 64
+                {
+                    stack.push(inner);
+                }
+            }
+        }
+        out.push(a.encode_to_vec());
+    }
+    out
+}
+
 fn rust_amino(r: Result<String, legacy_amino::Error>) -> Out {
     match r {
         Ok(s) => Out {
@@ -431,6 +482,16 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
             || go.blobs != rust.blobs
             || !go.panic.is_empty())
         .then(|| format!("fibre: go {go:?}\n  rust {rust:?}")),
+        "text" => (go.ok && (!rust.ok || go.out != rust.out)).then(|| {
+            let s =
+                |h: &str| String::from_utf8_lossy(&hex::decode(h).unwrap_or_default()).into_owned();
+            format!(
+                "text: go {:?}\n  rust {:?} {}",
+                s(&go.out),
+                s(&rust.out),
+                rust.err
+            )
+        }),
         "eds" => {
             if go.err.starts_with("input:") {
                 return None;

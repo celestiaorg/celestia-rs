@@ -153,10 +153,14 @@ pub fn default_param_filter(msg: &Any) -> Option<sdk::Result<()>> {
                     p.bond_denom
                 )));
             }
-            if duration_nanos(p.unbonding_time.as_ref())
-                != i128::from(UNBONDING_TIME_SECS) * 1_000_000_000
-            {
-                return Err(errs::unauthorized("invalid unbonding time"));
+            let want = i128::from(UNBONDING_TIME_SECS) * 1_000_000_000;
+            let got = duration_nanos(p.unbonding_time.as_ref());
+            if got != want {
+                return Err(errs::unauthorized(format!(
+                    "invalid unbonding time: expected {}, got {}",
+                    sdk::time::go_duration_string(want),
+                    sdk::time::go_duration_string(got)
+                )));
             }
             Ok(())
         })());

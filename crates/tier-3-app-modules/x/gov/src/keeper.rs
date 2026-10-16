@@ -46,7 +46,7 @@ pub fn get_proposal(ctx: &mut Context<'_>, id: u64) -> Result<Option<Proposal>> 
 pub fn must_get_proposal(ctx: &mut Context<'_>, id: u64) -> Result<Proposal> {
     get_proposal(ctx, id)?.ok_or_else(|| {
         undefined(format!(
-            "collections: not found: key '{id}' of type cosmos.gov.v1.Proposal"
+            "collections: not found: key '{id}' of type github.com/cosmos/gogoproto/cosmos.gov.v1.Proposal"
         ))
     })
 }
@@ -562,17 +562,19 @@ pub fn vote_option_name(o: i32) -> String {
         .map_or_else(|_| o.to_string(), |v| v.as_str_name().to_owned())
 }
 
-/// `WeightedVoteOption.String()` (gogoproto `CompactTextString`).
+/// `WeightedVoteOption.String()` (gogoproto `CompactTextString`: each
+/// field followed by a space).
 #[must_use]
 pub fn weighted_option_string(o: &WeightedVoteOption) -> String {
-    let mut parts = Vec::new();
+    use std::fmt::Write as _;
+    let mut s = String::new();
     if o.option != 0 {
-        parts.push(format!("option:{}", vote_option_name(o.option)));
+        let _ = write!(s, "option:{} ", vote_option_name(o.option));
     }
     if !o.weight.is_empty() {
-        parts.push(format!("weight:{:?}", o.weight));
+        let _ = write!(s, "weight:{:?} ", o.weight);
     }
-    parts.join(" ")
+    s
 }
 
 /// `WeightedVoteOptions.String()`: `json.Marshal` of the options.

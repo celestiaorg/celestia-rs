@@ -131,6 +131,12 @@ fn emit<T: prost::Name + serde::Serialize>(ctx: &mut Context<'_>, ev: &T) -> Res
 // ---- ValidateBasic ----
 
 fn validate_coin_positive(c: Option<&PbCoin>) -> Result<()> {
+    // A nil amount fails `IsValid`; `Coin.String()` prints it `<nil>`.
+    if c.is_none_or(|c| c.amount.is_empty()) {
+        return Err(errs::invalid_coins(sdk::coins::raw_coins_string(&[c
+            .cloned()
+            .unwrap_or_default()])));
+    }
     let c = coin(c)?;
     if !c.is_valid() {
         return Err(errs::invalid_coins(c.to_string()));
@@ -250,41 +256,36 @@ fn dur(d: Option<&pbjson_types::Duration>) -> i128 {
     d.map_or(0, duration_nanos)
 }
 
-fn go_duration(n: i128) -> String {
-    // Enough for error logs (not consensus-relevant).
-    format!("{}.{:09}s", n / 1_000_000_000, (n % 1_000_000_000).abs())
-}
-
 /// `Params.Validate`.
 pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
     let wd = dur(p.withdrawal_delay.as_ref());
     if wd < MIN_WITHDRAWAL_DELAY {
         return Err(format!(
             "withdrawal delay must be at least {}: {}",
-            go_duration(MIN_WITHDRAWAL_DELAY),
-            go_duration(wd)
+            sdk::time::go_duration_string(MIN_WITHDRAWAL_DELAY),
+            sdk::time::go_duration_string(wd)
         ));
     }
     if wd > MAX_WITHDRAWAL_DELAY {
         return Err(format!(
             "withdrawal delay must be at most {}: {}",
-            go_duration(MAX_WITHDRAWAL_DELAY),
-            go_duration(wd)
+            sdk::time::go_duration_string(MAX_WITHDRAWAL_DELAY),
+            sdk::time::go_duration_string(wd)
         ));
     }
     let t = dur(p.payment_promise_timeout.as_ref());
     if t < MIN_PAYMENT_PROMISE_TIMEOUT {
         return Err(format!(
             "payment promise timeout must be at least {}: {}",
-            go_duration(MIN_PAYMENT_PROMISE_TIMEOUT),
-            go_duration(t)
+            sdk::time::go_duration_string(MIN_PAYMENT_PROMISE_TIMEOUT),
+            sdk::time::go_duration_string(t)
         ));
     }
     if t > MAX_PAYMENT_PROMISE_TIMEOUT {
         return Err(format!(
             "payment promise timeout must be at most {}: {}",
-            go_duration(MAX_PAYMENT_PROMISE_TIMEOUT),
-            go_duration(t)
+            sdk::time::go_duration_string(MAX_PAYMENT_PROMISE_TIMEOUT),
+            sdk::time::go_duration_string(t)
         ));
     }
     if p.payment_promise_height_window == 0 {
@@ -294,15 +295,15 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
     if r < MIN_SHARD_RETENTION {
         return Err(format!(
             "shard retention must be at least {}: {}",
-            go_duration(MIN_SHARD_RETENTION),
-            go_duration(r)
+            sdk::time::go_duration_string(MIN_SHARD_RETENTION),
+            sdk::time::go_duration_string(r)
         ));
     }
     if r > MAX_SHARD_RETENTION {
         return Err(format!(
             "shard retention must be at most {}: {}",
-            go_duration(MAX_SHARD_RETENTION),
-            go_duration(r)
+            sdk::time::go_duration_string(MAX_SHARD_RETENTION),
+            sdk::time::go_duration_string(r)
         ));
     }
     if p.full_stake_storage_budget == 0 {
@@ -348,25 +349,27 @@ pub fn validate_payment_promise_stateful_internal(
     if !after(&creation, &min_allowed) {
         return Ok(Err(format!(
             "creation_timestamp {} is too old; it must be after the freshness cutoff {}",
-            sdk::time::format_rfc3339_nano(&creation),
-            sdk::time::format_rfc3339_nano(&min_allowed)
+            sdk::time::go_time_string(&creation),
+            sdk::time::go_time_string(&min_allowed)
         )));
     }
     let max_allowed = add(&now, MAX_PROMISE_CLOCK_SKEW_NANOS);
     if after(&creation, &max_allowed) {
         return Ok(Err(format!(
             "creation_timestamp {} must not be after {} (current_time + max_clock_skew)",
-            sdk::time::format_rfc3339_nano(&creation),
-            sdk::time::format_rfc3339_nano(&max_allowed)
+            sdk::time::go_time_string(&creation),
+            sdk::time::go_time_string(&max_allowed)
         )));
     }
     let expiration = add(&creation, dur(params.payment_promise_timeout.as_ref()));
     if !is_timeout {
         if !before(&now, &expiration) {
             return Ok(Err(format!(
-                "payment promise expired: expiration {}, current_time: {}",
-                sdk::time::format_rfc3339_nano(&expiration),
-                sdk::time::format_rfc3339_nano(&now)
+                "payment promise expired: creation_timestamp {} + timeout {} = {}, current_time: {}",
+                sdk::time::go_time_string(&creation),
+                sdk::time::go_duration_string(dur(params.payment_promise_timeout.as_ref())),
+                sdk::time::go_time_string(&expiration),
+                sdk::time::go_time_string(&now)
             )));
         }
         let height = ctx.header.height;
@@ -583,7 +586,7 @@ pub fn request_withdrawal(
         return Err(errs::invalid_request(format!(
             "withdrawal request already exists for signer {} at timestamp {}",
             m.signer,
-            sdk::time::format_rfc3339_nano(&requested)
+            sdk::time::go_time_string(&requested)
         )));
     }
     let available_at = add(&requested, dur(params.withdrawal_delay.as_ref()));
@@ -658,8 +661,8 @@ pub fn payment_promise_timeout(
     if before(&now, &expiration) {
         return Err(errs::invalid_request(format!(
             "payment promise has not yet timed out. Timeout at: {}, current time: {}",
-            sdk::time::format_rfc3339_nano(&expiration),
-            sdk::time::format_rfc3339_nano(&now)
+            sdk::time::go_time_string(&expiration),
+            sdk::time::go_time_string(&now)
         )));
     }
     let amount = payment_amount(p.blob_size);

@@ -111,7 +111,17 @@ pub fn end_block(ctx: &mut Context<'_>, router: &dyn MsgRouter) -> Result<()> {
             let cp = ctx.branch();
             let mut failure = None;
             for (idx, msg) in proposal.messages.iter().enumerate() {
-                if let Err(e) = router.handle(ctx, msg) {
+                if let Err(mut e) = router.handle(ctx, msg) {
+                    // safeExecuteHandler: a recovered panic becomes
+                    // `fmt.Errorf("handling x/gov proposal msg [%s]
+                    // PANICKED: %v", msg, r)`.
+                    if e.is_panic() {
+                        e.log = format!(
+                            "handling x/gov proposal msg [{}] PANICKED: {}",
+                            router.msg_text(msg),
+                            e.log
+                        );
+                    }
                     failure = Some((idx, msg.type_url.clone(), e));
                     break;
                 }

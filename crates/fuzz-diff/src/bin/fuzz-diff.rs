@@ -305,6 +305,15 @@ fn main() -> anyhow::Result<()> {
                 .filter(|(av, _)| (*av < 10) == (a.app_version < 10))
                 .map(|x| x.1)
                 .collect(),
+            "text" => {
+                let mut v: Vec<Vec<u8>> = tx_seeds
+                    .iter()
+                    .flat_map(|t| fuzz_diff::text_seeds(t))
+                    .collect();
+                v.sort();
+                v.dedup();
+                v
+            }
             _ => tx_seeds.clone(),
         }
     };

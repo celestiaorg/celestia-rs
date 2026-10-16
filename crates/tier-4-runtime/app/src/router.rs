@@ -165,6 +165,11 @@ impl sdk::router::MsgRouter for AppRouter {
     fn handle(&self, ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         route(ctx, msg)
     }
+
+    fn msg_text(&self, msg: &Any) -> String {
+        x_ante::gogotext::compact_text(&msg.type_url, &msg.value, sdk::version::app_version())
+            .unwrap_or_else(|| msg.type_url.clone())
+    }
 }
 
 fn handle_submit_proposal(

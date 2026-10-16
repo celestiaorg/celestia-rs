@@ -17,6 +17,7 @@ gostr = { path = "../../../tier-0-primitives/gostr" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 crypto = { path = "../../../tier-0-primitives/crypto" }
 hash = { path = "../../../tier-0-primitives/hash" }
+hex = "0.4"
 ics23 = "0.12"
 merkle = { path = "../../../tier-0-primitives/merkle" }
 pbjson-types = "0.7"
@@ -27,6 +28,3 @@ x-ante = { path = "../ante" }
 x-auth = { path = "../auth" }
 x-capability = { path = "../capability" }
 x-upgrade = { path = "../upgrade" }
-
-[dev-dependencies]
-hex = "0.4"

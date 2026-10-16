@@ -1212,6 +1212,7 @@ dependencies = [
  "celestia-proto",
  "encoding",
  "flate2",
+ "gostr",
  "grpc-query",
  "hash",
  "hex",
@@ -4461,6 +4462,7 @@ dependencies = [
  "pbjson-types",
  "prost",
  "sdk",
+ "x-ante",
 ]
 
 [[package]]

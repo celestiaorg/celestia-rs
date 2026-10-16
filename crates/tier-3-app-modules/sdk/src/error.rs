@@ -26,8 +26,20 @@ impl SdkError {
     /// Returns a copy with `msg: ` prepended to the log (`errors.Wrap`).
     #[must_use]
     pub fn wrap(mut self, msg: impl AsRef<str>) -> Self {
+        // A Go panic unwinds past every `errorsmod.Wrap` up to the
+        // `recover` (runTx, gov's `safeExecuteHandler`): its value stays
+        // as raised.
+        if self.is_panic() {
+            return self;
+        }
         self.log = format!("{}: {}", msg.as_ref(), self.log);
         self
+    }
+
+    /// Whether this is a recovered Go panic ([`go_panic`]).
+    #[must_use]
+    pub fn is_panic(&self) -> bool {
+        self.codespace == "undefined" && self.code == 111_222
     }
 }
 

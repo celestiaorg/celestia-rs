@@ -22,6 +22,10 @@ fn main() -> anyhow::Result<()> {
     println!("errors: {:?}", r.errors);
     println!("init_chain diffs: {:?}", r.init_chain_diffs);
     println!("compared: {:?}", r.compared);
+    println!("event / log diffs: {}", r.event_log_diffs.len());
+    for d in r.event_log_diffs.iter().take(10) {
+        println!("  {d}");
+    }
     println!(
         "matching stores ({}): {:?}",
         r.matching_stores.len(),

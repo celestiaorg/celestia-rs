@@ -320,6 +320,69 @@ fn compare_check_tx(
     }
 }
 
+/// `type{k=v (index), ..}` of an event, with bytes in Go-quoted form.
+fn event_text(e: &abci::Event) -> String {
+    let attrs: Vec<String> = e
+        .attributes
+        .iter()
+        .map(|a| {
+            format!(
+                "{}=\"{}\"{}",
+                gostr::to_go_bytes(&a.key).escape_ascii(),
+                gostr::to_go_bytes(&a.value).escape_ascii(),
+                if a.index { "" } else { " (noindex)" }
+            )
+        })
+        .collect();
+    format!("{}{{{}}}", e.r#type, attrs.join(", "))
+}
+
+/// The first difference between the logs / events of two `FinalizeBlock`
+/// responses, readable.
+fn event_log_diff(
+    height: i64,
+    ours: &abci::ResponseFinalizeBlock,
+    go: &abci::ResponseFinalizeBlock,
+) -> String {
+    let events = |what: &str, o: &[abci::Event], g: &[abci::Event]| -> Option<String> {
+        if o == g {
+            return None;
+        }
+        let i = (0..o.len().max(g.len()))
+            .find(|&i| o.get(i) != g.get(i))
+            .unwrap_or_default();
+        Some(format!(
+            "{what} event {i} (go {} / rust {}):\n    go:   {}\n    rust: {}",
+            g.len(),
+            o.len(),
+            g.get(i).map_or_else(|| "-".into(), event_text),
+            o.get(i).map_or_else(|| "-".into(), event_text)
+        ))
+    };
+    for (i, (o, g)) in ours.tx_results.iter().zip(&go.tx_results).enumerate() {
+        if o.log != g.log {
+            return format!(
+                "FinalizeBlock h={height}: tx {i} log:\n    go:   {}\n    rust: {}",
+                gostr::to_go_bytes(&g.log).escape_ascii(),
+                gostr::to_go_bytes(&o.log).escape_ascii()
+            );
+        }
+        if o.info != g.info {
+            return format!(
+                "FinalizeBlock h={height}: tx {i} info: go={:?} rust={:?}",
+                g.info, o.info
+            );
+        }
+        if let Some(d) = events(&format!("tx {i}"), &o.events, &g.events) {
+            return format!("FinalizeBlock h={height}: {d}");
+        }
+    }
+    events("block", &ours.events, &go.events).map_or_else(
+        || format!("FinalizeBlock h={height}: differ"),
+        |d| format!("FinalizeBlock h={height}: {d}"),
+    )
+}
+
 fn compare_finalize(
     app: &mut App,
     r: abci::RequestFinalizeBlock,
@@ -368,12 +431,9 @@ fn compare_finalize(
             };
             let (fo, fg) = (full(&ours), full(go));
             if fo != fg {
-                let i = fo.0.iter().zip(&fg.0).position(|(a, b)| a != b);
-                report.event_log_diffs.push(format!(
-                    "FinalizeBlock h={height}: tx {i:?}: go={:?} rust={:?}",
-                    i.map(|i| &fg.0[i]),
-                    i.map(|i| &fo.0[i])
-                ));
+                report
+                    .event_log_diffs
+                    .push(event_log_diff(height, &ours, go));
             }
             if ours.validator_updates != go.validator_updates {
                 report.errors.push(format!(

@@ -160,6 +160,7 @@ pub fn validate_update(cur: &ConsensusParams, upd_abci: Option<i64>, h: i64) -> 
 }
 
 /// `MsgUpdateParams` (x/consensus keeper `UpdateParams`).
+#[allow(clippy::too_many_lines)]
 pub fn handle_update_params(
     ctx: &mut Context<'_>,
     msg: &celestia_proto::cosmos::consensus::v1::MsgUpdateParams,
@@ -238,9 +239,39 @@ pub fn handle_update_params(
         ctx.height(),
     )?;
     set_params(ctx, &next)?;
+    // `consensusParams.String()` of `msg.ToProtoConsensusParams()`: the
+    // message's params with the default version params (app 0) and abci
+    // only when given, in gogoproto's compact text form.
+    let requested = ConsensusParams {
+        block: Some(BlockParams {
+            max_bytes: block.max_bytes,
+            max_gas: block.max_gas,
+        }),
+        evidence: Some(EvidenceParams {
+            max_age_num_blocks: evidence.max_age_num_blocks,
+            max_age_duration: Some(evidence.max_age_duration.unwrap_or_default()),
+            max_bytes: evidence.max_bytes,
+        }),
+        validator: Some(ValidatorParams {
+            pub_key_types: validator.pub_key_types.clone(),
+        }),
+        version: Some(VersionParams::default()),
+        abci: msg.abci.as_ref().map(|a| AbciParams {
+            vote_extensions_enable_height: a.vote_extensions_enable_height,
+        }),
+    };
+    let parameters = x_ante::gogotext::compact_text(
+        "/tendermint.types.ConsensusParams",
+        &prost::Message::encode_to_vec(&requested),
+        app_version,
+    )
+    .unwrap_or_default();
     ctx.events.emit(sdk::event::event(
         "update_consensus_params",
-        [("authority", msg.authority.clone())],
+        [
+            ("authority", msg.authority.clone()),
+            ("parameters", parameters),
+        ],
     ));
     Ok(celestia_proto::cosmos::consensus::v1::MsgUpdateParamsResponse {})
 }

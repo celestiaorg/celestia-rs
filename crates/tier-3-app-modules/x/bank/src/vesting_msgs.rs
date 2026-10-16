@@ -24,7 +24,7 @@ pub fn handle_create_vesting_account(
         .map_err(|e| errs::invalid_address(format!("invalid 'to' address: {}", e.log)))?;
     let amount = Coins::from_proto(&msg.amount)?;
     if !amount.is_valid() || amount.is_empty() {
-        return Err(errs::invalid_coins(amount.to_string()));
+        return Err(errs::invalid_coins("").wrap(amount.to_string()));
     }
     if msg.start_time <= 0 {
         return Err(errs::invalid_request("invalid start time"));

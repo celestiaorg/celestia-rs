@@ -27,6 +27,7 @@ celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 prost = "0.13"
 encoding = { path = "../tier-0-primitives/encoding" }
 hash = { path = "../tier-0-primitives/hash" }
+gostr = { path = "../tier-0-primitives/gostr" }
 
 [dev-dependencies]
 snapshots = { path = "../tier-2-state-and-store/snapshots" }

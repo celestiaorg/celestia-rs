@@ -14,6 +14,7 @@
 //	anysigners codec.GetMsgAnySigners on an encoded Any
 //	utf8schema strings dynamicpb validates as UTF-8 in GetSigners decoding
 //	v2types   type URLs and whether protoregistry.GlobalTypes resolves them (GetSigners decoding)
+//	text      fmt.Sprintf("%v", msg) of an encoded Any unpacked by the registry (hex)
 //	fibre     x/fibre/types.TryParseFibreTx (v9: go-square rc4 tx.TryParseFibreTx)
 //	eds       da.ConstructEDS(txs, appVersion, max) + NewDataAvailabilityHeader;
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
@@ -358,6 +359,8 @@ func main() {
 			o = utf8Schema(enc.InterfaceRegistry)
 		case op == "v2types":
 			o = v2types(enc.InterfaceRegistry)
+		case op == "text":
+			o = msgText(enc.InterfaceRegistry, input)
 		case op == "fibre":
 			o = tryParseFibreTx(input)
 		case op == "eds":

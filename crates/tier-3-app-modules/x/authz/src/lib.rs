@@ -356,7 +356,7 @@ pub fn dispatch_actions(
         let resp = router.handle(ctx, msg).map_err(|e| {
             e.wrap(format!(
                 "failed to execute message; message {}",
-                msg.type_url
+                router.msg_text(msg)
             ))
         })?;
         ctx.events

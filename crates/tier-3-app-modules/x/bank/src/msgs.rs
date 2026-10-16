@@ -82,7 +82,7 @@ pub fn handle_send(ctx: &mut Context<'_>, msg: &MsgSend) -> Result<MsgSendRespon
     let to = parse_addr(&msg.to_address, "to")?;
     let amount = Coins::from_proto(&msg.amount)?;
     if !amount.is_valid() || !all_positive(&amount) {
-        return Err(errs::invalid_coins(amount.to_string()));
+        return Err(errs::invalid_coins("").wrap(amount.to_string()));
     }
     is_send_enabled_coins(ctx, &amount)?;
     if is_blocked(&to) {
@@ -99,7 +99,7 @@ fn validate_input(i: &Input) -> Result<Coins> {
     x_auth::parse_bech32(&i.address)?;
     let c = Coins::from_proto(&i.coins)?;
     if !c.is_valid() || !all_positive(&c) {
-        return Err(errs::invalid_coins(c.to_string()));
+        return Err(errs::invalid_coins("").wrap(c.to_string()));
     }
     Ok(c)
 }
@@ -108,7 +108,7 @@ fn validate_output(o: &Output) -> Result<Coins> {
     x_auth::parse_bech32(&o.address)?;
     let c = Coins::from_proto(&o.coins)?;
     if !c.is_valid() || !all_positive(&c) {
-        return Err(errs::invalid_coins(c.to_string()));
+        return Err(errs::invalid_coins("").wrap(c.to_string()));
     }
     Ok(c)
 }

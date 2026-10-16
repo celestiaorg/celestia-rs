@@ -581,6 +581,12 @@ pub fn validate_msg_transfer(msg: &MsgTransfer) -> Result<()> {
     x_ibc::host::channel_identifier_validator(&msg.source_channel)
         .map_err(|e| e.wrap("invalid source channel ID"))?;
     let t = msg.token.clone().unwrap_or_default();
+    if t.amount.is_empty() {
+        // A nil amount fails `IsValid`; `Coin.String()` prints `<nil>`.
+        return Err(ierr::invalid_coins(sdk::coins::raw_coins_string(
+            std::slice::from_ref(&t),
+        )));
+    }
     let token = Coin::from_proto(&t)
         .map_err(|_| ierr::invalid_coins(format!("{}{}", t.amount, t.denom)))?;
     if !token.is_valid() {
