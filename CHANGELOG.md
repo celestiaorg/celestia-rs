@@ -42,6 +42,19 @@
 
 ### Fixed
 
+- `version --long` prints the git `commit:` (`-dirty` for a modified
+  work tree; `CELESTIA_RS_GIT_COMMIT` for builds outside a checkout,
+  else `unknown`) and the `build_profile:`, and no longer prints the bare
+  version line first (Go prints only the long form). #45
+- `config set` reports an unknown key as `key "…" not found` instead of
+  `"…" is a table, not a value`, and suggests the fully qualified key
+  when the name exists in a section (`did you mean
+  state-sync.snapshot-interval?`). #46
+- Added `query slashing signing-infos` (all validators' signing infos,
+  first page as Go's default). #47
+- The conformance and benchmark scripts edit files with `sed -i.bak` (and
+  remove the backup) instead of GNU-only `sed -i`, so they run with BSD
+  sed on macOS. #48
 - `tx … --generate-only --from <celestia1…>` no longer opens the keyring
   (Go's `GetFromFields`): a `file` keyring asks no passphrase and works
   without a TTY. `--gas auto` with an address `--from` fails like Go

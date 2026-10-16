@@ -719,6 +719,14 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             &slashing::v1beta1::QuerySigningInfoResponse::full_name(),
             height,
         ),
+        ["slashing", "signing-infos", ..] => query(
+            home,
+            node,
+            "/cosmos.slashing.v1beta1.Query/SigningInfos",
+            &slashing::v1beta1::QuerySigningInfosRequest::default(),
+            &slashing::v1beta1::QuerySigningInfosResponse::full_name(),
+            height,
+        ),
         ["slashing", "params", ..] => query(
             home,
             node,
@@ -748,7 +756,7 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             Ok(v)
         }
         _ => bail!(
-            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, slashing signing-info <valcons>|params, tx <hash>, block [height]",
+            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, slashing signing-info <valcons>|signing-infos|params, tx <hash>, block [height]",
             args.join(" ")
         ),
     }
