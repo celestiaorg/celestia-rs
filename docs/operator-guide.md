@@ -285,6 +285,31 @@ reboots unannounced; reboot deliberately with the node stopped. Keep "Set
 time and date automatically" on: consensus uses wall-clock timestamps
 (`sntp time.apple.com` prints the offset).
 
+#### Restarts and upgrades without a password (optional)
+
+So that upgrades and restarts need no password (for an operator script
+or an agent on the Mac), keep the LaunchDaemon but run a binary you own
+and allow exactly the four `launchctl` commands for this job
+(`packaging/macos/celestia-rs.sudoers`; one-time `sudo`):
+
+```sh
+mkdir -p ~/.celestia-rs/bin && install -m 755 target/dist/celestia-rs ~/.celestia-rs/bin/celestia-rs
+sed -e "s|__USER__|$(id -un)|g" -e "s|__NODE_HOME__|$NODE_HOME|g" \
+    -e "s|<string>/usr/local/bin/celestia-rs</string>|<string>$HOME/.celestia-rs/bin/celestia-rs</string>|" \
+  packaging/macos/org.celestia.celestia-rs.plist > /tmp/org.celestia.celestia-rs.plist
+sudo install -m 644 -o root -g wheel /tmp/org.celestia.celestia-rs.plist /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+sed "s|__USER__|$(id -un)|g" packaging/macos/celestia-rs.sudoers > /tmp/celestia-rs.sudoers
+sudo visudo -cf /tmp/celestia-rs.sudoers && \
+  sudo install -m 440 -o root -g wheel /tmp/celestia-rs.sudoers /etc/sudoers.d/celestia-rs
+sudo ln -sf ~/.celestia-rs/bin/celestia-rs /usr/local/bin/celestia-rs   # the CLI = the node's binary
+```
+
+Afterwards an upgrade is `install -m 755 <new> ~/.celestia-rs/bin/celestia-rs`
+followed by `sudo -n launchctl bootout …` / `sudo -n launchctl bootstrap …`
+(no prompt). The daemon already runs as your user, so a user-owned binary
+adds no privilege; it does let anything running as you restart the node.
+Verified on the Mocha validator 2026-10-16.
+
 ### Linux: systemd
 
 `packaging/linux/celestia-rs.service`: user `celestia`, home
@@ -872,7 +897,10 @@ later, was a known bug in builds before the fix for it (2026-10-15): the
 old process signed its delayed precommit after SIGTERM (Go aborts that
 wait on shutdown), so the restarted node's nil precommit at that height
 conflicted. The guard refused correctly; it cost 3 missed blocks on Mocha
-at height 1,721,185. Builds with the fix stop without signing.
+at height 1,721,185. Builds with the fix stop without signing: a SIGTERM
+timed 0.37 s into the precommit wait at height 1,722,751 left the sign
+state at the prevote, the node stopped in 66 ms, and after the restart
+there was no refusal and only that one height was missed.
 
 ### 11.12 Network upgrades (`halt-height`, `upgrade-info.json`)
 
