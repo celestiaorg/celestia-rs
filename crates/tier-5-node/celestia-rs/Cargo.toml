@@ -74,5 +74,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tikv-jemallocator = { version = "0.7", optional = true, features = ["unprefixed_malloc_on_supported_platforms"] }
 tikv-jemalloc-ctl = { version = "0.7", optional = true, features = ["stats"] }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", features = ["termios"] }
+
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix = { version = "1.1", features = ["termios", "pty"] }
