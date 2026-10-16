@@ -328,6 +328,11 @@ fn main() -> anyhow::Result<()> {
     }
     let seeds_for = |op: &str| -> Vec<Vec<u8>> {
         match op {
+            "aminosign" => {
+                let mut v = fuzz_diff::deliver::amino_sign_seeds(a.app_version, a.seed, 4000);
+                v.extend(tx_seeds.iter().cloned());
+                v
+            }
             op if op.starts_with("json_") => fuzz_diff::jsonops::seeds(op),
             "amino_dec" => amino
                 .iter()

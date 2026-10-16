@@ -143,6 +143,71 @@ fn trunc(s: &str) -> String {
     String::from_utf8_lossy(&b[..b.len().min(TRUNC)]).into_owned()
 }
 
+/// `aminosign`: the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes of every
+/// signer info (chain id `c`, account number 7), `err` where the handler
+/// fails; a panic of `GetSigningTxData` in [`Out::panic`].
+fn rust_aminosign(app_version: u64, input: &[u8]) -> Out {
+    // The encoder's v9 amino names follow the executing app version.
+    sdk::version::set_app_version(app_version);
+    let tx = match txdecode::decode_for(app_version, input) {
+        Ok(t) => t,
+        Err(e) => {
+            return Out {
+                err: format!("decode: {}", e.log),
+                ..Out::default()
+            };
+        }
+    };
+    let signers = match x_ante::txview::signers(&tx) {
+        Ok(s) => s,
+        Err(e) => {
+            return Out {
+                err: format!("signers: {}", e.log),
+                ..Out::default()
+            };
+        }
+    };
+    if let Err(e) = x_ante::signing::check_signing_tx_data(&tx) {
+        return Out {
+            panic: match e {
+                x_ante::Fail::Panic(m) => m,
+                x_ante::Fail::Err(e) | x_ante::Fail::ZeroCtx(e) => e.log,
+            },
+            ..Out::default()
+        };
+    }
+    let outs: Vec<String> = tx
+        .auth_info
+        .signer_infos
+        .iter()
+        .enumerate()
+        .map(|(i, si)| {
+            let sd = x_ante::signing::SignerData {
+                address: signers
+                    .get(i)
+                    .map(|s| sdk::address::to_bech32(sdk::address::ACC_PREFIX, s))
+                    .unwrap_or_default(),
+                chain_id: "c".into(),
+                account_number: 7,
+                // `GetSignaturesV2`: no mode info, sequence 0.
+                sequence: if si.mode_info.is_some() {
+                    si.sequence
+                } else {
+                    0
+                },
+                pub_key: celestia_proto::Any::default(),
+            };
+            x_ante::aminojson::sign_bytes(&sd, &tx)
+                .map_or_else(|e| format!("err:{}", hex::encode(e)), hex::encode)
+        })
+        .collect();
+    Out {
+        ok: true,
+        out: outs.join(","),
+        ..Out::default()
+    }
+}
+
 /// The Rust outcome of `op` on `input` at `app_version`. A Rust panic is
 /// reported in [`Out::panic`] with a `rust panic:` prefix (Go never reports
 /// that), so it always shows up as a difference.
@@ -153,6 +218,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
         "blobtx" => rust_blob_tx(app_version, input),
         "iw" => rust_iw(input),
         "fibre" => rust_fibre(app_version, input),
+        "aminosign" => rust_aminosign(app_version, input),
         "eds" => rust_eds(app_version, input),
         "amino_dec" => rust_amino(legacy_amino::tx_decode_amino_in(
             legacy_amino::Schema::for_app_version(app_version),
@@ -505,6 +571,74 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
             )
         }),
         op if op.starts_with("json_") => jsonops::compare(op, go, rust),
+        "aminosign" => {
+            // Inputs the ante handler rejects before signature
+            // verification (signature count, mode infos).
+            if (go.err.starts_with("decode") && rust.err.starts_with("decode"))
+                || go.err.starts_with("signatures:")
+                || go.panic.contains("index out of range")
+                || go.panic.contains("unexpected ModeInfo")
+                || (go.panic.contains("nil pointer") && rust.ok && rust.out.is_empty())
+                || (!go.panic.is_empty() && rust.err.starts_with("decode"))
+                // Fewer signers than signer infos (the ante handler's
+                // signature count check fails first).
+                || (go.panic.contains("nil pointer")
+                    && rust.out.contains(&hex::encode("got empty address")))
+                // A nil fee: GetSigningTxData dereferences it (the ante
+                // handler panicked on it long before).
+                || (go.panic.contains("nil pointer")
+                    && rust.out.split(',').all(|o| {
+                        o == format!("err:{}", hex::encode("fee cannot be nil when tipper is not signer"))
+                    }))
+            {
+                return None;
+            }
+            if go.ok && rust.ok && go.out != rust.out {
+                // The first differing signer: which side failed, or the
+                // text around the first differing byte.
+                let text = |h: &str| {
+                    String::from_utf8_lossy(&hex::decode(h).unwrap_or_default()).into_owned()
+                };
+                for (g, r) in go.out.split(',').zip(rust.out.split(',')) {
+                    let (ge, re) = (g.starts_with("err"), r.starts_with("err"));
+                    if g == r || (ge && re) {
+                        continue;
+                    }
+                    if ge || re {
+                        let why = text(if ge { g } else { r }.trim_start_matches("err:"));
+                        let ok = text(if ge { r } else { g });
+                        return Some(format!(
+                            "aminosign: {} fails ({why}): {}",
+                            if ge { "go" } else { "rust" },
+                            ok.chars().take(1500).collect::<String>()
+                        ));
+                    }
+                    let (g, r) = (text(g), text(r));
+                    let i = g
+                        .char_indices()
+                        .zip(r.chars())
+                        .find(|((_, a), b)| a != b)
+                        .map_or(g.len().min(r.len()), |((i, _), _)| i);
+                    let lo = g[..i].char_indices().rev().nth(60).map_or(0, |(k, _)| k);
+                    return Some(format!(
+                        "aminosign: sign bytes differ at ..{}|| go {:?} rust {:?}",
+                        &g[lo..i],
+                        g[i..].chars().take(40).collect::<String>(),
+                        r.get(i..)
+                            .unwrap_or("")
+                            .chars()
+                            .take(40)
+                            .collect::<String>()
+                    ));
+                }
+                return (go.out.split(',').count() != rust.out.split(',').count())
+                    .then(|| format!("aminosign: signer count go {} rust {}", go.out, rust.out));
+            }
+            (go.ok != rust.ok
+                || go.panic.is_empty() != rust.panic.is_empty()
+                || (go.ok && go.out != rust.out))
+                .then(|| format!("aminosign: go {go:?}\n  rust {rust:?}"))
+        }
         "eds" => {
             if go.err.starts_with("input:") {
                 return None;

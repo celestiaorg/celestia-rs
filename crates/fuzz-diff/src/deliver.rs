@@ -483,6 +483,8 @@ struct Gen {
     height: i64,
     /// The `sdk.Msg` types the decoder knows at `app_version`.
     types: Vec<MessageDescriptor>,
+    /// Sign every tx in `SIGN_MODE_LEGACY_AMINO_JSON` ([`amino_sign_seeds`]).
+    force_amino: bool,
 }
 
 /// A generated, signed tx.
@@ -1550,7 +1552,7 @@ impl Gen {
             }
             _ => {}
         }
-        let amino = self.m.rng.one_in(10);
+        let amino = self.force_amino || self.m.rng.one_in(10);
         let unsigned_tx = |body: &TxBody, signer_infos: Vec<SignerInfo>, fee: Fee, sigs: usize| {
             #[allow(deprecated)]
             let auth = AuthInfo {
@@ -2028,6 +2030,7 @@ pub fn run(
             .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
             .cloned()
             .collect(),
+        force_amino: false,
     };
     let mut ids = BTreeSet::new();
     for t in &pool_txs {
@@ -2636,6 +2639,54 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
     )
 }
 
+/// Generated txs signed in `SIGN_MODE_LEGACY_AMINO_JSON` (the
+/// `aminosign` oracle op's seeds): the delivery generator's messages
+/// (nested ones too) with values harvested from the devnet txs.
+#[must_use]
+pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
+    let mut g = Gen {
+        m: Mutator::new(seed),
+        dict: Dict::default(),
+        accts: accounts(1),
+        scenario_msgs: Vec::new(),
+        validators: Vec::new(),
+        proposals: vec![1, 2],
+        unbondings: Vec::new(),
+        hex_ids: Vec::new(),
+        chain_id: "c".into(),
+        app_version,
+        height: 10,
+        types: msg_types()
+            .iter()
+            .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
+            .cloned()
+            .collect(),
+        force_amino: true,
+    };
+    for t in crate::corpus::devnet_txs() {
+        g.m.harvest(&t);
+        let Ok(tx) = txdecode::decode_for(app_version, &t) else {
+            continue;
+        };
+        for a in &tx.body.messages {
+            if let Some(md) = desc_for_type_url(a.type_url.as_bytes()) {
+                g.dict.harvest(&md, &a.value, 0);
+                g.scenario_msgs.push(a.clone());
+            }
+        }
+    }
+    for (k, v) in &g.dict.strings {
+        if k.contains("validator") {
+            for x in v {
+                if x.starts_with(b"celestiavaloper1") {
+                    g.validators.push(String::from_utf8_lossy(x).into_owned());
+                }
+            }
+        }
+    }
+    (0..n).filter_map(|_| g.tx().map(|b| b.raw)).collect()
+}
+
 /// Whether `type_url` is in the tx decoder's registry at `app_version`.
 fn registered(app_version: u64, type_url: &str) -> bool {
     let body = TxBody {
@@ -2752,7 +2803,9 @@ mod tests {
             app_version: 10,
             height: 5,
             types: msg_types().to_vec(),
+            force_amino: false,
         };
+        assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);
         for md in msg_types() {
             let who = g.who(0);
