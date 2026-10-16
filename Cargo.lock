@@ -2069,6 +2069,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "leopard"
+version = "0.0.1"
+dependencies = [
+ "leopard-codec",
+ "proptest",
+]
+
+[[package]]
 name = "leopard-codec"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3508,7 +3516,7 @@ dependencies = [
  "encoding",
  "hash",
  "hex",
- "leopard-codec",
+ "leopard",
  "merkle",
  "prost",
  "reed-solomon-simd",

@@ -1,0 +1,44 @@
+[package]
+name = "leopard"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+# Derived from leopard-codec 0.2.0 (Apache-2.0); see src/lib.rs.
+license = "Apache-2.0"
+repository.workspace = true
+authors.workspace = true
+description = "Leopard Reed-Solomon over GF(2^8) (klauspost/reedsolomon's leopard8) with SIMD kernels, for celestia-rs."
+publish = false
+
+# The workspace lints, except that `unsafe_code` is `deny` instead of
+# `forbid`: the SIMD kernels (`src/kernel.rs`) need `core::arch` loads and
+# stores, and allow it there only.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+assert_is_empty = "allow"
+doc_markdown = "allow"
+needless_pass_by_value = "allow"
+unnecessary_wraps = "allow"
+
+[dependencies]
+
+[dev-dependencies]
+# The original scalar implementation: the codec must stay byte-identical.
+leopard-codec = "0.2"
+proptest = "1"

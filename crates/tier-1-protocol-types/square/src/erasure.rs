@@ -45,7 +45,8 @@ pub trait ErasureCodec: Send + Sync {
 const MAX_GF8_SHARDS: usize = 256;
 
 /// Leopard Reed-Solomon codec compatible with `rsmt2d`'s `LeoRSCodec`
-/// (klauspost/reedsolomon v1.14.2): GF(2^8) leopard (`leopard-codec`) for
+/// (klauspost/reedsolomon v1.14.2): GF(2^8) leopard (the in-repo `leopard`
+/// crate: leopard-codec with SIMD kernels) for
 /// rows of up to 256 shards (squares up to 128x128) and GF(2^16) leopard
 /// (`reed-solomon-simd`, byte-identical to klauspost's `leopardFF16`, as
 /// the propagation vectors check) for larger squares (v10 allows up to
@@ -117,7 +118,7 @@ impl ErasureCodec for LeoRsCodec {
         let mut shards = Vec::with_capacity(data_shards * 2);
         shards.extend(data.iter().cloned());
         shards.extend((0..data_shards).map(|_| vec![0; data[0].len()]));
-        leopard_codec::encode(&mut shards, data_shards).map_err(|error| Error::ErasureCodec {
+        leopard::encode(&mut shards, data_shards).map_err(|error| Error::ErasureCodec {
             codec: self.name(),
             message: error.to_string(),
         })?;
@@ -177,7 +178,7 @@ impl ErasureCodec for LeoRsCodec {
             dst.copy_from_slice(src);
         }
         let mut shards: Vec<&mut [u8]> = scratch.chunks_exact_mut(shard_size).collect();
-        leopard_codec::encode(&mut shards, data_shards).map_err(|e| err(e.to_string()))?;
+        leopard::encode(&mut shards, data_shards).map_err(|e| err(e.to_string()))?;
         for (dst, src) in parity.iter_mut().zip(&shards[data_shards..]) {
             copy_shard(src, dst)?;
         }
@@ -196,11 +197,9 @@ impl ErasureCodec for LeoRsCodec {
             .iter()
             .map(|shard| shard.clone().unwrap_or_default())
             .collect();
-        leopard_codec::reconstruct(&mut shards, data_shards).map_err(|error| {
-            Error::ErasureCodec {
-                codec: self.name(),
-                message: error.to_string(),
-            }
+        leopard::reconstruct(&mut shards, data_shards).map_err(|error| Error::ErasureCodec {
+            codec: self.name(),
+            message: error.to_string(),
         })?;
         for (slot, shard) in data.iter_mut().zip(shards.iter().cloned()) {
             *slot = Some(shard);
