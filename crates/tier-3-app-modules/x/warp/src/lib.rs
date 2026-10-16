@@ -469,6 +469,25 @@ pub struct TransferArgs {
     pub max_fee: Coin,
     /// Custom hook metadata.
     pub custom_hook_metadata: Vec<u8>,
+    /// Which `math.Int` arguments are nil in Go (a `MsgRemoteTransfer`
+    /// field left empty).
+    pub nil: TransferNils,
+}
+
+/// Nil `math.Int`s of a `MsgRemoteTransfer` (absent or empty
+/// non-nullable customtype fields).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TransferNils {
+    /// `Amount`: `sdk.NewCoin` panics (`amount is nil`).
+    pub amount: bool,
+    /// `GasLimit`: `IsZero` dereferences it.
+    pub gas_limit: bool,
+    /// `MaxFee.Amount`: `sdk.NewCoins` (`IsZero`) dereferences it.
+    pub max_fee: bool,
+}
+
+fn nil_deref() -> SdkError {
+    sdk::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
 }
 
 /// `Keeper.RemoteTransferCollateral` / `RemoteTransferSynthetic` (also used
@@ -480,6 +499,12 @@ pub fn remote_transfer(
     args: TransferArgs,
 ) -> Result<HexAddress> {
     let sender = acc_address_from_bech32(&args.sender).map_err(internal)?;
+    if args.nil.amount {
+        // `sdk.NewCoin`: `Coin.Validate` checks the denom, then the nil
+        // amount (both panics).
+        validate_denom(&token.origin_denom).map_err(panic_err)?;
+        return Err(panic_err("amount is nil"));
+    }
     let coins = single_coins(&token.origin_denom, &args.amount)?;
     deps.bank
         .send_coins_from_account_to_module(ctx, &sender, MODULE_NAME, &coins)?;
@@ -510,6 +535,9 @@ pub fn remote_transfer(
     } else {
         HexAddress::from_proto(&router.receiver_contract).map_err(internal)?
     };
+    if args.nil.gas_limit {
+        return Err(nil_deref());
+    }
     let gas = if args.gas_limit.is_zero() {
         router.gas.clone()
     } else {
@@ -528,6 +556,9 @@ pub fn remote_transfer(
             ("recipient", J::addr(&args.recipient)),
             ("amount", J::Str(coins.to_string())),
         ]));
+    if args.nil.max_fee {
+        return Err(nil_deref());
+    }
     let max_fee = Coins::new([args.max_fee])?;
     x_hyperlane::core::dispatch_message(
         ctx,
@@ -816,6 +847,7 @@ fn unpack<M: Message + Default>(any: &Any) -> Result<M> {
 impl Warp {
     /// Executes a warp message. Returns `None` if `any` is not a warp
     /// message, otherwise the packed response.
+    #[allow(clippy::too_many_lines)]
     pub fn handle_msg(
         &self,
         ctx: &mut Context<'_>,
@@ -902,6 +934,12 @@ impl Warp {
                     int(&m.gas_limit)?,
                 );
                 let max_fee = Coin::from_proto(&m.max_fee.clone().unwrap_or_default())?;
+                // Non-nullable customtypes the tx decoder left nil: empty.
+                let nil = TransferNils {
+                    amount: m.amount.is_empty(),
+                    gas_limit: m.gas_limit.is_empty(),
+                    max_fee: m.max_fee.as_ref().is_none_or(|c| c.amount.is_empty()),
+                };
                 let msg_id = remote_transfer_msg(ctx, deps, &id, &m.custom_hook_metadata, |md| {
                     TransferArgs {
                         sender: m.sender.clone(),
@@ -912,6 +950,7 @@ impl Warp {
                         gas_limit: gas,
                         max_fee,
                         custom_hook_metadata: md,
+                        nil,
                     }
                 })?;
                 Ok(Any::pack(&pb::MsgRemoteTransferResponse {

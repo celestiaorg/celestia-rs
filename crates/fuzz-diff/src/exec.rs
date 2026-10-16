@@ -217,6 +217,308 @@ fn mutate_strings(
     encode(&fs)
 }
 
+/// Whether the gogoproto customtype `ct` is a `cosmossdk.io/math` number
+/// (a nil `*big.Int` when its field is empty or absent).
+fn is_math(ct: &str) -> bool {
+    ct.ends_with("math.Int") || ct.ends_with("math.LegacyDec") || ct.ends_with("math.Uint")
+}
+
+/// Leaves math customtype fields of the message `b` (schema `desc`) nil in
+/// Go: dropped, or present with an empty value (a nullable customtype is
+/// then a non-nil pointer to a nil number); drops non-nullable message
+/// fields (their numbers stay nil). Recurses into nested messages and
+/// `Any`s.
+fn mutate_nils(
+    m: &mut Mutator,
+    desc: &MessageDescriptor,
+    b: &[u8],
+    depth: usize,
+    hit: &mut bool,
+) -> Vec<u8> {
+    let Some(fs) = parse_fields(b) else {
+        return b.to_vec();
+    };
+    if depth > 8 {
+        return b.to_vec();
+    }
+    let mut out = Vec::with_capacity(fs.len());
+    for mut f in fs {
+        let fd = u32::try_from(f.num).ok().and_then(|n| desc.get_field(n));
+        let Some(fd) = fd.filter(|_| f.wt == 2) else {
+            out.push(f);
+            continue;
+        };
+        let o = x_ante::gogotext::go_opts(&fd);
+        if o.customtype.as_deref().is_some_and(is_math) {
+            match m.rng.below(3) {
+                0 => {
+                    *hit = true;
+                    continue;
+                }
+                1 => {
+                    *hit = true;
+                    f.val.clear();
+                }
+                _ => {}
+            }
+            out.push(f);
+            continue;
+        }
+        match fd.kind() {
+            Kind::Message(md) if md.full_name() == "google.protobuf.Any" => {
+                if let Some(mut any) = parse_fields(&f.val) {
+                    let url = any.iter().find(|x| x.num == 1).map(|x| x.val.clone());
+                    if let Some(inner) = url.as_deref().and_then(desc_for_type_url) {
+                        for a in &mut any {
+                            if a.num == 2 && a.wt == 2 {
+                                a.val = mutate_nils(m, &inner, &a.val, depth + 1, hit);
+                            }
+                        }
+                    }
+                    f.val = encode(&any);
+                }
+            }
+            Kind::Message(md) => {
+                if !o.nullable && m.rng.one_in(6) {
+                    *hit = true;
+                    continue;
+                }
+                f.val = mutate_nils(m, &md, &f.val, depth + 1, hit);
+            }
+            _ => {}
+        }
+        out.push(f);
+    }
+    encode(&out)
+}
+
+/// Whether `md` reaches a math customtype field (through nested
+/// messages, not `Any`s) within `depth` levels.
+fn reaches_math(md: &MessageDescriptor, depth: usize) -> bool {
+    depth < 5
+        && md.fields().any(|f| {
+            x_ante::gogotext::go_opts(&f)
+                .customtype
+                .as_deref()
+                .is_some_and(is_math)
+                || matches!(f.kind(), Kind::Message(n)
+                    if n.full_name() != "google.protobuf.Any" && reaches_math(&n, depth + 1))
+        })
+}
+
+/// The `EXEC_MODE=synth` message types: every `sdk.Msg`
+/// (`cosmos.msg.v1.signer` option) with a math customtype field somewhere
+/// in it, or, with `EXEC_SYNTH=<substring>`, every `sdk.Msg` whose full
+/// name contains it.
+fn math_msg_types() -> &'static [MessageDescriptor] {
+    static T: std::sync::OnceLock<Vec<MessageDescriptor>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let p = pool();
+        let Some(ext) = p.get_extension_by_name("cosmos.msg.v1.signer") else {
+            return Vec::new();
+        };
+        let filter = std::env::var("EXEC_SYNTH").ok();
+        p.all_messages()
+            .filter(|md| {
+                md.options().has_extension(&ext)
+                    && filter
+                        .as_deref()
+                        .map_or_else(|| reaches_math(md, 0), |f| md.full_name().contains(f))
+            })
+            .collect()
+    })
+}
+
+/// The `cosmos_proto.scalar` of a field.
+fn scalar_of(f: &prost_reflect::FieldDescriptor) -> Option<String> {
+    let e = pool().get_extension_by_name("cosmos_proto.scalar")?;
+    let o = f.options();
+    if !o.has_extension(&e) {
+        return None;
+    }
+    match o.get_extension(&e).into_owned() {
+        prost_reflect::Value::String(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// The addresses a synthesized message uses: the tx's signer (account and
+/// validator forms), and the `0x` + 64 hex strings (hyperlane IDs) found
+/// in the scenario's txs.
+struct Who<'a> {
+    acc: String,
+    val: String,
+    hex_ids: &'a [String],
+}
+
+/// Every `0x` + 64 hex digits in `txs` (hyperlane `HexAddress` IDs).
+fn harvest_hex_ids(txs: &[Vec<u8>]) -> Vec<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for t in txs {
+        for w in t.windows(66) {
+            if w.starts_with(b"0x") && w[2..].iter().all(u8::is_ascii_hexdigit) {
+                out.insert(String::from_utf8_lossy(w).into_owned());
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// A math customtype value: absent (`None`), empty (nil in Go) or a
+/// number.
+fn math_value(m: &mut Mutator, ct: &str) -> Option<Vec<u8>> {
+    let dec = ct.ends_with("LegacyDec");
+    match m.rng.below(8) {
+        0 | 1 => None,
+        2 | 3 => Some(Vec::new()),
+        4 => Some(if dec {
+            b"1000000000000000000".to_vec()
+        } else {
+            b"1".to_vec()
+        }),
+        5 => Some(if dec {
+            b"500000000000000000".to_vec()
+        } else {
+            b"1000".to_vec()
+        }),
+        6 => Some(b"-1".to_vec()),
+        _ => Some(b"0".to_vec()),
+    }
+}
+
+/// A message of type `md` built from scratch: signer / address fields set
+/// to the signer, math customtypes absent, empty or small numbers, other
+/// fields plausible or absent (`EXEC_MODE=synth`).
+fn synth(m: &mut Mutator, md: &MessageDescriptor, who: &Who<'_>, depth: usize) -> Vec<u8> {
+    use crate::mutate::{Field, put_varint};
+    let mut out = Vec::new();
+    for f in md.fields() {
+        let num = u64::from(f.number());
+        let o = x_ante::gogotext::go_opts(&f);
+        let repeated = f.cardinality() == prost_reflect::Cardinality::Repeated;
+        let n = if repeated { 1 + m.rng.below(2) } else { 1 };
+        for _ in 0..n {
+            if let Some(ct) = o.customtype.as_deref().filter(|c| is_math(c)) {
+                if let Some(v) = math_value(m, ct) {
+                    out.push(Field { num, wt: 2, val: v });
+                }
+                continue;
+            }
+            if o.customtype
+                .as_deref()
+                .is_some_and(|c| c.ends_with("HexAddress"))
+            {
+                let v = if who.hex_ids.is_empty() || m.rng.one_in(8) {
+                    format!("0x{}", "00".repeat(32))
+                } else {
+                    who.hex_ids[m.rng.below(who.hex_ids.len())].clone()
+                };
+                out.push(Field {
+                    num,
+                    wt: 2,
+                    val: v.into_bytes(),
+                });
+                continue;
+            }
+            match f.kind() {
+                Kind::String => {
+                    let name = f.name();
+                    let v: Option<String> = match scalar_of(&f).as_deref() {
+                        Some("cosmos.ValidatorAddressString") => Some(who.val.clone()),
+                        Some("cosmos.AddressString") => Some(who.acc.clone()),
+                        _ if name.contains("denom") => Some("utia".into()),
+                        // Hyperlane multisig validators: one of a few
+                        // Ethereum addresses in random hex case.
+                        _ if name == "validators" => {
+                            let base = ["0a", "7f", "c3"][m.rng.below(3)].repeat(20);
+                            let hex: String = base
+                                .chars()
+                                .map(|c| {
+                                    if m.rng.one_in(2) {
+                                        c.to_ascii_uppercase()
+                                    } else {
+                                        c
+                                    }
+                                })
+                                .collect();
+                            Some(format!("0x{hex}"))
+                        }
+                        _ if name.contains("address") || name == "authority" => {
+                            Some(who.acc.clone())
+                        }
+                        _ => match m.rng.below(4) {
+                            0 => None,
+                            1 => Some("utia".into()),
+                            2 => Some(who.acc.clone()),
+                            _ => Some("a".into()),
+                        },
+                    };
+                    if let Some(v) = v {
+                        out.push(Field {
+                            num,
+                            wt: 2,
+                            val: v.into_bytes(),
+                        });
+                    }
+                }
+                Kind::Bytes => {
+                    if m.rng.one_in(2) {
+                        out.push(Field {
+                            num,
+                            wt: 2,
+                            val: vec![1u8; 32],
+                        });
+                    }
+                }
+                Kind::Bool
+                | Kind::Int32
+                | Kind::Int64
+                | Kind::Uint32
+                | Kind::Uint64
+                | Kind::Enum(_) => {
+                    let v = [0u64, 1, 2, 100, 1_000_000][m.rng.below(5)];
+                    if v != 0 || repeated {
+                        let mut b = Vec::new();
+                        put_varint(&mut b, v);
+                        out.push(Field { num, wt: 0, val: b });
+                    }
+                }
+                Kind::Message(n) if n.full_name() == "google.protobuf.Any" => {}
+                Kind::Message(n)
+                    if matches!(
+                        n.full_name(),
+                        "google.protobuf.Timestamp" | "google.protobuf.Duration"
+                    ) =>
+                {
+                    if m.rng.one_in(2) {
+                        let mut b = vec![8u8];
+                        put_varint(&mut b, 1 + m.rng.below(100_000) as u64);
+                        out.push(Field { num, wt: 2, val: b });
+                    }
+                }
+                Kind::Message(n) if depth < 4 && (!o.nullable || repeated || !m.rng.one_in(4)) => {
+                    let val = synth(m, &n, who, depth + 1);
+                    out.push(Field { num, wt: 2, val });
+                }
+                _ => {}
+            }
+        }
+    }
+    encode(&out)
+}
+
+/// The kind of mutation `fuzz-diff exec` applies (`EXEC_MODE`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Invalid UTF-8 in strings (default).
+    Strings,
+    /// Nil math customtypes (`EXEC_MODE=nil`).
+    Nil,
+    /// Messages with math customtypes built from scratch, signed by the
+    /// scenario tx's signer (`EXEC_MODE=synth`).
+    Synth,
+}
+
 /// A Go-form string of the bytes `b`.
 fn gs(b: &[u8]) -> String {
     gostr::from_go_bytes(b).into_owned()
@@ -230,6 +532,8 @@ fn variant(
     app_version: u64,
     raw: &[u8],
     hit: &mut bool,
+    mode: Mode,
+    hex_ids: &[String],
 ) -> Option<Vec<u8>> {
     let tx = txdecode::decode_for(app_version, raw).ok()?;
     if !tx.blobs.is_empty() || tx.body.messages.is_empty() {
@@ -243,13 +547,41 @@ fn variant(
     }
     let mut body = TxBody::decode(tx.body_bytes.as_slice()).ok()?;
     let first_signer = encoding::bech32::encode("celestia", signers.first()?).ok()?;
-    // String mutations of the messages (nested ones too).
-    for any in &mut body.messages {
-        if let Some(d) = desc_for_type_url(any.type_url.as_bytes()) {
-            any.value = mutate_strings(m, &d, &any.value, 0, hit);
+    if mode == Mode::Synth {
+        let types = math_msg_types();
+        if signers.len() != 1 || types.is_empty() {
+            return None;
+        }
+        let md = &types[m.rng.below(types.len())];
+        let who = Who {
+            acc: first_signer.clone(),
+            val: encoding::bech32::encode("celestiavaloper", &signers[0]).ok()?,
+            hex_ids,
+        };
+        body.messages = vec![Any {
+            type_url: format!("/{}", md.full_name()),
+            value: synth(m, md, &who, 0),
+        }];
+        *hit = true;
+    } else if mode == Mode::Nil {
+        let mut nil = false;
+        for any in &mut body.messages {
+            if let Some(d) = desc_for_type_url(any.type_url.as_bytes()) {
+                any.value = mutate_nils(m, &d, &any.value, 0, &mut nil);
+            }
+        }
+        if !nil {
+            return None;
+        }
+    } else {
+        // String mutations of the messages (nested ones too).
+        for any in &mut body.messages {
+            if let Some(d) = desc_for_type_url(any.type_url.as_bytes()) {
+                any.value = mutate_strings(m, &d, &any.value, 0, hit);
+            }
         }
     }
-    if m.rng.one_in(3) {
+    if mode == Mode::Strings && m.rng.one_in(3) {
         let b = bad_string(m, &gostr::to_go_bytes(&body.memo));
         *hit |= std::str::from_utf8(&b).is_err();
         body.memo = gs(&b);
@@ -294,7 +626,7 @@ fn variant(
             };
             body.messages = vec![Any::pack(&p)];
         }
-        2 if m.rng.one_in(4) => {
+        2 if mode == Mode::Strings && m.rng.one_in(4) => {
             // Raw wire mutation of one message (any field).
             if let Some(a) = body.messages.first_mut() {
                 a.value = m.mutate(&a.value);
@@ -457,11 +789,17 @@ pub fn run(
             .map_err(|_| anyhow::anyhow!("app lock poisoned"))
     };
     let mut m = Mutator::new(seed);
+    let mode = match std::env::var("EXEC_MODE").as_deref() {
+        Ok("nil") => Mode::Nil,
+        Ok("synth") => Mode::Synth,
+        _ => Mode::Strings,
+    };
     let mut stats = Stats::default();
     let pool: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
     for t in &pool {
         m.harvest(t);
     }
+    let hex_ids = harvest_hex_ids(&pool);
     let mut app_version = 0u64;
     for r in records.iter().filter(|r| r.dir == Direction::Request) {
         let req = Request::decode(r.bytes.as_slice())?;
@@ -525,7 +863,15 @@ pub fn run(
             let mut hit = false;
             let tx = {
                 let mut rust = lock()?;
-                variant(&mut m, &mut rust, app_version, raw, &mut hit)
+                variant(
+                    &mut m,
+                    &mut rust,
+                    app_version,
+                    raw,
+                    &mut hit,
+                    mode,
+                    &hex_ids,
+                )
             };
             let Some(tx) = tx else {
                 continue;

@@ -27,7 +27,8 @@ pub use genesis::init_genesis;
 pub use hooks::{MultiStakingHooks, StakingHooks, set_hooks};
 pub use msgs::{
     handle_begin_redelegate, handle_cancel_unbonding_delegation, handle_create_validator,
-    handle_delegate, handle_edit_validator, handle_undelegate, handle_update_params,
+    handle_delegate, handle_edit_validator, handle_edit_validator_wire, handle_undelegate,
+    handle_update_params,
 };
 pub use slash::slash;
 pub use validator::{apply_and_return_validator_set_updates, jail, unjail};

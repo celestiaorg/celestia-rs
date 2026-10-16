@@ -80,6 +80,13 @@ pub fn parse_bech32(s: &str) -> Result<Address> {
     if bytes.is_empty() {
         return Err(errs::invalid_address("addresses cannot be empty"));
     }
+    // `sdk.VerifyAddressFormat`: `address.MaxAddrLen`.
+    if bytes.len() > 255 {
+        return Err(errs::invalid_address(format!(
+            "address max length is 255, got {}: unknown address",
+            bytes.len()
+        )));
+    }
     Ok(bytes)
 }
 

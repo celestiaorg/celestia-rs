@@ -178,6 +178,28 @@ pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
     Ok(gogo::marshal(&d, Mode::Struct))
 }
 
+/// The decoded message of `any` (in [`gogo_unmarshal`]'s form) as Go holds
+/// it after gogoproto marshaled it once: `MarshalTo` of a nil `math.Int`
+/// (pointer receiver) sets it to zero in place, so every nil `Int` of the
+/// message (nested `Any`s aside) reads as zero afterwards; a nil
+/// `LegacyDec` stays nil (its `MarshalTo` works on a copy). Go marshals a
+/// message this way in `GetMsgV1Signers` (`NewAnyWithValue`): authz
+/// `DispatchActions` and the ICA host's `authenticateTx` run handlers on
+/// messages changed so. `any` is returned unchanged when it does not
+/// decode.
+#[must_use]
+pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
+    let name = any.type_url.rsplit('/').next().unwrap_or_default();
+    let Ok(mut d) = gogo::unmarshal(name, &any.value) else {
+        return any.clone();
+    };
+    gogo::zero_nil_ints(&mut d);
+    celestia_proto::Any {
+        type_url: any.type_url.clone(),
+        value: gogo::marshal(&d, Mode::Struct),
+    }
+}
+
 /// `codectypes.NewAnyWithValue(msg)` of a message Go holds as a decoded
 /// struct: gogoproto `Marshal(Unmarshal(any.value))`, which is what Go
 /// stores when it re-packs a message (gov `Proposal.Messages`, authz

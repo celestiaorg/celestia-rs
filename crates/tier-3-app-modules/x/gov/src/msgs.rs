@@ -255,12 +255,10 @@ pub fn vote_weighted(
 pub fn deposit(ctx: &mut Context<'_>, msg: &v1::MsgDeposit) -> Result<v1::MsgDepositResponse> {
     let depositor =
         acc_from_bech32(&msg.depositor).map_err(|e| invalid_address("depositor", &e))?;
-    // `validateDeposit`: `IsValid` (and `IsAllPositive`) of the coins as
-    // decoded.
-    if !sdk::coins::raw_coins_is_valid(&msg.amount)? {
-        return Err(sdkerr::invalid_coins(sdk::coins::raw_coins_string(
-            &msg.amount,
-        )));
+    // `validateDeposit`: `IsValid` and `IsAllPositive` (false for no coins)
+    // of the coins as decoded, `ErrInvalidCoins.Wrap(amount.String())`.
+    if !sdk::coins::raw_coins_is_valid(&msg.amount)? || msg.amount.is_empty() {
+        return Err(sdkerr::invalid_coins("").wrap(sdk::coins::raw_coins_string(&msg.amount)));
     }
     let amount = Coins::from_proto(&msg.amount)?;
     if keeper::add_deposit(ctx, msg.proposal_id, &depositor, &amount)? {

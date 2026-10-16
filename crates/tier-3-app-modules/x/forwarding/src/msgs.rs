@@ -356,6 +356,7 @@ fn forward_token(
         gas_limit: router.gas,
         max_fee: hl_coin(&quoted).map_err(|e| e.log)?,
         custom_hook_metadata: hook_metadata.to_vec(),
+        nil: x_warp::TransferNils::default(),
     };
     let message_id = x_warp::remote_transfer(ctx, deps, token, args)
         .map_err(|e| format!("warp transfer failed: {}", e.log))?;

@@ -618,6 +618,10 @@ fn execute_tx(
     };
     let hop = ch.connection_hops.first().cloned().unwrap_or_default();
     authenticate_tx(ctx, msgs, &hop, source_port)?;
+    // `authenticateTx`'s `GetMsgV1Signers` marshaled each message: nil
+    // customtypes are zero when they execute.
+    let msgs: Vec<Any> = msgs.iter().map(txdecode::gogo_marshaled).collect();
+    let msgs = msgs.as_slice();
     let cp = ctx.branch();
     let mut responses = Vec::with_capacity(msgs.len());
     for m in msgs {

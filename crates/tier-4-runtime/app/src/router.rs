@@ -15,11 +15,15 @@ fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
 }
 
 macro_rules! routes {
-    ($( $ty:ty => $handler:path ),* $(,)?) => {
+    (
+        $( $ty:ty => $handler:path ),* $(,)?
+        ; wire: $( $wty:ty => $whandler:path ),* $(,)?
+    ) => {
         /// Whether a handler is registered for `type_url`.
         #[must_use]
         pub fn has_handler(type_url: &str) -> bool {
             $( if type_url == <$ty>::type_url() { return true; } )*
+            $( if type_url == <$wty>::type_url() { return true; } )*
             crate::hyperlane::has_handler(type_url) || crate::ibc::has_handler(type_url)
         }
 
@@ -38,6 +42,22 @@ macro_rules! routes {
                         )));
                     }
                     let resp = $handler(ctx, &m)?;
+                    return Ok(Any::pack(&resp));
+                }
+            )*
+            // Handlers that also read the message's wire form (gogoproto
+            // state prost does not keep, e.g. nil customtype pointers).
+            $(
+                if msg.type_url == <$wty>::type_url() {
+                    let m: $wty = decode(msg)?;
+                    validate_basic(msg)?;
+                    if !x_circuit::is_allowed(ctx, &msg.type_url)? {
+                        return Err(sdk::address::undefined(format!(
+                            "circuit breaker disables execution of this message: {}",
+                            msg.type_url
+                        )));
+                    }
+                    let resp = $whandler(ctx, &m, &msg.value)?;
                     return Ok(Any::pack(&resp));
                 }
             )*
@@ -89,7 +109,6 @@ routes! {
     bank::MsgUpdateParams => x_bank::msgs::handle_update_params,
     bank::MsgSetSendEnabled => x_bank::msgs::handle_set_send_enabled,
     staking::MsgCreateValidator => x_staking::handle_create_validator,
-    staking::MsgEditValidator => x_staking::handle_edit_validator,
     staking::MsgDelegate => x_staking::handle_delegate,
     staking::MsgBeginRedelegate => x_staking::handle_begin_redelegate,
     staking::MsgUndelegate => x_staking::handle_undelegate,
@@ -146,7 +165,9 @@ routes! {
     zkism::MsgCreateInterchainSecurityModule => crate::hyperlane::zkism_create,
     zkism::MsgUpdateInterchainSecurityModule => x_zkism::msgs::update_ism,
     zkism::MsgSubmitMessages => x_zkism::msgs::submit_messages,
-    forwarding::MsgForward => crate::hyperlane::forwarding_forward,
+    forwarding::MsgForward => crate::hyperlane::forwarding_forward;
+    wire:
+    staking::MsgEditValidator => x_staking::handle_edit_validator_wire,
 }
 
 /// The app's message router as gov sees it (`baseapp.MessageRouter`).

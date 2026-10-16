@@ -318,6 +318,10 @@ pub fn dispatch_actions(
             return Err(errors::authorization_num_of_signers());
         }
         let granter = &s[0];
+        // `GetMsgV1Signers` marshaled the message: its nil customtypes are
+        // zero from here on (authorization and handler alike).
+        let marshaled = txdecode::gogo_marshaled(msg);
+        let msg = &marshaled;
         if granter.as_slice() != grantee {
             let key = grant_key(grantee, granter, &msg.type_url);
             let Some(grant) = get_grant(ctx, &key)? else {

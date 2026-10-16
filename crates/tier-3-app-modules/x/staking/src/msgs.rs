@@ -195,10 +195,84 @@ pub fn handle_edit_validator(
     ctx: &mut Context<'_>,
     msg: &pb::MsgEditValidator,
 ) -> Result<pb::MsgEditValidatorResponse> {
+    edit_validator(ctx, msg, (false, false))
+}
+
+/// Whether the last occurrence of field `num` in the message `raw` is
+/// empty (length 0): a nullable customtype gogoproto leaves as a non-nil
+/// pointer to a nil value.
+fn empty_field(raw: &[u8], num: u64) -> bool {
+    fn varint(b: &mut &[u8]) -> Option<u64> {
+        let mut v = 0u64;
+        for i in 0..10 {
+            let x = *b.get(i)?;
+            v |= u64::from(x & 0x7f) << (7 * i);
+            if x < 0x80 {
+                *b = &b[i + 1..];
+                return Some(v);
+            }
+        }
+        None
+    }
+    let mut b = raw;
+    let mut empty = false;
+    while !b.is_empty() {
+        let Some(tag) = varint(&mut b) else {
+            return false;
+        };
+        let n = match tag & 7 {
+            0 => {
+                if varint(&mut b).is_none() {
+                    return false;
+                }
+                0
+            }
+            1 => 8,
+            5 => 4,
+            2 => match varint(&mut b).and_then(|l| usize::try_from(l).ok()) {
+                Some(l) => l,
+                None => return false,
+            },
+            _ => return false,
+        };
+        if b.len() < n {
+            return false;
+        }
+        if tag >> 3 == num {
+            empty = tag & 7 == 2 && n == 0;
+        }
+        b = &b[n..];
+    }
+    empty
+}
+
+/// `MsgEditValidator` from its wire form `raw` as the tx decoder
+/// normalized it (gogoproto's struct): a present but empty
+/// `commission_rate` / `min_self_delegation` is a non-nil pointer to a nil
+/// `LegacyDec` / `Int`, which the msg server dereferences (panic) once
+/// past the address and description checks.
+pub fn handle_edit_validator_wire(
+    ctx: &mut Context<'_>,
+    msg: &pb::MsgEditValidator,
+    raw: &[u8],
+) -> Result<pb::MsgEditValidatorResponse> {
+    edit_validator(ctx, msg, (empty_field(raw, 4), empty_field(raw, 3)))
+}
+
+fn edit_validator(
+    ctx: &mut Context<'_>,
+    msg: &pb::MsgEditValidator,
+    (nil_min_self, nil_rate): (bool, bool),
+) -> Result<pb::MsgEditValidatorResponse> {
     let val = val_from_string(&msg.validator_address).map_err(|e| invalid_addr("validator", &e))?;
     let description = msg.description.clone().unwrap_or_default();
     if description == pb::Description::default() {
         return Err(errs::invalid_request("empty description"));
+    }
+    // `!msg.MinSelfDelegation.IsPositive()` / `msg.CommissionRate.GT(..)`
+    // on a nil value.
+    if nil_min_self || nil_rate {
+        return Err(nil_deref());
     }
     let min_self = if msg.min_self_delegation.is_empty() {
         None
@@ -503,4 +577,20 @@ pub fn json_msg_to_wire(v: &mut serde_json::Value) -> Result<()> {
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::empty_field;
+
+    #[test]
+    fn empty_field_last_occurrence() {
+        // description (1) = {}, commission_rate (3) = "".
+        assert!(empty_field(&[0x0a, 0x00, 0x1a, 0x00], 3));
+        assert!(!empty_field(&[0x0a, 0x00, 0x1a, 0x00], 4));
+        assert!(!empty_field(&[0x1a, 0x00, 0x1a, 0x01, b'1'], 3));
+        assert!(empty_field(&[0x1a, 0x01, b'1', 0x1a, 0x00], 3));
+        // Truncated input.
+        assert!(!empty_field(&[0x1a, 0x00, 0x22, 0x05], 3));
+    }
 }

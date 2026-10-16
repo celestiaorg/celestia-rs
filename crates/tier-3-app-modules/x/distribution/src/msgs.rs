@@ -168,6 +168,15 @@ pub fn handle_deposit_validator_rewards_pool(
     msg: &pb::MsgDepositValidatorRewardsPool,
 ) -> Result<pb::MsgDepositValidatorRewardsPoolResponse> {
     let depositor = acc(&msg.depositor)?;
+    if msg.amount.iter().any(|c| c.amount.is_empty()) {
+        // `SendCoinsFromAccountToModule` of the coins as decoded: the
+        // module account, then `subUnlockedCoins`' `IsValid`, which
+        // panics on the first nil amount it reaches (or fails earlier).
+        x_bank::module_account_addr(ctx, crate::MODULE_NAME)?;
+        if !sdk::coins::raw_coins_is_valid(&msg.amount)? {
+            return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(&msg.amount)));
+        }
+    }
     let amount = Coins::from_proto(&msg.amount)?;
     x_bank::send_from_account_to_module(ctx, &depositor, crate::MODULE_NAME, &amount)?;
     let val = x_staking::addr::val_from_string(&msg.validator_address)?;

@@ -580,6 +580,59 @@ fn decode_field(
     Ok(())
 }
 
+/// The side effect of gogoproto's `Marshal` on the Go struct: `math.Int`'s
+/// `MarshalTo` (pointer receiver) sets a nil value to zero in place, for
+/// every `Int` it reaches (non-nullable fields, set nullable pointers,
+/// repeated elements, nested messages; not the cached values of `Any`s,
+/// whose `Marshal` writes their bytes). `LegacyDec.MarshalTo` copies and
+/// leaves a nil value nil.
+pub(crate) fn zero_nil_ints(d: &mut Dyn) {
+    for f in d.info.fields {
+        if f.is_any() || f.std_time || f.std_duration {
+            continue;
+        }
+        if f.oneof >= 0 && d.oneofs.get(&f.oneof) != Some(&f.number) {
+            continue;
+        }
+        if f.custom == custom::INT {
+            match d.fields.get_mut(&f.number) {
+                Some(Val::List(items)) => {
+                    for it in items {
+                        if let Val::Custom(c @ None) = it {
+                            *c = Some(custom::nil_marshal(f.custom));
+                        }
+                    }
+                }
+                Some(Val::Custom(c @ None)) => *c = Some(custom::nil_marshal(f.custom)),
+                None if !f.nullable && !f.repeated => {
+                    d.fields
+                        .insert(f.number, Val::Custom(Some(custom::nil_marshal(f.custom))));
+                }
+                _ => {}
+            }
+        } else if f.ty == ty::MESSAGE {
+            match d.fields.get_mut(&f.number) {
+                Some(Val::List(items)) => {
+                    for it in items {
+                        if let Val::Msg(m) = it {
+                            zero_nil_ints(m);
+                        }
+                    }
+                }
+                Some(Val::Msg(m)) => zero_nil_ints(m),
+                None if !f.nullable && !f.repeated && f.oneof < 0 => {
+                    if let Ok(inner) = info(f.type_name) {
+                        let mut m = Dyn::new(inner);
+                        zero_nil_ints(&mut m);
+                        d.fields.insert(f.number, Val::Msg(Box::new(m)));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// How [`marshal`] renders values that Go and prost represent differently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mode {
@@ -736,6 +789,12 @@ fn marshal_value(f: &FieldInfo, v: &Val, mode: Mode, oneof: bool, out: &mut Vec<
             (None, Mode::Struct) => {
                 if f.custom.ends_with("HexAddress") {
                     protowire::append_bytes_field(out, f.number, &custom::nil_marshal(f.custom));
+                } else if f.nullable && !f.repeated {
+                    // A non-nil pointer to a nil value (the field was
+                    // present but empty): an empty occurrence, which prost
+                    // reads as absent but handlers can tell apart on the
+                    // wire (`MsgEditValidator`).
+                    protowire::append_bytes_field(out, f.number, &[]);
                 }
             }
         },
@@ -790,6 +849,43 @@ mod tests {
         let mut bad = Vec::new();
         protowire::append_bytes_field(&mut bad, 2, b"abc");
         assert!(unmarshal("cosmos.base.v1beta1.Coin", &bad).is_err());
+    }
+
+    #[test]
+    fn marshal_zeroes_nil_ints_only() {
+        // MsgCreateValidator{commission: {rate: ""}, value: {denom}}: after
+        // a Marshal the nil Ints (min_self_delegation, value.amount) are
+        // zero, the nil LegacyDecs (commission rates) still nil.
+        let name = "cosmos.staking.v1beta1.MsgCreateValidator";
+        let mut b = Vec::new();
+        protowire::append_bytes_field(&mut b, 2, &[0x0a, 0x00]);
+        protowire::append_bytes_field(&mut b, 7, &[0x0a, 0x04, b'u', b't', b'i', b'a']);
+        let mut d = unmarshal(name, &b).unwrap();
+        zero_nil_ints(&mut d);
+        let mut want = Vec::new();
+        protowire::append_bytes_field(&mut want, 1, &[]);
+        protowire::append_bytes_field(&mut want, 2, &[]);
+        protowire::append_bytes_field(&mut want, 3, b"0");
+        protowire::append_bytes_field(
+            &mut want,
+            7,
+            &[0x0a, 0x04, b'u', b't', b'i', b'a', 0x12, 0x01, b'0'],
+        );
+        assert_eq!(marshal(&d, Mode::Struct), want);
+    }
+
+    #[test]
+    fn nullable_customtype_present_but_empty() {
+        // MsgEditValidator.commission_rate (nullable LegacyDec): absent is
+        // a nil pointer, an empty occurrence a pointer to a nil value
+        // (marshaled as "0"); Struct keeps the two apart.
+        let name = "cosmos.staking.v1beta1.MsgEditValidator";
+        let d = unmarshal(name, &[]).unwrap();
+        assert_eq!(marshal(&d, Mode::Struct), [0x0a, 0x00]);
+        assert_eq!(marshal(&d, Mode::Marshal), [0x0a, 0x00]);
+        let d = unmarshal(name, &[0x1a, 0x00]).unwrap();
+        assert_eq!(marshal(&d, Mode::Struct), [0x0a, 0x00, 0x1a, 0x00]);
+        assert_eq!(marshal(&d, Mode::Marshal), [0x0a, 0x00, 0x1a, 0x01, b'0']);
     }
 
     #[test]
