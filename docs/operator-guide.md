@@ -408,7 +408,11 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   pay-for-blob`, `tx signal signal|try-upgrade`, `tx slashing unjail`
   (sign mode direct; `--fees` or `--gas-prices` (fee = ceil(price x gas),
   default 0.004 utia/gas); `--gas auto` simulates on the node and applies
-  `--gas-adjustment`; `--note`/`--memo`; `--wait` polls `tx_status`). Any
+  `--gas-adjustment`. Like Go's `celestia-appd`, `--gas auto --gas-prices`
+  simulates with a zero fee, so the estimate leaves out the fee transfer
+  (~16k gas) and a cheap tx such as `edit-validator` can run out of gas
+  even at `--gas-adjustment 1.3`; pass `--fees` with `--gas auto` for an
+  accurate estimate; `--note`/`--memo`; `--wait` polls `tx_status`). Any
   other message: `celestia-rs tx <module> <msg> --json '<proto3 JSON
   fields>'` (or `--json @file`), e.g. `tx distribution
   withdraw-delegator-reward --json

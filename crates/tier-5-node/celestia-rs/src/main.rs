@@ -549,7 +549,9 @@ struct TxFlagArgs {
     /// Fees, e.g. `2000utia`.
     #[arg(long, global = true, default_value = "")]
     fees: String,
-    /// Gas prices, e.g. `0.004utia` (fee = ceil(price * gas)).
+    /// Gas prices, e.g. `0.004utia` (fee = ceil(price * gas)). Like Go,
+    /// `--gas auto` then simulates with a zero fee and leaves out the fee
+    /// transfer's gas; use `--fees` for an accurate estimate.
     #[arg(long = "gas-prices", global = true, default_value = "")]
     gas_prices: String,
     /// Gas limit, or `auto` to simulate (default 200000; PFBs: estimated).
