@@ -1395,7 +1395,10 @@ class Soak:
         got = {}
         probed = set()
         for kind in ("go", "rs"):
-            ups = self.up_nodes(kind)
+            # Not a node restarted in the last 30 s: until its first commit
+            # its check state is at height 0 (account number 0 in the sign
+            # bytes, gas wanted -1; Go and Rust alike).
+            ups = [nd for nd in self.up_nodes(kind) if nd.lifetimes and now() - nd.lifetimes[-1][0] > 30]
             if not ups:
                 return probed
             nd = self.rng.choice(ups)
