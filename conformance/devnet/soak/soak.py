@@ -1735,6 +1735,8 @@ class Soak:
             self.val_lock.acquire()
             try:
                 self._valset_cycle(vi, nd, home, acc, valoper, resume_cycle)
+            except Exception:
+                self.event("valset-error", tb=traceback.format_exc()[-600:])
             finally:
                 self.val_lock.release()
             # A cycle that did not rejoin is finished first (next round).
@@ -1833,13 +1835,22 @@ class Soak:
             self.metrics["valset"].append(rec)
             self.event("valset-cycle", **rec)
 
+    def query_node(self):
+        """A node for chain queries: the reference node, else any up node."""
+        ref, h = self.ref_node()
+        if ref is None:
+            ups = [nd for nd in self.up_nodes() if nd.height()]
+            ref = max(ups, key=lambda x: x.height() or 0) if ups else self.nodes[self.ref_i]
+            h = ref.height() or 0
+        return ref, h
+
     def in_valset(self, addr):
-        ref, _ = self.ref_node()
+        ref, _ = self.query_node()
         vals = get_json(f"{ref.url}/validators?per_page=100")["result"]["validators"]
         return any(v["address"].upper() == addr for v in vals)
 
     def signed_recent(self, addr, n):
-        ref, rh = self.ref_node()
+        ref, rh = self.query_node()
         c = 0
         for h in range(rh - n + 1, rh + 1):
             sigs = get_json(f"{ref.url}/commit?height={h}")["result"]["signed_header"]["commit"]["signatures"]
@@ -1929,10 +1940,11 @@ class Soak:
         self.wait_converged("end of soak", timeout=600)
         # Final full pass.
         ref, rh = self.ref_node()
-        self.fetch_ref(ref, rh - 1)
-        for nd in self.nodes:
-            if nd is not ref:
-                self.check_node(nd, limit=10**9)
+        if ref is not None:
+            self.fetch_ref(ref, rh - 1)
+            for nd in self.nodes:
+                if nd is not ref:
+                    self.check_node(nd, limit=10**9)
         self.scan_logs()
         self.stop.set()
         self.done = True
