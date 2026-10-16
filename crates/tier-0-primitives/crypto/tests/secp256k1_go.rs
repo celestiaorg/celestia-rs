@@ -1,13 +1,15 @@
 //! `secp256k1::verify_go` against cosmos-sdk's secp256k1
-//! `PubKey.VerifySignature` (decred secp256k1 v4, no cgo): the edge-case
-//! vectors in `conformance/fixtures/secp256k1/verify.json` carry Go's own
-//! result (written by `conformance/antevectors/secp256k1`), and random
-//! inputs are compared with a k256 implementation of the same rules (the
-//! verifier libsecp256k1 replaced).
+//! `PubKey.VerifySignature` (decred secp256k1 v4, no cgo) and
+//! `secp256k1::verify` against celestia-core's (CometBFT) one: the edge-case
+//! vectors in `conformance/fixtures/secp256k1/verify.json` and
+//! `verify_cometbft.json` carry Go's own results (written by
+//! `conformance/antevectors/secp256k1`), and random inputs are compared
+//! with a k256 implementation of the same rules (the verifier libsecp256k1
+//! replaced).
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
-use crypto::secp256k1::verify_go;
+use crypto::secp256k1::{verify, verify_go};
 use k256::ecdsa::SigningKey;
 use serde::Deserialize;
 
@@ -45,16 +47,55 @@ fn verify_k256(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
         .is_ok()
 }
 
-fn vectors() -> Vec<Vector> {
+fn vectors(file: &str) -> Vec<Vector> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../conformance/fixtures/secp256k1/verify.json");
+        .join("../../../conformance/fixtures/secp256k1")
+        .join(file);
     let body = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    serde_json::from_str(&body).expect("parse verify.json")
+    serde_json::from_str(&body).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// CometBFT's `PubKey.VerifySignature`: Rust builds the key from
+/// `PubKeyFromProto` (33 bytes only) and its callers turn a signature of
+/// the wrong length into `false`; every key length is also checked against
+/// `verify_go`, since the Go function takes raw key bytes.
+#[test]
+fn cometbft_vectors() {
+    let vectors = vectors("verify_cometbft.json");
+    assert!(vectors.len() > 500);
+    let mut failures = Vec::new();
+    let mut compressed = (0usize, 0usize);
+    for v in &vectors {
+        let key = hex::decode(&v.pub_key).unwrap();
+        let msg = hex::decode(&v.msg).unwrap();
+        let sig = hex::decode(&v.sig).unwrap();
+        if verify_go(&key, &msg, &sig) != v.valid {
+            failures.push(format!("{} (verify_go): Go says {}", v.name, v.valid));
+        }
+        if let Ok(key) = <[u8; 33]>::try_from(key.as_slice()) {
+            let got = <[u8; 64]>::try_from(sig.as_slice()).is_ok_and(|s| verify(&key, &msg, &s));
+            if got != v.valid {
+                failures.push(format!("{} (verify): Go says {}", v.name, v.valid));
+            }
+            compressed.0 += 1;
+            compressed.1 += usize::from(v.valid);
+        }
+    }
+    assert!(
+        compressed.0 > 300 && compressed.1 > 30,
+        "33-byte coverage {compressed:?}"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} mismatches with Go:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
 fn go_vectors() {
-    let vectors = vectors();
+    let vectors = vectors("verify.json");
     assert!(vectors.len() > 500);
     assert!(vectors.iter().any(|v| v.valid) && vectors.iter().any(|v| !v.valid));
     let mut failures = Vec::new();

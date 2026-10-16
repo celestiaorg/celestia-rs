@@ -1,12 +1,21 @@
-// Command secp256k1 writes edge-case vectors for cosmos-sdk's secp256k1
-// `PubKey.VerifySignature` (celestia-app v10.4.0: celestiaorg/cosmos-sdk
-// v0.52.12, decred secp256k1 v4, no cgo). Every expected result is what
-// that Go function returns, so the Rust verifier is checked against Go
-// rather than against the cases' intent.
+// Command secp256k1 writes edge-case vectors for secp256k1 signature
+// verification in celestia-app v10.4.0 (decred secp256k1 v4.4.0, no cgo).
+// Every expected result is what the Go function returns, so the Rust
+// verifiers are checked against Go rather than against the cases' intent.
+//
+// Two Go verifiers, selected by the second argument:
+//   - cosmos (default): cosmos-sdk's secp256k1 `PubKey.VerifySignature`
+//     (celestiaorg/cosmos-sdk v0.52.12, `secp256k1_nocgo.go`), used by the
+//     ante handler and fibre;
+//   - cometbft: celestia-core v0.42.3's `crypto/secp256k1`
+//     `PubKey.VerifySignature`, used for votes / commits and by ibc-go's
+//     07-tendermint light client (celestia-app replaces cometbft with
+//     celestia-core, so ibc-go v8.7.2 runs this code too).
 //
 //	cd conformance/antevectors
 //	GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod go run ./secp256k1 ../fixtures/secp256k1/verify.json
-//	cargo test -p x-ante --test secp256k1_vectors
+//	GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod go run ./secp256k1 ../fixtures/secp256k1/verify_cometbft.json cometbft
+//	cargo test -p crypto --test secp256k1_go
 package main
 
 import (
@@ -17,6 +26,7 @@ import (
 	"math/big"
 	"os"
 
+	cometsecp "github.com/cometbft/cometbft/crypto/secp256k1"
 	cosmossecp "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
@@ -34,10 +44,22 @@ var (
 	curveN = secp256k1.S256().N
 	curveP = secp256k1.S256().P
 	out    []vector
+	// verify is the Go function whose results the vectors record.
+	verify = func(pub, msg, sig []byte) bool {
+		return (&cosmossecp.PubKey{Key: pub}).VerifySignature(msg, sig)
+	}
 )
 
+// verifyCometBFT is celestia-core's `PubKey.VerifySignature`. Its `PubKey`
+// is the raw key bytes; `PubKeyFromProto` only builds 33-byte keys, but the
+// function itself parses whatever `secp256k1.ParsePubKey` accepts, so the
+// vectors record it on every key length.
+func verifyCometBFT(pub, msg, sig []byte) bool {
+	return cometsecp.PubKey(pub).VerifySignature(msg, sig)
+}
+
 func add(name string, pub, msg, sig []byte) {
-	ok := (&cosmossecp.PubKey{Key: pub}).VerifySignature(msg, sig)
+	ok := verify(pub, msg, sig)
 	out = append(out, vector{name, hex.EncodeToString(pub), hex.EncodeToString(msg), hex.EncodeToString(sig), ok})
 }
 
@@ -132,9 +154,19 @@ func curveX(from *big.Int) *big.Int {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: secp256k1 <out.json>")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Fprintln(os.Stderr, "usage: secp256k1 <out.json> [cosmos|cometbft]")
 		os.Exit(2)
+	}
+	if len(os.Args) == 3 {
+		switch os.Args[2] {
+		case "cosmos":
+		case "cometbft":
+			verify = verifyCometBFT
+		default:
+			fmt.Fprintln(os.Stderr, "unknown verifier", os.Args[2])
+			os.Exit(2)
+		}
 	}
 	halfN := new(big.Int).Rsh(curveN, 1)
 

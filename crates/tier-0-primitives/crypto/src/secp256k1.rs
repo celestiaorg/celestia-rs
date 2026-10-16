@@ -1,9 +1,12 @@
-//! Cosmos SDK secp256k1 account signature helpers.
+//! Cosmos SDK / CometBFT secp256k1 signature helpers (libsecp256k1).
 
+use std::sync::LazyLock;
+
+use ::secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey, ecdsa};
 use hash::{ripemd160, sha256};
-use k256::SecretKey;
-use k256::ecdsa::signature::{Signer, Verifier};
-use k256::ecdsa::{Signature, SigningKey, VerifyingKey};
+
+/// One libsecp256k1 context for signing and verification.
+static CONTEXT: LazyLock<Secp256k1<All>> = LazyLock::new(Secp256k1::new);
 
 /// Size in bytes of a secp256k1 secret key.
 pub const SECRET_KEY_LENGTH: usize = 32;
@@ -32,6 +35,18 @@ pub type AddressBytes = [u8; ADDRESS_LENGTH];
 const ORDER_MINUS_ONE: SecretKeyBytes = [
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
     0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x40,
+];
+
+/// The group order `n`, big-endian.
+const ORDER: [u8; 32] = [
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+    0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41,
+];
+
+/// `n / 2` (rounded down), big-endian: decred's `IsOverHalfOrder` bound.
+const HALF_ORDER: [u8; 32] = [
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
 ];
 
 /// Errors returned by secp256k1 helpers.
@@ -68,49 +83,44 @@ pub fn secret_key_from_secret(secret: &[u8]) -> SecretKeyBytes {
     key
 }
 
-/// Parse a raw 32-byte secp256k1 secret key.
+/// Parse a raw 32-byte secp256k1 secret key (`0 < key < n`).
 pub fn secret_key_from_bytes(bytes: &SecretKeyBytes) -> Result<SecretKeyBytes, Error> {
-    SecretKey::from_slice(bytes)
+    SecretKey::from_byte_array(*bytes)
         .map(|_| *bytes)
         .map_err(|_| Error::InvalidSecretKey)
 }
 
 /// Derive the compressed secp256k1 public key for `secret_key`.
 pub fn public_key_from_secret_key(secret_key: &SecretKeyBytes) -> Result<PublicKeyBytes, Error> {
-    let secret_key = SecretKey::from_slice(secret_key).map_err(|_| Error::InvalidSecretKey)?;
-    let signing_key = SigningKey::from(secret_key);
-    let encoded = signing_key.verifying_key().to_encoded_point(true);
-    encoded
-        .as_bytes()
-        .try_into()
-        .map_err(|_| Error::InvalidPublicKey)
+    let secret_key =
+        SecretKey::from_byte_array(*secret_key).map_err(|_| Error::InvalidSecretKey)?;
+    Ok(PublicKey::from_secret_key(&CONTEXT, &secret_key).serialize())
 }
 
-/// Sign `msg` using Cosmos SDK secp256k1 semantics.
+/// Sign SHA-256(`msg`): RFC 6979 nonce, lower-S, `r || s` (cosmos-sdk's
+/// and CometBFT's `PrivKey.Sign`, decred `ecdsa.SignCompact`).
 pub fn sign(secret_key: &SecretKeyBytes, msg: &[u8]) -> Result<SignatureBytes, Error> {
-    let secret_key = SecretKey::from_slice(secret_key).map_err(|_| Error::InvalidSecretKey)?;
-    let signing_key = SigningKey::from(secret_key);
-    let signature: Signature = signing_key.sign(msg);
-    signature
-        .to_bytes()
-        .as_slice()
-        .try_into()
-        .map_err(|_| Error::InvalidSignature)
+    let secret_key =
+        SecretKey::from_byte_array(*secret_key).map_err(|_| Error::InvalidSecretKey)?;
+    let message = Message::from_digest(sha256(msg));
+    Ok(CONTEXT.sign_ecdsa(message, &secret_key).serialize_compact())
 }
 
-/// Verify a Cosmos SDK lower-S r || s secp256k1 signature.
+/// CometBFT's secp256k1 `PubKey.VerifySignature` (celestia-core v0.42.3
+/// `crypto/secp256k1`, decred secp256k1 v4) for a 33-byte key: votes,
+/// commits, and ibc-go's 07-tendermint light client.
+///
+/// CometBFT reduces `r` / `s` modulo `n` (`ModNScalar.SetByteSlice`),
+/// rejects a high `s` by comparing the signature with its DER round trip
+/// (`Serialize` negates a high `s`, `ParseDERSignature` rejects zero `r` /
+/// `s`) and verifies with `ecdsa.Signature.Verify` on SHA-256(`msg`). That
+/// is exactly cosmos-sdk's rule set, and its keys are those of
+/// `secp256k1.ParsePubKey` (33 bytes: `02` / `03`, `x < p`, on the curve),
+/// so this is [`verify_go`]; `conformance/fixtures/secp256k1/verify_cometbft.json`
+/// carries CometBFT's own results for every edge case.
 #[must_use]
 pub fn verify(public_key: &PublicKeyBytes, msg: &[u8], signature: &SignatureBytes) -> bool {
-    let Ok(verifying_key) = VerifyingKey::from_sec1_bytes(public_key) else {
-        return false;
-    };
-    let Ok(signature) = Signature::try_from(signature.as_slice()) else {
-        return false;
-    };
-    if signature.normalize_s().is_some() {
-        return false;
-    }
-    verifying_key.verify(msg, &signature).is_ok()
+    verify_go(public_key, msg, signature)
 }
 
 /// cosmos-sdk `secp256k1.PubKey.VerifySignature` (`secp256k1_nocgo.go`,
@@ -140,34 +150,37 @@ pub fn verify_go(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
 /// reducing them, so they are reduced here first.
 #[must_use]
 pub fn verify_go_prehashed(key: &[u8], digest: &[u8; 32], sig: &[u8]) -> bool {
-    use k256::elliptic_curve::ops::Reduce;
-    use k256::elliptic_curve::scalar::IsHigh;
-    use k256::{FieldBytes, Scalar, U256};
-
-    static CONTEXT: std::sync::LazyLock<::secp256k1::Secp256k1<::secp256k1::VerifyOnly>> =
-        std::sync::LazyLock::new(::secp256k1::Secp256k1::verification_only);
-
     if sig.len() != SIGNATURE_LENGTH {
         return false;
     }
-    let r = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[..32]));
-    let s = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[32..]));
-    if bool::from(s.is_high()) || bool::from(r.is_zero()) || bool::from(s.is_zero()) {
+    let mut compact = [0u8; SIGNATURE_LENGTH];
+    compact[..32].copy_from_slice(&reduce_mod_order(&sig[..32]));
+    compact[32..].copy_from_slice(&reduce_mod_order(&sig[32..]));
+    let (r, s) = compact.split_at(32);
+    if s > HALF_ORDER.as_slice() || r.iter().all(|&b| b == 0) || s.iter().all(|&b| b == 0) {
         return false;
     }
-    let Ok(public_key) = ::secp256k1::PublicKey::from_slice(key) else {
+    let Ok(public_key) = PublicKey::from_slice(key) else {
         return false;
     };
-    let mut compact = [0u8; SIGNATURE_LENGTH];
-    compact[..32].copy_from_slice(&r.to_bytes());
-    compact[32..].copy_from_slice(&s.to_bytes());
-    let Ok(signature) = ::secp256k1::ecdsa::Signature::from_compact(&compact) else {
+    let Ok(signature) = ecdsa::Signature::from_compact(&compact) else {
         return false;
     };
-    let message = ::secp256k1::Message::from_digest(*digest);
+    let message = Message::from_digest(*digest);
     CONTEXT
         .verify_ecdsa(message, &signature, &public_key)
         .is_ok()
+}
+
+/// A 32-byte big-endian integer modulo `n` (decred
+/// `ModNScalar.SetByteSlice`). `2^256 - 1 < 2n`, so one subtraction does.
+fn reduce_mod_order(bytes: &[u8]) -> [u8; 32] {
+    let mut value = [0u8; 32];
+    value.copy_from_slice(bytes);
+    if value >= ORDER {
+        sub_assign_be(&mut value, &ORDER);
+    }
+    value
 }
 
 /// Return Cosmos's secp256k1 address: RIPEMD-160(SHA-256(compressed_public_key)).
@@ -243,6 +256,24 @@ mod tests {
 
         assert!(!verify(&invalid_public_key, b"message", &signature));
         assert!(!verify(&public_key, b"message", &invalid_signature));
+    }
+
+    #[test]
+    fn reduce_mod_order_matches_go() {
+        let mut ff = [0xff; 32];
+        // 2^256 - 1 - n
+        let mut expected = [0u8; 32];
+        expected[15] = 1;
+        expected[16..].copy_from_slice(&[
+            0x45, 0x51, 0x23, 0x19, 0x50, 0xb7, 0x5f, 0xc4, 0x40, 0x2d, 0xa1, 0x73, 0x2f, 0xc9,
+            0xbe, 0xbe,
+        ]);
+        assert_eq!(reduce_mod_order(&ff), expected);
+        assert_eq!(reduce_mod_order(&ORDER), [0u8; 32]);
+        assert_eq!(reduce_mod_order(&HALF_ORDER), HALF_ORDER);
+        ff = ORDER;
+        ff[31] -= 1;
+        assert_eq!(reduce_mod_order(&ff), ff);
     }
 
     #[test]
