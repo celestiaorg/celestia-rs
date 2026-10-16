@@ -991,7 +991,7 @@ interval can go back to 1500.
 
 Mainnet (`celestia`) runs app version **9** (celestia-app v9.0.8, ADR
 0004); celestia-rs executes v9 blocks at parity (followed over HTTPS with
-every app hash matching, `MILESTONES.md` S3) and v10 blocks, and performs
+every app hash matching, `docs/milestones-completed.md` S3) and v10 blocks, and performs
 the v9→v10 upgrade inside `Commit` like Go's multiplexer
 (`devnet-conformance` `v9-upgrade`). So the same binary runs a mainnet
 validator before and after the v10 upgrade, and no binary swap is needed

@@ -1,188 +1,251 @@
 # celestia-rs Milestones
 
-Authoritative source for "what is next." Updated when a milestone starts or
-completes. Direction and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
+Authoritative source for "what is next." Only **remaining** work is listed
+here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12) and their
+progress notes are archived in
+[`docs/milestones-completed.md`](docs/milestones-completed.md). Direction
+and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
 Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
 **End state:** a Rust Celestia mainnet validator that is consensus-compatible
 with Go celestia-app/celestia-core and runs on a Mac Mini M4 (16 GB / 512 GB).
 
 **Go parity target:** celestia-app **v10.4.0** / celestia-core v0.42.x, and
-app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004; see open
-question 2).
+app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004).
+
+## Remaining milestones
+
+In order. M14 starts only when M13 **and** F1 have passed (owner,
+2026-10-16: local-file key signing is accepted; the consensus-split risk
+is not, until F1's exit criteria are met).
 
 | #   | Status      | Milestone | Acceptance test |
 |-----|-------------|-----------|-----------------|
-| M0  | completed   | Bootstrap (scaffolding + fixturegen) | `cargo xtask refresh-fixtures --scenario bech32-addresses` produces a valid fixture |
-| M1  | completed   | Foundational libraries (hash, encoding, crypto, merkle, NMT, shares, square, …) | `m1-integration::parse_real_mainnet_block_produces_matching_dah` |
-| M2  | completed   | State & storage (IAVL, kvstore, multistore, ICS-23) | DB-backed replay shard (`m2-integration`); non-empty historical import by snapshot restore of Go state (ADR 0002) |
-| M3  | completed   | Tx & ante machinery | Tx-validation outcome matches Go for 1,062 mainnet txs (the v6 prototype `ante` / `m3-integration` were removed; the corpus runs through the v10 `x-ante`: `x/ante/tests/mainnet_corpus.rs`) |
-| M4  | completed   | Core SDK modules (auth, bank, staking) | Superseded by the v10 `x/auth`, `x/bank`, `x/staking` at app-hash parity on every devnet scenario; the v6 prototype crates and their storage fixtures were removed |
-| D1  | completed   | Devnet differential oracle: Go `celestia-appd` v10 devnet in-container, exported blocks + per-block app hashes + genesis as fixtures | `cargo xtask devnet-fixtures` regenerates a committed corpus |
-| R1  | completed   | Retarget implemented crates from app v6 to v10 (shares/square/ante/modules diffs) | Done by the v10 parity work: go-square v4 builder, `x-ante` (Go v10 vectors), every module at v10 app-hash parity; the remaining v6-era fixtures (hash, NMT, shares, DAH of mainnet blocks, IAVL / multistore) cover algorithms unchanged in v10 |
-| S1  | completed   | **Vertical slice:** ABCI++ server + `App` (InitChain/FinalizeBlock/Commit/Info/Query) running behind Go celestia-core | Rust app replays devnet blocks with matching app hash for an empty-tx chain |
-| S2  | in progress | Grow the slice until every devnet scenario matches: remaining SDK modules (M5), celestia modules incl. blob/fibre/minfee/signal/mint (M6), IBC (M7), PrepareProposal/ProcessProposal | App hash matches Go for every block of the devnet scenario corpus |
-| V9  | in progress | **App version 9** (mainnet's celestia-app v9.0.8) at Go parity inside the same app, gated on the block's app version, and the v9→v10 upgrade exactly as the multiplexer runs it ([ADR 0004](docs/adr/0004-app-version-9.md)) | Every `v9-*` devnet scenario (recorded from Go v9.0.8; `v9-upgrade` switches binaries inside `Commit` like the multiplexer) replays at full parity (`devnet-conformance/tests/replay_scenarios.rs`) |
-| S3  | completed   | State sync client + snapshot import (devnet Go↔Rust done); follow Mocha / mainnet — `celestia-rs follow` (HTTPS RPC, light-client verified, Go snapshot bootstrap) follows the Mocha tip and mainnet (app v9) with matching app hashes (P2P full node: OPEN_QUESTIONS #1) | Full node follows the testnet tip with matching app hashes |
-| M9  | completed   | Rust consensus engine (Tendermint BFT, celestia-core semantics) — `privval`, `nodestore`, `consensus` (+ reactor on `p2p`), `propagation` (RECOVERY), `celestia-rs start` as a full network participant | Mixed Rust+Go private devnet reaches consensus (`conformance/devnet/mixed-validators.sh`) |
-| M10 | completed   | Rust P2P (secret connection, MConn, PEX), mempool, block sync — `p2p`, CAT `mempool`, `blocksync`, `evidence`, `statesync` done; `celestia-rs start` block-syncs / state-syncs from Go and serves Go (`blocksync-interop.sh`); propagation + consensus gossip with Go validators (`mixed-validators.sh`), txs both ways (`mempool-interop.sh`) | Rust node peers with Go nodes and gossips blocks/txs |
-| M11 | completed   | RPC & gRPC: ABCI `Query` (store proofs, historical heights, gRPC routing), every query service, gRPC server and REST gateway in `celestia-rs abci` | Responses match Go for a canned request corpus (13 scenarios, 46.8k ABCI + 30.6k REST requests, `devnet-conformance/tests/query_corpus.rs`) |
-| M12 | completed   | Node binary, CLI, keys, double-sign guard, pruning — operator CLI at Go parity (`init`, `keys` on Go test/file keyrings, `genesis` add-account/gentx/collect/validate, `tx` (incl. staking create/edit-validator, unbond, redelegate, `--gas auto`, generic `tx <module> <msg> --json`; `--generate-only` identical to Go's, `devnet/cli`)/`query`/`status`, `config`, `rollback`, `export` = Go's export on 15 devnet scenarios), `--network mainnet\|mocha\|arabica\|local`, SIGTERM shutdown, `halt-height`/`halt-time`, upgrade halt with `upgrade-info.json`, pruning + `min-retain-blocks`, Prometheus metrics, ulimit check; `conformance/devnet/operator.sh`, `docs/operator-guide.md` | Release-ready for the Mac Mini: `release` / `dist` profiles, `macos-14` CI job (release build + smoke tests), tag-triggered release workflow (aarch64-apple-darwin, x86_64 / aarch64 Linux + SHA-256), launchd plist / systemd unit (`packaging/`), Mocha + mainnet validator runbooks (`docs/operator-guide.md` §11-12). `start --network mocha` over P2P is the first step of M13 on the Mac (OPEN_QUESTIONS #1) |
-| M13 | in progress | Mocha validator soak; mainnet full node. 2026-10-15 on the Mac Mini M4: route A (P2P state sync from Mocha's Go peers) restored snapshot 1,716,000 and reached consensus 47 s after start, outbound-only with 13 peers; `check-apphash.sh` OK against two providers. Validator `celestia-rs validator` bonded at 1,720,896, signing from 1,720,898, under launchd since 1,721,185; the switch-over exposed a delayed-precommit-on-SIGTERM bug (one `conflicting data` refusal, 3 missed blocks), fixed with a sim test | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1% (owner, 2026-10-16; shortened from 72 h the same day: a longer soak adds little signal); then a mainnet full node on the Mac |
+| M13 | in progress | Mocha validator soak, then a mainnet full node on the Mac | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes |
+| F1  | in progress | **Consensus-split assurance** (mainnet gate): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 | M14 | pending     | Mainnet validator | Signs mainnet blocks; no double-signs; no evidence |
-| F1  | in progress | **Fuzzing**: differential fuzzing of tx decoding, signers, square construction and ProcessProposal against Go v10.4.0 / v9.0.8 (`crates/fuzz-diff`, `conformance/fuzzoracle`), crash-only libFuzzer targets for p2p / ABCI / RPC / light-client input (`fuzz/`); findings fixed with regressions (`docs/security.md`, "Fuzzing") | Nightly `fuzz-diff` and `cargo-fuzz` jobs find no mismatch or crash |
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
-## Current focus
+## M13 — Mocha validator soak, mainnet full node
 
-**M13 — Mocha validator on the owner's Mac Mini (next).** Everything that
-can be done from the development container is done (M12): the runbook is
-`docs/operator-guide.md` §11 ("Running a Mocha validator on a Mac"),
-mainnet in §12. Steps on the Mac, in order: (1) install (release archive
-or `cargo build --profile dist`), `init --network mocha`, operator key in
-the `file` keyring, faucet; (2) bootstrap — route A, P2P state sync from
-Mocha peers (never run against Mocha yet: the first real test of the Rust
-P2P stack on a public network), else route B, Polkachu snapshot +
-`follow` over HTTPS, then `start`; (3) catch up over P2P block sync and
-`packaging/check-apphash.sh` OK; (4) `tx staking create-validator`
-(commission >= 0.20, Mocha's minimum); (5) soak under launchd with
-Prometheus alerts on height, missed blocks and app hash. Report back:
-which bootstrap route worked, peers / block sync rate, missed blocks per
-day, RSS and disk per day, any `failed signing vote` line. Owner choices:
-OPEN_QUESTIONS #4.
+Done on the Mac Mini M4 (2026-10-15): route A (P2P state sync from Mocha's
+Go peers) restored snapshot 1,716,000 and reached consensus 47 s after
+start, outbound-only with 13 peers; `check-apphash.sh` OK against two
+providers. Validator `celestia-rs validator` bonded at 1,720,896, signing
+from 1,720,898, under launchd since 1,721,185. Runbook:
+`docs/operator-guide.md` §11.
 
-**S3 — following public networks over HTTPS (2026-10-15).** P2P is
-blocked from the development container, so `celestia-rs follow`
-(`docs/operator-guide.md` §10) follows a network over celestia-core RPC:
-per height it light-client verifies the header (`light::verify_adjacent`),
-checks that the rebuilt block's id (header + part set, so every tx) is the
-one 2/3+ of our validator set signed, compares `app_hash`,
-`last_results_hash`, validator and consensus-param hashes with what our
-own execution produced, runs `ValidateBlock` + `ProcessProposal`, and
-executes the block through the `start` block executor; the first
-divergence stops it with a diagnostic bundle (per-tx results vs the
-network's `/block_results`, every store's root hash from the network's
-ICS-23 proofs vs ours). Bootstrap: the Go SDK state-sync snapshot inside
-Polkachu's pruned tarballs (`data/snapshots/<h>/3`, streamed out of the
-`.tar.lz4`: 167 MB for Mocha, 644 MB for mainnet), restored through
-`OfferSnapshot` / `ApplySnapshotChunk` with the light-client-trusted app
-hash.
+Incidents so far, each fixed with a test: a delayed precommit on SIGTERM
+(one `conflicting data` refusal, 3 missed blocks); a state-sync snapshot
+written inside Commit (heights 1,722,001–1,722,003 missed, RSS 1.9 GB;
+now on a background thread, OPEN_QUESTIONS #7).
 
-| Network | Range followed with matching app hash, results and validator sets | Notes |
-|---|---|---|
-| Mocha (`mocha-5`, app v10) | 1,624,501 → tip (1,711,100+ at 15:32 UTC), ~86,600 heights, at the tip since 11:09 UTC | PayForBlobs (~96k), PayForFibre, fibre escrow, bank, staking, authz, feegrant, unjail. No mismatch. Mocha's v10 era has no IBC or hyperlane traffic (hyperlane txs only at v9 heights 799,940–973,254) |
-| Mainnet (`celestia`, app v9) | 14,894,001 → 14,914,200+ (still running), ~20,200 heights | PayForBlobs, IBC (update client, recv / ack, transfer), ICA host txs, hyperlane, staking, distribution, authz. Four bugs found and fixed (below) |
+Remaining:
 
-Bugs found by following real networks (each with a regression test):
-v9 snapshots could not be state-synced (`unknown store: fibre`);
-mainnet's last completed upgrade `v9` had no handler at app version 9
-(halt at the first block); a redelegation from an unbonded validator
-returned the Unix epoch instead of Go's zero time (`LastResultsHash`);
-out of gas inside an ICA host tx was turned into an error ack and kept
-consuming gas instead of failing the tx at the first exceeding
-consumption like Go's panic (`LastResultsHash`). Mainnet headers are also
-verified light-client-only (`follow --light-only`, sequential + skipping
-to the tip, with witnesses).
+- [ ] 24 h of clean signing on a build with both fixes (no app-hash
+  mismatch, no double-sign-guard refusal, missed blocks < 1%). Report:
+  missed blocks per day, RSS and disk per day, any `failed signing vote`.
+- [ ] Re-enable snapshots (`snapshot-interval` 1500) on the background
+  snapshot build and watch RSS through the first one (OPEN_QUESTIONS #7).
+- [ ] Mainnet full node on the Mac over P2P (§12: route B, Polkachu
+  snapshot, then `start --network mainnet`), at the tip with
+  `check-apphash.sh` OK, running until M14. This is also F1.8's live
+  replay.
 
-Throughput (release build, shared 4-core container under load): 7–14
-blocks/s on Mocha (execution-bound; debug build 1.5–2.5), 2–3 blocks/s on
-mainnet (heavier blocks; RPC fetch ~1/3 of the time). Open: the Mocha
-v9 era and mainnet before 14.89M need a v9 snapshot (or genesis replay);
-`LightClientAttackEvidence` JSON decoding; a release-mode long soak at the
-mainnet tip.
+## F1 — Consensus-split assurance (mainnet gate)
 
-**V9 (app version 9).** Mainnet runs celestia-app v9.0.8 and Mocha started
-at app version 9, so the state machine also executes app-version-9 blocks
-(ADR 0004: no fibre / valaddr stores, cosmos-sdk v0.52.8 sequential
-`deliverTx` with the block gas meter, v9's decoder registry and lenient
-BlobTx / IndexWrapper, `MsgExecDecorator`, multi-denom fee priority,
-duplicate-TxRaw-field CheckTx rejection, v9 PrepareProposal /
-ProcessProposal) and the v9→v10 upgrade (store loader adds fibre / valaddr
-at `H+1`, the v10 handler runs their default genesis). Recorded from Go
-v9.0.8 (`APP_V9=1 devnet.sh`, `UPGRADE_TO_V10=1` for the binary switch);
-at full parity (app hash, tx results, CheckTx, PrepareProposal /
-ProcessProposal): `v9-empty`, `v9-staking`, `v9-gov`, `v9-authz-feegrant`,
-`v9-vesting`, `v9-blob`, `v9-hyperlane`, `v9-ibc`, `v9-zkism-forwarding`
-(SP1 v5 proofs), `v9-exec` (sequential execution,
-multi-denom fees, `MsgExec` of `MsgSubmitProposal`) and `v9-upgrade`
-(v9 txs → signal + try-upgrade → binary switch → v10 handler → v10 txs).
-Real blocks: square size, data root and tx decoding match for 12 recent
-mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`), and
-Mocha replayed from its real genesis (InitChain of the 56 MB mocha-5
-genesis, incl. ibc-go `TransferAuthorization` grants, now ported) through
-height 40,000 with every app hash and tx result matching (`genesis_replay`).
-The legacy amino codec runs v9.0.8's type graph at app version 9
-(2026-10-16: schema and 77 vectors dumped from v9.0.8, the v9 query
-corpora with no exception left). Open: state sync / snapshots of a v9 chain, and following Mocha from genesis
-over HTTPS (with the follower work). Ten v9 query corpora are at parity
-(2026-10-16).
+### Why this gates mainnet
 
-**Go strings (ADR 0005, 2026-10-15).** Protobuf `string` fields carry
-any bytes, as gogoproto decodes them: Go executes and stores invalid UTF-8
-(validator descriptions, proposal titles, vote metadata, memos, grants,
-`MsgExec` / gov / ICA inner messages), which the Rust router rejected — a
-one-tx network split. Strings now hold Go's bytes losslessly (`gostr`
-Go forms, `prost-gostr` codec), with Go's semantics wherever bytes matter
-(lengths, store keys, JSON in / out, amino-JSON sign bytes). Evidence: the
-`utf8` / `v9-utf8` devnet scenarios (Go executes the txs, incl. two
-amino-JSON signed ones; Rust replays at full parity with logs and events
-byte for byte), the `utf8` query corpus, and `fuzz-diff exec` (Simulate
-differential: ~8 000 mutated txs over 12 scenarios, no code / gas / result
-mismatch after fixing what it found: nested-signer checks, gov deposit
-validation order and nil amounts, nil commission rates, unrouted bank
-messages, proposal message re-packing). Also fixed: v9 `x/warp`
-`receiver_contract` as a plain string. ICA host txs with invalid UTF-8
-(2026-10-16, `ibc-upgrades` regenerated from Go: a transfer with it in
-receiver and memo, a fee allowance holding it, the packet memo, proto3json
-payloads) found the per-block message count reading such a proto3json
-payload as uncountable (Rust's ProcessProposal would reject a block Go
-accepts; security.md finding 27); the replay is at full parity with
-CheckTx. Open: error-text-only log
-differences (security.md).
+A split is any input on which the Rust node and Go celestia-app /
+celestia-core reach a different decision: a different app hash,
+`LastResultsHash` (tx code, data, gas wanted / used), validator or
+consensus-parameter update, or a different accept / reject of a tx
+(CheckTx), proposal (ProcessProposal), block, vote or evidence. Logs,
+events and error texts are not hashed and do not split the chain (they
+are at parity anyway, `docs/security.md`).
 
-**Nil customtypes, logs and events (2026-10-16).** `fuzz-diff exec`
-gained two modes: `EXEC_MODE=nil` leaves every `math.Int` / `LegacyDec`
-of the scenario's messages nil (dropped or empty, nested ones too) and
-`EXEC_MODE=synth` builds every `sdk.Msg` that reaches a math customtype
-from scratch. Against Go v10.4.0 and v9.0.8 (12 scenarios, ~15 000
-simulated txs) they found Go's nil-pointer panics Rust did not raise
-(`MsgEditValidator`'s present-but-empty rates, warp transfers, IGP
-payments, reward-pool deposits) and the in-place zeroing of nil `Int`s
-by gogoproto's `Marshal` in authz / ICA signer checks (security.md
-findings 17–24); after the fixes no code / gas / result mismatch. Logs and
-events of every devnet scenario now match Go byte for byte (the
-`events_and_logs_parity` ratchet is empty): gogoproto's text form of
-messages in authz / gov errors, consensus-param and fibre events, ICS-23
-proof errors. ADR 0004's remaining v9 differences are ported (hyperlane
-v1.1.0 multisig / IGP / amino names, the distribution overflow panic,
-zkism's paginated export, the v9 query surface with ten v9 query corpora
-recorded from Go v9.0.8) and, since 2026-10-16, the legacy amino codec's v9 type graph. Light-client-attack
-evidence decodes from `/block` JSON (Go vectors with cmtjson and `ABCI()`
-forms).
+What a split costs depends on the stake running Rust. One Rust validator
+with a small share of stake cannot fork mainnet: on a split it stops at
+the mismatched height (or votes nil on blocks Go accepts) and is jailed for
+downtime while Go validators carry on. Rust stake at or above 1/3 halts the
+chain on a split, above 2/3 it could commit a block Go rejects. F1 is
+sized for the second case ("would we let a large share of mainnet stake
+run this?"), not only for the first.
 
-**S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
-exactly — app hash, every tx result's code/data/gas, validator updates — for
-every height of the `empty` (20), `staking` (40), `staking-lifecycle` (60) and
-`hyperlane` (60) devnet scenarios (plus `gov`, `authz-feegrant`, `vesting`,
-`upgrade` (ends in Go's halt), `consensus` and `evidence` (misbehavior
-injected into a re-driven Go app, `inject-evidence.sh`)), and runs live: Go celestia-core over
-`celestia-rs abci` produces blocks, and a Rust follower tracks a Go validator
-through a staking workload (`conformance/devnet/mixed.sh`).
+### Where fuzzing stands (2026-10-16)
 
-| Area | State |
-|---|---|
-| Runtime & tx pipeline | sdk runtime, math (12,446 vectors), txdecode (4,968 vectors), x-ante (4,144 vectors), phased runTx, router, genutil |
-| Modules at parity | auth (+ vesting), bank, staking, distribution, slashing, mint, gov (all msgs, tally, execution), upgrade (plans, v10 handler, signalled upgrades, halt), consensus (MsgUpdateParams), authz, feegrant, evidence, params, circuit, blob (msgs), minfee, signal, fibre (all msgs, PFF settlement, ante), valaddr (all msgs), zkism (all msgs, SP1 Groth16, ISM type 42), forwarding (MsgForward), capability, ibc (all msgs: 07-tendermint light client incl. misbehaviour, connection / channel handshakes and close, packets, timeouts, redundant-relay ante), transfer, icahost (handshake, tx execution), pfm (forwarding, refunds, retries), hyperlane + warp (all msgs) |
-| At parity (blocks) | PrepareProposal / ProcessProposal (go-square v4 builder, DAH) and CheckTx, replayed for every scenario incl. `devnet/blob`; Rust-proposed blocks accepted by a Go full node (`rust-proposer.sh`) |
-| At parity (fibre/zk) | `devnet/fibre` (escrow, withdrawals, PayForFibre with validator signatures and PFF system blobs, unsettleable promises dropped in PrepareProposal, timeouts, gov params update) and `devnet/zkism-forwarding` (celestia-app's SP1 Groth16 vectors verified on chain, zk ISM on the hyperlane router, MsgForward with IGP fees); both also pass `mixed.sh` and `rust-proposer.sh` |
-| Deferred | ProcessProposal blob-tx cache (behavior-neutral) |
-| Storage (ADR 0002) | Persistent IAVL on redb (lazy nodes, LRU cache, history, pruning), atomic multistore commits, restart/handshake (`celestia-rs abci --home`), SDK snapshots + ABCI state sync; every scenario replays on redb, incl. restart-halfway and snapshot-restore replays; Go↔Rust state sync both ways (`conformance/devnet/statesync.sh`) |
-| IBC differential | `devnet/ibc` (two Go chains + cosmos/relayer), `devnet/ibc-edge` and `devnet/ibc-upgrades` (ibc-go testing package, `conformance/ibcvectors`) at full parity incl. CheckTx |
-| IBC (closed deferrals) | `devnet/ibc-upgrades` (`conformance/ibcvectors/upgrade_test.go`, incl. CheckTx) at full parity: 06-solomachine (headers, multisig, membership / non-membership proofs over handshakes and packets, misbehaviour, recovery), channel upgrades of the ICA host channel (Try / Confirm / Open with flushing, cancel by receipt and authority, timeout, FAILURE results; transfer is not upgradable behind PFM, like Go), gov-executed `MsgIBCSoftwareUpgrade` (circuit breaker reset, plan + upgraded client / consensus state), ICA `proto3json` txs and `MsgModuleQuerySafe` (gas-metered module queries) |
-| Light client & state sync (ADR 0003) | `light` (verifier, bisection, detector, store, RPC provider; Go vectors 720 verifier + 196 client scenarios at parity) and `statesync` (reactor, syncer, state provider); a Rust node state-syncs from Go peers and serves snapshots to Go (`conformance/devnet/statesync-rust.sh`) |
-| Queries (M11) | ABCI `Query` (store/ICS-23 proofs, app, p2p, custom inclusion proofs, gRPC routing at historical heights) and every query service incl. hyperlane/warp, zkism, forwarding, IBC, reflection (incl. `cosmos.reflection.v1` FileDescriptors on the empty corpus and the gRPC-only `v2alpha1` service, `reflection-v2alpha1.json` recorded from Go), the legacy amino tx codec (`TxDecodeAmino`/`TxEncodeAmino`: go-amino ported over a type schema dumped from celestia-appd, `conformance/aminoschema`; 77 Go vectors incl. errors and panics, all in the empty corpus), cmtservice/tx status/gas estimation over celestia-core RPC; gRPC server (`--grpc-address`) and REST gateway (`--api-address`) in `celestia-rs abci`; byte-identical to Go on the 13-scenario query corpus |
-| Deferred (M11) | The validator-local fibre promise cache, Go build info in `GetNodeInfo` |
+Harnesses (details: `docs/security.md`, "Fuzzing"):
 
-M2's disk-backed IAVL and non-empty historical import landed with ADR 0002
-(snapshot import of Go state, verified against Go app hashes); S3 now only
-needs a public testnet to follow.
+| Harness | What it compares with Go v10.4.0 / v9.0.8 | Runs | Findings |
+|---|---|---|---|
+| `fuzz-diff` `tx`, `blobtx`, `iw`, `fibre` | tx decoding, signers, BlobTx / IndexWrapper / PayForFibre parsing | nightly (900 s per version) | 1, 4, 5 |
+| `fuzz-diff` `eds` | square construction + data root | nightly (600 s per version) | 2, 3 |
+| `fuzz-diff` `amino_*` | legacy amino tx codec (queries only) | nightly (300 s, v10) | 7, 8 |
+| `fuzz-diff` `json_*` | every JSON decode reachable from consensus | **manual only** | 28–34 |
+| `fuzz-diff exec` (Simulate: ante + handlers, no signatures, no commit) | code, gas, data, events of mutated / nil / synthesized messages | **manual only**, ~26 000 txs | 12–23 |
+| `fuzz-diff pp` | ProcessProposal of mutated proposals | **manual only**, 6 scenarios, ~5 300 proposals | none |
+| `fuzz-diff deliver` (signed, finalized, app hash) | CheckTx, Prepare / ProcessProposal, every tx result, app hash | **manual only**, one pass: 23 scenarios × 300 blocks, ~9 000 finalized txs | **36–45** (all ten from the first pass) |
+| cargo-fuzz (10 targets) | crashes only (p2p, ABCI, RPC, light client, decoders, square) | nightly (600 s each) | 6, 9, 10 |
+| Devnet replays, mixed Go + Rust soaks, `follow` on Mocha / mainnet | recorded and real blocks | CI / manual | 11, 26, 27, 35 + the four S3 bugs |
+
+The reason this is not yet enough: the strongest harness (`deliver`, the
+only one that signs, finalizes and compares app hashes on generated input)
+found ten splits in its **first and only** pass, so it is far from
+saturated; it and every other execution harness run only by hand; and
+whole areas (IBC with valid proofs, the v9→v10 upgrade, mainnet-sized
+state, the consensus layer, the Mac's aarch64 build) are not fuzzed at
+all. Findings 24 and 25 (address length, secp256k1 `r`/`s` reduction) were
+found by reading code, not by any harness.
+
+### Remaining work and exit criteria
+
+Every item must pass on the same commit. "Clean" means no mismatch in any
+compared field. A finding resets the clock of the harness that found it:
+fix it, pin it in `crates/fuzz-diff/tests/regressions.jsonl` (or a unit
+test), then start that harness's count again.
+
+- [ ] **F1.1 Every differential harness in CI.** Nightly today runs only
+  the decode-level ops and cargo-fuzz. Add nightly jobs that build Go
+  `celestia-appd` v10.4.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
+  does) and run `json_*`, `exec` (default, `nil`, `synth`, `json` modes),
+  `pp` and `deliver`, rotating over every devnet scenario and both app
+  versions with a new seed per night, and uploading findings like the
+  existing `fuzz-diff` job. Exit: all four run every night and a mismatch
+  fails the job.
+
+- [ ] **F1.2 Saturate `deliver`.** Exit: after the last fix, at least
+  **1 000 000 finalized txs** (~100× today) across every scenario at both
+  app versions with no mismatch, **and** no new consensus finding from
+  any harness for **14 consecutive nightly runs**. Proposed numbers; the
+  owner may change them, but the second condition (finding rate has gone
+  to zero) is the one that matters.
+
+- [ ] **F1.3 Measure coverage of consensus code.** Today
+  `fuzz-diff coverage` only counts message types in the recorded
+  scenarios. Run `deliver` / `exec` / `pp` under `cargo llvm-cov` and
+  report line and branch coverage of tier-3 modules, `x-ante`, the tx
+  decoder, PrepareProposal / ProcessProposal and the multistore. Exit: a
+  committed report (`docs/fuzz-coverage.md`) in which every registered
+  `sdk.Msg` type has been executed by Go **successfully** and with each of
+  its error codes in `deliver`, and every uncovered branch of a message
+  handler or ante decorator is listed with the reason it cannot be reached
+  (or a harness change that reaches it).
+
+- [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
+  harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /
+  `MsgTimeout` / `MsgUpdateClient` fails at proof or header verification
+  before the transfer, PFM or ICA host code runs; those paths are covered
+  only by the recorded `ibc`, `ibc-edge`, `ibc-upgrades` fixtures and the
+  decode-only `json_*` ops. Mainnet carries IBC traffic every block. Add a
+  counterparty to the harness (the ibc-go testing package already used by
+  `conformance/ibcvectors`, or harness-held counterparty validator keys)
+  so fuzzed packets arrive with valid proofs: ICS-20 denoms / amounts /
+  receivers, PFM memos (forwards, retries, refunds, timeouts), ICA host
+  txs in both encodings, acks of every form, client updates with mutated
+  headers, misbehaviour, frozen and expired clients. Same for hyperlane:
+  `MsgProcessMessage` signed by harness-held multisig ISM validators.
+  Exit: F1.2's criteria for this harness too.
+
+- [ ] **F1.5 The v9 → v10 upgrade.** `exec`, `pp` and `deliver` do not
+  support `v9-upgrade` (the binary switch inside `Commit`); the upgrade
+  every mainnet Rust validator must execute exactly like Go's multiplexer
+  is covered by one recorded scenario. Exit: `deliver` across the upgrade
+  (Go switched from v9.0.8 to v10.x at the upgrade height, Rust in one
+  process), with fuzzed state built before it (pending unbondings and
+  redelegations, open proposals, grants, allowances, vesting, IBC
+  channels, hyperlane routes) and fuzzed txs after it, clean over at least
+  50 upgrade runs with different seeds; and F1.6's mainnet-state rehearsal
+  of the same upgrade.
+
+- [ ] **F1.6 Mainnet-shaped state.** The harnesses start from devnet
+  genesis (a handful of validators, 12 fuzz accounts). Mainnet has 100
+  validators, large delegation and unbonding sets, years of distribution
+  rounding, many IBC clients and channels, vesting accounts and its own
+  parameters. Exit: `deliver` and `pp` run from a mainnet snapshot
+  restored into both apps (validator keys replaced the same way in both,
+  like a testnet fork), clean over at least 10 000 generated blocks; and
+  the v9 → v10 upgrade executed on that state with every store's root
+  hash equal.
+
+- [ ] **F1.7 Consensus-layer differential.** fuzz-diff covers the
+  application; the celestia-core side (block, vote and evidence
+  validation) is fuzzed for crashes only, so a Rust validator that accepts
+  a proposal, block part, vote or evidence Go rejects (or the reverse)
+  would only be found on a live network. Add Go oracle ops built from
+  celestia-core v0.42.3 / v0.40.9 and compare under mutation:
+  `ValidateBlock` and header validation, `LastCommit` / commit
+  verification, vote and proposal signature checks, duplicate-vote and
+  light-client-attack evidence verification, validator updates from
+  `FinalizeBlock` (key types, powers, overflow), consensus-param updates,
+  block part sets and the propagation (compact block / RECOVERY) decoding.
+  Plus a signature-verification differential for ed25519 (celestia-core's
+  verification rules), secp256k1 (finding 25 was found by reading) and
+  secp256r1, and mutated-proof differentials for ICS-23, NMT and SP1
+  Groth16 verification (both must reject the same invalid proofs). Exit:
+  each op clean for at least 10⁸ inputs after its last fix.
+
+- [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
+  mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
+  Exit, all with every app hash and tx result matching: (a) mainnet's
+  whole app-version-9 era, from the v9 activation height to the tip (needs
+  a v9 snapshot near activation, or a Go-produced one); (b) Mocha's v9 era
+  and its v9 → v10 upgrade at 1,082,620 (carried over from V9); (c) the
+  mainnet full node of M13 at the tip, release build, continuously from
+  M13 until M14 starts.
+
+- [ ] **F1.9 Determinism of the Rust binary.** The differentials run on
+  x86_64 Linux; the validator runs the `dist` build on aarch64 macOS, with
+  parallel erasure coding, a signature cache and background snapshots.
+  Exit: `deliver` and `pp` clean on the Mac (or a `macos-14` runner) with
+  the `dist` profile; the same seeds give byte-identical results under
+  `RAYON_NUM_THREADS=1` and the default, with the signature cache on and
+  off, and in `release` vs `dist`; a recorded replay gives the same app
+  hashes on x86_64 and aarch64.
+
+- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.4.0 and
+  v9.0.8. Mainnet's v10 upgrade may ship a later v10.x (and v9 patch
+  releases are possible). Exit: before M14 starts, and before every
+  mainnet upgrade the Rust validator will run through, the fuzz oracles,
+  devnet fixtures and parity target are re-pinned to the exact tagged
+  versions mainnet runs, the Go diff between versions is ported, and
+  F1.1–F1.9 rerun on them.
+
+- [ ] **F1.11 Known Go nondeterminism decided.** Go's `jsonpb` decodes two
+  members of one oneof in map order (random), so such a proto3json ICA
+  message decodes differently among Go nodes (`docs/security.md`, open).
+  Exit: report it upstream, and record the policy in `docs/security.md`
+  (Rust's choice is deterministic; on a Go-vs-Go split the Rust validator
+  follows whichever side 2/3 commits only if its own execution matches,
+  else it halts).
+
+- [ ] **F1.12 Independent review.** Fuzzing cannot reach everything (valid
+  zk proofs, rare state, code paths no harness constructs). Exit: a
+  review, by someone who did not write the port, of the consensus-critical
+  Rust code against the Go sources it ports (ante chain, square /
+  proposal code, msg handlers of every module, IBC core, the upgrade
+  handler), with findings fixed or recorded in `docs/security.md`.
+
+### Carried over from completed milestones
+
+Not consensus-relevant unless noted; tracked so nothing is lost.
+
+- [ ] ProcessProposal blob-tx cache (S2; behavior-neutral, performance).
+- [ ] Validator-local fibre promise cache and Go build info in
+  `GetNodeInfo` (M11; query surface only).
+- [ ] State-sync snapshots of a v9 chain produced by Rust (V9; Go peers
+  restoring from a Rust snapshot at app version 9).
+- [ ] Following Mocha from genesis over HTTPS (V9; part of F1.8 (b)).
+
+## M14 — Mainnet validator
+
+Starts when M13 and F1 have passed. Runbook: `docs/operator-guide.md` §12
+(real TIA above the 100th bonded validator's stake, a separate home and
+consensus key, route B bootstrap, the same binary through the v9 → v10
+upgrade). Local `priv_validator_key.json` signing with the double-sign
+guard is accepted (owner, 2026-10-16); remote signers stay out of scope.
+
+## B1 — Benchmarks on the Mac Mini
+
+Go vs Rust reference run of `conformance/bench/` on the Mac Mini M4 after
+the M13 soak (the Linux VM run is in `docs/benchmarks/`). Report committed
+under `docs/benchmarks/`.
