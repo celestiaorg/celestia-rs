@@ -595,8 +595,8 @@ pub fn validate_msg_transfer(msg: &MsgTransfer) -> Result<()> {
     if !token.amount.is_positive() {
         return Err(ierr::insufficient_funds(token.to_string()));
     }
-    x_auth::parse_bech32(&msg.sender).map_err(|e| {
-        ierr::invalid_address(format!("string could not be parsed as address: {}", e.log))
+    sdk::address::acc_from_bech32_go(&msg.sender).map_err(|e| {
+        ierr::invalid_address(format!("string could not be parsed as address: {e}"))
     })?;
     if msg.receiver.trim().is_empty() {
         return Err(ierr::invalid_address("missing recipient address"));
@@ -632,9 +632,9 @@ pub fn update_params(
 
 /// `MsgUpdateParams.ValidateBasic`.
 pub fn validate_msg_update_params(msg: &MsgUpdateParams) -> Result<()> {
-    x_auth::parse_bech32(&msg.signer).map(|_| ()).map_err(|e| {
-        ierr::invalid_address(format!("string could not be parsed as address: {}", e.log))
-    })
+    sdk::address::acc_from_bech32_go(&msg.signer)
+        .map(|_| ())
+        .map_err(|e| ierr::invalid_address(format!("string could not be parsed as address: {e}")))
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,31 @@ pub fn from_bech32(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
     Ok(bz)
 }
 
+/// Go `sdk.AccAddressFromBech32` with its error's text (`err.Error()`):
+/// `bech32.DecodeAndConvert`'s `decoding bech32 failed: ...`, the prefix
+/// check, then `VerifyAddressFormat` (wrapping `unknown address`).
+pub fn acc_from_bech32_go(s: &str) -> Result<Vec<u8>, String> {
+    if s.trim().is_empty() {
+        return Err("empty address string is not allowed".into());
+    }
+    let (hrp, bz) = encoding::bech32::decode_and_convert(s)?;
+    if hrp != ACC_PREFIX {
+        return Err(format!(
+            "invalid Bech32 prefix; expected {ACC_PREFIX}, got {hrp}"
+        ));
+    }
+    if bz.is_empty() {
+        return Err("addresses cannot be empty: unknown address".into());
+    }
+    if bz.len() > 255 {
+        return Err(format!(
+            "address max length is 255, got {}: unknown address",
+            bz.len()
+        ));
+    }
+    Ok(bz)
+}
+
 /// Go `sdk.AccAddressFromBech32` / the account address codec.
 pub fn acc_from_bech32(s: &str) -> Result<Vec<u8>, SdkError> {
     from_bech32(s, ACC_PREFIX)
