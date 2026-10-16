@@ -62,7 +62,7 @@ serde_json = "1"
 multistore = { path = "../../tier-2-state-and-store/multistore" }
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 statesync = { path = "../../tier-4-runtime/statesync" }
-toml = "0.8"
+toml = "1.1"
 toml_edit = "0.25"
 txdecode = { path = "../../tier-3-app-modules/txdecode" }
 x-blob = { path = "../../tier-3-app-modules/x/blob" }
