@@ -283,7 +283,7 @@ pub fn verify_multisig_with(
         }
         let key = idx(keys, usize::try_from(i).unwrap_or(usize::MAX))?;
         match idx(signatures, sig_index)? {
-            SigData::Single { mode, signature } => {
+            Some(SigData::Single { mode, signature }) => {
                 let bytes = match get_sign_bytes(*mode)? {
                     Ok(b) => b,
                     Err(e) => return Ok(Err(e)),
@@ -292,13 +292,18 @@ pub fn verify_multisig_with(
                     return Ok(Err(format!("unable to verify signature at index {i}")));
                 }
             }
-            nested @ SigData::Multi { .. } => {
+            Some(nested @ SigData::Multi { .. }) => {
                 if !matches!(key, PubKey::Multisig { .. }) {
                     return Ok(Err(format!("unable to parse pubkey of index {i}")));
                 }
                 if let Err(e) = verify_multisig_with(key, nested, get_sign_bytes)? {
                     return Ok(Err(e));
                 }
+            }
+            None => {
+                return Ok(Err(format!(
+                    "improper signature data type for index {sig_index}"
+                )));
             }
         }
         sig_index += 1;

@@ -269,9 +269,8 @@ fn edit_validator(
     if description == pb::Description::default() {
         return Err(errs::invalid_request("empty description"));
     }
-    // `!msg.MinSelfDelegation.IsPositive()` / `msg.CommissionRate.GT(..)`
-    // on a nil value.
-    if nil_min_self || nil_rate {
+    // `!msg.MinSelfDelegation.IsPositive()` on a nil value.
+    if nil_min_self {
         return Err(nil_deref());
     }
     let min_self = if msg.min_self_delegation.is_empty() {
@@ -285,6 +284,10 @@ fn edit_validator(
         return Err(errs::invalid_request(
             "minimum self delegation must be a positive integer",
         ));
+    }
+    // `msg.CommissionRate.GT(..)` on a nil value, after the check above.
+    if nil_rate {
+        return Err(nil_deref());
     }
     let rate = if msg.commission_rate.is_empty() {
         None

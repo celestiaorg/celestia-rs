@@ -196,7 +196,7 @@ fn signature_data_from_proto(d: &Data) -> Result<SigData> {
             signatures: m
                 .signatures
                 .iter()
-                .map(signature_data_from_proto)
+                .map(|s| signature_data_from_proto(s).map(Some))
                 .collect::<Result<_>>()?,
         }),
         None => Err(sdk::error::go_panic("unexpected case <nil>")),

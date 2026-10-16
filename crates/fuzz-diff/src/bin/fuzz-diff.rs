@@ -288,11 +288,13 @@ fn main() -> anyhow::Result<()> {
             println!("CODE {n} {c}");
         }
         eprintln!(
-            "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted), {} delivered ({} code 0); {} mismatches, {} log-only differences{}",
+            "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} mismatches, {} log-only differences{}",
             st.replayed,
             st.blocks,
             st.checked,
             st.check_ok,
+            st.multisig.0,
+            st.multisig.1,
             st.delivered,
             st.delivered_ok,
             st.mismatches.len(),

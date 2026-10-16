@@ -47,8 +47,11 @@ use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
-/// Funded accounts added to the genesis.
+/// Funded single-key accounts added to the genesis (the multisig ones of
+/// [`multisig_trees`] follow).
 const ACCOUNTS: usize = 12;
+/// The multisig public key type URL.
+const MULTISIG_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 /// Their utia balance each.
 const BALANCE: u128 = 1_000_000_000_000_000;
 /// The gov module account.
@@ -65,6 +68,9 @@ pub struct Stats {
     pub checked: u64,
     /// Of which Go accepted.
     pub check_ok: u64,
+    /// Generated txs with a multisig signer info sent to `CheckTx`, and of
+    /// those Go accepted.
+    pub multisig: (u64, u64),
     /// Txs finalized in generated blocks.
     pub delivered: u64,
     /// Of which Go executed successfully (code 0).
@@ -86,15 +92,273 @@ pub struct Stats {
 
 /// A funded account.
 struct Acct {
+    /// The secp256k1 key (of a multisig account: its first single key,
+    /// unused).
     key: keyring::KeyRecord,
     acc: String,
     val: String,
     number: u64,
     seq: u64,
+    /// Address bytes.
+    addr: Vec<u8>,
+    /// The public key packed in an `Any`.
+    pk: Any,
+    /// The key tree of a multisig (`LegacyAminoPubKey`) account.
+    ms: Option<MsKey>,
+}
+
+/// A multisig key tree over the single fuzz accounts (by index).
+#[derive(Clone, Debug)]
+enum MsKey {
+    Single(usize),
+    Multi { threshold: u32, members: Vec<MsKey> },
+}
+
+/// The multisig accounts added after the single ones: 2-of-3, 1-of-2,
+/// nested, 4-of-8 (more sub-keys than `tx_sig_limit`), a repeated sub-key
+/// and 1-of-1.
+fn multisig_trees() -> Vec<MsKey> {
+    use MsKey::{Multi, Single};
+    let m = |threshold, members| Multi { threshold, members };
+    vec![
+        m(2, vec![Single(0), Single(1), Single(2)]),
+        m(1, vec![Single(3), Single(4)]),
+        m(2, vec![Single(5), m(1, vec![Single(3), Single(4)])]),
+        m(4, (0..8).map(Single).collect()),
+        m(2, vec![Single(6), Single(6), Single(7)]),
+        m(1, vec![Single(8)]),
+    ]
+}
+
+fn ms_pubkey(singles: &[Acct], k: &MsKey) -> x_ante::pubkey::PubKey {
+    use x_ante::pubkey::PubKey;
+    match k {
+        MsKey::Single(i) => PubKey::Secp256k1(singles[*i].key.pub_key.to_vec()),
+        MsKey::Multi { threshold, members } => {
+            let keys: Vec<PubKey> = members.iter().map(|m| ms_pubkey(singles, m)).collect();
+            PubKey::Multisig {
+                threshold: *threshold,
+                anys: keys.iter().map(PubKey::to_any).collect(),
+                keys,
+            }
+        }
+    }
+}
+
+/// How one signer's signature is made: a single key in a sign mode
+/// (sometimes corrupted), or a multisig's chosen sub-signatures.
+#[derive(Clone, Debug)]
+enum Plan {
+    Single {
+        acct: usize,
+        mode: SignMode,
+        corrupt: bool,
+    },
+    Multi {
+        subs: Vec<Plan>,
+        /// 0: none, 1: an extra signature, 2: the last one dropped, 3: an
+        /// unknown field in `MultiSignature`.
+        tweak: u8,
+    },
+}
+
+impl Plan {
+    fn uses_amino(&self) -> bool {
+        match self {
+            Self::Single { mode, .. } => *mode == SignMode::LegacyAminoJson,
+            Self::Multi { subs, .. } => subs.iter().any(Self::uses_amino),
+        }
+    }
+}
+
+fn single_mode_info(mode: SignMode) -> ModeInfo {
+    ModeInfo {
+        sum: Some(mode_info::Sum::Single(mode_info::Single {
+            mode: mode as i32,
+        })),
+    }
+}
+
+type BitArray = celestia_proto::cosmos::crypto::multisig::v1beta1::CompactBitArray;
+
+fn bit_array(n: usize, set: &[usize]) -> BitArray {
+    let mut elems = vec![0u8; n.div_ceil(8)];
+    for &i in set {
+        if let Some(b) = elems.get_mut(i / 8) {
+            *b |= 1 << (7 - i % 8);
+        }
+    }
+    BitArray {
+        extra_bits_stored: (n % 8) as u32,
+        elems,
+    }
+}
+
+/// The mode info and signing plan of key tree `k`. With `rng`, the
+/// sub-signers, their modes and the encoding are varied (threshold +/- 1,
+/// bit-array sizes, mode-info counts, nested and mixed modes); without,
+/// the first `threshold` members sign in `mode`.
+fn ms_plan(
+    mut rng: Option<&mut crate::mutate::Rng>,
+    k: &MsKey,
+    mode: SignMode,
+) -> (ModeInfo, Plan) {
+    let other = |m| {
+        if m == SignMode::Direct {
+            SignMode::LegacyAminoJson
+        } else {
+            SignMode::Direct
+        }
+    };
+    match k {
+        MsKey::Single(i) => {
+            let (mode, corrupt) = match rng.as_deref_mut() {
+                Some(r) => (if r.one_in(6) { other(mode) } else { mode }, r.one_in(40)),
+                None => (mode, false),
+            };
+            (
+                single_mode_info(mode),
+                Plan::Single {
+                    acct: *i,
+                    mode,
+                    corrupt,
+                },
+            )
+        }
+        MsKey::Multi { threshold, members } => {
+            let n = members.len();
+            let t = *threshold as usize;
+            let mut set: Vec<usize> = (0..t.min(n)).collect();
+            let mut tweak = 0u8;
+            let mut ba_tweak = 0usize;
+            let mut mi_tweak = 0usize;
+            if let Some(r) = rng.as_deref_mut() {
+                let c = match r.below(10) {
+                    0..=5 => t,
+                    6 => t.saturating_sub(1),
+                    7 => n,
+                    8 => t + 1,
+                    _ => r.below(n + 1),
+                }
+                .min(n);
+                // c distinct indices, in order.
+                let mut all: Vec<usize> = (0..n).collect();
+                for j in (1..n).rev() {
+                    all.swap(j, r.below(j + 1));
+                }
+                set = all[..c].to_vec();
+                set.sort_unstable();
+                tweak = match r.below(40) {
+                    0 => 1,
+                    1 => 2,
+                    2 => 3,
+                    _ => 0,
+                };
+                ba_tweak = if r.below(30) < 5 { 1 + r.below(6) } else { 0 };
+                mi_tweak = match r.below(30) {
+                    0 => 1,
+                    1 => 2,
+                    _ => 0,
+                };
+            }
+            let mut mode_infos = Vec::new();
+            let mut subs = Vec::new();
+            for &j in &set {
+                let (mi, p) = ms_plan(rng.as_deref_mut(), &members[j], mode);
+                mode_infos.push(mi);
+                subs.push(p);
+            }
+            let mut ba = Some(bit_array(n, &set));
+            if let Some(b) = ba.as_mut() {
+                match ba_tweak {
+                    1 => b.extra_bits_stored = ((n + 1) % 8) as u32,
+                    2 => b.elems.push(0xff),
+                    3 => {
+                        b.elems.pop();
+                    }
+                    4 => {
+                        // A bit past the keys (in the last byte's padding).
+                        let pad = n % 8;
+                        if pad != 0
+                            && let Some(last) = b.elems.last_mut()
+                        {
+                            *last |= 1 << (7 - pad);
+                        }
+                    }
+                    5 => b.extra_bits_stored = 9,
+                    _ => {}
+                }
+            }
+            if ba_tweak == 6 {
+                ba = None;
+            }
+            match mi_tweak {
+                1 => {
+                    mode_infos.pop();
+                }
+                2 => mode_infos.push(single_mode_info(mode)),
+                _ => {}
+            }
+            (
+                ModeInfo {
+                    sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                        bitarray: ba,
+                        mode_infos,
+                    })),
+                },
+                Plan::Multi { subs, tweak },
+            )
+        }
+    }
+}
+
+/// The signature bytes of `p` over `direct` (the `SignDoc`) or `amino`
+/// (the amino-JSON sign bytes, when they could be built).
+fn sign_plan(accts: &[Acct], p: &Plan, direct: &[u8], amino: Option<&[u8]>) -> Vec<u8> {
+    match p {
+        Plan::Single {
+            acct,
+            mode,
+            corrupt,
+        } => {
+            let bytes = if *mode == SignMode::LegacyAminoJson {
+                amino
+            } else {
+                Some(direct)
+            };
+            let mut sig = bytes
+                .and_then(|b| accts[*acct].key.sign(b).ok())
+                .map_or_else(|| vec![1u8; 64], |s| s.to_vec());
+            if *corrupt {
+                sig[7] ^= 1;
+            }
+            sig
+        }
+        Plan::Multi { subs, tweak } => {
+            let mut signatures: Vec<Vec<u8>> = subs
+                .iter()
+                .map(|s| sign_plan(accts, s, direct, amino))
+                .collect();
+            match tweak {
+                1 => signatures.push(vec![1u8; 64]),
+                2 => {
+                    signatures.pop();
+                }
+                _ => {}
+            }
+            let mut out =
+                celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature { signatures }
+                    .encode_to_vec();
+            if *tweak == 3 {
+                out.extend_from_slice(&[0x18, 0x01]);
+            }
+            out
+        }
+    }
 }
 
 fn accounts(first_number: u64) -> Vec<Acct> {
-    (0..ACCOUNTS)
+    let singles = (0..ACCOUNTS)
         .map(|i| {
             let mut secret = hash::sha256(format!("fuzz-diff deliver {i}").as_bytes());
             secret[0] &= 0x7f;
@@ -109,14 +373,33 @@ fn accounts(first_number: u64) -> Vec<Acct> {
             let acc = key.bech32("celestia");
             let val = key.bech32("celestiavaloper");
             Acct {
+                addr: key.address().to_vec(),
+                pk: key.pubkey_any(),
                 key,
                 acc,
                 val,
                 number: first_number + i as u64,
                 seq: 0,
+                ms: None,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let mut out = singles;
+    for (j, t) in multisig_trees().into_iter().enumerate() {
+        let pk = ms_pubkey(&out[..ACCOUNTS], &t);
+        let addr = pk.address().unwrap_or_default();
+        out.push(Acct {
+            key: out[0].key.clone(),
+            acc: encoding::bech32::encode("celestia", &addr).unwrap_or_default(),
+            val: encoding::bech32::encode("celestiavaloper", &addr).unwrap_or_default(),
+            number: first_number + (ACCOUNTS + j) as u64,
+            seq: 0,
+            addr,
+            pk: pk.to_any(),
+            ms: Some(t),
+        });
+    }
+    out
 }
 
 fn max_account_number(v: &serde_json::Value, max: &mut u64) {
@@ -170,7 +453,7 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
             if c["denom"] == "utia" {
                 let n: u128 = c["amount"].as_str().unwrap_or("0").parse()?;
                 c["amount"] =
-                    serde_json::Value::String((n + BALANCE * ACCOUNTS as u128).to_string());
+                    serde_json::Value::String((n + BALANCE * accts.len() as u128).to_string());
             }
         }
     }
@@ -497,8 +780,13 @@ impl Gen {
         (!v.is_empty()).then(|| v[self.m.rng.below(v.len())].clone())
     }
 
+    /// A fuzz account: mostly a single-key one, sometimes a multisig.
     fn acct_idx(&mut self) -> usize {
-        self.m.rng.below(self.accts.len())
+        if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
+            self.m.rng.below(ACCOUNTS)
+        } else {
+            self.m.rng.below(self.accts.len())
+        }
     }
 
     fn address_value(&mut self) -> Vec<u8> {
@@ -1384,7 +1672,7 @@ impl Gen {
     /// commitment, size, namespace or share version.
     fn blob_tx(&mut self, i: usize) -> Option<Vec<u8>> {
         let a = &self.accts[i];
-        let signer = a.key.address();
+        let signer: [u8; 20] = a.addr.as_slice().try_into().unwrap_or([0u8; 20]);
         let acc = a.acc.clone();
         let n = 1 + self.m.rng.below(3);
         let mut blobs = Vec::new();
@@ -1574,7 +1862,7 @@ impl Gen {
             .and_then(|t| x_ante::txview::signers(&t).ok())
             .unwrap_or_default();
         if signers.is_empty() {
-            signers.push(self.accts[i].key.address().to_vec());
+            signers.push(self.accts[i].addr.clone());
         }
         if !payer.is_empty()
             && let Ok((_, p)) = encoding::bech32::decode(&payer)
@@ -1584,13 +1872,15 @@ impl Gen {
         }
         let idx: Vec<Option<usize>> = signers
             .iter()
-            .map(|s| {
-                self.accts
-                    .iter()
-                    .position(|a| a.key.address().as_slice() == s.as_slice())
-            })
+            .map(|s| self.accts.iter().position(|a| a.addr == *s))
             .collect();
         let mut infos = Vec::new();
+        let mut plans: Vec<Option<Plan>> = Vec::new();
+        let mode = if amino {
+            SignMode::LegacyAminoJson
+        } else {
+            SignMode::Direct
+        };
         for (k, ix) in idx.iter().enumerate() {
             let (pk, seq) = match ix {
                 Some(a) => {
@@ -1598,22 +1888,28 @@ impl Gen {
                     if self.m.rng.one_in(40) {
                         seq = seq.wrapping_add(1);
                     }
-                    (Some(self.accts[*a].key.pubkey_any()), seq)
+                    (Some(self.accts[*a].pk.clone()), seq)
                 }
-                None => (Some(self.accts[k % self.accts.len()].key.pubkey_any()), 0),
+                None => (Some(self.accts[k % self.accts.len()].pk.clone()), 0),
             };
-            let mode = if amino {
-                SignMode::LegacyAminoJson
-            } else {
-                SignMode::Direct
+            let (mi, plan) = match ix.and_then(|a| self.accts[a].ms.clone().map(|t| (a, t))) {
+                Some((_, t)) => {
+                    let (mi, p) = ms_plan(Some(&mut self.m.rng), &t, mode);
+                    (mi, Some(p))
+                }
+                None => (
+                    single_mode_info(mode),
+                    ix.map(|a| Plan::Single {
+                        acct: a,
+                        mode,
+                        corrupt: false,
+                    }),
+                ),
             };
+            plans.push(plan);
             infos.push(SignerInfo {
                 public_key: if self.m.rng.one_in(30) { None } else { pk },
-                mode_info: Some(ModeInfo {
-                    sum: Some(mode_info::Sum::Single(mode_info::Single {
-                        mode: mode as i32,
-                    })),
-                }),
+                mode_info: Some(mi),
                 sequence: seq,
             });
         }
@@ -1626,7 +1922,7 @@ impl Gen {
         let (body_bytes, auth_info_bytes, nsig) =
             unsigned_tx(&body, infos.clone(), fee, signers.len());
         let mut sigs = Vec::with_capacity(nsig);
-        let decoded = if amino {
+        let decoded = if plans.iter().flatten().any(Plan::uses_amino) {
             let unsigned = TxRaw {
                 body_bytes: body_bytes.clone(),
                 auth_info_bytes: auth_info_bytes.clone(),
@@ -1648,40 +1944,41 @@ impl Gen {
             } else {
                 acct.number
             };
-            let bytes = if amino {
-                let Some(tx) = &decoded else {
-                    sigs.push(vec![1u8; 64]);
-                    continue;
-                };
-                let sd = x_ante::signing::SignerData {
-                    address: acct.acc.clone(),
-                    chain_id: self.chain_id.clone(),
-                    account_number,
-                    sequence: infos[k].sequence,
-                    pub_key: acct.key.pubkey_any(),
-                };
-                if let Ok(b) = x_ante::aminojson::sign_bytes(&sd, tx) {
-                    b
-                } else {
-                    sigs.push(vec![1u8; 64]);
-                    continue;
-                }
-            } else {
-                SignDoc {
-                    body_bytes: body_bytes.clone(),
-                    auth_info_bytes: auth_info_bytes.clone(),
-                    chain_id: self.chain_id.clone(),
-                    account_number,
-                }
-                .encode_to_vec()
+            let Some(plan) = &plans[k] else {
+                sigs.push(vec![1u8; 64]);
+                continue;
             };
-            match acct.key.sign(&bytes) {
-                Ok(s) => sigs.push(s.to_vec()),
-                Err(_) => sigs.push(vec![1u8; 64]),
+            let amino_bytes = if plan.uses_amino() {
+                decoded.as_ref().and_then(|tx| {
+                    let sd = x_ante::signing::SignerData {
+                        address: acct.acc.clone(),
+                        chain_id: self.chain_id.clone(),
+                        account_number,
+                        sequence: infos[k].sequence,
+                        pub_key: acct.pk.clone(),
+                    };
+                    x_ante::aminojson::sign_bytes(&sd, tx).ok()
+                })
+            } else {
+                None
+            };
+            let direct = SignDoc {
+                body_bytes: body_bytes.clone(),
+                auth_info_bytes: auth_info_bytes.clone(),
+                chain_id: self.chain_id.clone(),
+                account_number,
             }
+            .encode_to_vec();
+            sigs.push(sign_plan(
+                &self.accts,
+                plan,
+                &direct,
+                amino_bytes.as_deref(),
+            ));
         }
         if self.m.rng.one_in(80)
             && let Some(s) = sigs.first_mut()
+            && s.len() > 5
         {
             s[5] ^= 1;
         }
@@ -2103,7 +2400,7 @@ pub fn run(
         }
         // Sequences from the committed state.
         for a in &mut gn.accts {
-            a.seq = rust.query_sequence(&a.key.address()).sequence;
+            a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
         if bootstrap {
@@ -2150,6 +2447,12 @@ pub fn run(
             )?)?;
             let o = rust.check_tx(&req);
             stats.checked += 1;
+            let multisig = t
+                .windows(MULTISIG_URL.len())
+                .any(|w| w == MULTISIG_URL.as_bytes());
+            if multisig {
+                stats.multisig.0 += 1;
+            }
             let response::Value::CheckTx(g) = g else {
                 // Go's CheckTx returned an error (undecodable tx, ...).
                 check_rejected.push(true);
@@ -2165,17 +2468,16 @@ pub fn run(
             };
             if g.code == 0 {
                 stats.check_ok += 1;
+                if multisig {
+                    stats.multisig.1 += 1;
+                }
                 // The generator signs the next tx of these accounts with
                 // the next sequence.
                 if let Ok(tx) = txdecode::decode_for(app_version, t)
                     && let Ok(sigs) = x_ante::txview::signers(&tx)
                 {
                     for s in sigs {
-                        if let Some(a) = gn
-                            .accts
-                            .iter_mut()
-                            .find(|a| a.key.address().as_slice() == s.as_slice())
-                        {
+                        if let Some(a) = gn.accts.iter_mut().find(|a| a.addr == s) {
                             a.seq += 1;
                         }
                     }
@@ -2593,15 +2895,22 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
         messages: msgs,
         ..Default::default()
     };
+    let (mode_info, plan) = match &a.ms {
+        Some(t) => ms_plan(None, t, SignMode::Direct),
+        None => (
+            single_mode_info(SignMode::Direct),
+            Plan::Single {
+                acct: i,
+                mode: SignMode::Direct,
+                corrupt: false,
+            },
+        ),
+    };
     #[allow(deprecated)]
     let auth = AuthInfo {
         signer_infos: vec![SignerInfo {
-            public_key: Some(a.key.pubkey_any()),
-            mode_info: Some(ModeInfo {
-                sum: Some(mode_info::Sum::Single(mode_info::Single {
-                    mode: SignMode::Direct as i32,
-                })),
-            }),
+            public_key: Some(a.pk.clone()),
+            mode_info: Some(mode_info),
             sequence: a.seq,
         }],
         fee: Some(Fee {
@@ -2617,23 +2926,19 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
     };
     let body_bytes = body.encode_to_vec();
     let auth_info_bytes = auth.encode_to_vec();
-    let sig = a
-        .key
-        .sign(
-            &SignDoc {
-                body_bytes: body_bytes.clone(),
-                auth_info_bytes: auth_info_bytes.clone(),
-                chain_id: gn.chain_id.clone(),
-                account_number: a.number,
-            }
-            .encode_to_vec(),
-        )
-        .ok()?;
+    let direct = SignDoc {
+        body_bytes: body_bytes.clone(),
+        auth_info_bytes: auth_info_bytes.clone(),
+        chain_id: gn.chain_id.clone(),
+        account_number: a.number,
+    }
+    .encode_to_vec();
+    let sig = sign_plan(&gn.accts, &plan, &direct, None);
     Some(
         TxRaw {
             body_bytes,
             auth_info_bytes,
-            signatures: vec![sig.to_vec()],
+            signatures: vec![sig],
         }
         .encode_to_vec(),
     )
@@ -2780,11 +3085,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(
             v["auth"]["accounts"].as_array().unwrap().len(),
-            1 + ACCOUNTS
+            1 + accts.len()
         );
         assert_eq!(
             v["bank"]["supply"][0]["amount"],
-            (5 + BALANCE * ACCOUNTS as u128).to_string()
+            (5 + BALANCE * accts.len() as u128).to_string()
         );
     }
 

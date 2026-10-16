@@ -332,3 +332,35 @@ fn redelegation_from_unbonded_validator_completes_at_go_zero_time() {
     assert_eq!(ev.r#type, "redelegate");
     assert_eq!(ev.attributes[3].value, "0001-01-01T00:00:00Z");
 }
+
+#[test]
+fn edit_validator_checks_min_self_before_nil_rate() {
+    // Go: a non-positive `min_self_delegation` fails before the nil
+    // `commission_rate` is dereferenced; a nil `min_self_delegation`
+    // panics.
+    let mut m = ms();
+    let mut ctx = Context::new(&mut m, header(1, 1_000_000), ExecMode::Finalize);
+    setup(&mut ctx);
+    let msg = pb::MsgEditValidator {
+        description: Some(pb::Description {
+            moniker: "m".into(),
+            ..Default::default()
+        }),
+        validator_address: crate::addr::val_to_string(&acc(1)).unwrap(),
+        commission_rate: String::new(),
+        min_self_delegation: "-0".into(),
+    };
+    // description {moniker "m"}, commission_rate "", min_self_delegation "-0".
+    let raw = [
+        0x0a, 0x03, 0x0a, 0x01, b'm', 0x1a, 0x00, 0x22, 0x02, b'-', b'0',
+    ];
+    let e = crate::handle_edit_validator_wire(&mut ctx, &msg, &raw).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18));
+    let raw = [0x0a, 0x03, 0x0a, 0x01, b'm', 0x1a, 0x00, 0x22, 0x00];
+    let msg = pb::MsgEditValidator {
+        min_self_delegation: String::new(),
+        ..msg
+    };
+    let e = crate::handle_edit_validator_wire(&mut ctx, &msg, &raw).unwrap_err();
+    assert!(e.is_panic());
+}

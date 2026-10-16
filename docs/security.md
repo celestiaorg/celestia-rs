@@ -266,8 +266,12 @@ error text (reported separately).
 skips signatures and never commits, so it cannot see a state write or a
 `LastResultsHash` difference; here the generated txs are *signed* and
 *finalized*. The scenario's `InitChain` app state gets 12 funded accounts
-whose keys the harness holds (and short slashing window, unbonding and
-voting periods); the recorded blocks are replayed into Go and Rust (each
+whose keys the harness holds and 6 funded multisig accounts over them
+(2-of-3, 1-of-2, nested, 4-of-8 above `tx_sig_limit`, a repeated sub-key,
+1-of-1; signed with any subset of sub-keys, mixed and nested sign modes,
+and bit arrays, mode-info lists and `MultiSignature`s that do not match),
+and short slashing window, unbonding and
+voting periods; the recorded blocks are replayed into Go and Rust (each
 `FinalizeBlock` compared), then generated blocks follow on the final state:
 every `CheckTx` (code, gas, priority, address, sequence; logs separately),
 Go's `PrepareProposal` against Rust's, `ProcessProposal` of Go's block and
@@ -422,6 +426,7 @@ hand-written network messages.
 | `ibc-upgrades` fixture regenerated (2026-10-16) with 13 proto3json ICA packets carrying `null`s (a `null` message, `null` coins / outputs / amounts, `null` in `MsgExec.msgs` and `MsgVoteWeighted.options`, a one-byte secp256r1 key, a quoted `null` proposal id, `time.Parse`'s lenient forms) executed by celestia-app v10.4.0 | 237 heights, 3 txs failing with Go panics, the rest error acks | finding 35 fixed; then full parity (app hash, code, gas, data at every height). Remaining log differences: the panic logs (Go's recorded stack trace) and two pre-existing error texts |
 | `fuzz-diff exec` `EXEC_MODE=json` | `gov` 940 simulated txs (v10) | finding 29: 161 code / gas mismatches before, none after |
 | `fuzz-diff deliver` (signed txs finalized; 2026-10-16) | v10: `gov`, `staking`, `staking-lifecycle`, `hyperlane`, `authz-feegrant`, `fibre`, `vesting`, `zkism-forwarding`, `ibc`, `utf8`, `blob`, `consensus`, `evidence`; v9: `v9-gov`, `v9-staking`, `v9-hyperlane`, `v9-authz-feegrant`, `v9-vesting`, `v9-zkism-forwarding`, `v9-ibc`, `v9-utf8`, `v9-blob`, `v9-exec` (300 generated blocks each after the replay; ~7 300 blocks, ~41 000 txs through `CheckTx`, ~9 000 finalized) | findings 36–45 fixed (the first gov run stopped at the signal app-hash split after 229 blocks); a second round (14 v10 and 10 v9 scenarios, 300 blocks each, ~40 000 more txs) found 47–50, and its CheckTx mismatches where Go failed signature verification led to the `aminosign` op and finding 46; after the fixes the v9 round is clean |
+| `fuzz-diff deliver` round 3 (2026-10-16; seeds 31/32, then 41/42 with the multisig accounts) | v10: 12 + 6 scenarios, v9: 10 + 6 scenarios, 300 blocks each (~58 000 more txs through `CheckTx`) | findings 51–54 fixed; the reruns of both seeds are clean; round 4 (seeds 51/52, all 22 scenarios, 300 blocks each, ~37 000 txs through `CheckTx`, ~2 300 of them multisig-signed, ~16 % of those accepted) is clean |
 | `fuzz-diff --ops aminosign` (2026-10-16; seeds: the delivery generator's amino-JSON-signed txs, nested messages included) | v10, v9: 1 400 000 inputs (~110 000 decodable) | finding 46 fixed; then clean |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 
@@ -482,6 +487,10 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 48 | vesting `MsgCreateVestingAccount` (both versions) | `validateAmount`'s `IsValid` reaches a nil amount: **panic**; Rust failed decoding the amount (`invalid coins`) | code split from one tx | `valid_raw_coins` |
 | 49 | distribution `MsgDepositValidatorRewardsPool` / `MsgCommunityPoolSpend` (both versions) | the depositor, validator and recipient address-codec errors are returned unwrapped (`undefined`/1 for an empty or malformed address, `ErrLogic` for a wrong prefix); Rust used the staking decoder's `ErrInvalidAddress` (code 7) | code split from one tx | `sdk::address::{acc,val}_codec_to_bytes` |
 | 50 | forwarding `MsgForward.ValidateBasic` (both versions) | `errors.Wrap` keeps the code of `AccAddressFromBech32`'s error (`ErrUnknownAddress`, code 9, for an empty or over-long address); Rust made every failure code 1 | CheckTx / FinalizeBlock code split | `SdkError::wrap` |
+| 51 | multisig signatures (`ModeInfoAndSigToSignatureData`, both versions) | Go sizes a multisig's sub-signatures by the `MultiSignature` entries (`make([]SignatureData, len(sigs))`) and fills only those with a mode info: a `MultiSignature` with more entries than `mode_infos` carries nil sub-signatures, and `SetPubKeyDecorator`'s event loop fails with `got empty SignatureData` (code 1). Rust built the list from the mode infos only, so the extra entries vanished and the multisig verified: Rust accepted (`CheckTx`, `PrepareProposal`) and executed txs Go rejects | state split from one tx signed by a multisig account (anyone holding a threshold of its keys) | `SigData::Multi` sub-signatures are `Option`s (`None` past the mode infos; `improper signature data type for index n` in verification); found by the deliver harness's new multisig accounts |
+| 52 | authz grants (both versions) | `SendAuthorization.ValidateBasic`'s `IsAllPositive`, `StakeAuthorization`'s `MaxTokens.IsNegative` and `TransferAuthorization`'s `SpendLimit.Validate` reach a nil amount: **panic**; Rust failed decoding (`invalid coins`, code 10). `TransferAuthorization` also wraps `Coins.Validate`'s own text (`invalid denom: u`, `coin 0utia amount is not positive`), not `invalid spend limit` | code split from one `MsgGrant` | `sdk::coins::{raw_is_positive, raw_is_negative, raw_coins_validate}` |
+| 53 | feegrant allowances (both versions) | `BasicAllowance` / `PeriodicAllowance.ValidateBasic`'s `IsValid` reaches a nil amount: **panic**; the error texts print the coins as decoded (`<nil>` amounts) | code split from one `MsgGrantAllowance` | `raw_valid`, `raw_coins_string` |
+| 54 | staking `MsgEditValidator` (both versions) | the nil `commission_rate` dereference comes after the `min_self_delegation` check: a non-positive minimum (`-0`) with an empty commission rate is `ErrInvalidRequest` (code 18) in Go; Rust panicked first | code split from one tx | check order as Go |
 
 Open:
 
