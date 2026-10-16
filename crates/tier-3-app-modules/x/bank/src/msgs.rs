@@ -269,3 +269,39 @@ pub fn handle_set_send_enabled(
     }
     Ok(celestia_proto::cosmos::bank::v1beta1::MsgSetSendEnabledResponse {})
 }
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+
+    use super::*;
+
+    #[test]
+    fn output_sum_overflow_panics_like_go() {
+        // `totalOut.Add(out.Coins...)` past 256 bits: math.Int.Add panics.
+        let addr = x_auth::bech32(&[1; 20]).unwrap();
+        let coin = |a: &str| {
+            vec![PbCoin {
+                denom: "utia".into(),
+                amount: a.into(),
+            }]
+        };
+        let max = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+        let input = Input {
+            address: addr.clone(),
+            coins: coin("2000"),
+        };
+        let outputs = vec![
+            Output {
+                address: addr.clone(),
+                coins: coin(max),
+            },
+            Output {
+                address: addr,
+                coins: coin("1000"),
+            },
+        ];
+        let e = validate_input_outputs(&input, &outputs).unwrap_err();
+        assert!(e.is_panic(), "{e:?}");
+    }
+}

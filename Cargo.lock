@@ -4585,6 +4585,7 @@ dependencies = [
  "prost",
  "sdk",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-bank",
 ]

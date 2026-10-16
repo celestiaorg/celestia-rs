@@ -760,6 +760,8 @@ struct Gen {
     proposals: Vec<u64>,
     /// (delegator index, validator, creation height) of unbondings.
     unbondings: Vec<(usize, String, i64)>,
+    /// (proposal id, proposer index) of proposals the fuzz accounts made.
+    proposers: Vec<(u64, usize)>,
     hex_ids: Vec<String>,
     chain_id: String,
     app_version: u64,
@@ -1340,7 +1342,8 @@ impl Gen {
         let vals = self.validators.clone();
         let val = self.pick(&vals).unwrap_or_default();
         let val2 = self.pick(&vals).unwrap_or_default();
-        match self.m.rng.below(22) {
+        match self.m.rng.below(27) {
+            22..=26 => self.flow2(i),
             0 => Any::pack(&bank::MsgSend {
                 from_address: me,
                 to_address: other,
@@ -1620,6 +1623,133 @@ impl Gen {
             _ => Any::pack(&celestia_proto::cosmos::slashing::v1beta1::MsgUnjail {
                 validator_addr: self.accts[i].val.clone(),
             }),
+        }
+    }
+
+    /// A random account address (no account yet).
+    fn fresh_addr(&mut self) -> String {
+        let mut a = [0u8; 20];
+        for b in &mut a {
+            *b = self.m.rng.next_u64() as u8;
+        }
+        encoding::bech32::encode("celestia", &a).unwrap_or_default()
+    }
+
+    /// More state-building flows: legacy (`v1beta1`) gov, proposal
+    /// cancellation by its proposer, vesting accounts for fresh addresses,
+    /// ICS-20 transfers.
+    fn flow2(&mut self, i: usize) -> Any {
+        use celestia_proto::cosmos::gov::v1 as gov;
+        use celestia_proto::cosmos::gov::v1beta1 as gov1b;
+        use celestia_proto::cosmos::vesting::v1beta1 as vesting;
+        let me = self.accts[i].acc.clone();
+        let p = self.proposals.clone();
+        let id = self.pick(&p).unwrap_or(1);
+        // A rough block time for absolute times (vesting starts and ends).
+        let now = 1_700_000_000 + self.height * 6;
+        let to = self.fresh_addr();
+        let utia = |n: u64| Coin {
+            denom: "utia".into(),
+            amount: n.to_string(),
+        };
+        match self.m.rng.below(9) {
+            0 => Any::pack(&gov1b::MsgVote {
+                proposal_id: id,
+                voter: me,
+                option: 1 + self.m.rng.below(4) as i32,
+            }),
+            1 => Any::pack(&gov1b::MsgVoteWeighted {
+                proposal_id: id,
+                voter: me,
+                options: vec![
+                    gov1b::WeightedVoteOption {
+                        option: 1,
+                        weight: "700000000000000000".into(),
+                    },
+                    gov1b::WeightedVoteOption {
+                        option: 2 + self.m.rng.below(3) as i32,
+                        weight: "300000000000000000".into(),
+                    },
+                ],
+            }),
+            2 => Any::pack(&gov1b::MsgDeposit {
+                proposal_id: id,
+                depositor: me,
+                amount: vec![utia(1_000_000_000)],
+            }),
+            3 => Any::pack(&gov1b::MsgSubmitProposal {
+                content: Some(Any::pack(&gov1b::TextProposal {
+                    title: "fuzz".into(),
+                    description: "fuzz text proposal".into(),
+                })),
+                initial_deposit: vec![utia(100_000_000_000)],
+                proposer: me,
+            }),
+            4 => {
+                let own: Vec<u64> = self
+                    .proposers
+                    .iter()
+                    .filter(|(_, k)| *k == i)
+                    .map(|(id, _)| *id)
+                    .collect();
+                Any::pack(&gov::MsgCancelProposal {
+                    proposal_id: self.pick(&own).unwrap_or(id),
+                    proposer: me,
+                })
+            }
+            5 => {
+                // Mostly 0 < start < end (start in the past or future).
+                let start = if self.m.rng.one_in(10) {
+                    0
+                } else {
+                    now + self.m.rng.below(2_000) as i64 - 1_500
+                };
+                let end = if self.m.rng.one_in(10) {
+                    start
+                } else {
+                    start + 1 + self.m.rng.below(10_000) as i64
+                };
+                Any::pack(&vesting::MsgCreateVestingAccount {
+                    from_address: me,
+                    to_address: to,
+                    amount: vec![utia(1 + self.m.rng.below(1_000_000) as u64)],
+                    end_time: end,
+                    delayed: self.m.rng.one_in(2),
+                    start_time: start,
+                })
+            }
+            6 => {
+                let n = 1 + self.m.rng.below(4);
+                let periods = (0..n)
+                    .map(|_| vesting::Period {
+                        length: 1 + self.m.rng.below(3_000) as i64,
+                        amount: vec![utia(1 + self.m.rng.below(100_000) as u64)],
+                    })
+                    .collect();
+                Any::pack(&vesting::MsgCreatePeriodicVestingAccount {
+                    from_address: me,
+                    to_address: to,
+                    start_time: now + self.m.rng.below(1_000) as i64 - 500,
+                    vesting_periods: periods,
+                })
+            }
+            7 => Any::pack(&vesting::MsgCreatePermanentLockedAccount {
+                from_address: me,
+                to_address: to,
+                amount: vec![utia(1 + self.m.rng.below(1_000_000) as u64)],
+            }),
+            _ => Any::pack(
+                &celestia_proto::ibc::applications::transfer::v1::MsgTransfer {
+                    source_port: "transfer".into(),
+                    source_channel: "channel-0".into(),
+                    token: Some(utia(1 + self.m.rng.below(1_000_000) as u64)),
+                    sender: me,
+                    receiver: self.fresh_addr(),
+                    timeout_height: None,
+                    timeout_timestamp: 4_000_000_000_000_000_000,
+                    memo: String::new(),
+                },
+            ),
         }
     }
 
@@ -2318,6 +2448,7 @@ pub fn run(
         validators: Vec::new(),
         proposals: Vec::new(),
         unbondings: Vec::new(),
+        proposers: Vec::new(),
         hex_ids: Vec::new(),
         chain_id,
         app_version,
@@ -2795,6 +2926,19 @@ pub fn run(
             ));
             if g.app_hash != o.app_hash {
                 stats.split = true;
+                if std::env::var("DELIVER_DUMP_SPLIT").is_ok() {
+                    // Commit both and print the store entries that differ.
+                    let commit_req = Request {
+                        value: Some(request::Value::Commit(abci::RequestCommit {})),
+                    };
+                    go.call_or_exception(cons_conn, &commit_req)?;
+                    rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+                    for line in dump_split(&mut go, cons_conn, &mut rust) {
+                        stats
+                            .mismatches
+                            .push(format!("{scenario} h={height} store {line}"));
+                    }
+                }
                 return Ok(stats);
             }
         }
@@ -2812,6 +2956,102 @@ pub fn run(
         }
     }
     Ok(stats)
+}
+
+/// After an app-hash split (both committed): the entries of every module
+/// store that differ between Go and Rust (`/store/<name>/subspace`).
+fn dump_split(go: &mut GoApp, conn: u32, rust: &mut app::App) -> Vec<String> {
+    const STORES: &[&str] = &[
+        "acc",
+        "authz",
+        "bank",
+        "blob",
+        "capability",
+        "circuit",
+        "consensus",
+        "distribution",
+        "evidence",
+        "feegrant",
+        "fibre",
+        "gov",
+        "hyperlane",
+        "ibc",
+        "icahost",
+        "minfee",
+        "mint",
+        "packetfowardmiddleware",
+        "params",
+        "signal",
+        "slashing",
+        "staking",
+        "transfer",
+        "upgrade",
+        "valaddr",
+        "warp",
+        "zkism",
+    ];
+    fn pairs(v: &[u8]) -> BTreeMap<Vec<u8>, Vec<u8>> {
+        // kv.Pairs { repeated Pair pairs = 1 } / Pair { key = 1, value = 2 }.
+        let mut out = BTreeMap::new();
+        for p in parse_fields(v).unwrap_or_default() {
+            if p.num != 1 || p.wt != 2 {
+                continue;
+            }
+            let (mut k, mut val) = (Vec::new(), Vec::new());
+            for f in parse_fields(&p.val).unwrap_or_default() {
+                match f.num {
+                    1 => k = f.val,
+                    2 => val = f.val,
+                    _ => {}
+                }
+            }
+            out.insert(k, val);
+        }
+        out
+    }
+    let mut lines = Vec::new();
+    for s in STORES {
+        // A subspace query needs a non-empty prefix: one per first byte.
+        let (mut gp, mut rp) = (BTreeMap::new(), BTreeMap::new());
+        for first in 0..=255u8 {
+            let req = abci::RequestQuery {
+                data: vec![first],
+                path: format!("/store/{s}/subspace"),
+                height: 0,
+                prove: false,
+            };
+            let g = go.call_or_exception(
+                conn,
+                &Request {
+                    value: Some(request::Value::Query(req.clone())),
+                },
+            );
+            let g = match g {
+                Ok(Response {
+                    value: Some(response::Value::Query(g)),
+                }) => g,
+                other => {
+                    lines.push(format!("{s}: Go query failed: {other:?}"));
+                    break;
+                }
+            };
+            let r = rust.query(&req);
+            gp.extend(pairs(&g.value));
+            rp.extend(pairs(&r.value));
+        }
+        for k in gp.keys().chain(rp.keys()).collect::<BTreeSet<_>>() {
+            let (a, b) = (gp.get(k), rp.get(k));
+            if a != b {
+                lines.push(format!(
+                    "{s} key={}\n    go={}\n    rust={}",
+                    hex::encode(k),
+                    a.map_or_else(|| "<absent>".into(), hex::encode),
+                    b.map_or_else(|| "<absent>".into(), hex::encode)
+                ));
+            }
+        }
+    }
+    lines
 }
 
 /// The CometBFT address of a validator update's key.
@@ -2849,19 +3089,51 @@ fn apply_updates(set: &ValSet, updates: &[abci::ValidatorUpdate]) -> ValSet {
 /// Learns created objects from a delivered tx (validators, proposals,
 /// unbondings).
 fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], events: &[abci::Event], height: i64) {
+    let mut submitted = Vec::new();
     for e in events {
         for a in &e.attributes {
             if a.key == "proposal_id"
                 && let Ok(id) = a.value.parse::<u64>()
-                && !gn.proposals.contains(&id)
             {
-                gn.proposals.push(id);
+                if e.r#type == "submit_proposal" && !submitted.contains(&id) {
+                    submitted.push(id);
+                }
+                if !gn.proposals.contains(&id) {
+                    gn.proposals.push(id);
+                }
             }
         }
     }
     let Ok(t) = txdecode::decode_for(app_version, tx) else {
         return;
     };
+    // The proposers of the proposals the tx submitted, in order.
+    let proposers: Vec<String> = t
+        .body
+        .messages
+        .iter()
+        .filter_map(|a| match a.type_url.as_str() {
+            "/cosmos.gov.v1.MsgSubmitProposal" => {
+                celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(a.value.as_slice())
+                    .ok()
+                    .map(|m| m.proposer)
+            }
+            "/cosmos.gov.v1beta1.MsgSubmitProposal" => {
+                celestia_proto::cosmos::gov::v1beta1::MsgSubmitProposal::decode(a.value.as_slice())
+                    .ok()
+                    .map(|m| m.proposer)
+            }
+            _ => None,
+        })
+        .collect();
+    for (id, p) in submitted.iter().zip(&proposers) {
+        if let Some(k) = gn.accts.iter().position(|x| x.acc == *p) {
+            gn.proposers.push((*id, k));
+            if gn.proposers.len() > 64 {
+                gn.proposers.remove(0);
+            }
+        }
+    }
     for a in &t.body.messages {
         match a.type_url.as_str() {
             "/cosmos.staking.v1beta1.MsgCreateValidator" => {
@@ -2957,6 +3229,7 @@ pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
         validators: Vec::new(),
         proposals: vec![1, 2],
         unbondings: Vec::new(),
+        proposers: Vec::new(),
         hex_ids: Vec::new(),
         chain_id: "c".into(),
         app_version,
@@ -3103,6 +3376,7 @@ mod tests {
             validators: vec!["celestiavaloper1x".into()],
             proposals: vec![1],
             unbondings: Vec::new(),
+            proposers: Vec::new(),
             hex_ids: Vec::new(),
             chain_id: "c".into(),
             app_version: 10,

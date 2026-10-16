@@ -171,7 +171,9 @@ pub fn handle_create_validator(
         )));
     }
 
-    let mut v = Validator::new(msg.validator_address.clone(), pk_any.clone(), description);
+    // `types.NewValidator` packs the unpacked key again
+    // (`NewAnyWithValue`): the stored `Any` is canonical.
+    let mut v = Validator::new(msg.validator_address.clone(), pk.to_any(), description);
     commission.update_time = ctx.header.time;
     v.commission = commission;
     v.min_self_delegation = min_self;

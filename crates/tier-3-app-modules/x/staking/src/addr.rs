@@ -115,6 +115,16 @@ impl PubKey {
         }
     }
 
+    /// `codectypes.NewAnyWithValue(pk)`: the key re-marshaled canonically
+    /// (a duplicated or unknown field of the tx's `Any` is not kept).
+    #[must_use]
+    pub fn to_any(&self) -> Any {
+        match self {
+            Self::Ed25519(k) => Any::pack(&ed25519::PubKey { key: k.clone() }),
+            Self::Secp256k1(k) => Any::pack(&secp256k1::PubKey { key: k.clone() }),
+        }
+    }
+
     /// `pk.Type()`.
     #[must_use]
     pub fn type_str(&self) -> &'static str {

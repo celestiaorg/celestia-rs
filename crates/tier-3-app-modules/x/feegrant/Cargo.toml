@@ -18,6 +18,7 @@ celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 pbjson-types = "0.7"
 prost = "0.13"
 sdk = { path = "../../sdk" }
+txdecode = { path = "../../txdecode" }
 serde_json = "1"
 x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }

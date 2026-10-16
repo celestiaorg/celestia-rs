@@ -17,6 +17,13 @@ pub fn math_err(e: math::MathError) -> crate::SdkError {
     sdk::invalid_coins(e.to_string())
 }
 
+/// Go's panic from `math.Int.Add` (`Coin.Add`, `Coins.Add`) when a sum
+/// exceeds 256 bits.
+#[must_use]
+pub fn add_panic(e: math::MathError) -> crate::SdkError {
+    crate::error::go_panic(e.to_string())
+}
+
 /// One coin.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Coin {
@@ -270,7 +277,7 @@ impl Coins {
                     j += 1;
                     Coin::with_amount(
                         a.denom.clone(),
-                        a.amount.checked_add(&b.amount).map_err(math_err)?,
+                        a.amount.checked_add(&b.amount).map_err(add_panic)?,
                     )
                 }
                 (Some(a), Some(b)) if a.denom < b.denom => {

@@ -222,7 +222,10 @@ pub fn add_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Result<()> 
     }
     for coin in amt {
         let balance = get_balance(ctx, addr, &coin.denom)?;
-        let new = balance.amount.checked_add(&coin.amount).map_err(math_err)?;
+        let new = balance
+            .amount
+            .checked_add(&coin.amount)
+            .map_err(sdk::coins::add_panic)?;
         set_balance(ctx, addr, &Coin::with_amount(coin.denom.clone(), new))?;
     }
     ctx.events.emit(event(
@@ -341,7 +344,10 @@ pub fn mint_coins(ctx: &mut Context<'_>, module: &str, amt: &Coins) -> Result<()
     add_coins(ctx, &addr, amt)?;
     for c in amt {
         let s = get_supply(ctx, &c.denom)?;
-        let n = s.amount.checked_add(&c.amount).map_err(math_err)?;
+        let n = s
+            .amount
+            .checked_add(&c.amount)
+            .map_err(sdk::coins::add_panic)?;
         set_supply(ctx, &Coin::with_amount(c.denom.clone(), n))?;
     }
     ctx.events.emit(event(

@@ -35,3 +35,28 @@ fn repack_writes_gogoproto_canonical_bytes() {
     // Canonical input is unchanged.
     assert_eq!(txdecode::gogo_repack(&out), out);
 }
+
+#[test]
+fn repack_follows_the_executing_app_version() {
+    // hyperlane-cosmos v1.1.0 (v9.0.8): `RemoteRouter.receiver_contract` is
+    // a string (empty: omitted); the v10 fork's is a non-nullable
+    // `HexAddress` (marshaled as 66 bytes when absent).
+    let any = celestia_proto::Any {
+        type_url: "/hyperlane.warp.v1.MsgEnrollRemoteRouter".into(),
+        value: hex::decode(
+            "0a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371a1508ffffffffffffffff7f1a09383432303237323939",
+        )
+        .unwrap(),
+    };
+    sdk::version::set_app_version(10);
+    let v10 = txdecode::gogo_repack(&any);
+    sdk::version::set_app_version(9);
+    let v9 = txdecode::gogo_repack(&any);
+    sdk::version::set_app_version(0);
+    assert_eq!(
+        v9,
+        txdecode::scoped_v9(true, || txdecode::gogo_repack(&any))
+    );
+    assert_eq!(v10.value.len(), 204);
+    assert_eq!(v9.value.len(), 136);
+}

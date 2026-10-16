@@ -249,6 +249,9 @@ pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
 /// decode.
 #[must_use]
 pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
+    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+        return with_v9(|| gogo_marshaled(any));
+    }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
     let Ok(mut d) = gogo::unmarshal(name, &any.value) else {
         return any.clone();
@@ -267,9 +270,15 @@ pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
 /// they are not gogoproto's canonical encoding (field order, repeated
 /// scalars, non-nullable `stdtime` / customtype fields left out, ...).
 /// `any` is returned unchanged when its type is unknown or does not
-/// decode (Go fails earlier in those cases).
+/// decode (Go fails earlier in those cases). Executing at app version 9
+/// (`sdk::version`), the v9.0.8 schema applies (e.g. hyperlane-cosmos
+/// v1.1.0's `RemoteRouter.receiver_contract` is a string, not a
+/// non-nullable `HexAddress`).
 #[must_use]
 pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
+    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+        return with_v9(|| gogo_repack(any));
+    }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
     match gogo::unmarshal(name, &any.value) {
         Ok(d) => celestia_proto::Any {

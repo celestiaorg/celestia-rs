@@ -199,6 +199,7 @@ pub fn save_grant(
     granter: &[u8],
     auth: &Authorization,
     expiration: Option<&Timestamp>,
+    raw: Option<&Any>,
 ) -> Result<()> {
     let msg_type = auth.msg_type_url()?;
     let key = grant_key(grantee, granter, &msg_type);
@@ -212,8 +213,12 @@ pub fn save_grant(
             sdk::time::format_rfc3339(exp)
         )));
     }
+    // `authz.NewGrant` packs the decoded authorization again
+    // (`NewAnyWithValue`): gogoproto's canonical encoding of the message
+    // as the tx carried it (`raw`) or as changed.
+    let packed = raw.map_or_else(|| auth.to_any(), Clone::clone);
     let grant = Grant {
-        authorization: Some(auth.to_any()),
+        authorization: Some(txdecode::gogo_repack(&packed)),
         expiration: expiration.copied(),
     };
     let old_exp = get_grant(ctx, &key)?.and_then(|g| g.expiration);
@@ -279,7 +284,7 @@ fn update(
     let Some(mut grant) = get_grant(ctx, &key)? else {
         return Err(errors::no_authorization_found());
     };
-    grant.authorization = Some(updated.to_any());
+    grant.authorization = Some(txdecode::gogo_repack(&updated.to_any()));
     ctx.set(STORE_KEY, key, grant.encode_to_vec())
 }
 
@@ -397,7 +402,14 @@ pub fn handle_grant(
     if !router.has_handler(&t) {
         return Err(sdkerr::invalid_type(format!("{t} doesn't exist.")));
     }
-    save_grant(ctx, &grantee, &granter, &auth, grant.expiration.as_ref())?;
+    save_grant(
+        ctx,
+        &grantee,
+        &granter,
+        &auth,
+        grant.expiration.as_ref(),
+        Some(any),
+    )?;
     Ok(MsgGrantResponse {})
 }
 
@@ -496,7 +508,7 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
             .as_ref()
             .ok_or_else(|| sdk::error::go_panic("expected authorization"))?;
         let a = Authorization::from_any(any)?;
-        save_grant(ctx, &grantee, &granter, &a, e.expiration.as_ref())?;
+        save_grant(ctx, &grantee, &granter, &a, e.expiration.as_ref(), None)?;
     }
     Ok(())
 }

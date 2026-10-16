@@ -140,6 +140,22 @@ impl Allowance {
         }
     }
 
+    /// `NewAnyWithValue` of the allowance Go holds after changing it
+    /// (`SetAllowance` re-packs the inner allowance too): canonical
+    /// gogoproto encoding at every level.
+    #[must_use]
+    pub fn to_canonical_any(&self) -> Any {
+        match self {
+            Self::AllowedMsg(inner, msgs) => {
+                txdecode::gogo_repack(&Any::pack(&AllowedMsgAllowance {
+                    allowance: Some(inner.to_canonical_any()),
+                    allowed_messages: msgs.clone(),
+                }))
+            }
+            other => txdecode::gogo_repack(&other.to_any()),
+        }
+    }
+
     /// `ExpiresAt`.
     pub fn expires_at(&self) -> Result<Option<Timestamp>> {
         Ok(match self {

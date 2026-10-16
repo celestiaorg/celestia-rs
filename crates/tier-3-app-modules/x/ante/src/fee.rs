@@ -240,9 +240,11 @@ fn check_deduct_fee(
         deduct_from = granter;
     }
     if x_auth::get_account(ctx, &deduct_from)?.is_none() {
+        // `deductFeesFrom` is a `[]byte` variable: `%s` prints the raw
+        // bytes.
         return Err(errs::unknown_address(format!(
             "fee payer address: {} does not exist",
-            txview::bytes_to_bech32(&deduct_from)
+            gostr::from_go_bytes(&deduct_from)
         ))
         .into());
     }
