@@ -21,22 +21,10 @@ const KNOWN_DIVERGENCES: &[(&str, &str)] = &[
     ("/cosmos.tx.v1beta1.Service/Simulate", "1203616263"),
 ];
 
-/// Paths that differ at app version 9 (`v9-*` scenarios): the legacy amino
-/// codec runs over celestia-app v10.4.0's type graph
-/// (`legacy-amino/src/schema.json`), while v9.0.8 registers hyperlane-cosmos
-/// v1.1.0's warp messages under `hyperlane/v1/...` names (v1.3.0:
-/// `hyperlane/warp/v1/...`) and has no fibre / valaddr types. Closing it
-/// needs the schema dumped from a v9.0.8 app (`conformance/aminoschema`).
-const KNOWN_V9_DIVERGENCES: &[&str] = &[
-    "/cosmos.tx.v1beta1.Service/TxDecodeAmino",
-    "/cosmos.tx.v1beta1.Service/TxEncodeAmino",
-];
-
-fn deferred_in(scenario: &str, path: &str, data: &str) -> bool {
-    (scenario.starts_with("v9-") && KNOWN_V9_DIVERGENCES.contains(&path))
-        || KNOWN_DIVERGENCES
-            .iter()
-            .any(|(p, d)| *p == path && *d == data)
+fn deferred_in(path: &str, data: &str) -> bool {
+    KNOWN_DIVERGENCES
+        .iter()
+        .any(|(p, d)| *p == path && *d == data)
 }
 
 /// The minimum corpus size (the celestia-core-backed corpus is smaller).
@@ -58,7 +46,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
     let failures: Vec<String> = r
         .mismatches
         .iter()
-        .filter(|(c, _)| !deferred_in(scenario, &c.path, &c.data))
+        .filter(|(c, _)| !deferred_in(&c.path, &c.data))
         .take(20)
         .map(|(c, ours)| {
             format!(
@@ -72,7 +60,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
         "{scenario}: {} mismatches, first:\n{}",
         r.mismatches
             .iter()
-            .filter(|(c, _)| !deferred_in(scenario, &c.path, &c.data))
+            .filter(|(c, _)| !deferred_in(&c.path, &c.data))
             .count(),
         failures.join("\n")
     );

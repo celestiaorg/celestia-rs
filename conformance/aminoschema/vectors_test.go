@@ -9,22 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"cosmossdk.io/log"
 	sdkmath "cosmossdk.io/math"
 	"cosmossdk.io/x/feegrant"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/bcp-innovations/hyperlane-cosmos/util"
 	warptypes "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types"
-	"github.com/celestiaorg/celestia-app/v10/app"
-	blobtypes "github.com/celestiaorg/celestia-app/v10/x/blob/types"
-	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx"
@@ -58,7 +53,7 @@ func mustAny(t *testing.T, m interface{}) *codectypes.Any {
 }
 
 func TestVectors(t *testing.T) {
-	a := app.New(log.NewNopLogger(), dbm.NewMemDB(), nil, 0, 0, simtestutil.EmptyAppOptions{})
+	a := newApp()
 	enc := a.GetEncodingConfig()
 	cctx := client.Context{}.WithCodec(enc.Codec).WithInterfaceRegistry(enc.InterfaceRegistry).
 		WithTxConfig(a.GetTxConfig()).WithLegacyAmino(enc.Amino)
@@ -166,7 +161,7 @@ func TestVectors(t *testing.T) {
 		},
 		"celestia": {
 			Msgs: []sdk.Msg{
-				&blobtypes.MsgPayForBlobs{Signer: addr1, Namespaces: [][]byte{make([]byte, 29), {1, 2}}, BlobSizes: []uint32{1, 0, 300}, ShareCommitments: [][]byte{{9}}, ShareVersions: []uint32{0}},
+				&msgPayForBlobs{Signer: addr1, Namespaces: [][]byte{make([]byte, 29), {1, 2}}, BlobSizes: []uint32{1, 0, 300}, ShareCommitments: [][]byte{{9}}, ShareVersions: []uint32{0}},
 				&warptypes.MsgRemoteTransfer{Sender: addr1, TokenId: hexa, DestinationDomain: 7, Recipient: hexa, Amount: sdkmath.NewInt(-5), CustomHookId: &hexa, GasLimit: sdkmath.NewInt(0), MaxFee: sdk.NewInt64Coin("utia", 3)},
 			},
 			Memo: "\x01\xffé",

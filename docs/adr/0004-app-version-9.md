@@ -153,11 +153,19 @@ which binary drives them.
 Code without a context (`ValidateBasic`) reads the app version the app
 sets per ABCI call (`sdk::version`).
 
-Not ported: the legacy amino codec of `TxDecodeAmino` / `TxEncodeAmino`
-runs over v10.4.0's type graph at both versions (v9.0.8 registers
-hyperlane-cosmos v1.1.0's warp messages as `hyperlane/v1/...`, v1.3.0 as
-`hyperlane/warp/v1/...`, and has no fibre / valaddr types); closing it
-needs `conformance/aminoschema` run in a v9.0.8 checkout. Ported since
+Everything listed is ported. The last item (2026-10-16): the legacy
+amino codec of `TxDecodeAmino` / `TxEncodeAmino` runs over v9.0.8's type
+graph at app version 9 (`legacy_amino::Schema::for_app_version`;
+`schema_v9.json` dumped by `conformance/aminoschema` built with `-tags v9`
+in a v9.0.8 checkout: hyperlane-cosmos v1.1.0 registers the warp messages
+as `hyperlane/v1/...` and `MsgSetRoutingIsmDomain` under its misspelt
+`hyperlane/v1/MsgCreateRoMsgSetRoutingIsmDomainutingIsm`, `MsgCreateIgp`
+as `hyperlane/v1/MsgCreateInterchainGasPaymaster`, `RemoteRouter`'s
+receiver contract is a string; no fibre, `MsgCreateNoopHook` or
+`MsgCreateNativeSyntheticToken`; v9's own blob / signal / forwarding
+types),
+checked by the 77 `vectors_v9.json` vectors recorded from v9.0.8 and by
+the ten v9 query corpora with no exception left. Ported before
 (2026-10-16): distribution's reward-ratio overflow panic, hyperlane
 v1.1.0's string multisig validator comparison, IGP `maxFee` check,
 `MsgPayForGas`, `SetDomain` and amino names, x/zkism's paginated genesis
@@ -178,8 +186,11 @@ work: stored as given, compared lowercased, decoded when dispatching.)
   `v9-authz-feegrant`, `v9-vesting`, `v9-utf8`, `v9-blob`,
   `v9-zkism-forwarding` and `v9-ibc` recorded from Go v9.0.8
   (`APP_V9=1 conformance/querycorpus/record.sh`): every ABCI query and
-  REST request byte-identical except the amino codec paths above
-  (`query_corpus.rs`, `KNOWN_V9_DIVERGENCES`).
+  REST request byte-identical (`query_corpus.rs`; the v9-only exception
+  list for the amino codec paths is gone since `schema_v9.json`).
+- `legacy-amino` `go_vectors_v9`: the 77 `TxDecodeAmino` /
+  `TxEncodeAmino` vectors (outputs, errors, panics) recorded from v9.0.8
+  (`conformance/aminoschema/vectors_v9.json`).
 
 - v9 devnet scenarios recorded from Go v9.0.8 (`APP_V9=1
   conformance/devnet/devnet.sh ...`) behind celestia-core v0.42.3, like the

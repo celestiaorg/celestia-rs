@@ -206,7 +206,8 @@ fn tx_decode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<
             "invalid empty tx bytes".into(),
         ));
     }
-    let json = legacy_amino::tx_decode_amino(&req.amino_binary).map_err(amino_error)?;
+    let schema = legacy_amino::Schema::for_app_version(sdk::version::app_version());
+    let json = legacy_amino::tx_decode_amino_in(schema, &req.amino_binary).map_err(amino_error)?;
     Ok(TxDecodeAminoResponse { amino_json: json }.encode_to_vec())
 }
 
@@ -219,7 +220,9 @@ fn tx_encode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<
             "invalid empty tx json".into(),
         ));
     }
-    let bz = legacy_amino::tx_encode_amino(req.amino_json.as_bytes()).map_err(amino_error)?;
+    let schema = legacy_amino::Schema::for_app_version(sdk::version::app_version());
+    let bz =
+        legacy_amino::tx_encode_amino_in(schema, req.amino_json.as_bytes()).map_err(amino_error)?;
     Ok(TxEncodeAminoResponse { amino_binary: bz }.encode_to_vec())
 }
 

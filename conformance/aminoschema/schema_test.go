@@ -11,11 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"cosmossdk.io/log"
-	"github.com/celestiaorg/celestia-app/v10/app"
-	dbm "github.com/cosmos/cosmos-db"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	"github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx"
 	amino "github.com/tendermint/go-amino"
 )
@@ -277,7 +273,7 @@ func populate(rv reflect.Value, owner map[*codectypes.Any]string, depth int) {
 }
 
 func TestSchema(t *testing.T) {
-	a := app.New(log.NewNopLogger(), dbm.NewMemDB(), nil, 0, 0, simtestutil.EmptyAppOptions{})
+	a := newApp()
 	cdc := a.GetEncodingConfig().Amino.Amino
 	cv := reflect.ValueOf(cdc).Elem()
 	d := &dumper{

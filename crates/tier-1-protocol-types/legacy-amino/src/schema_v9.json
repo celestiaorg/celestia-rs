@@ -1,0 +1,4823 @@
+{
+ "any_fields": {
+  "cosmossdk.io/x/evidence/types.MsgSubmitEvidence.Evidence": "cosmossdk.io/x/evidence/exported.Evidence",
+  "cosmossdk.io/x/feegrant.AllowedMsgAllowance.Allowance": "cosmossdk.io/x/feegrant.FeeAllowanceI",
+  "cosmossdk.io/x/feegrant.MsgGrantAllowance.Allowance": "cosmossdk.io/x/feegrant.FeeAllowanceI",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.LegacyAminoPubKey.PubKeys": "github.com/cosmos/cosmos-sdk/crypto/types.PubKey",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount.PubKey": "github.com/cosmos/cosmos-sdk/crypto/types.PubKey",
+  "github.com/cosmos/cosmos-sdk/x/authz.Grant.Authorization": "github.com/cosmos/cosmos-sdk/x/authz.Authorization",
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgExec.Msgs": "interface { ProtoMessage(); Reset(); String() string }",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgExecLegacyContent.Content": "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.Content",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgSubmitProposal.Messages": "interface { ProtoMessage(); Reset(); String() string }",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgSubmitProposal.Content": "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.Content",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCreateValidator.Pubkey": "github.com/cosmos/cosmos-sdk/crypto/types.PubKey"
+ },
+ "registered": [
+  "cosmossdk.io/x/evidence/types.Equivocation",
+  "cosmossdk.io/x/evidence/types.MsgSubmitEvidence",
+  "cosmossdk.io/x/feegrant.AllowedMsgAllowance",
+  "cosmossdk.io/x/feegrant.BasicAllowance",
+  "cosmossdk.io/x/feegrant.MsgGrantAllowance",
+  "cosmossdk.io/x/feegrant.MsgRevokeAllowance",
+  "cosmossdk.io/x/feegrant.PeriodicAllowance",
+  "cosmossdk.io/x/upgrade/types.CancelSoftwareUpgradeProposal",
+  "cosmossdk.io/x/upgrade/types.MsgCancelUpgrade",
+  "cosmossdk.io/x/upgrade/types.MsgSoftwareUpgrade",
+  "cosmossdk.io/x/upgrade/types.Plan",
+  "cosmossdk.io/x/upgrade/types.SoftwareUpgradeProposal",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgAnnounceValidator",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMerkleRootMultisigIsm",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMessageIdMultisigIsm",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateNoopIsm",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateRoutingIsm",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgRemoveRoutingIsmDomain",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgSetRoutingIsmDomain",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgUpdateRoutingIsmOwner",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgClaim",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateIgp",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateMerkleTreeHook",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgPayForGas",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetDestinationGasConfig",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetIgpOwner",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgCreateMailbox",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgProcessMessage",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgSetMailbox",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateCollateralToken",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateSyntheticToken",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgEnrollRemoteRouter",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgRemoteTransfer",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgSetToken",
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgUnrollRemoteRouter",
+  "github.com/celestiaorg/celestia-app/v9/x/blob/types.MsgPayForBlobs",
+  "github.com/celestiaorg/celestia-app/v9/x/forwarding/types.MsgForward",
+  "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgSignalVersion",
+  "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgTryUpgrade",
+  "github.com/cometbft/cometbft/crypto/sr25519.PrivKey",
+  "github.com/cometbft/cometbft/crypto/sr25519.PubKey",
+  "github.com/cometbft/cometbft/types.DuplicateVoteEvidence",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PrivKey",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PubKey",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.LegacyAminoPubKey",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PrivKey",
+  "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PubKey",
+  "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdTx",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleCredential",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/auth/types.Params",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePeriodicVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePermanentLockedAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreateVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount",
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount",
+  "github.com/cosmos/cosmos-sdk/x/authz.GenericAuthorization",
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgExec",
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgGrant",
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgRevoke",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgMultiSend",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSend",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSetSendEnabled",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.Params",
+  "github.com/cosmos/cosmos-sdk/x/bank/types.SendAuthorization",
+  "github.com/cosmos/cosmos-sdk/x/consensus/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgCommunityPoolSpend",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgDepositValidatorRewardsPool",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgFundCommunityPool",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgSetWithdrawAddress",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawDelegatorReward",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawValidatorCommission",
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.Params",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgDeposit",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgExecLegacyContent",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgSubmitProposal",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVote",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVoteWeighted",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgDeposit",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgSubmitProposal",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVote",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVoteWeighted",
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.TextProposal",
+  "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParameterChangeProposal",
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUnjail",
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.Params",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgBeginRedelegate",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCancelUnbondingDelegation",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCreateValidator",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgDelegate",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgEditValidator",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUndelegate",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUpdateParams",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.Params",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_AllowList",
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_DenyList",
+  "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types.MsgTransfer"
+ ],
+ "root": "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdTx",
+ "types": {
+  "*cosmossdk.io/math.Int": {
+   "go": "*math.Int",
+   "kind": "ptr",
+   "elem": "cosmossdk.io/math.Int"
+  },
+  "*cosmossdk.io/math.LegacyDec": {
+   "go": "*math.LegacyDec",
+   "kind": "ptr",
+   "elem": "cosmossdk.io/math.LegacyDec"
+  },
+  "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress": {
+   "go": "*util.HexAddress",
+   "kind": "ptr",
+   "elem": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+  },
+  "*github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.DestinationGasConfig": {
+   "go": "*types.DestinationGasConfig",
+   "kind": "ptr",
+   "elem": "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.DestinationGasConfig"
+  },
+  "*github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.GasOracle": {
+   "go": "*types.GasOracle",
+   "kind": "ptr",
+   "elem": "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.GasOracle"
+  },
+  "*github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.RemoteRouter": {
+   "go": "*types.RemoteRouter",
+   "kind": "ptr",
+   "elem": "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.RemoteRouter"
+  },
+  "*github.com/cometbft/cometbft/proto/tendermint/types.ABCIParams": {
+   "go": "*types.ABCIParams",
+   "kind": "ptr",
+   "elem": "github.com/cometbft/cometbft/proto/tendermint/types.ABCIParams"
+  },
+  "*github.com/cometbft/cometbft/proto/tendermint/types.BlockParams": {
+   "go": "*types.BlockParams",
+   "kind": "ptr",
+   "elem": "github.com/cometbft/cometbft/proto/tendermint/types.BlockParams"
+  },
+  "*github.com/cometbft/cometbft/proto/tendermint/types.EvidenceParams": {
+   "go": "*types.EvidenceParams",
+   "kind": "ptr",
+   "elem": "github.com/cometbft/cometbft/proto/tendermint/types.EvidenceParams"
+  },
+  "*github.com/cometbft/cometbft/proto/tendermint/types.ValidatorParams": {
+   "go": "*types.ValidatorParams",
+   "kind": "ptr",
+   "elem": "github.com/cometbft/cometbft/proto/tendermint/types.ValidatorParams"
+  },
+  "*github.com/cometbft/cometbft/types.Vote": {
+   "go": "*types.Vote",
+   "kind": "ptr",
+   "elem": "github.com/cometbft/cometbft/types.Vote"
+  },
+  "*github.com/cosmos/cosmos-sdk/codec/types.Any": {
+   "go": "*types.Any",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/codec/types.Any"
+  },
+  "*github.com/cosmos/cosmos-sdk/types.Coin": {
+   "go": "*types.Coin",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/types.Coin"
+  },
+  "*github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount": {
+   "go": "*types.BaseAccount",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+  },
+  "*github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount": {
+   "go": "*types.BaseVestingAccount",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+  },
+  "*github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled": {
+   "go": "*types.SendEnabled",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled"
+  },
+  "*github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption": {
+   "go": "*v1.WeightedVoteOption",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption"
+  },
+  "*github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_Validators": {
+   "go": "*types.StakeAuthorization_Validators",
+   "kind": "ptr",
+   "elem": "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_Validators"
+  },
+  "*time.Duration": {
+   "go": "*time.Duration",
+   "kind": "ptr",
+   "elem": "time.Duration"
+  },
+  "*time.Time": {
+   "go": "*time.Time",
+   "kind": "ptr",
+   "elem": "time.Time"
+  },
+  "[]*github.com/cosmos/cosmos-sdk/codec/types.Any": {
+   "go": "[]*types.Any",
+   "kind": "slice",
+   "elem": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+  },
+  "[]*github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled": {
+   "go": "[]*types.SendEnabled",
+   "kind": "slice",
+   "elem": "*github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled"
+  },
+  "[]*github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption": {
+   "go": "[]*v1.WeightedVoteOption",
+   "kind": "slice",
+   "elem": "*github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption"
+  },
+  "[][]uint8": {
+   "go": "[][]uint8",
+   "kind": "slice",
+   "elem": "[]uint8"
+  },
+  "[]github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.Route": {
+   "go": "[]types.Route",
+   "kind": "slice",
+   "elem": "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.Route"
+  },
+  "[]github.com/cosmos/cosmos-sdk/crypto/types.PubKey": {
+   "go": "[]types.PubKey",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/crypto/types.PubKey"
+  },
+  "[]github.com/cosmos/cosmos-sdk/types.Coin": {
+   "go": "[]types.Coin",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/types.Coin"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdSignature": {
+   "go": "[]legacytx.StdSignature",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdSignature"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/auth/vesting/types.Period": {
+   "go": "[]types.Period",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.Period"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/bank/types.Input": {
+   "go": "[]types.Input",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/bank/types.Input"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/bank/types.Output": {
+   "go": "[]types.Output",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/bank/types.Output"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.WeightedVoteOption": {
+   "go": "[]v1beta1.WeightedVoteOption",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.WeightedVoteOption"
+  },
+  "[]github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParamChange": {
+   "go": "[]proposal.ParamChange",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParamChange"
+  },
+  "[]interface { ProtoMessage(); Reset(); String() string }": {
+   "go": "[]interface { ProtoMessage(); Reset(); String() string }",
+   "kind": "slice",
+   "elem": "interface { ProtoMessage(); Reset(); String() string }"
+  },
+  "[]string": {
+   "go": "[]string",
+   "kind": "slice",
+   "elem": "string"
+  },
+  "[]uint32": {
+   "go": "[]uint32",
+   "kind": "slice",
+   "elem": "uint32"
+  },
+  "[]uint8": {
+   "go": "[]uint8",
+   "kind": "slice",
+   "elem": "uint8"
+  },
+  "bool": {
+   "go": "bool",
+   "kind": "bool"
+  },
+  "cosmossdk.io/math.Int": {
+   "go": "math.Int",
+   "kind": "struct",
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "json_marshal": "val",
+   "json_unmarshal": true
+  },
+  "cosmossdk.io/math.LegacyDec": {
+   "go": "math.LegacyDec",
+   "kind": "struct",
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "json_marshal": "val",
+   "json_unmarshal": true
+  },
+  "cosmossdk.io/x/evidence/exported.Evidence": {
+   "go": "exported.Evidence",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "ba25470d": [
+      "cosmossdk.io/x/evidence/types.Equivocation"
+     ]
+    }
+   }
+  },
+  "cosmossdk.io/x/evidence/types.Equivocation": {
+   "go": "types.Equivocation",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Height",
+     "json": "height",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "Time",
+     "json": "time",
+     "type": "time.Time"
+    },
+    {
+     "name": "Power",
+     "json": "power",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "ConsensusAddress",
+     "json": "consensus_address",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/Equivocation",
+    "prefix": "ba25470d",
+    "disamb": "0d1963",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/evidence/types.MsgSubmitEvidence": {
+   "go": "types.MsgSubmitEvidence",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Submitter",
+     "json": "submitter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Evidence",
+     "json": "evidence",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgSubmitEvidence",
+    "prefix": "c62950bf",
+    "disamb": "d13f5d",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/feegrant.AllowedMsgAllowance": {
+   "go": "feegrant.AllowedMsgAllowance",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Allowance",
+     "json": "allowance",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "AllowedMessages",
+     "json": "allowed_messages",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/AllowedMsgAllowance",
+    "prefix": "bf1309b5",
+    "disamb": "bcf8fb",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/feegrant.BasicAllowance": {
+   "go": "feegrant.BasicAllowance",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "SpendLimit",
+     "json": "spend_limit",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "Expiration",
+     "json": "expiration",
+     "omitempty": true,
+     "type": "*time.Time"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/BasicAllowance",
+    "prefix": "a58b599a",
+    "disamb": "5f6243",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/feegrant.FeeAllowanceI": {
+   "go": "feegrant.FeeAllowanceI",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "4f745a3f": [
+      "cosmossdk.io/x/feegrant.PeriodicAllowance"
+     ],
+     "a58b599a": [
+      "cosmossdk.io/x/feegrant.BasicAllowance"
+     ],
+     "bf1309b5": [
+      "cosmossdk.io/x/feegrant.AllowedMsgAllowance"
+     ]
+    }
+   }
+  },
+  "cosmossdk.io/x/feegrant.MsgGrantAllowance": {
+   "go": "feegrant.MsgGrantAllowance",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Granter",
+     "json": "granter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Grantee",
+     "json": "grantee",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Allowance",
+     "json": "allowance",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgGrantAllowance",
+    "prefix": "81bb5677",
+    "disamb": "54c8f8",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/feegrant.MsgRevokeAllowance": {
+   "go": "feegrant.MsgRevokeAllowance",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Granter",
+     "json": "granter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Grantee",
+     "json": "grantee",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgRevokeAllowance",
+    "prefix": "aa5f013a",
+    "disamb": "b6dfff",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/feegrant.PeriodicAllowance": {
+   "go": "feegrant.PeriodicAllowance",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Basic",
+     "json": "basic",
+     "type": "cosmossdk.io/x/feegrant.BasicAllowance"
+    },
+    {
+     "name": "Period",
+     "json": "period",
+     "type": "time.Duration"
+    },
+    {
+     "name": "PeriodSpendLimit",
+     "json": "period_spend_limit",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "PeriodCanSpend",
+     "json": "period_can_spend",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "PeriodReset",
+     "json": "period_reset",
+     "type": "time.Time"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/PeriodicAllowance",
+    "prefix": "4f745a3f",
+    "disamb": "832076",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/upgrade/types.CancelSoftwareUpgradeProposal": {
+   "go": "types.CancelSoftwareUpgradeProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Title",
+     "json": "title",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Description",
+     "json": "description",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/CancelSoftwareUpgradeProposal",
+    "prefix": "01d8cd9c",
+    "disamb": "c439e5",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/upgrade/types.MsgCancelUpgrade": {
+   "go": "types.MsgCancelUpgrade",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCancelUpgrade",
+    "prefix": "cb53c0e4",
+    "disamb": "38667a",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/upgrade/types.MsgSoftwareUpgrade": {
+   "go": "types.MsgSoftwareUpgrade",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Plan",
+     "json": "plan",
+     "type": "cosmossdk.io/x/upgrade/types.Plan"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgSoftwareUpgrade",
+    "prefix": "26ff4ce1",
+    "disamb": "bc2581",
+    "ptr_preferred": true
+   }
+  },
+  "cosmossdk.io/x/upgrade/types.Plan": {
+   "go": "types.Plan",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Name",
+     "json": "name",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Time",
+     "json": "time",
+     "type": "time.Time"
+    },
+    {
+     "name": "Height",
+     "json": "height",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "Info",
+     "json": "info",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "UpgradedClientState",
+     "json": "upgraded_client_state",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/Plan",
+    "prefix": "f247b1fb",
+    "disamb": "984efd"
+   }
+  },
+  "cosmossdk.io/x/upgrade/types.SoftwareUpgradeProposal": {
+   "go": "types.SoftwareUpgradeProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Title",
+     "json": "title",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Description",
+     "json": "description",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Plan",
+     "json": "plan",
+     "type": "cosmossdk.io/x/upgrade/types.Plan"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/SoftwareUpgradeProposal",
+    "prefix": "7bec3dd5",
+    "disamb": "14aa71",
+    "ptr_preferred": true
+   }
+  },
+  "crypto/ed25519.PrivateKey": {
+   "go": "ed25519.PrivateKey",
+   "kind": "slice",
+   "elem": "uint8"
+  },
+  "crypto/ed25519.PublicKey": {
+   "go": "ed25519.PublicKey",
+   "kind": "slice",
+   "elem": "uint8"
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress": {
+   "go": "util.HexAddress",
+   "kind": "array",
+   "elem": "uint8",
+   "len": 32,
+   "json_marshal": "val",
+   "json_unmarshal": true
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgAnnounceValidator": {
+   "go": "types.MsgAnnounceValidator",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Validator",
+     "json": "validator",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "StorageLocation",
+     "json": "storage_location",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Signature",
+     "json": "signature",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MailboxId",
+     "json": "mailbox_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Creator",
+     "json": "creator",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgAnnounceValidator",
+    "prefix": "5846d5fb",
+    "disamb": "627df3",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMerkleRootMultisigIsm": {
+   "go": "types.MsgCreateMerkleRootMultisigIsm",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Creator",
+     "json": "creator",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Validators",
+     "json": "validators",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    },
+    {
+     "name": "Threshold",
+     "json": "threshold",
+     "omitempty": true,
+     "type": "uint32"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateMerkleRootMultisigIsm",
+    "prefix": "842abbe6",
+    "disamb": "2d7934",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMessageIdMultisigIsm": {
+   "go": "types.MsgCreateMessageIdMultisigIsm",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Creator",
+     "json": "creator",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Validators",
+     "json": "validators",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    },
+    {
+     "name": "Threshold",
+     "json": "threshold",
+     "omitempty": true,
+     "type": "uint32"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateMessageIdMultisigIsm",
+    "prefix": "d2907d2e",
+    "disamb": "a91366",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateNoopIsm": {
+   "go": "types.MsgCreateNoopIsm",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Creator",
+     "json": "creator",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateNoopIsm",
+    "prefix": "c9f81af0",
+    "disamb": "34f2bb",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateRoutingIsm": {
+   "go": "types.MsgCreateRoutingIsm",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Creator",
+     "json": "creator",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Routes",
+     "json": "routes",
+     "unpacked": true,
+     "type": "[]github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.Route"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateRoutingIsm",
+    "prefix": "e6c876b1",
+    "disamb": "fda3eb",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgRemoveRoutingIsmDomain": {
+   "go": "types.MsgRemoveRoutingIsmDomain",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "IsmId",
+     "json": "ism_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Domain",
+     "json": "domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgRemoveRoutingIsmDomain",
+    "prefix": "aa9e3c7b",
+    "disamb": "53c898",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgSetRoutingIsmDomain": {
+   "go": "types.MsgSetRoutingIsmDomain",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "IsmId",
+     "json": "ism_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Route",
+     "json": "route",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.Route"
+    },
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateRoMsgSetRoutingIsmDomainutingIsm",
+    "prefix": "f29e38be",
+    "disamb": "ae7ba8",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgUpdateRoutingIsmOwner": {
+   "go": "types.MsgUpdateRoutingIsmOwner",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "IsmId",
+     "json": "ism_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "NewOwner",
+     "json": "new_owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "RenounceOwnership",
+     "json": "renounce_ownership",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgUpdateRoutingIsmOwner",
+    "prefix": "18627ef0",
+    "disamb": "4988ec",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.Route": {
+   "go": "types.Route",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Ism",
+     "json": "ism",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Domain",
+     "json": "domain",
+     "omitempty": true,
+     "type": "uint32"
+    }
+   ]
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.DestinationGasConfig": {
+   "go": "types.DestinationGasConfig",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "RemoteDomain",
+     "json": "remote_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "GasOracle",
+     "json": "gas_oracle",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.GasOracle"
+    },
+    {
+     "name": "GasOverhead",
+     "json": "gas_overhead",
+     "type": "cosmossdk.io/math.Int"
+    }
+   ]
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.GasOracle": {
+   "go": "types.GasOracle",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "TokenExchangeRate",
+     "json": "token_exchange_rate",
+     "type": "cosmossdk.io/math.Int"
+    },
+    {
+     "name": "GasPrice",
+     "json": "gas_price",
+     "type": "cosmossdk.io/math.Int"
+    }
+   ]
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgClaim": {
+   "go": "types.MsgClaim",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Sender",
+     "json": "sender",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "IgpId",
+     "json": "igp_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgClaim",
+    "prefix": "12da9685",
+    "disamb": "0f99ce",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateIgp": {
+   "go": "types.MsgCreateIgp",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Denom",
+     "json": "denom",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateInterchainGasPaymaster",
+    "prefix": "5f2659d6",
+    "disamb": "ea7c21",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateMerkleTreeHook": {
+   "go": "types.MsgCreateMerkleTreeHook",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MailboxId",
+     "json": "mailbox_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateMerkleTreeHook",
+    "prefix": "9fb69da7",
+    "disamb": "fc5967",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgPayForGas": {
+   "go": "types.MsgPayForGas",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Sender",
+     "json": "sender",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "IgpId",
+     "json": "igp_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "MessageId",
+     "json": "message_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DestinationDomain",
+     "json": "destination_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "GasLimit",
+     "json": "gas_limit",
+     "type": "cosmossdk.io/math.Int"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgPayForGas",
+    "prefix": "bd721061",
+    "disamb": "31406c",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetDestinationGasConfig": {
+   "go": "types.MsgSetDestinationGasConfig",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "IgpId",
+     "json": "igp_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DestinationGasConfig",
+     "json": "destination_gas_config",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.DestinationGasConfig"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgSetDestinationGasConfig",
+    "prefix": "1ae7f3aa",
+    "disamb": "dcd807",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetIgpOwner": {
+   "go": "types.MsgSetIgpOwner",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "IgpId",
+     "json": "igp_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "NewOwner",
+     "json": "new_owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "RenounceOwnership",
+     "json": "renounce_ownership",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgSetIgpOwner",
+    "prefix": "54c3b08e",
+    "disamb": "34c5cf",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgCreateMailbox": {
+   "go": "types.MsgCreateMailbox",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "LocalDomain",
+     "json": "local_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "DefaultIsm",
+     "json": "default_ism",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DefaultHook",
+     "json": "default_hook",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "RequiredHook",
+     "json": "required_hook",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateMailbox",
+    "prefix": "fb667654",
+    "disamb": "5fc0b0",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgProcessMessage": {
+   "go": "types.MsgProcessMessage",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MailboxId",
+     "json": "mailbox_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Relayer",
+     "json": "relayer",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Metadata",
+     "json": "metadata",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Message",
+     "json": "message",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgProcessMessage",
+    "prefix": "f0a9f63d",
+    "disamb": "761cbf",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgSetMailbox": {
+   "go": "types.MsgSetMailbox",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MailboxId",
+     "json": "mailbox_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DefaultIsm",
+     "json": "default_ism",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DefaultHook",
+     "json": "default_hook",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "RequiredHook",
+     "json": "required_hook",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "NewOwner",
+     "json": "new_owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "RenounceOwnership",
+     "json": "renounce_ownership",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgSetMailbox",
+    "prefix": "5eebde62",
+    "disamb": "5f3883",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateCollateralToken": {
+   "go": "types.MsgCreateCollateralToken",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "OriginMailbox",
+     "json": "origin_mailbox",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "OriginDenom",
+     "json": "origin_denom",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateCollateralToken",
+    "prefix": "bc230d7c",
+    "disamb": "07b593",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateSyntheticToken": {
+   "go": "types.MsgCreateSyntheticToken",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "OriginMailbox",
+     "json": "origin_mailbox",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgCreateSyntheticToken",
+    "prefix": "0161fa6a",
+    "disamb": "c4da74",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgEnrollRemoteRouter": {
+   "go": "types.MsgEnrollRemoteRouter",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TokenId",
+     "json": "token_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "RemoteRouter",
+     "json": "remote_router",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.RemoteRouter"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgEnrollRemoteRouter",
+    "prefix": "aa0d6eaf",
+    "disamb": "ce112d",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgRemoteTransfer": {
+   "go": "types.MsgRemoteTransfer",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Sender",
+     "json": "sender",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TokenId",
+     "json": "token_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "DestinationDomain",
+     "json": "destination_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "Recipient",
+     "json": "recipient",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "cosmossdk.io/math.Int"
+    },
+    {
+     "name": "CustomHookId",
+     "json": "custom_hook_id",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "GasLimit",
+     "json": "gas_limit",
+     "type": "cosmossdk.io/math.Int"
+    },
+    {
+     "name": "MaxFee",
+     "json": "max_fee",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "CustomHookMetadata",
+     "json": "custom_hook_metadata",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgRemoteTransfer",
+    "prefix": "f35ccb07",
+    "disamb": "820154",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgSetToken": {
+   "go": "types.MsgSetToken",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TokenId",
+     "json": "token_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "NewOwner",
+     "json": "new_owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "IsmId",
+     "json": "ism_id",
+     "omitempty": true,
+     "type": "*github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "RenounceOwnership",
+     "json": "renounce_ownership",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgSetToken",
+    "prefix": "6210124b",
+    "disamb": "fa4a60",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgUnrollRemoteRouter": {
+   "go": "types.MsgUnrollRemoteRouter",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Owner",
+     "json": "owner",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TokenId",
+     "json": "token_id",
+     "type": "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress"
+    },
+    {
+     "name": "ReceiverDomain",
+     "json": "receiver_domain",
+     "omitempty": true,
+     "type": "uint32"
+    }
+   ],
+   "registered": {
+    "name": "hyperlane/v1/MsgUnrollRemoteRouter",
+    "prefix": "94b4009c",
+    "disamb": "c5a288",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.RemoteRouter": {
+   "go": "types.RemoteRouter",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ReceiverDomain",
+     "json": "receiver_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "ReceiverContract",
+     "json": "receiver_contract",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Gas",
+     "json": "gas",
+     "type": "cosmossdk.io/math.Int"
+    }
+   ]
+  },
+  "github.com/celestiaorg/celestia-app/v9/x/blob/types.MsgPayForBlobs": {
+   "go": "types.MsgPayForBlobs",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Signer",
+     "json": "signer",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Namespaces",
+     "json": "namespaces",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[][]uint8"
+    },
+    {
+     "name": "BlobSizes",
+     "json": "blob_sizes",
+     "omitempty": true,
+     "type": "[]uint32"
+    },
+    {
+     "name": "ShareCommitments",
+     "json": "share_commitments",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[][]uint8"
+    },
+    {
+     "name": "ShareVersions",
+     "json": "share_versions",
+     "omitempty": true,
+     "type": "[]uint32"
+    }
+   ],
+   "registered": {
+    "name": "/celestia.blob.v1.MsgPayForBlobs",
+    "prefix": "4476a17f",
+    "disamb": "9bf3a2",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/celestiaorg/celestia-app/v9/x/forwarding/types.MsgForward": {
+   "go": "types.MsgForward",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Signer",
+     "json": "signer",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ForwardAddr",
+     "json": "forward_addr",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "DestDomain",
+     "json": "dest_domain",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "DestRecipient",
+     "json": "dest_recipient",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TokenId",
+     "json": "token_id",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MaxIgpFee",
+     "json": "max_igp_fee",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "/celestia.forwarding.v1.MsgForward",
+    "prefix": "4aee6c00",
+    "disamb": "03e7db",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgSignalVersion": {
+   "go": "types.MsgSignalVersion",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Version",
+     "json": "version",
+     "omitempty": true,
+     "type": "uint64"
+    }
+   ],
+   "registered": {
+    "name": "/celestia.signal.v1.Msg/SignalVersion",
+    "prefix": "2da3ee52",
+    "disamb": "f5c9e9",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgTryUpgrade": {
+   "go": "types.MsgTryUpgrade",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Signer",
+     "json": "signer",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "/celestia.signal.v1.Msg/TryUpgrade",
+    "prefix": "2b2e9afb",
+    "disamb": "4e09ae",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cometbft/cometbft/crypto/sr25519.PrivKey": {
+   "go": "sr25519.PrivKey",
+   "kind": "struct",
+   "json_marshal": "val",
+   "json_unmarshal": true,
+   "registered": {
+    "name": "tendermint/PrivKeySr25519",
+    "prefix": "2f82d78b",
+    "disamb": "1d84c1"
+   }
+  },
+  "github.com/cometbft/cometbft/crypto/sr25519.PubKey": {
+   "go": "sr25519.PubKey",
+   "kind": "slice",
+   "elem": "uint8",
+   "registered": {
+    "name": "tendermint/PubKeySr25519",
+    "prefix": "0dfb1005",
+    "disamb": "44cddd"
+   }
+  },
+  "github.com/cometbft/cometbft/libs/bytes.HexBytes": {
+   "go": "bytes.HexBytes",
+   "kind": "slice",
+   "elem": "uint8",
+   "json_marshal": "val",
+   "json_unmarshal": true
+  },
+  "github.com/cometbft/cometbft/proto/tendermint/types.ABCIParams": {
+   "go": "types.ABCIParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "VoteExtensionsEnableHeight",
+     "json": "vote_extensions_enable_height",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/proto/tendermint/types.BlockParams": {
+   "go": "types.BlockParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MaxBytes",
+     "json": "max_bytes",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "MaxGas",
+     "json": "max_gas",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/proto/tendermint/types.EvidenceParams": {
+   "go": "types.EvidenceParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MaxAgeNumBlocks",
+     "json": "max_age_num_blocks",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "MaxAgeDuration",
+     "json": "max_age_duration",
+     "type": "time.Duration"
+    },
+    {
+     "name": "MaxBytes",
+     "json": "max_bytes",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/proto/tendermint/types.SignedMsgType": {
+   "go": "types.SignedMsgType",
+   "kind": "int32"
+  },
+  "github.com/cometbft/cometbft/proto/tendermint/types.ValidatorParams": {
+   "go": "types.ValidatorParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "PubKeyTypes",
+     "json": "pub_key_types",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/types.BlockID": {
+   "go": "types.BlockID",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Hash",
+     "json": "hash",
+     "type": "github.com/cometbft/cometbft/libs/bytes.HexBytes"
+    },
+    {
+     "name": "PartSetHeader",
+     "json": "parts",
+     "type": "github.com/cometbft/cometbft/types.PartSetHeader"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/types.DuplicateVoteEvidence": {
+   "go": "types.DuplicateVoteEvidence",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "VoteA",
+     "json": "vote_a",
+     "type": "*github.com/cometbft/cometbft/types.Vote"
+    },
+    {
+     "name": "VoteB",
+     "json": "vote_b",
+     "type": "*github.com/cometbft/cometbft/types.Vote"
+    },
+    {
+     "name": "TotalVotingPower",
+     "json": "TotalVotingPower",
+     "type": "int64"
+    },
+    {
+     "name": "ValidatorPower",
+     "json": "ValidatorPower",
+     "type": "int64"
+    },
+    {
+     "name": "Timestamp",
+     "json": "Timestamp",
+     "type": "time.Time"
+    }
+   ],
+   "registered": {
+    "name": "tendermint/DuplicateVoteEvidence",
+    "prefix": "7597750e",
+    "disamb": "01433c",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cometbft/cometbft/types.Evidence": {
+   "go": "types.Evidence",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "7597750e": [
+      "github.com/cometbft/cometbft/types.DuplicateVoteEvidence"
+     ]
+    }
+   }
+  },
+  "github.com/cometbft/cometbft/types.PartSetHeader": {
+   "go": "types.PartSetHeader",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Total",
+     "json": "total",
+     "type": "uint32"
+    },
+    {
+     "name": "Hash",
+     "json": "hash",
+     "type": "github.com/cometbft/cometbft/libs/bytes.HexBytes"
+    }
+   ]
+  },
+  "github.com/cometbft/cometbft/types.Vote": {
+   "go": "types.Vote",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Type",
+     "json": "type",
+     "type": "github.com/cometbft/cometbft/proto/tendermint/types.SignedMsgType"
+    },
+    {
+     "name": "Height",
+     "json": "height",
+     "type": "int64"
+    },
+    {
+     "name": "Round",
+     "json": "round",
+     "type": "int32"
+    },
+    {
+     "name": "BlockID",
+     "json": "block_id",
+     "type": "github.com/cometbft/cometbft/types.BlockID"
+    },
+    {
+     "name": "Timestamp",
+     "json": "timestamp",
+     "type": "time.Time"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "type": "github.com/cometbft/cometbft/libs/bytes.HexBytes"
+    },
+    {
+     "name": "ValidatorIndex",
+     "json": "validator_index",
+     "type": "int32"
+    },
+    {
+     "name": "Signature",
+     "json": "signature",
+     "type": "[]uint8"
+    },
+    {
+     "name": "Extension",
+     "json": "extension",
+     "type": "[]uint8"
+    },
+    {
+     "name": "ExtensionSignature",
+     "json": "extension_signature",
+     "type": "[]uint8"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/codec/types.Any": {
+   "go": "types.Any",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "TypeUrl",
+     "json": "type_url",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Value",
+     "json": "value",
+     "omitempty": true,
+     "type": "[]uint8"
+    }
+   ],
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "json_marshal": "ptr",
+   "json_unmarshal": true
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PrivKey": {
+   "go": "ed25519.PrivKey",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Key",
+     "json": "key",
+     "omitempty": true,
+     "type": "crypto/ed25519.PrivateKey"
+    }
+   ],
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "amino_json_marshal": "[]uint8",
+   "amino_json_unmarshal": "[]uint8",
+   "registered": {
+    "name": "tendermint/PrivKeyEd25519",
+    "prefix": "a3288910",
+    "disamb": "954568",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PubKey": {
+   "go": "ed25519.PubKey",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Key",
+     "json": "key",
+     "omitempty": true,
+     "type": "crypto/ed25519.PublicKey"
+    }
+   ],
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "amino_json_marshal": "[]uint8",
+   "amino_json_unmarshal": "[]uint8",
+   "registered": {
+    "name": "tendermint/PubKeyEd25519",
+    "prefix": "1624de64",
+    "disamb": "ac2679",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.LegacyAminoPubKey": {
+   "go": "multisig.LegacyAminoPubKey",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Threshold",
+     "json": "threshold",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "PubKeys",
+     "json": "public_keys",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    }
+   ],
+   "amino_json_marshal": "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.tmMultisig",
+   "amino_json_unmarshal": "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.tmMultisig",
+   "registered": {
+    "name": "tendermint/PubKeyMultisigThreshold",
+    "prefix": "22c1f7e2",
+    "disamb": "b449ae",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.tmMultisig": {
+   "go": "multisig.tmMultisig",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "K",
+     "json": "threshold",
+     "type": "uint"
+    },
+    {
+     "name": "PubKeys",
+     "json": "pubkeys",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/crypto/types.PubKey"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PrivKey": {
+   "go": "secp256k1.PrivKey",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Key",
+     "json": "key",
+     "omitempty": true,
+     "type": "[]uint8"
+    }
+   ],
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "amino_json_marshal": "[]uint8",
+   "amino_json_unmarshal": "[]uint8",
+   "registered": {
+    "name": "tendermint/PrivKeySecp256k1",
+    "prefix": "e1b0f79b",
+    "disamb": "019e82",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PubKey": {
+   "go": "secp256k1.PubKey",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Key",
+     "json": "key",
+     "omitempty": true,
+     "type": "[]uint8"
+    }
+   ],
+   "amino_marshal": "[]uint8",
+   "amino_unmarshal": "[]uint8",
+   "amino_json_marshal": "[]uint8",
+   "amino_json_unmarshal": "[]uint8",
+   "registered": {
+    "name": "tendermint/PubKeySecp256k1",
+    "prefix": "eb5ae987",
+    "disamb": "f8ccea",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/types.PrivKey": {
+   "go": "types.PrivKey",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "a3288910": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PrivKey"
+     ],
+     "e1b0f79b": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PrivKey"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/crypto/types.PubKey": {
+   "go": "types.PubKey",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "1624de64": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PubKey"
+     ],
+     "22c1f7e2": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.LegacyAminoPubKey"
+     ],
+     "335b0e19": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleCredential"
+     ],
+     "eb5ae987": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PubKey"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/types.AccountI": {
+   "go": "types.AccountI",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "0bfd7d9a": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount"
+     ],
+     "2e5099a1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+     ],
+     "5754bb5b": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+     ],
+     "5b26c8b1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount"
+     ],
+     "62fb780f": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount"
+     ],
+     "94f66f91": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount"
+     ],
+     "a23d36b8": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/types.Coin": {
+   "go": "types.Coin",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Denom",
+     "json": "denom",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "cosmossdk.io/math.Int"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/types.Coins": {
+   "go": "types.Coins",
+   "kind": "slice",
+   "elem": "github.com/cosmos/cosmos-sdk/types.Coin",
+   "json_marshal": "val"
+  },
+  "github.com/cosmos/cosmos-sdk/types.ModuleAccountI": {
+   "go": "types.ModuleAccountI",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "0bfd7d9a": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/types.Tx": {
+   "go": "types.Tx",
+   "kind": "interface",
+   "iface": {
+    "implementers": {}
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdFee": {
+   "go": "legacytx.StdFee",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "Gas",
+     "json": "gas",
+     "type": "uint64"
+    },
+    {
+     "name": "Payer",
+     "json": "payer",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Granter",
+     "json": "granter",
+     "omitempty": true,
+     "type": "string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdSignature": {
+   "go": "legacytx.StdSignature",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "PubKey",
+     "json": "pub_key",
+     "type": "github.com/cosmos/cosmos-sdk/crypto/types.PubKey"
+    },
+    {
+     "name": "Signature",
+     "json": "signature",
+     "type": "[]uint8"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdTx": {
+   "go": "legacytx.StdTx",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Msgs",
+     "json": "msg",
+     "unpacked": true,
+     "type": "[]interface { ProtoMessage(); Reset(); String() string }"
+    },
+    {
+     "name": "Fee",
+     "json": "fee",
+     "type": "github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdFee"
+    },
+    {
+     "name": "Signatures",
+     "json": "signatures",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx.StdSignature"
+    },
+    {
+     "name": "Memo",
+     "json": "memo",
+     "type": "string"
+    },
+    {
+     "name": "TimeoutHeight",
+     "json": "timeout_height",
+     "type": "uint64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/StdTx",
+    "prefix": "282816a9",
+    "disamb": "8a3b47"
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount": {
+   "go": "types.BaseAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Address",
+     "json": "address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "PubKey",
+     "json": "public_key",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "AccountNumber",
+     "json": "account_number",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "Sequence",
+     "json": "sequence",
+     "omitempty": true,
+     "type": "uint64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/BaseAccount",
+    "prefix": "2e5099a1",
+    "disamb": "66b4d2",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.GenesisAccount": {
+   "go": "types.GenesisAccount",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "0bfd7d9a": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount"
+     ],
+     "2e5099a1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+     ],
+     "5754bb5b": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+     ],
+     "5b26c8b1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount"
+     ],
+     "62fb780f": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount"
+     ],
+     "94f66f91": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount"
+     ],
+     "a23d36b8": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount": {
+   "go": "types.ModuleAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseAccount",
+     "json": "base_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+    },
+    {
+     "name": "Name",
+     "json": "name",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Permissions",
+     "json": "permissions",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ],
+   "json_marshal": "val",
+   "json_unmarshal": true,
+   "registered": {
+    "name": "cosmos-sdk/ModuleAccount",
+    "prefix": "0bfd7d9a",
+    "disamb": "664bfa",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleCredential": {
+   "go": "types.ModuleCredential",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ModuleName",
+     "json": "module_name",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "DerivationKeys",
+     "json": "derivation_keys",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[][]uint8"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/GroupAccountCredential",
+    "prefix": "335b0e19",
+    "disamb": "5fcbb9",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/auth/types.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/auth/MsgUpdateParams",
+    "prefix": "6e849034",
+    "disamb": "959454",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/types.Params": {
+   "go": "types.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MaxMemoCharacters",
+     "json": "max_memo_characters",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "TxSigLimit",
+     "json": "tx_sig_limit",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "TxSizeCostPerByte",
+     "json": "tx_size_cost_per_byte",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "SigVerifyCostED25519",
+     "json": "sig_verify_cost_ed25519",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "SigVerifyCostSecp256k1",
+     "json": "sig_verify_cost_secp256k1",
+     "omitempty": true,
+     "type": "uint64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/auth/Params",
+    "prefix": "c48f58b4",
+    "disamb": "9cdefa"
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/exported.VestingAccount": {
+   "go": "exported.VestingAccount",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "5b26c8b1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount"
+     ],
+     "62fb780f": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount"
+     ],
+     "94f66f91": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount"
+     ],
+     "a23d36b8": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount": {
+   "go": "types.BaseVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseAccount",
+     "json": "base_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+    },
+    {
+     "name": "OriginalVesting",
+     "json": "original_vesting",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "DelegatedFree",
+     "json": "delegated_free",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "DelegatedVesting",
+     "json": "delegated_vesting",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "EndTime",
+     "json": "end_time",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/BaseVestingAccount",
+    "prefix": "5754bb5b",
+    "disamb": "9316bd",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount": {
+   "go": "types.ContinuousVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseVestingAccount",
+     "json": "base_vesting_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+    },
+    {
+     "name": "StartTime",
+     "json": "start_time",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/ContinuousVestingAccount",
+    "prefix": "a23d36b8",
+    "disamb": "3bd387",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount": {
+   "go": "types.DelayedVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseVestingAccount",
+     "json": "base_vesting_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/DelayedVestingAccount",
+    "prefix": "62fb780f",
+    "disamb": "1c288a",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePeriodicVestingAccount": {
+   "go": "types.MsgCreatePeriodicVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "FromAddress",
+     "json": "from_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ToAddress",
+     "json": "to_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "StartTime",
+     "json": "start_time",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "VestingPeriods",
+     "json": "vesting_periods",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/auth/vesting/types.Period"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCreatePeriodVestAccount",
+    "prefix": "1eff06a0",
+    "disamb": "df4797",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePermanentLockedAccount": {
+   "go": "types.MsgCreatePermanentLockedAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "FromAddress",
+     "json": "from_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ToAddress",
+     "json": "to_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCreatePermLockedAccount",
+    "prefix": "bfd0c2df",
+    "disamb": "aa4227",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreateVestingAccount": {
+   "go": "types.MsgCreateVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "FromAddress",
+     "json": "from_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ToAddress",
+     "json": "to_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "EndTime",
+     "json": "end_time",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "Delayed",
+     "json": "delayed",
+     "omitempty": true,
+     "type": "bool"
+    },
+    {
+     "name": "StartTime",
+     "json": "start_time",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCreateVestingAccount",
+    "prefix": "89da6add",
+    "disamb": "2382ca",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.Period": {
+   "go": "types.Period",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Length",
+     "json": "length",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount": {
+   "go": "types.PeriodicVestingAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseVestingAccount",
+     "json": "base_vesting_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+    },
+    {
+     "name": "StartTime",
+     "json": "start_time",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "VestingPeriods",
+     "json": "vesting_periods",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/auth/vesting/types.Period"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/PeriodicVestingAccount",
+    "prefix": "94f66f91",
+    "disamb": "95263a",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount": {
+   "go": "types.PermanentLockedAccount",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "BaseVestingAccount",
+     "json": "base_vesting_account",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/PermanentLockedAccount",
+    "prefix": "5b26c8b1",
+    "disamb": "3fcca9",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.Authorization": {
+   "go": "authz.Authorization",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "4007f904": [
+      "github.com/cosmos/cosmos-sdk/x/authz.GenericAuthorization"
+     ],
+     "7697c70e": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization"
+     ],
+     "a747c5b0": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.SendAuthorization"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.GenericAuthorization": {
+   "go": "authz.GenericAuthorization",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Msg",
+     "json": "msg",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/GenericAuthorization",
+    "prefix": "4007f904",
+    "disamb": "02665c",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.Grant": {
+   "go": "authz.Grant",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authorization",
+     "json": "authorization",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "Expiration",
+     "json": "expiration",
+     "omitempty": true,
+     "type": "*time.Time"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgExec": {
+   "go": "authz.MsgExec",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Grantee",
+     "json": "grantee",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Msgs",
+     "json": "msgs",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgExec",
+    "prefix": "3ec4b74a",
+    "disamb": "6e1842",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgGrant": {
+   "go": "authz.MsgGrant",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Granter",
+     "json": "granter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Grantee",
+     "json": "grantee",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Grant",
+     "json": "grant",
+     "type": "github.com/cosmos/cosmos-sdk/x/authz.Grant"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgGrant",
+    "prefix": "a7238ca8",
+    "disamb": "2fdbce",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/authz.MsgRevoke": {
+   "go": "authz.MsgRevoke",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Granter",
+     "json": "granter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Grantee",
+     "json": "grantee",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MsgTypeUrl",
+     "json": "msg_type_url",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgRevoke",
+    "prefix": "12ed14aa",
+    "disamb": "ab9d90",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.Input": {
+   "go": "types.Input",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Address",
+     "json": "address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Coins",
+     "json": "coins",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgMultiSend": {
+   "go": "types.MsgMultiSend",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Inputs",
+     "json": "inputs",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/bank/types.Input"
+    },
+    {
+     "name": "Outputs",
+     "json": "outputs",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/bank/types.Output"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgMultiSend",
+    "prefix": "c2689ad1",
+    "disamb": "56656f",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSend": {
+   "go": "types.MsgSend",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "FromAddress",
+     "json": "from_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ToAddress",
+     "json": "to_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgSend",
+    "prefix": "a8a3619a",
+    "disamb": "298348",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSetSendEnabled": {
+   "go": "types.MsgSetSendEnabled",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "SendEnabled",
+     "json": "send_enabled",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled"
+    },
+    {
+     "name": "UseDefaultFor",
+     "json": "use_default_for",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgSetSendEnabled",
+    "prefix": "cd07b292",
+    "disamb": "df2474",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/bank/types.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/bank/MsgUpdateParams",
+    "prefix": "6c4648d3",
+    "disamb": "5680d5",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.Output": {
+   "go": "types.Output",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Address",
+     "json": "address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Coins",
+     "json": "coins",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.Params": {
+   "go": "types.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "SendEnabled",
+     "json": "send_enabled",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled"
+    },
+    {
+     "name": "DefaultSendEnabled",
+     "json": "default_send_enabled",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/bank/Params",
+    "prefix": "c609e0da",
+    "disamb": "a29cf4",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.SendAuthorization": {
+   "go": "types.SendAuthorization",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "SpendLimit",
+     "json": "spend_limit",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "AllowList",
+     "json": "allow_list",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/SendAuthorization",
+    "prefix": "a747c5b0",
+    "disamb": "2666e8",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/bank/types.SendEnabled": {
+   "go": "types.SendEnabled",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Denom",
+     "json": "denom",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Enabled",
+     "json": "enabled",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/consensus/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Block",
+     "json": "block",
+     "omitempty": true,
+     "type": "*github.com/cometbft/cometbft/proto/tendermint/types.BlockParams"
+    },
+    {
+     "name": "Evidence",
+     "json": "evidence",
+     "omitempty": true,
+     "type": "*github.com/cometbft/cometbft/proto/tendermint/types.EvidenceParams"
+    },
+    {
+     "name": "Validator",
+     "json": "validator",
+     "omitempty": true,
+     "type": "*github.com/cometbft/cometbft/proto/tendermint/types.ValidatorParams"
+    },
+    {
+     "name": "Abci",
+     "json": "abci",
+     "omitempty": true,
+     "type": "*github.com/cometbft/cometbft/proto/tendermint/types.ABCIParams"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/consensus/MsgUpdateParams",
+    "prefix": "8a99db9d",
+    "disamb": "671c1c",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgCommunityPoolSpend": {
+   "go": "types.MsgCommunityPoolSpend",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Recipient",
+     "json": "recipient",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/distr/MsgCommunityPoolSpend",
+    "prefix": "68703083",
+    "disamb": "394383",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgDepositValidatorRewardsPool": {
+   "go": "types.MsgDepositValidatorRewardsPool",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Depositor",
+     "json": "depositor",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/distr/MsgDepositValRewards",
+    "prefix": "bac6148c",
+    "disamb": "b4af26",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgFundCommunityPool": {
+   "go": "types.MsgFundCommunityPool",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "Depositor",
+     "json": "depositor",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgFundCommunityPool",
+    "prefix": "f935dcfb",
+    "disamb": "b285f2",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgSetWithdrawAddress": {
+   "go": "types.MsgSetWithdrawAddress",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "WithdrawAddress",
+     "json": "withdraw_address",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgModifyWithdrawAddress",
+    "prefix": "536070b8",
+    "disamb": "b392ab",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/distribution/types.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/distribution/MsgUpdateParams",
+    "prefix": "0bff6287",
+    "disamb": "c41a14",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawDelegatorReward": {
+   "go": "types.MsgWithdrawDelegatorReward",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgWithdrawDelegationReward",
+    "prefix": "8c4d710d",
+    "disamb": "49afff",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawValidatorCommission": {
+   "go": "types.MsgWithdrawValidatorCommission",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgWithdrawValCommission",
+    "prefix": "85da6f83",
+    "disamb": "444b7d",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/distribution/types.Params": {
+   "go": "types.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "CommunityTax",
+     "json": "community_tax",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "BaseProposerReward",
+     "json": "base_proposer_reward",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "BonusProposerReward",
+     "json": "bonus_proposer_reward",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "WithdrawAddrEnabled",
+     "json": "withdraw_addr_enabled",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/distribution/Params",
+    "prefix": "2e62a4c4",
+    "disamb": "9871d7"
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgDeposit": {
+   "go": "v1.MsgDeposit",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "type": "uint64"
+    },
+    {
+     "name": "Depositor",
+     "json": "depositor",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/v1/MsgDeposit",
+    "prefix": "7a711d6a",
+    "disamb": "5aa406",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgExecLegacyContent": {
+   "go": "v1.MsgExecLegacyContent",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Content",
+     "json": "content",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/v1/MsgExecLegacyContent",
+    "prefix": "9cc44237",
+    "disamb": "9bec24",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgSubmitProposal": {
+   "go": "v1.MsgSubmitProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Messages",
+     "json": "messages",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "InitialDeposit",
+     "json": "initial_deposit",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "Proposer",
+     "json": "proposer",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Metadata",
+     "json": "metadata",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Title",
+     "json": "title",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Summary",
+     "json": "summary",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Expedited",
+     "json": "expedited",
+     "omitempty": true,
+     "type": "bool"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/v1/MsgSubmitProposal",
+    "prefix": "c4595724",
+    "disamb": "dcae56",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgUpdateParams": {
+   "go": "v1.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/gov/types/v1.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/gov/v1/MsgUpdateParams",
+    "prefix": "ec3825ed",
+    "disamb": "c59362",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVote": {
+   "go": "v1.MsgVote",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "type": "uint64"
+    },
+    {
+     "name": "Voter",
+     "json": "voter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Option",
+     "json": "option",
+     "omitempty": true,
+     "type": "github.com/cosmos/cosmos-sdk/x/gov/types/v1.VoteOption"
+    },
+    {
+     "name": "Metadata",
+     "json": "metadata",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/v1/MsgVote",
+    "prefix": "d1aaa676",
+    "disamb": "e52421",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVoteWeighted": {
+   "go": "v1.MsgVoteWeighted",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "type": "uint64"
+    },
+    {
+     "name": "Voter",
+     "json": "voter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Options",
+     "json": "options",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]*github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption"
+    },
+    {
+     "name": "Metadata",
+     "json": "metadata",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/v1/MsgVoteWeighted",
+    "prefix": "08788b17",
+    "disamb": "d05495",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.Params": {
+   "go": "v1.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MinDeposit",
+     "json": "min_deposit",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "MaxDepositPeriod",
+     "json": "max_deposit_period",
+     "omitempty": true,
+     "type": "*time.Duration"
+    },
+    {
+     "name": "VotingPeriod",
+     "json": "voting_period",
+     "omitempty": true,
+     "type": "*time.Duration"
+    },
+    {
+     "name": "Quorum",
+     "json": "quorum",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Threshold",
+     "json": "threshold",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "VetoThreshold",
+     "json": "veto_threshold",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MinInitialDepositRatio",
+     "json": "min_initial_deposit_ratio",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ProposalCancelRatio",
+     "json": "proposal_cancel_ratio",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ProposalCancelDest",
+     "json": "proposal_cancel_dest",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ExpeditedVotingPeriod",
+     "json": "expedited_voting_period",
+     "omitempty": true,
+     "type": "*time.Duration"
+    },
+    {
+     "name": "ExpeditedThreshold",
+     "json": "expedited_threshold",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ExpeditedMinDeposit",
+     "json": "expedited_min_deposit",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "BurnVoteQuorum",
+     "json": "burn_vote_quorum",
+     "omitempty": true,
+     "type": "bool"
+    },
+    {
+     "name": "BurnProposalDepositPrevote",
+     "json": "burn_proposal_deposit_prevote",
+     "omitempty": true,
+     "type": "bool"
+    },
+    {
+     "name": "BurnVoteVeto",
+     "json": "burn_vote_veto",
+     "omitempty": true,
+     "type": "bool"
+    },
+    {
+     "name": "MinDepositRatio",
+     "json": "min_deposit_ratio",
+     "omitempty": true,
+     "type": "string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.VoteOption": {
+   "go": "v1.VoteOption",
+   "kind": "int32"
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1.WeightedVoteOption": {
+   "go": "v1.WeightedVoteOption",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Option",
+     "json": "option",
+     "omitempty": true,
+     "type": "github.com/cosmos/cosmos-sdk/x/gov/types/v1.VoteOption"
+    },
+    {
+     "name": "Weight",
+     "json": "weight",
+     "omitempty": true,
+     "type": "string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.Content": {
+   "go": "v1beta1.Content",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "01d8cd9c": [
+      "cosmossdk.io/x/upgrade/types.CancelSoftwareUpgradeProposal"
+     ],
+     "4beaf079": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.TextProposal"
+     ],
+     "7bec3dd5": [
+      "cosmossdk.io/x/upgrade/types.SoftwareUpgradeProposal"
+     ],
+     "b9f831ab": [
+      "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParameterChangeProposal"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgDeposit": {
+   "go": "v1beta1.MsgDeposit",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "type": "uint64"
+    },
+    {
+     "name": "Depositor",
+     "json": "depositor",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgDeposit",
+    "prefix": "a18a56e5",
+    "disamb": "1119a0",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgSubmitProposal": {
+   "go": "v1beta1.MsgSubmitProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Content",
+     "json": "content",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "InitialDeposit",
+     "json": "initial_deposit",
+     "unpacked": true,
+     "type": "github.com/cosmos/cosmos-sdk/types.Coins"
+    },
+    {
+     "name": "Proposer",
+     "json": "proposer",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgSubmitProposal",
+    "prefix": "b42d614e",
+    "disamb": "f7937a",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVote": {
+   "go": "v1beta1.MsgVote",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "Voter",
+     "json": "voter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Option",
+     "json": "option",
+     "omitempty": true,
+     "type": "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.VoteOption"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgVote",
+    "prefix": "a1cadd36",
+    "disamb": "538205",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVoteWeighted": {
+   "go": "v1beta1.MsgVoteWeighted",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ProposalId",
+     "json": "proposal_id",
+     "type": "uint64"
+    },
+    {
+     "name": "Voter",
+     "json": "voter",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Options",
+     "json": "options",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.WeightedVoteOption"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgVoteWeighted",
+    "prefix": "504155b8",
+    "disamb": "b3a66e",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.TextProposal": {
+   "go": "v1beta1.TextProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Title",
+     "json": "title",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Description",
+     "json": "description",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/TextProposal",
+    "prefix": "4beaf079",
+    "disamb": "35395a",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.VoteOption": {
+   "go": "v1beta1.VoteOption",
+   "kind": "int32"
+  },
+  "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.WeightedVoteOption": {
+   "go": "v1beta1.WeightedVoteOption",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Option",
+     "json": "option",
+     "omitempty": true,
+     "type": "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.VoteOption"
+    },
+    {
+     "name": "Weight",
+     "json": "weight",
+     "type": "cosmossdk.io/math.LegacyDec"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParamChange": {
+   "go": "proposal.ParamChange",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Subspace",
+     "json": "subspace",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Key",
+     "json": "key",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Value",
+     "json": "value",
+     "omitempty": true,
+     "type": "string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParameterChangeProposal": {
+   "go": "proposal.ParameterChangeProposal",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Title",
+     "json": "title",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Description",
+     "json": "description",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Changes",
+     "json": "changes",
+     "unpacked": true,
+     "type": "[]github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParamChange"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/ParameterChangeProposal",
+    "prefix": "b9f831ab",
+    "disamb": "3737d7",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUnjail": {
+   "go": "types.MsgUnjail",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "ValidatorAddr",
+     "json": "address",
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgUnjail",
+    "prefix": "543aec70",
+    "disamb": "f722da",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/slashing/types.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/slashing/MsgUpdateParams",
+    "prefix": "9d34ca9e",
+    "disamb": "b9286c",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/slashing/types.Params": {
+   "go": "types.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "SignedBlocksWindow",
+     "json": "signed_blocks_window",
+     "omitempty": true,
+     "type": "int64"
+    },
+    {
+     "name": "MinSignedPerWindow",
+     "json": "min_signed_per_window",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "DowntimeJailDuration",
+     "json": "downtime_jail_duration",
+     "type": "time.Duration"
+    },
+    {
+     "name": "SlashFractionDoubleSign",
+     "json": "slash_fraction_double_sign",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "SlashFractionDowntime",
+     "json": "slash_fraction_downtime",
+     "type": "cosmossdk.io/math.LegacyDec"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/slashing/Params",
+    "prefix": "0773b3cb",
+    "disamb": "1f07df"
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.AuthorizationType": {
+   "go": "types.AuthorizationType",
+   "kind": "int32"
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.CommissionRates": {
+   "go": "types.CommissionRates",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Rate",
+     "json": "rate",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "MaxRate",
+     "json": "max_rate",
+     "type": "cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "MaxChangeRate",
+     "json": "max_change_rate",
+     "type": "cosmossdk.io/math.LegacyDec"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.Description": {
+   "go": "types.Description",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Moniker",
+     "json": "moniker",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Identity",
+     "json": "identity",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Website",
+     "json": "website",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "SecurityContact",
+     "json": "security_contact",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Details",
+     "json": "details",
+     "omitempty": true,
+     "type": "string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgBeginRedelegate": {
+   "go": "types.MsgBeginRedelegate",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorSrcAddress",
+     "json": "validator_src_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorDstAddress",
+     "json": "validator_dst_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgBeginRedelegate",
+    "prefix": "9c959346",
+    "disamb": "4c4135",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCancelUnbondingDelegation": {
+   "go": "types.MsgCancelUnbondingDelegation",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "CreationHeight",
+     "json": "creation_height",
+     "omitempty": true,
+     "type": "int64"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCancelUnbondingDelegation",
+    "prefix": "350f5fc9",
+    "disamb": "f314c2",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCreateValidator": {
+   "go": "types.MsgCreateValidator",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Description",
+     "json": "description",
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.Description"
+    },
+    {
+     "name": "Commission",
+     "json": "commission",
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.CommissionRates"
+    },
+    {
+     "name": "MinSelfDelegation",
+     "json": "min_self_delegation",
+     "type": "cosmossdk.io/math.Int"
+    },
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Pubkey",
+     "json": "pubkey",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/codec/types.Any"
+    },
+    {
+     "name": "Value",
+     "json": "value",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgCreateValidator",
+    "prefix": "eb361d01",
+    "disamb": "48e267",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgDelegate": {
+   "go": "types.MsgDelegate",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgDelegate",
+    "prefix": "921d2e4e",
+    "disamb": "e43e1f",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgEditValidator": {
+   "go": "types.MsgEditValidator",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Description",
+     "json": "description",
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.Description"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "CommissionRate",
+     "json": "commission_rate",
+     "omitempty": true,
+     "type": "*cosmossdk.io/math.LegacyDec"
+    },
+    {
+     "name": "MinSelfDelegation",
+     "json": "min_self_delegation",
+     "omitempty": true,
+     "type": "*cosmossdk.io/math.Int"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgEditValidator",
+    "prefix": "c2e8bccd",
+    "disamb": "38dc70",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUndelegate": {
+   "go": "types.MsgUndelegate",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DelegatorAddress",
+     "json": "delegator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "ValidatorAddress",
+     "json": "validator_address",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Amount",
+     "json": "amount",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgUndelegate",
+    "prefix": "5c80810d",
+    "disamb": "badbbb",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUpdateParams": {
+   "go": "types.MsgUpdateParams",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Authority",
+     "json": "authority",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Params",
+     "json": "params",
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.Params"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/staking/MsgUpdateParams",
+    "prefix": "066478e8",
+    "disamb": "9fd521",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.Params": {
+   "go": "types.Params",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "UnbondingTime",
+     "json": "unbonding_time",
+     "type": "time.Duration"
+    },
+    {
+     "name": "MaxValidators",
+     "json": "max_validators",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "MaxEntries",
+     "json": "max_entries",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "HistoricalEntries",
+     "json": "historical_entries",
+     "omitempty": true,
+     "type": "uint32"
+    },
+    {
+     "name": "BondDenom",
+     "json": "bond_denom",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "MinCommissionRate",
+     "json": "min_commission_rate",
+     "type": "cosmossdk.io/math.LegacyDec"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/x/staking/Params",
+    "prefix": "043c53d5",
+    "disamb": "5adc95"
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization": {
+   "go": "types.StakeAuthorization",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "MaxTokens",
+     "json": "max_tokens",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "Validators",
+     "json": "Validators",
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.isStakeAuthorization_Validators"
+    },
+    {
+     "name": "AuthorizationType",
+     "json": "authorization_type",
+     "omitempty": true,
+     "type": "github.com/cosmos/cosmos-sdk/x/staking/types.AuthorizationType"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/StakeAuthorization",
+    "prefix": "7697c70e",
+    "disamb": "c3bebc",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_AllowList": {
+   "go": "types.StakeAuthorization_AllowList",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "AllowList",
+     "json": "allow_list",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_Validators"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/StakeAuthorization/AllowList",
+    "prefix": "271f68f8",
+    "disamb": "39a0b7",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_DenyList": {
+   "go": "types.StakeAuthorization_DenyList",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "DenyList",
+     "json": "deny_list",
+     "omitempty": true,
+     "type": "*github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_Validators"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/StakeAuthorization/DenyList",
+    "prefix": "e0e03e1b",
+    "disamb": "d457d6",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_Validators": {
+   "go": "types.StakeAuthorization_Validators",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "Address",
+     "json": "address",
+     "omitempty": true,
+     "unpacked": true,
+     "type": "[]string"
+    }
+   ]
+  },
+  "github.com/cosmos/cosmos-sdk/x/staking/types.isStakeAuthorization_Validators": {
+   "go": "types.isStakeAuthorization_Validators",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "271f68f8": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_AllowList"
+     ],
+     "e0e03e1b": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization_DenyList"
+     ]
+    }
+   }
+  },
+  "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types.MsgTransfer": {
+   "go": "types.MsgTransfer",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "SourcePort",
+     "json": "source_port",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "SourceChannel",
+     "json": "source_channel",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Token",
+     "json": "token",
+     "type": "github.com/cosmos/cosmos-sdk/types.Coin"
+    },
+    {
+     "name": "Sender",
+     "json": "sender",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "Receiver",
+     "json": "receiver",
+     "omitempty": true,
+     "type": "string"
+    },
+    {
+     "name": "TimeoutHeight",
+     "json": "timeout_height",
+     "type": "github.com/cosmos/ibc-go/v8/modules/core/02-client/types.Height"
+    },
+    {
+     "name": "TimeoutTimestamp",
+     "json": "timeout_timestamp",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "Memo",
+     "json": "memo",
+     "omitempty": true,
+     "type": "string"
+    }
+   ],
+   "registered": {
+    "name": "cosmos-sdk/MsgTransfer",
+    "prefix": "91fd044c",
+    "disamb": "e66d11",
+    "ptr_preferred": true
+   }
+  },
+  "github.com/cosmos/ibc-go/v8/modules/core/02-client/types.Height": {
+   "go": "types.Height",
+   "kind": "struct",
+   "fields": [
+    {
+     "name": "RevisionNumber",
+     "json": "revision_number",
+     "omitempty": true,
+     "type": "uint64"
+    },
+    {
+     "name": "RevisionHeight",
+     "json": "revision_height",
+     "omitempty": true,
+     "type": "uint64"
+    }
+   ]
+  },
+  "int32": {
+   "go": "int32",
+   "kind": "int32"
+  },
+  "int64": {
+   "go": "int64",
+   "kind": "int64"
+  },
+  "interface { ProtoMessage(); Reset(); String() string }": {
+   "go": "interface { ProtoMessage(); Reset(); String() string }",
+   "kind": "interface",
+   "iface": {
+    "implementers": {
+     "0161fa6a": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateSyntheticToken"
+     ],
+     "01d8cd9c": [
+      "cosmossdk.io/x/upgrade/types.CancelSoftwareUpgradeProposal"
+     ],
+     "043c53d5": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.Params"
+     ],
+     "066478e8": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUpdateParams"
+     ],
+     "0773b3cb": [
+      "github.com/cosmos/cosmos-sdk/x/slashing/types.Params"
+     ],
+     "08788b17": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVoteWeighted"
+     ],
+     "0bfd7d9a": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleAccount"
+     ],
+     "0bff6287": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgUpdateParams"
+     ],
+     "12da9685": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgClaim"
+     ],
+     "12ed14aa": [
+      "github.com/cosmos/cosmos-sdk/x/authz.MsgRevoke"
+     ],
+     "1624de64": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PubKey"
+     ],
+     "18627ef0": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgUpdateRoutingIsmOwner"
+     ],
+     "1ae7f3aa": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetDestinationGasConfig"
+     ],
+     "1eff06a0": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePeriodicVestingAccount"
+     ],
+     "22c1f7e2": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/multisig.LegacyAminoPubKey"
+     ],
+     "26ff4ce1": [
+      "cosmossdk.io/x/upgrade/types.MsgSoftwareUpgrade"
+     ],
+     "2b2e9afb": [
+      "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgTryUpgrade"
+     ],
+     "2da3ee52": [
+      "github.com/celestiaorg/celestia-app/v9/x/signal/types.MsgSignalVersion"
+     ],
+     "2e5099a1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.BaseAccount"
+     ],
+     "2e62a4c4": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.Params"
+     ],
+     "335b0e19": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.ModuleCredential"
+     ],
+     "350f5fc9": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCancelUnbondingDelegation"
+     ],
+     "3ec4b74a": [
+      "github.com/cosmos/cosmos-sdk/x/authz.MsgExec"
+     ],
+     "4007f904": [
+      "github.com/cosmos/cosmos-sdk/x/authz.GenericAuthorization"
+     ],
+     "4476a17f": [
+      "github.com/celestiaorg/celestia-app/v9/x/blob/types.MsgPayForBlobs"
+     ],
+     "4aee6c00": [
+      "github.com/celestiaorg/celestia-app/v9/x/forwarding/types.MsgForward"
+     ],
+     "4beaf079": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.TextProposal"
+     ],
+     "4f745a3f": [
+      "cosmossdk.io/x/feegrant.PeriodicAllowance"
+     ],
+     "504155b8": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVoteWeighted"
+     ],
+     "536070b8": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgSetWithdrawAddress"
+     ],
+     "543aec70": [
+      "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUnjail"
+     ],
+     "54c3b08e": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgSetIgpOwner"
+     ],
+     "5754bb5b": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.BaseVestingAccount"
+     ],
+     "5846d5fb": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgAnnounceValidator"
+     ],
+     "5b26c8b1": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PermanentLockedAccount"
+     ],
+     "5c80810d": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgUndelegate"
+     ],
+     "5eebde62": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgSetMailbox"
+     ],
+     "5f2659d6": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateIgp"
+     ],
+     "6210124b": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgSetToken"
+     ],
+     "62fb780f": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.DelayedVestingAccount"
+     ],
+     "68703083": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgCommunityPoolSpend"
+     ],
+     "6c4648d3": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.MsgUpdateParams"
+     ],
+     "6e849034": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.MsgUpdateParams"
+     ],
+     "7697c70e": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.StakeAuthorization"
+     ],
+     "7a711d6a": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgDeposit"
+     ],
+     "7bec3dd5": [
+      "cosmossdk.io/x/upgrade/types.SoftwareUpgradeProposal"
+     ],
+     "81bb5677": [
+      "cosmossdk.io/x/feegrant.MsgGrantAllowance"
+     ],
+     "842abbe6": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMerkleRootMultisigIsm"
+     ],
+     "85da6f83": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawValidatorCommission"
+     ],
+     "89da6add": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreateVestingAccount"
+     ],
+     "8a99db9d": [
+      "github.com/cosmos/cosmos-sdk/x/consensus/types.MsgUpdateParams"
+     ],
+     "8c4d710d": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgWithdrawDelegatorReward"
+     ],
+     "91fd044c": [
+      "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types.MsgTransfer"
+     ],
+     "921d2e4e": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgDelegate"
+     ],
+     "94b4009c": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgUnrollRemoteRouter"
+     ],
+     "94f66f91": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.PeriodicVestingAccount"
+     ],
+     "9c959346": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgBeginRedelegate"
+     ],
+     "9cc44237": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgExecLegacyContent"
+     ],
+     "9d34ca9e": [
+      "github.com/cosmos/cosmos-sdk/x/slashing/types.MsgUpdateParams"
+     ],
+     "9fb69da7": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgCreateMerkleTreeHook"
+     ],
+     "a18a56e5": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgDeposit"
+     ],
+     "a1cadd36": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgVote"
+     ],
+     "a23d36b8": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.ContinuousVestingAccount"
+     ],
+     "a3288910": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519.PrivKey"
+     ],
+     "a58b599a": [
+      "cosmossdk.io/x/feegrant.BasicAllowance"
+     ],
+     "a7238ca8": [
+      "github.com/cosmos/cosmos-sdk/x/authz.MsgGrant"
+     ],
+     "a747c5b0": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.SendAuthorization"
+     ],
+     "a8a3619a": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSend"
+     ],
+     "aa0d6eaf": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgEnrollRemoteRouter"
+     ],
+     "aa5f013a": [
+      "cosmossdk.io/x/feegrant.MsgRevokeAllowance"
+     ],
+     "aa9e3c7b": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgRemoveRoutingIsmDomain"
+     ],
+     "b42d614e": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1.MsgSubmitProposal"
+     ],
+     "b9f831ab": [
+      "github.com/cosmos/cosmos-sdk/x/params/types/proposal.ParameterChangeProposal"
+     ],
+     "ba25470d": [
+      "cosmossdk.io/x/evidence/types.Equivocation"
+     ],
+     "bac6148c": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgDepositValidatorRewardsPool"
+     ],
+     "bc230d7c": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgCreateCollateralToken"
+     ],
+     "bd721061": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/02_post_dispatch/types.MsgPayForGas"
+     ],
+     "bf1309b5": [
+      "cosmossdk.io/x/feegrant.AllowedMsgAllowance"
+     ],
+     "bfd0c2df": [
+      "github.com/cosmos/cosmos-sdk/x/auth/vesting/types.MsgCreatePermanentLockedAccount"
+     ],
+     "c2689ad1": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.MsgMultiSend"
+     ],
+     "c2e8bccd": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgEditValidator"
+     ],
+     "c4595724": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgSubmitProposal"
+     ],
+     "c48f58b4": [
+      "github.com/cosmos/cosmos-sdk/x/auth/types.Params"
+     ],
+     "c609e0da": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.Params"
+     ],
+     "c62950bf": [
+      "cosmossdk.io/x/evidence/types.MsgSubmitEvidence"
+     ],
+     "c9f81af0": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateNoopIsm"
+     ],
+     "cb53c0e4": [
+      "cosmossdk.io/x/upgrade/types.MsgCancelUpgrade"
+     ],
+     "cd07b292": [
+      "github.com/cosmos/cosmos-sdk/x/bank/types.MsgSetSendEnabled"
+     ],
+     "d1aaa676": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgVote"
+     ],
+     "d2907d2e": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateMessageIdMultisigIsm"
+     ],
+     "e1b0f79b": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PrivKey"
+     ],
+     "e6c876b1": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgCreateRoutingIsm"
+     ],
+     "eb361d01": [
+      "github.com/cosmos/cosmos-sdk/x/staking/types.MsgCreateValidator"
+     ],
+     "eb5ae987": [
+      "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1.PubKey"
+     ],
+     "ec3825ed": [
+      "github.com/cosmos/cosmos-sdk/x/gov/types/v1.MsgUpdateParams"
+     ],
+     "f0a9f63d": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgProcessMessage"
+     ],
+     "f247b1fb": [
+      "cosmossdk.io/x/upgrade/types.Plan"
+     ],
+     "f29e38be": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/01_interchain_security/types.MsgSetRoutingIsmDomain"
+     ],
+     "f35ccb07": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/warp/types.MsgRemoteTransfer"
+     ],
+     "f935dcfb": [
+      "github.com/cosmos/cosmos-sdk/x/distribution/types.MsgFundCommunityPool"
+     ],
+     "fb667654": [
+      "github.com/bcp-innovations/hyperlane-cosmos/x/core/types.MsgCreateMailbox"
+     ]
+    }
+   }
+  },
+  "string": {
+   "go": "string",
+   "kind": "string"
+  },
+  "time.Duration": {
+   "go": "time.Duration",
+   "kind": "int64"
+  },
+  "time.Time": {
+   "go": "time.Time",
+   "kind": "struct",
+   "json_marshal": "val",
+   "json_unmarshal": true
+  },
+  "uint": {
+   "go": "uint",
+   "kind": "uint"
+  },
+  "uint32": {
+   "go": "uint32",
+   "kind": "uint32"
+  },
+  "uint64": {
+   "go": "uint64",
+   "kind": "uint64"
+  },
+  "uint8": {
+   "go": "uint8",
+   "kind": "uint8"
+  }
+ }
+}

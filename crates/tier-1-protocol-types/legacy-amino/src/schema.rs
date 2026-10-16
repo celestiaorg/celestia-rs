@@ -86,6 +86,7 @@ pub struct Schema {
 }
 
 const SCHEMA: &str = include_str!("schema.json");
+const SCHEMA_V9: &str = include_str!("schema_v9.json");
 
 fn kind(s: &str) -> Kind {
     match s {
@@ -149,6 +150,25 @@ impl Schema {
     pub fn get() -> &'static Self {
         static S: OnceLock<Schema> = OnceLock::new();
         S.get_or_init(|| Self::parse(SCHEMA))
+    }
+
+    /// The embedded celestia-appd v9.0.8 schema (`schema_v9.json`:
+    /// hyperlane-cosmos v1.1.0's amino names, no fibre types).
+    #[must_use]
+    pub fn v9() -> &'static Self {
+        static S: OnceLock<Schema> = OnceLock::new();
+        S.get_or_init(|| Self::parse(SCHEMA_V9))
+    }
+
+    /// The schema of the celestia-app release that runs `app_version`
+    /// (ADR 0004: below 10 is v9.0.8; 0, unset, and 10 are v10.4.0).
+    #[must_use]
+    pub fn for_app_version(app_version: u64) -> &'static Self {
+        if app_version != 0 && app_version < 10 {
+            Self::v9()
+        } else {
+            Self::get()
+        }
     }
 
     fn parse(src: &str) -> Self {

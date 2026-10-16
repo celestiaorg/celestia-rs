@@ -152,8 +152,17 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
         "iw" => rust_iw(input),
         "fibre" => rust_fibre(app_version, input),
         "eds" => rust_eds(app_version, input),
-        "amino_dec" => rust_amino(legacy_amino::tx_decode_amino(input)),
-        "amino_enc" => rust_amino(legacy_amino::tx_encode_amino(input).map(hex::encode)),
+        "amino_dec" => rust_amino(legacy_amino::tx_decode_amino_in(
+            legacy_amino::Schema::for_app_version(app_version),
+            input,
+        )),
+        "amino_enc" => rust_amino(
+            legacy_amino::tx_encode_amino_in(
+                legacy_amino::Schema::for_app_version(app_version),
+                input,
+            )
+            .map(hex::encode),
+        ),
         "text" => rust_text(app_version, input),
         _ => Out {
             err: format!("unknown op {op}"),

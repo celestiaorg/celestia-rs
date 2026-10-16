@@ -1,14 +1,28 @@
-//! Go vectors (`conformance/aminoschema/vectors.json`, recorded by
-//! `vectors_test.go` through celestia-appd's `TxDecodeAmino` /
-//! `TxEncodeAmino` handlers): every output, error and panic must match.
+//! Go vectors (`conformance/aminoschema/vectors.json` from celestia-appd
+//! v10.4.0, `vectors_v9.json` from v9.0.8, recorded by `vectors_test.go`
+//! through the `TxDecodeAmino` / `TxEncodeAmino` handlers): every output,
+//! error and panic must match.
 
-use crate::{Error, Schema, tx_decode_amino, tx_encode_amino};
+use crate::{Error, Schema, tx_decode_amino_in, tx_encode_amino_in};
 
 const VECTORS: &str = include_str!("../../../../conformance/aminoschema/vectors.json");
+const VECTORS_V9: &str = include_str!("../../../../conformance/aminoschema/vectors_v9.json");
 
 #[test]
 fn go_vectors() {
-    let vs: serde_json::Value = serde_json::from_str(VECTORS).unwrap_or_default();
+    check_vectors(Schema::get(), VECTORS);
+}
+
+#[test]
+fn go_vectors_v9() {
+    check_vectors(Schema::v9(), VECTORS_V9);
+    assert!(std::ptr::eq(Schema::for_app_version(9), Schema::v9()));
+    assert!(std::ptr::eq(Schema::for_app_version(10), Schema::get()));
+    assert!(std::ptr::eq(Schema::for_app_version(0), Schema::get()));
+}
+
+fn check_vectors(s: &Schema, src: &str) {
+    let vs: serde_json::Value = serde_json::from_str(src).unwrap_or_default();
     let vs = vs.as_array().cloned().unwrap_or_default();
     assert!(vs.len() > 70, "{} vectors", vs.len());
     let mut failures = Vec::new();
@@ -17,9 +31,9 @@ fn go_vectors() {
         let op = v["op"].as_str().unwrap_or_default();
         let input = v["input"].as_str().unwrap_or_default();
         let got: Result<String, Error> = if op == "decode" {
-            tx_decode_amino(&hex::decode(input).unwrap_or_default())
+            tx_decode_amino_in(s, &hex::decode(input).unwrap_or_default())
         } else {
-            tx_encode_amino(input.as_bytes()).map(hex::encode)
+            tx_encode_amino_in(s, input.as_bytes()).map(hex::encode)
         };
         // Registered errors render like any Go error.
         let got = got.map_err(|e| match e {
@@ -47,7 +61,8 @@ fn go_vectors() {
 
 #[test]
 fn schema_kinds() {
-    let s = Schema::get();
-    assert!(s.types.len() > 200);
-    assert_eq!(s.t(s.root).go, "legacytx.StdTx");
+    for s in [Schema::get(), Schema::v9()] {
+        assert!(s.types.len() > 200);
+        assert_eq!(s.t(s.root).go, "legacytx.StdTx");
+    }
 }

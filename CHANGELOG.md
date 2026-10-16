@@ -4,6 +4,10 @@
 
 ### Added
 
+- `TxDecodeAmino` / `TxEncodeAmino` at app version 9 use celestia-app
+  v9.0.8's amino type graph (hyperlane-cosmos v1.1.0 names), dumped by
+  `conformance/aminoschema` built with `-tags v9`.
+
 - Release readiness for the Mac Mini validator: `[profile.release]`
   (`panic = "unwind"`, `overflow-checks = true`) and `[profile.dist]` (fat
   LTO, one codegen unit); a `macos-14` CI job (release build, CLI smoke,

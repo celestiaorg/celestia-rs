@@ -6,7 +6,8 @@
 //! from `legacytx.StdTx` (struct fields, json/amino tags, registered concrete
 //! names and prefixes, interface implementers, custom marshalers, and which
 //! `Any` fields `UnpackInterfaces` visits with which interface) is dumped from
-//! celestia-appd v10.4.0 into `schema.json` by
+//! celestia-appd v10.4.0 into `schema.json` (and from v9.0.8, which runs
+//! app version 9, into `schema_v9.json`) by
 //! `conformance/aminoschema/schema_test.go`. The codec here is a port of
 //! go-amino's reflection encoder/decoder over that schema, with the Go types
 //! that override it (`time.Time`, `math.Int`, `math.LegacyDec`, `sdk.Coins`,
@@ -105,10 +106,14 @@ pub(crate) enum AnyV {
     Value(usize, Box<V>),
 }
 
-/// `TxDecodeAmino`: amino binary `StdTx` to amino JSON.
+/// `TxDecodeAmino`: amino binary `StdTx` to amino JSON (v10.4.0's codec).
 pub fn tx_decode_amino(bz: &[u8]) -> Result<String, Error> {
+    tx_decode_amino_in(Schema::get(), bz)
+}
+
+/// `TxDecodeAmino` over the codec `s` ([`Schema::for_app_version`]).
+pub fn tx_decode_amino_in(s: &Schema, bz: &[u8]) -> Result<String, Error> {
     with_stack(bz.len(), || {
-        let s = Schema::get();
         let root = s.root;
         let mut v = s.unmarshal_binary_bare(bz, root)?;
         s.unpack(root, &mut v, unpack::Mode::Binary)?;
@@ -117,10 +122,14 @@ pub fn tx_decode_amino(bz: &[u8]) -> Result<String, Error> {
     })
 }
 
-/// `TxEncodeAmino`: amino JSON `StdTx` to amino binary.
+/// `TxEncodeAmino`: amino JSON `StdTx` to amino binary (v10.4.0's codec).
 pub fn tx_encode_amino(json: &[u8]) -> Result<Vec<u8>, Error> {
+    tx_encode_amino_in(Schema::get(), json)
+}
+
+/// `TxEncodeAmino` over the codec `s` ([`Schema::for_app_version`]).
+pub fn tx_encode_amino_in(s: &Schema, json: &[u8]) -> Result<Vec<u8>, Error> {
     with_stack(json.len(), || {
-        let s = Schema::get();
         let root = s.root;
         let mut v = s.unmarshal_json(json, root)?;
         s.unpack(root, &mut v, unpack::Mode::Json)?;

@@ -20,6 +20,15 @@ Go types it reflects over:
   the empty-scenario query corpus (`conformance/querycorpus/record.sh empty`)
   sends every vector to a Go node over ABCI `Query`.
 
+App version 9 runs celestia-app v9.0.8, whose amino codec differs
+(hyperlane-cosmos v1.1.0 registers the warp messages as `hyperlane/v1/...`,
+including its misspelt `hyperlane/v1/MsgCreateRoMsgSetRoutingIsmDomainutingIsm`;
+no fibre types, no `MsgCreateNoopHook` / `MsgCreateNativeSyntheticToken`), so
+both are also dumped from a v9.0.8 build into `schema_v9.json` /
+`vectors_v9.json`; the crate picks the schema by app version
+(`Schema::for_app_version`). The app is built by `app_v10_test.go`
+(default) or `app_v9_test.go` (`-tags v9`).
+
 Both run inside a celestia-app v10.4.0 checkout:
 
 ```bash
@@ -30,4 +39,16 @@ AMINO_SCHEMA_OUT=$OLDPWD/crates/tier-1-protocol-types/legacy-amino/src/schema.js
   go test -count=1 -run TestSchema ./test/aminodump
 AMINO_VECTORS_OUT=$OLDPWD/conformance/aminoschema/vectors.json \
   go test -count=1 -run TestVectors ./test/aminodump
+```
+
+and with `-tags v9` inside a v9.0.8 checkout:
+
+```bash
+mkdir -p <celestia-app-v9.0.8>/test/aminodump
+cp conformance/aminoschema/*_test.go <celestia-app-v9.0.8>/test/aminodump/
+cd <celestia-app-v9.0.8>
+AMINO_SCHEMA_OUT=$OLDPWD/crates/tier-1-protocol-types/legacy-amino/src/schema_v9.json \
+  go test -tags v9 -count=1 -run TestSchema ./test/aminodump
+AMINO_VECTORS_OUT=$OLDPWD/conformance/aminoschema/vectors_v9.json \
+  go test -tags v9 -count=1 -run TestVectors ./test/aminodump
 ```

@@ -111,8 +111,9 @@ mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`), and
 Mocha replayed from its real genesis (InitChain of the 56 MB mocha-5
 genesis, incl. ibc-go `TransferAuthorization` grants, now ported) through
 height 40,000 with every app hash and tx result matching (`genesis_replay`).
-Open: the legacy amino codec's v9 type graph (ADR 0004, "Not ported"),
-state sync / snapshots of a v9 chain, and following Mocha from genesis
+The legacy amino codec runs v9.0.8's type graph at app version 9
+(2026-10-16: schema and 77 vectors dumped from v9.0.8, the v9 query
+corpora with no exception left). Open: state sync / snapshots of a v9 chain, and following Mocha from genesis
 over HTTPS (with the follower work). Ten v9 query corpora are at parity
 (2026-10-16).
 
@@ -155,7 +156,7 @@ messages in authz / gov errors, consensus-param and fibre events, ICS-23
 proof errors. ADR 0004's remaining v9 differences are ported (hyperlane
 v1.1.0 multisig / IGP / amino names, the distribution overflow panic,
 zkism's paginated export, the v9 query surface with ten v9 query corpora
-recorded from Go v9.0.8) except the legacy amino codec's v9 type graph. Light-client-attack
+recorded from Go v9.0.8) and, since 2026-10-16, the legacy amino codec's v9 type graph. Light-client-attack
 evidence decodes from `/block` JSON (Go vectors with cmtjson and `ABCI()`
 forms).
 

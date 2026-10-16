@@ -1,0 +1,464 @@
+[
+ {
+  "name": "empty",
+  "op": "decode",
+  "input": "282816a9",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "empty",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}",
+  "out": "282816a9"
+ },
+ {
+  "name": "send",
+  "op": "decode",
+  "input": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a0c0a047574696112043130303010c09a0c1a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a2d0a26eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f120301020322156d656d6f203c68746d6c3e202620227374756666222863",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"uabc\",\"amount\":\"1\"},{\"denom\":\"utia\",\"amount\":\"12345\"}]}}],\"fee\":{\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"gas\":\"200000\",\"payer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},\"signature\":\"AQID\"}],\"memo\":\"memo \\u003chtml\\u003e \\u0026 \\\"stuff\\\"\",\"timeout_height\":\"99\"}}"
+ },
+ {
+  "name": "send",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"uabc\",\"amount\":\"1\"},{\"denom\":\"utia\",\"amount\":\"12345\"}]}}],\"fee\":{\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"gas\":\"200000\",\"payer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},\"signature\":\"AQID\"}],\"memo\":\"memo \\u003chtml\\u003e \\u0026 \\\"stuff\\\"\",\"timeout_height\":\"99\"}}",
+  "out": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a0c0a047574696112043130303010c09a0c1a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a2d0a26eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f120301020322156d656d6f203c68746d6c3e202620227374756666222863"
+ },
+ {
+  "name": "staking",
+  "op": "decode",
+  "input": "282816a90a78921d2e4e0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a090a04757469611201350aed01eb361d010a060a016d2a0164123b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a1131303030303030303030303030303030301a0131222f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830642a3663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c6432251624de6420119c4d9c5e5d3ae173bfab934a058068abfc3d23a5bee3aaef705f1c0ac00f8d3a0f0a04757469611207313030303030300a58c2e8bccd0a030a0178123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a123135303030303030303030303030303030302201370a3cc2e8bccd123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c640ab0019c9593460a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a3663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c6422090a0475746961120130120210011a84010a7d22c1f7e208021226eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f1226eb5ae987210241f06f4c4fb6740717a19d562adf1999e0a5b52b1817b1ac74bd0ae4c29f3fe612251624de6420119c4d9c5e5d3ae173bfab934a058068abfc3d23a5bee3aaef705f1c0ac00f8d12037369671a00",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgDelegate\",\"value\":{\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"amount\":{\"denom\":\"utia\",\"amount\":\"5\"}}},{\"type\":\"cosmos-sdk/MsgCreateValidator\",\"value\":{\"description\":{\"moniker\":\"m\",\"details\":\"d\"},\"commission\":{\"rate\":\"0.100000000000000000\",\"max_rate\":\"0.200000000000000000\",\"max_change_rate\":\"0.010000000000000000\"},\"min_self_delegation\":\"1\",\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"pubkey\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"EZxNnF5dOuFzv6uTSgWAaKv8PSOlvuOq73BfHArAD40=\"},\"value\":{\"denom\":\"utia\",\"amount\":\"1000000\"}}},{\"type\":\"cosmos-sdk/MsgEditValidator\",\"value\":{\"description\":{\"moniker\":\"x\"},\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"commission_rate\":\"0.150000000000000000\",\"min_self_delegation\":\"7\"}},{\"type\":\"cosmos-sdk/MsgEditValidator\",\"value\":{\"description\":{},\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\"}},{\"type\":\"cosmos-sdk/MsgBeginRedelegate\",\"value\":{\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_src_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"validator_dst_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"amount\":{\"denom\":\"utia\",\"amount\":\"0\"}}}],\"fee\":{\"amount\":[],\"gas\":\"1\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeyMultisigThreshold\",\"value\":{\"threshold\":\"2\",\"pubkeys\":[{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"AkHwb0xPtnQHF6GdVirfGZngpbUrGBexrHS9CuTCnz/m\"},{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"EZxNnF5dOuFzv6uTSgWAaKv8PSOlvuOq73BfHArAD40=\"}]}},\"signature\":\"c2ln\"},{\"pub_key\":null,\"signature\":null}],\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "staking",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgDelegate\",\"value\":{\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"amount\":{\"denom\":\"utia\",\"amount\":\"5\"}}},{\"type\":\"cosmos-sdk/MsgCreateValidator\",\"value\":{\"description\":{\"moniker\":\"m\",\"details\":\"d\"},\"commission\":{\"rate\":\"0.100000000000000000\",\"max_rate\":\"0.200000000000000000\",\"max_change_rate\":\"0.010000000000000000\"},\"min_self_delegation\":\"1\",\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"pubkey\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"EZxNnF5dOuFzv6uTSgWAaKv8PSOlvuOq73BfHArAD40=\"},\"value\":{\"denom\":\"utia\",\"amount\":\"1000000\"}}},{\"type\":\"cosmos-sdk/MsgEditValidator\",\"value\":{\"description\":{\"moniker\":\"x\"},\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"commission_rate\":\"0.150000000000000000\",\"min_self_delegation\":\"7\"}},{\"type\":\"cosmos-sdk/MsgEditValidator\",\"value\":{\"description\":{},\"validator_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\"}},{\"type\":\"cosmos-sdk/MsgBeginRedelegate\",\"value\":{\"delegator_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"validator_src_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"validator_dst_address\":\"celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgl2ld\",\"amount\":{\"denom\":\"utia\",\"amount\":\"0\"}}}],\"fee\":{\"amount\":[],\"gas\":\"1\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeyMultisigThreshold\",\"value\":{\"threshold\":\"2\",\"pubkeys\":[{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"AkHwb0xPtnQHF6GdVirfGZngpbUrGBexrHS9CuTCnz/m\"},{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"EZxNnF5dOuFzv6uTSgWAaKv8PSOlvuOq73BfHArAD40=\"}]}},\"signature\":\"c2ln\"},{\"pub_key\":null,\"signature\":null}],\"memo\":\"\",\"timeout_height\":\"0\"}}",
+  "out": "282816a90a78921d2e4e0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a090a04757469611201350aed01eb361d010a060a016d2a0164123b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a1131303030303030303030303030303030301a0131222f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830642a3663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c6432251624de6420119c4d9c5e5d3ae173bfab934a058068abfc3d23a5bee3aaef705f1c0ac00f8d3a0f0a04757469611207313030303030300a58c2e8bccd0a030a0178123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a123135303030303030303030303030303030302201370a3cc2e8bccd123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c640ab0019c9593460a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064123663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c641a3663656c657374696176616c6f70657231717970717870713971637273737a673270767871367273307a7167337979633577676c326c6422090a0475746961120130120210011a84010a7d22c1f7e208021226eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f1226eb5ae987210241f06f4c4fb6740717a19d562adf1999e0a5b52b1817b1ac74bd0ae4c29f3fe612251624de6420119c4d9c5e5d3ae173bfab934a058068abfc3d23a5bee3aaef705f1c0ac00f8d12037369671a00"
+ },
+ {
+  "name": "gov",
+  "op": "decode",
+  "input": "282816a90a39a1cadd360803122f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306418040a67504155b80804122f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a16080112123530303030303030303030303030303030301a16080212123530303030303030303030303030303030300a6ab42d614e0a254beaf0790a097469746c65203c263e1214646573630a2271756f7465642220e280a820c3a9120c0a04757469611204313030301a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830640ac501c45957240a74a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a0475746961120431303030120c0a04757469611204313030301a2f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306422026d642a017432017338010a3ed1aaa67608808080808020122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e7270733818010a4e26ff4ce10a2f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306412170a027632120b088092b8c398feffffff01186422027b7d",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVote\",\"value\":{\"proposal_id\":\"3\",\"voter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"option\":4}},{\"type\":\"cosmos-sdk/MsgVoteWeighted\",\"value\":{\"proposal_id\":\"4\",\"voter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"options\":[{\"option\":1,\"weight\":\"0.500000000000000000\"},{\"option\":2,\"weight\":\"0.500000000000000000\"}]}},{\"type\":\"cosmos-sdk/MsgSubmitProposal\",\"value\":{\"content\":{\"type\":\"cosmos-sdk/TextProposal\",\"value\":{\"title\":\"title \\u003c\\u0026\\u003e\",\"description\":\"desc\\n\\\"quoted\\\" \\u2028 é\"}},\"initial_deposit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"proposer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"}},{\"type\":\"cosmos-sdk/v1/MsgSubmitProposal\",\"value\":{\"messages\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}}],\"initial_deposit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"proposer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"metadata\":\"md\",\"title\":\"t\",\"summary\":\"s\",\"expedited\":true}},{\"type\":\"cosmos-sdk/v1/MsgVote\",\"value\":{\"proposal_id\":\"1099511627776\",\"voter\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"option\":1}},{\"type\":\"cosmos-sdk/MsgSoftwareUpgrade\",\"value\":{\"authority\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"plan\":{\"name\":\"v2\",\"time\":\"0001-01-01T00:00:00Z\",\"height\":\"100\",\"info\":\"{}\"}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "gov",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVote\",\"value\":{\"proposal_id\":\"3\",\"voter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"option\":4}},{\"type\":\"cosmos-sdk/MsgVoteWeighted\",\"value\":{\"proposal_id\":\"4\",\"voter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"options\":[{\"option\":1,\"weight\":\"0.500000000000000000\"},{\"option\":2,\"weight\":\"0.500000000000000000\"}]}},{\"type\":\"cosmos-sdk/MsgSubmitProposal\",\"value\":{\"content\":{\"type\":\"cosmos-sdk/TextProposal\",\"value\":{\"title\":\"title \\u003c\\u0026\\u003e\",\"description\":\"desc\\n\\\"quoted\\\" \\u2028 é\"}},\"initial_deposit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"proposer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"}},{\"type\":\"cosmos-sdk/v1/MsgSubmitProposal\",\"value\":{\"messages\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}}],\"initial_deposit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"proposer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"metadata\":\"md\",\"title\":\"t\",\"summary\":\"s\",\"expedited\":true}},{\"type\":\"cosmos-sdk/v1/MsgVote\",\"value\":{\"proposal_id\":\"1099511627776\",\"voter\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"option\":1}},{\"type\":\"cosmos-sdk/MsgSoftwareUpgrade\",\"value\":{\"authority\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"plan\":{\"name\":\"v2\",\"time\":\"0001-01-01T00:00:00Z\",\"height\":\"100\",\"info\":\"{}\"}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}",
+  "out": "282816a90a39a1cadd360803122f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306418040a67504155b80804122f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a16080112123530303030303030303030303030303030301a16080212123530303030303030303030303030303030300a6ab42d614e0a254beaf0790a097469746c65203c263e1214646573630a2271756f7465642220e280a820c3a9120c0a04757469611204313030301a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830640ac501c45957240a74a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a0475746961120431303030120c0a04757469611204313030301a2f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306422026d642a017432017338010a3ed1aaa67608808080808020122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e7270733818010a4e26ff4ce10a2f63656c657374696131717970717870713971637273737a673270767871367273307a7167337979633577707768306412170a027632120b088092b8c398feffffff01186422027b7d"
+ },
+ {
+  "name": "authz",
+  "op": "decode",
+  "input": "282816a90a9a01a7238ca80a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a320a224007f9040a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120c08a5aaf5860710808c8d9e020aad01a7238ca80a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a450a43a747c5b00a0c0a0475746961120431303030122f63656c65737469613171717171717171717171717171717171717171717171717171717171717171717a66333061730aa1023ec4b74a0a2f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381274a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a04757469611204313030301274a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a04757469611204313030300a6a12ed14aa0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a022f780a880181bb56770a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a20a58b599a0a0c0a0475746961120431303030120c08a5aaf5860710808c8d9e020aac0181bb56770a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a44bf1309b50a20a58b599a0a0c0a0475746961120431303030120c08a5aaf5860710808c8d9e02121c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"grant\":{\"authorization\":{\"type\":\"cosmos-sdk/GenericAuthorization\",\"value\":{\"msg\":\"/cosmos.bank.v1beta1.MsgSend\"}},\"expiration\":\"2030-01-02T03:04:05.6Z\"}}},{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"grant\":{\"authorization\":{\"type\":\"cosmos-sdk/SendAuthorization\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"allow_list\":[\"celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzf30as\"]}},\"expiration\":\"1970-01-01T00:00:00Z\"}}},{\"type\":\"cosmos-sdk/MsgExec\",\"value\":{\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"msgs\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}},{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}}]}},{\"type\":\"cosmos-sdk/MsgRevoke\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"msg_type_url\":\"/x\"}},{\"type\":\"cosmos-sdk/MsgGrantAllowance\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"allowance\":{\"type\":\"cosmos-sdk/BasicAllowance\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"expiration\":\"2030-01-02T03:04:05.6Z\"}}}},{\"type\":\"cosmos-sdk/MsgGrantAllowance\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"allowance\":{\"type\":\"cosmos-sdk/AllowedMsgAllowance\",\"value\":{\"allowance\":{\"type\":\"cosmos-sdk/BasicAllowance\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"expiration\":\"2030-01-02T03:04:05.6Z\"}},\"allowed_messages\":[\"/cosmos.bank.v1beta1.MsgSend\"]}}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "authz",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"grant\":{\"authorization\":{\"type\":\"cosmos-sdk/GenericAuthorization\",\"value\":{\"msg\":\"/cosmos.bank.v1beta1.MsgSend\"}},\"expiration\":\"2030-01-02T03:04:05.6Z\"}}},{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"grant\":{\"authorization\":{\"type\":\"cosmos-sdk/SendAuthorization\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"allow_list\":[\"celestia1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzf30as\"]}},\"expiration\":\"1970-01-01T00:00:00Z\"}}},{\"type\":\"cosmos-sdk/MsgExec\",\"value\":{\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"msgs\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}},{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}]}}]}},{\"type\":\"cosmos-sdk/MsgRevoke\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"msg_type_url\":\"/x\"}},{\"type\":\"cosmos-sdk/MsgGrantAllowance\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"allowance\":{\"type\":\"cosmos-sdk/BasicAllowance\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"expiration\":\"2030-01-02T03:04:05.6Z\"}}}},{\"type\":\"cosmos-sdk/MsgGrantAllowance\",\"value\":{\"granter\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"grantee\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"allowance\":{\"type\":\"cosmos-sdk/AllowedMsgAllowance\",\"value\":{\"allowance\":{\"type\":\"cosmos-sdk/BasicAllowance\",\"value\":{\"spend_limit\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"expiration\":\"2030-01-02T03:04:05.6Z\"}},\"allowed_messages\":[\"/cosmos.bank.v1beta1.MsgSend\"]}}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}",
+  "out": "282816a90a9a01a7238ca80a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a320a224007f9040a1c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64120c08a5aaf5860710808c8d9e020aaf01a7238ca80a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a470a43a747c5b00a0c0a0475746961120431303030122f63656c65737469613171717171717171717171717171717171717171717171717171717171717171717a663330617312000aa1023ec4b74a0a2f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381274a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a04757469611204313030301274a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a0c0a04757469611204313030300a6a12ed14aa0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a022f780a880181bb56770a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a20a58b599a0a0c0a0475746961120431303030120c08a5aaf5860710808c8d9e020aac0181bb56770a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a44bf1309b50a20a58b599a0a0c0a0475746961120431303030120c08a5aaf5860710808c8d9e02121c2f636f736d6f732e62616e6b2e763162657461312e4d736753656e64"
+ },
+ {
+  "name": "celestia",
+  "op": "decode",
+  "input": "282816a90a644476a17f0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064121d0000000000000000000000000000000000000000000000000000000000120201021a040100ac022201092a01000aaf01f35ccb070a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641220726f757465725f6170700000000000000000000000000001000000000000000018072220726f757465725f617070000000000000000000000000000100000000000000002a022d353220726f757465725f617070000000000000000000000000000100000000000000003a013042090a0475746961120133220401ffc3a9",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"/celestia.blob.v1.MsgPayForBlobs\",\"value\":{\"signer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"namespaces\":[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"AQI=\"],\"blob_sizes\":[1,0,300],\"share_commitments\":[\"CQ==\"],\"share_versions\":[0]}},{\"type\":\"hyperlane/v1/MsgRemoteTransfer\",\"value\":{\"sender\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"token_id\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"destination_domain\":7,\"recipient\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"amount\":\"-5\",\"custom_hook_id\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"gas_limit\":\"0\",\"max_fee\":{\"denom\":\"utia\",\"amount\":\"3\"}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\\u0001\\ufffdé\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "celestia",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"/celestia.blob.v1.MsgPayForBlobs\",\"value\":{\"signer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"namespaces\":[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"AQI=\"],\"blob_sizes\":[1,0,300],\"share_commitments\":[\"CQ==\"],\"share_versions\":[0]}},{\"type\":\"hyperlane/v1/MsgRemoteTransfer\",\"value\":{\"sender\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"token_id\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"destination_domain\":7,\"recipient\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"amount\":\"-5\",\"custom_hook_id\":\"0x726f757465725f61707000000000000000000000000000010000000000000000\",\"gas_limit\":\"0\",\"max_fee\":{\"denom\":\"utia\",\"amount\":\"3\"}}}],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\\u0001\\ufffdé\",\"timeout_height\":\"0\"}}",
+  "out": "282816a90a644476a17f0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064121d0000000000000000000000000000000000000000000000000000000000120201021a040100ac022201092a01000aaf01f35ccb070a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641220726f757465725f6170700000000000000000000000000001000000000000000018072220726f757465725f617070000000000000000000000000000100000000000000002a022d353220726f757465725f617070000000000000000000000000000100000000000000003a013042090a0475746961120133220601efbfbdc3a9"
+ },
+ {
+  "name": "short-prefix",
+  "op": "decode",
+  "input": "2828",
+  "err": "UnmarshalBinaryBare expected to read prefix bytes 282816A9 (since it is registered concrete) but got 2828"
+ },
+ {
+  "name": "wrong-prefix",
+  "op": "decode",
+  "input": "0102030405",
+  "err": "UnmarshalBinaryBare expected to read prefix bytes 282816A9 (since it is registered concrete) but got 01020304..."
+ },
+ {
+  "name": "prefix-only",
+  "op": "decode",
+  "input": "282816a9",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "truncated-10",
+  "op": "decode",
+  "input": "282816a90a8001a8a361",
+  "err": "unmarshal to legacytx.StdTx failed after 1 bytes (error reading array contents: insufficient bytes decoding []byte of length 128): 0A8001A8A361"
+ },
+ {
+  "name": "truncated-half",
+  "op": "decode",
+  "input": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a",
+  "err": "unmarshal to legacytx.StdTx failed after 132 bytes (insufficient bytes decoding []byte of length 67): 0A8001A8A3619A0A2F63656C657374696131717970717870713971637273737A673270767871367273307A71673379796335777077683064122F63656C6573746961317A67363976377973343078373779333532657566703237646175667267346E63716E727073381A090A04756162631201311A0D0A04757469611205313233343512430A"
+ },
+ {
+  "name": "truncated-1",
+  "op": "decode",
+  "input": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a0c0a047574696112043130303010c09a0c1a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a2d0a26eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f120301020322156d656d6f203c68746d6c3e2026202273747566662228",
+  "err": "unmarshal to legacytx.StdTx failed after 271 bytes (buffer too small): 0A8001A8A3619A0A2F63656C657374696131717970717870713971637273737A673270767871367273307A71673379796335777077683064122F63656C6573746961317A67363976377973343078373779333532657566703237646175667267346E63716E727073381A090A04756162631201311A0D0A04757469611205313233343512430A0C0A047574696112043130303010C09A0C1A2F63656C657374696131717970717870713971637273737A673270767871367273307A716733797963357770776830641A2D0A26EB5AE987210218FA4A7E3E883D5E52CE7FB1E03C8C56A8AB29959DDE40ED33140442B117EA1F120301020322156D656D6F203C68746D6C3E2026202273747566662228"
+ },
+ {
+  "name": "trailing",
+  "op": "decode",
+  "input": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a0c0a047574696112043130303010c09a0c1a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a2d0a26eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f120301020322156d656d6f203c68746d6c3e20262022737475666622286300",
+  "err": "unmarshal to legacytx.StdTx failed after 273 bytes (encountered fieldnNum: 0, but we have already seen fnum: 5\nbytes:): 0A8001A8A3619A0A2F63656C657374696131717970717870713971637273737A673270767871367273307A71673379796335777077683064122F63656C6573746961317A67363976377973343078373779333532657566703237646175667267346E63716E727073381A090A04756162631201311A0D0A04757469611205313233343512430A0C0A047574696112043130303010C09A0C1A2F63656C657374696131717970717870713971637273737A673270767871367273307A716733797963357770776830641A2D0A26EB5AE987210218FA4A7E3E883D5E52CE7FB1E03C8C56A8AB29959DDE40ED33140442B117EA1F120301020322156D656D6F203C68746D6C3E20262022737475666622286300"
+ },
+ {
+  "name": "trailing-field",
+  "op": "decode",
+  "input": "282816a90a8001a8a3619a0a2f63656c657374696131717970717870713971637273737a673270767871367273307a71673379796335777077683064122f63656c6573746961317a67363976377973343078373779333532657566703237646175667267346e63716e727073381a090a04756162631201311a0d0a04757469611205313233343512430a0c0a047574696112043130303010c09a0c1a2f63656c657374696131717970717870713971637273737a673270767871367273307a716733797963357770776830641a2d0a26eb5ae987210218fa4a7e3e883d5e52ce7fb1e03c8c56a8ab29959dde40ed33140442b117ea1f120301020322156d656d6f203c68746d6c3e2026202273747566662228633005",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"uabc\",\"amount\":\"1\"},{\"denom\":\"utia\",\"amount\":\"12345\"}]}}],\"fee\":{\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"gas\":\"200000\",\"payer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},\"signature\":\"AQID\"}],\"memo\":\"memo \\u003chtml\\u003e \\u0026 \\\"stuff\\\"\",\"timeout_height\":\"99\"}}"
+ },
+ {
+  "name": "unknown-field",
+  "op": "decode",
+  "input": "282816a93801",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "bad-varint",
+  "op": "decode",
+  "input": "282816a9ffffffffffffffffffff01",
+  "err": "unmarshal to legacytx.StdTx failed after 0 bytes (expected repeated field number 1 or greater, got 0): FFFFFFFFFFFFFFFFFFFF01"
+ },
+ {
+  "name": "repeated-field",
+  "op": "decode",
+  "input": "282816a922002200",
+  "err": "unmarshal to legacytx.StdTx failed after 2 bytes (encountered fieldnNum: 4, but we have already seen fnum: 4\nbytes:2200): 22002200"
+ },
+ {
+  "name": "bad-msg-prefix",
+  "op": "decode",
+  "input": "282816a90a04deadbeef",
+  "err": "unmarshal to legacytx.StdTx failed after 6 bytes (error reading array contents: unrecognized prefix bytes DEADBEEF): 0A04DEADBEEF"
+ },
+ {
+  "name": "short-msg-prefix",
+  "op": "decode",
+  "input": "282816a90a02dead",
+  "err": "unmarshal to legacytx.StdTx failed after 2 bytes (error reading array contents: EOF while reading prefix bytes.): 0A02DEAD"
+ },
+ {
+  "name": "wrong-typ3",
+  "op": "decode",
+  "input": "282816a92001",
+  "err": "unmarshal to legacytx.StdTx failed after 1 bytes (expected field type ByteLength for # 4 of legacytx.StdTx, got (U)Varint): 2001"
+ },
+ {
+  "name": "memo-invalid-utf8",
+  "op": "decode",
+  "input": "282816a92203fffe41",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\\ufffd\\ufffdA\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "empty-msg",
+  "op": "decode",
+  "input": "282816a90a00",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[null],\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"0\"}}"
+ },
+ {
+  "name": "negative-timeout",
+  "op": "decode",
+  "input": "282816a928ffffffffffffffffff01",
+  "out": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":null,\"fee\":{\"amount\":[],\"gas\":\"0\"},\"signatures\":null,\"memo\":\"\",\"timeout_height\":\"18446744073709551615\"}}"
+ },
+ {
+  "name": "syntax",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{",
+  "err": "cannot parse disfix JSON wrapper: unexpected end of JSON input"
+ },
+ {
+  "name": "syntax2",
+  "op": "encode",
+  "input": "{\"type\" \"x\"}",
+  "err": "cannot parse disfix JSON wrapper: invalid character '\"' after object key"
+ },
+ {
+  "name": "trailing-garbage",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{\"from_address\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\",\"to_address\":\"celestia1zg69v7ys40x77y352eufp27daufrg4ncqnrps8\",\"amount\":[{\"denom\":\"uabc\",\"amount\":\"1\"},{\"denom\":\"utia\",\"amount\":\"12345\"}]}}],\"fee\":{\"amount\":[{\"denom\":\"utia\",\"amount\":\"1000\"}],\"gas\":\"200000\",\"payer\":\"celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wpwh0d\"},\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"Ahj6Sn4+iD1eUs5/seA8jFaoqymVnd5A7TMUBEKxF+of\"},\"signature\":\"AQID\"}],\"memo\":\"memo \\u003chtml\\u003e \\u0026 \\\"stuff\\\"\",\"timeout_height\":\"99\"}}x",
+  "err": "cannot parse disfix JSON wrapper: invalid character 'x' after top-level value"
+ },
+ {
+  "name": "not-object",
+  "op": "encode",
+  "input": "[1,2]",
+  "err": "cannot parse disfix JSON wrapper: json: cannot unmarshal array into Go value of type amino.disfixWrapper"
+ },
+ {
+  "name": "null",
+  "op": "encode",
+  "input": "null",
+  "err": "JSON encoding of interfaces require non-empty type field."
+ },
+ {
+  "name": "type-number",
+  "op": "encode",
+  "input": "{\"type\":5,\"value\":{}}",
+  "err": "cannot parse disfix JSON wrapper: json: cannot unmarshal number into Go struct field disfixWrapper.type of type string"
+ },
+ {
+  "name": "no-type",
+  "op": "encode",
+  "input": "{\"value\":{}}",
+  "err": "JSON encoding of interfaces require non-empty type field."
+ },
+ {
+  "name": "no-value",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\"}",
+  "err": "interface JSON wrapper should have non-empty value field"
+ },
+ {
+  "name": "wrong-type",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{}}",
+  "err": "UnmarshalJSON wants to decode a cosmos-sdk/StdTx but found a cosmos-sdk/MsgSend"
+ },
+ {
+  "name": "case-insensitive",
+  "op": "encode",
+  "input": "{\"TYPE\":\"cosmos-sdk/StdTx\",\"Value\":{\"memo\":\"x\"}}",
+  "out": "282816a9220178"
+ },
+ {
+  "name": "value-null",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":null}",
+  "out": "282816a9"
+ },
+ {
+  "name": "value-array",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":[]}",
+  "err": "json: cannot unmarshal array into Go value of type map[string]json.RawMessage"
+ },
+ {
+  "name": "minimal",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{}}",
+  "out": "282816a9"
+ },
+ {
+  "name": "memo-number",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"memo\":5}}",
+  "err": "json: cannot unmarshal number into Go value of type string"
+ },
+ {
+  "name": "timeout-unquoted",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":5}}",
+  "err": "invalid character -- Amino:JSON int/int64/uint/uint64 expects quoted values for javascript numeric support, got: 5."
+ },
+ {
+  "name": "timeout-bad",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":\"abc\"}}",
+  "err": "invalid character 'a' looking for beginning of value"
+ },
+ {
+  "name": "timeout-neg",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":\"-1\"}}",
+  "err": "json: cannot unmarshal number -1 into Go value of type uint64"
+ },
+ {
+  "name": "timeout-float",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":\"1.5\"}}",
+  "err": "json: cannot unmarshal number 1.5 into Go value of type uint64"
+ },
+ {
+  "name": "timeout-empty",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":\"\"}}",
+  "err": "unexpected end of JSON input"
+ },
+ {
+  "name": "timeout-ws",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"timeout_height\":\" 7 \"}}",
+  "out": "282816a92807"
+ },
+ {
+  "name": "msg-not-array",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":{}}}",
+  "err": "json: cannot unmarshal object into Go value of type []json.RawMessage"
+ },
+ {
+  "name": "msg-unknown",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"nope\",\"value\":{}}]}}",
+  "err": "unrecognized concrete type name nope"
+ },
+ {
+  "name": "msg-null-elem",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[null]}}",
+  "out": "282816a90a00"
+ },
+ {
+  "name": "msg-empty",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[]}}",
+  "out": "282816a9"
+ },
+ {
+  "name": "msg-send-min",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{}}]}}",
+  "out": "282816a90a04a8a3619a"
+ },
+ {
+  "name": "amount-bad",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"fee\":{\"amount\":[{\"denom\":\"u\",\"amount\":\"x1\"}]}}}",
+  "err": "math/big: cannot unmarshal \"x1\" into a *big.Int"
+ },
+ {
+  "name": "amount-number",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"fee\":{\"amount\":[{\"denom\":\"u\",\"amount\":5}]}}}",
+  "err": "json: cannot unmarshal number into Go value of type string"
+ },
+ {
+  "name": "amount-hex",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"fee\":{\"amount\":[{\"denom\":\"u\",\"amount\":\"0x10\"}]}}}",
+  "out": "282816a912090a070a017512023136"
+ },
+ {
+  "name": "sig-bad-b64",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"signatures\":[{\"signature\":\"!!\"}]}}",
+  "err": "illegal base64 data at input byte 0"
+ },
+ {
+  "name": "sig-b64-nopad",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"signatures\":[{\"signature\":\"AQI\"}]}}",
+  "err": "illegal base64 data at input byte 0"
+ },
+ {
+  "name": "pubkey-short",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeySecp256k1\",\"value\":\"AQI=\"}}]}}",
+  "err": "invalid pubkey size: invalid pubkey"
+ },
+ {
+  "name": "pubkey-wrong-iface",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"signatures\":[{\"pub_key\":{\"type\":\"cosmos-sdk/MsgSend\",\"value\":{}}}]}}",
+  "panic": "reflect.Set: value of type *types.MsgSend is not assignable to type types.PubKey"
+ },
+ {
+  "name": "dec-bad",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVoteWeighted\",\"value\":{\"options\":[{\"weight\":\"1.2.3\"}]}}]}}",
+  "err": "invalid decimal string"
+ },
+ {
+  "name": "dec-precision",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVoteWeighted\",\"value\":{\"options\":[{\"weight\":\"0.1234567890123456789\"}]}}]}}",
+  "err": "value '0.1234567890123456789' exceeds max precision by -1 decimal places: max precision 18"
+ },
+ {
+  "name": "dec-empty",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVoteWeighted\",\"value\":{\"options\":[{\"weight\":\"\"}]}}]}}",
+  "err": "decimal string cannot be empty"
+ },
+ {
+  "name": "enum-string",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVote\",\"value\":{\"option\":\"YES\"}}]}}",
+  "err": "json: cannot unmarshal string into Go value of type v1beta1.VoteOption"
+ },
+ {
+  "name": "enum-big",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgVote\",\"value\":{\"option\":3000000000}}]}}",
+  "err": "json: cannot unmarshal number 3000000000 into Go value of type v1beta1.VoteOption"
+ },
+ {
+  "name": "time-no-z",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"grant\":{\"expiration\":\"2030-01-01T00:00:00+01:00\"}}}]}}",
+  "err": "Amino:JSON time must be UTC and end with 'Z' but got \"2030-01-01T00:00:00+01:00\"."
+ },
+ {
+  "name": "time-number",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"grant\":{\"expiration\":5}}}]}}",
+  "err": "Amino:JSON time must be an RFC3339Nano string, but got 5."
+ },
+ {
+  "name": "grant-no-auth",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"grant\":{}}}]}}",
+  "panic": "runtime error: invalid memory address or nil pointer dereference"
+ },
+ {
+  "name": "any-wrong-name",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgGrant\",\"value\":{\"grant\":{\"authorization\":{\"type\":\"x\",\"value\":{}}}}}]}}",
+  "err": "unrecognized concrete type name x"
+ },
+ {
+  "name": "hex-bad",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"hyperlane/warp/v1/MsgRemoteTransfer\",\"value\":{\"token_id\":\"0x12\"}}]}}",
+  "err": "unrecognized concrete type name hyperlane/warp/v1/MsgRemoteTransfer"
+ },
+ {
+  "name": "hex-badchar",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"hyperlane/warp/v1/MsgRemoteTransfer\",\"value\":{\"token_id\":\"0xzz6f757465725f61707000000000000000000000000000010000000000000000\"}}]}}",
+  "err": "unrecognized concrete type name hyperlane/warp/v1/MsgRemoteTransfer"
+ },
+ {
+  "name": "string-escapes",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"memo\":\"aé😀\\ud800b\\n\\/\"}}",
+  "out": "282816a9220d61c3a9f09f9880efbfbd620a2f"
+ },
+ {
+  "name": "dup-keys",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"memo\":\"a\",\"memo\":\"b\"}}",
+  "out": "282816a9220162"
+ },
+ {
+  "name": "multisig",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"signatures\":[{\"pub_key\":{\"type\":\"tendermint/PubKeyMultisigThreshold\",\"value\":{\"threshold\":\"1\",\"pubkeys\":[]}}}]}}",
+  "out": "282816a91a080a0622c1f7e20801"
+ },
+ {
+  "name": "blob-sizes-neg",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"/celestia.blob.v1.MsgPayForBlobs\",\"value\":{\"blob_sizes\":[-1]}}]}}",
+  "err": "json: cannot unmarshal number -1 into Go value of type uint32"
+ },
+ {
+  "name": "create-validator-no-pubkey",
+  "op": "encode",
+  "input": "{\"type\":\"cosmos-sdk/StdTx\",\"value\":{\"msg\":[{\"type\":\"cosmos-sdk/MsgCreateValidator\",\"value\":{}}]}}",
+  "panic": "runtime error: invalid memory address or nil pointer dereference"
+ }
+]
