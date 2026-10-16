@@ -132,6 +132,25 @@ messages, proposal message re-packing). Also fixed: v9 `x/warp`
 `receiver_contract` as a plain string. Open: error-text-only log
 differences (security.md).
 
+**Nil customtypes, logs and events (2026-10-16).** `fuzz-diff exec`
+gained two modes: `EXEC_MODE=nil` leaves every `math.Int` / `LegacyDec`
+of the scenario's messages nil (dropped or empty, nested ones too) and
+`EXEC_MODE=synth` builds every `sdk.Msg` that reaches a math customtype
+from scratch. Against Go v10.4.0 and v9.0.8 (12 scenarios, ~15 000
+simulated txs) they found Go's nil-pointer panics Rust did not raise
+(`MsgEditValidator`'s present-but-empty rates, warp transfers, IGP
+payments, reward-pool deposits) and the in-place zeroing of nil `Int`s
+by gogoproto's `Marshal` in authz / ICA signer checks (security.md
+findings 17–24); after the fixes no code / gas / result mismatch. Logs and
+events of every devnet scenario now match Go byte for byte (the
+`events_and_logs_parity` ratchet is empty): gogoproto's text form of
+messages in authz / gov errors, consensus-param and fibre events, ICS-23
+proof errors. ADR 0004's remaining v9 differences are ported (hyperlane
+v1.1.0 multisig / IGP / amino names, the distribution overflow panic,
+zkism's paginated export) except the v9 query surface. Light-client-attack
+evidence decodes from `/block` JSON (Go vectors with cmtjson and `ABCI()`
+forms).
+
 **S2.** S1 is done: the Rust state machine reproduces Go celestia-app v10.4.0
 exactly — app hash, every tx result's code/data/gas, validator updates — for
 every height of the `empty` (20), `staking` (40), `staking-lifecycle` (60) and

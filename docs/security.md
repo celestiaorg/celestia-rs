@@ -278,6 +278,9 @@ target/release/fuzz-diff --app-version 10 --ops amino_dec,amino_enc --iters 1000
 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/pp-diff.sh blob 30
 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh utf8 10
 GO_APPD=$DEVNET_BIN/v9/celestia-appd crates/fuzz-diff/exec-diff.sh v9-gov 10
+# nil math customtypes / messages built from scratch instead of invalid UTF-8
+EXEC_MODE=nil GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh hyperlane 10
+EXEC_MODE=synth EXEC_SYNTH=warp GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh hyperlane 10
 # pin a finding: record Go's outcome into the regression file
 echo "tx <hex>" | target/release/fuzz-diff record 10 "what it shows" >> crates/fuzz-diff/tests/regressions.jsonl
 ```
@@ -328,6 +331,8 @@ hand-written network messages.
 | cargo-fuzz `p2p_msgs` / `mconn_recv` / `abci_frame` / `p2p_handshake` | 5 / 5 / 4 / 4 min: 51.0 M / 2.2 M / 4.6 M / 1.4 M execs | no crash |
 | cargo-fuzz `rpc_request` / `light_json` | until the first crash (12 k / 19.4 M execs) | findings 9, 10 fixed |
 | `fuzz-diff exec` (Simulate), v10: `utf8`, `gov`, `authz-feegrant`, `staking`, `staking-lifecycle`, `vesting`, `hyperlane`; v9: `v9-utf8`, `v9-gov`, `v9-staking`, `v9-authz-feegrant`, `v9-vesting` | 7 990 simulated txs (10 per height), 5 673 with invalid UTF-8 (310 of those executed by Go) | findings 12–16 fixed; then no code / gas / result mismatch. Error-text-only differences remain (open items) |
+| `fuzz-diff exec` nil customtypes (`EXEC_MODE=nil`: every `math.Int` / `LegacyDec` field of the scenario's messages, nested ones too, dropped or sent empty), v10: `staking`, `staking-lifecycle`, `gov`, `authz-feegrant`, `vesting`, `hyperlane`, `fibre`; v9: `v9-staking`, `v9-gov`, `v9-authz-feegrant`, `v9-vesting`, `v9-hyperlane` | ~9 500 simulated txs (2026-10-16) | findings 17–20 fixed; then no code / gas / result mismatch |
+| `fuzz-diff exec` synthesized messages (`EXEC_MODE=synth`: every `sdk.Msg` reaching a math customtype, built from scratch with absent / empty / small numbers, signed by a scenario account; `EXEC_SYNTH=<name>` narrows it) | v10: `hyperlane`, `gov`, `staking-lifecycle`, `fibre`, `authz-feegrant`; v9: `v9-hyperlane`, `v9-gov`, `v9-staking`, `v9-authz-feegrant` (~8 000 txs) | findings 21–22 fixed; then no code / gas / result mismatch |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 
 ### Findings (2026-10-15)
@@ -353,21 +358,30 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 14 | staking `MsgCreateValidator` | an empty commission rate / max change rate / min self delegation is a nil customtype in Go: `CommissionRates.Validate` panics; Rust used zero (and could succeed) | success vs panic | nil emulation in `handle_create_validator` |
 | 15 | bank `MsgUpdateParams`, `MsgSetSendEnabled`; gov `Proposal.Messages` | not routed in Rust (gov proposals carrying them failed at submission); Go stores proposal messages re-packed by gogoproto (`SetMsgs`), e.g. with `Plan.time`'s zero timestamp | gas / state divergence | handlers ported; `gogo_repack` in `SubmitProposal` / legacy content |
 | 16 | v9 `x/warp` (`receiver_contract`) | hyperlane-cosmos v1.1.0 stores the receiver contract as a string, compares it lowercased and decodes it only when dispatching; Rust parsed a hex address at enrollment | v9 enrollment / transfer divergence | `RemoteRouter.receiver_contract: String` with v9 / v10 semantics |
+| 17 | staking `MsgEditValidator` | a present but empty `commission_rate` / `min_self_delegation` (nullable customtypes) is a non-nil pointer to a nil value in Go: the msg server panics past the address / description checks; Rust read it as absent (success) | success vs panic | the tx decoder keeps the empty occurrence (`gogo::Mode::Struct`), `x_staking::handle_edit_validator_wire` reads it; `txdecode` / `x-staking` unit tests |
+| 18 | warp `MsgRemoteTransfer`, hyperlane `MsgPayForGas` | nil `amount` (`sdk.NewCoin` panics `amount is nil`), `gas_limit` (`IsZero` / `Add`) and `max_fee.amount` (`sdk.NewCoins`) panic in Go at their first use; Rust used zero (and could succeed) | success vs panic | `x_warp::TransferNils`, `pay_for_gas_msg` / `quote_gas_payment` with an optional gas limit (`<nil>` in v9's `EventGasPayment`) |
+| 19 | authz `MsgExec`, ICA host txs | `GetMsgV1Signers` marshals the message with gogoproto, and `math.Int.MarshalTo` (pointer receiver) sets a nil value to zero in place: messages executed by authz / the ICA host see zero where a top-level message sees nil (a nil `LegacyDec` stays nil) | panic vs error / success | `txdecode::gogo_marshaled` before authorization and execution; `txdecode` unit test |
+| 20 | gov `MsgDeposit` | an empty amount fails `validateDeposit` (`IsAllPositive` of no coins) with `invalid coins`; Rust went on to the proposal checks | code / gas divergence | `x_gov::msgs::deposit` |
+| 21 | distribution `MsgDepositValidatorRewardsPool` | Go sends the coins as decoded: `IsValid` fails on an earlier coin or panics on the first nil amount; Rust failed decoding the amount first | panic vs error | `raw_coins_is_valid` before the send |
+| 22 | v9 `Simulate` / `TxDecode` (gRPC, ABCI query, REST) | decoded with the v10 registry at app version 9: fibre messages and `MsgForward` fields 7/8 decoded and ran where v9.0.8 fails `tx parse error` | query divergence (not consensus) | `txpipe::decoder(app_version)`, `txdecode::default_tx_decode_v9` |
+| 23 | v9 hyperlane-cosmos v1.1.0 | multisig ISMs compare the recovered signer with each stored validator lower-cased (no decoding), `ValidateNewMultisig` sorts the strings; the IGP fee check is `requiredPayment.IsAllGT(maxFee)`; `MsgPayForGas` pays `req.Amount` without a quote and refuses zero; `SetDomain` on an existing domain keeps its ISM (loop copy); v1.1.0's amino names sign `SIGN_MODE_LEGACY_AMINO_JSON`; Rust ran v1.3.0's semantics at app version 9 | v9 consensus divergence | `is_v9` branches in `x-hyperlane` (ADR 0004) |
+| 24 | `x_auth::parse_bech32` (bank send / multi-send, transfer, ...) | Go's address codec runs `VerifyAddressFormat` (at most 255 bytes); Rust accepted a longer bech32 address (found reading the Go source while fixing finding 21's text) | success vs `invalid address` | the length check |
 
 Open:
 
 - Error text (logs; not hashed, code and gas match) that still differs
-  from Go: `failed to execute message; message %v` in authz / gov embeds
-  gogoproto's text format of the message, address-codec errors are wrapped
-  differently, tx-decode wire errors name types and wire types
-  differently, protobuf-go randomizes a space in its errors, and Go panics
-  log a stack. gRPC status messages carry Go forms (tonic cannot send Go's
-  invalid bytes); ABCI, REST and RPC carry Go's bytes. Logs and events of
-  `authz-feegrant`, `consensus`, `fibre`, `ibc-edge`, `ibc-upgrades`,
-  `v9-authz-feegrant`, `v9-exec` (`KNOWN_EVENT_LOG_GAPS` in
-  `replay_scenarios.rs`).
-- Other nil-customtype panics Go raises on fields the exec differential
-  did not reach (findings 13–14 cover what it found).
+  from Go, judged infeasible or not worth emulating: Go panics log a
+  stack (goroutine ids, addresses); tx-decode wire errors name Go types
+  and wire types (`errUnknownField "*types.MsgForward": {TagNum: 7,
+  WireType:"bytes"}`); protobuf-go randomizes a space in its errors;
+  address-codec errors are worded differently in a few modules. gRPC
+  status messages carry Go forms (tonic cannot send Go's invalid bytes);
+  ABCI, REST and RPC carry Go's bytes. Fixed since: gogoproto's text form
+  in `failed to execute message; message %v` and gov's
+  `PANICKED: %v` (`x_ante::gogotext`), nil amounts printed `<nil>`,
+  durations and times in Go's `String()` forms, ICS-23 proof errors,
+  the fee-grant error's raw addresses. Logs and events of every devnet
+  scenario match Go byte for byte (`KNOWN_EVENT_LOG_GAPS` is empty).
 - Go itself: `TxDecodeAmino` of a 2 MB `StdTx` with ~20 000 nested
   `MsgExec` grew the Go process past 10 GB (quadratic copying in
   go-amino); the oracle caps amino inputs at 256 KB.

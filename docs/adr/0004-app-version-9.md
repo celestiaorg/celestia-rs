@@ -141,6 +141,10 @@ which binary drives them.
 | consensus `MsgUpdateParams` may change `max_gas` | `x-consensus` |
 | equivocation against an unknown validator fails BeginBlock | `x-evidence` |
 | hyperlane v1.1.0: no ISM signature gas, 64-byte warp payload, collateral recipient = last 20 bytes | `x-hyperlane`, `x-warp` |
+| hyperlane v1.1.0: multisig validators compared as lower-cased strings (`VerifyMultisig`), `ValidateNewMultisig` sorting the strings; IGP `requiredPayment.IsAllGT(maxFee)`; `MsgPayForGas` paying `req.Amount` without a quote, refusing zero; `SetDomain` keeping an existing domain's ISM; v1.1.0 `amino.name`s in `SIGN_MODE_LEGACY_AMINO_JSON` | `x-hyperlane` (`ism::verify_multisig_v1_1`, `validate_new_multisig_v1_1`, `post_dispatch`), `x-ante` (`aminojson::v9_amino_name`) |
+| distribution: a reward-ratio overflow stays a panic (no `recover`) | `x-distribution` (`keeper`) |
+| zkism `ExportGenesis`: `CollectionPaginate` with a nil page request (first 100 message ids per ISM) | `x-zkism` (`export_genesis`) |
+| `Simulate` / `TxDecode` with v9.0.8's registry | `app` (`query_services`), `txdecode::default_tx_decode_v9` |
 | forwarding: `GetBalance` (no locked coins) | `x-forwarding` |
 | zkism SP1 v5 (396-byte vkey, 260-byte proofs, 2 public inputs) | `x-zkism` (`groth16::sp1_verify_v5`; `ValidateBasic` reads `sdk::version`) |
 | signal delay (`arabica-11` instead of `corto-1`) | `x-signal` |
@@ -148,14 +152,15 @@ which binary drives them.
 Code without a context (`ValidateBasic`) reads the app version the app
 sets per ABCI call (`sdk::version`).
 
-Not ported (no scenario reaches them; listed for completeness):
-distribution's reward-ratio overflow panic, hyperlane v1.1.0's
-hex-string multisig validator comparison / IGP
-multi-denom `maxFee` check / amino names in `SIGN_MODE_LEGACY_AMINO_JSON`,
-v9 query surface (fibre / valaddr services and `cosmos.reflection.v1`
-absent), x/zkism's paginated genesis export. (hyperlane v1.1.0's string
-`receiver_contract` is ported since ADR 0005's work: stored as given,
-compared lowercased, decoded when dispatching.)
+Not ported: the rest of the v9 query surface (fibre / valaddr services
+and `cosmos.reflection.v1` absent at app version 9), pending a v9 query
+corpus. Ported since (2026-10-16, checked by `fuzz-diff exec` against Go
+v9.0.8 in nil / synthesized-message modes where a tx reaches them):
+distribution's reward-ratio overflow panic, hyperlane v1.1.0's string
+multisig validator comparison, IGP `maxFee` check, `MsgPayForGas`,
+`SetDomain` and amino names, x/zkism's paginated genesis export.
+(hyperlane v1.1.0's string `receiver_contract` is ported since ADR 0005's
+work: stored as given, compared lowercased, decoded when dispatching.)
 
 ## Verification
 
