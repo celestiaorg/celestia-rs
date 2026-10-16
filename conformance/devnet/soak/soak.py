@@ -1794,9 +1794,16 @@ class Soak:
                     return
                 self.long["valset_amt"] = amt
                 rec = {"t": round(self.elapsed()), "node": vi, "self_delegation": amt}
-                out = self.cli(["tx", "staking", "unbond", valoper, f"{amt}utia", "--from", f"val{vi}", "--chain-id", self.chain_id,
-                                "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
-                self.event("valset-unbond", amount=amt, out=out.strip()[-160:])
+                # Re-sent until committed (see the re-bond below).
+                for attempt in range(3):
+                    via = self.tx_node()
+                    out = self.cli(["tx", "staking", "unbond", valoper, f"{amt}utia", "--from", f"val{vi}", "--chain-id", self.chain_id,
+                                    "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
+                    self.event("valset-unbond", amount=amt, attempt=attempt + 1, via=via.i, out=out.strip()[-160:])
+                    hm = re.search(r'"txhash":\s*"([0-9A-F]+)"', out)
+                    if hm and '"code":0' in out.replace(" ", "") and self.wait_included(hm.group(1), timeout=90)[0] == 0:
+                        break
+                    self.stop.wait(10)
                 t = now()
                 gone = None
                 while now() - t < 180:
