@@ -130,7 +130,13 @@ differential: ~8 000 mutated txs over 12 scenarios, no code / gas / result
 mismatch after fixing what it found: nested-signer checks, gov deposit
 validation order and nil amounts, nil commission rates, unrouted bank
 messages, proposal message re-packing). Also fixed: v9 `x/warp`
-`receiver_contract` as a plain string. Open: error-text-only log
+`receiver_contract` as a plain string. ICA host txs with invalid UTF-8
+(2026-10-16, `ibc-upgrades` regenerated from Go: a transfer with it in
+receiver and memo, a fee allowance holding it, the packet memo, proto3json
+payloads) found the per-block message count reading such a proto3json
+payload as uncountable (Rust's ProcessProposal would reject a block Go
+accepts; security.md finding 27); the replay is at full parity with
+CheckTx. Open: error-text-only log
 differences (security.md).
 
 **Nil customtypes, logs and events (2026-10-16).** `fuzz-diff exec`

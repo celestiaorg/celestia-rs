@@ -56,6 +56,10 @@ CheckTx of every tx recorded too) covers what the first fixture leaves out:
   (protobuf and JSON) and as a plain tx (allowed via genesis
   `allow_messages`): every module-query-safe bank / auth / staking /
   circuit query, unsafe paths, bad request data, missing accounts.
+- ICA txs carrying invalid UTF-8 (ADR 0005): a `MsgTransfer` with it in
+  receiver and memo, a feegrant `AllowedMsgAllowance` restricted to a type
+  URL holding it, a packet whose own memo holds it, and proto3json
+  payloads with it inside JSON strings (a transfer memo, a denom).
 - `MsgIBCSoftwareUpgrade` executed by gov: stopped by celestia's circuit
   breaker (and by the circuit ante for a plain tx), then
   `MsgResetCircuitBreaker` and a scheduled plan, up to the upgraded

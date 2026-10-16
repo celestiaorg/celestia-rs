@@ -40,7 +40,9 @@ merkle = { path = "../../tier-0-primitives/merkle" }
 shares = { path = "../../tier-1-protocol-types/shares" }
 sdk = { path = "../../tier-3-app-modules/sdk" }
 txdecode = { path = "../../tier-3-app-modules/txdecode" }
+serde = "1"
 serde_json = "1"
+gostr = { path = "../../tier-0-primitives/gostr" }
 tracing = "0.1"
 x-ante = { path = "../../tier-3-app-modules/x/ante" }
 x-auth = { path = "../../tier-3-app-modules/x/auth" }

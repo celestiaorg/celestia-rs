@@ -23,6 +23,7 @@ import (
 
 	storetypes "cosmossdk.io/store/types"
 	circuittypes "cosmossdk.io/x/circuit/types"
+	"cosmossdk.io/x/feegrant"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"cosmossdk.io/log"
 	"github.com/celestiaorg/celestia-app/v10/app"
@@ -356,6 +357,24 @@ func TestGenerateIBCUpgradeVectors(t *testing.T) {
 	relayIca(commitIca(pd(icatypes.EncodingProtobuf, mqs(ica, "bad-data")), hour()))
 	relayIca(commitIca(pd(icatypes.EncodingProtobuf, mqs(ica, "missing-account")), hour()))
 	relayIca(commitIca(pd(icatypes.EncodingProtobuf, mqs(celAddr, "/cosmos.bank.v1beta1.Query/Balance")), hour()))
+	// ICA txs carrying invalid UTF-8 (ADR 0005): a transfer whose receiver
+	// and memo hold it (outgoing packet data JSON and its commitment), a
+	// fee allowance restricted to a type URL holding it (stored), and the
+	// packet's own memo.
+	badU8 := "m\xffe\xc3mo\xed\xa0\x80"
+	relayIca(commitIca(pd(icatypes.EncodingProtobuf, &transfertypes.MsgTransfer{
+		SourcePort: transfertypes.PortID, SourceChannel: pathT.EndpointA.ChannelID,
+		Token: sdk.NewInt64Coin(denom, 5), Sender: ica, Receiver: "rcv" + badU8,
+		TimeoutTimestamp: hour(), Memo: badU8,
+	}), hour()))
+	allowance, err := feegrant.NewAllowedMsgAllowance(&feegrant.BasicAllowance{}, []string{"/cosmos.bank.v1beta1.MsgSend" + badU8})
+	require.NoError(t, err)
+	grant, err := feegrant.NewMsgGrantAllowance(allowance, sdk.MustAccAddressFromBech32(ica), cel.SenderAccount.GetAddress())
+	require.NoError(t, err)
+	relayIca(commitIca(pd(icatypes.EncodingProtobuf, grant), hour()))
+	sendData, err := icatypes.SerializeCosmosTx(cel.Codec, []proto.Message{&banktypes.MsgSend{FromAddress: ica, ToAddress: celAddr, Amount: coins(2)}}, icatypes.EncodingProtobuf)
+	require.NoError(t, err)
+	relayIca(commitIca(icatypes.InterchainAccountPacketData{Type: icatypes.EXECUTE_TX, Data: sendData, Memo: badU8}.GetBytes(), hour()))
 	// MsgModuleQuerySafe as a plain tx: executed (any signer), unsafe
 	// paths rejected, empty request list rejected by ValidateBasic.
 	require.True(t, tx(mqs(celAddr, "/cosmos.bank.v1beta1.Query/Balance", "/cosmos.staking.v1beta1.Query/Validator")))
@@ -433,6 +452,10 @@ func TestGenerateIBCUpgradeVectors(t *testing.T) {
 	relayIca(commitIca(pd(icatypes.EncodingProto3JSON, mqs(ica, "/cosmos.bank.v1beta1.Query/Balance", "/cosmos.staking.v1beta1.Query/Delegation")), hour()))
 	relayIca(commitIca(rawPd([]byte(fmt.Sprintf(`{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","fromAddress":%q,"to_address":%q,"amount":[{"denom":%q,"amount":"0005"}]}]}`, ica, celAddr, denom))), hour()))
 	relayIca(commitIca(rawPd([]byte(fmt.Sprintf(` { "messages" : [ { "@type" : "/cosmos.bank.v1beta1.MsgSend" , "from_address" : %q , "to_address" : %q , "amount" : [ ] } ] } `, ica, celAddr))), hour()))
+	// Invalid UTF-8 inside proto3json strings (a transfer memo, a MsgSend
+	// denom).
+	relayIca(commitIca(rawPd([]byte(fmt.Sprintf(`{"messages":[{"@type":"/ibc.applications.transfer.v1.MsgTransfer","source_port":"transfer","source_channel":%q,"token":{"denom":%q,"amount":"3"},"sender":%q,"receiver":"rcv","timeout_timestamp":"%d","memo":"`, pathT.EndpointA.ChannelID, denom, ica, hour())+"m\xffo"+`"}]}`)), hour()))
+	relayIca(commitIca(rawPd([]byte(fmt.Sprintf(`{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":%q,"to_address":%q,"amount":[{"denom":"u`, ica, celAddr)+"\xff"+`","amount":"1"}]}]}`)), hour()))
 	relayIca(commitIca(rawPd([]byte(`{"messages":[{"@type":"/cosmos.bank.v1beta1.Nope"}]}`)), hour()))
 	relayIca(commitIca(rawPd([]byte(`{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","bogus":1}]}`)), hour()))
 	relayIca(commitIca(rawPd([]byte(`{"messages":[`)), hour()))

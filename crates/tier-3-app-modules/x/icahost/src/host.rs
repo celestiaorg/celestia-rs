@@ -396,6 +396,13 @@ fn app_metadata(ctx: &mut Context<'_>, port_id: &str, channel_id: &str) -> Resul
     metadata_from_version(&ch.version)
 }
 
+/// `InterchainAccountPacketData.UnmarshalJSON`: its `(type, data)`, or
+/// `None` where Go returns an error.
+#[must_use]
+pub fn packet_data(bz: &[u8]) -> Option<(i32, Vec<u8>)> {
+    decode_packet_data(bz).ok()
+}
+
 /// `InterchainAccountPacketData` (`ModuleCdc.UnmarshalJSON`, jsonpb).
 fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
     let v = x_ibc::gojson::first_value(bz).map_err(|_| ())?;

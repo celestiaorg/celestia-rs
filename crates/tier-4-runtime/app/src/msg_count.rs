@@ -68,44 +68,10 @@ fn leaf_weight(ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoStor
     Ok(1)
 }
 
-/// `InterchainAccountPacketData` JSON with `type == EXECUTE_TX`; returns
-/// its `data`.
+/// `data.UnmarshalJSON` (`InterchainAccountPacketData`, jsonpb) with
+/// `type == EXECUTE_TX`; returns its `data`.
 fn ica_packet_data(bz: &[u8]) -> Option<Vec<u8>> {
-    let v: serde_json::Value = serde_json::from_slice(bz).ok()?;
-    let obj = v.as_object()?;
-    let mut ty = 0i64;
-    let mut data = Vec::new();
-    for (k, val) in obj {
-        match k.as_str() {
-            "type" => {
-                ty = match val {
-                    serde_json::Value::String(s) => match s.as_str() {
-                        "TYPE_UNSPECIFIED" => 0,
-                        "TYPE_EXECUTE_TX" => 1,
-                        other => other.parse().ok()?,
-                    },
-                    serde_json::Value::Number(n) => n.as_i64()?,
-                    serde_json::Value::Null => 0,
-                    _ => return None,
-                }
-            }
-            "data" => {
-                data = match val {
-                    serde_json::Value::String(s) => encoding::base64::decode_standard(s)
-                        .or_else(|_| encoding::base64::decode_url_safe(s))
-                        .ok()?,
-                    serde_json::Value::Null => Vec::new(),
-                    _ => return None,
-                }
-            }
-            "memo" => {
-                if !(val.is_string() || val.is_null()) {
-                    return None;
-                }
-            }
-            _ => return None,
-        }
-    }
+    let (ty, data) = x_icahost::host::packet_data(bz)?;
     (ty == 1).then_some(data)
 }
 
@@ -128,30 +94,9 @@ fn app_version(ctx: &mut Context<'_>, port: &str, channel: &str) -> Option<Strin
 
 /// `icatypes.MetadataFromVersion` → `Encoding`.
 fn metadata_encoding(version: &str) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_str(version).ok()?;
-    let obj = v.as_object()?;
-    let mut encoding = String::new();
-    for (k, val) in obj {
-        let known = matches!(
-            k.as_str(),
-            "version"
-                | "controller_connection_id"
-                | "controllerConnectionId"
-                | "host_connection_id"
-                | "hostConnectionId"
-                | "address"
-                | "encoding"
-                | "tx_type"
-                | "txType"
-        );
-        if !known || !(val.is_string() || val.is_null()) {
-            return None;
-        }
-        if k == "encoding" {
-            val.as_str().unwrap_or_default().clone_into(&mut encoding);
-        }
-    }
-    Some(encoding)
+    x_icahost::host::metadata_from_version(version)
+        .ok()
+        .map(|m| m.encoding)
 }
 
 /// `countICAPacketMsgs`.
@@ -224,33 +169,178 @@ fn count_proto_msgs(mut bz: &[u8]) -> Option<usize> {
     Some(count)
 }
 
-/// `countJSONMsgs` (`encoding/json` into `struct{ Messages []struct{} }`).
+/// `countJSONMsgs`: `encoding/json` `Unmarshal` into
+/// `struct{ Messages []struct{} }`. Go reads invalid UTF-8 inside a string
+/// as U+FFFD, matches each object key to the field exactly or by
+/// `EqualFold` (`foldName`), lets the last matching key win, and fails the
+/// whole call on any type mismatch even when a later key overwrites it.
 fn count_json_msgs(bz: &[u8]) -> Option<usize> {
-    let v: serde_json::Value = serde_json::from_slice(bz).ok()?;
-    let obj = match v {
-        serde_json::Value::Null => return Some(0),
-        serde_json::Value::Object(o) => o,
-        _ => return None,
-    };
-    // encoding/json prefers an exact key match, else a case-insensitive one;
-    // with duplicates the last occurrence wins (serde keeps the last too).
-    let msgs = obj
-        .get("messages")
-        .or_else(|| {
-            obj.iter()
-                .rev()
-                .find(|(k, _)| k.eq_ignore_ascii_case("messages"))
-                .map(|(_, v)| v)
-        })
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    match msgs {
-        serde_json::Value::Null => Some(0),
-        serde_json::Value::Array(a) => a
-            .iter()
-            .all(|e| e.is_object() || e.is_null())
-            .then_some(a.len()),
-        _ => None,
+    let text = x_ibc::gojson::go_json_input(bz);
+    serde_json::from_str::<json_count::Tx>(&text).ok()?.0
+}
+
+/// The `encoding/json` decoding of `count_json_msgs`.
+mod json_count {
+    use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
+
+    /// The `Messages` field: `Ok(len)` or a saved type error.
+    struct Field(Result<usize, ()>);
+    impl<'de> serde::Deserialize<'de> for Field {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl<'de> Visitor<'de> for V {
+                type Value = Field;
+                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.write_str("any JSON value")
+                }
+                fn visit_unit<E>(self) -> Result<Field, E> {
+                    Ok(Field(Ok(0)))
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Field, A::Error> {
+                    let (mut n, mut ok) = (0usize, true);
+                    while let Some(e) = a.next_element::<Elem>()? {
+                        ok &= e.0;
+                        n += 1;
+                    }
+                    Ok(Field(if ok { Ok(n) } else { Err(()) }))
+                }
+                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Field, A::Error> {
+                    while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                    Ok(Field(Err(())))
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<Field, E> {
+                    Ok(Field(Err(())))
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<Field, E> {
+                    Ok(Field(Err(())))
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<Field, E> {
+                    Ok(Field(Err(())))
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<Field, E> {
+                    Ok(Field(Err(())))
+                }
+                fn visit_str<E>(self, _: &str) -> Result<Field, E> {
+                    Ok(Field(Err(())))
+                }
+            }
+            d.deserialize_any(V)
+        }
+    }
+
+    /// One `struct{}` element: an object or `null` decodes, anything else
+    /// is a type error.
+    struct Elem(bool);
+    impl<'de> serde::Deserialize<'de> for Elem {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl<'de> Visitor<'de> for V {
+                type Value = Elem;
+                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.write_str("any JSON value")
+                }
+                fn visit_unit<E>(self) -> Result<Elem, E> {
+                    Ok(Elem(true))
+                }
+                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Elem, A::Error> {
+                    while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                    Ok(Elem(true))
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Elem, A::Error> {
+                    while a.next_element::<IgnoredAny>()?.is_some() {}
+                    Ok(Elem(false))
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<Elem, E> {
+                    Ok(Elem(false))
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<Elem, E> {
+                    Ok(Elem(false))
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<Elem, E> {
+                    Ok(Elem(false))
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<Elem, E> {
+                    Ok(Elem(false))
+                }
+                fn visit_str<E>(self, _: &str) -> Result<Elem, E> {
+                    Ok(Elem(false))
+                }
+            }
+            d.deserialize_any(V)
+        }
+    }
+
+    /// An object key's bytes (`\u` escapes of lone surrogates kept as
+    /// WTF-8, which Go reads as invalid UTF-8; no key folds to `messages`).
+    struct Key(Vec<u8>);
+    impl<'de> serde::Deserialize<'de> for Key {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl Visitor<'_> for V {
+                type Value = Key;
+                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.write_str("a JSON object key")
+                }
+                fn visit_bytes<E>(self, b: &[u8]) -> Result<Key, E> {
+                    Ok(Key(b.to_vec()))
+                }
+                fn visit_str<E>(self, s: &str) -> Result<Key, E> {
+                    Ok(Key(s.as_bytes().to_vec()))
+                }
+            }
+            d.deserialize_bytes(V)
+        }
+    }
+
+    /// The whole value: `Some(count)`, or `None` on a type error.
+    pub(super) struct Tx(pub(super) Option<usize>);
+    impl<'de> serde::Deserialize<'de> for Tx {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl<'de> Visitor<'de> for V {
+                type Value = Tx;
+                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.write_str("any JSON value")
+                }
+                fn visit_unit<E>(self) -> Result<Tx, E> {
+                    Ok(Tx(Some(0)))
+                }
+                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Tx, A::Error> {
+                    let (mut count, mut ok) = (0, true);
+                    while let Some(Key(k)) = a.next_key::<Key>()? {
+                        if gostr::equal_fold(&gostr::from_go_bytes(&k), "messages") {
+                            match a.next_value::<Field>()?.0 {
+                                Ok(n) => count = n,
+                                Err(()) => ok = false,
+                            }
+                        } else {
+                            a.next_value::<IgnoredAny>()?;
+                        }
+                    }
+                    Ok(Tx(ok.then_some(count)))
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Tx, A::Error> {
+                    while a.next_element::<IgnoredAny>()?.is_some() {}
+                    Ok(Tx(None))
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<Tx, E> {
+                    Ok(Tx(None))
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<Tx, E> {
+                    Ok(Tx(None))
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<Tx, E> {
+                    Ok(Tx(None))
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<Tx, E> {
+                    Ok(Tx(None))
+                }
+                fn visit_str<E>(self, _: &str) -> Result<Tx, E> {
+                    Ok(Tx(None))
+                }
+            }
+            d.deserialize_any(V)
+        }
     }
 }
 
@@ -265,6 +355,42 @@ mod tests {
         assert_eq!(count_json_msgs(br#"{"messages":[{},{}]}"#), Some(2));
         assert_eq!(count_json_msgs(br#"{"Messages":[{}]}"#), Some(1));
         assert_eq!(count_json_msgs(b"[1]"), None);
+        assert_eq!(count_json_msgs(b"null"), Some(0));
+        assert_eq!(count_json_msgs(b"{\"messages\":[1]}"), None);
+        assert_eq!(count_json_msgs(b"{\"messages\":[{},null]} x"), None);
+        // encoding/json: invalid UTF-8 in a string is U+FFFD; keys match
+        // by EqualFold (long s); the last matching key wins; a type error
+        // fails the call even when a later key overwrites the field; a
+        // lone surrogate escape is no error.
+        assert_eq!(
+            count_json_msgs(b"{\"messages\":[{\"memo\":\"m\xffo\"}]}"),
+            Some(1)
+        );
+        assert_eq!(
+            count_json_msgs("{\"me\u{17f}\u{17f}ages\":[{}]}".as_bytes()),
+            Some(1)
+        );
+        assert_eq!(
+            count_json_msgs(br#"{"messages":[{}],"MESSAGES":[{},{}]}"#),
+            Some(2)
+        );
+        assert_eq!(
+            count_json_msgs(br#"{"messages":[{}],"Messages":null}"#),
+            Some(0)
+        );
+        assert_eq!(
+            count_json_msgs(br#"{"messages":"x","messages":[{}]}"#),
+            None
+        );
+        assert_eq!(
+            count_json_msgs(br#"{"\ud800":1,"messages":[{}],"x":"\udc00"}"#),
+            Some(1)
+        );
+        assert_eq!(count_json_msgs(br#"{"messages":[{"a":1e400}]}"#), Some(1));
+        assert_eq!(
+            ica_packet_data(b"{\"type\":\"TYPE_EXECUTE_TX\",\"data\":\"AQI=\",\"memo\":\"\xff\"}"),
+            Some(vec![1, 2])
+        );
         assert!(valid_channel_id("channel-0"));
         assert!(!valid_channel_id("chan"));
         assert_eq!(

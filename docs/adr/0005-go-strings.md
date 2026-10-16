@@ -101,6 +101,13 @@ the ante handler, so those checks (`getsigners_schema`, now in
   bytes carry `\ufffd`); the Rust replay matches app hashes, tx results,
   CheckTx, proposals, and logs and events byte for byte; the `utf8` query
   corpus (ABCI and REST) matches.
+- `ibc-upgrades` (`conformance/ibcvectors/upgrade_test.go`, Go
+  v10.4.0 with ibc-go's testing package): ICA host txs carrying invalid
+  UTF-8 — a `MsgTransfer` with it in receiver and memo (outgoing packet
+  JSON and its commitment), a fee allowance restricted to a type URL
+  holding it (stored), the ICA packet's own memo, and proto3json payloads
+  with it inside JSON strings; the replay matches with CheckTx (found
+  security.md finding 27: the per-block message count).
 - `fuzz-diff exec`: Simulate differential over 12 scenarios (v10 and v9),
   ~8 000 mutated txs, ~5 700 of them with invalid UTF-8: no code, gas or
   result difference (security.md, findings 11–16).
