@@ -139,7 +139,7 @@ cat > validator.json <<JSON
  "commission-max-change-rate": "0.01", "min-self-delegation": "1"}
 JSON
 celestia-rs tx staking create-validator validator.json --from operator \
-  --keyring-backend file --home $H --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+  --keyring-backend file --home $H --gas auto --gas-adjustment 1.3 --fees 2000utia --wait
 ```
 
 `tx staking edit-validator` (`--new-moniker`, `--identity`, `--website`,
@@ -412,7 +412,8 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   simulates with a zero fee, so the estimate leaves out the fee transfer
   (~16k gas) and a cheap tx such as `edit-validator` can run out of gas
   even at `--gas-adjustment 1.3`; pass `--fees` with `--gas auto` for an
-  accurate estimate; `--note`/`--memo`; `--wait` polls `tx_status`). Any
+  accurate estimate (the examples here use `--fees 2000utia`, enough for
+  a gas limit up to 500k at the 0.004 utia/gas minimum); `--note`/`--memo`; `--wait` polls `tx_status`). Any
   other message: `celestia-rs tx <module> <msg> --json '<proto3 JSON
   fields>'` (or `--json @file`), e.g. `tx distribution
   withdraw-delegator-reward --json
@@ -781,7 +782,7 @@ celestia-rs tx staking create-validator ~/validator.json --from $OPERATOR \
 # Sign and broadcast through the local synced node:
 celestia-rs tx staking create-validator ~/validator.json --from operator \
   --keyring-backend file --home $H --chain-id mocha-5 \
-  --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+  --gas auto --gas-adjustment 1.3 --fees 2000utia --wait
 ```
 
 `--gas auto` simulates with the key's public key, so `--generate-only
@@ -847,7 +848,7 @@ passed, then:
 ```sh
 celestia-rs tx slashing unjail --from operator \
   --keyring-backend file --home $H --chain-id mocha-5 \
-  --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+  --gas auto --gas-adjustment 1.3 --fees 2000utia --wait
 celestia-rs query staking validator $VALOPER --node $RPC | jq .validator.jailed   # false
 ```
 
@@ -915,9 +916,9 @@ validators signal, anyone tallies, and the upgrade happens at the height
 
 ```sh
 celestia-rs tx signal signal 11 --from operator --keyring-backend file --home $H \
-  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
+  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --fees 2000utia --wait
 celestia-rs tx signal try-upgrade --from operator --keyring-backend file --home $H \
-  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait   # once 5/6 signalled
+  --chain-id mocha-5 --gas auto --gas-adjustment 1.3 --fees 2000utia --wait   # once 5/6 signalled
 ```
 
 celestia-rs is a single binary for every app version it supports (v9 and
