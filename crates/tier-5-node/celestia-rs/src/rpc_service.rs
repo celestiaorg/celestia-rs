@@ -264,8 +264,9 @@ fn node_id(home: &Path) -> String {
 pub struct NodeShared {
     /// Own node info.
     pub info: NodeInfo,
-    /// Round state JSON (`dump_consensus_state`, `consensus_state`).
-    pub round_state: Mutex<(String, String)>,
+    /// Round state JSON (`dump_consensus_state`, `consensus_state` with
+    /// [`HEIGHT_VOTE_SET_MARK`] for its votes, the votes).
+    pub round_state: Mutex<(String, String, String)>,
     /// Block / state sync running.
     pub syncing: AtomicBool,
     /// The P2P switch (`net_info`, `dial_seeds`, `dial_peers`).
@@ -423,12 +424,54 @@ impl rpc::NodeStatus for NodeShared {
         self.lock().0.clone()
     }
     fn round_state_simple_json(&self) -> String {
-        self.lock().1.clone()
+        let g = self.lock();
+        g.1.replacen(
+            HEIGHT_VOTE_SET_MARK,
+            if g.2.is_empty() { "[]" } else { &g.2 },
+            1,
+        )
     }
 }
 
+/// Stands for `height_vote_set` in the cached `consensus_state` JSON; votes
+/// refresh it without re-encoding the rest of the round state.
+const HEIGHT_VOTE_SET_MARK: &str = "\u{0}height_vote_set\u{0}";
+
+/// `HeightVoteSet.MarshalJSON` (`toAllRoundVotes`): rounds 0..=round with
+/// every validator's prevote and precommit (`VoteStrings`) and the bit
+/// arrays with the voted power (`BitArrayString`).
+fn height_vote_set_json(votes: &consensus::height_vote_set::HeightVoteSet) -> rpc::json::J {
+    use rpc::json::J;
+    let vote_set = |vs: Option<&consensus::vote_set::VoteSet>| {
+        vs.map_or_else(
+            || (J::Null, J::str("nil-BitArray")),
+            |vs| {
+                (
+                    J::Arr(vs.vote_strings().into_iter().map(J::str).collect()),
+                    J::str(vs.bit_array_string()),
+                )
+            },
+        )
+    };
+    J::Arr(
+        (0..=votes.round())
+            .map(|round| {
+                let (prevotes, prevotes_bits) = vote_set(votes.prevotes(round));
+                let (precommits, precommits_bits) = vote_set(votes.precommits(round));
+                J::obj([
+                    ("round", J::num(round)),
+                    ("prevotes", prevotes),
+                    ("prevotes_bit_array", prevotes_bits),
+                    ("precommits", precommits),
+                    ("precommits_bit_array", precommits_bits),
+                ])
+            })
+            .collect(),
+    )
+}
+
 impl NodeShared {
-    fn lock(&self) -> std::sync::MutexGuard<'_, (String, String)> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, (String, String, String)> {
         self.round_state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -466,7 +509,10 @@ impl NodeShared {
                         .map_or_else(Vec::new, |b| b.clone().hash().unwrap_or_default()),
                 ),
             ),
-            ("height_vote_set", rpc::json::J::Arr(Vec::new())),
+            (
+                "height_vote_set",
+                rpc::json::J::Raw(HEIGHT_VOTE_SET_MARK.into()),
+            ),
             (
                 "proposer",
                 rs.validators.proposer().map_or(rpc::json::J::Null, |p| {
@@ -503,7 +549,14 @@ impl NodeShared {
                 rpc::json::J::Bool(rs.triggered_timeout_precommit),
             ),
         ]);
-        *self.lock() = (full.encode(), simple.encode());
+        let votes = height_vote_set_json(&rs.votes).encode();
+        *self.lock() = (full.encode(), simple.encode(), votes);
+    }
+
+    /// Refreshes the votes of the round state (a vote was added).
+    pub fn update_round_votes(&self, rs: &consensus::RoundState) {
+        let votes = height_vote_set_json(&rs.votes).encode();
+        self.lock().2 = votes;
     }
 }
 
@@ -754,12 +807,15 @@ impl Rpc {
                 );
                 self.shared.update_round_state(rs);
             }
-            consensus::Event::Vote(v) => bus.publish_type(
-                "Vote",
-                EventData::Vote {
-                    vote: Box::new(v.clone()),
-                },
-            ),
+            consensus::Event::Vote(v) => {
+                bus.publish_type(
+                    "Vote",
+                    EventData::Vote {
+                        vote: Box::new(v.clone()),
+                    },
+                );
+                self.shared.update_round_votes(rs);
+            }
             consensus::Event::ValidBlock { height, round, .. } => bus.publish_type(
                 "ValidBlock",
                 EventData::RoundState {

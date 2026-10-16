@@ -131,6 +131,42 @@ fn vote_set_add_vote_good_and_bad() {
 }
 
 #[test]
+fn vote_set_strings_like_go() {
+    // `VoteSet.VoteStrings` / `BitArrayString` as /consensus_state lists
+    // them in `height_vote_set` (Go: `BA{4:x_x_} 2/4 = 0.50`, `nil-Vote`).
+    let (vs, keys) = val_set(4, 1);
+    let mut set = VoteSet::new(CHAIN, 7, 1, PREVOTE_TYPE, vs.clone());
+    assert_eq!(set.bit_array_string(), "BA{4:____} 0/4 = 0.00");
+    for idx in [0, 2] {
+        let v = signed_vote(
+            &vs,
+            &keys,
+            idx,
+            PREVOTE_TYPE,
+            7,
+            1,
+            b"some-block-hash-0000000000000000",
+        );
+        assert_eq!(set.add_vote(&v), Ok(true));
+    }
+    assert_eq!(set.bit_array_string(), "BA{4:x_x_} 2/4 = 0.50");
+    let s = set.vote_strings();
+    assert_eq!(s.len(), 4);
+    assert_eq!(s[1], "nil-Vote");
+    assert_eq!(s[3], "nil-Vote");
+    let v = set.get_by_index(2).unwrap();
+    assert_eq!(
+        s[2],
+        format!(
+            "Vote{{2:{} 7/01/SIGNED_MSG_TYPE_PREVOTE(Prevote) {} {} 000000000000 @ 2023-11-14T22:13:20Z}}",
+            ctypes::gofmt::fingerprint_hex(&v.validator_address),
+            ctypes::gofmt::fingerprint_hex(&v.block_id.hash),
+            ctypes::gofmt::fingerprint_hex(&v.signature),
+        )
+    );
+}
+
+#[test]
 fn vote_set_two_thirds_majority() {
     let (vs, keys) = val_set(10, 1);
     let mut set = VoteSet::new(CHAIN, 1, 0, PREVOTE_TYPE, vs.clone());

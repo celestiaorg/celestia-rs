@@ -448,6 +448,25 @@ impl VoteSet {
         self.sum
     }
 
+    /// `VoteStrings`: every validator's vote by index (`nil-Vote` when
+    /// absent), as `/consensus_state` lists them.
+    #[must_use]
+    pub fn vote_strings(&self) -> Vec<String> {
+        self.votes
+            .iter()
+            .map(|v| ctypes::vote::vote_string(v.as_ref()))
+            .collect()
+    }
+
+    /// `BitArrayString`: `BA{4:xx_x} 15/20 = 0.75`.
+    #[must_use]
+    pub fn bit_array_string(&self) -> String {
+        let total = self.val_set.total_voting_power();
+        #[allow(clippy::cast_precision_loss)]
+        let frac = self.sum as f64 / total as f64;
+        format!("{} {}/{total} = {frac:.2}", self.votes_bit_array, self.sum)
+    }
+
     /// `MakeExtendedCommit`. Errors where Go panics.
     pub fn make_extended_commit(&self, ap: &AbciParams) -> Result<ExtendedCommit, String> {
         if self.vote_type != ctypes::vote::PRECOMMIT_TYPE {
