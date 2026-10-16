@@ -107,6 +107,56 @@ MB/h over the last 2 h). The earlier RSS swings were glibc malloc
 fragmentation (RSS 4.9x the live heap and still rising); the node now uses
 jemalloc by default (RSS ~430 MB vs 1.66 GB on glibc, Go validators 1.9 GB).
 
+Long soak (`SOAK_PROFILE=long`, 2026-10-16, main at 67db6ea: Go strings,
+WAL rotation, the precommit-on-stop fix, background snapshots, SIMD
+leopard, libsecp256k1 and the parity fixes): 2 Go + 2 Rust validators and
+a Rust full node, links through the chaos proxy, run in 13 segments on a
+machine that killed every process now and then (each resume restarts the
+whole network: a crash event). 6.34 h cumulative, 7,043 heights; CheckTx
+accepted 207k bank sends, 3,444 PFBs (rounds up to 21.9 MB, 128x128 to
+256x256 squares), 1,129 staking, 97 gov proposals (55 passed and 34
+rejected as voted) with 365 votes, 285 authz, 277 feegrant, 405
+hyperlane / warp and 370 invalid-UTF-8 txs (`fuzz-diff craft`, CheckTx
+also compared on a Go and a Rust node: equal on 383 probes, the rest
+explained by differing check states). 163 chaos events: 12 whole-network
+restarts, 20 SIGTERMs of a Rust validator inside the delayed-precommit
+wait (17 hit it; the sign state stayed at the prevote every time, the
+fix in ea301ac), 11 + 9 Rust validator kills (one validator rotating its
+WAL every few blocks: 1 MiB head / 16 MiB group, 15 files, group total
+never over the limit by more than one head), 11 Go validator kills /
+SIGTERMs, 17 full-node kills, 3 downtimes of 6-10 min (block sync), 14
+isolations, 14 latency injections, 6 halting splits, 45 state syncs (36
+Rust, 9 Go, all from the Rust nodes' background snapshots), 11 valset
+cycles. No divergence: no node ever logged a wrong app or results hash
+or a rejected proposal, no evidence, no double sign; the final check
+(`--verify-only`) found every retained height (3,000) identical on every
+node holding it. Privval refusals only after restarts (a nil prevote
+over an earlier block prevote, step / height regressions while catching
+up). Peak RSS: Go 0.97-1.43 GB (GOMEMLIMIT 1500MiB), Rust 0.50-0.53 GB,
+all five nodes 3.2 GB; soak data at most 1.5 GB (state syncs keep it
+bounded; celestia-app raises `min-retain-blocks` to 3000).
+
+The soak found four celestia-core / cosmos-sdk behaviors, each reproduced
+on Go-only nodes, that Rust shares (parity, not fixed):
+`conformance/devnet/crash-restart.sh` (a whole-network crash after the
+prevotes and before any precommit stalls the chain for good: only the
+proposer has the block and its propagation cache is not rebuilt from the
+WAL, the others hold a polka received before the prevote step and their
+own nil prevote is refused, 5 of 12 restarts stalled),
+`latency-stall.sh` (a validator behind high latency stays in the commit
+step without the block until a peer reconnects: unanswered wants are
+never re-requested from the same peer; 3 times, on Go and Rust),
+`statesync-traffic.sh` (a Go node serving CheckTx while it restores a
+snapshot panics on the next block: the multistore's inter-block cache
+keeps the pre-restore reads; the Rust node is unaffected), and, after
+any restart until the first commit, CheckTx signs with account number 0
+and reports gas wanted -1 (every tx rejected; Go and Rust alike). The
+soak works around each (it records the stall and restarts / reconnects
+the stuck nodes, sends no traffic to a syncing node). Rust fix:
+`/consensus_state` now carries the height's votes (`height_vote_set`,
+Go's `HeightVoteSet.MarshalJSON`), which was empty. Open:
+`/dump_consensus_state` still lacks Go's vote sets and peer round states.
+
 ## Implementation notes
 
 - M12 operator binary (2026-10-14): `celestia-rs start` reads config.toml /

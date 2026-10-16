@@ -103,6 +103,33 @@ grew 384 -> 1,399 MB on V0 and was still growing at +207 MB/h in the last
 window: 1.14 GB per Rust node and 1.23 GB on the Go validator at 4,855
 heights; app state stays at ~100 versions.
 
+## Long chaos soak (2026-10-16)
+
+`SOAK_PROFILE=long` (ADR 0003): V0, V1 Go validators with
+`GOMEMLIMIT=1500MiB`, V2, V3 Rust validators, a Rust full node F4, 10
+bank sends/s plus PFBs (near-max rounds every 15 min), staking, gov,
+authz / feegrant, hyperlane and invalid-UTF-8 txs, and chaos all along:
+6.34 h cumulative in 13 segments, 7,043 heights. Node lifetimes are short
+by design (18-54 restarts and 1-23 state syncs per node), so this run
+bounds peaks rather than measuring growth (that is the 4.5 h
+single-lifetime run above).
+
+| node | RSS peak | restarts / state syncs | `data/` peak |
+|---|---|---|---|
+| V0 Go | 974 MB | 27 / 8 | 264 MB |
+| V1 Go (tx index, never state-synced) | 1,429 MB | 18 / 1 | 1,055 MB |
+| V2 Rust (WAL rotating every few blocks) | 500 MB | 49 / 6 | 288 MB |
+| V3 Rust | 499 MB | 38 / 8 | 376 MB |
+| F4 Rust | 531 MB | 54 / 23 | 161 MB |
+
+All five nodes together peaked at 3.2 GB of RSS and the soak's data at
+1.5 GB (24 of the 45 state syncs were triggered by the soak's disk
+budget). WAL groups: the default 10 MB head grew to 20-24 MB when a large
+block's parts landed between two group checks (Go behaves the same), and
+groups stayed far below the 1 GB total (largest 242 MB on V1); V2 ran with
+a 1 MiB head and a 16 MiB total and never exceeded the total by more than
+one head (15 files).
+
 ## Reproduce
 
 ```bash
