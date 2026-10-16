@@ -84,7 +84,15 @@ pub fn increment_validator_period(ctx: &mut Context<'_>, v: &Validator) -> Resul
     let new_ratio = historical
         .cumulative_reward_ratio
         .add(&current)
-        .map_err(|e| sdk::error::internal(format!("reward ratio overflow: {}", e.log)))?;
+        .map_err(|e| {
+            // cosmos-sdk v0.52.8 (app version 9) adds without `recover`:
+            // the overflow stays a panic (a halt in BeginBlock).
+            if sdk::version::is_v9(sdk::version::app_version()) {
+                e
+            } else {
+                sdk::error::internal(format!("reward ratio overflow: {}", e.log))
+            }
+        })?;
     decrement_reference_count(ctx, &val, prev)?;
     store::set_historical(
         ctx,

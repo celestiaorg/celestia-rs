@@ -274,6 +274,12 @@ pub fn default_tx_decode(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     with_stack(tx_bytes.len(), || default_tx_decode_inner(tx_bytes))
 }
 
+/// [`default_tx_decode`] with celestia-app v9.0.8's interface registry
+/// (app version 9).
+pub fn default_tx_decode_v9(tx_bytes: &[u8]) -> sdk::Result<Tx> {
+    with_v9(|| default_tx_decode(tx_bytes))
+}
+
 fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     reject_non_adr027_tx_raw(tx_bytes).map_err(|e| tx_decode_err(&e))?;
     let tx_raw_info = gogo::info("cosmos.tx.v1beta1.TxRaw").map_err(|e| tx_decode_err(&e))?;

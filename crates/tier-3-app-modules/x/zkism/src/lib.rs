@@ -145,6 +145,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
         );
     }
     let mut messages = Vec::new();
+    let v9 = sdk::version::is_v9(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
     let mut by_internal = std::collections::BTreeMap::new();
     for ism in &isms {
         let id = decode_hex_address(&ism.id)?;
@@ -155,6 +156,12 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
         let mut msgs = Vec::new();
         let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
         while let Some((k, _)) = it.next(ctx)? {
+            // celestia-app v9.0.8 collects them with `CollectionPaginate`
+            // and a nil page request: the first `DefaultLimit` (100) in
+            // key order.
+            if v9 && msgs.len() == 100 {
+                break;
+            }
             msgs.push(format!("0x{}", hex::encode(&k[prefix.len()..])));
         }
         if msgs.is_empty() {

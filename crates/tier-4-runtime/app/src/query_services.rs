@@ -60,7 +60,16 @@ pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, S
         .flatten()
         .unwrap_or_default();
     let cp = ctx.branch();
-    let (mut p, res) = tx::run_ante(&mut ctx, tx_bytes, txpipe::decode_tx, txpipe::ante, true);
+    // The tx decoder of the current app version (v9.0.8's registry at
+    // app version 9).
+    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let (mut p, res) = tx::run_ante(
+        &mut ctx,
+        tx_bytes,
+        txpipe::decoder(app_version),
+        txpipe::ante,
+        true,
+    );
     let result = match res {
         Ok(()) => tx::run_msgs(&mut ctx, &mut p, false).map(|r| {
             let msg_responses =
@@ -141,13 +150,18 @@ fn simulate_grpc(
 }
 
 fn tx_decode(_: &mut App, _: &mut QueryState, req: TxDecodeRequest) -> QResult<TxDecodeResponse> {
+    let decode = if sdk::version::is_v9(sdk::version::app_version()) {
+        txdecode::default_tx_decode_v9
+    } else {
+        txdecode::default_tx_decode
+    };
     if req.tx_bytes.is_empty() {
         return Err(QueryError::Status(
             Code::InvalidArgument,
             "invalid empty tx bytes".into(),
         ));
     }
-    let tx = txdecode::default_tx_decode(&req.tx_bytes)?;
+    let tx = decode(&req.tx_bytes)?;
     Ok(TxDecodeResponse {
         tx: Some(Tx {
             body: Some(tx.body),

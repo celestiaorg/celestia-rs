@@ -278,12 +278,14 @@ fn checked<T>(r: std::result::Result<T, math::MathError>) -> Result<T> {
 }
 
 /// `InterchainGasPaymasterHookHandler.QuoteGasPayment`: the required
-/// payment and the gas limit including the overhead.
+/// payment and the gas limit including the overhead. `gas_limit` is `None`
+/// for a nil `math.Int` (`MsgPayForGas` without one), which `Add`
+/// dereferences once the IGP and its destination config are found.
 pub fn quote_gas_payment(
     ctx: &mut Context<'_>,
     hook_id: &HexAddress,
     destination_domain: u32,
-    gas_limit: &Int,
+    gas_limit: Option<&Int>,
 ) -> Result<(Coins, Int)> {
     let igp = get_igp(ctx, hook_id.internal_id())?
         .ok_or_else(|| internal(format!("igp does not exist: {hook_id}")))?;
@@ -293,6 +295,11 @@ pub fn quote_gas_payment(
                 "remote domain {destination_domain} is not supported"
             ))
         })?;
+    let Some(gas_limit) = gas_limit else {
+        return Err(panic_err(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
+    };
     let gas_limit = checked(gas_limit.checked_add(&cfg.gas_overhead))?;
     let oracle = cfg.gas_oracle.ok_or_else(|| {
         panic_err("runtime error: invalid memory address or nil pointer dereference")
@@ -310,7 +317,8 @@ pub fn quote_gas_payment(
     Ok((Coins::new([coin])?, gas_limit))
 }
 
-/// `PayForGasWithoutQuote`.
+/// `PayForGasWithoutQuote`. `gas_limit` is `None` for a nil `math.Int`
+/// (only reported: `String()` of nil is `<nil>`).
 #[allow(clippy::too_many_arguments)]
 pub fn pay_for_gas_without_quote(
     ctx: &mut Context<'_>,
@@ -319,12 +327,17 @@ pub fn pay_for_gas_without_quote(
     sender: &str,
     message_id: &HexAddress,
     destination_domain: u32,
-    gas_limit: &Int,
+    gas_limit: Option<&Int>,
     amount: &Coins,
 ) -> Result<()> {
     let mut igp = get_igp(ctx, hook_id.internal_id())?
         .ok_or_else(|| internal(format!("igp does not exist: {hook_id}")))?;
     if amount.is_zero() {
+        // v1.1.0 (app version 9) refuses a zero payment; v1.3.0 charges
+        // nothing.
+        if crate::is_v9(ctx) {
+            return Err(internal("amount must be greater than zero"));
+        }
         return Ok(());
     }
     let sender_acc = acc_address_from_bech32(sender).map_err(internal)?;
@@ -335,7 +348,10 @@ pub fn pay_for_gas_without_quote(
     ctx.events.emit(typed_event::<pb::EventGasPayment>(vec![
         ("message_id", J::addr(message_id)),
         ("destination", J::Num(u64::from(destination_domain))),
-        ("gas_amount", J::Str(gas_limit.to_string())),
+        (
+            "gas_amount",
+            J::Str(gas_limit.map_or_else(|| "<nil>".to_owned(), ToString::to_string)),
+        ),
         ("payment", J::Str(amount.to_string())),
         ("igp_id", J::addr(hook_id)),
     ]));
@@ -351,14 +367,22 @@ pub fn pay_for_gas(
     sender: &str,
     message_id: &HexAddress,
     destination_domain: u32,
-    gas_limit: &Int,
+    gas_limit: Option<&Int>,
     max_fee: &Coins,
 ) -> Result<Coins> {
     if max_fee.is_empty() {
         return Err(internal("maxFee is required"));
     }
     let (required, new_gas_limit) = quote_gas_payment(ctx, hook_id, destination_domain, gas_limit)?;
-    if !max_fee.is_all_gte(&required) {
+    // hyperlane-cosmos v1.1.0 (app version 9): `requiredPayment.IsAllGT(
+    // maxFee)`, which passes a max fee in another denom; v1.3.0:
+    // `!maxFee.IsAllGTE(requiredPayment)`.
+    let exceeds = if crate::is_v9(ctx) {
+        required.is_all_gt(max_fee)
+    } else {
+        !max_fee.is_all_gte(&required)
+    };
+    if exceeds {
         return Err(internal(format!(
             "required payment exceeds max hyperlane fee: {required}"
         )));
@@ -370,7 +394,7 @@ pub fn pay_for_gas(
         sender,
         message_id,
         destination_domain,
-        &new_gas_limit,
+        Some(&new_gas_limit),
         &required,
     )?;
     Ok(required)
@@ -402,7 +426,7 @@ impl PostDispatchModule for IgpHookHandler {
             &acc_address_string(&metadata.address),
             &message.id(),
             message.destination,
-            &metadata.gas_limit,
+            Some(&metadata.gas_limit),
             max_fee,
         )
     }
@@ -416,7 +440,7 @@ impl PostDispatchModule for IgpHookHandler {
         metadata: &StandardHookMetadata,
         message: &HyperlaneMessage,
     ) -> Result<Coins> {
-        Ok(quote_gas_payment(ctx, hook_id, message.destination, &metadata.gas_limit)?.0)
+        Ok(quote_gas_payment(ctx, hook_id, message.destination, Some(&metadata.gas_limit))?.0)
     }
 }
 
@@ -627,7 +651,8 @@ pub fn set_destination_gas_config_msg(
     Ok(())
 }
 
-/// `msgServer.PayForGas`.
+/// `msgServer.PayForGas`. `gas_limit` is `None` and `amount_nil` true
+/// for nil `math.Int`s (fields the tx left empty).
 #[allow(clippy::too_many_arguments)]
 pub fn pay_for_gas_msg(
     ctx: &mut Context<'_>,
@@ -636,9 +661,32 @@ pub fn pay_for_gas_msg(
     igp_id: &HexAddress,
     message_id: &HexAddress,
     destination_domain: u32,
-    gas_limit: &Int,
+    gas_limit: Option<&Int>,
     amount: Coin,
+    amount_nil: bool,
 ) -> Result<()> {
+    // v1.3.0 `req.Amount.IsZero()`, v1.1.0 `sdk.NewCoins(req.Amount)`
+    // (`IsZero`) on a nil amount.
+    if amount_nil {
+        return Err(panic_err(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
+    }
+    if crate::is_v9(ctx) {
+        // hyperlane-cosmos v1.1.0: pays exactly `sdk.NewCoins(req.Amount)`
+        // without a quote.
+        let coins = Coins::new([amount])?;
+        return pay_for_gas_without_quote(
+            ctx,
+            deps,
+            igp_id,
+            sender,
+            message_id,
+            destination_domain,
+            gas_limit,
+            &coins,
+        );
+    }
     if amount.amount.is_zero() {
         return Err(internal("amount must be greater than zero"));
     }

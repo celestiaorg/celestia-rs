@@ -222,6 +222,9 @@ impl Ism {
                     &message.id().0,
                 );
                 charge_signatures(ctx, md.signatures.len())?;
+                if crate::is_v9(ctx) {
+                    return verify_multisig_v1_1(validators, *threshold, &md.signatures, &digest);
+                }
                 verify_multisig(validators, *threshold, &md.signatures, &digest)
             }
             Self::MerkleRootMultisig {
@@ -242,6 +245,9 @@ impl Ism {
                     &md.signed_message_id,
                 );
                 charge_signatures(ctx, md.signatures.len())?;
+                if crate::is_v9(ctx) {
+                    return verify_multisig_v1_1(validators, *threshold, &md.signatures, &digest);
+                }
                 verify_multisig(validators, *threshold, &md.signatures, &digest)
             }
             Self::Routing { .. } => Err(err::unexpected_error(
@@ -254,8 +260,7 @@ impl Ism {
 /// celestia's hyperlane-cosmos v1.3.0 (app version 10) charges 1000 gas per
 /// multisig signature; upstream v1.1.0 (app version 9) charges nothing.
 fn charge_signatures(ctx: &mut Context<'_>, n: usize) -> Result<()> {
-    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    if app_version != 0 && app_version < 10 {
+    if crate::is_v9(ctx) {
         return Ok(());
     }
     consume_gas(ctx, 1000 * n as u64, "ism signature verification")
@@ -516,6 +521,70 @@ pub fn verify_multisig(
     Ok(true)
 }
 
+/// `VerifyMultisig` of hyperlane-cosmos v1.1.0 (app version 9): the
+/// recovered signer as lower-case `0x` hex against each stored validator
+/// string lower-cased (`strings.ToLower`; only an ASCII string can equal
+/// the signer), no decoding of the stored set.
+pub fn verify_multisig_v1_1(
+    validators: &[String],
+    threshold: u32,
+    signatures: &[Vec<u8>],
+    digest: &[u8; 32],
+) -> Result<bool> {
+    if signatures.len() < threshold as usize {
+        return Err(internal("threshold can not be reached"));
+    }
+    let mut idx = 0;
+    for sig in signatures.iter().take(threshold as usize) {
+        let signer = recover_eth_address(digest, sig)
+            .map_err(|e| internal(format!("failed to recover validator signature: {e}")))?;
+        let signer = format!("0x{}", hex::encode(signer));
+        while idx < validators.len()
+            && !(validators[idx].is_ascii() && validators[idx].to_ascii_lowercase() == signer)
+        {
+            idx += 1;
+        }
+        if idx >= validators.len() {
+            return Ok(false);
+        }
+        idx += 1;
+    }
+    Ok(true)
+}
+
+/// `ValidateNewMultisig` of hyperlane-cosmos v1.1.0 (app version 9): the
+/// strings sorted byte-wise (`slices.IsSorted`), then each decoded (20
+/// bytes) and checked for exact duplicates.
+pub fn validate_new_multisig_v1_1(
+    validators: &[String],
+    threshold: u32,
+) -> std::result::Result<(), String> {
+    if threshold == 0 {
+        return Err("threshold must be greater than zero".into());
+    }
+    if validators.len() < threshold as usize {
+        return Err("validator addresses less than threshold".into());
+    }
+    if !validators
+        .windows(2)
+        .all(|w| gostr::to_go_bytes(&w[0]) <= gostr::to_go_bytes(&w[1]))
+    {
+        return Err("validator addresses are not sorted correctly in ascending order".into());
+    }
+    let mut seen: Vec<&str> = Vec::with_capacity(validators.len());
+    for v in validators {
+        let raw = decode_eth_hex(v).map_err(|_| format!("invalid validator address: {v}"))?;
+        if raw.len() != 20 {
+            return Err("invalid validator address: must be 20 bytes".into());
+        }
+        if seen.contains(&v.as_str()) {
+            return Err(format!("duplicate validator address: {v}"));
+        }
+        seen.push(v);
+    }
+    Ok(())
+}
+
 /// `ValidateNewMultisig`.
 pub fn validate_new_multisig(
     validators: &[String],
@@ -574,7 +643,12 @@ pub fn create_multisig_ism(
         TYPE_MESSAGE_ID_MULTISIG
     };
     let id = next_ism_id(ctx, deps, ty)?;
-    validate_new_multisig(&validators, threshold).map_err(err::invalid_multisig_configuration)?;
+    if crate::is_v9(ctx) {
+        validate_new_multisig_v1_1(&validators, threshold)
+    } else {
+        validate_new_multisig(&validators, threshold)
+    }
+    .map_err(err::invalid_multisig_configuration)?;
     let ev_validators = validators.clone();
     let ism = if merkle_root {
         Ism::MerkleRootMultisig {
@@ -752,7 +826,11 @@ pub fn set_routing_ism_domain(
         return Err(err::unknown_ism_id(format!("ISM {} not found", route.ism)));
     }
     if let Some(r) = routes.iter_mut().find(|r| r.domain == route.domain) {
-        r.ism = route.ism;
+        // hyperlane-cosmos v1.1.0 (app version 9) `SetDomain` assigns to
+        // the loop's copy of the route: an existing domain keeps its ISM.
+        if !crate::is_v9(ctx) {
+            r.ism = route.ism;
+        }
     } else {
         routes.push(route.clone());
     }

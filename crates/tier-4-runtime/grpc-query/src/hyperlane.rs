@@ -586,7 +586,7 @@ fn quote_gas_payment(
     let gas_limit = Int::parse(&req.gas_limit)
         .map_err(|_| QueryError::Plain("failed to convert gasLimit to math.Int".into()))?;
     let (payment, _) =
-        x_hyperlane::post_dispatch::quote_gas_payment(ctx, &igp_id, domain, &gas_limit)
+        x_hyperlane::post_dispatch::quote_gas_payment(ctx, &igp_id, domain, Some(&gas_limit))
             .map_err(hl)?;
     Ok(pdpb::QueryQuoteGasPaymentResponse {
         gas_payment: payment.to_proto(),

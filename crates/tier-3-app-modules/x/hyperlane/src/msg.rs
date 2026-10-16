@@ -255,6 +255,9 @@ pub fn handle_msg(ctx: &mut Context<'_>, deps: &Deps<'_>, any: &Any) -> Option<R
             (|| {
                 let m: pdpb::MsgPayForGas = unpack(any)?;
                 let (igp, mid, gas) = (addr(&m.igp_id)?, addr(&m.message_id)?, int(&m.gas_limit)?);
+                // Non-nullable customtypes the tx decoder left nil: empty.
+                let gas = (!m.gas_limit.is_empty()).then_some(gas);
+                let amount_nil = m.amount.as_ref().is_none_or(|c| c.amount.is_empty());
                 let amount = Coin::from_proto(&m.amount.unwrap_or_default())?;
                 post_dispatch::pay_for_gas_msg(
                     ctx,
@@ -263,8 +266,9 @@ pub fn handle_msg(ctx: &mut Context<'_>, deps: &Deps<'_>, any: &Any) -> Option<R
                     &igp,
                     &mid,
                     m.destination_domain,
-                    &gas,
+                    gas.as_ref(),
                     amount,
+                    amount_nil,
                 )?;
                 Ok(id_response(&pdpb::MsgPayForGasResponse {}))
             })()

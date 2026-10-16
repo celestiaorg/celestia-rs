@@ -123,6 +123,26 @@ fn message(name: &str) -> Res<MessageDescriptor> {
         .ok_or_else(|| format!("can't resolve type URL /{name}"))
 }
 
+/// The `amino.name` of hyperlane-cosmos v1.1.0's protos (celestia-app
+/// v9.0.8) where it differs from v1.3.0's (vendored), at app version 9.
+fn v9_amino_name(full_name: &str) -> Option<&'static str> {
+    if !sdk::version::is_v9(sdk::version::app_version()) {
+        return None;
+    }
+    match full_name {
+        "hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomain" => {
+            Some("hyperlane/v1/MsgCreateRoMsgSetRoutingIsmDomainutingIsm")
+        }
+        "hyperlane.core.post_dispatch.v1.MsgCreateIgp" => {
+            Some("hyperlane/v1/MsgCreateInterchainGasPaymaster")
+        }
+        "hyperlane.core.post_dispatch.v1.MsgCreateNoopHook" => {
+            Some("hyperlane/v1/MsgCreateMerkleTreeHook")
+        }
+        _ => None,
+    }
+}
+
 fn str_ext(opts: &DynamicMessage, e: &ExtensionDescriptor) -> Option<String> {
     if !opts.has_extension(e) {
         return None;
@@ -159,7 +179,9 @@ impl Encoder {
 
     fn begin_marshal(&self, msg: &DynamicMessage, w: &mut String, is_any: bool) -> Res<()> {
         let desc = msg.descriptor();
-        let amino_name = str_ext(&desc.options(), &self.ext.name);
+        let amino_name = v9_amino_name(desc.full_name())
+            .map(ToOwned::to_owned)
+            .or_else(|| str_ext(&desc.options(), &self.ext.name));
         let name = if is_any {
             Some(amino_name.unwrap_or_else(|| format!("/{}", desc.full_name())))
         } else {

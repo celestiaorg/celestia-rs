@@ -79,7 +79,7 @@ fn main() -> anyhow::Result<()> {
     b.build();
     b.txs(&txs);
     b.inclusion_proofs(&blocks);
-    if scenario == "empty" {
+    if scenario == "empty" || scenario == "v9-empty" {
         // cosmos.reflection.v1 answers with every file descriptor linked into
         // celestia-appd (~MBs): recorded once.
         let fd = "/cosmos.reflection.v1.ReflectionService/FileDescriptors";

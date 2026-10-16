@@ -210,6 +210,25 @@ impl Coins {
         other.0.iter().all(|b| b.amount <= self.amount_of(&b.denom))
     }
 
+    /// `IsAllGT`: every denom of `other` is in `self` (`DenomsSubsetOf`)
+    /// with a strictly greater amount; false for an empty `self`, true for
+    /// an empty `other`.
+    #[must_use]
+    pub fn is_all_gt(&self, other: &Self) -> bool {
+        if self.0.is_empty() {
+            return false;
+        }
+        if other.0.is_empty() {
+            return true;
+        }
+        if other.0.len() > self.0.len()
+            || other.0.iter().any(|c| self.amount_of(&c.denom).is_zero())
+        {
+            return false;
+        }
+        other.0.iter().all(|b| self.amount_of(&b.denom) > b.amount)
+    }
+
     /// `IsAnyGT`.
     #[must_use]
     pub fn is_any_gt(&self, other: &Self) -> bool {
