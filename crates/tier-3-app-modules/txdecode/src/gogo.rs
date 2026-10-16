@@ -228,7 +228,7 @@ impl Dyn {
         }
     }
 
-    fn set(&mut self, f: &FieldInfo, v: Val) {
+    pub(crate) fn set(&mut self, f: &FieldInfo, v: Val) {
         if f.oneof >= 0
             && let Some(prev) = self.oneofs.insert(f.oneof, f.number)
             && prev != f.number
@@ -403,6 +403,13 @@ pub(crate) fn unmarshal(name: &str, data: &[u8]) -> GoResult<Dyn> {
     Ok(d)
 }
 
+/// The Go struct name the generated code prints in its errors
+/// (`proto: CosmosTx: ...`, `ModeInfo_Single` for a nested message).
+fn go_struct_name(full_name: &str) -> String {
+    let t = crate::go_types::go_type_name(full_name);
+    t.rsplit('.').next().unwrap_or_default().to_owned()
+}
+
 /// The generated `Unmarshal` method (merging into `d`).
 pub(crate) fn unmarshal_into(d: &mut Dyn, data: &[u8]) -> GoResult<()> {
     let l = data.len() as i64;
@@ -416,13 +423,13 @@ pub(crate) fn unmarshal_into(d: &mut Dyn, data: &[u8]) -> GoResult<()> {
         if wire_type == 4 {
             return Err(GoError::new(format!(
                 "proto: {}: wiretype end group for non-group",
-                d.info.name
+                go_struct_name(d.info.name)
             )));
         }
         if field_num <= 0 {
             return Err(GoError::new(format!(
                 "proto: {}: illegal tag {field_num} (wire type {wire})",
-                d.info.name
+                go_struct_name(d.info.name)
             )));
         }
         match d.info.field(field_num as u32) {

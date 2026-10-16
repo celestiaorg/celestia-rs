@@ -320,6 +320,270 @@ pub fn format_rfc3339(ts: &Timestamp) -> String {
     out
 }
 
+/// Go `time.Parse(time.RFC3339Nano, s)` (Go 1.26 `time/format.go`): the
+/// instant as `(t.Unix(), t.Nanosecond())`, `None` where Go errors.
+///
+/// `Parse` tries the strict `parseRFC3339` first and falls back to the
+/// layout parser, which accepts everything the strict one does (with the
+/// same result) and more: a one-digit hour, `,` as the fraction separator,
+/// any number of fraction digits (truncated to nanoseconds), zone offsets
+/// up to `24:60`. This is the layout parser for the chunks of
+/// `2006-01-02T15:04:05.999999999Z07:00`.
+#[must_use]
+#[allow(clippy::many_single_char_names)]
+pub fn parse_rfc3339_nano(s: &[u8]) -> Option<(i64, i32)> {
+    fn digit(v: &[u8], i: usize) -> bool {
+        v.get(i).is_some_and(u8::is_ascii_digit)
+    }
+    // `getnum`: one or two digits (exactly two when `fixed`).
+    fn getnum(v: &[u8], fixed: bool) -> Option<(i64, &[u8])> {
+        if !digit(v, 0) {
+            return None;
+        }
+        if !digit(v, 1) {
+            return (!fixed).then(|| (i64::from(v[0] - b'0'), &v[1..]));
+        }
+        Some((
+            i64::from(v[0] - b'0') * 10 + i64::from(v[1] - b'0'),
+            &v[2..],
+        ))
+    }
+    fn skip(v: &[u8], c: u8) -> Option<&[u8]> {
+        (v.first() == Some(&c)).then(|| &v[1..])
+    }
+    let comma_or_period = |c: u8| c == b'.' || c == b',';
+    // stdLongYear: four digits, the first a digit (`atoi` of all four).
+    if s.len() < 4 || !s[..4].iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let year = s[..4]
+        .iter()
+        .fold(0i64, |a, c| a * 10 + i64::from(c - b'0'));
+    let v = skip(&s[4..], b'-')?;
+    let (month, v) = getnum(v, true)?;
+    if !(1..=12).contains(&month) {
+        return None;
+    }
+    let v = skip(v, b'-')?;
+    let (day, v) = getnum(v, true)?;
+    let v = skip(v, b'T')?;
+    let (hour, v) = getnum(v, false)?;
+    if hour >= 24 {
+        return None;
+    }
+    let v = skip(v, b':')?;
+    let (min, v) = getnum(v, true)?;
+    if min >= 60 {
+        return None;
+    }
+    let v = skip(v, b':')?;
+    let (sec, mut v) = getnum(v, true)?;
+    if sec >= 60 {
+        return None;
+    }
+    // stdFracSecond9: any number of digits after `.` or `,`;
+    // `parseNanoseconds` reads at most nine.
+    let mut nsec = 0i64;
+    if v.len() >= 2 && comma_or_period(v[0]) && v[1].is_ascii_digit() {
+        let mut i = 0;
+        while i + 1 < v.len() && v[i + 1].is_ascii_digit() {
+            i += 1;
+        }
+        let n = (1 + i).min(10);
+        nsec = v[1..n]
+            .iter()
+            .fold(0i64, |a, c| a * 10 + i64::from(c - b'0'));
+        for _ in 0..10 - n {
+            nsec *= 10;
+        }
+        v = &v[1 + i..];
+    }
+    // stdISO8601ColonTZ.
+    let mut offset = 0i64;
+    if v.first() == Some(&b'Z') {
+        v = &v[1..];
+    } else {
+        if v.len() < 6 || v[3] != b':' {
+            return None;
+        }
+        let (hr, _) = getnum(&v[1..3], true)?;
+        let (mm, _) = getnum(&v[4..6], true)?;
+        if hr > 24 || mm > 60 {
+            return None;
+        }
+        offset = (hr * 60 + mm) * 60;
+        match v[0] {
+            b'+' => {}
+            b'-' => offset = -offset,
+            _ => return None,
+        }
+        v = &v[6..];
+    }
+    if !v.is_empty() {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let (m, d) = (month as u32, day as u32);
+    if day < 1 || d > days_in_month(year, m) {
+        return None;
+    }
+    let secs = days_from_civil(year, m, d) * 86_400 + hour * 3600 + min * 60 + sec - offset;
+    #[allow(clippy::cast_possible_truncation)]
+    Some((secs, nsec as i32))
+}
+
+/// Go's `time.quote`.
+fn time_quote(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        if (c as u32) >= 0x80 || c < ' ' {
+            let mut buf = [0u8; 4];
+            for b in c.encode_utf8(&mut buf).bytes() {
+                let _ = core::fmt::Write::write_fmt(&mut out, format_args!("\\x{b:02x}"));
+            }
+        } else {
+            if c == '"' || c == '\\' {
+                out.push('\\');
+            }
+            out.push(c);
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Go's `time.ParseDuration` (nanoseconds).
+#[allow(clippy::too_many_lines, clippy::many_single_char_names)]
+pub fn parse_duration(orig: &str) -> Result<i64, String> {
+    const LIMIT: u64 = 1 << 63;
+    let invalid = || format!("time: invalid duration {}", time_quote(orig));
+    let mut s = orig;
+    let mut neg = false;
+    if let Some(c) = s.chars().next()
+        && (c == '-' || c == '+')
+    {
+        neg = c == '-';
+        s = &s[1..];
+    }
+    if s == "0" {
+        return Ok(0);
+    }
+    if s.is_empty() {
+        return Err(invalid());
+    }
+    let mut d: u64 = 0;
+    while !s.is_empty() {
+        let b0 = s.as_bytes()[0];
+        if !(b0 == b'.' || b0.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        // leadingInt
+        let pl = s.len();
+        let mut v: u64 = 0;
+        let mut i = 0;
+        let bytes = s.as_bytes();
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            if v > LIMIT / 10 {
+                return Err(invalid());
+            }
+            v = v * 10 + u64::from(bytes[i] - b'0');
+            if v > LIMIT {
+                return Err(invalid());
+            }
+            i += 1;
+        }
+        s = &s[i..];
+        let pre = pl != s.len();
+        let mut post = false;
+        let mut f: u64 = 0;
+        let mut scale = 1f64;
+        if s.as_bytes().first() == Some(&b'.') {
+            s = &s[1..];
+            let pl = s.len();
+            let bytes = s.as_bytes();
+            let mut i = 0;
+            let mut overflow = false;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                if !overflow {
+                    if f > (LIMIT - 1) / 10 {
+                        overflow = true;
+                    } else {
+                        let y = f * 10 + u64::from(bytes[i] - b'0');
+                        if y > LIMIT {
+                            overflow = true;
+                        } else {
+                            f = y;
+                            scale *= 10.0;
+                        }
+                    }
+                }
+                i += 1;
+            }
+            s = &s[i..];
+            post = pl != s.len();
+        }
+        if !pre && !post {
+            return Err(invalid());
+        }
+        let i = s
+            .bytes()
+            .position(|c| c == b'.' || c.is_ascii_digit())
+            .unwrap_or(s.len());
+        if i == 0 {
+            return Err(format!(
+                "time: missing unit in duration {}",
+                time_quote(orig)
+            ));
+        }
+        let u = &s[..i];
+        s = &s[i..];
+        let unit: u64 = match u {
+            "ns" => 1,
+            "us" | "\u{b5}s" | "\u{3bc}s" => 1_000,
+            "ms" => 1_000_000,
+            "s" => 1_000_000_000,
+            "m" => 60_000_000_000,
+            "h" => 3_600_000_000_000,
+            _ => {
+                return Err(format!(
+                    "time: unknown unit {} in duration {}",
+                    time_quote(u),
+                    time_quote(orig)
+                ));
+            }
+        };
+        if v > LIMIT / unit {
+            return Err(invalid());
+        }
+        v *= unit;
+        if f > 0 {
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss
+            )]
+            let add = (f as f64 * (unit as f64 / scale)) as u64;
+            v = v.wrapping_add(add);
+            if v > LIMIT {
+                return Err(invalid());
+            }
+        }
+        d = d.wrapping_add(v);
+        if d > LIMIT {
+            return Err(invalid());
+        }
+    }
+    if neg {
+        #[allow(clippy::cast_possible_wrap)]
+        return Ok((d as i64).wrapping_neg());
+    }
+    if d > LIMIT - 1 {
+        return Err(invalid());
+    }
+    #[allow(clippy::cast_possible_wrap)]
+    Ok(d as i64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -36,6 +36,7 @@ mod convert;
 mod custom;
 mod go_types;
 mod gogo;
+mod jsonpb;
 mod protowire;
 mod registry;
 pub use registry::added_in_v10;
@@ -109,6 +110,12 @@ pub(crate) fn v9() -> bool {
     V9.with(std::cell::Cell::get)
 }
 
+/// Runs `f` with celestia-app v9.0.8's registry and schema when `v9` (the
+/// gogoproto helpers, [`unpack_cosmos_tx_msgs`]), else as is.
+pub fn scoped_v9<T>(v9: bool, f: impl FnOnce() -> T) -> T {
+    if v9 { with_v9(f) } else { f() }
+}
+
 fn with_v9<T>(f: impl FnOnce() -> T) -> T {
     let prev = V9.with(|v| v.replace(true));
     let out = f();
@@ -170,21 +177,54 @@ pub fn has_duplicate_tx_raw_field(mut tx: &[u8]) -> bool {
     false
 }
 
+pub use jsonpb::Fail as GoFail;
+
 /// ibc-go `CosmosTx.UnpackInterfaces` with the interface registry as the
 /// unpacker (what `ProtoCodec.Unmarshal` and `UnmarshalJSON` run after
 /// decoding a `CosmosTx`): each message is resolved as an `sdk.Msg` by a
 /// fresh `statefulUnpacker`, so nested `Any`s (`MsgExec` in `MsgExec` ...)
-/// fail past 10 levels or 100 unpack calls. `Err` is Go's error text.
-pub fn unpack_cosmos_tx_msgs(msgs: &[celestia_proto::Any]) -> Result<(), String> {
+/// fail past 10 levels or 100 unpack calls. `Err` is Go's error; Go panics
+/// where an `UnpackInterfaces` method dereferences a nil pointer (a
+/// solo machine `ClientState` without a consensus state).
+pub fn unpack_cosmos_tx_msgs(msgs: &[celestia_proto::Any]) -> Result<(), GoFail> {
     for m in msgs {
         let bz = prost::Message::encode_to_vec(m);
-        let mut any = gogo::unmarshal("google.protobuf.Any", &bz).map_err(|e| e.0)?;
+        let mut any = gogo::unmarshal("google.protobuf.Any", &bz).map_err(|e| GoFail::Err(e.0))?;
         unpack::registry_unpack_any(Some(&mut any), registry::iface::MSG).map_err(|e| match e {
-            UnpackError::Err(e) => e.0,
-            UnpackError::Panic(p) => format!("panic: {p}"),
+            UnpackError::Err(e) => GoFail::Err(e.0),
+            UnpackError::Panic(p) => GoFail::Panic(p),
         })?;
     }
     Ok(())
+}
+
+/// ICS-27 `DeserializeCosmosTx` with `EncodingProto3JSON` up to its loop:
+/// `ProtoCodec.UnmarshalJSON(data, &CosmosTx{})`, i.e. gogoproto `jsonpb`
+/// with the interface registry resolving `Any`s (see the `jsonpb` module),
+/// then [`unpack_cosmos_tx_msgs`]. A `null` message is a nil `*Any`
+/// (`None`); every other `Any` holds gogoproto's `Marshal` of the decoded
+/// message, as Go stores it. `v9`: celestia-app v9.0.8's registry and
+/// schema.
+pub fn unmarshal_cosmos_tx_json(
+    data: &[u8],
+    v9: bool,
+) -> Result<Vec<Option<celestia_proto::Any>>, GoFail> {
+    let run = || {
+        let msgs = jsonpb::unmarshal_cosmos_tx(data)?;
+        let msgs: Vec<Option<celestia_proto::Any>> = msgs
+            .into_iter()
+            .map(|m| {
+                m.map(|(t, value)| celestia_proto::Any {
+                    type_url: gostr::from_go_vec(t),
+                    value,
+                })
+            })
+            .collect();
+        let present: Vec<celestia_proto::Any> = msgs.iter().flatten().cloned().collect();
+        unpack_cosmos_tx_msgs(&present)?;
+        Ok(msgs)
+    };
+    gojson::on_large_stack(data.len(), || if v9 { with_v9(run) } else { run() })
 }
 
 /// gogoproto `Unmarshal` of `data` into the registered message `name` (full

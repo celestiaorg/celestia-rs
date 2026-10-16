@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
 
+	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
@@ -33,12 +35,19 @@ import (
 //	json_pfm_next  PFM keeper retry: json.Unmarshal(memo, metadata.Next) and
 //	            json.Marshal(metadata.Next)
 //	json_ica_tx icatypes.DeserializeCosmosTx(cdc, data, proto3json): Msgs
-//	            are "<type url hex>:<gogoproto Marshal hex>"
+//	            are "<type url hex>:<gogoproto Marshal hex>", "nil" for a
+//	            nil sdk.Msg (a null message); a panic is reported as such
+//	json_ica_vb json_ica_tx, each message followed by its ValidateBasic
+//	            outcome: "|vb:ok" (also without the method), "|vb:panic",
+//	            "|vb:<codespace>/<code>"
 //	json_ica_pd InterchainAccountPacketData.UnmarshalJSON -> "<type> <data>"
 //	json_ica_md icatypes.MetadataFromVersion -> the six fields
 //	json_ics20  transfertypes.ModuleCdc.UnmarshalJSON(FungibleTokenPacketData)
 //	json_ack    channeltypes.SubModuleCdc.UnmarshalJSON(Acknowledgement)
 //	            -> "result <hex>" | "error <hex>"
+//	json_ack_check  core AcknowledgePacket's check: an ack that decodes must
+//	            re-marshal (ack.Acknowledgement()) to its bytes -> "pass" |
+//	            "mismatch"
 func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -102,7 +111,7 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 			return fail(err)
 		}
 		o.Ok, o.Out = true, hex.EncodeToString(bz)
-	case "json_ica_tx":
+	case "json_ica_tx", "json_ica_vb":
 		msgs, err := icatypes.DeserializeCosmosTx(cdc, input, icatypes.EncodingProto3JSON)
 		if err != nil {
 			return fail(err)
@@ -110,12 +119,20 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		o.Ok = true
 		o.Msgs = []string{}
 		for _, m := range msgs {
+			if m == nil {
+				o.Msgs = append(o.Msgs, "nil")
+				continue
+			}
 			bz, err := gogoproto.Marshal(m)
 			if err != nil {
 				o.Msgs = append(o.Msgs, "marshal error")
 				continue
 			}
-			o.Msgs = append(o.Msgs, h(sdk.MsgTypeURL(m))+":"+hex.EncodeToString(bz))
+			s := h(sdk.MsgTypeURL(m)) + ":" + hex.EncodeToString(bz)
+			if op == "json_ica_vb" {
+				s += validateBasic(m)
+			}
+			o.Msgs = append(o.Msgs, s)
 		}
 	case "json_ica_pd":
 		var d icatypes.InterchainAccountPacketData
@@ -138,6 +155,14 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		}
 		o.Ok = true
 		o.Out = h(d.Denom) + " " + h(d.Amount) + " " + h(d.Sender) + " " + h(d.Receiver) + " " + h(d.Memo)
+	case "json_ack_check":
+		var a channeltypes.Acknowledgement
+		o.Ok, o.Out = true, "pass"
+		if err := channeltypes.SubModuleCdc.UnmarshalJSON(input, &a); err == nil {
+			if !bytes.Equal(a.Acknowledgement(), input) {
+				o.Out = "mismatch"
+			}
+		}
 	case "json_ack":
 		var a channeltypes.Acknowledgement
 		if err := channeltypes.SubModuleCdc.UnmarshalJSON(input, &a); err != nil {
@@ -156,4 +181,24 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		o.Err = "unknown op " + op
 	}
 	return o
+}
+
+// validateBasic runs the message's ValidateBasic as the ICA host's
+// executeTx does, recovering a panic.
+func validateBasic(m sdk.Msg) (res string) {
+	v, ok := m.(sdk.HasValidateBasic)
+	if !ok {
+		return "|vb:ok"
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			res = "|vb:panic"
+		}
+	}()
+	err := v.ValidateBasic()
+	if err == nil {
+		return "|vb:ok"
+	}
+	cs, code, _ := errorsmod.ABCIInfo(err, false)
+	return fmt.Sprintf("|vb:%s/%d", cs, code)
 }

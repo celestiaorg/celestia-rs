@@ -22,9 +22,16 @@ func main() {
 	out := flag.String("out", "../fixtures/txdecode", "output directory")
 	seed := flag.Int64("seed", 1, "random seed")
 	rustOut := flag.String("rust-out", "../../crates/tier-3-app-modules/txdecode/src/registry_table.rs", "generated Rust registry table")
+	jsonpbOut := flag.String("jsonpb-out", "../../crates/tier-3-app-modules/txdecode/src/jsonpb_table.rs", "generated Rust jsonpb shape table")
+	jsonpbOnly := flag.Bool("jsonpb-only", false, "only write the jsonpb shape table")
 	flag.Parse()
 
 	enc := encoding.MakeConfig(app.ModuleEncodingRegisters...)
+	jm, je := dumpJSONPB(enc.InterfaceRegistry)
+	writeRustJSONPB(*jsonpbOut, jm, je)
+	if *jsonpbOnly {
+		return
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		log.Fatal(err)
 	}

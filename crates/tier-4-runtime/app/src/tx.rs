@@ -156,6 +156,7 @@ pub fn run_msgs_gated(
     };
     ctx.gas = p.gas.clone();
     let outer_events = std::mem::take(&mut ctx.events);
+    let base = ctx.multistore().depth();
     let cp = ctx.branch();
     let mut events: Vec<Event> = Vec::new();
     let mut responses: Vec<Any> = Vec::new();
@@ -228,7 +229,11 @@ pub fn run_msgs_gated(
             Ok(MsgsResult { data, events: all })
         }
         Err(e) => {
-            ctx.multistore().discard_branch();
+            // Everything the messages branched, also what a handler that
+            // failed mid-way (a Go panic unwinding) left open.
+            while ctx.multistore().depth() > base {
+                ctx.multistore().discard_branch();
+            }
             Err(e)
         }
     }

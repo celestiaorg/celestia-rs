@@ -165,7 +165,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
             .map(hex::encode),
         ),
         "text" => rust_text(app_version, input),
-        op if op.starts_with("json_") => jsonops::rust_json(op, input),
+        op if op.starts_with("json_") => jsonops::rust_json(app_version, op, input),
         _ => Out {
             err: format!("unknown op {op}"),
             ..Out::default()

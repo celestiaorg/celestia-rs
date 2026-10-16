@@ -52,7 +52,9 @@ CheckTx of every tx recorded too) covers what the first fixture leaves out:
   host. The controller end on A is driven with A's channel keeper.
 - proto3json ICA txs (valid, camelCase / spaced JSON, unknown type,
   unknown field, truncated JSON, `{}`, a registered non-`sdk.Msg` type,
-  protobuf bytes on a JSON channel) and `MsgModuleQuerySafe` through ICA
+  protobuf bytes on a JSON channel; `jsonpb` `null`s: a `null` message, `null`
+  coins and outputs, `null` in `MsgExec.msgs` / `MsgVoteWeighted.options` and
+  a one-byte secp256r1 key, which panic in Go) and `MsgModuleQuerySafe` through ICA
   (protobuf and JSON) and as a plain tx (allowed via genesis
   `allow_messages`): every module-query-safe bank / auth / staking /
   circuit query, unsafe paths, bad request data, missing accounts.

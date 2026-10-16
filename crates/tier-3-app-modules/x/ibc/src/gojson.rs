@@ -148,36 +148,7 @@ pub fn first_value(bz: &[u8]) -> Result<Value, String> {
 /// (padding required; `\r` and `\n` are ignored).
 #[must_use]
 pub fn decode_base64_std(s: &str) -> Option<Vec<u8>> {
-    let clean: Vec<u8> = s.bytes().filter(|b| *b != b'\r' && *b != b'\n').collect();
-    if !clean.len().is_multiple_of(4) {
-        return None;
-    }
-    let mut out = Vec::with_capacity(clean.len() / 4 * 3);
-    for chunk in clean.chunks(4) {
-        let mut n = 0u32;
-        let mut pad = 0;
-        for (i, &c) in chunk.iter().enumerate() {
-            let v = match c {
-                b'A'..=b'Z' => c - b'A',
-                b'a'..=b'z' => c - b'a' + 26,
-                b'0'..=b'9' => c - b'0' + 52,
-                b'+' => 62,
-                b'/' => 63,
-                b'=' if i >= 2 => {
-                    pad += 1;
-                    0
-                }
-                _ => return None,
-            };
-            if pad > 0 && c != b'=' {
-                return None;
-            }
-            n = (n << 6) | u32::from(v);
-        }
-        let bytes = n.to_be_bytes();
-        out.extend_from_slice(&bytes[1..4 - pad]);
-    }
-    Some(out)
+    gojson::decode_base64_std(s.as_bytes())
 }
 
 /// A string-only protobuf message decoded with `jsonpb` (unknown fields

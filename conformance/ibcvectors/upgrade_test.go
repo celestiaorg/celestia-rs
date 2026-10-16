@@ -461,6 +461,28 @@ func TestGenerateIBCUpgradeVectors(t *testing.T) {
 	relayIca(commitIca(rawPd([]byte(`{"messages":[`)), hour()))
 	relayIca(commitIca(rawPd([]byte(`{}`)), hour()))
 	relayIca(commitIca(rawPd([]byte(`{"messages":[{"@type":"/cosmos.bank.v1beta1.Coin","denom":"x","amount":"1"}]}`)), hour()))
+	// jsonpb nulls: a null message is a nil sdk.Msg (authenticateTx fails
+	// packing it), a null Coin is Coin{} (the handler sees an empty
+	// denom), a null *Any in MsgExec.msgs or *WeightedVoteOption makes
+	// gogoproto's Marshal panic inside UnmarshalJSON (the whole tx fails),
+	// a secp256r1 key that is a one-byte JSON value panics in
+	// ecdsaPK.UnmarshalJSON; zero values flow into ValidateBasic.
+	nullTx := func(msgs string) {
+		relayIca(commitIca(rawPd([]byte(`{"messages":[`+msgs+`]}`)), hour()))
+	}
+	nullTx(`null`)
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":%q,"to_address":%q,"amount":[{"denom":%q,"amount":"2"}]},null`, ica, celAddr, denom))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":%q,"to_address":%q,"amount":[{"denom":%q,"amount":"2"},null]}`, ica, celAddr, denom))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":%q,"to_address":%q,"amount":[null]}`, ica, celAddr))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.bank.v1beta1.MsgSend","fromAddress":%q,"to_address":%q,"amount":[{"denom":%q,"amount":null}]}`, ica, celAddr, denom))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.bank.v1beta1.MsgMultiSend","inputs":[{"address":%q,"coins":[{"denom":%q,"amount":"2"}]}],"outputs":[null]}`, ica, denom))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":%q,"msgs":[null]}`, ica))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.gov.v1.MsgVoteWeighted","proposal_id":"1","voter":%q,"options":[null]}`, ica))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":"null","voter":%q,"option":"VOTE_OPTION_YES"}`, ica))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.staking.v1beta1.MsgCreateValidator","delegator_address":%q,"pubkey":{"@type":"/cosmos.crypto.secp256r1.PubKey","key":1}}`, ica))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.staking.v1beta1.MsgDelegate","delegator_address":%q,"validator_address":%q,"amount":null}`, ica, valoper))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":%q,"grantee":%q,"grant":{"authorization":{"@type":"/cosmos.bank.v1beta1.SendAuthorization","spend_limit":[null]},"expiration":"2099-01-01T1:00:00,5+24:60"}}`, ica, celAddr))
+	nullTx(fmt.Sprintf(`{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":%q,"grantee":%q,"grant":{"authorization":{"@type":"/cosmos.authz.v1beta1.GenericAuthorization","msg":"/cosmos.bank.v1beta1.MsgSend"},"expiration":null}}`, ica, celAddr))
 	relayIca(commitIca(pd(icatypes.EncodingProtobuf, &banktypes.MsgSend{FromAddress: ica, ToAddress: celAddr, Amount: coins(1)}), hour()))
 	// Replay of a pre-upgrade sequence: below recvStartSequence (no-op).
 	old := inflight

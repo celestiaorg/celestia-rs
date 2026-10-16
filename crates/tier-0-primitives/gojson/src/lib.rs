@@ -658,6 +658,115 @@ pub fn on_large_stack<T: Send>(input_len: usize, f: impl FnOnce() -> T + Send) -
     }
 }
 
+/// Go `base64.StdEncoding.Decode` (padding required, `\r` / `\n` skipped,
+/// trailing bits not checked).
+#[must_use]
+pub fn decode_base64_std(src: &[u8]) -> Option<Vec<u8>> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let skip_nl = |si: &mut usize| {
+        while *si < src.len() && (src[*si] == b'\n' || src[*si] == b'\r') {
+            *si += 1;
+        }
+    };
+    let mut out = Vec::with_capacity(src.len() / 4 * 3);
+    let mut si = 0;
+    // `decodeQuantum` until the input ends.
+    loop {
+        let mut dbuf = [0u8; 4];
+        let mut dlen = 4;
+        let mut j = 0;
+        let mut done = false;
+        while j < 4 {
+            if si == src.len() {
+                if j == 0 {
+                    return Some(out);
+                }
+                // j == 1, or padding missing.
+                return None;
+            }
+            let c = src[si];
+            si += 1;
+            if let Some(v) = val(c) {
+                dbuf[j] = v;
+                j += 1;
+                continue;
+            }
+            if c == b'\n' || c == b'\r' {
+                continue;
+            }
+            if c != b'=' {
+                return None;
+            }
+            match j {
+                0 | 1 => return None,
+                2 => {
+                    skip_nl(&mut si);
+                    if si == src.len() || src[si] != b'=' {
+                        return None;
+                    }
+                    si += 1;
+                }
+                _ => {}
+            }
+            skip_nl(&mut si);
+            if si < src.len() {
+                return None;
+            }
+            dlen = j;
+            done = true;
+            break;
+        }
+        let v = u32::from(dbuf[0]) << 18
+            | u32::from(dbuf[1]) << 12
+            | u32::from(dbuf[2]) << 6
+            | u32::from(dbuf[3]);
+        let b = v.to_be_bytes();
+        out.extend_from_slice(&b[1..dlen]);
+        if done {
+            return Some(out);
+        }
+    }
+}
+
+/// `json.Unmarshal(raw, &b)` for a Go `[]byte`: `None` for `null` (a nil
+/// slice), standard base64 for a string, one number (0..=255, `null` = 0)
+/// per element for an array; `Err` otherwise.
+pub fn bytes_value(v: &Value) -> Result<Option<Vec<u8>>, String> {
+    match &v.kind {
+        Kind::Null => Ok(None),
+        Kind::String(s) => decode_base64_std(s.as_bytes())
+            .map(Some)
+            .ok_or_else(|| "illegal base64 data".to_owned()),
+        Kind::Array(items) => items
+            .iter()
+            .map(|it| match &it.kind {
+                Kind::Null => Ok(0),
+                Kind::Number(n) => n.parse::<u8>().map_err(|_| {
+                    format!("json: cannot unmarshal number {n} into Go value of type uint8")
+                }),
+                k => Err(format!(
+                    "json: cannot unmarshal {} into Go value of type uint8",
+                    k.type_name()
+                )),
+            })
+            .collect::<Result<Vec<u8>, String>>()
+            .map(Some),
+        k => Err(format!(
+            "json: cannot unmarshal {} into Go value of type []uint8",
+            k.type_name()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,5 +838,19 @@ mod tests {
     fn large_stack() {
         assert_eq!(on_large_stack(10, || 1), 1);
         assert_eq!(on_large_stack(1 << 20, || 2), 2);
+    }
+    #[test]
+    fn base64_like_go() {
+        assert_eq!(super::decode_base64_std(b""), Some(vec![]));
+        assert_eq!(super::decode_base64_std(b"AQI="), Some(vec![1, 2]));
+        assert_eq!(super::decode_base64_std(b"AQ=="), Some(vec![1]));
+        assert_eq!(super::decode_base64_std(b"A\nQ\r=\n="), Some(vec![1]));
+        assert_eq!(super::decode_base64_std(b"AQ"), None);
+        assert_eq!(super::decode_base64_std(b"AQ=="), Some(vec![1]));
+        assert_eq!(super::decode_base64_std(b"AQ==AAAA"), None);
+        assert_eq!(super::decode_base64_std(b"AQ=A"), None);
+        assert_eq!(super::decode_base64_std(b"A==="), None);
+        assert_eq!(super::decode_base64_std(b"AR=="), Some(vec![1]));
+        assert_eq!(super::decode_base64_std(b"-_8="), None);
     }
 }

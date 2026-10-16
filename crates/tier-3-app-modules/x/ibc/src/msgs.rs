@@ -1469,7 +1469,15 @@ fn recv_packet(ctx: &mut Context<'_>, router: &dyn Router, m: &chpb::MsgRecvPack
     }
     let before = ctx.events.len();
     let cp = ctx.branch();
-    let ack: Option<Acknowledgement> = cbs.on_recv_packet(ctx, &p, &relayer)?;
+    // A callback error is a Go panic unwinding (the IBC apps turn errors
+    // into acknowledgements): the tx fails, its cache branch goes too.
+    let ack: Option<Acknowledgement> = match cbs.on_recv_packet(ctx, &p, &relayer) {
+        Ok(a) => a,
+        Err(e) => {
+            ctx.discard(cp);
+            return Err(e);
+        }
+    };
     match &ack {
         Some(a) if !a.success => {
             let evs = ctx.events.events()[before..].to_vec();

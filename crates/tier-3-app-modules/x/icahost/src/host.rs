@@ -403,38 +403,53 @@ pub fn packet_data(bz: &[u8]) -> Option<(i32, Vec<u8>)> {
     decode_packet_data(bz).ok()
 }
 
-/// `InterchainAccountPacketData` (`ModuleCdc.UnmarshalJSON`, jsonpb).
+/// `InterchainAccountPacketData` (`ModuleCdc.UnmarshalJSON`, jsonpb): `type`
+/// an enum (a name, the raw bytes between the quotes, or an int32
+/// number), `data` a `[]byte` (base64 or an array of numbers), `memo` a
+/// string; `null` leaves a field unset; duplicate keys: the last.
 fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
-    let v = x_ibc::gojson::first_value(bz).map_err(|_| ())?;
-    let (mut ty, mut data) = (0i32, Vec::new());
-    match v {
-        serde_json::Value::Null => {}
-        serde_json::Value::Object(map) => {
-            for (k, val) in map {
-                match (k.as_str(), val) {
-                    (_, serde_json::Value::Null)
-                        if matches!(k.as_str(), "type" | "data" | "memo") => {}
-                    ("type", serde_json::Value::String(s)) => {
-                        ty = match s.as_str() {
-                            "TYPE_UNSPECIFIED" => 0,
-                            "TYPE_EXECUTE_TX" => 1,
-                            _ => return Err(()),
-                        };
-                    }
-                    ("type", serde_json::Value::Number(n)) => {
-                        ty = n.as_i64().and_then(|n| i32::try_from(n).ok()).ok_or(())?;
-                    }
-                    ("data", serde_json::Value::String(s)) => {
-                        data = x_ibc::gojson::decode_base64_std(&s).ok_or(())?;
-                    }
-                    ("memo", serde_json::Value::String(_)) => {}
-                    _ => return Err(()),
-                }
-            }
-        }
+    use gojson::Kind;
+    let v = gojson::parse_first(bz).map_err(|_| ())?;
+    let mut fields: std::collections::BTreeMap<&str, &gojson::Value> = match &v.kind {
+        Kind::Null => return Ok((0, Vec::new())),
+        Kind::Object(ms) => ms.iter().map(|(k, v)| (k.as_str(), v)).collect(),
         _ => return Err(()),
+    };
+    let (mut ty, mut data) = (0i32, Vec::new());
+    if let Some(t) = fields.remove("type") {
+        let raw = &bz[t.span.clone()];
+        ty = match &t.kind {
+            Kind::Null => 0,
+            Kind::String(_) => match &raw[1..raw.len() - 1] {
+                b"TYPE_UNSPECIFIED" => 0,
+                b"TYPE_EXECUTE_TX" => 1,
+                _ => return Err(()),
+            },
+            Kind::Number(n) => n.parse::<i32>().map_err(|_| ())?,
+            _ => return Err(()),
+        };
+    }
+    if let Some(d) = fields.remove("data") {
+        data = gojson::bytes_value(d).map_err(|_| ())?.unwrap_or_default();
+    }
+    if let Some(m) = fields.remove("memo")
+        && !matches!(m.kind, Kind::Null | Kind::String(_))
+    {
+        return Err(());
+    }
+    if !fields.is_empty() {
+        return Err(());
     }
     Ok((ty, data))
+}
+
+/// Whether the app version is 9 (celestia-app v9.0.8's registry and schema
+/// for the gogoproto decoding of host messages).
+fn is_v9(ctx: &Context<'_>) -> bool {
+    ctx.consensus_params
+        .version
+        .as_ref()
+        .is_some_and(|v| v.app != 0 && v.app < 10)
 }
 
 /// Keeper `OnRecvPacket`: the `TxMsgData` result bytes.
@@ -451,7 +466,8 @@ fn keeper_on_recv_packet(
     if ty != 1 {
         return Err(errors::unknown_data_type(""));
     }
-    let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, reg)
+    let v9 = is_v9(ctx);
+    let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, reg, v9)
         .map_err(|e| e.wrap("failed to deserialize interchain account transaction"))?;
     execute_tx(
         ctx,
@@ -464,17 +480,35 @@ fn keeper_on_recv_packet(
     .map_err(|e| e.wrap("failed to execute interchain account transaction"))
 }
 
-/// `DeserializeCosmosTx`.
-pub fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<Vec<Any>> {
+/// `DeserializeCosmosTx`: the messages, `None` where Go holds a nil
+/// `sdk.Msg` (a `null` message in proto3json, an `Any` with an empty type
+/// URL in protobuf: `UnpackAny` returns early for both). `v9`: the
+/// celestia-app v9.0.8 registry and schema.
+pub fn deserialize_cosmos_tx(
+    data: &[u8],
+    encoding: &str,
+    reg: Registry,
+    v9: bool,
+) -> Result<Vec<Option<Any>>> {
+    txdecode::scoped_v9(v9, || deserialize_cosmos_tx_inner(data, encoding, reg, v9))
+}
+
+fn deserialize_cosmos_tx_inner(
+    data: &[u8],
+    encoding: &str,
+    reg: Registry,
+    v9: bool,
+) -> Result<Vec<Option<Any>>> {
     let is_msg = reg.is_msg;
-    let tx = match encoding {
+    let msgs: Vec<Option<Any>> = match encoding {
         ENCODING_PROTOBUF => {
             let wrap = |e: String| {
                 x_ibc::errors::unregistered(format!("cannot unmarshal CosmosTx with protobuf: {e}"))
             };
             // `ProtoCodec.Unmarshal`: gogoproto's generated `Unmarshal`
-            // (Go's error text), then `UnpackInterfaces`: each message is
-            // resolved as an `sdk.Msg` and unmarshaled.
+            // (Go's error text), then `UnpackInterfaces`: each message in
+            // turn is resolved as an `sdk.Msg`, unmarshaled and unpacked
+            // (10 nested `Any` levels, 100 calls).
             let canon =
                 txdecode::gogo_unmarshal("ibc.applications.interchain_accounts.v1.CosmosTx", data)
                     .map_err(wrap)?;
@@ -491,26 +525,36 @@ pub fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Resu
                 }
                 let name = m.type_url.rsplit('/').next().unwrap_or_default();
                 txdecode::gogo_unmarshal(name, &m.value).map_err(wrap)?;
+                match txdecode::unpack_cosmos_tx_msgs(std::slice::from_ref(m)) {
+                    Ok(()) => {}
+                    Err(txdecode::GoFail::Err(e)) => return Err(wrap(e)),
+                    Err(txdecode::GoFail::Panic(p)) => return Err(sdk::error::go_panic(p)),
+                }
             }
-            // `CosmosTx.UnpackInterfaces`: 10 nested `Any` levels, 100 calls.
-            txdecode::unpack_cosmos_tx_msgs(&tx.messages).map_err(wrap)?;
-            tx
+            tx.messages
+                .into_iter()
+                .map(|m| (!m.type_url.is_empty()).then_some(m))
+                .collect()
         }
-        ENCODING_PROTO3_JSON => {
-            // `UnmarshalJSON` ends with `UnpackInterfaces` too.
-            unmarshal_cosmos_tx_json(data, reg.is_registered)
-                .filter(|tx| txdecode::unpack_cosmos_tx_msgs(&tx.messages).is_ok())
-                .ok_or_else(|| {
-                    errors::unknown_data_type("cannot unmarshal CosmosTx with proto3 json")
-                })?
-        }
+        // `UnmarshalJSON` (jsonpb, then `UnpackInterfaces`): any error is
+        // replaced by `ErrUnknownDataType`; a panic (a nil element of a
+        // `[]*T` field reaching gogoproto's `Marshal`, ...) unwinds.
+        ENCODING_PROTO3_JSON => match txdecode::unmarshal_cosmos_tx_json(data, v9) {
+            Ok(msgs) => msgs,
+            Err(txdecode::GoFail::Panic(p)) => return Err(sdk::error::go_panic(p)),
+            Err(txdecode::GoFail::Err(_)) => {
+                return Err(errors::unknown_data_type(
+                    "cannot unmarshal CosmosTx with proto3 json",
+                ));
+            }
+        },
         other => {
             return Err(errors::invalid_codec(&format!(
                 "unsupported encoding format {other}"
             )));
         }
     };
-    for m in &tx.messages {
+    for m in msgs.iter().flatten() {
         // `UnpackAny` into `sdk.Msg`: the type must be registered.
         if !is_msg(&m.type_url) {
             return Err(x_ibc::errors::unregistered(format!(
@@ -519,29 +563,7 @@ pub fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Resu
             )));
         }
     }
-    Ok(tx.messages)
-}
-
-/// `ProtoCodec.UnmarshalJSON(data, &CosmosTx{})` (gogo `jsonpb` with the
-/// interface registry as `Any` resolver; the first JSON value is read):
-/// `None` on any failure. `Any` types must be in the registry's type map.
-fn unmarshal_cosmos_tx_json(data: &[u8], is_registered: fn(&str) -> bool) -> Option<CosmosTx> {
-    let v = x_ibc::gojson::first_value(data).ok()?;
-    match &v {
-        serde_json::Value::Null => return Some(CosmosTx::default()),
-        serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::Array(msgs)) = map.get("messages") {
-                for m in msgs {
-                    let ty = m.get("@type").and_then(serde_json::Value::as_str)?;
-                    if !is_registered(ty) {
-                        return None;
-                    }
-                }
-            }
-        }
-        _ => return None,
-    }
-    serde_json::from_value(v).ok()
+    Ok(msgs)
 }
 
 /// The app's interface registry (`codectypes.InterfaceRegistry`).
@@ -556,7 +578,7 @@ pub struct Registry {
 /// `authenticateTx`.
 fn authenticate_tx(
     ctx: &mut Context<'_>,
-    msgs: &[Any],
+    msgs: &[Option<Any>],
     connection_id: &str,
     port_id: &str,
 ) -> Result<()> {
@@ -567,6 +589,16 @@ fn authenticate_tx(
     };
     let allow = params(ctx)?.allow_messages;
     for m in msgs {
+        let Some(m) = m else {
+            // A nil `sdk.Msg`: `sdk.MsgTypeURL(nil)` is "/", and
+            // `GetMsgV1Signers` fails in `NewAnyWithValue(nil)`.
+            if !crate::contains_msg_type(&allow, "/") {
+                return Err(ierr::unauthorized("message type not allowed: /"));
+            }
+            return Err(sdk::error::sdk::pack_any(
+                "failed to obtain message signers for message type /: Expecting non nil value to create a new Any",
+            ));
+        };
         if !crate::contains_msg_type(&allow, &m.type_url) {
             return Err(ierr::unauthorized(format!(
                 "message type not allowed: {}",
@@ -575,7 +607,7 @@ fn authenticate_tx(
         }
         // `GetMsgV1Signers`: `anyutil.Unpack` (dynamicpb UTF-8 / varint
         // checks) first; its plain error keeps code 1 through `Wrapf`.
-        let repacked = txdecode::gogo_repack(m);
+        let repacked = txdecode::scoped_v9(is_v9(ctx), || txdecode::gogo_repack(m));
         if let Err(e) = celestia_proto::signers::unpack_check(&repacked.type_url, &repacked.value) {
             return Err(sdk::address::undefined(format!(
                 "failed to obtain message signers for message type {}: {e}",
@@ -623,7 +655,7 @@ fn execute_tx(
     source_port: &str,
     dest_port: &str,
     dest_channel: &str,
-    msgs: &[Any],
+    msgs: &[Option<Any>],
 ) -> Result<Vec<u8>> {
     let Some(ch) = x_ibc::channel::get_channel(ctx, dest_port, dest_channel)? else {
         return Err(cherr::channel_not_found(""));
@@ -631,8 +663,13 @@ fn execute_tx(
     let hop = ch.connection_hops.first().cloned().unwrap_or_default();
     authenticate_tx(ctx, msgs, &hop, source_port)?;
     // `authenticateTx`'s `GetMsgV1Signers` marshaled each message: nil
-    // customtypes are zero when they execute.
-    let msgs: Vec<Any> = msgs.iter().map(txdecode::gogo_marshaled).collect();
+    // customtypes are zero when they execute. (A nil message failed it.)
+    let msgs: Vec<Any> = txdecode::scoped_v9(is_v9(ctx), || {
+        msgs.iter()
+            .flatten()
+            .map(txdecode::gogo_marshaled)
+            .collect()
+    });
     let msgs = msgs.as_slice();
     let cp = ctx.branch();
     let mut responses = Vec::with_capacity(msgs.len());

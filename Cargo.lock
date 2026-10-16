@@ -4169,6 +4169,7 @@ name = "txdecode"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gojson",
  "gostr",
  "hex",
  "math",
@@ -4681,6 +4682,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gojson",
  "gostr",
  "hash",
  "hex",

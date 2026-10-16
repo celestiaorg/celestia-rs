@@ -1331,36 +1331,58 @@ impl AckResponse {
     }
 }
 
-/// `SubModuleCdc.UnmarshalJSON(bz, &ack)`.
+/// `SubModuleCdc.UnmarshalJSON(bz, &ack)` (gogoproto `jsonpb`): the
+/// `response` interface field takes only `null`; a oneof member present
+/// sets its wrapper even when `null` (a nil `result`, an empty `error`);
+/// `result` is `[]byte` (base64 or an array of numbers); duplicate keys:
+/// the last; unknown keys fail. With both members present Go's order is
+/// random; `result` is decoded last here.
 pub fn decode_acknowledgement(bz: &[u8]) -> core::result::Result<AckResponse, String> {
-    let v = crate::gojson::first_value(bz)?;
-    let map = match v {
-        serde_json::Value::Null => return Ok(AckResponse::Empty),
-        serde_json::Value::Object(m) => m,
+    decode_acknowledgement_go(bz).map(|(a, _)| a)
+}
+
+/// [`decode_acknowledgement`] and whether `result` is a nil `[]byte` (a
+/// `null`: `MarshalJSON` writes it back as `null`).
+fn decode_acknowledgement_go(bz: &[u8]) -> core::result::Result<(AckResponse, bool), String> {
+    let v = gojson::parse_first(bz)?;
+    let mut fields: std::collections::BTreeMap<&str, &gojson::Value> = match &v.kind {
+        gojson::Kind::Null => return Ok((AckResponse::Empty, false)),
+        gojson::Kind::Object(ms) => ms.iter().map(|(k, v)| (k.as_str(), v)).collect(),
         _ => return Err("cannot unmarshal into Acknowledgement".into()),
     };
-    let mut out = AckResponse::Empty;
-    for (k, v) in map {
-        match (k.as_str(), v) {
-            ("result", serde_json::Value::String(s)) => {
-                out = AckResponse::Result(
-                    crate::gojson::decode_base64_std(&s).ok_or("illegal base64 data")?,
-                );
-            }
-            ("error", serde_json::Value::String(s)) => out = AckResponse::Error(s),
-            ("result" | "error", serde_json::Value::Null) => {}
-            ("result" | "error", _) => return Err(format!("invalid value for field {k}")),
-            _ => return Err(format!("unknown field {k:?} in types.Acknowledgement")),
-        }
+    if let Some(r) = fields.remove("response")
+        && !matches!(r.kind, gojson::Kind::Null)
+    {
+        return Err("cannot unmarshal into types.isAcknowledgement_Response".into());
     }
-    Ok(out)
+    let mut out = AckResponse::Empty;
+    let mut nil_result = false;
+    if let Some(e) = fields.remove("error") {
+        out = match &e.kind {
+            gojson::Kind::Null => AckResponse::Error(String::new()),
+            gojson::Kind::String(s) => AckResponse::Error(s.clone()),
+            _ => return Err("invalid value for field error".into()),
+        };
+    }
+    if let Some(r) = fields.remove("result") {
+        let b = gojson::bytes_value(r)?;
+        nil_result = b.is_none();
+        out = AckResponse::Result(b.unwrap_or_default());
+    }
+    if let Some(k) = fields.keys().next() {
+        return Err(format!("unknown field {k:?} in types.Acknowledgement"));
+    }
+    Ok((out, nil_result))
 }
 
 /// `AcknowledgePacket`'s marshalling check: a decodable JSON
-/// acknowledgement must re-marshal (sorted) to the same bytes.
-fn ack_marshalling_mismatch(ack: &[u8]) -> bool {
-    match decode_acknowledgement(ack) {
-        Ok(a) => *gostr::to_go_bytes(&a.marshal()) != *ack,
+/// acknowledgement must re-marshal (sorted) to the same bytes (a nil
+/// `result` marshals as `null`).
+#[must_use]
+pub fn ack_marshalling_mismatch(ack: &[u8]) -> bool {
+    match decode_acknowledgement_go(ack) {
+        Ok((_, true)) => ack != b"{\"result\":null}",
+        Ok((a, false)) => *gostr::to_go_bytes(&a.marshal()) != *ack,
         Err(_) => false,
     }
 }

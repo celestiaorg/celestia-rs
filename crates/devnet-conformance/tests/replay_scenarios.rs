@@ -254,6 +254,31 @@ fn v9_utf8_parity() -> anyhow::Result<()> {
 /// scenario with a known gap is listed here until it matches.
 const KNOWN_EVENT_LOG_GAPS: &[&str] = &[];
 
+/// The two error texts docs/security.md lists as not emulated, in a diff
+/// with nothing else: a Go panic's log with the stack Go records when it
+/// runs with tracing (`ibctesting`; Rust logs the panic value), and the
+/// space protobuf-go randomizes after `proto:` (U+00A0 in some processes).
+fn known_text_gap(d: &str) -> bool {
+    let (mut go, mut rust) = (Vec::new(), Vec::new());
+    for l in d.lines() {
+        if let Some(g) = l.trim_start().strip_prefix("go:") {
+            go.push(
+                g.trim_start()
+                    .replace("proto:\u{a0}", "proto: ")
+                    .replace("proto:\\xc2\\xa0", "proto: "),
+            );
+        } else if let Some(r) = l.trim_start().strip_prefix("rust:") {
+            rust.push(r.trim_start().to_owned());
+        }
+    }
+    !go.is_empty()
+        && go.len() == rust.len()
+        && go.iter().zip(&rust).all(|(g, r)| {
+            g == r
+                || (g.starts_with(&format!("recovered: {r}\\nstack:\\n")) && g.ends_with(": panic"))
+        })
+}
+
 /// Logs and events of every tx result and block (non-consensus) match Go
 /// byte for byte in every scenario but the known gaps.
 #[test]
@@ -273,7 +298,7 @@ fn events_and_logs_parity() -> anyhow::Result<()> {
         if KNOWN_EVENT_LOG_GAPS.contains(&name.as_str()) {
             continue;
         }
-        if let Some(d) = r.event_log_diffs.first() {
+        if let Some(d) = r.event_log_diffs.iter().find(|d| !known_text_gap(d)) {
             bad.push(format!("{name} ({}): {d}", r.event_log_diffs.len()));
         }
     }

@@ -15,10 +15,12 @@ pub const OPS: &[&str] = &[
     "json_pfm",
     "json_pfm_next",
     "json_ica_tx",
+    "json_ica_vb",
     "json_ica_pd",
     "json_ica_md",
     "json_ics20",
     "json_ack",
+    "json_ack_check",
 ];
 
 fn h(s: &str) -> String {
@@ -42,7 +44,7 @@ fn fail(err: impl Into<String>) -> Out {
 
 /// The Rust outcome of a `json_*` op.
 #[must_use]
-pub fn rust_json(op: &str, input: &[u8]) -> Out {
+pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
     let text = gostr::from_go_bytes(input);
     match op {
         "json_count" => match app::msg_count::count_json_msgs(input) {
@@ -80,17 +82,39 @@ pub fn rust_json(op: &str, input: &[u8]) -> Out {
             Ok(Ok(s)) => ok(h(&s)),
             Ok(Err(e)) | Err(e) => fail(e),
         },
-        "json_ica_tx" => match x_icahost::host::deserialize_cosmos_tx(
+        "json_ica_tx" | "json_ica_vb" => match x_icahost::host::deserialize_cosmos_tx(
             input,
             x_icahost::host::ENCODING_PROTO3_JSON,
             app::ibc::ica_registry(),
+            app_version != 0 && app_version < 10,
         ) {
             Ok(msgs) => Out {
                 ok: true,
                 msgs: msgs
                     .iter()
-                    .map(|m| format!("{}:{}", h(&m.type_url), hex::encode(&m.value)))
+                    .map(|m| {
+                        let Some(m) = m else { return "nil".to_owned() };
+                        // Go prints `Marshal` of the unpacked message.
+                        let v9 = app_version != 0 && app_version < 10;
+                        let bz = txdecode::scoped_v9(v9, || txdecode::gogo_repack(m)).value;
+                        let mut s = format!("{}:{}", h(&m.type_url), hex::encode(bz));
+                        if op == "json_ica_vb" {
+                            match app::router::validate_basic(m) {
+                                Ok(()) => s.push_str("|vb:ok"),
+                                Err(e) if e.is_panic() => s.push_str("|vb:panic"),
+                                Err(e) => {
+                                    use std::fmt::Write as _;
+                                    let _ = write!(s, "|vb:{}/{}", e.codespace, e.code);
+                                }
+                            }
+                        }
+                        s
+                    })
                     .collect(),
+                ..Out::default()
+            },
+            Err(e) if e.is_panic() => Out {
+                panic: e.log,
                 ..Out::default()
             },
             Err(e) => fail(e.log),
@@ -118,6 +142,11 @@ pub fn rust_json(op: &str, input: &[u8]) -> Out {
                 .join(" ")),
             Err(e) => fail(e),
         },
+        "json_ack_check" => ok(if x_ibc::channel::ack_marshalling_mismatch(input) {
+            "mismatch".into()
+        } else {
+            "pass".into()
+        }),
         "json_ack" => match x_ibc::channel::decode_acknowledgement(input) {
             Ok(x_ibc::channel::AckResponse::Empty) => ok("none".into()),
             Ok(x_ibc::channel::AckResponse::Result(r)) => ok(format!("result {}", hex::encode(r))),
@@ -132,7 +161,7 @@ pub fn rust_json(op: &str, input: &[u8]) -> Out {
 /// decoded summary; error texts are not compared).
 #[must_use]
 pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
-    (go.ok != rust.ok || go.out != rust.out || go.msgs != rust.msgs || !go.panic.is_empty())
+    (go.ok != rust.ok || go.out != rust.out || go.msgs != rust.msgs || go.panic != rust.panic)
         .then(|| format!("{op}: go {go:?}\n  rust {rust:?}"))
 }
 
@@ -167,7 +196,7 @@ pub fn deep_input(op: &str, d: usize, variant: usize) -> String {
         "json_pfm" if variant < 2 => format!("{{{FWD}}},\"x\":{}}}", x(d - 1)),
         "json_pfm" => format!("{{{FWD},\"next\":{}}}}}", x(d - 2)),
         "json_pfm_next" => x(d),
-        "json_ica_tx" => format!(
+        "json_ica_tx" | "json_ica_vb" => format!(
             r#"{{"messages":[{{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"a","to_address":"b","x":{}}}]}}"#,
             x(d - 3)
         ),
@@ -180,6 +209,99 @@ pub fn deep_input(op: &str, d: usize, variant: usize) -> String {
         _ => format!(r#"{{"result":"AQ==","x":{}}}"#, x(d - 1)),
     }
 }
+
+/// Whole proto3json `CosmosTx` documents: `null` messages, the top-level
+/// shapes and `@type` resolution.
+const ICA_TX_DOCS: &[&str] = &[
+    r#"{"messages":[{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":"g","msgs":[{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"a","to_address":"b","amount":[{"denom":"utia","amount":"1"}]}]}]}"#,
+    r#"{"messages":[null]}"#,
+    r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend"},null,{"@type":"/cosmos.gov.v1.MsgVote"}]}"#,
+    r#"{"messages":null}"#,
+    r#"{"messages":[]}"#,
+    "null",
+    "{}",
+    r#"{"Messages":[]}"#,
+    "[]",
+    r#""x""#,
+    r#"{"messages":{}}"#,
+    r#"{"messages":[{"@type":""}]}"#,
+    r#"{"messages":[{"@type":null}]}"#,
+    r#"{"messages":[{"@type":5}]}"#,
+    r#"{"messages":[{}]}"#,
+    r#"{"messages":[[]]}"#,
+    r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.SendAuthorization"}]}"#,
+    r#"{"messages":[{"@type":"cosmos.bank.v1beta1.MsgSend"}]}"#,
+    r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","x":1}]}"#,
+    r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","@type":"/cosmos.gov.v1.MsgVote","voter":"v"}]}"#,
+    r#"{"messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend"}],"messages":[null]} trailing"#,
+    r#"{"messages":[{"@type":"/celestia.fibre.v1.MsgDepositToEscrow","signer":"s"}]}"#,
+    r#"{"messages":[{"@type":"/celestia.forwarding.v1.MsgForward","signer":"s","custom_hook_id":"h"}]}"#,
+];
+
+/// Messages (each sent as `{"messages":[m]}`): `null` elements of repeated
+/// messages and `Any`s, both field-name forms, enums, integers, bytes,
+/// times, durations and customtypes in their JSON forms.
+const ICA_TX_MSGS: &[&str] = &[
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","amount":[{"denom":"utia","amount":"1"}]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","amount":[null]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","amount":[{"denom":"utia","amount":"1"},null]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","amount":[{"denom":"utia","amount":null}]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","amount":[{"denom":"utia","amount":"0x10"},{"denom":"utia","amount":""}]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","fromAddress":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","from_address":"x","toAddress":null,"amount":null}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"a","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","amount":[{"denom":"utia","amount":"1","denom":"u"}]}"#,
+    r#"{"@type":"/cosmos.bank.v1beta1.MsgMultiSend","inputs":[{"address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","coins":[{"denom":"utia","amount":"2"}]}],"outputs":[null,{"address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","coins":[null]}]}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","msgs":[null]}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","msgs":[{"@type":"/cosmos.bank.v1beta1.MsgSend","amount":[null]},null],"x":1}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","msgs":[{"@type":"/cosmos.gov.v1.MsgVoteWeighted","options":[null]}]}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":"1","voter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","option":"VOTE_OPTION_YES","metadata":""}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposalId":1,"proposal_id":2,"voter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","option":1}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":" 7 ","option":"1"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":"null","option":99}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":"1.0","option":"VOTE_OPTION_NO"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":1e3}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":-1}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":"18446744073709551615","option":-1}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","proposal_id":true}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","option":"vote_option_yes"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","option":"VOTE_OPTION_YES"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","voter":5}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVote","metadata":null,"voter":"\ud800é"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVoteWeighted","proposal_id":"1","voter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","options":[{"option":"VOTE_OPTION_YES","weight":"1.0"}]}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVoteWeighted","proposal_id":"1","voter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","options":[null]}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgVoteWeighted","proposal_id":"1","options":[{"option":"VOTE_OPTION_YES","weight":".5"},{"option":2,"weight":null}]}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgSubmitProposal","messages":[null],"initial_deposit":[],"proposer":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","title":"t","summary":"s"}"#,
+    r#"{"@type":"/cosmos.gov.v1.MsgSubmitProposal","messages":[{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","amount":[null]}],"initial_deposit":[null],"proposer":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","expedited":true}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","grantee":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","grant":{"authorization":{"@type":"/cosmos.bank.v1beta1.SendAuthorization","spend_limit":[{"denom":"utia","amount":"5"}],"allow_list":[]},"expiration":"2030-01-01T00:00:00Z"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","grantee":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","grant":{"authorization":{"@type":"/cosmos.authz.v1beta1.GenericAuthorization","msg":"/cosmos.bank.v1beta1.MsgSend"},"expiration":"2030-01-01T1:02:03,123456789123+24:60"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"authorization":{"@type":"/cosmos.bank.v1beta1.SendAuthorization","spend_limit":[null]},"expiration":null}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"authorization":null,"expiration":"0000-12-31T23:59:59Z"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"expiration":"9999-12-31T23:59:59.999999999-00:01"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"expiration":"2024-02-30T00:00:00Z"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"expiration":"2024-02-29T24:00:00Z"}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"expiration":""}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":null}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","grantee":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","grant":{"authorization":{"@type":"/cosmos.staking.v1beta1.StakeAuthorization","max_tokens":null,"allow_list":{"address":["celestiavaloper1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqlskg8z"]},"authorization_type":"AUTHORIZATION_TYPE_DELEGATE"}}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"authorization":{"@type":"/cosmos.staking.v1beta1.StakeAuthorization","denyList":null,"authorizationType":2,"validators":null}}}"#,
+    r#"{"@type":"/cosmos.authz.v1beta1.MsgGrant","grant":{"authorization":{"@type":"/cosmos.staking.v1beta1.StakeAuthorization","validators":{}}}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgCreateValidator","description":{"moniker":"m"},"commission":{"rate":"0.1","max_rate":"0.2","max_change_rate":"0.01"},"min_self_delegation":"1","delegator_address":"","validator_address":"celestiavaloper1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqlskg8z","pubkey":{"@type":"/cosmos.crypto.ed25519.PubKey","key":"MCowBQYDK2VwAyEA3zz5sGc2hwMs/pfv0Wf+5nLQ8D6qh5QT"},"value":{"denom":"utia","amount":"1"}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgCreateValidator","commission":{"rate":null,"maxRate":"1e3","max_change_rate":"-.5"},"min_self_delegation":null,"pubkey":{"@type":"/cosmos.crypto.secp256r1.PubKey","key":1},"value":null}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgCreateValidator","pubkey":{"@type":"/cosmos.crypto.secp256r1.PubKey","key":"AuWl3/9qCMyBEs8lzzzhHnSrNOHO2Ocr5uLqTOnMRZvg"},"commission":{"rate":"1.0000000000000000001"}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgCreateValidator","pubkey":{"@type":"/cosmos.crypto.secp256r1.PubKey","key":null},"min_self_delegation":"0b11"}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgUpdateParams","authority":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","params":{"unbonding_time":"1h30m","max_validators":"100","max_entries":7,"historical_entries":0,"bond_denom":"utia","min_commission_rate":"0.05"}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgUpdateParams","params":{"unbondingTime":"-1.5µs","min_commission_rate":null}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgUpdateParams","params":{"unbonding_time":null}}"#,
+    r#"{"@type":"/cosmos.staking.v1beta1.MsgUpdateParams","params":{"unbonding_time":"9999999999h"}}"#,
+    r#"{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","authority":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","plan":{"name":"v11","time":"0001-01-01T00:00:00Z","height":"100","info":"","upgraded_client_state":null}}"#,
+    r#"{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","plan":{"time":null,"height":"0x10"}}"#,
+    r#"{"@type":"/celestia.blob.v1.MsgPayForBlobs","signer":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","namespaces":["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="],"blob_sizes":[1,"2",null],"share_commitments":["AQ==\n","AQ",null,[1,2,255],""],"share_versions":[0]}"#,
+    r#"{"@type":"/celestia.blob.v1.MsgPayForBlobs","namespaces":["-_8="]}"#,
+    r#"{"@type":"/celestia.blob.v1.MsgPayForBlobs","namespaces":[[256]],"blobSizes":[4294967296]}"#,
+    r#"{"@type":"/celestia.blob.v1.MsgPayForBlobs","namespaces":"AQ==","blob_sizes":null}"#,
+    r#"{"@type":"/hyperlane.warp.v1.MsgRemoteTransfer","sender":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","token_id":"0x726f757465725f61707000000000000000000000000000010000000000000000","destination_domain":1,"recipient":"000000000000000000000000AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","amount":"0x10","custom_hook_id":null,"gas_limit":"1","max_fee":{"denom":"utia","amount":"1"}}"#,
+    r#"{"@type":"/hyperlane.warp.v1.MsgRemoteTransfer","token_id":"0x0x00000000000000000000000000000000000000000000000000000000000000","amount":null,"gasLimit":"","customHookId":"0x00"}"#,
+    r#"{"@type":"/hyperlane.warp.v1.MsgEnrollRemoteRouter","owner":"o","token_id":"0x726f757465725f61707000000000000000000000000000010000000000000000","remote_router":{"receiver_domain":1,"receiver_contract":"not hex","gas":"1"}}"#,
+    r#"{"@type":"/cosmos.vesting.v1beta1.MsgCreatePeriodicVestingAccount","from_address":"celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7","to_address":"celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj","start_time":"-5","vesting_periods":[null,{"length":"10","amount":[null]}]}"#,
+];
 
 /// Seeds of `op`: valid documents of its shape and the depth cases.
 #[must_use]
@@ -196,9 +318,7 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":"1m","retries":2,"next":{"b":1,"a":[1.50,"<x>",{"c":null}],"b":2}}}"#,
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","next":"{\"x\":1}"}}"#,
         ],
-        "json_ica_tx" => &[
-            r#"{"messages":[{"@type":"/cosmos.authz.v1beta1.MsgExec","grantee":"g","msgs":[{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"a","to_address":"b","amount":[{"denom":"utia","amount":"1"}]}]}]}"#,
-        ],
+        "json_ica_tx" | "json_ica_vb" => ICA_TX_DOCS,
         "json_ica_pd" => &[r#"{"type":"TYPE_EXECUTE_TX","data":"AQI=","memo":"m"}"#],
         "json_ica_md" => &[
             r#"{"version":"ics27-1","controller_connection_id":"connection-0","host_connection_id":"connection-1","address":"","encoding":"proto3json","tx_type":"sdk_multi_msg"}"#,
@@ -206,10 +326,21 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         "json_ics20" => &[
             r#"{"denom":"utia","amount":"1","sender":"s","receiver":"r","memo":"{\"forward\":{}}"}"#,
         ],
-        _ => &[r#"{"result":"AQ=="}"#, r#"{"error":"e"}"#],
+        _ => &[
+            r#"{"result":"AQ=="}"#,
+            r#"{"error":"e"}"#,
+            r#"{"result":null}"#,
+            r#"{"result":[1,null]}"#,
+            r#"{"error":null}"#,
+            r#"{"response":null,"result":""}"#,
+            r#"{"result":"AQ==","result":"AQ=="}"#,
+        ],
     };
     let mut out: Vec<Vec<u8>> = base.iter().map(|s| s.as_bytes().to_vec()).collect();
-    if op == "json_ica_tx" {
+    if op == "json_ica_tx" || op == "json_ica_vb" {
+        for m in ICA_TX_MSGS {
+            out.push(format!(r#"{{"messages":[{m}]}}"#).into_bytes());
+        }
         // `MsgExec` nested around the interface registry's limit of 10
         // `Any` levels.
         for k in [1, 9, 10, 11] {
@@ -267,7 +398,73 @@ pub fn mutate(rng: &mut Rng, input: &[u8]) -> Vec<u8> {
     let insert = |s: &mut Vec<u8>, at: usize, b: &[u8]| {
         s.splice(at..at, b.iter().copied());
     };
-    match rng.below(9) {
+    match rng.below(12) {
+        // A whole value replaced (`null` most often: zero elements, nil
+        // pointers), on the parsed tree so the document stays valid.
+        9 | 10 => {
+            if let Ok(v) = gojson::parse_first(&s) {
+                let mut spans = Vec::new();
+                v.all(|x| {
+                    spans.push(x.span.clone());
+                    true
+                });
+                let sp = spans[rng.below(spans.len())].clone();
+                let with: &[u8] = [
+                    &b"null"[..],
+                    b"null",
+                    b"null",
+                    b"[null]",
+                    b"\"\"",
+                    b"0",
+                    b"\"1\"",
+                    b"[]",
+                    b"{}",
+                    b"true",
+                    b"\"0x10\"",
+                    b"1",
+                ][rng.below(12)];
+                s.splice(sp, with.iter().copied());
+            }
+        }
+        // A `snake_case` key in camelCase or the reverse (both are field
+        // names in jsonpb).
+        11 => {
+            let keys: Vec<usize> = (1..s.len())
+                .filter(|&i| s[i - 1] == b'"' && s[i].is_ascii_lowercase())
+                .collect();
+            if !keys.is_empty() {
+                let i = keys[rng.below(keys.len())];
+                let end = s[i..]
+                    .iter()
+                    .position(|&c| c == b'"')
+                    .map_or(s.len(), |e| i + e);
+                let key = &s[i..end];
+                let renamed: Vec<u8> = if key.contains(&b'_') {
+                    let mut out = Vec::new();
+                    let mut up = false;
+                    for &c in key {
+                        if c == b'_' {
+                            up = true;
+                        } else {
+                            out.push(if up { c.to_ascii_uppercase() } else { c });
+                            up = false;
+                        }
+                    }
+                    out
+                } else {
+                    key.iter()
+                        .flat_map(|&c| {
+                            if c.is_ascii_uppercase() {
+                                vec![b'_', c.to_ascii_lowercase()]
+                            } else {
+                                vec![c]
+                            }
+                        })
+                        .collect()
+                };
+                s.splice(i..end, renamed);
+            }
+        }
         // A deep value before an existing one (`[[[...]]],` keeps arrays
         // valid; in objects it is a syntax error, also worth comparing).
         0 => {
