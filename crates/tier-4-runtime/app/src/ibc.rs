@@ -34,6 +34,15 @@ fn is_registered_type(type_url: &str) -> bool {
         .any(|(u, _, _)| *u == type_url)
 }
 
+/// The interface registry the ICA host resolves messages with.
+#[must_use]
+pub fn ica_registry() -> x_icahost::host::Registry {
+    x_icahost::host::Registry {
+        is_registered: is_registered_type,
+        is_msg: is_registered_msg,
+    }
+}
+
 impl Default for IbcRouter {
     fn default() -> Self {
         Self {

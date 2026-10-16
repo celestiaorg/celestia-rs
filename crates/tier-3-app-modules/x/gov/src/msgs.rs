@@ -17,53 +17,57 @@ fn invalid_address(what: &str, e: &sdk::SdkError) -> sdk::SdkError {
     sdkerr::invalid_address(format!("invalid {what} address: {}", e.log))
 }
 
-/// `ProposalMetadata` JSON check: `Ok(Some((title, summary)))` when Go's
-/// `json.Unmarshal` into the struct succeeds.
-fn metadata_title_summary(metadata: &str) -> Option<(String, String)> {
-    let v: serde_json::Value = serde_json::from_str(metadata).ok()?;
-    let mut title = String::new();
-    let mut summary = String::new();
-    match v {
-        serde_json::Value::Null => {}
-        serde_json::Value::Object(map) => {
-            let mut ok = true;
-            for (k, val) in map {
-                let lk = k.to_ascii_lowercase();
-                match lk.as_str() {
-                    "title"
-                    | "summary"
-                    | "details"
-                    | "proposal_forum_url"
-                    | "vote_option_context" => match val {
-                        serde_json::Value::String(s) => {
-                            if lk == "title" {
-                                title = s;
-                            } else if lk == "summary" {
-                                summary = s;
-                            }
-                        }
-                        serde_json::Value::Null => {}
-                        _ => ok = false,
-                    },
-                    "authors" => match val {
-                        serde_json::Value::Array(a) => {
-                            if !a.iter().all(|x| x.is_string() || x.is_null()) {
-                                ok = false;
-                            }
-                        }
-                        serde_json::Value::Null => {}
-                        _ => ok = false,
-                    },
-                    _ => {}
-                }
-            }
-            if !ok {
-                return None;
-            }
-        }
+/// `json.Unmarshal(metadata, &govtypes.ProposalMetadata{})` on the
+/// metadata's bytes: `Some((title, summary))` (Go forms) when it succeeds.
+///
+/// Go validates the whole input first (at most 10 000 nested levels, any
+/// length: `SubmitProposal` parses before the metadata length check), then
+/// decodes the members in order: a key matches a field exactly or by
+/// `EqualFold`, a later key overwrites an earlier one, `null` leaves a
+/// string as it was, and a type error fails the call even when a later key
+/// fixes the field. Unknown keys are skipped whatever they hold.
+#[must_use]
+pub fn metadata_title_summary(metadata: &[u8]) -> Option<(String, String)> {
+    use gojson::Kind;
+    /// `ProposalMetadata`'s JSON names; `authors` is the `[]string`.
+    const FIELDS: [&str; 6] = [
+        "title",
+        "authors",
+        "summary",
+        "details",
+        "proposal_forum_url",
+        "vote_option_context",
+    ];
+    let v = gojson::parse(metadata).ok()?;
+    let members = match &v.kind {
+        Kind::Null => return Some(Default::default()),
+        Kind::Object(m) => m,
         _ => return None,
+    };
+    let (mut title, mut summary, mut ok) = (String::new(), String::new(), true);
+    for (k, val) in members {
+        let Some(f) = FIELDS.iter().position(|f| f == k).or_else(|| {
+            let k = gostr::from_go_bytes(k.as_bytes());
+            FIELDS.iter().position(|f| gostr::equal_fold(&k, f))
+        }) else {
+            continue;
+        };
+        match (FIELDS[f], &val.kind) {
+            (_, Kind::Null) => {}
+            ("authors", Kind::Array(items)) => {
+                ok &= items
+                    .iter()
+                    .all(|x| matches!(x.kind, Kind::String(_) | Kind::Null));
+            }
+            ("title", Kind::String(s)) => title = gostr::from_go_bytes(s.as_bytes()).into_owned(),
+            ("summary", Kind::String(s)) => {
+                summary = gostr::from_go_bytes(s.as_bytes()).into_owned();
+            }
+            (name, Kind::String(_)) if name != "authors" => {}
+            _ => ok = false,
+        }
     }
-    Some((title, summary))
+    ok.then_some((title, summary))
 }
 
 /// `MsgSubmitProposal`.
@@ -85,7 +89,7 @@ pub fn submit_proposal(
         );
     }
     if !msg.metadata.is_empty()
-        && let Some((title, summary)) = metadata_title_summary(&gostr::lossy(&msg.metadata))
+        && let Some((title, summary)) = metadata_title_summary(&gostr::to_go_bytes(&msg.metadata))
     {
         if title != msg.title {
             return Err(errors::invalid_proposal_content().wrap(format!(
@@ -498,4 +502,43 @@ pub fn legacy_deposit(
         },
     )?;
     Ok(v1beta1::MsgDepositResponse {})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::metadata_title_summary as meta;
+
+    /// Outcomes of cosmos-sdk v0.52.12's `json.Unmarshal` into
+    /// `ProposalMetadata` (the v10.4.0 oracle's `json_gov` op).
+    #[test]
+    fn metadata_decoding_is_go_s() {
+        let ts = |t: &str, s: &str| Some((t.to_owned(), s.to_owned()));
+        let deep = |d: usize| format!("{}0{}", "[".repeat(d), "]".repeat(d));
+        for d in [127, 128, 1_000, 9_999] {
+            let m = format!(r#"{{"title":"T","summary":"S","x":{}}}"#, deep(d));
+            assert_eq!(meta(m.as_bytes()), ts("T", "S"), "{d}");
+        }
+        let m = format!(r#"{{"title":"T","summary":"S","x":{}}}"#, deep(10_000));
+        assert_eq!(meta(m.as_bytes()), None);
+        assert_eq!(meta(br#"{"title":1,"title":"T","summary":"S"}"#), None);
+        assert_eq!(
+            meta(br#"{"title":"b","Title":"a","summary":"S"}"#),
+            ts("a", "S")
+        );
+        assert_eq!(
+            meta(br#"{"title":"a","title":null,"summary":"S"}"#),
+            ts("a", "S")
+        );
+        assert_eq!(
+            meta("{\"\u{17f}ummary\":\"S\",\"title\":\"T\"}".as_bytes()),
+            ts("T", "S")
+        );
+        assert_eq!(
+            meta(br#"{"title":"T","summary":"S","x":1e400}"#),
+            ts("T", "S")
+        );
+        assert_eq!(meta(br#"{"title":"T","authors":[1]}"#), None);
+        assert_eq!(meta(b"null"), ts("", ""));
+        assert_eq!(meta(b"[]"), None);
+    }
 }

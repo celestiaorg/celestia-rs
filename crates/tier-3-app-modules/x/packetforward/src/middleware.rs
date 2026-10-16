@@ -95,7 +95,8 @@ fn forward_transfer_packet(
     nonrefundable: bool,
 ) -> Result<()> {
     let memo = match &md.next {
-        Some(v) => memo::marshal_next(v).map_err(sdk::error::sdk::json_marshal)?,
+        Some(Ok(s)) => s.clone(),
+        Some(Err(e)) => return Err(sdk::error::sdk::json_marshal(e.clone())),
         None => String::new(),
     };
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -393,17 +394,10 @@ fn retry_timeout(
         ..ForwardMetadata::default()
     };
     if !data.memo.is_empty() {
-        let v = memo::parse(&data.memo)
-            .map_err(|e| plain(format!("error unmarshaling memo json: {e}")))?;
-        // `JSONObject.UnmarshalJSON("null")` leaves an empty primitive.
-        md.next = Some(if v.kind == memo::Kind::Null {
-            memo::Val {
-                kind: memo::Kind::Str(String::new()),
-                raw: "\"\"".into(),
-            }
-        } else {
-            v
-        });
+        md.next = Some(
+            memo::unmarshal_next(&data.memo)
+                .map_err(|e| plain(format!("error unmarshaling memo json: {e}")))?,
+        );
     }
     let amount = parse_amount(&data.amount).ok_or_else(|| {
         plain(format!(

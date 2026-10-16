@@ -4,6 +4,7 @@ members = [
     "crates/tier-0-primitives/crypto",
     "crates/tier-0-primitives/encoding",
     "crates/tier-0-primitives/gostr",
+    "crates/tier-0-primitives/gojson",
     "crates/tier-0-primitives/prost-gostr",
     "crates/tier-0-primitives/hash",
     "crates/tier-0-primitives/math",

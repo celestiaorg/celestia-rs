@@ -100,7 +100,7 @@ const METADATA_FIELDS: [(&str, &str); 6] = [
 /// `MetadataFromVersion` (`ModuleCdc.UnmarshalJSON`, jsonpb).
 pub fn metadata_from_version(version: &str) -> Result<Metadata> {
     let bad = || errors::unknown_data_type("cannot unmarshal ICS-27 interchain accounts metadata");
-    let v = x_ibc::gojson::first_value(version.as_bytes()).map_err(|_| bad())?;
+    let v = x_ibc::gojson::first_value(&gostr::to_go_bytes(version)).map_err(|_| bad())?;
     let mut f: [String; 6] = Default::default();
     match v {
         serde_json::Value::Null => {}
@@ -465,7 +465,7 @@ fn keeper_on_recv_packet(
 }
 
 /// `DeserializeCosmosTx`.
-fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<Vec<Any>> {
+pub fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<Vec<Any>> {
     let is_msg = reg.is_msg;
     let tx = match encoding {
         ENCODING_PROTOBUF => {
@@ -492,12 +492,17 @@ fn deserialize_cosmos_tx(data: &[u8], encoding: &str, reg: Registry) -> Result<V
                 let name = m.type_url.rsplit('/').next().unwrap_or_default();
                 txdecode::gogo_unmarshal(name, &m.value).map_err(wrap)?;
             }
+            // `CosmosTx.UnpackInterfaces`: 10 nested `Any` levels, 100 calls.
+            txdecode::unpack_cosmos_tx_msgs(&tx.messages).map_err(wrap)?;
             tx
         }
         ENCODING_PROTO3_JSON => {
-            unmarshal_cosmos_tx_json(data, reg.is_registered).ok_or_else(|| {
-                errors::unknown_data_type("cannot unmarshal CosmosTx with proto3 json")
-            })?
+            // `UnmarshalJSON` ends with `UnpackInterfaces` too.
+            unmarshal_cosmos_tx_json(data, reg.is_registered)
+                .filter(|tx| txdecode::unpack_cosmos_tx_msgs(&tx.messages).is_ok())
+                .ok_or_else(|| {
+                    errors::unknown_data_type("cannot unmarshal CosmosTx with proto3 json")
+                })?
         }
         other => {
             return Err(errors::invalid_codec(&format!(

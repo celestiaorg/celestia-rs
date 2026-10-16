@@ -90,20 +90,58 @@ pub fn go_json_input(bz: &[u8]) -> String {
 
 /// `sdk.MustSortJSON`: re-marshals JSON with sorted keys.
 pub fn sort_json(bz: &[u8]) -> Result<String, String> {
-    let v: Value = serde_json::from_str(&go_json_input(bz)).map_err(|e| e.to_string())?;
+    let v = to_serde(&gojson::parse(bz)?)?;
     Ok(marshal_sorted(&v))
 }
 
-/// Decodes the first JSON value of `bz` (a `json.Decoder` reads one value
-/// and ignores whatever follows).
-pub fn first_value(bz: &[u8]) -> Result<Value, String> {
-    let text = go_json_input(bz);
-    let mut it = serde_json::Deserializer::from_str(&text).into_iter::<Value>();
-    match it.next() {
-        Some(Ok(v)) => Ok(v),
-        Some(Err(e)) => Err(e.to_string()),
-        None => Err("EOF".into()),
+/// Values nested deeper than this are not converted to `serde_json`
+/// (whose recursive code they would strain): no message the `jsonpb`
+/// decoders of this crate's callers read nests that deep (Go fails such
+/// an input on an unknown field or a type mismatch, or at the interface
+/// registry's 10 nested `Any`s), so the call fails either way.
+pub const MAX_SERDE_DEPTH: usize = 128;
+
+/// A `gojson` tree as a `serde_json` value (Go's unquoted strings; a
+/// number out of `float64` range is an error, as for every `jsonpb`
+/// numeric field).
+fn to_serde(v: &gojson::Value) -> Result<Value, String> {
+    fn conv(v: &gojson::Value, depth: usize) -> Result<Value, String> {
+        use gojson::Kind;
+        if depth > MAX_SERDE_DEPTH {
+            return Err("exceeded max depth".into());
+        }
+        Ok(match &v.kind {
+            Kind::Null => Value::Null,
+            Kind::Bool(b) => Value::Bool(*b),
+            Kind::Number(n) => serde_json::from_str::<serde_json::Number>(n)
+                .map(Value::Number)
+                .map_err(|e| e.to_string())?,
+            Kind::String(s) => Value::String(s.clone()),
+            Kind::Array(items) => Value::Array(
+                items
+                    .iter()
+                    .map(|x| conv(x, depth + 1))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Kind::Object(members) => {
+                let mut m = serde_json::Map::new();
+                for (k, x) in members {
+                    m.insert(k.clone(), conv(x, depth + 1)?);
+                }
+                Value::Object(m)
+            }
+        })
     }
+    conv(v, 0)
+}
+
+/// Decodes the first JSON value of `bz` as `json.Decoder` does (`jsonpb`
+/// reads one value and ignores whatever follows): Go's scanner (10 000
+/// nested levels) and string unquoting (a lone surrogate escape or invalid
+/// UTF-8 inside a string is U+FFFD); values deeper than
+/// [`MAX_SERDE_DEPTH`] are an error.
+pub fn first_value(bz: &[u8]) -> Result<Value, String> {
+    to_serde(&gojson::parse_first(bz)?)
 }
 
 /// `base64.StdEncoding.DecodeString` as `encoding/json` uses it for `[]byte`
@@ -193,6 +231,15 @@ mod tests {
             vec!["x".to_owned(), String::new()]
         );
         assert!(decode_string_fields(br#"{"zz":"x"}"#, &["denom"]).is_err());
+        // Go's unquoting (v10.4.0 oracle, `json_ics20`): a lone surrogate
+        // escape is U+FFFD; serde_json rejected it.
+        assert_eq!(
+            decode_string_fields(br#"{"denom":"a\ud800b"}"#, &["denom"]).unwrap(),
+            vec!["a\u{fffd}b".to_owned()]
+        );
+        let deep = format!("{}1{}", "[".repeat(129), "]".repeat(129));
+        assert!(first_value(deep.as_bytes()).is_err());
+        assert!(first_value(b"1e400").is_err());
         assert!(decode_string_fields(br#"{"denom":1}"#, &["denom"]).is_err());
     }
 }

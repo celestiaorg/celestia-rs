@@ -19,6 +19,7 @@
 //	eds       da.ConstructEDS(txs, appVersion, max) + NewDataAvailabilityHeader;
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
 //	          (0: SquareSizeUpperBound); out: "<square width> <data root hex>"
+//	json_*    the JSON decodes of consensus execution (jsondecode.go)
 //
 // The v9 oracle (`../v9`) is the same program built against celestia-app
 // v9.0.8 and go-square v4.0.0-rc4; keep the two files identical except for
@@ -365,6 +366,8 @@ func main() {
 			o = tryParseFibreTx(input)
 		case op == "eds":
 			o = constructEDS(input)
+		case strings.HasPrefix(op, "json_"):
+			o = jsonOp(enc.Codec, op, input)
 		case op == "amino_dec" || op == "amino_enc":
 			func() {
 				defer func() {

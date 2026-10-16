@@ -1,0 +1,13 @@
+[package]
+name = "gojson"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Go encoding/json decoding (the scanner and its 10 000-level nesting limit, unquoting, json.Decoder's first value) without recursion."
+publish = false
+
+[lints]
+workspace = true

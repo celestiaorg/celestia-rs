@@ -21,6 +21,7 @@ celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 devnet-conformance = { path = "../devnet-conformance" }
 encoding = { path = "../tier-0-primitives/encoding" }
 gostr = { path = "../tier-0-primitives/gostr" }
+gojson = { path = "../tier-0-primitives/gojson" }
 hex = "0.4"
 http = "1"
 keyring = { path = "../tier-5-node/keyring" }
@@ -34,3 +35,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
 txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-ante = { path = "../tier-3-app-modules/x/ante" }
+x-gov = { path = "../tier-3-app-modules/x/gov" }
+x-ibc = { path = "../tier-3-app-modules/x/ibc" }
+x-icahost = { path = "../tier-3-app-modules/x/icahost" }
+x-packetforward = { path = "../tier-3-app-modules/x/packetforward" }
+x-transfer = { path = "../tier-3-app-modules/x/transfer" }

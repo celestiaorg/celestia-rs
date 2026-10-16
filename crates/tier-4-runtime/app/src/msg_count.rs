@@ -170,178 +170,40 @@ fn count_proto_msgs(mut bz: &[u8]) -> Option<usize> {
 }
 
 /// `countJSONMsgs`: `encoding/json` `Unmarshal` into
-/// `struct{ Messages []struct{} }`. Go reads invalid UTF-8 inside a string
-/// as U+FFFD, matches each object key to the field exactly or by
-/// `EqualFold` (`foldName`), lets the last matching key win, and fails the
+/// `struct{ Messages []struct{} }`. Go validates the whole input first
+/// (`checkValid`: at most 10 000 nested levels, also inside values the
+/// decoder skips), reads invalid UTF-8 inside a string as U+FFFD, matches
+/// each object key to the field exactly or by `EqualFold` (`foldName`), lets
+/// the last matching key win (`null` empties the slice), and fails the
 /// whole call on any type mismatch even when a later key overwrites it.
-fn count_json_msgs(bz: &[u8]) -> Option<usize> {
-    let text = x_ibc::gojson::go_json_input(bz);
-    serde_json::from_str::<json_count::Tx>(&text).ok()?.0
-}
-
-/// The `encoding/json` decoding of `count_json_msgs`.
-mod json_count {
-    use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
-
-    /// The `Messages` field: `Ok(len)` or a saved type error.
-    struct Field(Result<usize, ()>);
-    impl<'de> serde::Deserialize<'de> for Field {
-        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            struct V;
-            impl<'de> Visitor<'de> for V {
-                type Value = Field;
-                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                    f.write_str("any JSON value")
-                }
-                fn visit_unit<E>(self) -> Result<Field, E> {
-                    Ok(Field(Ok(0)))
-                }
-                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Field, A::Error> {
-                    let (mut n, mut ok) = (0usize, true);
-                    while let Some(e) = a.next_element::<Elem>()? {
-                        ok &= e.0;
-                        n += 1;
-                    }
-                    Ok(Field(if ok { Ok(n) } else { Err(()) }))
-                }
-                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Field, A::Error> {
-                    while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
-                    Ok(Field(Err(())))
-                }
-                fn visit_bool<E>(self, _: bool) -> Result<Field, E> {
-                    Ok(Field(Err(())))
-                }
-                fn visit_i64<E>(self, _: i64) -> Result<Field, E> {
-                    Ok(Field(Err(())))
-                }
-                fn visit_u64<E>(self, _: u64) -> Result<Field, E> {
-                    Ok(Field(Err(())))
-                }
-                fn visit_f64<E>(self, _: f64) -> Result<Field, E> {
-                    Ok(Field(Err(())))
-                }
-                fn visit_str<E>(self, _: &str) -> Result<Field, E> {
-                    Ok(Field(Err(())))
-                }
+#[must_use]
+pub fn count_json_msgs(bz: &[u8]) -> Option<usize> {
+    use gojson::Kind;
+    let v = gojson::parse(bz).ok()?;
+    let members = match &v.kind {
+        Kind::Null => return Some(0),
+        Kind::Object(m) => m,
+        _ => return None,
+    };
+    let (mut count, mut ok) = (0, true);
+    for (k, val) in members {
+        if k != "messages" && !gostr::equal_fold(&gostr::from_go_bytes(k.as_bytes()), "messages") {
+            continue;
+        }
+        match &val.kind {
+            Kind::Null => count = 0,
+            // Each element is a `struct{}`: an object (members skipped) or
+            // `null`; anything else is a type error.
+            Kind::Array(items) => {
+                ok &= items
+                    .iter()
+                    .all(|e| matches!(e.kind, Kind::Object(_) | Kind::Null));
+                count = items.len();
             }
-            d.deserialize_any(V)
+            _ => ok = false,
         }
     }
-
-    /// One `struct{}` element: an object or `null` decodes, anything else
-    /// is a type error.
-    struct Elem(bool);
-    impl<'de> serde::Deserialize<'de> for Elem {
-        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            struct V;
-            impl<'de> Visitor<'de> for V {
-                type Value = Elem;
-                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                    f.write_str("any JSON value")
-                }
-                fn visit_unit<E>(self) -> Result<Elem, E> {
-                    Ok(Elem(true))
-                }
-                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Elem, A::Error> {
-                    while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
-                    Ok(Elem(true))
-                }
-                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Elem, A::Error> {
-                    while a.next_element::<IgnoredAny>()?.is_some() {}
-                    Ok(Elem(false))
-                }
-                fn visit_bool<E>(self, _: bool) -> Result<Elem, E> {
-                    Ok(Elem(false))
-                }
-                fn visit_i64<E>(self, _: i64) -> Result<Elem, E> {
-                    Ok(Elem(false))
-                }
-                fn visit_u64<E>(self, _: u64) -> Result<Elem, E> {
-                    Ok(Elem(false))
-                }
-                fn visit_f64<E>(self, _: f64) -> Result<Elem, E> {
-                    Ok(Elem(false))
-                }
-                fn visit_str<E>(self, _: &str) -> Result<Elem, E> {
-                    Ok(Elem(false))
-                }
-            }
-            d.deserialize_any(V)
-        }
-    }
-
-    /// An object key's bytes (`\u` escapes of lone surrogates kept as
-    /// WTF-8, which Go reads as invalid UTF-8; no key folds to `messages`).
-    struct Key(Vec<u8>);
-    impl<'de> serde::Deserialize<'de> for Key {
-        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            struct V;
-            impl Visitor<'_> for V {
-                type Value = Key;
-                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                    f.write_str("a JSON object key")
-                }
-                fn visit_bytes<E>(self, b: &[u8]) -> Result<Key, E> {
-                    Ok(Key(b.to_vec()))
-                }
-                fn visit_str<E>(self, s: &str) -> Result<Key, E> {
-                    Ok(Key(s.as_bytes().to_vec()))
-                }
-            }
-            d.deserialize_bytes(V)
-        }
-    }
-
-    /// The whole value: `Some(count)`, or `None` on a type error.
-    pub(super) struct Tx(pub(super) Option<usize>);
-    impl<'de> serde::Deserialize<'de> for Tx {
-        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-            struct V;
-            impl<'de> Visitor<'de> for V {
-                type Value = Tx;
-                fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                    f.write_str("any JSON value")
-                }
-                fn visit_unit<E>(self) -> Result<Tx, E> {
-                    Ok(Tx(Some(0)))
-                }
-                fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Tx, A::Error> {
-                    let (mut count, mut ok) = (0, true);
-                    while let Some(Key(k)) = a.next_key::<Key>()? {
-                        if gostr::equal_fold(&gostr::from_go_bytes(&k), "messages") {
-                            match a.next_value::<Field>()?.0 {
-                                Ok(n) => count = n,
-                                Err(()) => ok = false,
-                            }
-                        } else {
-                            a.next_value::<IgnoredAny>()?;
-                        }
-                    }
-                    Ok(Tx(ok.then_some(count)))
-                }
-                fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Tx, A::Error> {
-                    while a.next_element::<IgnoredAny>()?.is_some() {}
-                    Ok(Tx(None))
-                }
-                fn visit_bool<E>(self, _: bool) -> Result<Tx, E> {
-                    Ok(Tx(None))
-                }
-                fn visit_i64<E>(self, _: i64) -> Result<Tx, E> {
-                    Ok(Tx(None))
-                }
-                fn visit_u64<E>(self, _: u64) -> Result<Tx, E> {
-                    Ok(Tx(None))
-                }
-                fn visit_f64<E>(self, _: f64) -> Result<Tx, E> {
-                    Ok(Tx(None))
-                }
-                fn visit_str<E>(self, _: &str) -> Result<Tx, E> {
-                    Ok(Tx(None))
-                }
-            }
-            d.deserialize_any(V)
-        }
-    }
+    ok.then_some(count)
 }
 
 #[cfg(test)]
@@ -387,6 +249,15 @@ mod tests {
             Some(1)
         );
         assert_eq!(count_json_msgs(br#"{"messages":[{"a":1e400}]}"#), Some(1));
+        // `checkValid`'s 10 000-level limit, also inside skipped values
+        // (Go v10.4.0 oracle, `json_count`).
+        let deep = |d: usize| format!("{}0{}", "[".repeat(d), "]".repeat(d));
+        let at = |d: usize| format!(r#"{{"messages":[{{}}],"x":{}}}"#, deep(d - 1));
+        assert_eq!(count_json_msgs(at(129).as_bytes()), Some(1));
+        assert_eq!(count_json_msgs(at(10_000).as_bytes()), Some(1));
+        assert_eq!(count_json_msgs(at(10_001).as_bytes()), None);
+        let inner = format!(r#"{{"messages":[{{"a":{}}}]}}"#, deep(9_998));
+        assert_eq!(count_json_msgs(inner.as_bytes()), None);
         assert_eq!(
             ica_packet_data(b"{\"type\":\"TYPE_EXECUTE_TX\",\"data\":\"AQI=\",\"memo\":\"\xff\"}"),
             Some(vec![1, 2])

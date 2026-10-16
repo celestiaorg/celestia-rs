@@ -170,6 +170,23 @@ pub fn has_duplicate_tx_raw_field(mut tx: &[u8]) -> bool {
     false
 }
 
+/// ibc-go `CosmosTx.UnpackInterfaces` with the interface registry as the
+/// unpacker (what `ProtoCodec.Unmarshal` and `UnmarshalJSON` run after
+/// decoding a `CosmosTx`): each message is resolved as an `sdk.Msg` by a
+/// fresh `statefulUnpacker`, so nested `Any`s (`MsgExec` in `MsgExec` ...)
+/// fail past 10 levels or 100 unpack calls. `Err` is Go's error text.
+pub fn unpack_cosmos_tx_msgs(msgs: &[celestia_proto::Any]) -> Result<(), String> {
+    for m in msgs {
+        let bz = prost::Message::encode_to_vec(m);
+        let mut any = gogo::unmarshal("google.protobuf.Any", &bz).map_err(|e| e.0)?;
+        unpack::registry_unpack_any(Some(&mut any), registry::iface::MSG).map_err(|e| match e {
+            UnpackError::Err(e) => e.0,
+            UnpackError::Panic(p) => format!("panic: {p}"),
+        })?;
+    }
+    Ok(())
+}
+
 /// gogoproto `Unmarshal` of `data` into the registered message `name` (full
 /// proto name, e.g. `cosmos.tx.v1beta1.TxRaw`) with Go's semantics (no UTF-8
 /// checks, customtype and stdtime validation, last-wins scalars), re-encoded

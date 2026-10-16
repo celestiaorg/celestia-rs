@@ -517,6 +517,34 @@ enum Mode {
     /// Messages with math customtypes built from scratch, signed by the
     /// scenario tx's signer (`EXEC_MODE=synth`).
     Synth,
+    /// The messages in a gov proposal whose metadata is JSON aimed at the
+    /// decoder (nesting around 128 / 10 000 levels, numbers out of
+    /// `float64` range, folded and duplicate keys; `EXEC_MODE=json`).
+    Json,
+}
+
+/// A proposal metadata for [`Mode::Json`] (with the title it carries).
+fn json_metadata(m: &mut Mutator) -> Vec<u8> {
+    let title = if m.rng.one_in(2) { "title" } else { "other" };
+    let deep = |m: &mut Mutator| {
+        let d = crate::jsonops::DEPTHS[m.rng.below(crate::jsonops::DEPTHS.len())] - 1;
+        if m.rng.one_in(2) {
+            format!("{}0{}", "[".repeat(d), "]".repeat(d))
+        } else {
+            format!("{}0{}", "{\"a\":".repeat(d), "}".repeat(d))
+        }
+    };
+    let s = match m.rng.below(6) {
+        0 | 1 => format!(
+            r#"{{"title":"{title}","summary":"summary","x":{}}}"#,
+            deep(m)
+        ),
+        2 => format!(r#"{{"title":"{title}","summary":"summary","details":"d","x":1e400}}"#),
+        3 => format!(r#"{{"title":"{title}","\u017fummary":"other"}}"#),
+        4 => format!(r#"{{"title":1,"title":"{title}","summary":"summary"}}"#),
+        _ => format!(r#"{{"title":"{title}","Title":"other","summary":"summary","title":null}}"#),
+    };
+    s.into_bytes()
 }
 
 /// A Go-form string of the bytes `b`.
@@ -563,6 +591,27 @@ fn variant(
             value: synth(m, md, &who, 0),
         }];
         *hit = true;
+    } else if mode == Mode::Json {
+        let p = celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+            messages: std::mem::take(&mut body.messages),
+            initial_deposit: Vec::new(),
+            proposer: first_signer,
+            metadata: gs(&json_metadata(m)),
+            title: "title".into(),
+            summary: "summary".into(),
+            expedited: false,
+        };
+        body.messages = vec![Any::pack(&p)];
+        *hit = true;
+        let body_bytes = body.encode_to_vec();
+        return Some(
+            TxRaw {
+                body_bytes,
+                auth_info_bytes: auth.encode_to_vec(),
+                signatures: tx.signatures.clone(),
+            }
+            .encode_to_vec(),
+        );
     } else if mode == Mode::Nil {
         let mut nil = false;
         for any in &mut body.messages {
@@ -792,6 +841,7 @@ pub fn run(
     let mode = match std::env::var("EXEC_MODE").as_deref() {
         Ok("nil") => Mode::Nil,
         Ok("synth") => Mode::Synth,
+        Ok("json") => Mode::Json,
         _ => Mode::Strings,
     };
     let mut stats = Stats::default();

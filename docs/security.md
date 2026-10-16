@@ -236,6 +236,7 @@ and compares:
 | `fibre` | `x/fibre/types.TryParseFibreTx` (v9: rc4 `tx.TryParseFibreTx`) | `app::fibre_tx::try_parse(_v9)` | is-fibre, error, system blob |
 | `eds` | `da.ConstructEDS` + `NewDataAvailabilityHeader` | `app::proposal::block_data_root_with_max` | square width + data root, or error |
 | `amino_dec` / `amino_enc` | authtx `TxDecodeAmino` / `TxEncodeAmino` | `legacy_amino` | output, error and panic text |
+| `json_*` | every JSON decode reachable from consensus execution, called as the state machine calls it (`jsondecode.go`; inventory below) | the Rust ports (`fuzz-diff/src/jsonops.rs`) | accept / reject and the decoded values |
 
 Inputs: every tx of every devnet fixture (`CheckTx`, proposals, blocks),
 the txdecode and amino vectors, and any extra corpus directory
@@ -281,12 +282,56 @@ GO_APPD=$DEVNET_BIN/v9/celestia-appd crates/fuzz-diff/exec-diff.sh v9-gov 10
 # nil math customtypes / messages built from scratch instead of invalid UTF-8
 EXEC_MODE=nil GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh hyperlane 10
 EXEC_MODE=synth EXEC_SYNTH=warp GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh hyperlane 10
+# JSON decodes (depth, numbers, key folding) and gov metadata in execution
+target/release/fuzz-diff --app-version 10 --ops json_count,json_gov,json_pfm,json_pfm_next,json_ica_tx,json_ica_pd,json_ica_md,json_ics20,json_ack --iters 40000
+EXEC_MODE=json GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh gov 10
 # pin a finding: record Go's outcome into the regression file
 echo "tx <hex>" | target/release/fuzz-diff record 10 "what it shows" >> crates/fuzz-diff/tests/regressions.jsonl
 ```
 
 `crates/fuzz-diff/tests/regressions.jsonl` holds every finding with Go's
 recorded outcome; `cargo test -p fuzz-diff` replays them without Go.
+
+### JSON decoding in consensus (2026-10-16)
+
+Go's `encoding/json` (Go 1.26, v1) fails the 10 001st nested array or
+object (`maxNestingDepth`, arrays and objects counted together) and
+`json.Unmarshal` checks the whole input before decoding (`checkValid`), so
+the limit applies inside values the decoder skips too. gogoproto `jsonpb`
+reads its input with `json.Decoder` (same scanner and limit, first value
+only) and re-decodes fields with `json.Unmarshal`. protojson (its own
+10 000-level `RecursionLimit`) is not reached from txs (cosmos-sdk uses it
+only in `codec/collections.go`, for genesis), nor is any other JSON parser.
+serde_json stops at 128 levels and its `IgnoredAny` never stops. Every
+JSON decode reachable from DeliverTx, CheckTx, PrepareProposal and
+ProcessProposal, at both app versions:
+
+| Path (reached from) | Go decoder | Rust before | Divergence |
+|---|---|---|---|
+| `countJSONMsgs` (`MsgRecvPacket` to a proto3json ICA channel; CheckTx, PrepareProposal, ProcessProposal; v10) | `json.Unmarshal` into `struct{ Messages []struct{} }` | serde with `IgnoredAny` (no limit) | **yes** (finding 28) |
+| gov `SubmitProposal` metadata (`MsgSubmitProposal`, also in `MsgExec`; both versions) | `json.Unmarshal` into `ProposalMetadata`, before the 255-byte length check | `serde_json::Value` (128), ASCII-only key folding, keys sorted and deduplicated | **yes** (finding 29) |
+| PFM `OnRecvPacket` memo (ICS-20 packet to the transfer port; both) | `json.Unmarshal` into `map[string]interface{}`, then `PacketMetadata`; `JSONObject` (`orderedmap`) for `next`; retry path `json.Unmarshal(memo, Next)` | recursive parser, no limit | **yes** (finding 30) |
+| ICS-20 `FungibleTokenPacketData` (transfer / PFM recv, ack, timeout), `channeltypes.Acknowledgement` (core `AcknowledgePacket`, transfer / PFM acks), ICA `InterchainAccountPacketData` (host recv, message count), ICA `Metadata` (channel handshakes and upgrades) | `jsonpb` (`json.Decoder`, then `json.Unmarshal` per field; unknown fields rejected) | serde_json `Value` (128) | depth: no (every field is a scalar, so Go fails any nested value too); lone `\ud800` escapes and invalid UTF-8: **yes** (finding 31) |
+| ICA host `DeserializeCosmosTx` proto3json (host recv) | `ProtoCodec.UnmarshalJSON` (`jsonpb` with the registry as `Any` resolver) then `UnpackInterfaces` | serde_json `Value` (128), registry JSON | depth: no (`UnpackInterfaces` stops at 10 nested `Any`s, about 30 levels; no registered message nests deeper without an `Any`); the `Any` limit itself: **yes** (finding 32); `null` elements: open |
+| typed events (`TypedEventToEvent`) | `json.Unmarshal` of the module's own `jsonpb` output | serde of flat event types | no (no event nests user data) |
+| x/blob legacy params, InitChain genesis | params-subspace JSON written by the chain, genesis | serde_json | not reachable from txs |
+
+Fix: `crates/tier-0-primitives/gojson`, a port of the scanner (Go's error
+texts), `checkValid`, `json.Decoder`'s first value, `unquote` and a value
+tree, all without recursion (tree drop included); recursive consumers (PFM
+re-encoding) run on a 256 MiB-stack thread for inputs over 1 KiB.
+
+Evidence: `fuzz-diff --ops json_*` against both oracles (seeds with total
+depths 127, 128, 129, 1 000, 9 999, 10 000, 10 001 in each JSON-carrying
+field, then JSON-text mutations: deep values, `1e400`, folded keys `ſ` /
+`K`, duplicate keys, `null`s, invalid UTF-8 and escapes). Before the fix
+the seed round alone gave findings 28-30 and the Rust process died of a
+stack overflow on a 10 000-level PFM `next` (the recursive parser); the
+mutation rounds added 31-32. `EXEC_MODE=json fuzz-diff exec` (gov
+proposals whose metadata nests deeply, holds `1e400`, folded or duplicate
+keys): with the old gov code 161 of 940 simulated txs differed from Go
+v10.4.0 in code or gas (Go fails at the metadata title check, Rust went on
+to the signer check); after the fix none of 940.
 
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
@@ -333,6 +378,8 @@ hand-written network messages.
 | `fuzz-diff exec` (Simulate), v10: `utf8`, `gov`, `authz-feegrant`, `staking`, `staking-lifecycle`, `vesting`, `hyperlane`; v9: `v9-utf8`, `v9-gov`, `v9-staking`, `v9-authz-feegrant`, `v9-vesting` | 7 990 simulated txs (10 per height), 5 673 with invalid UTF-8 (310 of those executed by Go) | findings 12–16 fixed; then no code / gas / result mismatch. Error-text-only differences remain (open items) |
 | `fuzz-diff exec` nil customtypes (`EXEC_MODE=nil`: every `math.Int` / `LegacyDec` field of the scenario's messages, nested ones too, dropped or sent empty), v10: `staking`, `staking-lifecycle`, `gov`, `authz-feegrant`, `vesting`, `hyperlane`, `fibre`; v9: `v9-staking`, `v9-gov`, `v9-authz-feegrant`, `v9-vesting`, `v9-hyperlane` | ~9 500 simulated txs (2026-10-16) | findings 17–20 fixed; then no code / gas / result mismatch |
 | `fuzz-diff exec` synthesized messages (`EXEC_MODE=synth`: every `sdk.Msg` reaching a math customtype, built from scratch with absent / empty / small numbers, signed by a scenario account; `EXEC_SYNTH=<name>` narrows it) | v10: `hyperlane`, `gov`, `staking-lifecycle`, `fibre`, `authz-feegrant`; v9: `v9-hyperlane`, `v9-gov`, `v9-staking`, `v9-authz-feegrant` (~8 000 txs) | findings 21–22 fixed; then no code / gas / result mismatch |
+| `fuzz-diff` `json_*` (2026-10-16) | v10: 4 × 40 000, v9: 2 × 40 000 | findings 28-32 fixed; then only the open proto3json `null` cases |
+| `fuzz-diff exec` `EXEC_MODE=json` | `gov` 940 simulated txs (v10) | finding 29: 161 code / gas mismatches before, none after |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 
 ### Findings (2026-10-15)
@@ -369,8 +416,19 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 25 | `crypto::secp256k1::verify` (CometBFT keys: votes / commits in `ctypes` and `tendermint-types`, ibc-go 07-tendermint headers in `x-ibc` `light.rs`) | k256 rejected `r` / `s` at or above `n`, where celestia-core v0.42.3's `PubKey.VerifySignature` (decred secp256k1 v4.4.0, the version celestia-app v10.4.0 / v9.0.8 build) reduces them modulo `n` (`ModNScalar.SetByteSlice`): `r + n` (when it fits in 32 bytes) verified in Go, `s + n` too for small `s`. Its other rules (low-S through a DER round trip, zero `r` / `s`, `02` / `03` keys with `x < p` on the curve) are cosmos-sdk's. ibc-go v8.7.2 runs this code: celestia-app's `replace` points cometbft at celestia-core (v0.42.3 for v10, v0.40.9 for v9; identical `crypto/secp256k1`), and ibc-go's own `replace` lines do not apply to a dependency. Batch commit verification is only used when every key is ed25519 (`AllKeysHaveSameType`), so secp256k1 commits are always single-verified | light-client header / commit and vote acceptance divergence on a crafted signature | `verify` is `verify_go` (libsecp256k1), k256 left the `crypto` crate; `conformance/fixtures/secp256k1/verify_cometbft.json` (563 vectors from celestia-core's own function, results identical to cosmos-sdk's), `crypto` test `cometbft_vectors` |
 | 27 | `countExecutableMsgs` (CheckTx, PrepareProposal, ProcessProposal) | the ICS-27 packet's message count parsed the payload with serde: invalid UTF-8 in a string of a proto3json `CosmosTx` (or of the packet JSON) failed to parse, so the packet counted as `MaxSDKMessages`, where Go's `encoding/json` reads it as U+FFFD; also `foldName` key matching (`meſſages`), last-key-wins and the sticky type error of `json.Unmarshal`, and the packet / metadata JSON read through the ICA host's jsonpb ports | a `MsgRecvPacket` Go counts as 1 + n: Rust's ProcessProposal rejects the block (consensus split), CheckTx rejects the tx | `msg_count::count_json_msgs` (Go `encoding/json` semantics, cases checked against Go 1.26.6), `x_icahost::host::decode_packet_data`; `ibc-upgrades` fixture (found by its ICA invalid-UTF-8 txs) |
 | 26 | v9 bank blocked addresses, `ModuleAccounts` | celestia-app v9.0.8's `maccPerms` has no `fibre` account: its address is not blocked (a `MsgSend` to it succeeds) and no module account is listed or created for it; Rust used v10's list at app version 9 | v9 consensus divergence (exotic: a send to the fibre module address) | `x_auth::module_account_perms` (found by the v9 query corpus) |
+| 28 | `countExecutableMsgs` (CheckTx, PrepareProposal, ProcessProposal; v10) | `json.Unmarshal`'s `checkValid` fails a proto3json `CosmosTx` nested deeper than 10 000 levels anywhere (Go counts the packet as `MaxSDKMessages`); serde's `IgnoredAny` skipped any depth, so Rust counted 1 + n. Also a lone `\ud800` escape in a nested key failed serde | a `MsgRecvPacket` Rust counts low and Go at the limit: Rust's ProcessProposal accepts a block Go rejects | `msg_count::count_json_msgs` on `gojson` (whole-input check, `EqualFold`, last key wins, sticky type errors); unit test, regressions |
+| 29 | gov `MsgSubmitProposal` metadata (both versions) | Go decodes any metadata (the length check comes later) up to 10 000 levels; serde failed at 128 levels and on `1e400`, matched keys by ASCII case only (`ſummary` is `summary` in Go), sorted and deduplicated keys (`{"title":"b","Title":"a"}` is `a` in Go) and let a later key clear a type error or `null` overwrite a title | Go fails with `invalid proposal content` where Rust went on (different gas or code): consensus split from one tx | `x_gov::msgs::metadata_title_summary` on `gojson`; unit test, regressions, `EXEC_MODE=json` exec run |
+| 30 | PFM memo (`OnRecvPacket`, retry on timeout; both) | the recursive memo parser had no depth limit: a memo nested more than 10 000 levels (Go: not a forward) was forwarded, and a deep one overflowed the stack (node abort); a number outside `float64` range anywhere fails Go's map decode (not a forward); field names matched by ASCII case only (`retrieſ` is `retries` in Go); `raw` copies were quadratic in the depth | consensus split or remote crash from one relayed packet | `memo.rs` on `gojson` (spans instead of copies, `next` marshaled at decode, large stack for long memos); unit tests, regressions |
+| 31 | `jsonpb` decodes (ICS-20 packet data, acks, ICA packet data and metadata; both) | serde_json rejected a lone surrogate escape (`\ud800`) that Go reads as U+FFFD; `MetadataFromVersion` parsed the UTF-8 of the version's Go form instead of its bytes (invalid UTF-8 in a channel version) | an ICS-20 packet with such a denom: Go receives, Rust acknowledged an error | `x_ibc::gojson::first_value` on `gojson`; `metadata_from_version` on the Go bytes; unit test, regressions |
+| 32 | ICA host `DeserializeCosmosTx` (both encodings) | `UnpackInterfaces` after the decode fails past 10 nested `Any`s or 100 unpack calls (`MsgExec` in `MsgExec` ...); Rust had no such check for proto3json | error ack in Go, execution in Rust | `txdecode::unpack_cosmos_tx_msgs` in both branches; regressions |
 
 Open:
+
+- ICA proto3json `null` elements: gogoproto `jsonpb` decodes `null` in a
+  repeated message field as a zero element (`"amount":[null,...]` is a
+  `Coin` with amount `0`) and in a repeated `Any` as a nil pointer that
+  makes Go panic later; Rust's registry JSON rejects both (found by the
+  `json_ica_tx` op; needs a `jsonpb` port of the registry JSON).
 
 - Error text (logs; not hashed, code and gas match) that still differs
   from Go, judged infeasible or not worth emulating: Go panics log a

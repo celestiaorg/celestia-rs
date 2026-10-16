@@ -1,302 +1,26 @@
 //! The Go JSON behaviors PFM's memo handling depends on: `encoding/json`
-//! decoding of the memo into `PacketMetadata` (case-insensitive field
-//! matching, type errors, the custom `Duration` decoder), the
+//! decoding of the memo into a map and into `PacketMetadata` (the whole
+//! memo validated first, at most 10 000 nested levels; every number a
+//! `float64` in the map; struct fields matched exactly or by `EqualFold`;
+//! type errors; the custom `Duration` decoder), the
 //! `iancoleman/orderedmap`-backed `JSONObject` that re-encodes `next` (key
 //! order preserved, duplicates moved to the end, numbers as `float64`), and
-//! `json.Marshal`'s compaction of a marshaler's output.
+//! `json.Marshal`'s compaction of a marshaler's output. Values are decoded
+//! with `gojson` (no recursion); the recursive re-encoding runs on a large
+//! stack for long memos.
 
+use gojson::{Kind, Value};
 use x_ibc::gojson::{escape_string, format_float};
 
-/// A parsed JSON value with its exact source text.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Val {
-    /// The decoded value.
-    pub kind: Kind,
-    /// The value's source text.
-    pub raw: String,
-}
-
-/// A JSON value; objects keep every member, duplicates included.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Kind {
-    /// `null`.
-    Null,
-    /// `true` / `false`.
-    Bool(bool),
-    /// A number literal.
-    Num(String),
-    /// A string.
-    Str(String),
-    /// An array.
-    Arr(Vec<Val>),
-    /// An object, members in source order.
-    Obj(Vec<(String, Val)>),
-}
-
-impl Kind {
-    /// The JSON type name Go's `UnmarshalTypeError` reports.
-    #[must_use]
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Self::Null => "null",
-            Self::Bool(_) => "bool",
-            Self::Num(_) => "number",
-            Self::Str(_) => "string",
-            Self::Arr(_) => "array",
-            Self::Obj(_) => "object",
-        }
-    }
-}
-
-/// Go's `quoteChar` for syntax errors.
-fn quote_char(c: char) -> String {
-    match c {
-        '\'' => "'\\''".into(),
-        '"' => "'\"'".into(),
-        _ => {
-            let q = format!("{c:?}");
-            format!("'{}'", &q[1..q.len() - 1])
-        }
-    }
-}
-
-struct Parser<'a> {
-    s: &'a str,
-    i: usize,
-}
-
-impl Parser<'_> {
-    fn peek(&self) -> Option<char> {
-        self.s[self.i..].chars().next()
-    }
-
-    fn ws(&mut self) {
-        while let Some(c) = self.peek() {
-            if matches!(c, ' ' | '\t' | '\n' | '\r') {
-                self.i += 1;
-            } else {
-                break;
-            }
-        }
-    }
-
-    fn err(&self, ctx: &str) -> String {
-        self.peek().map_or_else(
-            || "unexpected end of JSON input".to_owned(),
-            |c| format!("invalid character {} {ctx}", quote_char(c)),
-        )
-    }
-
-    fn value(&mut self) -> Result<Val, String> {
-        self.ws();
-        let start = self.i;
-        let kind = match self.peek() {
-            Some('{') => self.object()?,
-            Some('[') => self.array()?,
-            Some('"') => Kind::Str(self.string()?),
-            Some('t') => self.literal("true", Kind::Bool(true))?,
-            Some('f') => self.literal("false", Kind::Bool(false))?,
-            Some('n') => self.literal("null", Kind::Null)?,
-            Some(c) if c == '-' || c.is_ascii_digit() => self.number()?,
-            _ => return Err(self.err("looking for beginning of value")),
-        };
-        Ok(Val {
-            kind,
-            raw: self.s[start..self.i].to_owned(),
-        })
-    }
-
-    fn literal(&mut self, lit: &str, k: Kind) -> Result<Kind, String> {
-        for (n, want) in lit.chars().enumerate() {
-            match self.peek() {
-                Some(c) if c == want => self.i += 1,
-                _ if n == 0 => return Err(self.err("looking for beginning of value")),
-                _ => return Err(self.err(&format!("in literal {lit} (expecting '{want}')"))),
-            }
-        }
-        Ok(k)
-    }
-
-    fn digits(&mut self) -> usize {
-        let start = self.i;
-        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-            self.i += 1;
-        }
-        self.i - start
-    }
-
-    fn number(&mut self) -> Result<Kind, String> {
-        let start = self.i;
-        if self.peek() == Some('-') {
-            self.i += 1;
-        }
-        match self.peek() {
-            Some('0') => self.i += 1,
-            Some(c) if c.is_ascii_digit() => {
-                self.digits();
-            }
-            _ => return Err(self.err("in numeric literal")),
-        }
-        if self.peek() == Some('.') {
-            self.i += 1;
-            if self.digits() == 0 {
-                return Err(self.err("after decimal point in numeric literal"));
-            }
-        }
-        if matches!(self.peek(), Some('e' | 'E')) {
-            self.i += 1;
-            if matches!(self.peek(), Some('+' | '-')) {
-                self.i += 1;
-            }
-            if self.digits() == 0 {
-                return Err(self.err("in exponent of numeric literal"));
-            }
-        }
-        Ok(Kind::Num(self.s[start..self.i].to_owned()))
-    }
-
-    fn hex4(&mut self) -> Result<u32, String> {
-        let mut v = 0;
-        for _ in 0..4 {
-            match self.peek().and_then(|c| c.to_digit(16)) {
-                Some(d) => {
-                    v = v * 16 + d;
-                    self.i += 1;
-                }
-                None => return Err(self.err("in \\u hexadecimal character escape")),
-            }
-        }
-        Ok(v)
-    }
-
-    fn string(&mut self) -> Result<String, String> {
-        self.i += 1;
-        let mut out = String::new();
-        loop {
-            let Some(c) = self.peek() else {
-                return Err("unexpected end of JSON input".into());
-            };
-            self.i += c.len_utf8();
-            match c {
-                '"' => return Ok(out),
-                '\\' => {
-                    let Some(e) = self.peek() else {
-                        return Err("unexpected end of JSON input".into());
-                    };
-                    self.i += 1;
-                    match e {
-                        '"' => out.push('"'),
-                        '\\' => out.push('\\'),
-                        '/' => out.push('/'),
-                        'b' => out.push('\u{8}'),
-                        'f' => out.push('\u{c}'),
-                        'n' => out.push('\n'),
-                        'r' => out.push('\r'),
-                        't' => out.push('\t'),
-                        'u' => {
-                            let r = self.hex4()?;
-                            if (0xD800..0xDC00).contains(&r) && self.s[self.i..].starts_with("\\u")
-                            {
-                                let save = self.i;
-                                self.i += 2;
-                                let r2 = self.hex4()?;
-                                if (0xDC00..0xE000).contains(&r2) {
-                                    let cp = 0x10000 + ((r - 0xD800) << 10) + (r2 - 0xDC00);
-                                    out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
-                                    continue;
-                                }
-                                self.i = save;
-                                out.push('\u{FFFD}');
-                                continue;
-                            }
-                            out.push(char::from_u32(r).unwrap_or('\u{FFFD}'));
-                        }
-                        _ => {
-                            self.i -= 1;
-                            return Err(self.err("in string escape code"));
-                        }
-                    }
-                }
-                c if (c as u32) < 0x20 => {
-                    self.i -= 1;
-                    return Err(self.err("in string literal"));
-                }
-                c => out.push(c),
-            }
-        }
-    }
-
-    fn array(&mut self) -> Result<Kind, String> {
-        self.i += 1;
-        let mut items = Vec::new();
-        self.ws();
-        if self.peek() == Some(']') {
-            self.i += 1;
-            return Ok(Kind::Arr(items));
-        }
-        loop {
-            items.push(self.value()?);
-            self.ws();
-            match self.peek() {
-                Some(',') => self.i += 1,
-                Some(']') => {
-                    self.i += 1;
-                    return Ok(Kind::Arr(items));
-                }
-                _ => return Err(self.err("after array element")),
-            }
-        }
-    }
-
-    fn object(&mut self) -> Result<Kind, String> {
-        self.i += 1;
-        let mut members = Vec::new();
-        self.ws();
-        if self.peek() == Some('}') {
-            self.i += 1;
-            return Ok(Kind::Obj(members));
-        }
-        loop {
-            self.ws();
-            if self.peek() != Some('"') {
-                return Err(self.err("looking for beginning of object key string"));
-            }
-            let k = self.string()?;
-            self.ws();
-            if self.peek() != Some(':') {
-                return Err(self.err("after object key"));
-            }
-            self.i += 1;
-            let v = self.value()?;
-            members.push((k, v));
-            self.ws();
-            match self.peek() {
-                Some(',') => self.i += 1,
-                Some('}') => {
-                    self.i += 1;
-                    return Ok(Kind::Obj(members));
-                }
-                _ => return Err(self.err("after object key:value pair")),
-            }
-        }
-    }
-}
-
-/// Parses one complete JSON document (`json.Unmarshal`'s syntax check).
-pub fn parse(s: &str) -> Result<Val, String> {
-    let mut p = Parser { s, i: 0 };
-    let v = p.value()?;
-    p.ws();
-    if p.i < s.len() {
-        return Err(p.err("after top-level value"));
-    }
-    Ok(v)
+/// The Go form of a decoded (valid UTF-8) JSON string.
+fn go(s: &str) -> String {
+    gostr::from_go_bytes(s.as_bytes()).into_owned()
 }
 
 /// `orderedmap` normalization: last value wins, a repeated key moves to the
 /// end.
-fn dedup(members: &[(String, Val)]) -> Vec<(&str, &Val)> {
-    let mut out: Vec<(&str, &Val)> = Vec::new();
+fn dedup(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
+    let mut out: Vec<(&str, &Value)> = Vec::new();
     for (k, v) in members {
         if let Some(pos) = out.iter().position(|(ek, _)| ek == k) {
             out.remove(pos);
@@ -306,28 +30,28 @@ fn dedup(members: &[(String, Val)]) -> Vec<(&str, &Val)> {
     out
 }
 
-/// `json.Marshal` of the `interface{}` / `OrderedMap` tree; `None` when a
-/// number does not fit a `float64` (Go's decode fails).
-fn marshal_ordered(v: &Val) -> Option<String> {
+/// A number literal as Go's `interface{}` decoding reads it: `None` when it
+/// does not fit a `float64` (`strconv.ParseFloat` range error).
+fn float64(lit: &str) -> Option<f64> {
+    lit.parse::<f64>().ok().filter(|f| f.is_finite())
+}
+
+/// `json.Marshal` of the `interface{}` / `OrderedMap` tree (a Go form);
+/// `None` when a number does not fit a `float64` (Go's decode fails).
+fn marshal_ordered(v: &Value) -> Option<String> {
     Some(match &v.kind {
         Kind::Null => "null".into(),
         Kind::Bool(b) => b.to_string(),
-        Kind::Num(lit) => {
-            let f: f64 = lit.parse().ok()?;
-            if !f.is_finite() {
-                return None;
-            }
-            format_float(f)
-        }
-        Kind::Str(s) => escape_string(s),
-        Kind::Arr(items) => {
+        Kind::Number(lit) => format_float(float64(lit)?),
+        Kind::String(s) => escape_string(&go(s)),
+        Kind::Array(items) => {
             let parts: Option<Vec<String>> = items.iter().map(marshal_ordered).collect();
             format!("[{}]", parts?.join(","))
         }
-        Kind::Obj(members) => {
+        Kind::Object(members) => {
             let parts: Option<Vec<String>> = dedup(members)
                 .into_iter()
-                .map(|(k, v)| marshal_ordered(v).map(|s| format!("{}:{s}", escape_string(k))))
+                .map(|(k, v)| marshal_ordered(v).map(|s| format!("{}:{s}", escape_string(&go(k)))))
                 .collect();
             format!("{{{}}}", parts?.join(","))
         }
@@ -335,50 +59,74 @@ fn marshal_ordered(v: &Val) -> Option<String> {
 }
 
 /// `json.Marshal`'s `appendCompact` (HTML escaping on) of a marshaler's
-/// output.
-pub fn compact(raw: &str) -> Result<String, String> {
-    parse(raw)?;
-    let mut out = String::with_capacity(raw.len());
+/// output `raw`: the scanner's error for invalid JSON (10 000 levels at
+/// most), else `raw` without insignificant whitespace (a Go form).
+pub fn compact(raw: &[u8]) -> Result<String, String> {
+    gojson::check_valid(raw)?;
+    let mut out = Vec::with_capacity(raw.len());
     let mut in_str = false;
     let mut esc = false;
-    for c in raw.chars() {
+    let mut i = 0;
+    while i < raw.len() {
+        let c = raw[i];
+        i += 1;
         if in_str {
             if esc {
                 esc = false;
-            } else if c == '\\' {
+            } else if c == b'\\' {
                 esc = true;
-            } else if c == '"' {
+            } else if c == b'"' {
                 in_str = false;
             }
-        } else if matches!(c, ' ' | '\t' | '\n' | '\r') {
+        } else if matches!(c, b' ' | b'\t' | b'\n' | b'\r') {
             continue;
-        } else if c == '"' {
+        } else if c == b'"' {
             in_str = true;
         }
         match c {
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
+            b'<' => out.extend_from_slice(b"\\u003c"),
+            b'>' => out.extend_from_slice(b"\\u003e"),
+            b'&' => out.extend_from_slice(b"\\u0026"),
+            // U+2028 / U+2029.
+            0xe2 if raw.get(i) == Some(&0x80) && raw.get(i + 1).is_some_and(|b| b & !1 == 0xa8) => {
+                out.extend_from_slice(if raw[i + 1] == 0xa8 {
+                    b"\\u2028"
+                } else {
+                    b"\\u2029"
+                });
+                i += 2;
+            }
             c => out.push(c),
         }
     }
-    Ok(out)
+    Ok(gostr::from_go_vec(out))
 }
 
-/// `json.Marshal(metadata.Next)` for a `JSONObject` decoded from `v`.
-pub fn marshal_next(v: &Val) -> Result<String, String> {
-    let primitive = match &v.kind {
-        Kind::Obj(_) => match marshal_ordered(v) {
+/// `json.Marshal(metadata.Next)` for a `JSONObject` decoded from `v` (a
+/// value of `src`).
+fn marshal_next(v: &Value, src: &[u8]) -> Result<String, String> {
+    let primitive: Vec<u8> = match &v.kind {
+        Kind::Object(_) => match marshal_ordered(v) {
             Some(s) => return Ok(s),
-            None => v.raw.clone(),
+            None => src[v.span.clone()].to_vec(),
         },
-        Kind::Str(s) => s.clone(),
-        _ => v.raw.clone(),
+        Kind::String(s) => s.as_bytes().to_vec(),
+        // `JSONObject.UnmarshalJSON("null")` leaves an empty primitive.
+        Kind::Null => Vec::new(),
+        _ => src[v.span.clone()].to_vec(),
     };
     compact(&primitive)
         .map_err(|e| format!("json: error calling MarshalJSON for type *types.JSONObject: {e}"))
+}
+
+/// The keeper's retry path: `json.Unmarshal(memo, metadata.Next)` (`Err`:
+/// its error) and then `json.Marshal(metadata.Next)` (the inner result).
+pub fn unmarshal_next(memo: &str) -> Result<Result<String, String>, String> {
+    let src = gostr::to_go_bytes(memo);
+    gojson::on_large_stack(src.len(), || {
+        let v = gojson::parse(&src)?;
+        Ok(marshal_next(&v, &src))
+    })
 }
 
 /// Go's `time.quote`.
@@ -557,22 +305,25 @@ pub struct ForwardMetadata {
     pub timeout: i64,
     /// `retries`.
     pub retries: Option<u8>,
-    /// `next`.
-    pub next: Option<Val>,
+    /// `next`: `json.Marshal(metadata.Next)` (the next hop's memo, or the
+    /// marshaling error Go returns when it forwards).
+    pub next: Option<Result<String, String>>,
 }
 
 fn type_error(value: &str, strukt: &str, field: &str, ty: &str) -> String {
     format!("json: cannot unmarshal {value} into Go struct field {strukt}.{field} of type {ty}")
 }
 
-/// Go's struct field matching: exact name, else ASCII case-insensitive.
+/// Go's struct field matching: the exact name, else `foldName` (Unicode
+/// simple folding: `ſ` matches `s`, `K` (Kelvin) matches `k`).
 fn field_is(key: &str, name: &str) -> bool {
-    key == name || key.eq_ignore_ascii_case(name)
+    key == name || gostr::equal_fold(&go(key), name)
 }
 
 fn decode_forward(
     m: &mut ForwardMetadata,
-    members: &[(String, Val)],
+    members: &[(String, Value)],
+    src: &[u8],
     saved: &mut Option<String>,
 ) -> Result<(), String> {
     let mut save = |e: String| {
@@ -583,7 +334,7 @@ fn decode_forward(
     for (k, v) in members {
         let string_field =
             |dst: &mut String, name: &str, save: &mut dyn FnMut(String)| match &v.kind {
-                Kind::Str(s) => dst.clone_from(s),
+                Kind::String(s) => *dst = go(s),
                 Kind::Null => {}
                 other => save(type_error(
                     other.type_name(),
@@ -600,22 +351,21 @@ fn decode_forward(
             string_field(&mut m.channel, "channel", &mut save);
         } else if field_is(k, "timeout") {
             m.timeout = match &v.kind {
-                Kind::Num(lit) => {
-                    let f: f64 = lit.parse().unwrap_or(f64::INFINITY);
-                    if !f.is_finite() {
+                Kind::Number(lit) => {
+                    let Some(f) = float64(lit) else {
                         return Err(format!(
                             "json: cannot unmarshal number {lit} into Go value of type float64"
                         ));
-                    }
+                    };
                     go_f64_to_i64(f)
                 }
-                Kind::Str(s) => parse_duration(s)?,
+                Kind::String(s) => parse_duration(s)?,
                 _ => return Err("invalid duration".into()),
             };
         } else if field_is(k, "retries") {
             match &v.kind {
                 Kind::Null => m.retries = None,
-                Kind::Num(lit) => match lit.parse::<u64>() {
+                Kind::Number(lit) => match lit.parse::<u64>() {
                     Ok(n) if n <= 255 => m.retries = Some(u8::try_from(n).unwrap_or_default()),
                     _ => {
                         m.retries.get_or_insert(0);
@@ -640,7 +390,7 @@ fn decode_forward(
         } else if field_is(k, "next") {
             m.next = match &v.kind {
                 Kind::Null => None,
-                _ => Some(v.clone()),
+                _ => Some(marshal_next(v, src)),
             };
         }
     }
@@ -664,16 +414,27 @@ pub enum Memo {
 /// Classifies a transfer memo as PFM's `OnRecvPacket` does.
 #[must_use]
 pub fn classify(memo: &str) -> Memo {
-    let Ok(root) = parse(memo) else {
+    let src = gostr::to_go_bytes(memo);
+    gojson::on_large_stack(src.len(), || classify_bytes(&src))
+}
+
+fn classify_bytes(src: &[u8]) -> Memo {
+    // `json.Unmarshal(memo, &map[string]interface{})`: valid JSON nested at
+    // most 10 000 levels, an object (`null` leaves a nil map), every number
+    // a `float64`.
+    let Ok(root) = gojson::parse(src) else {
         return Memo::NotForward;
     };
-    let Kind::Obj(members) = &root.kind else {
+    let Kind::Object(members) = &root.kind else {
         return Memo::NotForward;
     };
+    if !root.all(|v| !matches!(&v.kind, Kind::Number(n) if float64(n).is_none())) {
+        return Memo::NotForward;
+    }
     // `d["forward"] == nil` on the map decode (last duplicate wins).
     match members.iter().rev().find(|(k, _)| k == "forward") {
         None => return Memo::NotForward,
-        Some((_, v)) if v.kind == Kind::Null => return Memo::NotForward,
+        Some((_, v)) if matches!(v.kind, Kind::Null) => return Memo::NotForward,
         Some(_) => {}
     }
     let mut fwd: Option<ForwardMetadata> = None;
@@ -684,9 +445,9 @@ pub fn classify(memo: &str) -> Memo {
         }
         match &v.kind {
             Kind::Null => fwd = None,
-            Kind::Obj(fields) => {
+            Kind::Object(fields) => {
                 let mut m = fwd.take().unwrap_or_default();
-                if let Err(e) = decode_forward(&mut m, fields, &mut saved) {
+                if let Err(e) = decode_forward(&mut m, fields, src, &mut saved) {
                     return Memo::ParseError(e);
                 }
                 fwd = Some(m);
@@ -773,7 +534,7 @@ mod tests {
         assert_eq!(m.timeout, 60_000_000_000);
         assert_eq!(m.retries, Some(2));
         assert_eq!(
-            marshal_next(m.next.as_ref().unwrap()).unwrap(),
+            m.next.clone().unwrap().unwrap(),
             "{\"a\":\"\\u003cx\\u003e\",\"b\":2}"
         );
         assert_eq!(
@@ -802,17 +563,56 @@ mod tests {
 
     #[test]
     fn next_primitives() {
-        let v = parse(r#""{\"a\": [1, 2]}""#).unwrap();
-        assert_eq!(marshal_next(&v).unwrap(), r#"{"a":[1,2]}"#);
-        let v = parse("[1.50, 2]").unwrap();
-        assert_eq!(marshal_next(&v).unwrap(), "[1.50,2]");
-        let v = parse(r#""abc""#).unwrap();
+        let next = |s: &str| unmarshal_next(s).unwrap();
+        assert_eq!(next(r#""{\"a\": [1, 2]}""#).unwrap(), r#"{"a":[1,2]}"#);
+        assert_eq!(next("[1.50, 2]").unwrap(), "[1.50,2]");
         assert_eq!(
-            marshal_next(&v).unwrap_err(),
+            next(r#""abc""#).unwrap_err(),
             "json: error calling MarshalJSON for type *types.JSONObject: invalid character 'a' looking for beginning of value"
         );
-        let v = parse(r#"{"x":1.0,"y":{"z":1e21}}"#).unwrap();
-        assert_eq!(marshal_next(&v).unwrap(), r#"{"x":1,"y":{"z":1e+21}}"#);
+        assert_eq!(
+            next(r#"{"x":1.0,"y":{"z":1e21}}"#).unwrap(),
+            r#"{"x":1,"y":{"z":1e+21}}"#
+        );
+        // An object with a number out of float64 range stays a primitive.
+        assert_eq!(next(r#"{"x": 1e400}"#).unwrap(), r#"{"x":1e400}"#);
+        assert_eq!(
+            next("null").unwrap_err(),
+            "json: error calling MarshalJSON for type *types.JSONObject: unexpected end of JSON input"
+        );
+        assert!(unmarshal_next("{").is_err());
+    }
+
+    /// Go's 10 000-level limit (checked against the v10.4.0 oracle,
+    /// `json_pfm`): a deeper memo is no forward; recursion runs on a large
+    /// stack.
+    #[test]
+    fn deep_memos() {
+        let fwd = r#""forward":{"receiver":"r","port":"transfer","channel":"channel-0""#;
+        let deep = |d: usize| format!("{}1{}", "[".repeat(d), "]".repeat(d));
+        assert!(matches!(
+            classify(&format!("{{{fwd}}},\"x\":{}}}", deep(9_999))),
+            Memo::Forward(_)
+        ));
+        assert_eq!(
+            classify(&format!("{{{fwd}}},\"x\":{}}}", deep(10_000))),
+            Memo::NotForward
+        );
+        let next = format!("{}{{}}{}", "{\"a\":".repeat(9_997), "}".repeat(9_997));
+        let Memo::Forward(m) = classify(&format!("{{{fwd},\"next\":{next}}}}}")) else {
+            panic!("expected forward");
+        };
+        assert_eq!(m.next, Some(Ok(next)));
+        assert!(unmarshal_next(&deep(10_001)).is_err());
+        // Numbers the map decode cannot hold; `EqualFold` field names.
+        assert_eq!(
+            classify(&format!("{{{fwd}}},\"x\":1e400}}")),
+            Memo::NotForward
+        );
+        let Memo::Forward(m) = classify(&format!("{{{fwd},\"retrie\u{17f}\":3}}}}")) else {
+            panic!("expected forward");
+        };
+        assert_eq!(m.retries, Some(3));
     }
 
     #[test]

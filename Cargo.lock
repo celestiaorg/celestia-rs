@@ -190,6 +190,7 @@ dependencies = [
  "celestia-proto",
  "crypto",
  "encoding",
+ "gojson",
  "gostr",
  "grpc-query",
  "hash",
@@ -1541,6 +1542,7 @@ dependencies = [
  "celestia-proto",
  "devnet-conformance",
  "encoding",
+ "gojson",
  "gostr",
  "hex",
  "http",
@@ -1555,6 +1557,11 @@ dependencies = [
  "tonic",
  "txdecode",
  "x-ante",
+ "x-gov",
+ "x-ibc",
+ "x-icahost",
+ "x-packetforward",
+ "x-transfer",
 ]
 
 [[package]]
@@ -1618,6 +1625,10 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "gojson"
+version = "0.0.1"
 
 [[package]]
 name = "gostr"
@@ -4611,6 +4622,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gojson",
  "gostr",
  "math",
  "pbjson-types",
@@ -4647,6 +4659,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "crypto",
+ "gojson",
  "gostr",
  "hash",
  "hex",
@@ -4714,6 +4727,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-proto",
  "encoding",
+ "gojson",
  "gostr",
  "hash",
  "prost",

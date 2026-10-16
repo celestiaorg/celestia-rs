@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 gostr = { path = "../../../tier-0-primitives/gostr" }
+gojson = { path = "../../../tier-0-primitives/gojson" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 crypto = { path = "../../../tier-0-primitives/crypto" }
 hash = { path = "../../../tier-0-primitives/hash" }

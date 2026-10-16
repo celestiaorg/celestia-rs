@@ -21,6 +21,7 @@
 pub mod corpus;
 pub mod craft;
 pub mod exec;
+pub mod jsonops;
 pub mod mutate;
 pub mod oracle;
 pub mod pp;
@@ -164,6 +165,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
             .map(hex::encode),
         ),
         "text" => rust_text(app_version, input),
+        op if op.starts_with("json_") => jsonops::rust_json(op, input),
         _ => Out {
             err: format!("unknown op {op}"),
             ..Out::default()
@@ -501,6 +503,7 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
                 rust.err
             )
         }),
+        op if op.starts_with("json_") => jsonops::compare(op, go, rust),
         "eds" => {
             if go.err.starts_with("input:") {
                 return None;

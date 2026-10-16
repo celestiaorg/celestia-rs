@@ -288,6 +288,7 @@ fn main() -> anyhow::Result<()> {
     }
     let seeds_for = |op: &str| -> Vec<Vec<u8>> {
         match op {
+            op if op.starts_with("json_") => fuzz_diff::jsonops::seeds(op),
             "amino_dec" => amino
                 .iter()
                 .filter(|(o, _)| *o == "amino_dec")
@@ -359,6 +360,12 @@ fn main() -> anyhow::Result<()> {
                     if m.rng.one_in(4) { m.mutate(&x) } else { x }
                 } else if op == "amino_enc" && !m.rng.one_in(4) {
                     json_mutate(&mut m, &s)
+                } else if op.starts_with("json_") {
+                    let mut x = s;
+                    for _ in 0..k {
+                        x = fuzz_diff::jsonops::mutate(&mut m.rng, &x);
+                    }
+                    x
                 } else {
                     m.mutate_n(&s, k)
                 };
