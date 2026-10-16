@@ -167,6 +167,14 @@ fn rust_aminosign(app_version: u64, input: &[u8]) -> Out {
             };
         }
     };
+    // `GetSigningTxData` dereferences a nil fee (on chain, the ante
+    // handler's `GetGas` panicked on it long before).
+    if tx.auth_info.fee.is_none() {
+        return Out {
+            panic: "runtime error: invalid memory address or nil pointer dereference".into(),
+            ..Out::default()
+        };
+    }
     if let Err(e) = x_ante::signing::check_signing_tx_data(&tx) {
         return Out {
             panic: match e {
