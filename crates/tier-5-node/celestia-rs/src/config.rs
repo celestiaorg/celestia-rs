@@ -306,6 +306,55 @@ pub fn get(home: &Path, file: File, key: &str) -> anyhow::Result<String> {
     })
 }
 
+/// The item at a dotted key. Unlike `Item::get_mut`, this does not insert
+/// an empty item for a missing key.
+fn lookup_item_mut<'a>(
+    doc: &'a mut toml_edit::DocumentMut,
+    key: &str,
+) -> Option<&'a mut toml_edit::Item> {
+    let parts: Vec<&str> = key.split('.').collect();
+    let (last, tables) = parts.split_last()?;
+    let mut table: &mut dyn toml_edit::TableLike = doc.as_table_mut();
+    for t in tables {
+        table = table.get_mut(t)?.as_table_like_mut()?;
+    }
+    table.get_mut(last).filter(|i| !i.is_none())
+}
+
+/// The dotted keys of every value in `table`.
+fn value_keys(table: &dyn toml_edit::TableLike, prefix: &str, out: &mut Vec<String>) {
+    for (k, v) in table.iter() {
+        let path = if prefix.is_empty() {
+            k.to_owned()
+        } else {
+            format!("{prefix}.{k}")
+        };
+        if let Some(sub) = v.as_table_like() {
+            value_keys(sub, &path, out);
+        } else if v.is_value() {
+            out.push(path);
+        }
+    }
+}
+
+/// "key not found", suggesting the fully qualified keys that end in `key`
+/// (`snapshot-interval` -> `state-sync.snapshot-interval`).
+fn unknown_key(doc: &toml_edit::DocumentMut, f: File, key: &str) -> anyhow::Error {
+    let mut keys = Vec::new();
+    value_keys(doc.as_table(), "", &mut keys);
+    let suffix = format!(".{key}");
+    let candidates: Vec<String> = keys.into_iter().filter(|k| k.ends_with(&suffix)).collect();
+    match candidates.as_slice() {
+        [] => anyhow!("key {key:?} not found in {}", f.name()),
+        [one] => anyhow!("key {key:?} not found in {}; did you mean {one}?", f.name()),
+        many => anyhow!(
+            "key {key:?} not found in {}; did you mean one of: {}?",
+            f.name(),
+            many.join(", ")
+        ),
+    }
+}
+
 /// `config set <file> <key> <value>`: updates a dotted key in place
 /// (comments and layout are kept). The value keeps the existing value's
 /// TOML type (string, integer, boolean, float, array).
@@ -315,17 +364,9 @@ pub fn set(home: &Path, f: File, key: &str, value: &str) -> anyhow::Result<()> {
     let mut doc = src
         .parse::<toml_edit::DocumentMut>()
         .with_context(|| format!("parse {}", p.display()))?;
-    let parts: Vec<&str> = key.split('.').collect();
-    let (last, tables) = parts.split_last().ok_or_else(|| anyhow!("empty key"))?;
-    let mut item: &mut toml_edit::Item = doc.as_item_mut();
-    for t in tables {
-        item = item
-            .get_mut(t)
-            .ok_or_else(|| anyhow!("section {t:?} not found in {}", f.name()))?;
-    }
-    let target = item
-        .get_mut(last)
-        .ok_or_else(|| anyhow!("key {key:?} not found in {}", f.name()))?;
+    let Some(target) = lookup_item_mut(&mut doc, key) else {
+        return Err(unknown_key(&doc, f, key));
+    };
     let old = target
         .as_value()
         .ok_or_else(|| anyhow!("{key:?} is a table, not a value"))?;
@@ -417,5 +458,33 @@ mod tests {
             s.contains("# Comma separated list of seed nodes to connect to\nseeds = \"a@b:1\"")
         );
         assert!(s.contains("moniker = \"x\""));
+    }
+
+    #[test]
+    fn set_unknown_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::write(dir.path().join("config/app.toml"), APP_TEMPLATE).unwrap();
+        let before = view(dir.path(), File::App).unwrap();
+        let err = |k: &str| set(dir.path(), File::App, k, "0").unwrap_err().to_string();
+        assert_eq!(
+            err("snapshot-interval"),
+            "key \"snapshot-interval\" not found in app.toml; did you mean state-sync.snapshot-interval?"
+        );
+        assert_eq!(
+            err("no-such-key"),
+            "key \"no-such-key\" not found in app.toml"
+        );
+        assert_eq!(
+            err("no-such-section.key"),
+            "key \"no-such-section.key\" not found in app.toml"
+        );
+        assert_eq!(err("state-sync"), "\"state-sync\" is a table, not a value");
+        assert_eq!(view(dir.path(), File::App).unwrap(), before);
+        set(dir.path(), File::App, "state-sync.snapshot-interval", "0").unwrap();
+        assert_eq!(
+            get(dir.path(), File::App, "state-sync.snapshot-interval").unwrap(),
+            "0"
+        );
     }
 }
