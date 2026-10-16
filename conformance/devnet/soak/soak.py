@@ -1823,10 +1823,10 @@ class Soak:
             threading.Thread(target=nd.start, daemon=True).start()
         time.sleep(15)
         t = now()
-        limit = 600 if self.a.resume else 180
-        while now() - t < limit:
+        hs = {}
+        while now() - t < 300:
             ok, hs = self.in_sync()
-            if ok and min(hs.values()) >= 3 and (not self.a.resume or max(hs.values()) > self.max_height):
+            if ok and min(hs.values()) >= 3:
                 break
             time.sleep(3)
         else:
@@ -1834,8 +1834,18 @@ class Soak:
         if self.a.resume:
             # The machine restart killed every node at once: a whole-network
             # crash / restart (every node replays its WAL).
-            rec = {"t": round(self.elapsed()), "h": self.max_height, "kind": "crash_all", "segment": self.segment,
-                   "restart_s": round(now() - t + 15, 1)}
+            h_up = max(hs.values()) if hs else 0
+            rec = {"t": round(self.elapsed()), "h": h_up, "kind": "crash_all", "segment": self.segment}
+            if self.wait_progress(h_up, 90):
+                rec["restart_s"] = round(now() - t + 15, 1)
+            else:
+                rec["stalled_at"] = h_up
+                self.event("crash-stall", height=h_up)
+                rec["recovery"] = self.recover_crash_stall(h_up)
+                if self.wait_progress(h_up, 180):
+                    rec["restart_s"] = round(now() - t + 15, 1)
+                else:
+                    self.fail(f"chain did not resume at height {h_up} after the whole-network restart and stall recovery")
             for nd in self.nodes:
                 nd.restarts += 1
             for nd in resync:  # killed mid state sync: start over
@@ -1894,6 +1904,72 @@ class Soak:
             nd.kill(signal.SIGTERM)
         self.proxy.kill()
         return 0 if not self.failures else 1
+
+    def wait_progress(self, h, secs):
+        t = now()
+        while now() - t < secs:
+            for nd in self.up_nodes():
+                hh = nd.height()
+                if hh is not None and hh > h:
+                    return True
+            time.sleep(2)
+        return False
+
+    def recover_crash_stall(self, h):
+        """Unsticks the stall a whole-network crash leaves when it hits the
+        delayed-precommit window (celestia-core v0.42.3 does the same; see
+        conformance/devnet/crash-restart.sh): the validators that prevoted
+        height h+1 but did not precommit hold a polka for a block only the
+        proposer has, received before they reached the prevote step, and
+        their own nil prevote is refused by the privval, so nothing
+        schedules their prevote-wait timeout. Restarting such a validator so
+        that its peers' prevotes arrive after its propose timeout (links cut
+        and no block sync for a Rust node; 2.5 s of link latency for a Go
+        node, which needs peers to leave block sync) makes it precommit nil;
+        two of them give +2/3 precommits for round 0 and the round moves on."""
+        stuck = []
+        for nd in self.nodes:
+            if nd.i not in self.validator_nodes:
+                continue
+            try:
+                pv = json.load(open(f"{nd.home}/data/priv_validator_state.json"))
+            except Exception:
+                continue
+            if int(pv["height"]) == h + 1 and int(pv["step"]) == 2:
+                stuck.append(nd)
+        stuck.sort(key=lambda x: x.kind != "rs")
+        done = []
+        for nd in stuck:
+            if self.wait_progress(h, 1):
+                break
+            others = [j for j in range(self.n) if j != nd.i]
+            if nd.kind == "rs":
+                self.control = {"cut": [[nd.i, j] for j in others], "delay_ms": {}}
+            else:
+                self.control = {"cut": [], "delay_ms": {f"{nd.i}-{j}": 2500 for j in others}}
+            self.write_control()
+            nd.kill(signal.SIGTERM)
+            with open(f"{nd.home}/node.log", "ab") as f:
+                f.write(b"--- soak stall-recovery restart ---\n")
+            nd.start(["--no-block-sync"] if nd.kind == "rs" else [])
+            nd.restarts += 1
+            t = now()
+            reached = None
+            while now() - t < 120:
+                try:
+                    rs = get_json(f"{nd.url}/consensus_state", timeout=2)["result"]["round_state"]
+                    hh, rr, st = (int(x) for x in rs["height/round/step"].split("/"))
+                    if hh == h + 1 and (st >= 4 or rr > 0):
+                        reached = round(now() - t, 1)
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.5)
+            self.heal()
+            done.append({"node": nd.i, "kind": nd.kind, "prevote_step_after_s": reached})
+            time.sleep(12)  # prevote wait (2 s), delayed precommit, gossip
+        self.heal()
+        return {"stuck": [nd.i for nd in stuck], "restarted": done}
 
     def write_report(self, final):
         rep = {

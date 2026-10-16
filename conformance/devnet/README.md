@@ -362,6 +362,41 @@ cargo build --release -p celestia-rs --features memstats   # optional: heap gaug
 SOAK_PROFILE=memory SOAK_SECS=21600 DEVNET_BIN=<dir> DEVNET_PORT_OFFSET=21000 conformance/devnet/soak.sh
 ```
 
+`SOAK_PROFILE=long` is a restart-tolerant multi-hour soak: V0, V1 Go and
+V2, V3 Rust validators and a Rust full node F4; V2 rotates its WAL every
+few blocks (`CELESTIA_RS_TEST_WAL_*` group limits); only the Rust nodes
+take (background) snapshots, so every state sync, of a Rust or a Go
+node, restores a Rust snapshot. On top of the chaos workload: authz /
+feegrant, invalid-UTF-8 txs (`fuzz-diff craft`, CheckTx compared on a Go
+and a Rust node), hyperlane + warp; chaos adds SIGTERM / SIGKILL of Go
+validators, SIGTERM inside the delayed-precommit wait (sign state read
+afterwards), 5-10 min downtimes (block sync) and Go state sync from Rust
+snapshots; checks add WAL group sizes, privval refusals, total disk
+(`$SOAK_DISK_SOFT_GB`: the largest node is state-synced afresh) and RSS
+(`$SOAK_RSS_BUDGET_MB`). Counters live in `state.json` and every
+reference hash in `hashes.jsonl`; after the machine restarts (every
+process killed), `SOAK_RESUME=1` with the same `SOAK_DIR` restarts every
+node from its home (a whole-network crash event) and continues until
+`$SOAK_SECS` of cumulative run time:
+
+```bash
+SOAK_PROFILE=long SOAK_SECS=25200 SOAK_DIR=<dir> DEVNET_BIN=<dir> DEVNET_PORT_OFFSET=30000 conformance/devnet/soak.sh
+SOAK_RESUME=1 SOAK_PROFILE=long SOAK_SECS=25200 SOAK_DIR=<dir> ... conformance/devnet/soak.sh   # after a restart
+```
+
+`crash-restart.sh` SIGKILLs every validator inside the delayed-precommit
+window (all prevotes cast, no precommit) and restarts them: an all-Go
+network (`CRASH_KINDS="go go go go"`, the default) stalls for good, as
+does a mixed one. Peer-gossiped proposals and parts stay out of the WAL
+(`only_internal_wal = true`), so only the proposer has the block after the
+restart, and its propagation cache, which serves block parts, is not
+rebuilt from the WAL; the others receive a polka for that block before
+they reach the prevote step, their own nil prevote is refused by the
+privval, and nothing schedules their prevote-wait timeout. The long soak
+records such a stall after a machine restart and recovers by restarting
+two stuck validators so that their peers' prevotes arrive after their
+propose timeout.
+
 The report (`report.md` / `report.json`) lists heights, txs, block sizes,
 proposers, restarts, max RSS and disk per node, stalls, chaos events and
 the most frequent Rust warnings. `build-bins.sh` builds the Go binaries
