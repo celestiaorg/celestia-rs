@@ -281,3 +281,58 @@ state stays in the hundreds of MB, far inside the 350 GB budget
 1.6-2.1x faster than Go in B1; the signature cache and the single decode
 also trim FinalizeBlock (above). The Mac Mini run should redo phases A and
 C with these builds.
+
+## SIMD erasure coding and libsecp256k1 (2026-10-16, Linux shared VM)
+
+Same VM, again compared only back to back. These are the two "next candidates"
+named above. Neither one changes output for any input on which Rust already
+matched Go. The secp256k1 change also fixes two classes of key on which it
+did not. After each change these all pass: the square / shares / NMT /
+rsmt2d Go vectors, the DAH fixtures, `m1-integration`, `replay_scenarios`, `replay_empty`,
+`persistent_replay` and `query_corpus`. `fuzz-diff --ops eds` against the Go
+oracles also passed: 69,395 inputs on v9 and 96,928 on v10, with no
+mismatch.
+
+| change | commit |
+|---|---|
+| GF(2^8) leopard (squares up to 128x128) moves to the in-repo `leopard` crate. It is leopard-codec's algorithm, with the FFT / IFFT butterflies done by split-nibble `pshufb` (SSSE3, AVX2) or `tbl` (NEON) kernels selected at run time. Scalar tables remain the fallback (`CELESTIA_RS_LEOPARD_KERNEL=scalar`). Every kernel is checked against the scalar one for all 256 multipliers, and encode / reconstruct against leopard-codec | `square: SIMD GF(2^8) leopard …` |
+| secp256k1 signature verification moves from k256 to libsecp256k1, behind cosmos-sdk's `secp256k1_nocgo.go` rules. It is checked against 563 vectors that carry Go's own result. The vectors also exposed two places where the k256 verifier differed from Go (hybrid keys, 05-prefixed keys); both are now fixed | `x/ante: verify secp256k1 signatures with libsecp256k1` |
+
+**Extension of one square on one thread** (`eds_bench`). Go is rsmt2d with
+klauspost/reedsolomon, using AVX-512 GFNI on this VM:
+
+| original width | leopard-codec (scalar) | SIMD leopard | Go rsmt2d |
+|---|---|---|---|
+| 64 | 16-19 ms | 4-5 ms | 7-11 ms |
+| 128 | 80-95 ms | 32-34 ms | 34-42 ms |
+
+Squares of 256x256 already used SIMD GF(2^16) and are unchanged.
+
+**secp256k1.** One verification of a 300-byte message, timed with the same
+2,000 signatures for each verifier:
+
+| verifier | time per verification |
+|---|---|
+| k256 | 97-101 µs |
+| libsecp256k1 | 38-41 µs |
+
+`proposal_bench --heights 10 --big-every 0 --reps 1` runs light blocks of
+780 txs. The table gives medians over heights 2-10 and three interleaved
+rounds:
+
+| | before | after | after / before |
+|---|---|---|---|
+| CheckTx of 780 new txs | 212 ms | 155 ms | 0.73x |
+| PrepareProposal | 96 ms | 92 ms | ~1.0x |
+| ProcessProposal | 81 ms | 90 ms | ~1.0x (noise) |
+| FinalizeBlock | 189 ms | 194 ms | ~1.0x |
+
+Only CheckTx was expected to move: the other three phases hit the signature
+cache. The rest of CheckTx is tx decoding, fee deduction (bech32 address
+decoding in `x/bank`) and the allocator.
+
+**App state on disk.** A compact IAVL format (no orphan records, contiguous
+pruning by tree diff) is designed in
+[ADR 0006](../adr/0006-compact-iavl-storage.md). It is not implemented:
+it changes every existing home and needs a migration that is tested on a
+real home first.
