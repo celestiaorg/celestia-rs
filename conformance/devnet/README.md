@@ -397,6 +397,15 @@ records such a stall after a machine restart and recovers by restarting
 two stuck validators so that their peers' prevotes arrive after their
 propose timeout.
 
+`statesync-traffic.sh` state-syncs fresh Go nodes (from Go and from Rust
+snapshots) and a fresh Rust node while txs are broadcast to them: both Go
+nodes panic on the first block after the snapshot (`collections: not
+found ... ConsensusParams`): the multistore's inter-block cache keeps
+what CheckTx read from the empty pre-restore stores, and the restore
+reloads the stores without resetting it (cosmos-sdk store; a restart
+recovers). The Rust node syncs and follows; the long soak sends no
+traffic to a node while it state-syncs.
+
 The report (`report.md` / `report.json`) lists heights, txs, block sizes,
 proposers, restarts, max RSS and disk per node, stalls, chaos events and
 the most frequent Rust warnings. `build-bins.sh` builds the Go binaries

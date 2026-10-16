@@ -391,7 +391,12 @@ class Soak:
         os.replace(tmp, f"{self.dir}/proxy-control.json")
 
     def up_nodes(self, kind=None):
-        return [nd for nd in self.nodes if nd.expected_up and nd.alive() and (kind is None or nd.kind == kind)]
+        """Running nodes, without the ones state-syncing: a Go node that
+        serves CheckTx while it restores a snapshot keeps the pre-restore
+        (empty) reads in its inter-block cache and panics on the next block
+        (cosmos-sdk store; conformance/devnet/statesync-traffic.sh)."""
+        return [nd for nd in self.nodes if nd.expected_up and nd.alive() and not nd.sync_pending
+                and (kind is None or nd.kind == kind)]
 
     def ref_node(self):
         """The highest Go node (else any node) that still holds the next
@@ -1616,7 +1621,8 @@ class Soak:
             try:
                 if getattr(self, "disk_pressure", False):
                     self.disk_pressure = False
-                    cands = [nd for nd in self.nodes if nd.i not in self.unbonded]
+                    # Not the tx-index node (its CLI queries and /tx lookups).
+                    cands = [nd for nd in self.nodes if nd.i not in self.unbonded and nd.i != self.ref_i]
                     nd = max(cands, key=lambda x: du(f"{x.home}/data"))
                     need_val = nd.i in self.validator_nodes
                     if need_val and not self.val_lock.acquire(blocking=False):
