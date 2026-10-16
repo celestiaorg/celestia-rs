@@ -456,7 +456,19 @@ class Soak:
         else:
             k = str(code) if code != -1 else ("err:" + out.strip()[:80])
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
+            if code > 0:
+                self.sample_rejection(category, code, nd, out[-300:])
         return code, h
+
+    def sample_rejection(self, category, code, nd, log):
+        """The first / latest CheckTx rejection logs per category and code,
+        with the time span they cover."""
+        sm = self.metrics.setdefault("rejection_samples", {}).setdefault(f"{category}:{code}", {})
+        t = round(self.elapsed())
+        if "first" not in sm:
+            sm["first"] = {"t": t, "h": self.max_height, "node": nd.i, "log": log[:240]}
+        sm["last"] = {"t": t, "h": self.max_height, "node": nd.i, "log": log[:240]}
+        sm["n"] = sm.get("n", 0) + 1
 
     def wait_included(self, h, timeout=120):
         """Exec code and result of tx `h` from the tx-index node, or (None,
@@ -898,6 +910,7 @@ class Soak:
                 else:
                     rk = f"{code}@n{nd.i}"  # code and the node that rejected
                     m["rejected"][rk] = m["rejected"].get(rk, 0) + 1
+                    self.sample_rejection("bank", code, nd, r.get("log", ""))
                     e = re.search(r"expected (\d+), got (\d+)", r.get("log", ""))
                     if code == 32 and e:
                         acc[1] = int(e.group(1))
@@ -957,6 +970,8 @@ class Soak:
         else:
             k = str(code) if code != -1 else "err:" + out.strip()[-100:]
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
+            if code > 0:
+                self.sample_rejection("pfb", code, nd, out[-300:])
 
     def pfb_loop(self):
         accts = [f"blob{i}" for i in range(1, 9)]
@@ -1328,6 +1343,7 @@ class Soak:
         if code != 0:
             k = f"{code}@{nd.kind}"
             m["rejected"][k] = m["rejected"].get(k, 0) + 1
+            self.sample_rejection("utf8", code, nd, r.get("log", ""))
             cs["checktx_fail"][str(code)] = cs["checktx_fail"].get(str(code), 0) + 1
             return
         m["submitted"] += 1
@@ -1650,7 +1666,7 @@ class Soak:
                 else:
                     k = self.rng.choices(list(kinds), weights=list(kinds.values()))[0]
                     if k in val_kinds:
-                        if not self.val_lock.acquire(blocking=False):
+                        if self.unbonded or not self.val_lock.acquire(blocking=False):
                             k = self.rng.choice(["kill_full", "isolate", "delay", "statesync_rs"])
                         else:
                             got_val = True
@@ -1721,8 +1737,9 @@ class Soak:
                 self._valset_cycle(vi, nd, home, acc, valoper, resume_cycle)
             finally:
                 self.val_lock.release()
-            resume_cycle = False
-            self.stop.wait(self.rng.uniform(900, 1500))
+            # A cycle that did not rejoin is finished first (next round).
+            resume_cycle = vi in self.unbonded
+            self.stop.wait(60 if resume_cycle else self.rng.uniform(900, 1500))
 
     def _valset_cycle(self, vi, nd, home, acc, valoper, resume_cycle):
         if True:
@@ -1764,11 +1781,26 @@ class Soak:
                     rebonded = int((d.get("delegation_response") or d)["balance"]["amount"])
                 except Exception:
                     pass
-            if rebonded < amt // 2:
+            # A tx accepted by a node that is cut off at the time stays in
+            # its mempool: the CAT mempool announces a tx once, when it
+            # enters the mempool (Go and Rust alike), so re-send until the
+            # re-bond is committed.
+            for attempt in range(4):
+                if rebonded >= amt // 2:
+                    break
+                via = self.tx_node()
                 out = self.cli(["tx", "staking", "delegate", valoper, f"{amt}utia", "--from", f"val{vi}", "--chain-id", self.chain_id,
-                                "--node", f"tcp://127.0.0.1:{self.tx_node().rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
-                self.event("valset-delegate", out=out.strip()[-160:])
-                time.sleep(15)
+                                "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
+                self.event("valset-delegate", attempt=attempt + 1, via=via.i, out=out.strip()[-160:])
+                hm = re.search(r'"txhash":\s*"([0-9A-F]+)"', out)
+                ec = self.wait_included(hm.group(1), timeout=90)[0] if hm and '"code":0' in out.replace(" ", "") else None
+                if ec == 0:
+                    break
+                if attempt:
+                    rec.setdefault("delegate_resent", 0)
+                    rec["delegate_resent"] += 1
+                self.stop.wait(10)
+            time.sleep(15)
             back = None
             t = now()
             # An accepted unjail can still be lost (its node killed / wiped
