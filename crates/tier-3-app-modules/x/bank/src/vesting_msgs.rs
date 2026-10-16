@@ -5,7 +5,6 @@
 
 use celestia_proto::cosmos::auth::v1beta1::BaseAccount;
 use celestia_proto::cosmos::vesting::v1beta1 as pb;
-use sdk::coins::Coins;
 use sdk::error::sdk as errs;
 use sdk::{Context, Result};
 use x_auth::Account;
@@ -22,10 +21,9 @@ pub fn handle_create_vesting_account(
         .map_err(|e| errs::invalid_address(format!("invalid 'from' address: {}", e.log)))?;
     let to = sdk::address::acc_from_bech32(&msg.to_address)
         .map_err(|e| errs::invalid_address(format!("invalid 'to' address: {}", e.log)))?;
-    let amount = Coins::from_proto(&msg.amount)?;
-    if !amount.is_valid() || amount.is_empty() {
-        return Err(errs::invalid_coins("").wrap(amount.to_string()));
-    }
+    // `validateAmount`: `IsValid` / `IsAllPositive` of the raw coins (a nil
+    // amount `Validate` reaches panics).
+    let amount = crate::msgs::valid_raw_coins(&msg.amount)?;
     if msg.start_time <= 0 {
         return Err(errs::invalid_request("invalid start time"));
     }

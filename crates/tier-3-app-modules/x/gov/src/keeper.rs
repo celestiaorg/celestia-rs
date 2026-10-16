@@ -136,7 +136,8 @@ pub fn submit_proposal(
             ctx.discard(cp);
             if let Err(e) = res {
                 let t = errors::no_proposal_handler_exists();
-                if e.codespace == t.codespace && e.code == t.code {
+                // A handler panic is not recovered here: it unwinds the tx.
+                if e.is_panic() || (e.codespace == t.codespace && e.code == t.code) {
                     return Err(e);
                 }
                 return Err(errors::invalid_proposal_content().wrap(e.log));

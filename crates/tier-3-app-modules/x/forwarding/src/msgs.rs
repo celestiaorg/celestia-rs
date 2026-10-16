@@ -111,10 +111,10 @@ fn validate_coin(c: Option<&PbCoin>) -> core::result::Result<Coin, String> {
 
 /// `MsgForward.ValidateBasic` (every failure is unregistered).
 pub fn validate_basic(m: &MsgForward) -> Result<()> {
-    acc_from_bech32(&m.signer)
-        .map_err(|e| internal(format!("invalid signer address: {}", e.log)))?;
-    acc_from_bech32(&m.forward_addr)
-        .map_err(|e| internal(format!("invalid forward address: {}", e.log)))?;
+    // `errors.Wrap` keeps the code (`ErrUnknownAddress` for an empty or
+    // over-long address, plain errors otherwise).
+    acc_from_bech32(&m.signer).map_err(|e| e.wrap("invalid signer address"))?;
+    acc_from_bech32(&m.forward_addr).map_err(|e| e.wrap("invalid forward address"))?;
     decode_hex_address(&m.dest_recipient)
         .map_err(|e| internal(format!("invalid dest_recipient hex format: {e}")))?;
     decode_hex_address(&m.token_id)

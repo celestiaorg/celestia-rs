@@ -95,7 +95,9 @@ pub fn handle_send(ctx: &mut Context<'_>, msg: &MsgSend) -> Result<MsgSendRespon
 /// `if !coins.IsValid() || !coins.IsAllPositive()` on the coins as Go
 /// decoded them: a nil amount `Validate` reaches panics (`Sign` of a nil
 /// `big.Int`), the error carries `Coins.String()` of the raw coins.
-fn valid_raw_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
+pub(crate) fn valid_raw_coins(
+    coins: &[celestia_proto::cosmos::base::v1beta1::Coin],
+) -> Result<Coins> {
     if !sdk::coins::raw_coins_is_valid(coins)? || coins.is_empty() {
         return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins)));
     }

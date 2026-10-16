@@ -173,9 +173,12 @@ pub fn exec_legacy_content(
     if gov != msg.authority {
         return Err(errors::invalid_signer().wrap(format!("expected {gov} got {}", msg.authority)));
     }
+    // `LegacyContentFromMessage`: `msg.Content.GetCachedValue()` on a nil
+    // `*Any` dereferences it (also inside `SubmitProposal`'s check).
     let Some(content) = &msg.content else {
-        return Err(errors::invalid_proposal_content()
-            .wrap("invalid type: expected v1beta1.Content, got <nil>: invalid type"));
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
     };
     let route = legacy_content_route(content).ok_or_else(|| {
         errors::invalid_proposal_content().wrap(format!(
@@ -377,8 +380,11 @@ pub fn legacy_submit_proposal(
     router: &dyn MsgRouter,
     msg: &v1beta1::MsgSubmitProposal,
 ) -> Result<v1beta1::MsgSubmitProposalResponse> {
+    // `msg.GetContent()`: `GetCachedValue` on a nil `*Any` panics.
     let Some(content) = &msg.content else {
-        return Err(errors::invalid_proposal_content().wrap("missing content"));
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
     };
     let (title, description) = legacy_content_title_description(content)?;
     let gov = x_auth::bech32(&keeper::module_address())?;

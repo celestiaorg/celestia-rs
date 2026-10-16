@@ -14,8 +14,9 @@ fn invalid_addr(what: &str, e: &sdk::SdkError) -> sdk::SdkError {
     errs::invalid_address(format!("invalid {what} address: {}", e.log))
 }
 
+/// The account address codec (`AddressCodec().StringToBytes`).
 fn acc(s: &str) -> Result<Vec<u8>> {
-    x_staking::addr::acc_from_string(s)
+    sdk::address::acc_codec_to_bytes(s)
 }
 
 /// `validateAmount`.
@@ -75,7 +76,7 @@ pub fn handle_withdraw_delegator_reward(
     ctx: &mut Context<'_>,
     msg: &pb::MsgWithdrawDelegatorReward,
 ) -> Result<pb::MsgWithdrawDelegatorRewardResponse> {
-    let val = x_staking::addr::val_from_string(&msg.validator_address)
+    let val = sdk::address::val_codec_to_bytes(&msg.validator_address)
         .map_err(|e| invalid_addr("validator", &e))?;
     let del = acc(&msg.delegator_address).map_err(|e| invalid_addr("delegator", &e))?;
     let amount = keeper::withdraw_delegation_rewards_for(ctx, &del, &val)?;
@@ -89,7 +90,7 @@ pub fn handle_withdraw_validator_commission(
     ctx: &mut Context<'_>,
     msg: &pb::MsgWithdrawValidatorCommission,
 ) -> Result<pb::MsgWithdrawValidatorCommissionResponse> {
-    let val = x_staking::addr::val_from_string(&msg.validator_address)
+    let val = sdk::address::val_codec_to_bytes(&msg.validator_address)
         .map_err(|e| invalid_addr("validator", &e))?;
     let amount = keeper::withdraw_validator_commission(ctx, &val)?;
     Ok(pb::MsgWithdrawValidatorCommissionResponse {
@@ -172,7 +173,8 @@ pub fn handle_deposit_validator_rewards_pool(
     }
     let amount = Coins::from_proto(&msg.amount)?;
     x_bank::send_from_account_to_module(ctx, &depositor, crate::MODULE_NAME, &amount)?;
-    let val = x_staking::addr::val_from_string(&msg.validator_address)?;
+    // `ValidatorAddressCodec().StringToBytes`, its error returned as is.
+    let val = sdk::address::val_codec_to_bytes(&msg.validator_address)?;
     let v = x_staking::store::validator(ctx, &val)?;
     let reward = DecCoins::from_coins(&amount)?;
     keeper::allocate_tokens_to_validator(ctx, &v, &reward)?;

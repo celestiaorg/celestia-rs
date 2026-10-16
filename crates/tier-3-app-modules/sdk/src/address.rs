@@ -49,13 +49,22 @@ pub fn from_bech32(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
 /// The account `address.Codec` (`x/auth/codec` `bech32Codec.StringToBytes`):
 /// like `AccAddressFromBech32` but a wrong prefix is `ErrLogic`.
 pub fn acc_codec_to_bytes(s: &str) -> Result<Vec<u8>, SdkError> {
+    codec_to_bytes(s, ACC_PREFIX)
+}
+
+/// The validator operator `address.Codec` (`Bech32Codec.StringToBytes`).
+pub fn val_codec_to_bytes(s: &str) -> Result<Vec<u8>, SdkError> {
+    codec_to_bytes(s, VALOPER_PREFIX)
+}
+
+fn codec_to_bytes(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
     if s.trim().is_empty() {
         return Err(undefined("empty address string is not allowed"));
     }
     let (hrp, bz) = encoding::bech32::decode_and_convert(s).map_err(undefined)?;
-    if hrp != ACC_PREFIX {
+    if hrp != prefix {
         return Err(sdk::logic(format!(
-            "hrp does not match bech32 prefix: expected '{ACC_PREFIX}' got '{hrp}'"
+            "hrp does not match bech32 prefix: expected '{prefix}' got '{hrp}'"
         )));
     }
     verify_address_format(&bz)?;
