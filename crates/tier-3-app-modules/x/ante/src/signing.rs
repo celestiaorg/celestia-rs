@@ -384,26 +384,11 @@ impl VerifiedCache {
     }
 }
 
-/// [`verify_secp256k1`] of a message with SHA-256 digest `digest`.
+/// [`verify_secp256k1`] of a message with SHA-256 digest `digest`
+/// (libsecp256k1; the Go-equivalence rules are in
+/// [`crypto::secp256k1::verify_go_prehashed`]).
 fn verify_secp256k1_prehashed(key: &[u8], digest: &[u8; 32], sig: &[u8]) -> bool {
-    use k256::elliptic_curve::ops::Reduce;
-    use k256::elliptic_curve::scalar::IsHigh;
-    use k256::{FieldBytes, Scalar, U256};
-    if sig.len() != 64 {
-        return false;
-    }
-    let Ok(vk) = k256::ecdsa::VerifyingKey::from_sec1_bytes(key) else {
-        return false;
-    };
-    let r = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[..32]));
-    let s = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[32..]));
-    if bool::from(s.is_high()) {
-        return false;
-    }
-    let Ok(signature) = k256::ecdsa::Signature::from_scalars(r, s) else {
-        return false;
-    };
-    k256::ecdsa::signature::hazmat::PrehashVerifier::verify_prehash(&vk, digest, &signature).is_ok()
+    crypto::secp256k1::verify_go_prehashed(key, digest, sig)
 }
 
 /// `elliptic.UnmarshalCompressed(P256)` succeeds.

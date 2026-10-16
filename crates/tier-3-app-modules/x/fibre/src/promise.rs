@@ -195,26 +195,7 @@ pub fn from_proto_and_validate(p: &PaymentPromise) -> sdk::Result<()> {
 /// `r` and `s` reduced modulo the group order, high-S rejected.
 #[must_use]
 pub fn verify_secp256k1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
-    use k256::elliptic_curve::ops::Reduce;
-    use k256::elliptic_curve::scalar::IsHigh;
-    use k256::{FieldBytes, Scalar, U256};
-    if sig.len() != 64 {
-        return false;
-    }
-    let Ok(vk) = k256::ecdsa::VerifyingKey::from_sec1_bytes(key) else {
-        return false;
-    };
-    let r = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[..32]));
-    let s = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[32..]));
-    if bool::from(s.is_high()) {
-        return false;
-    }
-    let Ok(signature) = k256::ecdsa::Signature::from_scalars(r, s) else {
-        return false;
-    };
-    let digest = hash::sha256(msg);
-    k256::ecdsa::signature::hazmat::PrehashVerifier::verify_prehash(&vk, &digest, &signature)
-        .is_ok()
+    crypto::secp256k1::verify_go(key, msg, sig)
 }
 
 /// Go standard library `crypto/ed25519.Verify` (RFC 8032 cofactorless

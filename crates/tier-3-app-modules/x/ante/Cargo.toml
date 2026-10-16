@@ -21,7 +21,7 @@ celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 encoding = { path = "../../../tier-0-primitives/encoding" }
 hash = { path = "../../../tier-0-primitives/hash" }
 kvstore = { path = "../../../tier-2-state-and-store/kvstore" }
-k256 = { version = "0.13", features = ["ecdsa"] }
+crypto = { path = "../../../tier-0-primitives/crypto" }
 p256 = { version = "0.13", features = ["ecdsa"] }
 ed25519-consensus = "2.1"
 math = { path = "../../../tier-0-primitives/math" }
@@ -39,7 +39,6 @@ x-fibre = { path = "../fibre" }
 protox = "0.7"
 
 [dev-dependencies]
-crypto = { path = "../../../tier-0-primitives/crypto" }
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 zstd = "0.14"

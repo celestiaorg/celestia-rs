@@ -113,6 +113,63 @@ pub fn verify(public_key: &PublicKeyBytes, msg: &[u8], signature: &SignatureByte
     verifying_key.verify(msg, &signature).is_ok()
 }
 
+/// cosmos-sdk `secp256k1.PubKey.VerifySignature` (`secp256k1_nocgo.go`,
+/// decred secp256k1 v4) of `msg` for the public key bytes `key` and the
+/// signature bytes `sig`. See [`verify_go_prehashed`].
+#[must_use]
+pub fn verify_go(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
+    sig.len() == SIGNATURE_LENGTH && verify_go_prehashed(key, &sha256(msg), sig)
+}
+
+/// [`verify_go`] of a message whose SHA-256 digest is `digest`.
+///
+/// Go's rules, each one checked against Go by the vectors in
+/// `conformance/fixtures/secp256k1/verify.json`:
+/// - `sig` is exactly 64 bytes `r ‖ s`; `r` and `s` are reduced modulo
+///   the group order (`ModNScalar.SetByteSlice` ignores the overflow), so
+///   `r + n` is accepted where it fits in 32 bytes and `n` reads as zero;
+/// - a reduced `s` above `n / 2` is rejected (low-S), zero `r` / `s` too;
+/// - `key` is anything `secp256k1.ParsePubKey` accepts: 33-byte compressed
+///   (`02` / `03`), 65-byte uncompressed (`04`) or hybrid (`06` / `07`,
+///   parity must match), coordinates below `p` and on the curve;
+/// - the digest is reduced modulo `n`, and `R.x` is compared with `r` and
+///   with `r + n` (when below `p`).
+///
+/// libsecp256k1 implements exactly these key encodings and the same
+/// verification equation; it rejects overflowing `r` / `s` instead of
+/// reducing them, so they are reduced here first.
+#[must_use]
+pub fn verify_go_prehashed(key: &[u8], digest: &[u8; 32], sig: &[u8]) -> bool {
+    use k256::elliptic_curve::ops::Reduce;
+    use k256::elliptic_curve::scalar::IsHigh;
+    use k256::{FieldBytes, Scalar, U256};
+
+    static CONTEXT: std::sync::LazyLock<::secp256k1::Secp256k1<::secp256k1::VerifyOnly>> =
+        std::sync::LazyLock::new(::secp256k1::Secp256k1::verification_only);
+
+    if sig.len() != SIGNATURE_LENGTH {
+        return false;
+    }
+    let r = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[..32]));
+    let s = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[32..]));
+    if bool::from(s.is_high()) || bool::from(r.is_zero()) || bool::from(s.is_zero()) {
+        return false;
+    }
+    let Ok(public_key) = ::secp256k1::PublicKey::from_slice(key) else {
+        return false;
+    };
+    let mut compact = [0u8; SIGNATURE_LENGTH];
+    compact[..32].copy_from_slice(&r.to_bytes());
+    compact[32..].copy_from_slice(&s.to_bytes());
+    let Ok(signature) = ::secp256k1::ecdsa::Signature::from_compact(&compact) else {
+        return false;
+    };
+    let message = ::secp256k1::Message::from_digest(*digest);
+    CONTEXT
+        .verify_ecdsa(message, &signature, &public_key)
+        .is_ok()
+}
+
 /// Return Cosmos's secp256k1 address: RIPEMD-160(SHA-256(compressed_public_key)).
 #[must_use]
 pub fn address(public_key: &PublicKeyBytes) -> AddressBytes {

@@ -17,7 +17,7 @@ gostr = { path = "../../../tier-0-primitives/gostr" }
 curve25519-dalek-ng = "4.1"
 hash = { path = "../../../tier-0-primitives/hash" }
 hex = "0.4"
-k256 = { version = "0.13", features = ["ecdsa"] }
+crypto = { path = "../../../tier-0-primitives/crypto" }
 serde = "1"
 shares = { path = "../../../tier-1-protocol-types/shares" }
 x-staking = { path = "../staking" }
@@ -30,5 +30,4 @@ x-bank = { path = "../bank" }
 
 [dev-dependencies]
 base64 = "0.23"
-crypto = { path = "../../../tier-0-primitives/crypto" }
 x-auth = { path = "../auth" }
