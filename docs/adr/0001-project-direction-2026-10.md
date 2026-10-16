@@ -34,6 +34,7 @@ validation works.
 | Storage | Validator-minimal pruning by default (512 GB SSD budget). No archival mode required. |
 | Process | Go-generated fixtures and differential tests are **mandatory for consensus-critical code**. Short spec per milestone (no per-crate spec ceremony); coverage is a target, not a hard gate. |
 | Overnight scope (2026-10-15) | If the network allows, go as far as a **Mocha validator** (local key, faucet funds, testnet tokens only; no mainnet keys). On a usage-limit hit, pause and auto-resume at the reset. When blocked on the network, work on performance tuning, release-build hardening (macOS aarch64, packaging, service files) and fuzzing of consensus-critical code. |
+| M13/M14 (2026-10-16) | M13 passes after **72 hours** of clean Mocha validation (no app-hash mismatch, no double-sign-guard refusal, missed blocks < 1%). The mainnet full node on the Mac waits until M13 passes (the cloud HTTPS follower covers mainnet execution meanwhile). Mainnet validation (M14) is decided later. Cloud work during the soak: remaining parity gaps, performance, long-run soak/chaos; Mac benchmarks (B1) after the soak. |
 | Workflow | Single agent; push directly to `main` after the local gate (`fmt`, `clippy -D warnings`, `test`). Progress lives in `MILESTONES.md` + commit log; blockers go to `OPEN_QUESTIONS.md` and work continues on unblocked items using Go behavior as the default answer. |
 
 ## Consequences
