@@ -1801,8 +1801,18 @@ class Soak:
                                     "--node", f"tcp://127.0.0.1:{via.rpc}", "--gas", "400000", "--fees", "20000utia", "-y", "-o", "json"], home)
                     self.event("valset-unbond", amount=amt, attempt=attempt + 1, via=via.i, out=out.strip()[-160:])
                     hm = re.search(r'"txhash":\s*"([0-9A-F]+)"', out)
-                    if hm and '"code":0' in out.replace(" ", "") and self.wait_included(hm.group(1), timeout=90)[0] == 0:
+                    ec, res = (self.wait_included(hm.group(1), timeout=90) if hm and '"code":0' in out.replace(" ", "")
+                               else (None, None))
+                    if ec == 0:
                         break
+                    if ec is not None:
+                        # Executed and failed, e.g. `too many unbonding delegation
+                        # entries` (max_entries 7 within the unbonding time):
+                        # this cycle cannot run; nothing was unbonded.
+                        rec["unbond_failed"] = res["tx_result"].get("log", "")[:200]
+                        self.event("valset-unbond-failed", log=rec["unbond_failed"])
+                        self.metrics["valset"].append(rec)
+                        return
                     self.stop.wait(10)
                 t = now()
                 gone = None
@@ -1813,12 +1823,17 @@ class Soak:
                     time.sleep(3)
                 if gone is None:
                     self.fail(f"validator {vi} still in the validator set 180 s after unbonding its self-delegation")
+                    self.metrics["valset"].append(rec)
+                    return
                 self.unbonded.add(vi)
                 self.save_state()
                 rec["left_set_s"] = gone
                 self.stop.wait(self.rng.uniform(240, 420))
+            # The current self-delegation, always: an unbond that did not
+            # land must not be followed by a second bond (doubling the
+            # validator's power past 1/3 halts the chain whenever it is down).
             rebonded = 0
-            if resume_cycle:
+            if True:
                 out = self.cli(["query", "staking", "delegation", acc, valoper, "--node", f"tcp://127.0.0.1:{self.nodes[self.ref_i].rpc}", "-o", "json"])
                 try:
                     d = json.loads(out[out.index("{"):])
