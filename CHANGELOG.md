@@ -4,6 +4,16 @@
 
 ### Changed
 
+- The consensus WAL rotates like Go's (`libs/autofile.Group`) instead of
+  dropping old heights: `data/cs.wal/wal` is rotated into `wal.000`,
+  `wal.001`, ... at 10 MB, the oldest files are deleted above 1 GB in
+  all, buffered records are fsynced every 2 s (votes and proposals the
+  node signs are still fsynced before they are sent), and start-up replay
+  searches the files newest to oldest with Go's corrupted-record handling
+  and head repair. Go and Rust read each other's WAL groups with the same
+  results (`conformance/consensusvectors/wal`). An existing head-only WAL
+  is used as is; no migration. OPEN_QUESTIONS #6.
+
 - `celestia-rs` uses jemalloc as its global allocator by default (feature
   `jemalloc`): on glibc malloc a 4.5 h memory soak showed RSS at 4.9x the
   live heap and rising, with jemalloc ~1.3x and flat

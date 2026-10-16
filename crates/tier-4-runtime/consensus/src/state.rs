@@ -437,10 +437,16 @@ impl ConsensusState {
 
     /// `catchupReplay`.
     fn catchup_replay(&mut self, cs_height: i64) -> Result<(), WalError> {
-        if self.wal.search_for_end_height(cs_height)?.is_some() {
-            return Err(WalError::Io(format!(
-                "wal should not contain #ENDHEIGHT {cs_height}"
-            )));
+        // Sanity check, ignoring data corruption (Go only asks `found`, so
+        // corruption after a found marker is not reported here either).
+        match self.wal.search_for_end_height(cs_height) {
+            Ok(None) => {}
+            Ok(Some(_)) | Err(WalError::Corruption(_)) => {
+                return Err(WalError::Io(format!(
+                    "wal should not contain #ENDHEIGHT {cs_height}"
+                )));
+            }
+            Err(e) => return Err(e),
         }
         if cs_height < self.state.initial_height {
             return Err(WalError::Io(format!(

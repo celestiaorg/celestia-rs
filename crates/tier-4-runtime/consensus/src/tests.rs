@@ -427,15 +427,26 @@ fn file_wal_round_trip() {
         wal.search_for_end_height(1).unwrap().unwrap(),
         msgs[5..].to_vec()
     );
-    // Compaction at an #ENDHEIGHT keeps the log replayable.
-    wal.set_head_size_limit(10);
+    // Rotation keeps every height (Go's autofile group).
     wal.write_sync(&TimedWalMessage {
         time: Time::ZERO,
         msg: WalMessage::EndHeight(2),
     })
     .unwrap();
-    assert!(wal.search_for_end_height(1).unwrap().is_none());
+    wal.rotate_file().unwrap();
+    assert_eq!(
+        wal.search_for_end_height(1).unwrap().unwrap(),
+        [
+            &msgs[5..],
+            &[TimedWalMessage {
+                time: Time::ZERO,
+                msg: WalMessage::EndHeight(2),
+            }]
+        ]
+        .concat()
+    );
     assert_eq!(wal.search_for_end_height(2).unwrap().unwrap(), vec![]);
+    assert!(path.with_extension("000").exists());
 }
 
 #[test]

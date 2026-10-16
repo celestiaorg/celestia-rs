@@ -11,7 +11,7 @@
 //! | `data/priv_validator_state.json` | last-sign state (Go format) |
 //! | `data/application.rocksdb/` | app state (ADR 0002; `.redb` files with the redb backend) |
 //! | `data/blockstore.rocksdb/`, `data/state.rocksdb/` | block / state stores |
-//! | `data/cs.wal/wal` | consensus WAL (Go format) |
+//! | `data/cs.wal/wal`, `wal.000`, ... | consensus WAL (Go format; head + rotated files, 10 MB each, 1 GB in all) |
 //! | `data/tx-inbox/*.tx` | raw txs submitted to the CAT mempool via CheckTx (until RPC exists) |
 //!
 //! Shutdown (SIGINT / SIGTERM through [`crate::ops::Shutdown`]) stops
@@ -188,6 +188,50 @@ impl StartOptions {
             shutdown: crate::ops::Shutdown::new(),
         }
     }
+
+    /// The WAL head file, `data/cs.wal/wal` (Go's default `wal_file`);
+    /// rotated files sit next to it as `wal.000`, `wal.001`, ...
+    #[must_use]
+    pub fn wal_file(&self) -> PathBuf {
+        self.home.join("data").join("cs.wal").join("wal")
+    }
+}
+
+/// Testing only: overrides of the WAL group's head (default 10 MB) and total
+/// (default 1 GB) size limits, in bytes, so a devnet rotates within
+/// minutes. Go has no such settings; production nodes must not set them.
+pub const WAL_HEAD_SIZE_LIMIT_ENV: &str = "CELESTIA_RS_TEST_WAL_HEAD_SIZE_LIMIT";
+/// See [`WAL_HEAD_SIZE_LIMIT_ENV`].
+pub const WAL_TOTAL_SIZE_LIMIT_ENV: &str = "CELESTIA_RS_TEST_WAL_TOTAL_SIZE_LIMIT";
+/// Testing only: the group check interval in milliseconds (default 5000).
+pub const WAL_CHECK_INTERVAL_MS_ENV: &str = "CELESTIA_RS_TEST_WAL_CHECK_INTERVAL_MS";
+
+/// Go's WAL group options, with the testing overrides applied.
+fn wal_options() -> anyhow::Result<consensus::GroupOptions> {
+    let mut o = consensus::GroupOptions::default();
+    for (var, field) in [
+        (WAL_HEAD_SIZE_LIMIT_ENV, &mut o.head_size_limit),
+        (WAL_TOTAL_SIZE_LIMIT_ENV, &mut o.total_size_limit),
+    ] {
+        if let Ok(v) = std::env::var(var) {
+            *field = v
+                .parse()
+                .with_context(|| format!("{var}={v}: not a byte count"))?;
+            tracing::warn!(
+                var,
+                bytes = *field,
+                "testing override of the WAL group size limit"
+            );
+        }
+    }
+    if let Ok(v) = std::env::var(WAL_CHECK_INTERVAL_MS_ENV) {
+        let ms: u64 = v
+            .parse()
+            .with_context(|| format!("{WAL_CHECK_INTERVAL_MS_ENV}={v}: not milliseconds"))?;
+        tracing::warn!(ms, "testing override of the WAL group check interval");
+        o.group_check_duration = std::time::Duration::from_millis(ms.max(1));
+    }
+    Ok(o)
 }
 
 /// Whether consensus messages are gossiped over P2P (the consensus and
@@ -385,11 +429,9 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     // The consensus state machine and its reactors exist from the start
     // (Go's `NewState` + `NewReactor`); block sync executes blocks through
     // the same block executor and then hands over (`SwitchToConsensus`).
-    let wal = FileWal::open(
-        home.join("data").join("cs.wal").join("wal"),
-        consensus::ticker::system_now(),
-    )
-    .map_err(|e| anyhow!("wal: {e}"))?;
+    let wal_file = opts.wal_file();
+    let wal = FileWal::open_with(&wal_file, consensus::ticker::system_now(), wal_options()?)
+        .map_err(|e| anyhow!("wal {}: {e}", wal_file.display()))?;
     // Set at shutdown: ends a delayed precommit wait without signing.
     let cs_stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mut cs = ConsensusState::new(

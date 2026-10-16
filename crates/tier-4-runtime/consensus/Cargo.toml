@@ -30,4 +30,6 @@ crypto = { path = "../../tier-0-primitives/crypto" }
 hash = { path = "../../tier-0-primitives/hash" }
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
 pbjson-types = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tempfile = "3"

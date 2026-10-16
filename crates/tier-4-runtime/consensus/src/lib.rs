@@ -30,7 +30,7 @@ pub use state::{ConsensusConfig, ConsensusState, Event, MsgInfo};
 pub use ticker::{Clock, SystemClock};
 pub use types::{ConsensusMessage, RoundState, RoundStep, TimeoutInfo};
 pub use vote_set::{BitArray, VoteError, VoteSet};
-pub use wal::{FileWal, MemWal, NilWal, Wal};
+pub use wal::{FileWal, GroupOptions, MemWal, NilWal, Wal};
 
 #[cfg(test)]
 mod tests;

@@ -10,7 +10,7 @@ development and CI.
 | Resource | Budget | Notes |
 |---|---|---|
 | Resident memory | ≤ 8 GB steady state, ≤ 12 GB peak | Leaves headroom for the OS and page cache. |
-| Disk | ≤ 350 GB after 1 year | Validator-minimal pruning of blocks and app state. |
+| Disk | ≤ 350 GB after 1 year | Validator-minimal pruning of blocks and app state, plus a fixed ≤ 1 GB for the consensus WAL (`data/cs.wal`, rotated and capped like Go). |
 | Block processing | Finalize + commit a full-size block well inside the block time | Measured against the Go node in the post-mainnet benchmark phase. |
 
 ## State storage defaults

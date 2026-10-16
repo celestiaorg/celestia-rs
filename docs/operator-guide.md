@@ -239,6 +239,18 @@ localhost or behind a firewall.
 With the defaults a mainnet validator stays well inside the 350 GB/year
 budget of `docs/hardware.md`.
 
+**Consensus WAL.** `data/cs.wal/` holds the consensus write-ahead log in
+Go's format and layout: the head file `wal` is rotated into `wal.000`,
+`wal.001`, ... once it reaches 10 MB (checked every 5 s), and the oldest
+rotated files are deleted while the directory holds more than 1 GB, so
+it never needs manual pruning (Go has no setting for these limits and
+neither does celestia-rs). Every vote and proposal the node signs is
+written and fsynced to the head before it is sent; everything else is
+fsynced every 2 s. On start the node replays the records after the last
+`#ENDHEIGHT` marker, searching the files newest to oldest. A WAL from
+builds before rotation (a lone `data/cs.wal/wal`) is read as is: it
+becomes `wal.000` at the first rotation.
+
 ## 8. Running as a service
 
 ### macOS: launchd
@@ -866,6 +878,26 @@ Keep the previous binary (`cp /usr/local/bin/celestia-rs ~/celestia-rs.prev`
 before installing) to roll back the same way. A stop costs a few missed
 blocks, far from the jail threshold. Never start a second copy of the
 node "to test" with the same `priv_validator_key.json`.
+
+#### Saving the consensus WAL for forensics
+
+After a missed block, a refused signature or any consensus surprise, save
+the WAL before it rotates away (it keeps about 1 GB, which is hours of
+history on Mocha, less under load):
+
+```sh
+H=~/.celestia-rs/mocha
+tar -C $H/data -czf ~/cs.wal-$(date -u +%Y%m%dT%H%M%SZ).tgz cs.wal   # safe while running
+grep -E 'Searching for height|Found|Catchup by replaying' ~/Library/Logs/celestia-rs.log | tail
+```
+
+Copying while the node runs is safe (the files are only appended to,
+renamed and deleted; at worst the last record of the copied head is cut
+short). The files are in Go's format: Go's `wal2json` (celestia-core
+`scripts/wal2json`) reads them one file at a time, oldest (lowest
+number) first, the head `wal` last. Never edit or delete files in `cs.wal/` on a
+running node; on a stopped node a damaged head is repaired on start
+(`wal.CORRUPTED` keeps the original, as Go).
 
 ### 11.11 Double-sign guard refusal
 
