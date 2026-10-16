@@ -32,7 +32,8 @@ pub fn backend(home: &Path, flag: Option<&str>) -> anyhow::Result<Backend> {
 }
 
 /// Opens the keyring of `home` (`--keyring-dir` overrides the base
-/// directory); `file` passphrases are read from stdin like Go's prompts.
+/// directory); `file` passphrases are read from stdin like Go's prompts,
+/// without echo on a terminal.
 #[must_use]
 pub fn open(home: &Path, keyring_dir: Option<&Path>, backend: Backend) -> Keyring {
     let base = keyring_dir.unwrap_or(home);
@@ -45,7 +46,7 @@ pub fn open(home: &Path, keyring_dir: Option<&Path>, backend: Backend) -> Keyrin
             Prompt::Unlock | Prompt::New => "Enter keyring passphrase:",
             Prompt::Confirm => "Re-enter keyring passphrase:",
         };
-        util::prompt(msg).map_err(|e| keyring::Error::Io(e.to_string()))
+        util::prompt_password(msg).map_err(|e| keyring::Error::Io(e.to_string()))
     }))
 }
 
@@ -248,7 +249,7 @@ pub fn export(kr: &mut Keyring, name: &str, unarmored_hex: bool) -> anyhow::Resu
         util::out(hex::encode(s));
         return Ok(());
     }
-    let pass = util::prompt("Enter passphrase to encrypt the exported key:")?;
+    let pass = util::prompt_password("Enter passphrase to encrypt the exported key:")?;
     let armor = kr.export_armor(name, &pass).map_err(|e| anyhow!("{e}"))?;
     util::out(armor);
     Ok(())
@@ -258,7 +259,7 @@ pub fn export(kr: &mut Keyring, name: &str, unarmored_hex: bool) -> anyhow::Resu
 pub fn import(kr: &mut Keyring, name: &str, file: &Path) -> anyhow::Result<()> {
     let armor =
         std::fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
-    let pass = util::prompt("Enter passphrase to decrypt your key:")?;
+    let pass = util::prompt_password("Enter passphrase to decrypt your key:")?;
     kr.import_armor(name, &armor, &pass)
         .map_err(|e| anyhow!("{e}"))?;
     Ok(())

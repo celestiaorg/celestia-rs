@@ -121,6 +121,49 @@ pub fn prompt(msg: &str) -> anyhow::Result<String> {
     Ok(line)
 }
 
+/// Prompts for a secret like Go's `input.GetPassword`: with terminal echo
+/// off when stdin is a TTY (`term.ReadPassword`), else a piped line.
+pub fn prompt_password(msg: &str) -> anyhow::Result<String> {
+    #[cfg(unix)]
+    let _echo = EchoOff::new(std::io::stdin());
+    prompt(msg)
+}
+
+/// Turns a terminal's echo off until dropped; `None` (no-op) when `fd` is
+/// not a terminal.
+#[cfg(unix)]
+pub struct EchoOff<Fd: std::os::fd::AsFd> {
+    fd: Fd,
+    saved: rustix::termios::Termios,
+}
+
+#[cfg(unix)]
+impl<Fd: std::os::fd::AsFd> EchoOff<Fd> {
+    /// Disables `ECHO` on `fd` if it is a terminal.
+    pub fn new(fd: Fd) -> Option<Self> {
+        use rustix::termios::{LocalModes, OptionalActions, isatty, tcgetattr, tcsetattr};
+        if !isatty(&fd) {
+            return None;
+        }
+        let saved = tcgetattr(&fd).ok()?;
+        let mut quiet = saved.clone();
+        quiet.local_modes.remove(LocalModes::ECHO);
+        tcsetattr(&fd, OptionalActions::Flush, &quiet).ok()?;
+        Some(Self { fd, saved })
+    }
+}
+
+#[cfg(unix)]
+impl<Fd: std::os::fd::AsFd> Drop for EchoOff<Fd> {
+    fn drop(&mut self) {
+        let _ = rustix::termios::tcsetattr(
+            &self.fd,
+            rustix::termios::OptionalActions::Now,
+            &self.saved,
+        );
+    }
+}
+
 /// Writes `bytes` with mode 0600 (keys, genesis), creating parent dirs.
 pub fn write_private(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
@@ -149,5 +192,49 @@ mod tests {
             rfc3339_nano(1_792_000_080, 532_290_000),
             "2026-10-14T17:48:00.53229Z"
         );
+    }
+
+    /// Opens a pty pair; returns (controller, terminal).
+    #[cfg(unix)]
+    fn pty() -> (std::os::fd::OwnedFd, std::fs::File) {
+        use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
+        let ctl = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+        grantpt(&ctl).unwrap();
+        unlockpt(&ctl).unwrap();
+        let name = ptsname(&ctl, Vec::new()).unwrap();
+        let tty = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name.to_str().unwrap())
+            .unwrap();
+        (ctl, tty)
+    }
+
+    #[cfg(unix)]
+    fn echo_on(fd: &std::fs::File) -> bool {
+        use rustix::termios::{LocalModes, tcgetattr};
+        tcgetattr(fd)
+            .unwrap()
+            .local_modes
+            .contains(LocalModes::ECHO)
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn echo_off_on_a_terminal_until_dropped() {
+        let (_ctl, tty) = pty();
+        assert!(echo_on(&tty));
+        let guard = EchoOff::new(&tty);
+        assert!(guard.is_some());
+        assert!(!echo_on(&tty), "echo must be off while the guard lives");
+        drop(guard);
+        assert!(echo_on(&tty), "echo must be restored on drop");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn echo_off_skips_piped_input() {
+        let f = tempfile::tempfile().unwrap();
+        assert!(EchoOff::new(&f).is_none());
     }
 }
