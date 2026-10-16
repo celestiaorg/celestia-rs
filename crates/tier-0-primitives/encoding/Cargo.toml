@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 gostr = { path = "../gostr" }
-base64 = "0.22"
+base64 = "0.23"
 bech32 = "0.9"
 bytes = "1"
 hex = "0.4"

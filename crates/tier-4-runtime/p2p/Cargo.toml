@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
 chacha20poly1305 = "0.10"
 crypto = { path = "../../tier-0-primitives/crypto" }
