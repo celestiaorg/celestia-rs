@@ -624,19 +624,13 @@ fn authenticate_tx(
             }
             None => Vec::new(),
         };
-        for s in signers {
-            let bytes = match s {
-                celestia_proto::signers::Signer::Raw(b) => b,
-                celestia_proto::signers::Signer::Str(s) => match encoding::bech32::decode(&s) {
-                    Ok((_, b)) => b,
-                    Err(e) => {
-                        return Err(x_ibc::errors::unregistered(format!(
-                            "failed to obtain message signers for message type {}: {e}",
-                            m.type_url
-                        )));
-                    }
-                },
-            };
+        let signers = x_ante::txview::signer_bytes(&m.type_url, signers).map_err(|e| {
+            e.wrap(format!(
+                "failed to obtain message signers for message type {}",
+                m.type_url
+            ))
+        })?;
+        for bytes in signers {
             let got = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &bytes);
             if got != ica {
                 return Err(ierr::unauthorized(format!(
@@ -991,6 +985,76 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
             }
             Ok(())
         }));
+    }
+    controller_validate_basic(msg)
+}
+
+/// `MaximumOwnerLength` of the controller messages (bytes).
+const MAXIMUM_OWNER_LENGTH: usize = 2048;
+/// `icatypes.MaxMemoCharLength`.
+const MAX_MEMO_CHAR_LENGTH: usize = 32768;
+
+/// `ValidateBasic` of the ICA *controller* messages. celestia-app has no
+/// controller keeper, so no msg server serves them, but the types are in
+/// the interface registry and `runTxAnte`'s `validateBasicTxMsgs` runs
+/// their `ValidateBasic` before the handler-existence check (ibc-go
+/// v8.7.2 `controller/types/msgs.go`).
+fn controller_validate_basic(msg: &Any) -> Option<Result<()>> {
+    use celestia_proto::ibc::applications::interchain_accounts::controller::v1 as ctl;
+    let owner_check = |owner: &str| -> Result<()> {
+        if gostr::is_blank(owner) {
+            return Err(ierr::invalid_address("owner address cannot be empty"));
+        }
+        if gostr::go_len(owner) > MAXIMUM_OWNER_LENGTH {
+            return Err(ierr::invalid_address(format!(
+                "owner address must not exceed {MAXIMUM_OWNER_LENGTH} bytes"
+            )));
+        }
+        Ok(())
+    };
+    if msg.type_url == ctl::MsgRegisterInterchainAccount::type_url() {
+        return Some(
+            decode::<ctl::MsgRegisterInterchainAccount>(msg).and_then(|m| {
+                x_ibc::host::connection_identifier_validator(&m.connection_id)
+                    .map_err(|e| e.wrap("invalid connection ID"))?;
+                owner_check(&m.owner)
+            }),
+        );
+    }
+    if msg.type_url == ctl::MsgSendTx::type_url() {
+        return Some(decode::<ctl::MsgSendTx>(msg).and_then(|m| {
+            x_ibc::host::connection_identifier_validator(&m.connection_id)
+                .map_err(|e| e.wrap("invalid connection ID"))?;
+            owner_check(&m.owner)?;
+            // `PacketData` is non-nullable: absent is the zero value.
+            let pd = m.packet_data.unwrap_or_default();
+            let outgoing = |log: String| {
+                SdkError::new(
+                    crate::MODULE_NAME,
+                    6,
+                    format!("{log}: invalid outgoing data"),
+                )
+                .wrap("invalid interchain account packet data")
+            };
+            if pd.r#type == 0 {
+                return Err(outgoing("packet data type cannot be unspecified".into()));
+            }
+            if pd.data.is_empty() {
+                return Err(outgoing("packet data cannot be empty".into()));
+            }
+            if gostr::go_len(&pd.memo) > MAX_MEMO_CHAR_LENGTH {
+                return Err(outgoing(format!(
+                    "packet data memo cannot be greater than {MAX_MEMO_CHAR_LENGTH} characters"
+                )));
+            }
+            if m.relative_timeout == 0 {
+                return Err(ierr::invalid_request("relative timeout cannot be zero"));
+            }
+            Ok(())
+        }));
+    }
+    if msg.type_url == ctl::MsgUpdateParams::type_url() {
+        return Some(decode::<ctl::MsgUpdateParams>(msg).and_then(|m| signer_check(&m.signer)));
     }
     None
 }

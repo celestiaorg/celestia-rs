@@ -109,6 +109,13 @@ fn app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }
 
+/// `sdkCtx.BlockHeader().Version.App`, which the msg server compares
+/// signalled versions with: `BaseApp` builds every block header
+/// (`FinalizeBlock`, the proposal handlers, `Commit`'s check state,
+/// `InitChain`) without a `Version`, so it is always 0 (the app version
+/// lives in the consensus params).
+const HEADER_APP_VERSION: u64 = 0;
+
 /// `VersionToBytes`.
 #[must_use]
 pub fn version_to_bytes(v: u64) -> Vec<u8> {
@@ -203,7 +210,7 @@ pub fn signal_version(
         return Err(errors::upgrade_pending().wrap("can not signal version"));
     }
     let val = val_from_bech32(&msg.validator_address)?;
-    let current = app_version(ctx);
+    let current = HEADER_APP_VERSION;
     if msg.version < current {
         return Err(errors::invalid_signal_version().wrap(format!(
             "signalled version {}, current version {current}",
@@ -240,12 +247,14 @@ pub fn try_upgrade(
         .to_i64()
         .ok_or_else(|| sdk::error::sdk::logic("threshold overflows int64"))?;
     if let Some(version) = tally_voting_power(ctx, staking, threshold)? {
-        let current = app_version(ctx);
-        if version <= current {
+        let header_version = HEADER_APP_VERSION;
+        if version <= header_version {
             return Err(errors::invalid_upgrade_version().wrap(format!(
-                "can not upgrade to version {version} because it is less than or equal to current version {current}"
+                "can not upgrade to version {version} because it is less than or equal to current version {header_version}"
             )));
         }
+        // The binary's version (v9.0.8 / v10.4.0 delays).
+        let current = app_version(ctx);
         let upgrade = Upgrade {
             app_version: version,
             upgrade_height: ctx.header.height
@@ -362,10 +371,11 @@ mod tests {
             validator_address: to_bech32(VALOPER_PREFIX, v),
             version,
         };
-        assert_eq!(
-            signal_version(&mut ctx, &mut s, &sig(&a, 9)).map_err(|e| e.code),
-            Err(1)
-        );
+        // Go compares with the block header's (unset) version, not the app
+        // version: a lower version is accepted (found by `fuzz-diff
+        // deliver` against v10.4.0).
+        signal_version(&mut ctx, &mut s, &sig(&a, 9))?;
+        assert_eq!(ctx.get(STORE_KEY, &a)?, Some(version_to_bytes(9)));
         signal_version(&mut ctx, &mut s, &sig(&a, 11))?;
         set_validator_version(&mut ctx, &gone, 11)?;
         let try_msg = MsgTryUpgrade {

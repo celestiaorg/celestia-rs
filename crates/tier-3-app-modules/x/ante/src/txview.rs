@@ -96,7 +96,15 @@ pub fn msg_signers(any: &Any) -> Result<Vec<Vec<u8>>, SdkError> {
         )));
     };
     let signers = res.map_err(|e| internal(e.to_string()))?;
-    let prefix = if crate::signing::is_validator_signer(&any.type_url) {
+    signer_bytes(&any.type_url, signers)
+}
+
+/// The signing context's address decoding of a message's signer fields:
+/// the validator address codec for `cosmos.ValidatorAddressString`
+/// signer fields, the account codec otherwise (`Bech32Codec.StringToBytes`:
+/// a wrong prefix is `ErrLogic`, decoding errors plain errors).
+pub fn signer_bytes(type_url: &str, signers: Vec<Signer>) -> Result<Vec<Vec<u8>>, SdkError> {
+    let prefix = if crate::signing::is_validator_signer(type_url) {
         VALIDATOR_PREFIX
     } else {
         ACCOUNT_PREFIX

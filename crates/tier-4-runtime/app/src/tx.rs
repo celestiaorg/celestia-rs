@@ -54,9 +54,10 @@ pub(crate) fn check_msgs(tx: &Tx) -> Result<()> {
     }
     for msg in tx.msgs() {
         if !router::has_handler(&msg.type_url) {
+            // Go's `%T` of the message.
             return Err(errs::unknown_request(format!(
                 "no message handler found for {}",
-                msg.type_url
+                txdecode::go_type_name(msg.type_url.trim_start_matches('/'))
             )));
         }
     }

@@ -259,16 +259,23 @@ pub fn handle_grant_allowance(
             "cannot self-grant fee authorization",
         ));
     }
-    let grantee = acc_from_bech32(&msg.grantee)?;
-    let granter = acc_from_bech32(&msg.granter)?;
+    let grantee = sdk::address::acc_codec_to_bytes(&msg.grantee)?;
+    let granter = sdk::address::acc_codec_to_bytes(&msg.granter)?;
     if get_allowance(ctx, &granter, &grantee).is_ok() {
         return Err(sdkerr::invalid_request("fee allowance already exists"));
     }
+    // `msg.GetFeeAllowanceI()`: `msg.Allowance.GetCachedValue()` on a
+    // nil `*Any` (absent allowance) dereferences it.
     let a = msg
         .allowance
         .as_ref()
-        .ok_or_else(|| errors::no_allowance().wrap("failed to get allowance"))
-        .and_then(Allowance::from_any)?;
+        .ok_or_else(|| {
+            sdk::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
+        })
+        .and_then(|any| {
+            Allowance::check_shape(any)?;
+            Allowance::from_any(any)
+        })?;
     a.validate_basic()?;
     grant_allowance(ctx, &granter, &grantee, &a)?;
     Ok(MsgGrantAllowanceResponse {})
@@ -282,8 +289,8 @@ pub fn handle_revoke_allowance(
     if msg.grantee == msg.granter {
         return Err(sdkerr::invalid_address("addresses must be different"));
     }
-    let grantee = acc_from_bech32(&msg.grantee)?;
-    let granter = acc_from_bech32(&msg.granter)?;
+    let grantee = sdk::address::acc_codec_to_bytes(&msg.grantee)?;
+    let granter = sdk::address::acc_codec_to_bytes(&msg.granter)?;
     revoke_allowance(ctx, &granter, &grantee)?;
     Ok(MsgRevokeAllowanceResponse {})
 }

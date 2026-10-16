@@ -111,7 +111,8 @@ static GO_PACKAGES: &[(&str, &str)] = &[
 /// `reflect.TypeOf(msg).String()` of the Go message `full_name` (proto
 /// full name without the leading dot); the full name when its package is
 /// unknown.
-pub(crate) fn go_type_name(full_name: &str) -> String {
+#[must_use]
+pub fn go_type_name(full_name: &str) -> String {
     let mut best: Option<(&str, &str)> = None;
     for &(pkg, go) in GO_PACKAGES {
         if full_name.len() > pkg.len()

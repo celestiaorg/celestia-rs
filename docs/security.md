@@ -261,6 +261,40 @@ gRPC. Compared: the `SimulateResponse` bytes (gas, data, log, events,
 message responses) or the error's code and gas (a *mismatch*), and the
 error text (reported separately).
 
+`fuzz-diff deliver` (`crates/fuzz-diff/deliver-diff.sh <scenario>
+[blocks] [txs-per-block] [seed]`) is the delivery differential. Simulate
+skips signatures and never commits, so it cannot see a state write or a
+`LastResultsHash` difference; here the generated txs are *signed* and
+*finalized*. The scenario's `InitChain` app state gets 12 funded accounts
+whose keys the harness holds (and short slashing window, unbonding and
+voting periods); the recorded blocks are replayed into Go and Rust (each
+`FinalizeBlock` compared), then generated blocks follow on the final state:
+every `CheckTx` (code, gas, priority, address, sequence; logs separately),
+Go's `PrepareProposal` against Rust's, `ProcessProposal` of Go's block and
+of the unfiltered tx list (which is sometimes the block finalized, like a
+proposer that skips the filter), each tx result (code, codespace, data, gas
+wanted / used, then log, info, events, signers), block events, validator
+and consensus parameter updates and the app hash. Txs: messages of every
+registered `sdk.Msg` type built from scratch (values harvested from the
+scenario's messages and the blocks' events, boundary numbers, `LegacyDec`
+wire values, denoms, addresses of every kind, times, durations, repeated
+fields up to 200 elements), scenario messages re-signed by a fuzz account
+and mutated at the field level, state-building flows (sends, delegations,
+redelegations, unbondings and their cancellation, validators, rewards,
+grants, fee allowances, proposals of gov-signed messages of any type,
+deposits, votes), `MsgExec` by a grantee, multi-message and multi-signer
+txs, blob txs at share-boundary sizes (with mismatched commitments, sizes,
+namespaces, share versions), and ante variants (fees, gas limits from 0 to
+`MaxUint64`, memo lengths, timeout heights, extension options, fee granter
+and payer, `SIGN_MODE_LEGACY_AMINO_JSON`, missing public keys, wrong
+sequences, account numbers and signatures). Blocks carry the tracked
+validator set's votes (fuzz validators sometimes absent: downtime jailing)
+and sometimes duplicate-vote / light-client-attack evidence; block time
+sometimes jumps (unbonding completion, proposal ends, allowance and grant
+expiry). `fuzz-diff coverage` prints, per registered message type, whether
+each app version decodes it, whether Rust routes it, and how often Go
+executed it in the recorded scenarios.
+
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
 `celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before
@@ -285,6 +319,10 @@ EXEC_MODE=synth EXEC_SYNTH=warp GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-di
 # JSON decodes (depth, numbers, key folding) and gov metadata in execution
 target/release/fuzz-diff --app-version 10 --ops json_count,json_gov,json_pfm,json_pfm_next,json_ica_tx,json_ica_vb,json_ica_pd,json_ica_md,json_ics20,json_ack,json_ack_check --iters 40000
 EXEC_MODE=json GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/exec-diff.sh gov 10
+# signed txs finalized on both apps (app hash, tx results, CheckTx, proposals)
+GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh gov 300 8 1
+GO_APPD=$DEVNET_BIN/v9/celestia-appd crates/fuzz-diff/deliver-diff.sh v9-hyperlane 300 8 1
+target/release/fuzz-diff coverage   # message-type coverage of the recorded scenarios
 # pin a finding: record Go's outcome into the regression file
 echo "tx <hex>" | target/release/fuzz-diff record 10 "what it shows" >> crates/fuzz-diff/tests/regressions.jsonl
 ```
@@ -383,6 +421,7 @@ hand-written network messages.
 | `fuzz-diff` other `json_*` ops with the new mutations, `json_ack_check` | v10, v9: 30 000 each, then all 11 `json_*` ops 2 × 40 000 per version | finding 34 fixed; then clean |
 | `ibc-upgrades` fixture regenerated (2026-10-16) with 13 proto3json ICA packets carrying `null`s (a `null` message, `null` coins / outputs / amounts, `null` in `MsgExec.msgs` and `MsgVoteWeighted.options`, a one-byte secp256r1 key, a quoted `null` proposal id, `time.Parse`'s lenient forms) executed by celestia-app v10.4.0 | 237 heights, 3 txs failing with Go panics, the rest error acks | finding 35 fixed; then full parity (app hash, code, gas, data at every height). Remaining log differences: the panic logs (Go's recorded stack trace) and two pre-existing error texts |
 | `fuzz-diff exec` `EXEC_MODE=json` | `gov` 940 simulated txs (v10) | finding 29: 161 code / gas mismatches before, none after |
+| `fuzz-diff deliver` (signed txs finalized; 2026-10-16) | v10: `gov`, `staking`, `staking-lifecycle`, `hyperlane`, `authz-feegrant`, `fibre`, `vesting`, `zkism-forwarding`, `ibc`, `utf8`, `blob`, `consensus`, `evidence`; v9: `v9-gov`, `v9-staking`, `v9-hyperlane`, `v9-authz-feegrant`, `v9-vesting`, `v9-zkism-forwarding`, `v9-ibc`, `v9-utf8`, `v9-blob`, `v9-exec` (300 generated blocks each after the replay; ~7 300 blocks, ~41 000 txs through `CheckTx`, ~9 000 finalized) | findings 36–45 fixed (the first gov run stopped at the signal app-hash split after 229 blocks) |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 
 ### Findings (2026-10-15)
@@ -427,6 +466,16 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 33 | ICA host proto3json `DeserializeCosmosTx` (both versions) | Go decodes with gogoproto `jsonpb` over the Go structs (reflection), Rust decoded with the registry's serde JSON. Go: a `null` element of `[]T` is `T{}` (`"amount":[null]` is a `Coin` with an empty denom, marshaled with amount `0`), of `[]*T` / `[]*Any` a nil pointer, which gogoproto's `Marshal` of the enclosing `Any` dereferences: Go **panics** inside `UnmarshalJSON` (`MsgExec.msgs`, gov `MsgSubmitProposal.messages`, `MsgVoteWeighted.options`, `MsgSetSendEnabled.send_enabled`, ...) and the whole `MsgRecvPacket` tx fails with `ErrPanic`; a `null` message (`"messages":[null]`) is a nil `sdk.Msg`: `authenticateTx` fails it (`message type not allowed: /` or `ErrPackAny`, code 33, in the error ack). Also: `null` leaves any non-pointer value unchanged (also inside quotes: `"proposal_id":"null"` is 0), integers may be quoted (the content is decoded as JSON: `" 7 "` is 7), enums by name (raw bytes between the quotes; `"1"` fails) or by any int32, `bytes` as base64 (newlines skipped, trailing data fails) or as an array of numbers, `json_name` beats `orig_name`, the last duplicate key wins, a oneof's interface field takes only `null`, customtypes through their `UnmarshalJSON` (`math.Int` fails `""`, `LegacyDec` from a decimal string, `HexAddress` with an optional `0x`, secp256r1 `ecdsaPK` slices `data[1:len-1]` of the raw value: a one-byte value such as `1` **panics**), `stdtime` through `time.Parse(RFC3339Nano)`'s layout path (one-digit hour, `,`, any number of fraction digits, offsets up to `24:60`), `stdduration` through `time.ParseDuration`. Rust rejected every `null` element and accepted or rejected most of the rest differently. In the protobuf encoding an `Any` with an empty type URL is a nil message too (Rust failed it as unregistered), and an `UnpackInterfaces` panic (solo machine `ClientState` without a consensus state) panics in both encodings (Rust acked an error) | ack, code and gas divergence (`LastResultsHash`, app hash) from one relayed packet | `txdecode::jsonpb` (table of the Go struct shapes generated by `conformance/txdecode -jsonpb-only` from the v10 registry; v9 differences, checked against a v9 dump: `MsgForward` fields 7/8, `RemoteRouter.receiver_contract` a string), `unmarshal_cosmos_tx_json`; `deserialize_cosmos_tx` returns nil messages, `authenticate_tx` fails them like Go; the host's gogoproto helpers run with v9's schema at app version 9; `time::parse_rfc3339_nano`; unit tests, regressions, `ibc-upgrades` fixture (proto3json `null` packets) |
 | 34 | `jsonpb` decodes of `channeltypes.Acknowledgement` and `InterchainAccountPacketData` (both versions) | a `[]byte` field (`result`, `data`) given as a JSON array of numbers is valid in Go (`encoding/json`) and was rejected; base64 with data after the padding (`AQ==AAAA`) was accepted; `{"result":null}` sets the `result` member (nil bytes, marshaled back as `null`, so `AcknowledgePacket`'s marshalling check passes) where Rust saw no response (and failed the check); `{"error":null}` is an empty error; `"type":-0` is 0 in Go (an `int32`), Rust failed it; a non-`null` `response` (the oneof's interface field) fails in Go | `AcknowledgePacket` with an array-form ack Go rejects (`acknowledgement marshalling error`) passed the check in Rust (the decode failed, so no check ran); ICA packet data with array `data` executed in Go, error ack in Rust | `gojson::bytes_value`, `gojson::decode_base64_std` (Go's `decodeQuantum`), `decode_acknowledgement` / `decode_packet_data` on the `gojson` tree; `json_ack_check` op; regressions |
 | 35 | IBC core `RecvPacket` (both versions) | an app callback that fails (only a Go panic does: the IBC apps turn errors into acknowledgements) returned with `?` and left the callback's cache branch open: the failed tx then discarded that branch only and kept the message branch (the packet receipt, the callback's writes) | same code, gas and log as Go, different app hash (found by the `ibc-upgrades` fixture's proto3json `null` packets once finding 33 made Rust panic like Go) | the branch is discarded on the error; `run_msgs` discards every branch above its own on failure; `ibc-upgrades` fixture |
+| 36 | x/auth `MsgUpdateParams` (both versions) | registered and routed in Go (`x/auth/keeper/msg_server.go`: authority check, `Params.Validate`, store), unrouted in Rust: Rust failed it in `runTxAnte` (`no message handler`, code 6, gas 1180, no fee, no sequence increment) where Go runs the ante handler and the handler (code 1, fee and sequence taken); a gov proposal carrying it could not be submitted in Rust and executes (auth params change) in Go | any user splits the network with one tx (`LastResultsHash`, app hash) | `router::handle_auth_update_params`; `app` unit test |
+| 37 | ICA *controller* messages (`MsgRegisterInterchainAccount`, `MsgSendTx`, `MsgUpdateParams`; both versions) | celestia-app has no controller keeper (no msg server), but the types are in the interface registry and `runTxAnte`'s `validateBasicTxMsgs` runs their `ValidateBasic` before the handler check: Go fails with the ValidateBasic error (`host`/2 `invalid connection ID`, `ibc`/5, `interchainaccounts`/6, ...), Rust with `no message handler` (`sdk`/6). PrepareProposal's filter runs neither, so such a tx is included and the codes differ in `FinalizeBlock` | `LastResultsHash` split from one tx | `x_icahost::host::controller_validate_basic`; `no message handler found for %T` with Go's type name; `app` unit test |
+| 38 | PrepareProposal `FilteredSquareBuilder.Fill` (both versions) | celestia's `HandlePanicDecorator` re-panics and `Fill` does not recover: a Go panic in the ante chain (e.g. `signerInfo.PublicKey cannot be nil`, a signer info without key) aborts the whole PrepareProposal and `BaseApp` returns the request's txs unchanged (no square); Rust dropped the tx and built the block | a Rust proposer builds a different block than a Go proposer (Go validators accept it; not a safety issue) | `proposal::ante_fill` |
+| 39 | feegrant `MsgGrantAllowance` / `MsgRevokeAllowance` (both versions) | an absent allowance is a nil `*Any` whose `GetCachedValue` Go dereferences: **panic** (`ErrPanic`), Rust returned `no allowance` (code 5); `AllowedMsgAllowance.ValidateBasic`'s order (nil inner allowance, then empty message list, then `GetAllowance`) differed (`no messages` vs `no allowance`); both handlers decode addresses with the account address codec (wrong prefix: `ErrLogic`, code 35), Rust with `AccAddressFromBech32` (code 1) | code / gas split from one tx | `handle_grant_allowance`, `Allowance::check_shape`, `sdk::address::acc_codec_to_bytes` |
+| 40 | bank `MsgSend` / `MsgMultiSend`, distribution `MsgFundCommunityPool` / `MsgCommunityPoolSpend` (both versions) | `Coins.IsValid` / `Validate` on the coins as decoded: a coin without amount (nil `math.Int`) that `Validate` reaches **panics** (`Sign` of a nil `big.Int`); Rust failed decoding the amount first (`invalid coins`); the error text is `Coins.String()` of the raw coins (`<nil>` amounts) | panic vs error: code split (as finding 21 for `MsgDepositValidatorRewardsPool`) | `raw_coins_is_valid` in `x_bank::msgs::valid_raw_coins` and distribution `validate_amount` |
+| 41 | signers of `MsgExec` inner messages, gov proposal messages and ICA host messages (both versions) | `GetMsgV1Signers` decodes signer strings with the signing context's address codecs: a wrong prefix (`cosmos1...` with the granter's or gov's bytes) is `ErrLogic`, the validator codec for `ValidatorAddressString` signers. Rust decoded any bech32 string without a prefix check: an inner message "signed" by `cosmos1<granter>` ran under the granter's grant, a proposal message "signed" by `cosmos1<gov>` was accepted | authz / gov execution Go refuses: state split | `x_ante::txview::signer_bytes` shared by authz, gov and the ICA host |
+| 42 | signal `MsgSignalVersion` / `MsgTryUpgrade` (both versions) | the msg server compares with `sdkCtx.BlockHeader().Version.App`, and `BaseApp` builds every header without `Version`: it is always 0, so a validator may signal any version (also one below the current app version) and a quorum on version 0 fails `TryUpgrade`; Rust compared with the consensus params' app version (10) and rejected lower signals | a validator's signal of an older version splits the network | `x_signal::HEADER_APP_VERSION`; `x-signal` unit test |
+| 43 | zkism `MsgSubmitMessages` / `MsgUpdateInterchainSecurityModule` (both versions) | `id` is a non-nullable `HexAddress` customtype: absent, it is the zero address (`ism identifier must be non-zero`, `sdk`/18); Rust parsed the empty string (`invalid hex address length`, `sdk`/2) | code split from one tx | `decode_id` with `HexAddress::from_proto` |
+| 44 | ICA host `MsgUpdateParams` (both versions) | `Params.Validate` is a plain `fmt.Errorf` (`undefined`/1, `%s` of the slice: `[a b]`); Rust used `ErrInvalidRequest` (code 18) | `ValidateBasic` (CheckTx) and gov execution code split | `x_icahost::validate_params` |
+| 45 | forwarding `MsgForward.ValidateBasic` (both versions) | `MaxIgpFee` is a non-nullable `Coin`: without amount, `Coin.Validate` fails `amount is nil`; Rust read it as zero and went on (to the ante handler) | code split from one tx | `validate_coin` |
 
 Open:
 

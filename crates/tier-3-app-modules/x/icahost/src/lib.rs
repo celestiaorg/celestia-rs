@@ -77,10 +77,11 @@ pub fn contains_msg_type(allow: &[String], type_url: &str) -> bool {
 
 /// `Params.Validate`: no blank allow-list entries.
 pub fn validate_params(p: &Params) -> Result<()> {
-    if p.allow_messages.iter().any(|m| m.trim().is_empty()) {
-        return Err(sdk::error::sdk::invalid_request(format!(
-            "parameter must not contain empty strings: {:?}",
-            p.allow_messages
+    // `fmt.Errorf` (codespace `undefined`, code 1) with `%s` of the slice.
+    if p.allow_messages.iter().any(|m| gostr::is_blank(m)) {
+        return Err(sdk::error::internal(format!(
+            "parameter must not contain empty strings: [{}]",
+            p.allow_messages.join(" ")
         )));
     }
     Ok(())

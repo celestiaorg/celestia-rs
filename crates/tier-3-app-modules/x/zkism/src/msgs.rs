@@ -185,7 +185,9 @@ pub fn validate_groth16_vkey(v: &[u8]) -> core::result::Result<(), String> {
 }
 
 fn decode_id(s: &str) -> Result<HexAddress> {
-    HexAddress::decode(s).map_err(errs::tx_decode)
+    // A non-nullable customtype: absent (empty here, the decoder rejected
+    // a present empty value) is the zero address.
+    HexAddress::from_proto(s).map_err(errs::tx_decode)
 }
 
 /// `MsgCreateInterchainSecurityModule.ValidateBasic`.

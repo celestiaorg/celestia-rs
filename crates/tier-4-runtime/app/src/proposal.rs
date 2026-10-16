@@ -250,6 +250,21 @@ fn ante(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> Result<(), 
     x_ante::ante_handle_in_place(ctx, tx, false, deps).map(|_| ())
 }
 
+/// The ante handler as `FilteredSquareBuilder.Fill` runs it: celestia's
+/// `HandlePanicDecorator` re-panics, and nothing in `Fill` recovers, so a
+/// Go panic in the ante chain aborts the whole PrepareProposal (`BaseApp`
+/// then returns the request's txs unchanged).
+fn ante_fill(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    deps: &x_ante::StoreDeps,
+) -> Result<Result<(), x_ante::AnteError>, Abort> {
+    match ante(ctx, tx, deps) {
+        Err(e) if e.panicked => Err(Abort(e.error.log)),
+        r => Ok(r),
+    }
+}
+
 impl App {
     /// The header `BaseApp` gives the proposal state: at the initial height
     /// the InitChain context with its header cleared (the chain id stays).
@@ -464,7 +479,7 @@ fn fill(
             let _ = builder.revert_last_tx();
             continue;
         }
-        if let Err(e) = ante(ctx, tx, deps) {
+        if let Err(e) = ante_fill(ctx, tx, deps)? {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_tx();
             continue;
@@ -496,7 +511,7 @@ fn fill(
             let _ = builder.revert_last_blob_tx();
             continue;
         }
-        if let Err(e) = ante(ctx, &tx, deps) {
+        if let Err(e) = ante_fill(ctx, &tx, deps)? {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_blob_tx();
             continue;
@@ -576,7 +591,7 @@ fn fill_v9(
             let _ = builder.revert_last_tx();
             continue;
         }
-        if let Err(e) = ante(ctx, &tx, deps) {
+        if let Err(e) = ante_fill(ctx, &tx, deps)? {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_tx();
             continue;
@@ -605,7 +620,7 @@ fn fill_v9(
             let _ = builder.revert_last_blob_tx();
             continue;
         }
-        if let Err(e) = ante(ctx, &tx, deps) {
+        if let Err(e) = ante_fill(ctx, &tx, deps)? {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_blob_tx();
             continue;
@@ -717,7 +732,14 @@ fn process_fibre_txs(
             discard(ctx);
             continue;
         }
-        if ante(ctx, &tx, deps).is_err() || execute_tx_msgs(ctx, &tx).is_err() {
+        let ok = match ante_fill(ctx, &tx, deps) {
+            Ok(r) => r.is_ok(),
+            Err(abort) => {
+                discard(ctx);
+                return Err(abort);
+            }
+        };
+        if !ok || execute_tx_msgs(ctx, &tx).is_err() {
             let _ = builder.revert_last_pay_for_fibre_tx();
             discard(ctx);
             continue;

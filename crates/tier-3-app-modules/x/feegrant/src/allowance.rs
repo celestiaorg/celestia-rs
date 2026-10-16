@@ -86,6 +86,26 @@ impl Allowance {
         })
     }
 
+    /// The errors of Go's `ValidateBasic` that depend on the allowance
+    /// tree's shape and come before its inner allowances are resolved
+    /// (`AllowedMsgAllowance`: a nil inner allowance, then an empty
+    /// message list, then `GetAllowance`), in Go's order. [`Self::from_any`]
+    /// resolves the whole tree first, so the grant handler runs this
+    /// before it.
+    pub fn check_shape(any: &Any) -> Result<()> {
+        if any.type_url == AllowedMsgAllowance::type_url() {
+            let a: AllowedMsgAllowance = decode(any.value.as_slice())?;
+            let Some(inner) = a.allowance.as_ref() else {
+                return Err(errors::no_allowance().wrap("allowance should not be empty"));
+            };
+            if a.allowed_messages.is_empty() {
+                return Err(errors::no_messages().wrap("allowed messages shouldn't be empty"));
+            }
+            return Self::check_shape(inner);
+        }
+        Ok(())
+    }
+
     /// `Grant.GetGrant`.
     pub fn from_grant(g: &Grant) -> Result<Self> {
         let any = g

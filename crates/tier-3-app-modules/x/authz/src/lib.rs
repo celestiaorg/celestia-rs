@@ -292,15 +292,7 @@ fn signers(msg: &Any) -> Result<Vec<Vec<u8>>> {
             msg.type_url
         )));
     };
-    s.map_err(undefined)?
-        .into_iter()
-        .map(|s| match s {
-            celestia_proto::signers::Signer::Str(s) => encoding::bech32::decode(&s)
-                .map(|(_, b)| b)
-                .map_err(|e| undefined(e.to_string())),
-            celestia_proto::signers::Signer::Raw(b) => Ok(b),
-        })
-        .collect()
+    x_ante::txview::signer_bytes(&msg.type_url, s.map_err(undefined)?)
 }
 
 /// `DispatchActions`.

@@ -80,10 +80,7 @@ pub fn is_send_enabled_coins(ctx: &mut Context<'_>, coins: &Coins) -> Result<()>
 pub fn handle_send(ctx: &mut Context<'_>, msg: &MsgSend) -> Result<MsgSendResponse> {
     let from = parse_addr(&msg.from_address, "from")?;
     let to = parse_addr(&msg.to_address, "to")?;
-    let amount = Coins::from_proto(&msg.amount)?;
-    if !amount.is_valid() || !all_positive(&amount) {
-        return Err(errs::invalid_coins("").wrap(amount.to_string()));
-    }
+    let amount = valid_raw_coins(&msg.amount)?;
     is_send_enabled_coins(ctx, &amount)?;
     if is_blocked(&to) {
         return Err(errs::unauthorized(format!(
@@ -95,22 +92,28 @@ pub fn handle_send(ctx: &mut Context<'_>, msg: &MsgSend) -> Result<MsgSendRespon
     Ok(MsgSendResponse {})
 }
 
-fn validate_input(i: &Input) -> Result<Coins> {
-    x_auth::parse_bech32(&i.address)?;
-    let c = Coins::from_proto(&i.coins)?;
-    if !c.is_valid() || !all_positive(&c) {
-        return Err(errs::invalid_coins("").wrap(c.to_string()));
+/// `if !coins.IsValid() || !coins.IsAllPositive()` on the coins as Go
+/// decoded them: a nil amount `Validate` reaches panics (`Sign` of a nil
+/// `big.Int`), the error carries `Coins.String()` of the raw coins.
+fn valid_raw_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
+    if !sdk::coins::raw_coins_is_valid(coins)? || coins.is_empty() {
+        return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins)));
+    }
+    let c = Coins::from_proto(coins)?;
+    if !all_positive(&c) {
+        return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins)));
     }
     Ok(c)
 }
 
+fn validate_input(i: &Input) -> Result<Coins> {
+    x_auth::parse_bech32(&i.address)?;
+    valid_raw_coins(&i.coins)
+}
+
 fn validate_output(o: &Output) -> Result<Coins> {
     x_auth::parse_bech32(&o.address)?;
-    let c = Coins::from_proto(&o.coins)?;
-    if !c.is_valid() || !all_positive(&c) {
-        return Err(errs::invalid_coins("").wrap(c.to_string()));
-    }
-    Ok(c)
+    valid_raw_coins(&o.coins)
 }
 
 /// `types.ValidateInputOutputs`.

@@ -89,6 +89,7 @@ use celestia_proto::celestia::minfee::v1 as minfee;
 use celestia_proto::celestia::signal::v1 as signal;
 use celestia_proto::celestia::valaddr::v1 as valaddr;
 use celestia_proto::celestia::zkism::v1 as zkism;
+use celestia_proto::cosmos::auth::v1beta1 as auth;
 use celestia_proto::cosmos::authz::v1beta1 as authz;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::circuit::v1 as circuit;
@@ -104,6 +105,7 @@ use celestia_proto::cosmos::upgrade::v1beta1 as upgrade;
 use celestia_proto::cosmos::vesting::v1beta1 as vesting;
 
 routes! {
+    auth::MsgUpdateParams => handle_auth_update_params,
     bank::MsgSend => x_bank::msgs::handle_send,
     bank::MsgMultiSend => x_bank::msgs::handle_multi_send,
     bank::MsgUpdateParams => x_bank::msgs::handle_update_params,
@@ -193,6 +195,44 @@ impl sdk::router::MsgRouter for AppRouter {
     }
 }
 
+/// x/auth `UpdateParams` (cosmos-sdk v0.52.12 / v0.52.8
+/// `x/auth/keeper/msg_server.go`): plain `fmt.Errorf` errors
+/// (`undefined` / 1), then `Params.Validate`, then the store.
+fn handle_auth_update_params(
+    ctx: &mut Context<'_>,
+    msg: &auth::MsgUpdateParams,
+) -> Result<auth::MsgUpdateParamsResponse> {
+    let authority = x_staking::msgs::gov_authority()?;
+    if authority != msg.authority {
+        return Err(sdk::error::internal(format!(
+            "expected gov account as only signer for proposal message; invalid authority; expected {authority}, got {}",
+            msg.authority
+        )));
+    }
+    // Non-nullable: absent is the zero value.
+    let p = msg.params.unwrap_or_default();
+    let checks = [
+        (p.tx_sig_limit, "invalid tx signature limit"),
+        (
+            p.sig_verify_cost_ed25519,
+            "invalid ED25519 signature verification cost",
+        ),
+        (
+            p.sig_verify_cost_secp256k1,
+            "invalid SECK256k1 signature verification cost",
+        ),
+        (p.max_memo_characters, "invalid max memo characters"),
+        (p.tx_size_cost_per_byte, "invalid tx size cost per byte"),
+    ];
+    for (v, what) in checks {
+        if v == 0 {
+            return Err(sdk::error::internal(format!("{what}: {v}")));
+        }
+    }
+    x_auth::set_params(ctx, &p)?;
+    Ok(auth::MsgUpdateParamsResponse {})
+}
+
 fn handle_submit_proposal(
     ctx: &mut Context<'_>,
     msg: &gov::MsgSubmitProposal,
@@ -278,4 +318,106 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         return x_gov::msgs::validate_basic_exec_legacy_content(&decode(msg)?);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    // Found by `fuzz-diff deliver`: Go v10.4.0 / v9.0.8 route x/auth's
+    // MsgUpdateParams (Rust failed it as unroutable before the ante
+    // handler: different code, gas and sequence).
+    #[test]
+    fn auth_update_params_is_routed() {
+        let url = auth::MsgUpdateParams::type_url();
+        assert!(has_handler(&url));
+        let mut m = MultiStore::new();
+        m.mount(x_auth::STORE_KEY, Kind::Iavl).unwrap();
+        let mut ctx = Context::new(&mut m, Header::default(), ExecMode::Finalize);
+        let gov = x_staking::msgs::gov_authority().unwrap();
+        let other = "celestia1fnkqcndst4mcynj7psupn6l60flrawltny3q7q";
+        let e = handle_auth_update_params(
+            &mut ctx,
+            &auth::MsgUpdateParams {
+                authority: other.into(),
+                params: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!((e.codespace, e.code), ("undefined", 1));
+        assert_eq!(
+            e.log,
+            format!(
+                "expected gov account as only signer for proposal message; invalid authority; expected {gov}, got {other}"
+            )
+        );
+        let mut p = auth::Params {
+            max_memo_characters: 256,
+            tx_sig_limit: 7,
+            tx_size_cost_per_byte: 10,
+            sig_verify_cost_ed25519: 590,
+            sig_verify_cost_secp256k1: 0,
+        };
+        let msg = |p: &auth::Params| auth::MsgUpdateParams {
+            authority: gov.clone(),
+            params: Some(*p),
+        };
+        let e = handle_auth_update_params(&mut ctx, &msg(&p)).unwrap_err();
+        assert_eq!(e.log, "invalid SECK256k1 signature verification cost: 0");
+        let e = handle_auth_update_params(
+            &mut ctx,
+            &auth::MsgUpdateParams {
+                authority: gov.clone(),
+                params: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(e.log, "invalid tx signature limit: 0");
+        p.sig_verify_cost_secp256k1 = 1000;
+        handle_auth_update_params(&mut ctx, &msg(&p)).unwrap();
+        assert_eq!(x_auth::get_params(&mut ctx).unwrap(), p);
+    }
+
+    // Found by `fuzz-diff deliver`: the ICA controller messages have no
+    // msg server in celestia-app, but `validateBasicTxMsgs` runs their
+    // `ValidateBasic` first (Rust skipped it: `no message handler` instead
+    // of the ValidateBasic error).
+    #[test]
+    fn ica_controller_validate_basic() {
+        use celestia_proto::ibc::applications::interchain_accounts::controller::v1 as ctl;
+        let e = validate_basic(&Any::pack(&ctl::MsgRegisterInterchainAccount {
+            owner: "celestia1fnkqcndst4mcynj7psupn6l60flrawltny3q7q".into(),
+            connection_id: String::new(),
+            version: "channel-0".into(),
+            ordering: 0,
+        }))
+        .unwrap_err();
+        assert_eq!((e.codespace, e.code), ("host", 2));
+        assert_eq!(
+            e.log,
+            "invalid connection ID: identifier cannot be blank: invalid identifier"
+        );
+        let e = validate_basic(&Any::pack(&ctl::MsgSendTx {
+            owner: "o".into(),
+            connection_id: "connection-0".into(),
+            packet_data: None,
+            relative_timeout: 1,
+        }))
+        .unwrap_err();
+        assert_eq!((e.codespace, e.code), ("interchainaccounts", 6));
+        assert_eq!(
+            e.log,
+            "invalid interchain account packet data: packet data type cannot be unspecified: invalid outgoing data"
+        );
+        let e = validate_basic(&Any::pack(&ctl::MsgRegisterInterchainAccount {
+            owner: " ".into(),
+            connection_id: "connection-0".into(),
+            version: String::new(),
+            ordering: 0,
+        }))
+        .unwrap_err();
+        assert_eq!(e.log, "owner address cannot be empty: invalid address");
+        assert!(!has_handler(&ctl::MsgRegisterInterchainAccount::type_url()));
+    }
 }

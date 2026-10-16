@@ -39,6 +39,7 @@ mod gogo;
 mod jsonpb;
 mod protowire;
 mod registry;
+pub use go_types::go_type_name;
 pub use registry::added_in_v10;
 mod unknownproto;
 mod unpack;

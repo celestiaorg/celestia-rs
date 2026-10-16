@@ -98,6 +98,10 @@ fn validate_coin(c: Option<&PbCoin>) -> core::result::Result<Coin, String> {
     if !sdk::coins::is_valid_denom(&c.denom) {
         return Err(format!("invalid denom: {}", c.denom));
     }
+    // `Coin.Validate`: an empty amount is a nil `math.Int`.
+    if c.amount.is_empty() {
+        return Err("amount is nil".into());
+    }
     let amount = Int::unmarshal(c.amount.as_bytes()).map_err(|e| e.to_string())?;
     if amount.is_negative() {
         return Err(format!("negative coin amount: {amount}"));

@@ -23,19 +23,12 @@ fn validate_amount(amount: &[PbCoin]) -> Result<Coins> {
     if amount.is_empty() {
         return Err(errs::invalid_coins("amount cannot be nil"));
     }
-    let coins = Coins::from_proto(amount).map_err(|_| {
-        errs::invalid_coins(
-            amount
-                .iter()
-                .map(|c| format!("{}{}", c.amount, c.denom))
-                .collect::<Vec<_>>()
-                .join(","),
-        )
-    })?;
-    if !coins.is_valid() {
-        return Err(errs::invalid_coins(coins.to_string()));
+    // `amount.Validate()` on the coins as decoded: a nil amount it
+    // reaches panics; the error carries `amount.String()`.
+    if !sdk::coins::raw_coins_is_valid(amount)? {
+        return Err(errs::invalid_coins(sdk::coins::raw_coins_string(amount)));
     }
-    Ok(coins)
+    Coins::from_proto(amount)
 }
 
 fn validate_authority(authority: &str) -> Result<()> {
