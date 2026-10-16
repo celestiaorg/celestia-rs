@@ -70,6 +70,8 @@ fi
 RS=$CELESTIA_RS
 W=${SOAK_DIR:-$(mktemp -d)}
 mkdir -p "$W"
+FAIL=()
+CHAIN_ID=rs-soak-1
 PROFILE=${SOAK_PROFILE:-chaos}
 if [ "$PROFILE" = long ]; then
   # Load sized for ~3 GB of chain data on 5 nodes and ~6 GB of RSS.
@@ -87,8 +89,6 @@ if [ "$PROFILE" = long ]; then
       --load-accounts "${SOAK_LOAD_ACCOUNTS:-48}" --root "$ROOT" "${LONG_ARGS[@]}" --resume
   fi
 fi
-FAIL=()
-CHAIN_ID=rs-soak-1
 echo "soak dir: $W"
 
 # shellcheck source=lib-mixed.sh

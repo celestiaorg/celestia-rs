@@ -837,6 +837,10 @@ class Soak:
                 # Submitted while the tx-index node was down / state syncing:
                 # its inclusion cannot be looked up.
                 self.metrics[cat]["unverifiable"] = self.metrics[cat].get("unverifiable", 0) + 1
+            elif now() - t > 300 and t < self.seg_start:
+                # In a mempool when the machine restart killed every node
+                # (mempools are not persisted, in Go either).
+                self.metrics[cat]["lost_in_crash"] = self.metrics[cat].get("lost_in_crash", 0) + 1
             elif now() - t > 300:
                 self.metrics[cat]["lost"] += 1
                 lk = f"lost@n{ni}"  # node that accepted the tx (CheckTx 0)
@@ -1307,7 +1311,12 @@ class Soak:
         raw = subprocess.run([fd, "craft", home, self.chain_id, str(i), str(an), str(seq)],
                              capture_output=True, text=True, timeout=60).stdout.strip()
         tx = bytes.fromhex(raw)
-        self.checktx_parity(tx, f"utf8 case {i}")
+        # CheckTx (type New) on a node runs the ante handler on its check
+        # state, so the probed nodes now expect the next sequence (Go and
+        # Rust alike): broadcast through another node.
+        probed = self.checktx_parity(tx, f"utf8 case {i}")
+        rest = [x for x in self.up_nodes() if x.i not in probed]
+        nd = self.rng.choice(rest) if rest else nd
         r = ctx.broadcast(nd.url, tx)
         code = int(r.get("code", 0))
         cs = m.setdefault("cases", {}).setdefault(str(i), {"ok": 0, "exec_fail": {}, "checktx_fail": {}})
@@ -1331,11 +1340,13 @@ class Soak:
     def checktx_parity(self, tx, label):
         """CheckTx of `tx` on a Go and a Rust node (no mempool insert)."""
         got = {}
+        probed = set()
         for kind in ("go", "rs"):
             ups = self.up_nodes(kind)
             if not ups:
-                return
+                return probed
             nd = self.rng.choice(ups)
+            probed.add(nd.i)
             try:
                 r = ctx.rpc_call(nd.url, "check_tx", {"tx": base64.b64encode(tx).decode()})
             except Exception as e:
@@ -1350,6 +1361,7 @@ class Soak:
             p["diff"].append({"what": label, "go": got.get("go"), "rs": got.get("rs")})
             p["diff"] = p["diff"][-20:]
             self.event("checktx-diff", what=label, go=str(got.get("go")), rs=str(got.get("rs")))
+        return probed
 
     def hyperlane_loop(self):
         """Hyperlane + warp: the devnet workload's mailbox / hooks / collateral
@@ -1823,7 +1835,7 @@ class Soak:
             # The machine restart killed every node at once: a whole-network
             # crash / restart (every node replays its WAL).
             rec = {"t": round(self.elapsed()), "h": self.max_height, "kind": "crash_all", "segment": self.segment,
-                   "restart_s": round(now() - t, 1)}
+                   "restart_s": round(now() - t + 15, 1)}
             for nd in self.nodes:
                 nd.restarts += 1
             for nd in resync:  # killed mid state sync: start over
