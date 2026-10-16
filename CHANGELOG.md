@@ -32,6 +32,11 @@
 
 ### Fixed
 
+- `tx … --generate-only --from <celestia1…>` no longer opens the keyring
+  (Go's `GetFromFields`): a `file` keyring asks no passphrase and works
+  without a TTY. `--gas auto` with an address `--from` fails like Go
+  (`.info: key not found`). Added `tx slashing unjail` (the signer's
+  validator, as Go). OPEN_QUESTIONS #5.
 - Populated the standalone Go ante replay context's transaction bytes so
   celestia-app charges its production transaction-size gas in generated corpus
   outcomes.

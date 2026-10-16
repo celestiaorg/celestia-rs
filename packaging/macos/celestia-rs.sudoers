@@ -1,0 +1,15 @@
+# /etc/sudoers.d/celestia-rs (docs/operator-guide.md §8, "Restarts without a
+# password"). Lets __USER__ stop, start, restart and inspect the celestia-rs
+# LaunchDaemon without a password. Only these exact command lines are
+# allowed; any other argument (another label, plist or launchctl verb) still
+# needs the password. Install:
+#
+#   sed "s|__USER__|$(id -un)|g" packaging/macos/celestia-rs.sudoers > /tmp/celestia-rs.sudoers
+#   sudo visudo -cf /tmp/celestia-rs.sudoers
+#   sudo install -m 440 -o root -g wheel /tmp/celestia-rs.sudoers /etc/sudoers.d/celestia-rs
+Cmnd_Alias CELESTIA_RS = \
+    /bin/launchctl bootout system/org.celestia.celestia-rs, \
+    /bin/launchctl bootstrap system /Library/LaunchDaemons/org.celestia.celestia-rs.plist, \
+    /bin/launchctl kickstart -k system/org.celestia.celestia-rs, \
+    /bin/launchctl print system/org.celestia.celestia-rs
+__USER__ ALL = (root) NOPASSWD: CELESTIA_RS

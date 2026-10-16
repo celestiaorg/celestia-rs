@@ -9,7 +9,11 @@
 # committed with code 0. Covers bank send, staking create-validator /
 # edit-validator / delegate / unbond / redelegate, and the generic
 # `tx <module> <msg> --json` escape hatch (bank multi-send, distribution
-# withdraw-delegator-reward, staking cancel-unbonding-delegation).
+# withdraw-delegator-reward, staking cancel-unbonding-delegation). Then
+# --generate-only with a bech32 --from on a passphrase-encrypted `file`
+# keyring without a TTY or passphrase (create-validator, bank send,
+# slashing unjail, signal, the generic --json), and the --gas auto error
+# with an address --from.
 #
 # Env (from devnet.sh): HOME_DIR, CHAIN_ID, NODE; celestia-appd on PATH;
 # RS_CLI: the celestia-rs binary (default target/debug/celestia-rs).
@@ -176,5 +180,83 @@ same cancel-unbond staking cancel-unbond "$USER0_OPER" 500utia "$CH" --from val0
   --json "{\"delegator_address\":\"$VAL0\",\"validator_address\":\"$USER0_OPER\",\"amount\":{\"denom\":\"utia\",\"amount\":\"500\"},\"creation_height\":\"$CH\"}"
 rs_tx staking cancel-unbonding-delegation --from val0 --fees 20000utia \
   --json "{\"delegator_address\":\"$VAL0\",\"validator_address\":\"$USER0_OPER\",\"amount\":{\"denom\":\"utia\",\"amount\":\"500\"},\"creation_height\":\"$CH\"}"
+
+# 4. --generate-only with a bech32 --from (Go's GetFromFields): the address
+# is used as-is and the keyring is never opened, so a passphrase-encrypted
+# `file` keyring needs no passphrase and no TTY (stdin is /dev/null and
+# CELESTIA_RS_KEYRING_PASSPHRASE is unset). A key name still asks the
+# passphrase in both CLIs.
+FK=$W/filekr
+PASS=filekr-passphrase
+printf '%s\n%s\n' "$PASS" "$PASS" | celestia-appd keys add op --keyring-backend file --home "$FK" >/dev/null 2>&1
+OP=$(printf '%s\n' "$PASS" | celestia-appd keys show op -a --keyring-backend file --home "$FK" 2>/dev/null | tail -1)
+OP_OPER=$(printf '%s\n' "$PASS" | celestia-appd keys show op -a --bech val --keyring-backend file --home "$FK" 2>/dev/null | tail -1)
+FKF=(--keyring-backend file --home "$FK" --chain-id "$CHAIN_ID" --node "$NODE" --generate-only)
+# same_addr <name> <go-args…> -- <rust-args…>: like `same`, on the file
+# keyring, without a passphrase.
+same_addr() {
+  local name=$1
+  shift
+  local go=() rs=()
+  while [ "$1" != "--" ]; do go+=("$1"); shift; done
+  shift
+  rs=("$@")
+  celestia-appd tx "${go[@]}" "${FKF[@]}" -o json </dev/null >"$W/$name.go.json" 2>"$W/$name.go.err" || {
+    echo "$name: go failed: $(cat "$W/$name.go.err")" >&2
+    exit 1
+  }
+  env -u CELESTIA_RS_KEYRING_PASSPHRASE "$RS" tx "${rs[@]}" "${FKF[@]}" </dev/null \
+    >"$W/$name.rs.json" 2>"$W/$name.rs.err" || {
+    echo "$name: rust failed: $(cat "$W/$name.rs.err")" >&2
+    exit 1
+  }
+  python3 - "$W/$name.go.json" "$W/$name.rs.json" <<'PY'
+import json, sys
+a, b = (json.loads(open(p).read().strip().splitlines()[-1]) for p in sys.argv[1:])
+if a != b:
+    print("MISMATCH\ngo:   " + json.dumps(a, sort_keys=True) + "\nrust: " + json.dumps(b, sort_keys=True))
+    sys.exit(1)
+PY
+  CHECKED=$((CHECKED + 1))
+  echo "same (address --from, file keyring, no passphrase): $name"
+}
+same_addr addr-create-validator staking create-validator "$W/validator.json" --from "$OP" --fees 30000utia --gas 300000 \
+  -- staking create-validator "$W/validator.json" --from "$OP" --fees 30000utia --gas 300000
+same_addr addr-send bank send "$OP" "$USER0" 1000utia --fees 3000utia --note "address from" \
+  -- bank send "$OP" "$USER0" 1000utia --fees 3000utia --note "address from"
+same_addr addr-unjail slashing unjail --from "$OP" --fees 20000utia \
+  -- slashing unjail --from "$OP" --fees 20000utia
+same_addr addr-unjail-json slashing unjail --from "$OP" --fees 20000utia \
+  -- slashing unjail --from "$OP" --fees 20000utia --json "{\"validator_addr\":\"$OP_OPER\"}"
+same_addr addr-signal signal signal 11 --from "$OP" --fees 20000utia \
+  -- signal signal 11 --from "$OP" --fees 20000utia
+same_addr addr-try-upgrade signal try-upgrade --from "$OP" --gas-prices 0.004utia \
+  -- signal try-upgrade --from "$OP" --gas-prices 0.004utia
+same_addr addr-withdraw distribution withdraw-rewards "$VAL0_OPER" --from "$OP" --fees 20000utia \
+  -- distribution withdraw-delegator-reward --from "$OP" --fees 20000utia \
+  --json "{\"delegator_address\":\"$OP\",\"validator_address\":\"$VAL0_OPER\"}"
+# A key name opens the keyring: both CLIs fail without the passphrase.
+if celestia-appd tx bank send op "$USER0" 1utia --fees 3000utia "${FKF[@]}" </dev/null >/dev/null 2>&1 \
+  || env -u CELESTIA_RS_KEYRING_PASSPHRASE "$RS" tx bank send op "$USER0" 1utia --fees 3000utia "${FKF[@]}" </dev/null >/dev/null 2>&1; then
+  echo "generate-only with a key name must ask the file keyring passphrase" >&2
+  exit 1
+fi
+# --gas auto with an address --from: the simulation needs the key's public
+# key, which Go looks up by the (empty) key name after the account query;
+# both CLIs fail with the same error (on a funded account).
+for cli in go rs; do
+  if [ $cli = go ]; then
+    celestia-appd tx bank send "$USER0" "$VAL0" 1utia --gas auto --gas-prices 0.004utia "${K[@]}" "${C[@]}" \
+      --generate-only </dev/null >/dev/null 2>"$W/addr-gas-auto.$cli.err" && exit 1
+  else
+    "$RS" tx bank send "$USER0" "$VAL0" 1utia --gas auto --gas-prices 0.004utia "${K[@]}" "${C[@]}" \
+      --generate-only </dev/null >/dev/null 2>"$W/addr-gas-auto.$cli.err" && exit 1
+  fi
+  grep -q '^Error: .info: key not found' "$W/addr-gas-auto.$cli.err" || {
+    echo "addr-gas-auto ($cli): $(cat "$W/addr-gas-auto.$cli.err")" >&2
+    exit 1
+  }
+done
+echo "same: --gas auto --generate-only with an address --from fails in both CLIs (.info: key not found)"
 
 echo "cli workload: $CHECKED Go/Rust CLI pairs identical, all Rust txs committed (code 0) at height >= $H"

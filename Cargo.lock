@@ -186,7 +186,7 @@ name = "app"
 version = "0.0.1"
 dependencies = [
  "abci-server",
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-proto",
  "crypto",
  "encoding",
@@ -500,6 +500,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -775,7 +781,7 @@ dependencies = [
  "api-server",
  "app",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "blocksync",
  "celestia-proto",
  "clap",
@@ -813,7 +819,7 @@ dependencies = [
  "tikv-jemallocator",
  "tokio",
  "toml",
- "toml_edit 0.22.27",
+ "toml_edit 0.25.17+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "txdecode",
@@ -1176,7 +1182,7 @@ dependencies = [
  "anyhow",
  "api-server",
  "app",
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-proto",
  "encoding",
  "flate2",
@@ -1291,7 +1297,7 @@ dependencies = [
 name = "encoding"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bech32",
  "bytes",
  "gostr",
@@ -1962,7 +1968,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "argon2",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bcrypt",
  "bip39",
  "celestia-proto",
@@ -2011,7 +2017,7 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 name = "legacy-amino"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "hex",
  "math",
  "num-bigint",
@@ -2080,7 +2086,7 @@ dependencies = [
 name = "light"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "ctypes",
  "hex",
  "kvdb",
@@ -2229,7 +2235,7 @@ version = "0.0.1"
 dependencies = [
  "abci-server",
  "app",
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-core-proto",
  "ctypes",
  "hash",
@@ -2363,7 +2369,7 @@ dependencies = [
 name = "nodestore"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "crypto",
  "ctypes",
  "hash",
@@ -2474,7 +2480,7 @@ dependencies = [
 name = "p2p"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-core-proto",
  "chacha20poly1305",
  "crypto",
@@ -2709,7 +2715,7 @@ dependencies = [
 name = "privval"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "crypto",
  "ctypes",
  "getrandom 0.2.17",
@@ -3104,7 +3110,7 @@ version = "0.0.1"
 dependencies = [
  "app",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "ctypes",
  "flate2",
@@ -3820,6 +3826,7 @@ dependencies = [
  "indexmap 2.14.2",
  "toml_datetime 1.1.2+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 
@@ -3837,6 +3844,12 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "toml_writer"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
 
 [[package]]
 name = "tonic"
@@ -4270,7 +4283,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 name = "x-ante"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-core-proto",
  "celestia-proto",
  "crypto",
@@ -4440,7 +4453,7 @@ dependencies = [
 name = "x-fibre"
 version = "0.0.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "celestia-proto",
  "crypto",
  "curve25519-dalek-ng",

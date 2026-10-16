@@ -285,6 +285,31 @@ reboots unannounced; reboot deliberately with the node stopped. Keep "Set
 time and date automatically" on: consensus uses wall-clock timestamps
 (`sntp time.apple.com` prints the offset).
 
+#### Restarts and upgrades without a password (optional)
+
+So that upgrades and restarts need no password (for an operator script
+or an agent on the Mac), keep the LaunchDaemon but run a binary you own
+and allow exactly the four `launchctl` commands for this job
+(`packaging/macos/celestia-rs.sudoers`; one-time `sudo`):
+
+```sh
+mkdir -p ~/.celestia-rs/bin && install -m 755 target/dist/celestia-rs ~/.celestia-rs/bin/celestia-rs
+sed -e "s|__USER__|$(id -un)|g" -e "s|__NODE_HOME__|$NODE_HOME|g" \
+    -e "s|<string>/usr/local/bin/celestia-rs</string>|<string>$HOME/.celestia-rs/bin/celestia-rs</string>|" \
+  packaging/macos/org.celestia.celestia-rs.plist > /tmp/org.celestia.celestia-rs.plist
+sudo install -m 644 -o root -g wheel /tmp/org.celestia.celestia-rs.plist /Library/LaunchDaemons/org.celestia.celestia-rs.plist
+sed "s|__USER__|$(id -un)|g" packaging/macos/celestia-rs.sudoers > /tmp/celestia-rs.sudoers
+sudo visudo -cf /tmp/celestia-rs.sudoers && \
+  sudo install -m 440 -o root -g wheel /tmp/celestia-rs.sudoers /etc/sudoers.d/celestia-rs
+sudo ln -sf ~/.celestia-rs/bin/celestia-rs /usr/local/bin/celestia-rs   # the CLI = the node's binary
+```
+
+Afterwards an upgrade is `install -m 755 <new> ~/.celestia-rs/bin/celestia-rs`
+followed by `sudo -n launchctl bootout …` / `sudo -n launchctl bootstrap …`
+(no prompt). The daemon already runs as your user, so a user-owned binary
+adds no privilege; it does let anything running as you restart the node.
+Verified on the Mocha validator 2026-10-16.
+
 ### Linux: systemd
 
 `packaging/linux/celestia-rs.service`: user `celestia`, home
@@ -380,16 +405,18 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   alerts work unchanged.
 - **Transactions:** `celestia-rs tx bank send`, `tx staking
   delegate|unbond|redelegate|create-validator|edit-validator`, `tx blob
-  pay-for-blob`, `tx signal signal|try-upgrade` (sign mode direct;
-  `--fees` or `--gas-prices` (fee = ceil(price x gas), default 0.004
-  utia/gas); `--gas auto` simulates on the node and applies
+  pay-for-blob`, `tx signal signal|try-upgrade`, `tx slashing unjail`
+  (sign mode direct; `--fees` or `--gas-prices` (fee = ceil(price x gas),
+  default 0.004 utia/gas); `--gas auto` simulates on the node and applies
   `--gas-adjustment`; `--note`/`--memo`; `--wait` polls `tx_status`). Any
   other message: `celestia-rs tx <module> <msg> --json '<proto3 JSON
   fields>'` (or `--json @file`), e.g. `tx distribution
   withdraw-delegator-reward --json
   '{"delegator_address":"...","validator_address":"..."}'`. Each command's
   `--generate-only` output is identical to `celestia-appd`'s
-  (`conformance/devnet/workloads/cli.sh`).
+  (`conformance/devnet/workloads/cli.sh`); with a `celestia1…` address as
+  `--from` it never opens the keyring (no passphrase, no terminal needed),
+  as Go.
 
 ### Submitting transactions: use a synced node
 
@@ -740,15 +767,22 @@ cat > ~/validator.json <<JSON
   "min-self-delegation": "1000000"
 }
 JSON
-# Inspect first (nothing signed or broadcast; with the file keyring it still
-# asks the passphrase, unlike Go, OPEN_QUESTIONS #5)   (verified on Mocha):
-celestia-rs tx staking create-validator ~/validator.json --from operator \
+# Inspect first (nothing signed or broadcast). With the operator's address
+# as --from, --generate-only never opens the keyring, so no passphrase is
+# asked and it works without a terminal (as Go); a key name (`--from
+# operator`) opens the file keyring and asks the passphrase, also as Go:
+OPERATOR=$(celestia-rs keys show operator -a --keyring-backend file --home $H)   # asks the passphrase once
+celestia-rs tx staking create-validator ~/validator.json --from $OPERATOR \
   --keyring-backend file --home $H --chain-id mocha-5 --generate-only | jq .
 # Sign and broadcast through the local synced node:
 celestia-rs tx staking create-validator ~/validator.json --from operator \
   --keyring-backend file --home $H --chain-id mocha-5 \
   --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
 ```
+
+`--gas auto` simulates with the key's public key, so `--generate-only
+--gas auto` with an address `--from` fails with `.info: key not found`
+(as Go); give `--gas <n>` there, or use the key name.
 
 Commission: Mocha (and mainnet) enforce `min_commission_rate` 0.20, so
 0.20 is the lowest accepted rate; `commission-max-rate` can never change
@@ -807,7 +841,7 @@ it is caught up (11.6) and `downtime_jail_duration` (60 s on Mocha) has
 passed, then:
 
 ```sh
-celestia-rs tx slashing unjail --json "{\"validator_addr\":\"$VALOPER\"}" --from operator \
+celestia-rs tx slashing unjail --from operator \
   --keyring-backend file --home $H --chain-id mocha-5 \
   --gas auto --gas-adjustment 1.3 --gas-prices 0.004utia --wait
 celestia-rs query staking validator $VALOPER --node $RPC | jq .validator.jailed   # false
@@ -863,7 +897,10 @@ later, was a known bug in builds before the fix for it (2026-10-15): the
 old process signed its delayed precommit after SIGTERM (Go aborts that
 wait on shutdown), so the restarted node's nil precommit at that height
 conflicted. The guard refused correctly; it cost 3 missed blocks on Mocha
-at height 1,721,185. Builds with the fix stop without signing.
+at height 1,721,185. Builds with the fix stop without signing: a SIGTERM
+timed 0.37 s into the precommit wait at height 1,722,751 left the sign
+state at the prevote, the node stopped in 66 ms, and after the restart
+there was no refusal and only that one height was missed.
 
 ### 11.12 Network upgrades (`halt-height`, `upgrade-info.json`)
 

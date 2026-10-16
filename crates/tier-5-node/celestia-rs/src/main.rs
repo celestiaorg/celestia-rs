@@ -10,7 +10,7 @@
 //! | `follow --rpc <url>[,<url>…]` | — (follow a network over RPC, checking every app hash) |
 //! | `keys add\|import\|import-hex\|export\|list\|show\|delete` | `celestia-appd keys …` (`test` / `file` keyrings) |
 //! | `genesis add-genesis-account\|gentx\|collect-gentxs\|validate` | `celestia-appd genesis …` |
-//! | `tx bank send`, `tx staking delegate`, `tx blob pay-for-blob`, `tx signal …` | `celestia-appd tx …` |
+//! | `tx bank send`, `tx staking delegate`, `tx blob pay-for-blob`, `tx signal …`, `tx slashing unjail` | `celestia-appd tx …` |
 //! | `query bank\|auth\|staking\|tx\|block …`, `status` | `celestia-appd query …`, `status` |
 //! | `config view\|get\|set` | `celestia-appd config …` (confix) |
 //! | `rollback [--hard]`, `export` | `celestia-appd rollback`, `export` |
@@ -672,6 +672,9 @@ enum TxCmd {
     /// Version signalling.
     #[command(subcommand)]
     Signal(SignalTx),
+    /// Slashing transactions.
+    #[command(subcommand)]
+    Slashing(SlashingTx),
     /// Any registered message: `tx <module> <msg> --json '<fields>'`.
     #[command(external_subcommand)]
     Generic(Vec<String>),
@@ -761,6 +764,19 @@ enum BlobTx {
         /// Blob data (hex).
         blob: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum SlashingTx {
+    /// Unjail the signer's validator.
+    Unjail {
+        /// The `MsgUnjail` fields instead (`{"validator_addr":"…"}`).
+        #[arg(long)]
+        json: Option<String>,
+    },
+    /// Any other slashing message: `<msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Other(Vec<String>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -1533,6 +1549,7 @@ fn tx_flags(a: TxFlagArgs) -> anyhow::Result<client::TxFlags> {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
     let need_from = |f: &client::TxFlags| -> anyhow::Result<()> {
         if f.from.is_empty() {
@@ -1549,6 +1566,11 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
         ),
         TxCmd::Staking(StakingTx::Other(args)) => Some(
             std::iter::once("staking".to_owned())
+                .chain(args.iter().cloned())
+                .collect(),
+        ),
+        TxCmd::Slashing(SlashingTx::Other(args)) => Some(
+            std::iter::once("slashing".to_owned())
                 .chain(args.iter().cloned())
                 .collect(),
         ),
@@ -1619,7 +1641,17 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
             need_from(&f)?;
             client::try_upgrade(home, &f)?;
         }
-        TxCmd::Generic(_) | TxCmd::Bank(BankTx::Other(_)) | TxCmd::Staking(StakingTx::Other(_)) => {
+        TxCmd::Slashing(SlashingTx::Unjail { json }) => {
+            need_from(&f)?;
+            match json {
+                Some(j) => client::generic_json(home, &f, "slashing", "unjail", &j)?,
+                None => client::slashing_unjail(home, &f)?,
+            };
+        }
+        TxCmd::Generic(_)
+        | TxCmd::Bank(BankTx::Other(_))
+        | TxCmd::Staking(StakingTx::Other(_))
+        | TxCmd::Slashing(SlashingTx::Other(_)) => {
             unreachable!("handled above")
         }
     }
