@@ -232,7 +232,7 @@ localhost or behind a firewall.
 |---|---|---|
 | `app.toml pruning` | `default` | celestia-rs maps `default` to the validator-minimal policy (keep 100 versions, prune every commit, ADR 0002) instead of Go's 362,880 versions; `nothing`, `everything` and `custom` (`pruning-keep-recent`, `pruning-interval`) follow Go |
 | `app.toml min-retain-blocks` | 3000 | blocks below `height - min-retain-blocks` (and below the state-sync snapshot window) are pruned from the block store via `ResponseCommit.retain_height`; values 1–2999 are raised to 3000 like celestia-app; 0 keeps all blocks |
-| `app.toml state-sync.snapshot-interval` | 1500 | 0 disables snapshots |
+| `app.toml state-sync.snapshot-interval` | 1500 | 0 disables snapshots; snapshots are written in the background (§11.13) |
 | `app.toml iavl-cache-size` | 781250 | decoded IAVL nodes (~250 B each) |
 | flags | `--pruning`, `--pruning-keep-recent`, `--pruning-interval`, `--min-retain-blocks`, `--db-cache-mib` (512) | override app.toml |
 
@@ -899,6 +899,24 @@ sudo launchctl kickstart -k system/org.celestia.celestia-rs
 celestia-rs config set app halt-height 0 --home $H
 # install the new binary, then bootstrap the job again (11.10)
 ```
+
+### 11.13 State-sync snapshots and missed blocks
+
+Builds before 2026-10-16 wrote the state-sync snapshot inside Commit: on
+Mocha at height 1,722,000 (`snapshot-interval` 1500) consensus stopped for
+~10 s between `finalizing commit` and `committed block`, the validator
+missed heights 1,722,001–1,722,003 and RSS rose from ~0.7 to 1.9 GB.
+**On those builds set `snapshot-interval = 0`** (`celestia-rs config set
+app state-sync.snapshot-interval 0 --home $H`, then restart).
+
+Current builds write the snapshot on a background thread like Go's
+`SnapshotIfApplicable`: Commit returns at once, the snapshot height is kept
+from pruning until the snapshot is done, a second snapshot is skipped while
+one runs, and a failure is only logged (`failed to create state
+snapshot`). Look for `creating state snapshot` / `completed state
+snapshot` in the log. A stop during a snapshot abandons it; its partial
+directory is removed and never offered to peers. After upgrading, the
+interval can go back to 1500.
 
 ## 12. Mainnet validator (M14)
 

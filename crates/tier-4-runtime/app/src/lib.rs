@@ -378,6 +378,11 @@ impl App {
         self.snapshots.as_ref()
     }
 
+    /// Mutable access to the snapshot manager (tests).
+    pub fn snapshot_manager_mut(&mut self) -> Option<&mut snapshots::Manager> {
+        self.snapshots.as_mut()
+    }
+
     /// Chain ID (from InitChain, the database or [`AppOptions::chain_id`]).
     #[must_use]
     pub fn chain_id(&self) -> &str {
@@ -689,10 +694,12 @@ impl App {
         Ok(())
     }
 
-    /// `SnapshotIfApplicable`: snapshots are taken synchronously after the
-    /// commit; a failure is logged and never halts the chain (as in Go).
+    /// `SnapshotIfApplicable` (cosmos-sdk `baseapp/abci.go` Commit →
+    /// `store/snapshots/manager.go`): the snapshot is written on its own
+    /// thread from a pinned view of the committed height, so Commit returns
+    /// at once; a failure is logged and never halts the chain.
     fn snapshot_if_applicable(&mut self) {
-        let Some(manager) = &self.snapshots else {
+        let Some(manager) = &mut self.snapshots else {
             return;
         };
         let Ok(height) = u64::try_from(self.last_height) else {
@@ -701,9 +708,15 @@ impl App {
         if !manager.should_snapshot(height) {
             return;
         }
-        match manager.create(self.ms.root(), height) {
-            Ok(s) => tracing::info!(height, chunks = s.chunks, "created state-sync snapshot"),
-            Err(e) => tracing::error!(height, error = %e, "snapshot creation failed"),
+        if let Err(e) = manager.snapshot_in_background(self.ms.root(), height) {
+            tracing::error!(height, error = %e, "failed to create state snapshot");
+        }
+    }
+
+    /// Waits for the background snapshot, if any (tests, tools).
+    pub fn wait_for_snapshot(&mut self) {
+        if let Some(manager) = &mut self.snapshots {
+            let _ = manager.wait_for_snapshot();
         }
     }
 

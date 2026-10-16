@@ -13,7 +13,9 @@
 //! [`Manager`] stores snapshots under `<dir>/<height>/<format>/<chunk>`
 //! (Go's layout) with the metadata in `<dir>/<height>/<format>/metadata`,
 //! and drives restores chunk by chunk as ABCI `ApplySnapshotChunk` delivers
-//! them.
+//! them. [`Manager::snapshot_in_background`] writes a snapshot on its own
+//! thread, as Go's `SnapshotIfApplicable` does in a goroutine, so Commit
+//! never waits for it.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -21,6 +23,9 @@
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
 
 use flate2::Compression;
 use flate2::read::ZlibDecoder;
@@ -158,6 +163,11 @@ pub enum Error {
     Io(io::Error),
     /// Store error.
     Store(multistore::Error),
+    /// Another snapshot operation is in progress, or a snapshot of this or
+    /// a later height exists (Go `ErrConflict`).
+    Conflict(String),
+    /// The snapshot was abandoned (shutdown).
+    Cancelled,
 }
 
 impl std::fmt::Display for Error {
@@ -170,6 +180,8 @@ impl std::fmt::Display for Error {
             Self::Decode(m) => write!(f, "snapshot decode: {m}"),
             Self::Io(e) => write!(f, "snapshot io: {e}"),
             Self::Store(e) => write!(f, "snapshot store: {e}"),
+            Self::Conflict(m) => write!(f, "snapshot conflict: {m}"),
+            Self::Cancelled => f.write_str("snapshot cancelled"),
         }
     }
 }
@@ -388,10 +400,11 @@ struct ChunkWriter {
     written: usize,
     chunk_hashes: Vec<Vec<u8>>,
     total: hash::Sha256Hasher,
+    cancel: Arc<AtomicBool>,
 }
 
 impl ChunkWriter {
-    fn new(dir: PathBuf, chunk_size: usize) -> Self {
+    fn new(dir: PathBuf, chunk_size: usize, cancel: Arc<AtomicBool>) -> Self {
         Self {
             dir,
             chunk_size: chunk_size.max(1),
@@ -399,6 +412,7 @@ impl ChunkWriter {
             written: 0,
             chunk_hashes: Vec::new(),
             total: hash::Sha256Hasher::new(),
+            cancel,
         }
     }
 
@@ -420,6 +434,9 @@ impl Write for ChunkWriter {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         if data.is_empty() {
             return Ok(0);
+        }
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::other("snapshot cancelled"));
         }
         if self.current.is_none() || self.written >= self.chunk_size {
             self.close_chunk()?;
@@ -504,28 +521,75 @@ struct Restore {
     dir: PathBuf,
 }
 
+/// Called on the snapshot thread before a background snapshot starts
+/// writing (tests use it to hold a snapshot in flight).
+type SnapshotHook = Arc<dyn Fn(u64) + Send + Sync>;
+
+/// A snapshot being written on its own thread.
+struct InFlight {
+    height: u64,
+    cancel: Arc<AtomicBool>,
+    handle: JoinHandle<Result<Snapshot>>,
+}
+
+impl std::fmt::Debug for InFlight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InFlight")
+            .field("height", &self.height)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Creates, lists, serves and restores snapshots (Go `snapshots.Manager`).
-#[derive(Debug)]
 pub struct Manager {
     dir: PathBuf,
     options: SnapshotOptions,
     chunk_size: usize,
     restore: Option<Restore>,
+    in_flight: Option<InFlight>,
+    hook: Option<SnapshotHook>,
+}
+
+impl std::fmt::Debug for Manager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Manager")
+            .field("dir", &self.dir)
+            .field("options", &self.options)
+            .field("chunk_size", &self.chunk_size)
+            .field("restore", &self.restore)
+            .field("in_flight", &self.in_flight)
+            .finish_non_exhaustive()
+    }
 }
 
 const METADATA_FILE: &str = "metadata";
+/// Present in a snapshot directory while it is being written.
+const WRITING_FILE: &str = "writing";
 
 impl Manager {
-    /// Manager storing snapshots under `dir`.
+    /// Manager storing snapshots under `dir`. Snapshots this node was
+    /// writing when it crashed are removed: no snapshot can be in flight
+    /// before the manager exists. (Directories without the marker, such as
+    /// a migrated Go home's snapshots indexed by `metadata.db`, are left
+    /// alone.)
     pub fn new(dir: impl Into<PathBuf>, options: SnapshotOptions) -> Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
+        remove_incomplete(&dir)?;
         Ok(Self {
             dir,
             options,
             chunk_size: CHUNK_SIZE,
             restore: None,
+            in_flight: None,
+            hook: None,
         })
+    }
+
+    /// Installs a hook run on the snapshot thread before a background
+    /// snapshot starts writing (tests).
+    pub fn set_snapshot_hook(&mut self, hook: impl Fn(u64) + Send + Sync + 'static) {
+        self.hook = Some(Arc::new(hook));
     }
 
     /// Overrides the chunk size (tests; Go always uses [`CHUNK_SIZE`]).
@@ -550,61 +614,124 @@ impl Manager {
     }
 
     /// Takes a snapshot of `store` at committed `height`, then prunes old
-    /// snapshots per the policy.
+    /// snapshots per the policy. Blocks until done; the node uses
+    /// [`Self::snapshot_in_background`].
     pub fn create(&self, store: &multistore::Store, height: u64) -> Result<Snapshot> {
-        let dir = self.snapshot_dir(height, CURRENT_FORMAT);
-        if dir.exists() {
-            fs::remove_dir_all(&dir)?;
-        }
-        fs::create_dir_all(&dir)?;
-        let mut encoder = ZlibEncoder::new(
-            ChunkWriter::new(dir.clone(), self.chunk_size),
-            Compression::new(COMPRESSION_LEVEL),
-        );
-        write_items(store, height, &mut encoder)?;
-        let (chunk_hashes, hash) = encoder.finish()?.finish()?;
-        let snapshot = Snapshot {
+        let snapshot = write_snapshot(
+            &self.snapshot_dir(height, CURRENT_FORMAT),
+            self.chunk_size,
+            store,
             height,
-            format: CURRENT_FORMAT,
-            chunks: u32::try_from(chunk_hashes.len())
-                .map_err(|_| Error::InvalidMetadata("too many chunks".into()))?,
-            hash,
-            chunk_hashes,
-        };
-        // Metadata last: an interrupted snapshot is never listed.
-        let tmp = dir.join(format!("{METADATA_FILE}.tmp"));
-        fs::write(&tmp, snapshot.to_proto().encode_to_vec())?;
-        fs::rename(tmp, dir.join(METADATA_FILE))?;
+            &Arc::new(AtomicBool::new(false)),
+        )?;
         if self.options.keep_recent > 0 {
-            self.prune(self.options.keep_recent)?;
+            prune_dir(&self.dir, self.options.keep_recent)?;
         }
         Ok(snapshot)
     }
 
-    /// Complete snapshots, newest first.
-    pub fn list(&self) -> Result<Vec<Snapshot>> {
-        let mut out = Vec::new();
-        for height_dir in fs::read_dir(&self.dir)? {
-            let height_dir = height_dir?;
-            if height_dir
-                .file_name()
-                .to_string_lossy()
-                .parse::<u64>()
-                .is_err()
-            {
-                continue;
-            }
-            for format_dir in fs::read_dir(height_dir.path())? {
-                let path = format_dir?.path().join(METADATA_FILE);
-                if let Ok(bytes) = fs::read(&path) {
-                    let snapshot = proto::Snapshot::decode(bytes.as_slice())
-                        .map_err(|e| Error::InvalidMetadata(e.to_string()))?;
-                    out.push(Snapshot::from_proto(snapshot));
-                }
+    /// Go `Manager.SnapshotIfApplicable` → `go m.snapshot(height)`: starts
+    /// writing a snapshot of committed `height` of `store` on its own
+    /// thread and returns at once. The thread reads a detached view of the
+    /// version and holds a [`multistore::VersionPin`] so pruning keeps it
+    /// until the snapshot is done (Go defers `PruneSnapshotHeight` to the
+    /// end of `Manager.Create`). Afterwards old snapshots are pruned per
+    /// `keep_recent` (Go `snapshot`). A failure is logged on that thread and
+    /// never reaches the caller.
+    ///
+    /// Fails with [`Error::Conflict`] like Go's `Manager.Create` when
+    /// another snapshot or a restore is in progress (`begin(opSnapshot)`)
+    /// or a snapshot of this or a later height exists.
+    pub fn snapshot_in_background(&mut self, store: &multistore::Store, height: u64) -> Result<()> {
+        self.reap_finished();
+        if let Some(f) = &self.in_flight {
+            return Err(Error::Conflict(format!(
+                "a snapshot operation is in progress (height {})",
+                f.height
+            )));
+        }
+        if self.restore.is_some() {
+            return Err(Error::Conflict("a restore operation is in progress".into()));
+        }
+        if let Some(latest) = self.list()?.first()
+            && latest.height >= height
+        {
+            return Err(Error::Conflict(format!(
+                "a more recent snapshot already exists at height {}",
+                latest.height
+            )));
+        }
+        let version = i64::try_from(height).map_err(|_| Error::InvalidMetadata("height".into()))?;
+        let pin = store.pin_version(version);
+        let view = store.view_at(version)?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let worker = Worker {
+            root: self.dir.clone(),
+            dir: self.snapshot_dir(height, CURRENT_FORMAT),
+            chunk_size: self.chunk_size,
+            keep_recent: self.options.keep_recent,
+            cancel: Arc::clone(&cancel),
+            hook: self.hook.clone(),
+        };
+        let handle = std::thread::Builder::new()
+            .name(format!("snapshot-{height}"))
+            .spawn(move || {
+                let result = worker.run(&view, height);
+                drop(pin);
+                result
+            })?;
+        self.in_flight = Some(InFlight {
+            height,
+            cancel,
+            handle,
+        });
+        Ok(())
+    }
+
+    /// True while a background snapshot is being written.
+    #[must_use]
+    pub fn snapshot_in_progress(&self) -> bool {
+        self.in_flight
+            .as_ref()
+            .is_some_and(|f| !f.handle.is_finished())
+    }
+
+    /// Waits for the background snapshot, if any, and returns its result.
+    pub fn wait_for_snapshot(&mut self) -> Option<Result<Snapshot>> {
+        let f = self.in_flight.take()?;
+        Some(join(f))
+    }
+
+    /// Stops the background snapshot, if any, at its next write and waits
+    /// for its thread to exit; its partial directory is removed and never
+    /// listed (shutdown).
+    pub fn abandon_snapshot(&mut self) {
+        if let Some(f) = self.in_flight.take() {
+            f.cancel.store(true, Ordering::Relaxed);
+            let height = f.height;
+            match join(f) {
+                Ok(_) | Err(Error::Cancelled) => {}
+                Err(e) => tracing::warn!(height, error = %e, "abandoned state snapshot"),
             }
         }
-        out.sort_by(|a, b| b.height.cmp(&a.height).then(b.format.cmp(&a.format)));
-        Ok(out)
+    }
+
+    /// Drops the handle of a finished background snapshot (its result was
+    /// already logged by its thread).
+    fn reap_finished(&mut self) {
+        if self
+            .in_flight
+            .as_ref()
+            .is_some_and(|f| f.handle.is_finished())
+            && let Some(f) = self.in_flight.take()
+        {
+            let _ = join(f);
+        }
+    }
+
+    /// Complete snapshots, newest first.
+    pub fn list(&self) -> Result<Vec<Snapshot>> {
+        list_dir(&self.dir)
     }
 
     /// Chunk bytes, or `None` when the snapshot/chunk does not exist.
@@ -623,17 +750,7 @@ impl Manager {
     /// Deletes all but the `retain` newest snapshots; returns how many were
     /// deleted.
     pub fn prune(&self, retain: u32) -> Result<u64> {
-        let mut deleted = 0;
-        let keep = usize::try_from(retain).unwrap_or(usize::MAX);
-        for snapshot in self.list()?.into_iter().skip(keep) {
-            fs::remove_dir_all(self.snapshot_dir(snapshot.height, snapshot.format))?;
-            let height_dir = self.dir.join(snapshot.height.to_string());
-            if fs::read_dir(&height_dir)?.next().is_none() {
-                fs::remove_dir(height_dir)?;
-            }
-            deleted += 1;
-        }
-        Ok(deleted)
+        prune_dir(&self.dir, retain)
     }
 
     /// Starts restoring `snapshot` (ABCI `OfferSnapshot`). Replaces any
@@ -741,6 +858,196 @@ fn restore_from(
     };
     let mut decoder = BufReader::new(ZlibDecoder::new(reader));
     read_items(store, height, &mut decoder)
+}
+
+/// Complete snapshots under `root`, newest first. A directory pruned by
+/// the snapshot thread while it is being listed is skipped.
+fn list_dir(root: &Path) -> Result<Vec<Snapshot>> {
+    let mut out = Vec::new();
+    for height_dir in fs::read_dir(root)? {
+        let height_dir = height_dir?;
+        if height_dir
+            .file_name()
+            .to_string_lossy()
+            .parse::<u64>()
+            .is_err()
+        {
+            continue;
+        }
+        let format_dirs = match fs::read_dir(height_dir.path()) {
+            Ok(dirs) => dirs,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        for format_dir in format_dirs {
+            let Ok(format_dir) = format_dir else {
+                continue;
+            };
+            if let Ok(bytes) = fs::read(format_dir.path().join(METADATA_FILE)) {
+                let snapshot = proto::Snapshot::decode(bytes.as_slice())
+                    .map_err(|e| Error::InvalidMetadata(e.to_string()))?;
+                out.push(Snapshot::from_proto(snapshot));
+            }
+        }
+    }
+    out.sort_by(|a, b| b.height.cmp(&a.height).then(b.format.cmp(&a.format)));
+    Ok(out)
+}
+
+/// Deletes all but the `retain` newest snapshots under `root`; returns how
+/// many were deleted.
+fn prune_dir(root: &Path, retain: u32) -> Result<u64> {
+    let mut deleted = 0;
+    let keep = usize::try_from(retain).unwrap_or(usize::MAX);
+    for snapshot in list_dir(root)?.into_iter().skip(keep) {
+        let height_dir = root.join(snapshot.height.to_string());
+        fs::remove_dir_all(height_dir.join(snapshot.format.to_string()))?;
+        if fs::read_dir(&height_dir)?.next().is_none() {
+            fs::remove_dir(height_dir)?;
+        }
+        deleted += 1;
+    }
+    Ok(deleted)
+}
+
+/// Removes `<height>/<format>` directories still marked as being written,
+/// and height directories this leaves empty.
+fn remove_incomplete(root: &Path) -> Result<()> {
+    for height_dir in fs::read_dir(root)? {
+        let height_dir = height_dir?;
+        if height_dir
+            .file_name()
+            .to_string_lossy()
+            .parse::<u64>()
+            .is_err()
+            || !height_dir.file_type()?.is_dir()
+        {
+            continue;
+        }
+        let mut removed = false;
+        for format_dir in fs::read_dir(height_dir.path())? {
+            let format_dir = format_dir?.path();
+            if format_dir.join(WRITING_FILE).exists() {
+                fs::remove_dir_all(format_dir)?;
+                removed = true;
+            }
+        }
+        if removed && fs::read_dir(height_dir.path())?.next().is_none() {
+            fs::remove_dir(height_dir.path())?;
+        }
+    }
+    Ok(())
+}
+
+/// Writes the snapshot of `store` at `height` into `dir` (Go
+/// `Manager.Create` + `Store.Save`): chunks first, metadata last, so an
+/// interrupted snapshot is never listed. On failure the directory is
+/// removed (Go `Store.Save` deletes the snapshot on error).
+fn write_snapshot(
+    dir: &Path,
+    chunk_size: usize,
+    store: &multistore::Store,
+    height: u64,
+    cancel: &Arc<AtomicBool>,
+) -> Result<Snapshot> {
+    let result = (|| {
+        if dir.exists() {
+            fs::remove_dir_all(dir)?;
+        }
+        fs::create_dir_all(dir)?;
+        fs::write(dir.join(WRITING_FILE), [])?;
+        let mut encoder = ZlibEncoder::new(
+            ChunkWriter::new(dir.to_path_buf(), chunk_size, Arc::clone(cancel)),
+            Compression::new(COMPRESSION_LEVEL),
+        );
+        write_items(store, height, &mut encoder)?;
+        let (chunk_hashes, hash) = encoder.finish()?.finish()?;
+        let snapshot = Snapshot {
+            height,
+            format: CURRENT_FORMAT,
+            chunks: u32::try_from(chunk_hashes.len())
+                .map_err(|_| Error::InvalidMetadata("too many chunks".into()))?,
+            hash,
+            chunk_hashes,
+        };
+        let tmp = dir.join(format!("{METADATA_FILE}.tmp"));
+        fs::write(&tmp, snapshot.to_proto().encode_to_vec())?;
+        fs::rename(tmp, dir.join(METADATA_FILE))?;
+        fs::remove_file(dir.join(WRITING_FILE))?;
+        Ok(snapshot)
+    })();
+    result.map_err(|e| {
+        let _ = fs::remove_dir_all(dir);
+        if let Some(height_dir) = dir.parent()
+            && fs::read_dir(height_dir).is_ok_and(|mut d| d.next().is_none())
+        {
+            let _ = fs::remove_dir(height_dir);
+        }
+        if cancel.load(Ordering::Relaxed) {
+            Error::Cancelled
+        } else {
+            e
+        }
+    })
+}
+
+/// The work of one background snapshot (Go `Manager.snapshot`).
+struct Worker {
+    root: PathBuf,
+    dir: PathBuf,
+    chunk_size: usize,
+    keep_recent: u32,
+    cancel: Arc<AtomicBool>,
+    hook: Option<SnapshotHook>,
+}
+
+impl Worker {
+    fn run(self, view: &multistore::Store, height: u64) -> Result<Snapshot> {
+        tracing::info!(height, "creating state snapshot");
+        if let Some(hook) = &self.hook {
+            hook(height);
+        }
+        let snapshot = match write_snapshot(&self.dir, self.chunk_size, view, height, &self.cancel)
+        {
+            Ok(snapshot) => snapshot,
+            Err(Error::Cancelled) => {
+                tracing::info!(height, "state snapshot abandoned");
+                return Err(Error::Cancelled);
+            }
+            Err(e) => {
+                tracing::error!(height, error = %e, "failed to create state snapshot");
+                return Err(e);
+            }
+        };
+        tracing::info!(
+            height,
+            format = snapshot.format,
+            chunks = snapshot.chunks,
+            "completed state snapshot"
+        );
+        if self.keep_recent > 0 {
+            match prune_dir(&self.root, self.keep_recent) {
+                Ok(pruned) => tracing::debug!(pruned, "pruned state snapshots"),
+                Err(e) => tracing::error!(error = %e, "failed to prune state snapshots"),
+            }
+        }
+        Ok(snapshot)
+    }
+}
+
+fn join(f: InFlight) -> Result<Snapshot> {
+    f.handle
+        .join()
+        .unwrap_or_else(|_| Err(Error::Io(io::Error::other("snapshot thread panicked"))))
+}
+
+impl Drop for Manager {
+    /// Shutdown abandons an in-flight snapshot cleanly (Go leaves its
+    /// goroutine to die with the process; its unsaved snapshot is never
+    /// listed).
+    fn drop(&mut self) {
+        self.abandon_snapshot();
+    }
 }
 
 #[cfg(test)]
@@ -891,5 +1198,133 @@ mod tests {
             manager.restore_chunk(&mut dst, b"x"),
             Err(Error::NoRestore)
         ));
+    }
+
+    /// A store pruned after every commit down to the latest version (the
+    /// harshest policy for an in-flight snapshot).
+    fn pruned_store() -> multistore::Store {
+        let mut s = store(Arc::new(kvdb::MemBackend::new()));
+        s.set_pruning(multistore::PruningOptions::latest_only());
+        s
+    }
+
+    /// A hook that reports the snapshot start and blocks it until released.
+    fn blocking_hook(
+        manager: &mut Manager,
+    ) -> (std::sync::mpsc::Receiver<u64>, std::sync::mpsc::Sender<()>) {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let release_rx = std::sync::Mutex::new(release_rx);
+        manager.set_snapshot_hook(move |height| {
+            started_tx.send(height).unwrap();
+            let _ = release_rx.lock().unwrap().recv();
+        });
+        (started_rx, release_tx)
+    }
+
+    /// Go `Manager.SnapshotIfApplicable` runs the snapshot in a goroutine:
+    /// the caller (Commit) returns at once, later commits prune freely
+    /// except the pinned snapshot height, a second snapshot is skipped while
+    /// one is running, and the result is a valid snapshot of that height.
+    #[test]
+    fn background_snapshot_does_not_block_commits_and_pins_its_height() {
+        let mut src = pruned_store();
+        fill(&mut src, 3);
+        let at3 = src.last_commit_id().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut manager = Manager::new(
+            dir.path(),
+            SnapshotOptions {
+                interval: 3,
+                keep_recent: 1,
+            },
+        )
+        .unwrap();
+        let (started, release) = blocking_hook(&mut manager);
+
+        manager.snapshot_in_background(&src, 3).unwrap();
+        assert_eq!(started.recv().unwrap(), 3);
+        assert!(manager.snapshot_in_progress());
+        assert!(manager.list().unwrap().is_empty());
+
+        // Commits continue while the snapshot is blocked; version 3 is
+        // pinned against pruning, every other old version goes.
+        fill(&mut src, 4);
+        assert_eq!(src.available_versions(), vec![3, 7]);
+        // Go: "a snapshot operation is in progress".
+        assert!(matches!(
+            manager.snapshot_in_background(&src, 6),
+            Err(Error::Conflict(_))
+        ));
+
+        release.send(()).unwrap();
+        let snap = manager.wait_for_snapshot().unwrap().unwrap();
+        assert_eq!(snap.height, 3);
+        assert!(!manager.snapshot_in_progress());
+        assert_eq!(manager.list().unwrap(), vec![snap]);
+        let mut dst = store(Arc::new(kvdb::MemBackend::new()));
+        assert_eq!(
+            manager.restore_local(&mut dst, 3, CURRENT_FORMAT).unwrap(),
+            at3
+        );
+
+        // The pin is released: the next commit prunes version 3.
+        fill(&mut src, 1);
+        assert_eq!(src.available_versions(), vec![8]);
+        // Go: "a more recent snapshot already exists".
+        assert!(matches!(
+            manager.snapshot_in_background(&src, 3),
+            Err(Error::Conflict(_))
+        ));
+    }
+
+    /// Shutdown abandons an in-flight snapshot: nothing partial is left on
+    /// disk or listed, and the pin is released.
+    #[test]
+    fn abandoned_snapshot_leaves_no_partial_directory() {
+        let mut src = pruned_store();
+        fill(&mut src, 3);
+        let dir = tempfile::tempdir().unwrap();
+        let mut manager = Manager::new(
+            dir.path(),
+            SnapshotOptions {
+                interval: 3,
+                keep_recent: 0,
+            },
+        )
+        .unwrap();
+        let (started, release) = blocking_hook(&mut manager);
+        manager.snapshot_in_background(&src, 3).unwrap();
+        assert_eq!(started.recv().unwrap(), 3);
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            release.send(()).unwrap();
+        });
+        manager.abandon_snapshot();
+        releaser.join().unwrap();
+        assert!(!manager.snapshot_in_progress());
+        assert!(manager.list().unwrap().is_empty());
+        assert!(!dir.path().join("3").exists());
+        fill(&mut src, 1);
+        assert_eq!(src.available_versions(), vec![4]);
+    }
+
+    /// A snapshot interrupted by a crash (still marked as being written)
+    /// is removed when the manager opens; a Go snapshot directory (chunks
+    /// only, metadata in Go's `metadata.db`) is kept.
+    #[test]
+    fn interrupted_snapshot_directories_are_removed_on_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let ours = dir.path().join("9").join("3");
+        fs::create_dir_all(&ours).unwrap();
+        fs::write(ours.join("0"), b"partial").unwrap();
+        fs::write(ours.join(WRITING_FILE), b"").unwrap();
+        let go = dir.path().join("6").join("3");
+        fs::create_dir_all(&go).unwrap();
+        fs::write(go.join("0"), b"go chunk").unwrap();
+        let manager = Manager::new(dir.path(), SnapshotOptions::default()).unwrap();
+        assert!(manager.list().unwrap().is_empty());
+        assert!(!dir.path().join("9").exists());
+        assert!(go.join("0").exists());
     }
 }

@@ -6,7 +6,7 @@
 #![warn(missing_docs)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use encoding::varint;
 use iavl::{NodeCache, NodeDb};
@@ -278,6 +278,38 @@ pub struct Store {
     pending_metadata: Vec<(Vec<u8>, Vec<u8>)>,
     /// Block time recorded in the next commit info (Go `SetCommitHeader`).
     commit_timestamp: Option<prost_types::Timestamp>,
+    /// Versions pruning must keep (in-flight snapshots), with pin counts.
+    pins: Pins,
+}
+
+type Pins = Arc<Mutex<BTreeMap<Version, usize>>>;
+
+/// Keeps a committed version from being pruned while it is alive (see
+/// [`Store::pin_version`]).
+#[derive(Debug)]
+pub struct VersionPin {
+    pins: Pins,
+    version: Version,
+}
+
+impl VersionPin {
+    /// The pinned version.
+    #[must_use]
+    pub fn version(&self) -> Version {
+        self.version
+    }
+}
+
+impl Drop for VersionPin {
+    fn drop(&mut self) {
+        let mut pins = self.pins.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(count) = pins.get_mut(&self.version) {
+            *count -= 1;
+            if *count == 0 {
+                pins.remove(&self.version);
+            }
+        }
+    }
 }
 
 impl Store {
@@ -296,6 +328,7 @@ impl Store {
             metadata: BTreeMap::new(),
             pending_metadata: Vec::new(),
             commit_timestamp: None,
+            pins: Pins::default(),
         }
     }
 
@@ -599,19 +632,45 @@ impl Store {
         Ok(commit_id)
     }
 
+    /// Keeps committed `version` from being pruned until the returned pin
+    /// is dropped. Go's pruning manager does the same for a state-sync
+    /// snapshot height (`HandleSnapshotHeight` is called once the snapshot
+    /// is done; until then `GetPruningHeight` stops below it), so a
+    /// snapshot written in the background never loses its version.
+    #[must_use]
+    pub fn pin_version(&self, version: Version) -> VersionPin {
+        *self
+            .pins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(version)
+            .or_default() += 1;
+        VersionPin {
+            pins: Arc::clone(&self.pins),
+            version,
+        }
+    }
+
     /// Delete every version the pruning policy no longer retains, in one
-    /// backend batch. Returns the deleted versions.
+    /// backend batch. Pinned versions ([`Self::pin_version`]) are kept.
+    /// Returns the deleted versions.
     pub fn prune(&mut self) -> Result<Vec<Version>> {
         let latest = self.version;
         let pruning = self.pruning;
+        let pinned: BTreeSet<Version> = self
+            .pins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .keys()
+            .copied()
+            .collect();
         let mut batch = WriteBatch::new();
         let mut deleted = BTreeSet::new();
         for store in self.stores.values_mut() {
-            deleted.extend(
-                store
-                    .tree_mut()
-                    .prune(|v| pruning.retains(v, latest), &mut batch)?,
-            );
+            deleted.extend(store.tree_mut().prune(
+                |v| pruning.retains(v, latest) || pinned.contains(&v),
+                &mut batch,
+            )?);
         }
         if let Some(db) = &self.db {
             for version in &deleted {
@@ -709,6 +768,7 @@ impl Store {
             metadata: BTreeMap::new(),
             pending_metadata: Vec::new(),
             commit_timestamp: None,
+            pins: Pins::default(),
         })
     }
 
@@ -1483,5 +1543,47 @@ mod tests {
         for error in errors {
             assert!(!error.to_string().is_empty());
         }
+    }
+
+    /// Go `pruning.Manager.HandleSnapshotHeight`: a height being
+    /// snapshotted is not pruned until the snapshot is done. Here the
+    /// snapshot holds a [`VersionPin`]; pruning skips pinned versions and
+    /// deletes them once the pin is dropped.
+    #[test]
+    fn pinned_version_survives_pruning_until_unpinned() -> Result<()> {
+        let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let mut store = Store::open(
+            db,
+            StoreOptions {
+                pruning: PruningOptions::latest_only(),
+                node_cache_size: 16,
+            },
+        );
+        store.mount_store("acc", StoreKind::Iavl)?;
+        store.load_latest_version()?;
+        let commit = |store: &mut Store, i: u8| -> Result<CommitId> {
+            store.get_store_mut("acc")?.set(vec![i % 3], vec![i; 8])?;
+            store.commit()
+        };
+        commit(&mut store, 1)?;
+        let pinned = commit(&mut store, 2)?;
+        let pin = store.pin_version(2);
+        // The snapshot reads a detached view of version 2 while commits go on.
+        let view = store.view_at(2)?;
+        for i in 3..8 {
+            commit(&mut store, i)?;
+        }
+        assert_eq!(store.available_versions(), vec![2, 7]);
+        let exported: usize = view
+            .export(2)?
+            .into_iter()
+            .map(|(_, nodes)| nodes.map(|n| n.map(|_| 1)).sum::<iavl::Result<usize>>())
+            .sum::<iavl::Result<usize>>()?;
+        assert!(exported > 0);
+        assert_eq!(store.get_commit_info(2)?.commit_id()?, pinned);
+        drop(pin);
+        commit(&mut store, 8)?;
+        assert_eq!(store.available_versions(), vec![8]);
+        Ok(())
     }
 }

@@ -162,6 +162,7 @@ fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::
     };
     let mut src = App::open_with(src_home.path(), opts)?;
     assert_parity(scenario, &replay_into(scenario, &mut src, 0, Some(at))?);
+    src.wait_for_snapshot();
     let listed = src.list_snapshots().snapshots;
     assert_eq!(listed.len(), 1);
     let snapshot = listed[0].clone();
@@ -209,5 +210,89 @@ fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::
     let r = replay_into(scenario, &mut dst, at, None)?;
     assert_parity(scenario, &r);
     assert_eq!(r.matched_heights.last(), Some(&last));
+    Ok(())
+}
+
+/// Go `SnapshotIfApplicable` snapshots in a goroutine: Commit of the
+/// snapshot height returns while the snapshot is still being written, the
+/// chain keeps committing (and pruning) meanwhile, and the snapshot height
+/// is not pruned until the snapshot is done. Regression: Mocha height
+/// 1,722,000 blocked consensus for 10 s inside Commit.
+#[test]
+fn snapshot_is_written_in_background_while_commits_continue() -> anyhow::Result<()> {
+    let scenario = "staking";
+    let hashes = go_app_hashes(&load_exchanges(scenario)?);
+    let last = hashes.last().map_or(0, |(h, _)| *h);
+    let at = last / 2;
+    let src_home = tempfile::tempdir()?;
+    let mut opts = options();
+    opts.snapshots = snapshots::SnapshotOptions {
+        interval: u64::try_from(at)?,
+        keep_recent: 1,
+    };
+    let mut src = App::open_with(src_home.path(), opts)?;
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let release_rx = std::sync::Mutex::new(release_rx);
+    src.snapshot_manager_mut()
+        .expect("snapshot manager")
+        .set_snapshot_hook(move |height| {
+            let _ = started_tx.send(height);
+            let _ = release_rx.lock().map(|rx| rx.recv());
+        });
+
+    // Every Commit returns although the snapshot of `at` is blocked.
+    assert_parity(scenario, &replay_into(scenario, &mut src, 0, None)?);
+    assert_eq!(started_rx.recv()?, u64::try_from(at)?);
+    assert!(src.list_snapshots().snapshots.is_empty());
+    // Pruning (keep_recent 2) ran past `at` but kept it for the snapshot.
+    let versions = src.multistore().root().available_versions();
+    assert!(versions.contains(&at), "{versions:?}");
+    assert!(versions.get(1).is_some_and(|v| *v > at + 1), "{versions:?}");
+
+    release_tx.send(())?;
+    src.wait_for_snapshot();
+    let listed = src.list_snapshots().snapshots;
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].height, u64::try_from(at)?);
+
+    // The snapshot restores to Go's state at `at`.
+    let dst_home = tempfile::tempdir()?;
+    let mut dst_opts = options();
+    dst_opts.chain_id = Some(src.chain_id().to_owned());
+    let mut dst = App::open_with(dst_home.path(), dst_opts)?;
+    let snapshot = listed[0].clone();
+    let offer = dst.offer_snapshot(
+        celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
+            snapshot: Some(snapshot.clone()),
+            app_hash: Vec::new(),
+            app_version: 0,
+        },
+    );
+    assert_eq!(offer.result, 1, "accept");
+    for index in 0..snapshot.chunks {
+        let chunk = src
+            .load_snapshot_chunk(
+                &celestia_proto::celestia_core_proto::abci::RequestLoadSnapshotChunk {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunk: index,
+                },
+            )
+            .chunk;
+        let applied = dst.apply_snapshot_chunk(
+            celestia_proto::celestia_core_proto::abci::RequestApplySnapshotChunk {
+                index,
+                chunk,
+                sender: "src".into(),
+            },
+        );
+        assert_eq!(applied.result, 1, "chunk {index} accepted");
+    }
+    let go_hash = hashes
+        .iter()
+        .find(|(h, _)| *h == at)
+        .map(|(_, x)| x.clone());
+    assert_eq!(Some(dst.info().last_block_app_hash), go_hash);
     Ok(())
 }

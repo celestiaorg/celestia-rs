@@ -18,6 +18,7 @@ hash = { path = "../../tier-0-primitives/hash" }
 iavl = { path = "../iavl" }
 multistore = { path = "../multistore" }
 prost = "0.13"
+tracing = "0.1"
 
 [dev-dependencies]
 kvdb = { path = "../kvdb" }
