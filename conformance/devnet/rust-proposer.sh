@@ -51,8 +51,9 @@ open(p, "w").write(s)
 PY
 }
 relax_p2p() {
-  sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' \
+  sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' \
     -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$1"
+  rm -f "$1.bak"
 }
 
 # Validator: celestia-core with val0's keys, Rust app behind it.
@@ -81,7 +82,8 @@ cp "$V/config/genesis.json" "$G/config/genesis.json"
 shift_ports "$G/config/config.toml" $((OFF + 100))
 shift_ports "$G/config/app.toml" $((OFF + 100))
 relax_p2p "$G/config/config.toml"
-sed -i "s#^persistent_peers = .*#persistent_peers = \"$VAL_ID@127.0.0.1:$(port 26656 0)\"#" "$G/config/config.toml"
+sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$VAL_ID@127.0.0.1:$(port 26656 0)\"#" "$G/config/config.toml"
+rm -f "$G/config/config.toml.bak"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
 "$ROOT/target/debug/celestia-rs" abci --addr "127.0.0.1:$(port 26658 0)" > "$W/rust.log" 2>&1 & PIDS+=($!)

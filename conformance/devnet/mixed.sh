@@ -49,7 +49,8 @@ PY
 }
 shift_ports "$V/config/config.toml" "$OFF"
 shift_ports "$V/config/app.toml" "$OFF"
-sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$V/config/config.toml"
+sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$V/config/config.toml"
+rm -f "$V/config/config.toml.bak"
 
 # Follower: celestia-core home with the validator's genesis (CometBFT form).
 mkdir -p "$F/config" "$F/data"
@@ -67,7 +68,8 @@ PY
 cp "$V/config/config.toml" "$F/config/config.toml"
 shift_ports "$F/config/config.toml" 100
 VAL_ID=$(celestia-appd comet show-node-id --home "$V" 2>/dev/null || cometbft show_node_id --home "$V")
-sed -i "s#^persistent_peers = .*#persistent_peers = \"$VAL_ID@127.0.0.1:$(port 26656 0)\"#" "$F/config/config.toml"
+sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$VAL_ID@127.0.0.1:$(port 26656 0)\"#" "$F/config/config.toml"
+rm -f "$F/config/config.toml.bak"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
 celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)

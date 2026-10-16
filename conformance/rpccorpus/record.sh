@@ -63,13 +63,16 @@ $A genesis collect-gentxs >/dev/null 2>&1
 if [ -n "${GENESIS_PATCH:-}" ]; then
   python3 "$GENESIS_PATCH" "$H/config/genesis.json"
 fi
-sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
-sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
+sed -i.bak 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
+sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" \
   -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$P_CGRPC#" \
   -e 's#^indexer = "null"#indexer = "kv"#' -e 's#^discard_abci_responses = true#discard_abci_responses = false#' \
   -e 's#^grpc_laddr = ""#grpc_laddr = "tcp://127.0.0.1:'$P_CGRPC'"#' "$H/config/config.toml"
-sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
+rm -f "$H/config/config.toml.bak"
+sed -i.bak -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
 grep -q "^grpc_laddr = \"tcp://127.0.0.1:$P_CGRPC\"" "$H/config/config.toml" || { echo "grpc_laddr not set"; exit 1; }
 
 mkdir -p "$H/core/config" "$H/core/data"
@@ -148,7 +151,8 @@ celestia-appd init frozen --chain-id $CHAIN_ID --home "$WORK/frozen" >/dev/null 
 cp -r "$H/core/data/"* "$H/data/"
 cp "$H/core/config/config.toml" "$H/config/config.toml"
 cp "$WORK/frozen/config/priv_validator_key.json" "$H/config/priv_validator_key.json"
-sed -i -e 's#^block_sync = true#block_sync = false#' "$H/config/config.toml"
+sed -i.bak -e 's#^block_sync = true#block_sync = false#' "$H/config/config.toml"
+rm -f "$H/config/config.toml.bak"
 celestia-appd start --home "$H" >> "$WORK/frozen.log" 2>&1 &
 APP=$!; CORE=$APP; PIDS+=($APP)
 for _ in $(seq 1 60); do curl -s localhost:$P_RPC/health >/dev/null && break; sleep 1; done

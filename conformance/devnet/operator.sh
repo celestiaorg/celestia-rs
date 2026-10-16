@@ -101,9 +101,10 @@ celestia-appd init gofull --chain-id $CHAIN_ID --home "$G" >/dev/null 2>&1
 cp "$R/config/genesis.json" "$G/config/genesis.json"
 for f in config.toml app.toml; do shift_ports "$G/config/$f" $((OFF + 10)); done
 RID=$($RS comet show-node-id --home "$R")
-sed -i -e "s#^persistent_peers = .*#persistent_peers = \"$RID@127.0.0.1:$((26656 + OFF))\"#" \
+sed -i.bak -e "s#^persistent_peers = .*#persistent_peers = \"$RID@127.0.0.1:$((26656 + OFF))\"#" \
   -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' -e 's#^addr_book_strict = true#addr_book_strict = false#' \
   -e 's#^pex = true#pex = false#' -e 's#^indexer = "null"#indexer = "kv"#' "$G/config/config.toml"
+rm -f "$G/config/config.toml.bak"
 
 # ---------------------------------------------------------------- 2. start
 echo "== start (Rust validator, Go full node)"

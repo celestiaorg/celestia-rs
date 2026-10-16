@@ -23,9 +23,11 @@ CHAIN_ID=$(python3 -c "import json; print(json.load(open('$IN/meta.json'))['chai
 
 celestia-appd init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
 cp "$IN/genesis.json" "$H/config/genesis.json"
-sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
-sed -i -e "s#localhost:9090#localhost:$((9090 + OFF))#" -e "s#0.0.0.0:9090#0.0.0.0:$((9090 + OFF))#" \
+sed -i.bak 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
+sed -i.bak -e "s#localhost:9090#localhost:$((9090 + OFF))#" -e "s#0.0.0.0:9090#0.0.0.0:$((9090 + OFF))#" \
   -e "s#tcp://localhost:1317#tcp://localhost:$((1317 + OFF))#" "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
 celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true' EXIT

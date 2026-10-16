@@ -43,12 +43,14 @@ for k in val0 user0; do
 done
 $A genesis gentx val0 5000000000utia --chain-id "$CHAIN_ID" --keyring-backend test --fees 500000utia >/dev/null 2>&1
 $A genesis collect-gentxs >/dev/null 2>&1
-sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
-sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
+sed -i.bak 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
+sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" \
   -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$((9098 + OFF))#" \
   -e "s#^indexer = \"null\"#indexer = \"kv\"#" \
   -e "s#^discard_abci_responses = true#discard_abci_responses = false#" "$H/config/config.toml"
+rm -f "$H/config/config.toml.bak"
 python3 - "$H/config/app.toml" "$P_API" "$P_GRPC" <<'PY'
 import sys
 p, api, grpc = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -80,7 +82,8 @@ PY
 cp "$H"/config/{config.toml,node_key.json,priv_validator_key.json} "$H/core/config/"
 echo '{"height":"0","round":0,"step":0}' > "$H/core/data/priv_validator_state.json"
 # The app (not celestia-core) talks to the recording proxy.
-sed -i -e "s#tcp://127.0.0.1:$P_RPC#tcp://127.0.0.1:$P_RPCREC#" "$H/config/config.toml"
+sed -i.bak -e "s#tcp://127.0.0.1:$P_RPC#tcp://127.0.0.1:$P_RPCREC#" "$H/config/config.toml"
+rm -f "$H/config/config.toml.bak"
 
 PIDS=()
 cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }

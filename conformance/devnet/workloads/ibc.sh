@@ -43,14 +43,17 @@ for k in val0 user0 relayer; do
 done
 $P genesis gentx val0 5000000000utia --chain-id $PEER_ID "${PK[@]}" --fees 500000utia >/dev/null 2>&1
 $P genesis collect-gentxs >/dev/null 2>&1
-sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
+sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#tcp://127.0.0.1:36658#tcp://127.0.0.1:$P_APP#" -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$P_RPCGRPC#" \
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL#" \
   -e "s#127.0.0.1:26659#127.0.0.1:$P_PRIVVAL#" "$PEER/config/config.toml"
-sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" \
+rm -f "$PEER/config/config.toml.bak"
+sed -i.bak -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" \
   -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$PEER/config/app.toml"
-sed -i -e 's#^indexer = "null"#indexer = "kv"#' -e 's#^discard_abci_responses = true#discard_abci_responses = false#' \
+rm -f "$PEER/config/app.toml.bak"
+sed -i.bak -e 's#^indexer = "null"#indexer = "kv"#' -e 's#^discard_abci_responses = true#discard_abci_responses = false#' \
   "$PEER/config/config.toml"
+rm -f "$PEER/config/config.toml.bak"
 celestia-appd start --home "$PEER" > "$PEER.log" 2>&1 &
 PEER_PID=$!
 trap 'kill $PEER_PID 2>/dev/null || true' EXIT

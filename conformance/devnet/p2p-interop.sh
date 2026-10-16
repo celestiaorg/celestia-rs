@@ -53,9 +53,10 @@ RB_ID=$("$RUST" --home "$W/rb" --print-id)
 GO_ID=$(celestia-appd comet show-node-id --home "$V" 2>/dev/null || cometbft show_node_id --home "$V")
 echo "go=$GO_ID rust-a=$RA_ID (dials go) rust-b=$RB_ID (dialed by go)"
 
-sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' \
+sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' \
        -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' \
        -e "s#^persistent_peers = .*#persistent_peers = \"$RB_ID@127.0.0.1:$RB_PORT\"#" "$V/config/config.toml"
+rm -f "$V/config/config.toml.bak"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
 celestia-appd start --home "$V" --log_level "${GO_LOG_LEVEL:-info}" > "$W/go.log" 2>&1 & PIDS+=($!)

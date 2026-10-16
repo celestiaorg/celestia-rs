@@ -88,10 +88,11 @@ phase_a() {
     celestia-appd init bench --chain-id "$CHAIN_ID" --home "$h" >/dev/null 2>&1
     cp "$C/genesis.json" "$h/config/genesis.json"
     # Same pruning as the Rust run: keep 100 versions, prune every 10.
-    sed -i -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
+    sed -i.bak -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
       -e 's#^pruning-interval = .*#pruning-interval = "10"#' -e 's#^snapshot-interval = .*#snapshot-interval = 0#' \
       -e "s#localhost:9090#localhost:$((9190 + OFF))#" -e "s#0.0.0.0:9090#0.0.0.0:$((9190 + OFF))#" \
       -e "s#tcp://localhost:1317#tcp://localhost:$((1417 + OFF))#" "$h/config/app.toml"
+    rm -f "$h/config/app.toml.bak"
     celestia-appd start --home "$h" --with-comet=false --address "tcp://127.0.0.1:$APP_PORT" > "$W/replay-$kind.log" 2>&1 &
   else
     mkdir -p "$h"
@@ -139,8 +140,9 @@ full_home() {
   cp "$C/genesis.json" "$1/config/genesis.json"
   shift_ports "$1/config/config.toml" $((OFF + $2))
   shift_ports "$1/config/app.toml" $((OFF + $2))
-  sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' \
+  sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' \
     -e "s#^persistent_peers = .*#persistent_peers = \"$SRC_ID@127.0.0.1:$V_P2P\"#" -e 's#^pex = true#pex = false#' "$1/config/config.toml"
+  rm -f "$1/config/config.toml.bak"
   set_toml "$1/config/app.toml" state-sync snapshot-interval 0
 }
 start_full() { # kind home log [extra...]

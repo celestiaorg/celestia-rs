@@ -61,10 +61,11 @@ make_net() {
     shift_ports "$h/config/app.toml" $((OFF + 10 * i))
     local others
     others=$(printf '%s\n' "${peers[@]}" | grep -v "^$(cat "$h/node_id")@" | paste -sd, -)
-    sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' \
+    sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' \
       -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' \
       -e "s#^persistent_peers = .*#persistent_peers = \"$others\"#" \
       -e 's#^pex = true#pex = false#' "$h/config/config.toml"
+    rm -f "$h/config/config.toml.bak"
     echo "$others" > "$h/peers"
     echo "${kinds[$i]}" > "$h/kind"
   done

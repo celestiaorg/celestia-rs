@@ -90,16 +90,20 @@ $A genesis collect-gentxs >/dev/null 2>&1
 if [ -n "${GENESIS_PATCH:-}" ]; then
   python3 "$GENESIS_PATCH" "$H/config/genesis.json"
 fi
-sed -i 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
-sed -i -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
+sed -i.bak 's/^pruning = "default"/pruning = "nothing"/' "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
+sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.0.0:26656#tcp://0.0.0.0:$P_P2P#" \
   -e "s#localhost:6060#localhost:$P_PPROF#" -e "s#127.0.0.1:26669#127.0.0.1:$P_PRIVVAL_GRPC#" -e "s#127.0.0.1:26659#127.0.0.1:$P_PRIVVAL_GRPC#" \
   -e "s#tcp://127.0.0.1:9098#tcp://127.0.0.1:$((9098 + OFF))#" "$H/config/config.toml"
-sed -i -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
+rm -f "$H/config/config.toml.bak"
+sed -i.bak -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
 # Workloads that need tx results over RPC (e.g. the relayer) set
 # DEVNET_TX_INDEX=kv; indexing is node-local and does not change ABCI traffic.
 if [ -n "${DEVNET_TX_INDEX:-}" ]; then
-  sed -i -e "s#^indexer = \"null\"#indexer = \"$DEVNET_TX_INDEX\"#" \
+  sed -i.bak -e "s#^indexer = \"null\"#indexer = \"$DEVNET_TX_INDEX\"#" \
     -e "s#^discard_abci_responses = true#discard_abci_responses = false#" "$H/config/config.toml"
+  rm -f "$H/config/config.toml.bak"
 fi
 
 # celestia-core wants a CometBFT GenesisDoc, not the SDK app genesis.

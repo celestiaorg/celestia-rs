@@ -109,16 +109,18 @@ for i in $(seq 1 $((N - 1))); do cp "$W/n0/config/genesis.json" "$W/n$i/config/g
 # "Overriding min-retain-blocks"), so block stores only start shrinking
 # after 3000 heights (~2.5 h at the soak's block time).
 for i in $(seq 0 $((N - 1))); do
-  sed -i -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
+  sed -i.bak -e 's#^pruning = .*#pruning = "custom"#' -e 's#^pruning-keep-recent = .*#pruning-keep-recent = "100"#' \
     -e 's#^pruning-interval = .*#pruning-interval = "10"#' -e "s#^min-retain-blocks = .*#min-retain-blocks = ${SOAK_RETAIN_BLOCKS:-500}#" \
     "$W/n$i/config/app.toml"
+  rm -f "$W/n$i/config/app.toml.bak"
 done
 # Go nodes take snapshots (state-sync source for the Rust validators); in
 # the memory profile every node does (snapshot creation is part of the
 # steady state being measured).
 for i in $(seq 0 $((N - 1))); do
   [ "$(cat "$W/n$i/kind")" = go ] || [ "${SOAK_PROFILE:-chaos}" = memory ] || continue
-  sed -i -e 's#^snapshot-interval = .*#snapshot-interval = 100#' -e 's#^snapshot-keep-recent = .*#snapshot-keep-recent = 3#' "$W/n$i/config/app.toml"
+  sed -i.bak -e 's#^snapshot-interval = .*#snapshot-interval = 100#' -e 's#^snapshot-keep-recent = .*#snapshot-keep-recent = 3#' "$W/n$i/config/app.toml"
+  rm -f "$W/n$i/config/app.toml.bak"
 done
 
 exec python3 "$ROOT/conformance/devnet/soak/soak.py" --dir "$W" --off "$OFF" --rs "$RS" --chain-id "$CHAIN_ID" \

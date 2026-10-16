@@ -43,7 +43,8 @@ for p in files:
     open(p, "w").write(s)
 PY
 # tx/block indexing (`celestia-appd init` writes indexer = "null")
-sed -i 's#^indexer = "null"#indexer = "kv"#' "$H/config/config.toml"
+sed -i.bak 's#^indexer = "null"#indexer = "kv"#' "$H/config/config.toml"
+rm -f "$H/config/config.toml.bak"
 P_RPC=$((26657 + OFF))
 NODE=tcp://127.0.0.1:$P_RPC
 RPC=http://127.0.0.1:$P_RPC

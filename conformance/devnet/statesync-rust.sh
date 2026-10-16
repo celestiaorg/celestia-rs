@@ -66,7 +66,8 @@ PY
 }
 shift_ports "$V/config/config.toml" "$OFF"
 shift_ports "$V/config/app.toml" "$OFF"
-sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$V/config/config.toml"
+sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$V/config/config.toml"
+rm -f "$V/config/config.toml.bak"
 set_toml "$V/config/app.toml" state-sync snapshot-interval "$INTERVAL"
 VAL_ID=$(celestia-appd comet show-node-id --home "$V" 2>/dev/null)
 VAL_P2P="$VAL_ID@127.0.0.1:$(port 26656 0)"
@@ -133,7 +134,8 @@ cp "$V/config/app.toml" "$G/config/app.toml"
 shift_ports "$G/config/config.toml" 200
 shift_ports "$G/config/app.toml" 200
 set_toml "$G/config/app.toml" state-sync snapshot-interval 0
-sed -i "s#^persistent_peers = .*#persistent_peers = \"$RUST_ID@127.0.0.1:$RUST_PORT\"#" "$G/config/config.toml"
+sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$RUST_ID@127.0.0.1:$RUST_PORT\"#" "$G/config/config.toml"
+rm -f "$G/config/config.toml.bak"
 set_toml "$G/config/config.toml" p2p pex false
 set_toml "$G/config/config.toml" statesync enable true
 set_toml "$G/config/config.toml" statesync rpc_servers "\"$VAL_RPC,$VAL_RPC\""

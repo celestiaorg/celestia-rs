@@ -59,8 +59,9 @@ PY
 }
 shift_ports "$V/config/config.toml" "$OFF"
 shift_ports "$V/config/app.toml" "$OFF"
-sed -i -e 's#^addr_book_strict = true#addr_book_strict = false#' \
+sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' \
        -e 's#^allow_duplicate_ip = false#allow_duplicate_ip = true#' "$V/config/config.toml"
+rm -f "$V/config/config.toml.bak"
 GO_P2P=$((26656 + OFF)); GO_RPC=$((26657 + OFF))
 R_P2P=$((26656 + OFF + 200)); R_RPC=$((26657 + OFF + 200)); R_ABCI=$((26658 + OFF + 200))
 
@@ -81,7 +82,8 @@ cp "$V/config/config.toml" "$F/config/config.toml"
 shift_ports "$F/config/config.toml" 100
 GO_ID=$(celestia-appd comet show-node-id --home "$V" 2>/dev/null || cometbft show_node_id --home "$V")
 R_ID=$("$RUST" --home "$R" --print-id)
-sed -i "s#^persistent_peers = .*#persistent_peers = \"$GO_ID@127.0.0.1:$GO_P2P\"#" "$F/config/config.toml"
+sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$GO_ID@127.0.0.1:$GO_P2P\"#" "$F/config/config.toml"
+rm -f "$F/config/config.toml.bak"
 echo "go=$GO_ID rust=$R_ID"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; wait "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
