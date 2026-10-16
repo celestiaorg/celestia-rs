@@ -17,6 +17,12 @@ abci-server = { path = "../tier-4-runtime/abci-server" }
 api-server = { path = "../tier-4-runtime/api-server" }
 anyhow.workspace = true
 app = { path = "../tier-4-runtime/app" }
+crypto = { path = "../tier-0-primitives/crypto" }
+hash = { path = "../tier-0-primitives/hash" }
+merkle = { path = "../tier-0-primitives/merkle" }
+shares = { path = "../tier-1-protocol-types/shares" }
+square = { path = "../tier-1-protocol-types/square" }
+pbjson-types = "0.7"
 celestia-proto = { path = "../tier-1-protocol-types/celestia-proto" }
 devnet-conformance = { path = "../devnet-conformance" }
 encoding = { path = "../tier-0-primitives/encoding" }

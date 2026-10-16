@@ -294,7 +294,7 @@ fn mutate_nils(
 
 /// Whether `md` reaches a math customtype field (through nested
 /// messages, not `Any`s) within `depth` levels.
-fn reaches_math(md: &MessageDescriptor, depth: usize) -> bool {
+pub(crate) fn reaches_math(md: &MessageDescriptor, depth: usize) -> bool {
     depth < 5
         && md.fields().any(|f| {
             x_ante::gogotext::go_opts(&f)

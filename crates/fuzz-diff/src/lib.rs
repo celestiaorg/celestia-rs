@@ -20,6 +20,7 @@
 
 pub mod corpus;
 pub mod craft;
+pub mod deliver;
 pub mod exec;
 pub mod jsonops;
 pub mod mutate;

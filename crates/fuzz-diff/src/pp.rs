@@ -68,6 +68,30 @@ impl GoApp {
         read_frame(s)?;
         Ok(resp)
     }
+
+    /// Like [`Self::call`], but when the Go app closes the connection (its
+    /// handler returned an error, which the socket server answers by
+    /// closing it) the result is an `Exception` and the connection is
+    /// reopened on its next use.
+    pub(crate) fn call_or_exception(&mut self, id: u32, req: &Request) -> anyhow::Result<Response> {
+        match self.call(id, req) {
+            Ok(r) => {
+                // The server closes the connection after an exception.
+                if matches!(r.value, Some(response::Value::Exception(_))) {
+                    self.conns.remove(&id);
+                }
+                Ok(r)
+            }
+            Err(e) => {
+                self.conns.remove(&id);
+                Ok(Response {
+                    value: Some(response::Value::Exception(abci::ResponseException {
+                        error: format!("connection closed: {e}"),
+                    })),
+                })
+            }
+        }
+    }
 }
 
 /// Outcome counts of a run.

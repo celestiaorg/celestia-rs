@@ -264,6 +264,46 @@ fn main() -> anyhow::Result<()> {
         }
         return Ok(());
     }
+    if argv.get(1).map(String::as_str) == Some("coverage") {
+        print!("{}", fuzz_diff::deliver::coverage());
+        return Ok(());
+    }
+    if argv.get(1).map(String::as_str) == Some("deliver") {
+        let scenario = argv.get(2).context("scenario")?;
+        let addr = argv.get(3).context("go abci address")?;
+        let blocks = argv.get(4).map_or(Ok(200), |s| s.parse())?;
+        let per_block = argv.get(5).map_or(Ok(8), |s| s.parse())?;
+        let seed = argv.get(6).map_or(Ok(1), |s| s.parse())?;
+        let st = fuzz_diff::deliver::run(scenario, addr, blocks, per_block, seed)?;
+        for m in &st.mismatches {
+            println!("MISMATCH {m}");
+        }
+        for m in &st.log_mismatches {
+            println!("LOG {m}");
+        }
+        for (t, (n, ok, rej)) in &st.per_type {
+            println!("TYPE {t} delivered={n} go_ok={ok} check_rejected={rej}");
+        }
+        for (c, n) in &st.codes {
+            println!("CODE {n} {c}");
+        }
+        eprintln!(
+            "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted), {} delivered ({} code 0); {} mismatches, {} log-only differences{}",
+            st.replayed,
+            st.blocks,
+            st.checked,
+            st.check_ok,
+            st.delivered,
+            st.delivered_ok,
+            st.mismatches.len(),
+            st.log_mismatches.len(),
+            if st.split { "; stopped at a split" } else { "" }
+        );
+        if !st.mismatches.is_empty() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if argv.get(1).map(String::as_str) == Some("record") {
         let av = argv.get(2).context("app version")?.parse()?;
         return record(av, argv.get(3).map_or("", String::as_str));
