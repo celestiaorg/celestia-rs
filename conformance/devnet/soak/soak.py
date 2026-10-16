@@ -362,14 +362,14 @@ class Soak:
             except ValueError:
                 continue  # torn last line
             ht = r["h"]
-            if ht != self.ref_checked + 1:
+            if ht in self.ref_cache:
                 continue
             self.ref_cache[ht] = {"hash": r["hash"], "app_hash": r["app"], "proposer": r["p"]}
             self._count_block(r["p"], r["ntx"], r["size"])
-            self.ref_checked = ht
+            self.ref_checked = max(self.ref_checked, ht)
             kept.append(line)
         self.max_height = max(self.max_height, self.ref_checked)
-        # Drop a torn last line.
+        # Drop a torn last line and duplicates (lines are in any order).
         if len(kept) != len(lines):
             with open(f"{self.dir}/hashes.jsonl", "w") as f:
                 f.write("".join(x + "\n" for x in kept))
@@ -413,6 +413,15 @@ class Soak:
                     best, bh = nd, h
             if best is not None:
                 break
+        if best is None:
+            # Nobody holds the next height (pruned / state-synced away while
+            # the orchestrator was down): the node with the lowest base;
+            # fetch_ref records the skipped range.
+            sts = [(nd, nd.status()) for nd in self.up_nodes()]
+            sts = [(nd, st) for nd, st in sts if st]
+            if sts:
+                nd, st = min(sts, key=lambda x: (x[1][1], x[0].kind != "go"))
+                best, bh = nd, st[0]
         return best, bh
 
     def tx_node(self):
@@ -727,9 +736,20 @@ class Soak:
     # ------------------------------------------------------------ consistency
     def fetch_ref(self, ref, upto):
         h = self.ref_checked + 1
+        st = ref.status()
+        if st and st[1] > h:
+            # No node holds these heights any more (pruned / state-synced
+            # away while the orchestrator was down): skip them, recorded.
+            sk = self.metrics.setdefault("ref_skipped", [])
+            sk.append([h, st[1] - 1])
+            self.event("ref-heights-skipped", start=h, end=st[1] - 1)
+            h = st[1]
+            self.ref_checked = h - 1
         while h <= upto and not self.stop.is_set():
             hi = min(upto, h + 19)
             metas = get_json(f"{ref.url}/blockchain?minHeight={h}&maxHeight={hi}")["result"]["block_metas"]
+            # /blockchain lists the metas highest first.
+            metas = sorted(metas, key=lambda m: int(m["header"]["height"]))
             for m in metas:
                 hdr = m["header"]
                 ht = int(hdr["height"])
@@ -768,7 +788,11 @@ class Soak:
                 return
             got_hash = c["commit"]["block_id"]["hash"].upper()
             got_app = c["header"]["app_hash"].upper()
-            r = self.ref_cache[h]
+            r = self.ref_cache.get(h)
+            if r is None:
+                nd.checked = h
+                h += 1
+                continue
             if got_hash != r["hash"] or got_app != r["app_hash"]:
                 self.fail(f"node {nd.i} ({nd.kind}) height {h}: block {got_hash[:12]} app {got_app[:12]} != ref {r['hash'][:12]} {r['app_hash'][:12]}")
             nd.checked = h
@@ -1937,6 +1961,15 @@ class Soak:
             time.sleep(3)
         else:
             self.fail(f"network did not {'resume' if self.a.resume else 'start'}: {self.in_sync()[1]}")
+        if self.a.verify_only:
+            self.wait_progress(max(hs.values()) if hs else 0, 120)
+            time.sleep(30)
+            rep = self.verify_all()
+            for nd in self.nodes:
+                nd.kill(signal.SIGTERM)
+            self.proxy.kill()
+            print(json.dumps({k: v for k, v in rep.items() if k != "mismatches"}))
+            return 0 if not rep["n_mismatches"] else 1
         if self.a.resume:
             # The machine restart killed every node at once: a whole-network
             # crash / restart (every node replays its WAL).
@@ -2011,6 +2044,41 @@ class Soak:
             nd.kill(signal.SIGTERM)
         self.proxy.kill()
         return 0 if not self.failures else 1
+
+    def verify_all(self):
+        """`--verify-only`: every height each node still holds, compared
+        across all nodes (block hash, app hash, and the next header's
+        last_results_hash), from /commit. Writes verify.json."""
+        tops = {}
+        for nd in self.nodes:
+            st = nd.status()
+            if st:
+                tops[nd.i] = st
+        top = min(st[0] for st in tops.values()) - 1
+        seen = {}  # height -> (hash, app, results) of the first node
+        per_node = {}
+        mismatches = []
+        for i, (h_top, base, _) in tops.items():
+            nd = self.nodes[i]
+            n = 0
+            for h in range(base, top + 1):
+                try:
+                    hdr = get_json(f"{nd.url}/commit?height={h}", timeout=10)["result"]["signed_header"]
+                except Exception:
+                    continue
+                v = (hdr["commit"]["block_id"]["hash"].upper(), hdr["header"]["app_hash"].upper(),
+                     hdr["header"]["last_results_hash"].upper())
+                n += 1
+                if h not in seen:
+                    seen[h] = (i, v)
+                elif seen[h][1] != v:
+                    mismatches.append({"height": h, "node": i, "got": v, "ref_node": seen[h][0], "ref": seen[h][1]})
+            per_node[i] = {"kind": nd.kind, "base": base, "checked": n}
+        rep = {"top": top, "heights_compared": len(seen), "lowest": min(seen) if seen else None,
+               "per_node": per_node, "mismatches": mismatches[:50], "n_mismatches": len(mismatches)}
+        json.dump(rep, open(f"{self.dir}/verify.json", "w"), indent=1)
+        self.event("verify", **{k: v for k, v in rep.items() if k != "mismatches"})
+        return rep
 
     def wait_progress(self, h, secs):
         t = now()
@@ -2212,6 +2280,8 @@ def main():
     p.add_argument("--valset-node", type=int, default=4, help="validator that unbonds / re-bonds in the valset cycle")
     p.add_argument("--fuzz-diff", default="", help="fuzz-diff binary (invalid-UTF-8 txs via `fuzz-diff craft`)")
     p.add_argument("--strict-sign", action="store_true", help="fail on any privval `conflicting data` refusal")
+    p.add_argument("--verify-only", action="store_true",
+                   help="with --resume: start every node, compare every height they hold (verify.json), stop")
     p.add_argument("--mem-sample", type=float, default=0.0,
                    help="seconds between memory samples (mem.jsonl: RSS, heap, threads, fds, disk, caches); 0 = off")
     a = p.parse_args()
