@@ -34,6 +34,7 @@
 
 mod convert;
 mod custom;
+mod go_types;
 mod gogo;
 mod protowire;
 mod registry;

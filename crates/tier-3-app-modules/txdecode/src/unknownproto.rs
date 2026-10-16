@@ -8,6 +8,7 @@
 
 use celestia_proto::wire_table::{FieldInfo, MessageInfo, ty};
 
+use crate::go_types::go_type_name;
 use crate::gogo::{self, GoError, GoResult};
 use crate::protowire::{self, WireType};
 use crate::registry;
@@ -30,6 +31,36 @@ pub(crate) fn reject_unknown_fields(
         &mut has,
     );
     (has, r)
+}
+
+/// `wireTypeToString`.
+fn wire_type_string(wt: WireType) -> String {
+    match wt {
+        protowire::VARINT => "varint".into(),
+        protowire::FIXED64 => "fixed64".into(),
+        protowire::BYTES => "bytes".into(),
+        protowire::START_GROUP => "start_group".into(),
+        protowire::END_GROUP => "end_group".into(),
+        protowire::FIXED32 => "fixed32".into(),
+        other => format!("unknown type: {other}"),
+    }
+}
+
+/// `toProtowireType` (the wire type a field type is expected in).
+fn to_protowire_type(t: u8) -> WireType {
+    match t {
+        ty::INT64
+        | ty::UINT64
+        | ty::INT32
+        | ty::UINT32
+        | ty::BOOL
+        | ty::ENUM
+        | ty::SINT32
+        | ty::SINT64 => protowire::VARINT,
+        ty::DOUBLE | ty::FIXED64 | ty::SFIXED64 => protowire::FIXED64,
+        ty::FLOAT | ty::FIXED32 | ty::SFIXED32 => protowire::FIXED32,
+        _ => protowire::BYTES,
+    }
 }
 
 /// `canEncodeType`.
@@ -85,8 +116,10 @@ fn walk(
             {
                 if !can_encode_type(wire_type, f.ty) {
                     return Err(GoError::new(format!(
-                        "Mismatched {:?}: {{TagNum: {tag_num}, GotWireType: {wire_type}}}",
-                        msg.name
+                        "Mismatched {:?}: {{TagNum: {tag_num}, GotWireType: {:?} != WantWireType: {:?}}}",
+                        go_type_name(msg.name),
+                        wire_type_string(wire_type),
+                        wire_type_string(to_protowire_type(f.ty))
                     )));
                 }
             }
@@ -98,8 +131,9 @@ fn walk(
                 }
                 if critical || !allow {
                     return Err(GoError::new(format!(
-                        "errUnknownField {:?}: {{TagNum: {tag_num}, WireType:{wire_type}}}",
-                        msg.name
+                        "errUnknownField {:?}: {{TagNum: {tag_num}, WireType:{:?}}}",
+                        go_type_name(msg.name),
+                        wire_type_string(wire_type)
                     )));
                 }
             }
