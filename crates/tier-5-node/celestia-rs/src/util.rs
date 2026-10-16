@@ -213,7 +213,10 @@ mod tests {
     #[cfg(unix)]
     fn echo_on(fd: &std::fs::File) -> bool {
         use rustix::termios::{LocalModes, tcgetattr};
-        tcgetattr(fd).unwrap().local_modes.contains(LocalModes::ECHO)
+        tcgetattr(fd)
+            .unwrap()
+            .local_modes
+            .contains(LocalModes::ECHO)
     }
 
     #[test]
