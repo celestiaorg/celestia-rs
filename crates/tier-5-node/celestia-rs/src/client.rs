@@ -75,25 +75,77 @@ fn chain_id(home: &Path, flag: &str, node: &Node) -> anyhow::Result<String> {
     node.chain_id()
 }
 
+/// The `--from` account a tx is built for: its address, and the keyring
+/// record when one was looked up.
+#[derive(Debug, Clone)]
+pub struct Signer {
+    address: Vec<u8>,
+    key: Option<keyring::KeyRecord>,
+}
+
+impl Signer {
+    /// The bech32 address with `prefix` (`celestia`, `celestiavaloper`).
+    #[must_use]
+    pub fn bech32(&self, prefix: &str) -> String {
+        encoding::bech32::encode(prefix, &self.address).unwrap_or_default()
+    }
+
+    /// The keyring record (`None`: a `--generate-only` bech32 `--from`).
+    #[must_use]
+    pub fn key(&self) -> Option<&keyring::KeyRecord> {
+        self.key.as_ref()
+    }
+}
+
+/// `sdk.AccAddressFromBech32`: the address bytes of a `celestia1…` string
+/// (`None` for anything else, including other prefixes and key names).
+#[must_use]
+pub fn acc_address_from_bech32(s: &str) -> Option<Vec<u8>> {
+    if s.trim().is_empty() {
+        return None;
+    }
+    let (hrp, bytes) = encoding::bech32::decode_and_convert(s).ok()?;
+    // `VerifyAddressFormat`: 1..=255 bytes.
+    (hrp == ACC_PREFIX && !bytes.is_empty() && bytes.len() <= 255).then_some(bytes)
+}
+
+/// Go's `client.GetFromFields`: with `--generate-only`, a bech32 `--from`
+/// is used as-is and the keyring is never opened (a `file` keyring asks no
+/// passphrase); otherwise the key is looked up by name or address (a
+/// `file` keyring decrypts the record, so it asks the passphrase, as Go).
+pub fn resolve_from(home: &Path, f: &TxFlags) -> anyhow::Result<Signer> {
+    if f.generate_only
+        && let Some(address) = acc_address_from_bech32(&f.from)
+    {
+        return Ok(Signer { address, key: None });
+    }
+    let backend = crate::keys::backend(home, f.keyring_backend.as_deref())?;
+    let mut kr = crate::keys::open(home, f.keyring_dir.as_deref(), backend);
+    let key = crate::keys::find(&mut kr, &f.from)?;
+    Ok(Signer {
+        address: key.address().to_vec(),
+        key: Some(key),
+    })
+}
+
 /// Builds, signs and broadcasts `msgs` from `f.from`; prints Go's
-/// `TxResponse` JSON. Returns the response.
+/// `TxResponse` JSON. Returns the response. With `--generate-only`, prints
+/// the unsigned tx instead (`--from` resolved by [`resolve_from`]).
 #[allow(clippy::too_many_lines)]
 pub fn send_tx(
     home: &Path,
     f: &TxFlags,
-    msgs: impl FnOnce(&keyring::KeyRecord) -> anyhow::Result<(Vec<Any>, Option<Vec<shares::Blob>>)>,
+    msgs: impl FnOnce(&Signer) -> anyhow::Result<(Vec<Any>, Option<Vec<shares::Blob>>)>,
 ) -> anyhow::Result<Value> {
-    let backend = crate::keys::backend(home, f.keyring_backend.as_deref())?;
-    let mut kr = crate::keys::open(home, f.keyring_dir.as_deref(), backend);
-    let key = crate::keys::find(&mut kr, &f.from)?;
-    let (msgs, blobs) = msgs(&key)?;
+    let from = resolve_from(home, f)?;
+    let (msgs, blobs) = msgs(&from)?;
     let node = Node::new(&node_addr(home, &f.node));
     let mut fee = f.fee.clone();
     if fee.gas == 0
         && !fee.gas_auto
         && let Some(b) = &blobs
     {
-        let pfb = txs::msg_pay_for_blobs(&key.bech32(ACC_PREFIX), b)?;
+        let pfb = txs::msg_pay_for_blobs(&from.bech32(ACC_PREFIX), b)?;
         fee.gas = txs::pfb_gas(&pfb);
     }
     // `--gas auto` (`CalculateGas`): simulate the tx built at gas 0 with an
@@ -103,11 +155,18 @@ pub fn send_tx(
         let (an, seq) = match (f.account_number, f.sequence) {
             (Some(a), Some(s)) => (a, s),
             (a, s) => {
-                let (an, sq) = node.account(&key.bech32(ACC_PREFIX))?;
+                let (an, sq) = node.account(&from.bech32(ACC_PREFIX))?;
                 (a.unwrap_or(an), s.unwrap_or(sq))
             }
         };
         account = Some((an, seq));
+        // The simulated signature carries the key's public key (Go's
+        // `getSimPK` looks up the `--from` key name). A generate-only
+        // address `--from` has no name, so Go's `Key("")` fails here, after
+        // the account query, with this error.
+        let Some(key) = from.key() else {
+            bail!(".info: key not found");
+        };
         let sim = txs::sim_tx_bytes(
             &msgs,
             &f.memo,
@@ -146,7 +205,7 @@ pub fn send_tx(
         (Some(acc), _, _) => acc,
         (None, Some(a), Some(s)) => (a, s),
         (None, a, s) => {
-            let (an, sq) = node.account(&key.bech32(ACC_PREFIX))?;
+            let (an, sq) = node.account(&from.bech32(ACC_PREFIX))?;
             (a.unwrap_or(an), s.unwrap_or(sq))
         }
     };
@@ -159,7 +218,10 @@ pub fn send_tx(
         account_number,
         sequence,
     };
-    let signed = txs::sign(&utx, &key)?;
+    let key = from
+        .key()
+        .ok_or_else(|| anyhow!("{}: key not found", f.from))?;
+    let signed = txs::sign(&utx, key)?;
     let raw = match &blobs {
         Some(b) => txs::blob_tx(&signed.raw, b),
         None => signed.raw.clone(),
@@ -511,6 +573,20 @@ pub fn signal_version(home: &Path, f: &TxFlags, version: u64) -> anyhow::Result<
                 &celestia_proto::celestia::signal::v1::MsgSignalVersion {
                     validator_address: k.bech32(VAL_PREFIX),
                     version,
+                },
+            )],
+            None,
+        ))
+    })
+}
+
+/// `tx slashing unjail` (the signer's validator).
+pub fn slashing_unjail(home: &Path, f: &TxFlags) -> anyhow::Result<Value> {
+    send_tx(home, f, |k| {
+        Ok((
+            vec![Any::pack(
+                &celestia_proto::cosmos::slashing::v1beta1::MsgUnjail {
+                    validator_addr: k.bech32(VAL_PREFIX),
                 },
             )],
             None,

@@ -249,3 +249,147 @@ fn config_set_get() {
         "layout kept"
     );
 }
+
+/// `tx … --generate-only --from <celestia1…>` on a passphrase-encrypted
+/// `file` keyring, with no TTY (stdin is `/dev/null`) and no
+/// `CELESTIA_RS_KEYRING_PASSPHRASE`: like Go's `GetFromFields`, the address
+/// is used as-is and the keyring is never opened. The unsigned txs are
+/// celestia-appd v10.4.0's (`tests/fixtures/generate-only/*.go.json`: the
+/// same commands with Go on a `file` keyring holding the same key, stdin
+/// closed). A key name opens the keyring and fails without the passphrase,
+/// as in Go.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn generate_only_address_from_needs_no_passphrase() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let fx = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/generate-only");
+    let mut kr = keyring::Keyring::new(home, keyring::Backend::File).with_password("passw0rd123");
+    let key = kr
+        .add_mnemonic("op", MNEMONIC, "", keyring::hd::DEFAULT_HD_PATH)
+        .unwrap();
+    let addr = key.bech32("celestia");
+    assert_eq!(addr, "celestia1r5v5srda7xfth3hn2s26txvrcrntldju2pktdj");
+    let val = "celestiavaloper1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5thlh2h";
+    let to = "celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5wgawu3";
+    let validator_json = fx.join("validator.json");
+    let withdraw = format!(r#"{{"delegator_address":"{addr}","validator_address":"{val}"}}"#);
+    let run = |args: &[&str]| {
+        let home = home.to_str().unwrap();
+        std::process::Command::new(env!("CARGO_BIN_EXE_celestia-rs"))
+            .arg("tx")
+            .args(args)
+            .args(["--keyring-backend", "file", "--home", home])
+            .args(["--chain-id", "mocha-5", "--generate-only"])
+            // Unreachable: generate-only without --gas auto queries nothing.
+            .args(["--node", "tcp://127.0.0.1:1"])
+            .env_remove("CELESTIA_RS_KEYRING_PASSPHRASE")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let fees = |f: &'static str| ["--fees", f];
+    let cases: Vec<(&str, Vec<&str>)> = vec![
+        (
+            "create-validator",
+            [
+                &[
+                    "staking",
+                    "create-validator",
+                    validator_json.to_str().unwrap(),
+                ][..],
+                &["--from", &addr, "--gas", "300000"],
+                &fees("30000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "bank-send",
+            [
+                &["bank", "send", &addr, to, "1000utia", "--note", "rust cli"][..],
+                &fees("3000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "unjail",
+            [
+                &["slashing", "unjail", "--from", &addr][..],
+                &fees("20000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "signal",
+            [
+                &["signal", "signal", "11", "--from", &addr][..],
+                &fees("20000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "try-upgrade",
+            vec![
+                "signal",
+                "try-upgrade",
+                "--from",
+                &addr,
+                "--gas-prices",
+                "0.004utia",
+            ],
+        ),
+        (
+            "withdraw",
+            [
+                &["distribution", "withdraw-delegator-reward", "--from", &addr][..],
+                &["--json", &withdraw],
+                &fees("20000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "delegate",
+            [
+                &["staking", "delegate", val, "5000utia", "--from", &addr][..],
+                &fees("20000utia"),
+            ]
+            .concat(),
+        ),
+        (
+            "edit-validator",
+            [
+                &[
+                    "staking",
+                    "edit-validator",
+                    "--from",
+                    &addr,
+                    "--details",
+                    "edited",
+                ][..],
+                &fees("20000utia"),
+            ]
+            .concat(),
+        ),
+    ];
+    for (name, args) in &cases {
+        let out = run(args);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{name}: {stderr}");
+        assert!(!stderr.contains("passphrase"), "{name} prompted: {stderr}");
+        let got: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let want = json(&fx.join(format!("{name}.go.json")));
+        assert_eq!(got, want, "{name}");
+    }
+    // A key name (and a bech32 address with another prefix, which Go also
+    // treats as a key name) opens the keyring: the passphrase prompt hits
+    // EOF.
+    for from in [
+        "op",
+        "celestiavaloper1r5v5srda7xfth3hn2s26txvrcrntldju075jm5",
+    ] {
+        let out = run(&["bank", "send", from, to, "1utia", "--fees", "3000utia"]);
+        assert!(!out.status.success(), "{from}");
+    }
+    let out = run(&["bank", "send", "op", to, "1utia", "--fees", "3000utia"]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("passphrase"));
+}
