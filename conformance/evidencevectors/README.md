@@ -10,7 +10,11 @@ validators, bad conflicting signatures, missing commits, expiry). Each case
 records the decoded evidence's `EvidenceFromProto` error, Go's
 `Pool.CheckEvidence` outcome against mock stores, the pure
 `VerifyDuplicateVote` / `VerifyLightClientAttack` results and the derived
-byzantine validators. Checked by `crates/tier-4-runtime/evidence/tests/go_vectors.rs`.
+byzantine validators, plus the decoded evidence's cmtjson form (as `/block`
+renders it) and its `ABCI()` misbehaviors. Checked by
+`crates/tier-4-runtime/evidence/tests/go_vectors.rs`,
+`crates/tier-4-runtime/light/src/http.rs` (JSON decoding) and
+`crates/tier-4-runtime/rpc/tests/evidence_json.rs` (JSON encoding).
 
 ```bash
 cd conformance/evidencevectors

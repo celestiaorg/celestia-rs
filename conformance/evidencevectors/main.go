@@ -36,6 +36,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/evidence"
+	cmtjson "github.com/cometbft/cometbft/libs/json"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
@@ -224,6 +225,11 @@ type vectorCase struct {
 	LcaCommonHeight   int64         `json:"lca_common_height,omitempty"`
 	LcaTrustedHeight  int64         `json:"lca_trusted_height,omitempty"`
 	ByzantineExpected []string      `json:"byzantine_expected,omitempty"`
+	// EvidenceJSON: the decoded evidence as `/block` renders it (cmtjson,
+	// `{"type": .., "value": ..}`); ABCI: its `ABCI()` misbehaviors
+	// (hex protobuf, in order) as `FinalizeBlock` receives them.
+	EvidenceJSON string   `json:"evidence_json,omitempty"`
+	ABCI         []string `json:"abci,omitempty"`
 }
 
 type scenario struct {
@@ -298,6 +304,13 @@ func (s *scenario) output() vectorCase {
 	out.FromProtoErr = errStr(err)
 	if err != nil {
 		return out
+	}
+	if j, err := cmtjson.Marshal(decoded); err == nil {
+		out.EvidenceJSON = string(j)
+	}
+	for _, m := range decoded.ABCI() {
+		m := m
+		out.ABCI = append(out.ABCI, h(mustMarshal(&m)))
 	}
 	s.ss.state = s.state
 	out.CheckErr = try(func() error {

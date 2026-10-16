@@ -289,8 +289,8 @@ impl RpcClient {
         ))
     }
 
-    /// `/block?height=h`: the block id and the block. Blocks carrying
-    /// evidence are refused (decoding evidence JSON is not implemented).
+    /// `/block?height=h`: the block id and the block (with its duplicate
+    /// vote and light client attack evidence).
     pub fn block(&self, height: i64) -> RpcResult<(BlockId, Block)> {
         let r = self.get(&format!("/block?height={height}"))?;
         Ok((
@@ -606,9 +606,57 @@ fn vote_from_json(v: &Value) -> RpcResult<Vote> {
     })
 }
 
+/// The protobuf form of a `LightClientAttackEvidence` JSON value (cmtjson
+/// of the Go struct: `ConflictingBlock` (`signed_header`,
+/// `validator_set`), `CommonHeight`, `ByzantineValidators`,
+/// `TotalVotingPower`, `Timestamp`; nil pointers as `null`).
+fn lca_proto_from_json(e: &Value) -> RpcResult<ctypes::proto::types::LightClientAttackEvidence> {
+    use ctypes::proto::types as pb;
+    let validator = |v: &Value| validator_from_json(v).map(|v| v.to_proto());
+    let cb = &e["ConflictingBlock"];
+    let conflicting_block = if cb.is_null() {
+        None
+    } else {
+        let sh = &cb["signed_header"];
+        let vs = &cb["validator_set"];
+        Some(pb::LightBlock {
+            signed_header: (!sh.is_null())
+                .then(|| signed_header_from_json(sh).map(|s| s.to_proto()))
+                .transpose()?,
+            validator_set: if vs.is_null() {
+                None
+            } else {
+                Some(pb::ValidatorSet {
+                    validators: vs["validators"]
+                        .as_array()
+                        .map(|a| a.iter().map(validator).collect::<RpcResult<Vec<_>>>())
+                        .transpose()?
+                        .unwrap_or_default(),
+                    proposer: (!vs["proposer"].is_null())
+                        .then(|| validator(&vs["proposer"]))
+                        .transpose()?,
+                    total_voting_power: 0,
+                })
+            },
+        })
+    };
+    Ok(pb::LightClientAttackEvidence {
+        conflicting_block,
+        common_height: int_field(e, "CommonHeight")?,
+        byzantine_validators: e["ByzantineValidators"]
+            .as_array()
+            .map(|a| a.iter().map(validator).collect::<RpcResult<Vec<_>>>())
+            .transpose()?
+            .unwrap_or_default(),
+        total_voting_power: int_field(e, "TotalVotingPower")?,
+        timestamp: Some(parse_rfc3339(&str_field(e, "Timestamp")?)?.to_proto()),
+    })
+}
+
 /// Decodes one entry of a block's evidence list (amino-JSON
-/// `{"type": .., "value": ..}`). Only `DuplicateVoteEvidence` is
-/// supported; light client attack evidence is refused.
+/// `{"type": .., "value": ..}`). Light client attack evidence goes through
+/// its protobuf form and `EvidenceFromProto` (what a node applies to a
+/// block's evidence received from a peer).
 fn evidence_from_json(v: &Value) -> RpcResult<Evidence> {
     match v["type"].as_str() {
         Some("tendermint/DuplicateVoteEvidence") => {
@@ -621,6 +669,13 @@ fn evidence_from_json(v: &Value) -> RpcResult<Evidence> {
                 validator_power: int_field(e, "ValidatorPower")?,
                 timestamp: parse_rfc3339(&str_field(e, "Timestamp")?)?,
             }))
+        }
+        Some("tendermint/LightClientAttackEvidence") => {
+            let p = lca_proto_from_json(&v["value"])?;
+            Evidence::from_proto(&ctypes::proto::types::Evidence {
+                sum: Some(ctypes::proto::types::evidence::Sum::LightClientAttackEvidence(p)),
+            })
+            .map_err(|e| rpc_err(format!("light client attack evidence: {e}")))
         }
         other => Err(rpc_err(format!(
             "decoding {other:?} evidence from JSON is not implemented"
@@ -915,6 +970,49 @@ pub mod fuzzing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Evidence as `/block` renders it (celestia-core v0.42.3 cmtjson,
+    /// `conformance/evidencevectors`): decodes to Go's protobuf encoding
+    /// and `ABCI()` misbehaviors (duplicate vote and light client attack).
+    #[test]
+    fn go_evidence_json() {
+        use prost::Message as _;
+        let raw = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/fixtures/evidence/vectors.json"
+        ))
+        .unwrap_or_else(|e| panic!("{e}"));
+        let v: Value = serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{e}"));
+        let mut lca = 0;
+        for c in v["cases"].as_array().into_iter().flatten() {
+            let Some(j) = c["evidence_json"].as_str() else {
+                continue;
+            };
+            let label = c["label"].as_str().unwrap_or_default();
+            let jv: Value = serde_json::from_str(j).unwrap_or_else(|e| panic!("{e}"));
+            let ev = evidence_from_json(&jv).unwrap_or_else(|e| panic!("{label}: {e}"));
+            let p = ev.to_proto().unwrap_or_else(|e| panic!("{label}: {e}"));
+            assert_eq!(
+                hex::encode(p.encode_to_vec()),
+                c["evidence"].as_str().unwrap_or_default(),
+                "{label}"
+            );
+            let abci: Vec<String> = ev
+                .abci()
+                .iter()
+                .map(|m| hex::encode(m.encode_to_vec()))
+                .collect();
+            let want: Vec<String> = c["abci"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s.as_str().map(str::to_owned))
+                .collect();
+            assert_eq!(abci, want, "{label}");
+            lca += usize::from(matches!(ev, Evidence::LightClientAttack(_)));
+        }
+        assert_eq!(lca, 18, "light client attack cases");
+    }
 
     #[test]
     fn rfc3339_non_ascii_offset() {
