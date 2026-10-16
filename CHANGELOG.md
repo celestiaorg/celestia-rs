@@ -2,23 +2,6 @@
 
 ## Unreleased
 
-### Changed
-
-- The consensus WAL rotates like Go's (`libs/autofile.Group`) instead of
-  dropping old heights: `data/cs.wal/wal` is rotated into `wal.000`,
-  `wal.001`, ... at 10 MB, the oldest files are deleted above 1 GB in
-  all, buffered records are fsynced every 2 s (votes and proposals the
-  node signs are still fsynced before they are sent), and start-up replay
-  searches the files newest to oldest with Go's corrupted-record handling
-  and head repair. Go and Rust read each other's WAL groups with the same
-  results (`conformance/consensusvectors/wal`). An existing head-only WAL
-  is used as is; no migration. OPEN_QUESTIONS #6.
-
-- `celestia-rs` uses jemalloc as its global allocator by default (feature
-  `jemalloc`): on glibc malloc a 4.5 h memory soak showed RSS at 4.9x the
-  live heap and rising, with jemalloc ~1.3x and flat
-  (`docs/benchmarks/memory.md`).
-
 ### Added
 
 - Release readiness for the Mac Mini validator: `[profile.release]`
@@ -29,9 +12,11 @@
   launchd plist, a systemd unit and `check-apphash.sh` under `packaging/`;
   the Mocha (M13) and mainnet (M14) validator runbooks in
   `docs/operator-guide.md` §11-12.
-- `query slashing signing-info <valcons>` / `query slashing params`; `start`
-  honors `config.toml [consensus] double_sign_check_height` (Go's start-up
-  double-sign check).
+- `query slashing signing-info <valcons>`, `query slashing signing-infos`
+  (all validators' signing infos, first page as Go's default) and
+  `query slashing params`; `start` honors `config.toml [consensus]
+  double_sign_check_height` (Go's start-up double-sign check). #47
+- `tx slashing unjail` (the signer's validator, as Go).
 - `--features memstats` (jemalloc heap gauges and heap profiler) and always-on
   `memstats_*` Prometheus gauges (RocksDB cache / data bytes per database,
   IAVL node cache length, threads, open files).
@@ -39,67 +24,11 @@
   `soak/memreport.py`) and the B1 benchmark harness `conformance/bench/`
   (heavy-chain generator, app-only ABCI replay of Go vs Rust, block sync,
   startup and state sync); reports in `docs/benchmarks/`.
-
-### Fixed
-
-- `version --long` prints the git `commit:` (`-dirty` for a modified
-  work tree; `CELESTIA_RS_GIT_COMMIT` for builds outside a checkout,
-  else `unknown`) and the `build_profile:`, and no longer prints the bare
-  version line first (Go prints only the long form). #45
-- `config set` reports an unknown key as `key "…" not found` instead of
-  `"…" is a table, not a value`, and suggests the fully qualified key
-  when the name exists in a section (`did you mean
-  state-sync.snapshot-interval?`). #46
-- Added `query slashing signing-infos` (all validators' signing infos,
-  first page as Go's default). #47
-- The conformance and benchmark scripts edit files with `sed -i.bak` (and
-  remove the backup) instead of GNU-only `sed -i`, so they run with BSD
-  sed on macOS. #48
-- `tx … --generate-only --from <celestia1…>` no longer opens the keyring
-  (Go's `GetFromFields`): a `file` keyring asks no passphrase and works
-  without a TTY. `--gas auto` with an address `--from` fails like Go
-  (`.info: key not found`). Added `tx slashing unjail` (the signer's
-  validator, as Go). OPEN_QUESTIONS #5.
-- Populated the standalone Go ante replay context's transaction bytes so
-  celestia-app charges its production transaction-size gas in generated corpus
-  outcomes.
-- Hydrated RPC-backed ante corpus cases from each transaction's own pre-block
-  state instead of a single corpus-wide snapshot, with a post-block account
-  fallback for accounts created earlier in the same block.
-- Retried transient CometBFT RPC failures in fixture generation, honoring
-  `Retry-After` for rate limits and using bounded backoff for archive-node
-  `429`, `502`, `503`, and `504` responses.
-- Isolated `antereplay` captured ante events from state injection: `ReplayCase`
-  now resets the event manager after injecting account/balance state, so bank
-  minting events emitted while funding balances no longer leak into the
-  captured ante events. Found by replaying a real mainnet PayForBlobs tx, which
-  the oracle correctly accepted but whose events were polluted by the injection.
-
-- Propagated custom initial versions into IAVL, KV store, and multistore child
-  commits so high-height roots are hashed with the intended first commit
-  version instead of version one.
-- Fixed the DB-backed replay-state fixture generator to mount app stores from
-  the root DB's per-store prefixes and use the current mainnet app-v6 store
-  names by default, including empty-store mount planning across the full
-  requested height range.
-- Hardened the DB-backed replay-state fixture generator to filter app hashes to
-  mounted stores and reject non-empty pre-start bootstraps that cannot preserve
-  historical IAVL node versions from key/value diffs alone.
-- Made replay-state fixture metadata derive the Go runtime, Go module
-  versions, and full regeneration command from the generator inputs.
 - Added M2 replay-state acceptance-loader support for
   `replay-state.json.zst` so large DB-backed fixtures can be committed
   compressed while retaining the JSON schema.
 - Made fixturegen write zstd-compressed JSON when an output path ends in
   `.zst`.
-- Deferred `ante` Deliver-mode public-key and sequence writes until after fee
-  validation so insufficient-fee and insufficient-funds failures leave account
-  state unchanged.
-- Made `ante` reject transactions with no fee field when any configured
-  minimum gas price is nonzero.
-
-### Added
-
 - Added SDK-compatible `x/auth` module accounts for the fee collector and
   staking pools, preserving interface wrappers across sequence updates and
   matching Go account/index bytes.
@@ -136,19 +65,6 @@
   now byte-matches those events for all 1,057 direct-sign transactions in the
   committed mainnet corpus and identifies the five remaining legacy Amino JSON
   cases explicitly.
-- Fixed cross-block/same-block sequence drift in the `ante-mainnet-tx-corpus`
-  hydrated state: each signer account's sequence is now set to the
-  transaction's own declared signer sequence (its correct pre-ante value for a
-  committed tx) instead of the single start-1 snapshot sequence, while keeping
-  the hydrated account number and public key. Against a mainnet archive this
-  cut replay rejections across five blocks from 18 to 1 (the remaining drop is
-  an unhydrated feegrant tx).
-- Made `fixturegen ante-mainnet-tx-corpus` drop replay-rejected committed-tx
-  cases: because every sampled tx was accepted on-chain, a replay rejection
-  means the replay could not reproduce Go's outcome (e.g. an unhydrated feegrant
-  allowance or a same-block sequence bump), so those cases are dropped with a
-  log rather than emitted as `ok=false`. Added `--min-accepted-cases` to fail
-  the run when too few accepted cases survive.
 - Wired `fixturegen ante-mainnet-tx-corpus` to compute real Go ante outcomes by
   invoking the `antereplay` binary (`--ante-replay-bin`) as a subprocess: the
   replay boundary now runs as a single batch (reusing one in-memory app across
@@ -276,9 +192,6 @@
 - Added a compressed, DB-backed M2 mainnet replay shard for the empty `signal`
   and `zkism` stores at heights `11350567..=11350568`, including source
   metadata.
-- Updated the M2 integration acceptance loader to prefer the pending
-  DB-backed replay-state fixture while retaining the synthetic state-diff
-  fixture as fallback.
 - Added the Tier-0 `encoding` crate with protobuf, varint, hex, base64, and
   Celestia bech32 helpers plus Go-generated conformance fixtures.
 - Added the Tier-0 `crypto` crate spec and updated the M1 index after the
@@ -419,6 +332,87 @@
 - Added the `m2-integration` acceptance scaffold with a Go-generated
   mainnet-height state-diff fixture that verifies Rust multi-store app hashes
   against Go SDK roots.
+
+### Changed
+
+- The consensus WAL rotates like Go's (`libs/autofile.Group`) instead of
+  dropping old heights: `data/cs.wal/wal` is rotated into `wal.000`,
+  `wal.001`, ... at 10 MB, the oldest files are deleted above 1 GB in
+  all, buffered records are fsynced every 2 s (votes and proposals the
+  node signs are still fsynced before they are sent), and start-up replay
+  searches the files newest to oldest with Go's corrupted-record handling
+  and head repair. Go and Rust read each other's WAL groups with the same
+  results (`conformance/consensusvectors/wal`). An existing head-only WAL
+  is used as is; no migration. OPEN_QUESTIONS #6.
+- `celestia-rs` uses jemalloc as its global allocator by default (feature
+  `jemalloc`): on glibc malloc a 4.5 h memory soak showed RSS at 4.9x the
+  live heap and rising, with jemalloc ~1.3x and flat
+  (`docs/benchmarks/memory.md`).
+- Made replay-state fixture metadata derive the Go runtime, Go module
+  versions, and full regeneration command from the generator inputs.
+- Made `fixturegen ante-mainnet-tx-corpus` drop replay-rejected committed-tx
+  cases: because every sampled tx was accepted on-chain, a replay rejection
+  means the replay could not reproduce Go's outcome (e.g. an unhydrated feegrant
+  allowance or a same-block sequence bump), so those cases are dropped with a
+  log rather than emitted as `ok=false`. Added `--min-accepted-cases` to fail
+  the run when too few accepted cases survive.
+- Updated the M2 integration acceptance loader to prefer the pending
+  DB-backed replay-state fixture while retaining the synthetic state-diff
+  fixture as fallback.
 - Trimmed redundant derived ODS share dumps from the 100-block
   `square-mainnet-blocks` fixture so the generated corpus stays below
   repository single-file warning thresholds while preserving DAH root coverage.
+
+### Fixed
+
+- `version --long` prints the git `commit:` (`-dirty` for a modified
+  work tree; `CELESTIA_RS_GIT_COMMIT` for builds outside a checkout,
+  else `unknown`) and the `build_profile:`, and no longer prints the bare
+  version line first (Go prints only the long form). #45
+- `config set` reports an unknown key as `key "…" not found` instead of
+  `"…" is a table, not a value`, and suggests the fully qualified key
+  when the name exists in a section (`did you mean
+  state-sync.snapshot-interval?`). #46
+- The conformance and benchmark scripts edit files with `sed -i.bak` (and
+  remove the backup) instead of GNU-only `sed -i`, so they run with BSD
+  sed on macOS. #48
+- `tx … --generate-only --from <celestia1…>` no longer opens the keyring
+  (Go's `GetFromFields`): a `file` keyring asks no passphrase and works
+  without a TTY. `--gas auto` with an address `--from` fails like Go
+  (`.info: key not found`). OPEN_QUESTIONS #5.
+- Populated the standalone Go ante replay context's transaction bytes so
+  celestia-app charges its production transaction-size gas in generated corpus
+  outcomes.
+- Hydrated RPC-backed ante corpus cases from each transaction's own pre-block
+  state instead of a single corpus-wide snapshot, with a post-block account
+  fallback for accounts created earlier in the same block.
+- Retried transient CometBFT RPC failures in fixture generation, honoring
+  `Retry-After` for rate limits and using bounded backoff for archive-node
+  `429`, `502`, `503`, and `504` responses.
+- Isolated `antereplay` captured ante events from state injection: `ReplayCase`
+  now resets the event manager after injecting account/balance state, so bank
+  minting events emitted while funding balances no longer leak into the
+  captured ante events. Found by replaying a real mainnet PayForBlobs tx, which
+  the oracle correctly accepted but whose events were polluted by the injection.
+- Propagated custom initial versions into IAVL, KV store, and multistore child
+  commits so high-height roots are hashed with the intended first commit
+  version instead of version one.
+- Fixed the DB-backed replay-state fixture generator to mount app stores from
+  the root DB's per-store prefixes and use the current mainnet app-v6 store
+  names by default, including empty-store mount planning across the full
+  requested height range.
+- Hardened the DB-backed replay-state fixture generator to filter app hashes to
+  mounted stores and reject non-empty pre-start bootstraps that cannot preserve
+  historical IAVL node versions from key/value diffs alone.
+- Fixed cross-block/same-block sequence drift in the `ante-mainnet-tx-corpus`
+  hydrated state: each signer account's sequence is now set to the
+  transaction's own declared signer sequence (its correct pre-ante value for a
+  committed tx) instead of the single start-1 snapshot sequence, while keeping
+  the hydrated account number and public key. Against a mainnet archive this
+  cut replay rejections across five blocks from 18 to 1 (the remaining drop is
+  an unhydrated feegrant tx).
+- Deferred `ante` Deliver-mode public-key and sequence writes until after fee
+  validation so insufficient-fee and insufficient-funds failures leave account
+  state unchanged.
+- Made `ante` reject transactions with no fee field when any configured
+  minimum gas price is nonzero.
