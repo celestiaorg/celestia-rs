@@ -29,6 +29,8 @@ macro_rules! routes {
 
         /// Executes `msg`, returning its packed response.
         pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+            let compatible = txdecode::prost_compatible(msg);
+            let msg = compatible.as_ref().unwrap_or(msg);
             $(
                 if msg.type_url == <$ty>::type_url() {
                     let m: $ty = decode(msg)?;
@@ -270,6 +272,8 @@ fn handle_legacy_submit_proposal(
 
 /// Legacy `ValidateBasic` for messages that still implement it in v0.52.12.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    let compatible = txdecode::prost_compatible(msg);
+    let msg = compatible.as_ref().unwrap_or(msg);
     if let Some(r) = crate::ibc::validate_basic(msg) {
         return r;
     }

@@ -50,6 +50,31 @@ use crate::pp::GoApp;
 /// Funded single-key accounts added to the genesis (the multisig ones of
 /// [`multisig_trees`] follow).
 const ACCOUNTS: usize = 12;
+const HL_MAILBOX: u8 = 0;
+const HL_ISM: u8 = 1;
+const HL_ROUTING_ISM: u8 = 2;
+const HL_HOOK: u8 = 3;
+const HL_IGP: u8 = 4;
+const HL_TOKEN: u8 = 5;
+
+/// The hyperlane object kind a create message's response id names.
+fn hl_kind(response_type_url: &str) -> Option<u8> {
+    let t = response_type_url.rsplit('.').next()?;
+    Some(match t {
+        "MsgCreateMailboxResponse" => HL_MAILBOX,
+        "MsgCreateRoutingIsmResponse" => HL_ROUTING_ISM,
+        "MsgCreateNoopIsmResponse"
+        | "MsgCreateMerkleRootMultisigIsmResponse"
+        | "MsgCreateMessageIdMultisigIsmResponse" => HL_ISM,
+        "MsgCreateMerkleTreeHookResponse" | "MsgCreateNoopHookResponse" => HL_HOOK,
+        "MsgCreateIgpResponse" => HL_IGP,
+        "MsgCreateCollateralTokenResponse"
+        | "MsgCreateSyntheticTokenResponse"
+        | "MsgCreateNativeSyntheticTokenResponse" => HL_TOKEN,
+        _ => return None,
+    })
+}
+
 /// The multisig public key type URL.
 const MULTISIG_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 /// Their utia balance each.
@@ -762,6 +787,13 @@ struct Gen {
     unbondings: Vec<(usize, String, i64)>,
     /// (proposal id, proposer index) of proposals the fuzz accounts made.
     proposers: Vec<(u64, usize)>,
+    /// Gas Go used for txs that succeeded, by first message type: gas
+    /// limits just below it run out of gas inside the message handlers.
+    gas_seen: BTreeMap<String, u64>,
+    /// Hyperlane objects the fuzz accounts created: (kind, id, owner
+    /// index); kinds [`HL_MAILBOX`], [`HL_ISM`], [`HL_ROUTING_ISM`],
+    /// [`HL_HOOK`], [`HL_IGP`], [`HL_TOKEN`].
+    hl_objects: Vec<(u8, String, usize)>,
     hex_ids: Vec<String>,
     chain_id: String,
     app_version: u64,
@@ -1342,8 +1374,9 @@ impl Gen {
         let vals = self.validators.clone();
         let val = self.pick(&vals).unwrap_or_default();
         let val2 = self.pick(&vals).unwrap_or_default();
-        match self.m.rng.below(27) {
+        match self.m.rng.below(30) {
             22..=26 => self.flow2(i),
+            27..=29 => self.flow_hyperlane(i),
             0 => Any::pack(&bank::MsgSend {
                 from_address: me,
                 to_address: other,
@@ -1623,6 +1656,188 @@ impl Gen {
             _ => Any::pack(&celestia_proto::cosmos::slashing::v1beta1::MsgUnjail {
                 validator_addr: self.accts[i].val.clone(),
             }),
+        }
+    }
+
+    /// A hyperlane object of `kind` owned by account `i` (mostly), else any
+    /// object of that kind, else a random id.
+    fn hl_object(&mut self, kind: u8, i: usize) -> String {
+        let own: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == kind && (o.2 == i || self.m.rng.one_in(6)))
+            .map(|o| o.1.clone())
+            .collect();
+        if let Some(id) = self.pick(&own) {
+            return id;
+        }
+        let any: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == kind)
+            .map(|o| o.1.clone())
+            .collect();
+        self.pick(&any).unwrap_or_else(|| self.hex_id())
+    }
+
+    /// A random 32-byte hyperlane id (`0x` + 64 hex digits).
+    fn hex_id(&mut self) -> String {
+        let mut b = [0u8; 32];
+        for x in &mut b {
+            *x = self.m.rng.next_u64() as u8;
+        }
+        format!("0x{}", hex::encode(b))
+    }
+
+    /// Hyperlane owner operations on objects the fuzz accounts created (the
+    /// owner signs, mostly): routing ISM domains and owner, IGP gas
+    /// configs, owner and claims, mailbox settings, warp token settings and
+    /// remote routers, multisig ISMs with sorted validator sets.
+    fn flow_hyperlane(&mut self, i: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = self.accts[i].acc.clone();
+        let n = self.accts.len();
+        let other = self.accts[(i + 1) % n].acc.clone();
+        let domain = 1 + self.m.rng.below(5) as u32;
+        let empty_or =
+            |s: String, rng: &mut crate::mutate::Rng| if rng.one_in(4) { String::new() } else { s };
+        match self.m.rng.below(13) {
+            0 => {
+                let ism_id = self.hl_object(HL_ROUTING_ISM, i);
+                let target = self.hl_object(HL_ISM, i);
+                Any::pack(&ism::MsgSetRoutingIsmDomain {
+                    ism_id,
+                    route: Some(ism::Route {
+                        ism: target,
+                        domain,
+                    }),
+                    owner: me,
+                })
+            }
+            1 => Any::pack(&ism::MsgRemoveRoutingIsmDomain {
+                ism_id: self.hl_object(HL_ROUTING_ISM, i),
+                domain,
+                owner: me,
+            }),
+            2 => Any::pack(&ism::MsgUpdateRoutingIsmOwner {
+                ism_id: self.hl_object(HL_ROUTING_ISM, i),
+                owner: me,
+                new_owner: if self.m.rng.one_in(3) {
+                    String::new()
+                } else {
+                    other
+                },
+                renounce_ownership: self.m.rng.one_in(6),
+            }),
+            3 => Any::pack(&pd::MsgSetDestinationGasConfig {
+                owner: me,
+                igp_id: self.hl_object(HL_IGP, i),
+                destination_gas_config: Some(pd::DestinationGasConfig {
+                    remote_domain: domain,
+                    gas_oracle: Some(pd::GasOracle {
+                        token_exchange_rate: (1 + self.m.rng.below(10_000_000_000)).to_string(),
+                        gas_price: (1 + self.m.rng.below(1000)).to_string(),
+                    }),
+                    gas_overhead: (self.m.rng.below(300_000)).to_string(),
+                }),
+            }),
+            4 => Any::pack(&pd::MsgSetIgpOwner {
+                owner: me,
+                igp_id: self.hl_object(HL_IGP, i),
+                new_owner: if self.m.rng.one_in(3) {
+                    String::new()
+                } else {
+                    other
+                },
+                renounce_ownership: self.m.rng.one_in(6),
+            }),
+            5 => Any::pack(&pd::MsgClaim {
+                sender: me,
+                igp_id: self.hl_object(HL_IGP, i),
+            }),
+            6 => {
+                let mailbox_id = self.hl_object(HL_MAILBOX, i);
+                let default_ism = self.hl_object(HL_ISM, i);
+                let default_hook = self.hl_object(HL_HOOK, i);
+                let kind = if self.m.rng.one_in(2) {
+                    HL_IGP
+                } else {
+                    HL_HOOK
+                };
+                let required_hook = self.hl_object(kind, i);
+                let rng = &mut self.m.rng;
+                Any::pack(&core::MsgSetMailbox {
+                    owner: me,
+                    mailbox_id,
+                    default_ism: empty_or(default_ism, rng),
+                    default_hook: empty_or(default_hook, rng),
+                    required_hook: empty_or(required_hook, rng),
+                    new_owner: if rng.one_in(3) { other } else { String::new() },
+                    renounce_ownership: rng.one_in(8),
+                })
+            }
+            7 => {
+                let token_id = self.hl_object(HL_TOKEN, i);
+                let ism_id = self.hl_object(HL_ISM, i);
+                let rng = &mut self.m.rng;
+                Any::pack(&warp::MsgSetToken {
+                    owner: me,
+                    token_id,
+                    new_owner: if rng.one_in(3) { other } else { String::new() },
+                    ism_id: empty_or(ism_id, rng),
+                    renounce_ownership: rng.one_in(8),
+                })
+            }
+            8 | 9 => {
+                let token_id = self.hl_object(HL_TOKEN, i);
+                let receiver_contract = self.hex_id();
+                Any::pack(&warp::MsgEnrollRemoteRouter {
+                    owner: me,
+                    token_id,
+                    remote_router: Some(warp::RemoteRouter {
+                        receiver_domain: domain,
+                        receiver_contract,
+                        gas: (self.m.rng.below(500_000)).to_string(),
+                    }),
+                })
+            }
+            10 => Any::pack(&warp::MsgUnrollRemoteRouter {
+                owner: me,
+                token_id: self.hl_object(HL_TOKEN, i),
+                receiver_domain: domain,
+            }),
+            _ => {
+                let k = 1 + self.m.rng.below(5);
+                let mut vals: Vec<String> = (0..k)
+                    .map(|_| {
+                        let mut b = [0u8; 20];
+                        for x in &mut b {
+                            *x = self.m.rng.next_u64() as u8;
+                        }
+                        format!("0x{}", hex::encode(b))
+                    })
+                    .collect();
+                if !self.m.rng.one_in(5) {
+                    vals.sort();
+                }
+                let threshold = self.m.rng.below(k + 2) as u32;
+                if self.m.rng.one_in(2) {
+                    Any::pack(&ism::MsgCreateMerkleRootMultisigIsm {
+                        creator: me,
+                        validators: vals,
+                        threshold,
+                    })
+                } else {
+                    Any::pack(&ism::MsgCreateMessageIdMultisigIsm {
+                        creator: me,
+                        validators: vals,
+                        threshold,
+                    })
+                }
+            }
         }
     }
 
@@ -1918,9 +2133,19 @@ impl Gen {
             _ => {}
         }
         // Gas and fee.
+        let seen = body
+            .messages
+            .first()
+            .and_then(|m| self.gas_seen.get(&m.type_url).copied());
         let gas: u64 = match self.m.rng.below(20) {
             0 => 0,
             1 => 1000,
+            // Just below what a successful tx of this type used: out of gas
+            // somewhere in the message handler.
+            7..=9 if seen.is_some() => {
+                let g = seen.unwrap_or_default();
+                g.saturating_sub(self.m.rng.below((g / 3).max(1) as usize) as u64)
+            }
             2 => 50_000 + self.m.rng.below(100_000) as u64,
             3 => 100_000 + self.m.rng.below(200_000) as u64,
             4 => 200_000 + self.m.rng.below(300_000) as u64,
@@ -2449,6 +2674,8 @@ pub fn run(
         proposals: Vec::new(),
         unbondings: Vec::new(),
         proposers: Vec::new(),
+        gas_seen: BTreeMap::new(),
+        hl_objects: Vec::new(),
         hex_ids: Vec::new(),
         chain_id,
         app_version,
@@ -2887,6 +3114,11 @@ pub fn run(
                     e.1 += 1;
                 }
             }
+            if res.code == 0
+                && let Some(u) = type_urls(app_version, t).into_iter().next()
+            {
+                gn.gas_seen.insert(u, res.gas_used.unsigned_abs());
+            }
             if res.code != 0 {
                 let first = type_urls(app_version, t)
                     .into_iter()
@@ -2905,7 +3137,7 @@ pub fn run(
                     .or_default() += 1;
             }
             if res.code == 0 {
-                learn(&mut gn, app_version, t, &res.events, height);
+                learn(&mut gn, app_version, t, res, height);
             }
             gn.dict.harvest_events(&res.events);
         }
@@ -3088,7 +3320,8 @@ fn apply_updates(set: &ValSet, updates: &[abci::ValidatorUpdate]) -> ValSet {
 
 /// Learns created objects from a delivered tx (validators, proposals,
 /// unbondings).
-fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], events: &[abci::Event], height: i64) {
+fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, height: i64) {
+    let events = &res.events;
     let mut submitted = Vec::new();
     for e in events {
         for a in &e.attributes {
@@ -3126,6 +3359,36 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], events: &[abci::Event], heig
             _ => None,
         })
         .collect();
+    // Hyperlane objects: the create messages' response ids, owned by the
+    // message signer.
+    if let Ok(d) =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(res.data.as_slice())
+    {
+        for (r, m) in d.msg_responses.iter().zip(&t.body.messages) {
+            let Some(kind) = hl_kind(&r.type_url) else {
+                continue;
+            };
+            let id = parse_fields(&r.value)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|f| f.num == 1 && f.wt == 2)
+                .map(|f| String::from_utf8_lossy(&f.val).into_owned());
+            let owner = parse_fields(&m.value)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|f| f.wt == 2)
+                .find_map(|f| {
+                    let s = String::from_utf8_lossy(&f.val).into_owned();
+                    gn.accts.iter().position(|a| a.acc == s)
+                });
+            if let (Some(id), Some(o)) = (id, owner) {
+                gn.hl_objects.push((kind, id, o));
+                if gn.hl_objects.len() > 128 {
+                    gn.hl_objects.remove(0);
+                }
+            }
+        }
+    }
     for (id, p) in submitted.iter().zip(&proposers) {
         if let Some(k) = gn.accts.iter().position(|x| x.acc == *p) {
             gn.proposers.push((*id, k));
@@ -3230,6 +3493,8 @@ pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
         proposals: vec![1, 2],
         unbondings: Vec::new(),
         proposers: Vec::new(),
+        gas_seen: BTreeMap::new(),
+        hl_objects: Vec::new(),
         hex_ids: Vec::new(),
         chain_id: "c".into(),
         app_version,
@@ -3377,6 +3642,8 @@ mod tests {
             proposals: vec![1],
             unbondings: Vec::new(),
             proposers: Vec::new(),
+            gas_seen: BTreeMap::new(),
+            hl_objects: Vec::new(),
             hex_ids: Vec::new(),
             chain_id: "c".into(),
             app_version: 10,

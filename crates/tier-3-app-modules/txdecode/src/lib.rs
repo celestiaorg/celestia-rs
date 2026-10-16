@@ -289,6 +289,78 @@ pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
     }
 }
 
+/// Whether `b` (read as a message, recursively into length-delimited
+/// fields that parse as messages) has a field key prost rejects but
+/// gogoproto accepts: a key past `u32::MAX` (gogoproto truncates the field
+/// number to `int32`).
+fn has_wide_key(b: &[u8], depth: usize) -> bool {
+    fn varint(b: &[u8]) -> Option<(u64, usize)> {
+        let mut v = 0u64;
+        for (i, &x) in b.iter().enumerate().take(10) {
+            v |= u64::from(x & 0x7f) << (7 * i);
+            if x < 0x80 {
+                return Some((v, i + 1));
+            }
+        }
+        None
+    }
+    let mut i = 0;
+    let mut wide = false;
+    while i < b.len() {
+        let Some((key, n)) = varint(&b[i..]) else {
+            return false;
+        };
+        i += n;
+        if key > u64::from(u32::MAX) {
+            wide = true;
+        }
+        match key & 7 {
+            0 => match varint(&b[i..]) {
+                Some((_, n)) => i += n,
+                None => return false,
+            },
+            1 => i += 8,
+            5 => i += 4,
+            2 => {
+                let Some((l, n)) = varint(&b[i..]) else {
+                    return false;
+                };
+                i += n;
+                let Ok(l) = usize::try_from(l) else {
+                    return false;
+                };
+                let Some(v) = b.get(i..i.saturating_add(l)) else {
+                    return false;
+                };
+                if depth < 32 && has_wide_key(v, depth + 1) {
+                    wide = true;
+                }
+                i += l;
+            }
+            _ => return false,
+        }
+    }
+    wide && i == b.len()
+}
+
+/// The message `any` as prost can decode it, when its bytes as received
+/// cannot be (see [`has_wide_key`]): gogoproto's decoding re-encoded
+/// ([`gogo_unmarshal`], with the executing app version's schema). `None`
+/// when the bytes decode as they are.
+#[must_use]
+pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any> {
+    if !has_wide_key(&any.value, 0) {
+        return None;
+    }
+    let name = any.type_url.rsplit('/').next().unwrap_or_default();
+    let v9 = v9() || sdk::version::is_v9(sdk::version::app_version());
+    let value = scoped_v9(v9, || gogo_unmarshal(name, &any.value)).ok()?;
+    Some(celestia_proto::Any {
+        type_url: any.type_url.clone(),
+        value,
+    })
+}
+
 /// [`decode`] or [`decode_v9`] by app version.
 pub fn decode_for(app_version: u64, raw: &[u8]) -> sdk::Result<Tx> {
     if app_version != 0 && app_version < 10 {

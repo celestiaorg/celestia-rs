@@ -60,3 +60,27 @@ fn repack_follows_the_executing_app_version() {
     assert_eq!(v10.value.len(), 204);
     assert_eq!(v9.value.len(), 136);
 }
+
+#[test]
+fn wide_field_keys_are_decoded_as_gogoproto_does() {
+    use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+    let msg = MsgSend {
+        from_address: "a".into(),
+        to_address: "b".into(),
+        amount: Vec::new(),
+    };
+    let mut value = msg.encode_to_vec();
+    // An unknown varint field whose key is past u32::MAX (prost: "invalid
+    // key value"; gogoproto: the field number truncated to int32,
+    // skipped).
+    value.extend_from_slice(&[0x80, 0x80, 0x80, 0x80, 0x10, 0x01]);
+    let any = celestia_proto::Any {
+        type_url: "/cosmos.bank.v1beta1.MsgSend".into(),
+        value,
+    };
+    assert!(MsgSend::decode(any.value.as_slice()).is_err());
+    let fixed = txdecode::prost_compatible(&any).unwrap();
+    assert_eq!(MsgSend::decode(fixed.value.as_slice()).unwrap(), msg);
+    // Bytes prost decodes are left alone.
+    assert!(txdecode::prost_compatible(&celestia_proto::Any::pack(&msg)).is_none());
+}
