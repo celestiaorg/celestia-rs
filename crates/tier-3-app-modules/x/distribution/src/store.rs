@@ -448,10 +448,28 @@ pub fn slash_events_between(
     start: u64,
     end: u64,
 ) -> Result<Vec<(u64, u64, LegacyDec)>> {
+    let mut out = Vec::new();
+    for_each_slash_event_between(ctx, val, start, end, |_, h, p, f| {
+        out.push((h, p, f));
+        Ok(false)
+    })?;
+    Ok(out)
+}
+
+/// `IterateValidatorSlashEventsBetween`: `handler(ctx, height, period,
+/// fraction)` runs on each event while the iterator still stands on it
+/// (the gas of an element is charged by the `Next` past it), so gas the
+/// handler uses comes before the iteration's; `true` stops.
+pub fn for_each_slash_event_between(
+    ctx: &mut Context<'_>,
+    val: &[u8],
+    start: u64,
+    end: u64,
+    mut handler: impl FnMut(&mut Context<'_>, u64, u64, LegacyDec) -> Result<bool>,
+) -> Result<()> {
     let lo = slash_event_height_prefix(val, start);
     let hi = slash_event_height_prefix(val, end + 1);
     let mut it = ctx.iterator(STORE_KEY, Some(&lo), Some(&hi))?;
-    let mut out = Vec::new();
     let plen = slash_event_prefix(val).len();
     while let Some((k, v)) = it.next(ctx)? {
         let e: pb::ValidatorSlashEvent = decode(&v)?;
@@ -459,9 +477,11 @@ pub fn slash_events_between(
             .get(plen..plen + 8)
             .and_then(|b| b.try_into().ok())
             .map_or(0, u64::from_be_bytes);
-        out.push((height, e.validator_period, wire_dec(&e.fraction)?));
+        if handler(ctx, height, e.validator_period, wire_dec(&e.fraction)?)? {
+            break;
+        }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// Deletes every key under `prefix` (`Delete*` iterator loops).
