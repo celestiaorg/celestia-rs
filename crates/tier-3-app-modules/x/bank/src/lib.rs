@@ -268,8 +268,7 @@ fn module_addr(name: &str) -> Result<Address> {
 /// `BlockedAddr`: all module accounts except gov.
 #[must_use]
 pub fn is_blocked(addr: &[u8]) -> bool {
-    x_auth::MODULE_ACCOUNT_PERMS
-        .iter()
+    x_auth::module_account_perms()
         .any(|(name, _)| *name != "gov" && x_auth::module_address(name) == addr)
 }
 

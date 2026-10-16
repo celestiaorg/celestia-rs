@@ -144,7 +144,8 @@ which binary drives them.
 | hyperlane v1.1.0: multisig validators compared as lower-cased strings (`VerifyMultisig`), `ValidateNewMultisig` sorting the strings; IGP `requiredPayment.IsAllGT(maxFee)`; `MsgPayForGas` paying `req.Amount` without a quote, refusing zero; `SetDomain` keeping an existing domain's ISM; v1.1.0 `amino.name`s in `SIGN_MODE_LEGACY_AMINO_JSON` | `x-hyperlane` (`ism::verify_multisig_v1_1`, `validate_new_multisig_v1_1`, `post_dispatch`), `x-ante` (`aminojson::v9_amino_name`) |
 | distribution: a reward-ratio overflow stays a panic (no `recover`) | `x-distribution` (`keeper`) |
 | zkism `ExportGenesis`: `CollectionPaginate` with a nil page request (first 100 message ids per ISM) | `x-zkism` (`export_genesis`) |
-| `Simulate` / `TxDecode` with v9.0.8's registry | `app` (`query_services`), `txdecode::default_tx_decode_v9` |
+| `Simulate` / `TxDecode` / `ListImplementations` with v9.0.8's registry; no fibre / valaddr / `cosmos.reflection.v1` query services | `app` (`query_services`, `query::absent_at`), `txdecode::{default_tx_decode_v9, added_in_v10}`, `grpc-query` (`reflection`), `api-server::rest_error_status` |
+| no `fibre` module account (`maccPerms`): neither listed nor a blocked address | `x-auth` (`module_account_perms`), `x-bank` (`is_blocked`) |
 | forwarding: `GetBalance` (no locked coins) | `x-forwarding` |
 | zkism SP1 v5 (396-byte vkey, 260-byte proofs, 2 public inputs) | `x-zkism` (`groth16::sp1_verify_v5`; `ValidateBasic` reads `sdk::version`) |
 | signal delay (`arabica-11` instead of `corto-1`) | `x-signal` |
@@ -152,17 +153,33 @@ which binary drives them.
 Code without a context (`ValidateBasic`) reads the app version the app
 sets per ABCI call (`sdk::version`).
 
-Not ported: the rest of the v9 query surface (fibre / valaddr services
-and `cosmos.reflection.v1` absent at app version 9), pending a v9 query
-corpus. Ported since (2026-10-16, checked by `fuzz-diff exec` against Go
-v9.0.8 in nil / synthesized-message modes where a tx reaches them):
-distribution's reward-ratio overflow panic, hyperlane v1.1.0's string
-multisig validator comparison, IGP `maxFee` check, `MsgPayForGas`,
-`SetDomain` and amino names, x/zkism's paginated genesis export.
+Not ported: the legacy amino codec of `TxDecodeAmino` / `TxEncodeAmino`
+runs over v10.4.0's type graph at both versions (v9.0.8 registers
+hyperlane-cosmos v1.1.0's warp messages as `hyperlane/v1/...`, v1.3.0 as
+`hyperlane/warp/v1/...`, and has no fibre / valaddr types); closing it
+needs `conformance/aminoschema` run in a v9.0.8 checkout. Ported since
+(2026-10-16): distribution's reward-ratio overflow panic, hyperlane
+v1.1.0's string multisig validator comparison, IGP `maxFee` check,
+`MsgPayForGas`, `SetDomain` and amino names, x/zkism's paginated genesis
+export (checked by `fuzz-diff exec` against Go v9.0.8 in nil /
+synthesized-message modes where a tx reaches them), and the v9 query
+surface: no fibre / valaddr / `cosmos.reflection.v1` services (ABCI
+`unknown query path`, gRPC `unknown service`, REST `Not Implemented`),
+v9.0.8's registry in `ListImplementations`, `Simulate` and `TxDecode`, and
+no `fibre` module account (`ModuleAccounts`, `ModuleAccountByName`, bank's
+blocked addresses), checked by the query corpora of ten v9 scenarios
+recorded from Go v9.0.8.
 (hyperlane v1.1.0's string `receiver_contract` is ported since ADR 0005's
 work: stored as given, compared lowercased, decoded when dispatching.)
 
 ## Verification
+
+- Query corpora of `v9-empty`, `v9-gov`, `v9-hyperlane`, `v9-staking`,
+  `v9-authz-feegrant`, `v9-vesting`, `v9-utf8`, `v9-blob`,
+  `v9-zkism-forwarding` and `v9-ibc` recorded from Go v9.0.8
+  (`APP_V9=1 conformance/querycorpus/record.sh`): every ABCI query and
+  REST request byte-identical except the amino codec paths above
+  (`query_corpus.rs`, `KNOWN_V9_DIVERGENCES`).
 
 - v9 devnet scenarios recorded from Go v9.0.8 (`APP_V9=1
   conformance/devnet/devnet.sh ...`) behind celestia-core v0.42.3, like the

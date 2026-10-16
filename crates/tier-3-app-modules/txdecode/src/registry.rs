@@ -46,7 +46,8 @@ fn lookup(type_url: &[u8]) -> Option<&'static (&'static str, &'static str, u32)>
 
 /// Type URLs celestia-app v9.0.8 (built without the `fibre` tag, with
 /// hyperlane-cosmos v1.1.0) does not register.
-pub(crate) fn added_in_v10(type_url: &str) -> bool {
+#[must_use]
+pub fn added_in_v10(type_url: &str) -> bool {
     type_url.starts_with("/celestia.fibre.v1.")
         || type_url.starts_with("/celestia.valaddr.v1.")
         || type_url.starts_with("/hyperlane.warp.v1.MsgCreateNativeSyntheticToken")

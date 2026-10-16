@@ -121,10 +121,7 @@ fn module_accounts(
     ctx: &mut Context<'_>,
     _: QueryModuleAccountsRequest,
 ) -> QResult<QueryModuleAccountsResponse> {
-    let mut names: Vec<&str> = x_auth::MODULE_ACCOUNT_PERMS
-        .iter()
-        .map(|(n, _)| *n)
-        .collect();
+    let mut names: Vec<&str> = x_auth::module_account_perms().map(|(n, _)| *n).collect();
     names.sort_unstable();
     let mut accounts = Vec::with_capacity(names.len());
     for name in names {

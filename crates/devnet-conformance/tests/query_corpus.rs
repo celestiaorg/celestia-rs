@@ -21,10 +21,22 @@ const KNOWN_DIVERGENCES: &[(&str, &str)] = &[
     ("/cosmos.tx.v1beta1.Service/Simulate", "1203616263"),
 ];
 
-fn deferred(path: &str, data: &str) -> bool {
-    KNOWN_DIVERGENCES
-        .iter()
-        .any(|(p, d)| *p == path && *d == data)
+/// Paths that differ at app version 9 (`v9-*` scenarios): the legacy amino
+/// codec runs over celestia-app v10.4.0's type graph
+/// (`legacy-amino/src/schema.json`), while v9.0.8 registers hyperlane-cosmos
+/// v1.1.0's warp messages under `hyperlane/v1/...` names (v1.3.0:
+/// `hyperlane/warp/v1/...`) and has no fibre / valaddr types. Closing it
+/// needs the schema dumped from a v9.0.8 app (`conformance/aminoschema`).
+const KNOWN_V9_DIVERGENCES: &[&str] = &[
+    "/cosmos.tx.v1beta1.Service/TxDecodeAmino",
+    "/cosmos.tx.v1beta1.Service/TxEncodeAmino",
+];
+
+fn deferred_in(scenario: &str, path: &str, data: &str) -> bool {
+    (scenario.starts_with("v9-") && KNOWN_V9_DIVERGENCES.contains(&path))
+        || KNOWN_DIVERGENCES
+            .iter()
+            .any(|(p, d)| *p == path && *d == data)
 }
 
 /// The minimum corpus size (the celestia-core-backed corpus is smaller).
@@ -46,7 +58,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
     let failures: Vec<String> = r
         .mismatches
         .iter()
-        .filter(|(c, _)| !deferred(&c.path, &c.data))
+        .filter(|(c, _)| !deferred_in(scenario, &c.path, &c.data))
         .take(20)
         .map(|(c, ours)| {
             format!(
@@ -60,7 +72,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
         "{scenario}: {} mismatches, first:\n{}",
         r.mismatches
             .iter()
-            .filter(|(c, _)| !deferred(&c.path, &c.data))
+            .filter(|(c, _)| !deferred_in(scenario, &c.path, &c.data))
             .count(),
         failures.join("\n")
     );
@@ -129,6 +141,16 @@ const SCENARIOS: &[&str] = &[
     "ibc",
     "staking-lifecycle",
     "utf8",
+    "v9-authz-feegrant",
+    "v9-blob",
+    "v9-empty",
+    "v9-gov",
+    "v9-hyperlane",
+    "v9-ibc",
+    "v9-staking",
+    "v9-utf8",
+    "v9-vesting",
+    "v9-zkism-forwarding",
     "vesting",
     "zkism-forwarding",
 ];
@@ -157,6 +179,17 @@ corpus_tests! {
     corpus_staking_lifecycle => "staking-lifecycle";
     // Validators, proposals, votes, grants with invalid UTF-8 (ADR 0005).
     corpus_utf8 => "utf8";
+    // App version 9 (celestia-app v9.0.8, ADR 0004).
+    corpus_v9_authz_feegrant => "v9-authz-feegrant";
+    corpus_v9_blob => "v9-blob";
+    corpus_v9_empty => "v9-empty";
+    corpus_v9_gov => "v9-gov";
+    corpus_v9_hyperlane => "v9-hyperlane";
+    corpus_v9_ibc => "v9-ibc";
+    corpus_v9_staking => "v9-staking";
+    corpus_v9_utf8 => "v9-utf8";
+    corpus_v9_vesting => "v9-vesting";
+    corpus_v9_zkism_forwarding => "v9-zkism-forwarding";
     corpus_vesting => "vesting";
     corpus_zkism_forwarding => "zkism-forwarding";
 }

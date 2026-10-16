@@ -38,6 +38,7 @@ mod go_types;
 mod gogo;
 mod protowire;
 mod registry;
+pub use registry::added_in_v10;
 mod unknownproto;
 mod unpack;
 mod wrappers;

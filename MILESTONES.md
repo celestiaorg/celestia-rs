@@ -111,9 +111,10 @@ mainnet blocks and 10 Mocha blocks below the v10 height (`real_dah`), and
 Mocha replayed from its real genesis (InitChain of the 56 MB mocha-5
 genesis, incl. ibc-go `TransferAuthorization` grants, now ported) through
 height 40,000 with every app hash and tx result matching (`genesis_replay`).
-Open: the edge differences no scenario reaches (ADR 0004, "Not ported"),
-a v9 query corpus, state sync / snapshots of a v9 chain, and following
-Mocha from genesis over HTTPS (with the follower work).
+Open: the legacy amino codec's v9 type graph (ADR 0004, "Not ported"),
+state sync / snapshots of a v9 chain, and following Mocha from genesis
+over HTTPS (with the follower work). Ten v9 query corpora are at parity
+(2026-10-16).
 
 **Go strings (ADR 0005, 2026-10-15).** Protobuf `string` fields carry
 any bytes, as gogoproto decodes them: Go executes and stores invalid UTF-8
@@ -147,7 +148,8 @@ events of every devnet scenario now match Go byte for byte (the
 messages in authz / gov errors, consensus-param and fibre events, ICS-23
 proof errors. ADR 0004's remaining v9 differences are ported (hyperlane
 v1.1.0 multisig / IGP / amino names, the distribution overflow panic,
-zkism's paginated export) except the v9 query surface. Light-client-attack
+zkism's paginated export, the v9 query surface with ten v9 query corpora
+recorded from Go v9.0.8) except the legacy amino codec's v9 type graph. Light-client-attack
 evidence decodes from `/block` JSON (Go vectors with cmtjson and `ABCI()`
 forms).
 

@@ -35,10 +35,18 @@ fn list_implementations(
     if req.interface_name.is_empty() {
         return Err(invalid_arg("invalid interface name"));
     }
+    // celestia-app v9.0.8's registry lacks the v10-only types (ADR 0004).
+    let v9 = sdk::version::is_v9(sdk::version::app_version());
     let impls = INTERFACES
         .iter()
         .find(|(i, _)| *i == req.interface_name)
-        .map(|(_, impls)| impls.iter().map(|s| (*s).to_owned()).collect())
+        .map(|(_, impls)| {
+            impls
+                .iter()
+                .filter(|s| !(v9 && txdecode::added_in_v10(s)))
+                .map(|s| (*s).to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     Ok(pb::ListImplementationsResponse {
         implementation_message_names: impls,

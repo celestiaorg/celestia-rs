@@ -439,7 +439,7 @@ pub fn check_rest(scenario: &str) -> anyhow::Result<RestReport> {
         };
         let ours = api_server::rest::handle(&req, &mut |p, d, h| {
             app.grpc_query(p, d, h)
-                .map_err(|e| api_server::grpc_error_status(p, e))
+                .map_err(|e| api_server::rest_error_status(p, e))
         });
         let norm = |v: &serde_json::Value| -> serde_json::Value {
             let mut v = v.clone();

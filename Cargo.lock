@@ -1644,6 +1644,7 @@ dependencies = [
  "pbjson-types",
  "prost",
  "sdk",
+ "txdecode",
  "x-auth",
  "x-authz",
  "x-bank",

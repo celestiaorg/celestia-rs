@@ -135,6 +135,19 @@ const GO_ONLY_SERVICES: &[&str] = &[
     "celestia.core.v1.tx.Tx",
 ];
 
+/// The status the REST gateway returns for a failed query on `path`: a
+/// service absent at the app version has no gateway route either (Go's
+/// `Not Implemented`), anything else as [`grpc_error_status`].
+#[must_use]
+pub fn rest_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, String) {
+    match e {
+        GrpcQueryError::UnknownService(_) => {
+            (grpc_query::Code::Unimplemented, "Not Implemented".into())
+        }
+        other => grpc_error_status(path, other),
+    }
+}
+
 /// The gRPC status Go's server returns for a failed query on `path`.
 #[must_use]
 pub fn grpc_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, String) {
@@ -231,7 +244,7 @@ async fn rest_handler(State(app): State<Arc<AbciApp>>, req: Request<Body>) -> Re
                 height: height.as_deref(),
                 body: &body,
             },
-            &mut |p, d, h| grpc_call(&app, p, d, h),
+            &mut |p, d, h| app.grpc_query(p, d, h).map_err(|e| rest_error_status(p, e)),
         )
     })
     .await

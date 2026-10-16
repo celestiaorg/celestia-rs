@@ -48,10 +48,24 @@ impl QueryState {
 pub enum GrpcQueryError {
     /// No handler is registered for the path.
     Unimplemented(String),
+    /// The path's service is not registered at the current app version
+    /// (celestia-app v9.0.8 has no fibre / valaddr / `cosmos.reflection.v1`
+    /// services): Go's `unknown service`.
+    UnknownService(String),
     /// `CreateQueryContext` failed (a registered SDK error).
     Context(SdkError),
     /// The handler failed.
     Handler(QueryError),
+}
+
+/// Whether the query service of `path` is absent at `app_version`:
+/// celestia-app v9.0.8 registers no fibre / valaddr query services and no
+/// `cosmos.reflection.v1` service (ADR 0004).
+fn absent_at(app_version: u64, path: &str) -> bool {
+    sdk::version::is_v9(app_version)
+        && (path.starts_with("/celestia.fibre.v1.")
+            || path.starts_with("/celestia.valaddr.v1.")
+            || path.starts_with("/cosmos.reflection.v1."))
 }
 
 impl GrpcQueryError {
@@ -62,6 +76,10 @@ impl GrpcQueryError {
             Self::Unimplemented(path) => (
                 grpc_query::Code::Unimplemented,
                 format!("unknown method {path}"),
+            ),
+            Self::UnknownService(svc) => (
+                grpc_query::Code::Unimplemented,
+                format!("unknown service {svc}"),
             ),
             Self::Context(e) => QueryError::Sdk(e.clone()).grpc_status(),
             Self::Handler(e) => e.grpc_status(),
@@ -138,6 +156,15 @@ impl App {
         data: &[u8],
         height: i64,
     ) -> Result<(Vec<u8>, i64), GrpcQueryError> {
+        sdk::version::set_app_version(self.app_version());
+        if absent_at(self.app_version(), path) {
+            let svc = path
+                .trim_start_matches('/')
+                .split('/')
+                .next()
+                .unwrap_or_default();
+            return Err(GrpcQueryError::UnknownService(svc.to_owned()));
+        }
         if let Some(handler) = crate::query_services::route(path) {
             let mut state = self
                 .create_query_context(height, false)
@@ -170,8 +197,9 @@ impl App {
         if req.path == QUERY_PATH_BROADCAST_TX {
             return query_result(&errs::invalid_request("can't route a broadcast tx message"));
         }
+        let absent_v9 = absent_at(self.app_version(), &req.path);
         let app_route = crate::query_services::route(&req.path);
-        if app_route.is_some() || grpc_query::router().route(&req.path).is_some() {
+        if !absent_v9 && (app_route.is_some() || grpc_query::router().route(&req.path).is_some()) {
             return self.handle_query_grpc(&req);
         }
         let path: Vec<&str> = split_path(&req.path);

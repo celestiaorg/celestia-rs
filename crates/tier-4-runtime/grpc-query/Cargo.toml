@@ -19,6 +19,7 @@ encoding = { path = "../../tier-0-primitives/encoding" }
 math = { path = "../../tier-0-primitives/math" }
 prost = "0.13"
 sdk = { path = "../../tier-3-app-modules/sdk" }
+txdecode = { path = "../../tier-3-app-modules/txdecode" }
 x-auth = { path = "../../tier-3-app-modules/x/auth" }
 x-authz = { path = "../../tier-3-app-modules/x/authz" }
 x-bank = { path = "../../tier-3-app-modules/x/bank" }
