@@ -933,13 +933,16 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             }
         },
         Cmd::Version { long } => {
-            util::out(env!("CARGO_PKG_VERSION"));
             if long {
                 util::out(format!(
-                    "name: celestia-rs\nversion: {}\napp_version: {}\ngo_parity: celestia-app v10.4.0, celestia-core v0.42.3",
+                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\napp_version: {}\ngo_parity: celestia-app v10.4.0, celestia-core v0.42.3",
                     env!("CARGO_PKG_VERSION"),
+                    env!("CELESTIA_RS_GIT_COMMIT"),
+                    env!("CELESTIA_RS_BUILD_PROFILE"),
                     app::upgrades::APP_VERSION
                 ));
+            } else {
+                util::out(env!("CARGO_PKG_VERSION"));
             }
             Ok(())
         }
