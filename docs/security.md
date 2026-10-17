@@ -327,7 +327,28 @@ counterparty flushing or flush complete, open, cancel on an error
 receipt, timeout) and transfer channels the counterparty closes
 (`MsgTimeoutOnClose`, `MsgChannelCloseConfirm`). Hyperlane owner
 operations target objects their signer created (a create message first
-when it has none), and ownership changes are followed.
+when it has none), and ownership changes are followed. `DELIVER_HL`
+drives the hyperlane success paths in order, one tx per block from a
+dedicated account, each step using the ids the earlier ones returned: a
+noop ISM, a mailbox on it, an IGP with a gas config, a merkle tree hook
+and the mailbox's hooks, a collateral token with an enrolled router,
+`MsgRemoteTransfer` (the IGP charges its fee), `MsgPayForGas`,
+`MsgClaim`, `MsgProcessMessage` of a transfer in (the noop ISM verifies
+it; collateral released), a synthetic token minted by a second
+`MsgProcessMessage` and burned by a transfer out; at app version 10 a gov
+proposal of `MsgCreateNativeSyntheticToken` that the fuzz accounts pass
+(delegating to the bonded validators first; with `DELIVER_HL` evidence
+never names the scenario's own validators, whose jailing would leave no
+bonded stake to tally); then the transfer / payment / claim / process
+steps repeat (`SCRIPT ... HL step` lines give Go's result of each). In
+`hyperlane`, `zkism-forwarding`, `v9-hyperlane` and `v9-zkism-forwarding`
+(200 blocks, with `DELIVER_WIRE`, seed 6) Go executed `MsgPayForGas`
+11-13 times, `MsgClaim` 2-13 (a generated `MsgSetIgpOwner` sometimes takes
+the IGP), `MsgProcessMessage` 22-26, `MsgRemoteTransfer` 22-25 and
+`MsgCreateSyntheticToken` 11-13 per scenario, and at app version 10 the
+`MsgCreateNativeSyntheticToken` proposal passed in both scenarios; no
+mismatch. Generated gov proposals carry `MsgCreateNativeSyntheticToken`
+too (a fuzz-created mailbox; a new denom, `utia` or empty).
 
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
@@ -497,8 +518,16 @@ rewrite of the class used least so far, signed and finalized on both apps
 (`CheckTx`, ante with signatures, routing and `ValidateBasic`, execution
 with `DELIVER_SWEEP`'s gas sweep, the stores with `DELIVER_DUMP_SPLIT`);
 `WIRE <class> delivered= go_ok= check_rejected=` lines give the volume
-per class. Queries that echo stored messages read the stores compared
-there (`query_corpus` covers the query code).
+per class. Queries that echo stored messages are compared too: every 25
+blocks and at the end of a run, the ABCI query response (code, codespace,
+value bytes; log separately) of both apps on the committed state for gov
+`v1` / `v1beta1` proposals (`v1beta1` converts messages to legacy
+content), votes and deposits of the latest proposals, authz grants by
+granter and grantee, fee allowances by grantee and granter, accounts
+(public keys as stored), validators (consensus keys), the module
+parameters set by gov `MsgUpdateParams`, IBC client states, connections
+and channels, and hyperlane mailboxes, ISMs, IGPs, hooks and tokens
+(`QUERY <path> sent=` lines).
 
 Volumes (one seed each; inputs / Go accepted):
 
@@ -511,12 +540,21 @@ Volumes (one seed each; inputs / Go accepted):
 | total oracle inputs (`fuzz-diff wire 10 2 2`, `wire 9 2 2`) | 1 403 962 | 1 352 190 |
 | `DELIVER_WIRE` campaigns (300 blocks, 10 txs per block, sweep, store dump): txs to `CheckTx` / finalized / Go code 0 | 12 scenarios: 40 133 / 11 855 / 1 799 | 10 scenarios: 33 090 / 10 736 / 1 499 |
 | of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 2 734 / 718 / 26 149 | 2 405 / 651 / 20 948 |
+| second round (seeds 5 and 6, with the query comparison; `hyperlane` / `zkism-forwarding` also with `DELIVER_HL`): blocks / txs to `CheckTx` / finalized / Go code 0 | 17 scenarios, 4 906 / 55 726 / 18 821 / 2 925 | 8 scenarios, 2 200 / 24 882 / 8 552 / 1 420 |
+| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 3 970 / 1 083 / 34 554 | 1 808 / 507 / 14 965 |
+| queries compared (stored messages echoed) | 24 633 | 10 649 |
 
 Results: findings 65 (the first run: 6 distinct mismatches, all one cause)
 and 66 (the first `DELIVER_WIRE` run of the `ibc` scenario); 67 from
 reading every place Rust decodes a tx's messages outside the router. After
 the fixes: no mismatch in the oracle sweeps above, and none in the
-`DELIVER_WIRE` campaigns.
+`DELIVER_WIRE` campaigns. The second round found no mismatch and no query
+difference. It closed two harness gaps: from the third generated block on,
+the commit had left out every validator without a power change (the
+scenario's validators missed blocks and were jailed for downtime, so no
+gov proposal could pass), and the ibctesting scenarios (`ibc-edge`,
+`ibc-upgrades`: validators without slashing signing info) halted both
+apps at the first vote or evidence; their blocks now carry neither.
 
 ```bash
 target/release/fuzz-diff wire 10 2 2 0 /tmp/wire-findings

@@ -500,6 +500,9 @@ fn main() -> anyhow::Result<()> {
         for l in &st.script {
             println!("SCRIPT {l}");
         }
+        for (p, (n, ok)) in &st.queries {
+            println!("QUERY {p} sent={n} go_nonempty={ok}");
+        }
         for (c, (n, ok, rej)) in &st.wire {
             println!("WIRE {c} delivered={n} go_ok={ok} check_rejected={rej}");
         }

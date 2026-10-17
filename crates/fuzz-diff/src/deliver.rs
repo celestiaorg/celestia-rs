@@ -151,6 +151,9 @@ pub struct Stats {
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
     /// code 0, in txs Go's `CheckTx` rejected).
     pub wire: BTreeMap<String, (u64, u64, u64)>,
+    /// Queries that echo stored messages (`query_echo`), by path: (sent,
+    /// Go code 0 with a non-empty value).
+    pub queries: BTreeMap<String, (u64, u64)>,
 }
 
 /// A funded account.
@@ -857,6 +860,276 @@ struct WireGen {
     pending: Vec<&'static str>,
     /// Classes of the generated txs not yet finalized.
     txs: BTreeMap<Vec<u8>, Vec<&'static str>>,
+}
+
+/// `DELIVER_HL`: the hyperlane success paths in order, one tx per
+/// generated block from a dedicated fuzz account, each step using the ids
+/// the earlier ones returned: a noop ISM, a mailbox on it, an IGP with a
+/// gas config, a merkle tree hook, the mailbox's hooks, a collateral
+/// token with an enrolled router, a transfer out (the IGP charges its
+/// fee), `MsgPayForGas`, `MsgClaim` (fees collected), `MsgProcessMessage`
+/// of a transfer in (the noop ISM verifies it), a synthetic token, a
+/// transfer in minting it and one out burning it; then the transfer /
+/// payment / claim / process steps repeat. Steps 16 and 17 (first pass,
+/// app version 10) propose a `MsgCreateNativeSyntheticToken` (gov-only)
+/// and have every fuzz account vote yes.
+#[derive(Default)]
+struct HlSeq {
+    on: bool,
+    step: usize,
+    tries: usize,
+    /// The tx of the current step, until it is finalized.
+    pending: Option<Vec<u8>>,
+    noop: String,
+    mailbox: String,
+    igp: String,
+    hook: String,
+    token: String,
+    synth: String,
+    message_id: String,
+    nonce: u32,
+    /// The fuzz accounts delegated for step 16 vote.
+    delegated: bool,
+    /// App version 10 (step 16 needs `MsgCreateNativeSyntheticToken`).
+    v10: bool,
+    /// The proposal of step 16 (`MsgCreateNativeSyntheticToken`).
+    proposal: u64,
+    /// Go's result of each step: (step, type URL, code, log).
+    results: Vec<String>,
+}
+
+/// The fuzz account `DELIVER_HL` signs with (the IBC relayer is the last).
+const HL_ACCT: usize = ACCOUNTS - 2;
+/// `DELIVER_HL`'s mailbox domain and its remote domain.
+const HL_LOCAL: u32 = 77;
+const HL_REMOTE: u32 = 88;
+/// `DELIVER_HL`'s enrolled remote router (the sender of incoming messages).
+const HL_ROUTER: &str = "0x00000000000000000000000000000000000000000000000000000000000ab0c0";
+
+impl HlSeq {
+    const LAST: usize = 17;
+    const REPEAT_FROM: usize = 8;
+
+    fn msg(&mut self, gn: &Gen) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = gn.accts[HL_ACCT].acc.clone();
+        let utia = |n: u64| Coin {
+            denom: "utia".into(),
+            amount: n.to_string(),
+        };
+        let router = |token: &str| warp::MsgEnrollRemoteRouter {
+            owner: me.clone(),
+            token_id: token.to_owned(),
+            remote_router: Some(warp::RemoteRouter {
+                receiver_domain: HL_REMOTE,
+                receiver_contract: HL_ROUTER.into(),
+                gas: "50000".into(),
+            }),
+        };
+        let transfer = |token: &str, amount: u64| warp::MsgRemoteTransfer {
+            sender: me.clone(),
+            token_id: token.to_owned(),
+            destination_domain: HL_REMOTE,
+            recipient: format!("0x{}", "11".repeat(32)),
+            amount: amount.to_string(),
+            custom_hook_id: String::new(),
+            gas_limit: "0".into(),
+            max_fee: Some(utia(10_000_000)),
+            custom_hook_metadata: String::new(),
+        };
+        match self.step {
+            0 => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+            1 => Any::pack(&core::MsgCreateMailbox {
+                owner: me,
+                local_domain: HL_LOCAL,
+                default_ism: self.noop.clone(),
+                default_hook: String::new(),
+                required_hook: String::new(),
+            }),
+            2 => Any::pack(&pd::MsgCreateIgp {
+                owner: me,
+                denom: "utia".into(),
+            }),
+            3 => Any::pack(&pd::MsgSetDestinationGasConfig {
+                owner: me,
+                igp_id: self.igp.clone(),
+                destination_gas_config: Some(pd::DestinationGasConfig {
+                    remote_domain: HL_REMOTE,
+                    gas_oracle: Some(pd::GasOracle {
+                        token_exchange_rate: "10000000000".into(),
+                        gas_price: "1".into(),
+                    }),
+                    gas_overhead: "1000".into(),
+                }),
+            }),
+            4 => Any::pack(&pd::MsgCreateMerkleTreeHook {
+                owner: me,
+                mailbox_id: self.mailbox.clone(),
+            }),
+            5 => Any::pack(&core::MsgSetMailbox {
+                owner: me,
+                mailbox_id: self.mailbox.clone(),
+                default_ism: String::new(),
+                default_hook: self.igp.clone(),
+                required_hook: self.hook.clone(),
+                new_owner: String::new(),
+                renounce_ownership: false,
+            }),
+            6 => Any::pack(&warp::MsgCreateCollateralToken {
+                owner: me,
+                origin_mailbox: self.mailbox.clone(),
+                origin_denom: "utia".into(),
+            }),
+            7 => Any::pack(&router(&self.token)),
+            8 => Any::pack(&transfer(&self.token, 5000)),
+            9 => Any::pack(&pd::MsgPayForGas {
+                sender: me,
+                igp_id: self.igp.clone(),
+                message_id: self.message_id.clone(),
+                destination_domain: HL_REMOTE,
+                gas_limit: "10000".into(),
+                amount: Some(utia(100_000)),
+            }),
+            10 => Any::pack(&pd::MsgClaim {
+                sender: me,
+                igp_id: self.igp.clone(),
+            }),
+            11 | 14 => {
+                let token = if self.step == 11 {
+                    self.token.clone()
+                } else {
+                    self.synth.clone()
+                };
+                self.nonce += 1;
+                let hex32 = |s: &str| {
+                    let b = hex::decode(s.trim_start_matches("0x")).unwrap_or_default();
+                    let mut out = [0u8; 32];
+                    let n = b.len().min(32);
+                    out[32 - n..].copy_from_slice(&b[b.len() - n..]);
+                    out
+                };
+                let mut m = vec![3u8];
+                m.extend_from_slice(&self.nonce.to_be_bytes());
+                m.extend_from_slice(&HL_REMOTE.to_be_bytes());
+                m.extend_from_slice(&hex32(HL_ROUTER));
+                m.extend_from_slice(&HL_LOCAL.to_be_bytes());
+                m.extend_from_slice(&hex32(&token));
+                let mut rcpt = [0u8; 32];
+                rcpt[12..].copy_from_slice(&gn.accts[HL_ACCT].addr[..20]);
+                m.extend_from_slice(&rcpt);
+                let mut amount = [0u8; 32];
+                amount[24..].copy_from_slice(&1000u64.to_be_bytes());
+                m.extend_from_slice(&amount);
+                Any::pack(&core::MsgProcessMessage {
+                    mailbox_id: self.mailbox.clone(),
+                    relayer: me,
+                    metadata: String::new(),
+                    message: format!("0x{}", hex::encode(m)),
+                })
+            }
+            12 => Any::pack(&warp::MsgCreateSyntheticToken {
+                owner: me,
+                origin_mailbox: self.mailbox.clone(),
+            }),
+            13 => Any::pack(&router(&self.synth)),
+            15 => Any::pack(&transfer(&self.synth, 500)),
+            16 => Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+                messages: vec![Any::pack(&warp::MsgCreateNativeSyntheticToken {
+                    owner: GOV.into(),
+                    origin_mailbox: self.mailbox.clone(),
+                    origin_denom: format!("native{}", self.nonce),
+                })],
+                initial_deposit: vec![utia(100_000_000_000)],
+                proposer: me,
+                metadata: String::new(),
+                title: "native".into(),
+                summary: "native".into(),
+                expedited: false,
+            }),
+            _ => Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                proposal_id: self.proposal,
+                voter: me,
+                option: 1,
+                metadata: String::new(),
+            }),
+        }
+    }
+
+    /// Records Go's result of the step's tx and moves on (a failed step is
+    /// retried twice, then skipped).
+    fn result(&mut self, type_url: &str, res: &abci::ExecTxResult) {
+        self.results.push(format!(
+            "step {} {type_url} code {}/{} gas {}: {}",
+            self.step,
+            res.codespace,
+            res.code,
+            res.gas_used,
+            gostr::to_go_bytes(&res.log)
+                .escape_ascii()
+                .to_string()
+                .chars()
+                .take(160)
+                .collect::<String>()
+        ));
+        self.pending = None;
+        // The delegations went into the same block as the step's tx.
+        self.delegated |= self.step == 16;
+        if res.code != 0 {
+            self.tries += 1;
+            if self.tries < 3 {
+                return;
+            }
+        }
+        if res.code == 0 {
+            let id =
+                celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(res.data.as_slice())
+                    .ok()
+                    .and_then(|d| d.msg_responses.into_iter().next())
+                    .and_then(|r| {
+                        parse_fields(&r.value)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .find(|f| f.num == 1 && f.wt == 2)
+                            .map(|f| String::from_utf8_lossy(&f.val).into_owned())
+                    })
+                    .unwrap_or_default();
+            match self.step {
+                0 => self.noop = id,
+                1 => self.mailbox = id,
+                2 => self.igp = id,
+                4 => self.hook = id,
+                6 => self.token = id,
+                8 | 15 => self.message_id = id,
+                12 => self.synth = id,
+                16 => {
+                    // `MsgSubmitProposalResponse.proposal_id` (varint 1).
+                    self.proposal = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(
+                        res.data.as_slice(),
+                    )
+                    .ok()
+                    .and_then(|d| d.msg_responses.into_iter().next())
+                    .and_then(|r| {
+                        celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse::decode(
+                            r.value.as_slice(),
+                        )
+                        .ok()
+                    })
+                    .map_or(0, |r| r.proposal_id);
+                }
+                _ => {}
+            }
+        }
+        self.tries = 0;
+        self.step =
+            if self.step >= Self::LAST || (self.step == 15 && (self.proposal != 0 || !self.v10)) {
+                Self::REPEAT_FROM
+            } else {
+                self.step + 1
+            };
+    }
 }
 
 /// A generated, signed tx.
@@ -1725,6 +1998,24 @@ impl Gen {
         use celestia_proto::cosmos::gov::v1 as gov;
         use celestia_proto::cosmos::gov::v1beta1 as gov1b;
         use celestia_proto::cosmos::staking::v1beta1 as staking;
+        let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+        if self.app_version >= 10 && !mailboxes.is_empty() && self.m.rng.one_in(3) {
+            // Gov-only (`owner` is the authority): a native synthetic token
+            // on a mailbox the fuzz accounts created, for a new denom (or
+            // one with a supply).
+            let origin_denom = match self.m.rng.below(4) {
+                0 => "utia".into(),
+                1 => String::new(),
+                _ => format!("native{}", self.m.rng.below(1_000_000)),
+            };
+            return Any::pack(
+                &celestia_proto::hyperlane::warp::v1::MsgCreateNativeSyntheticToken {
+                    owner: GOV.into(),
+                    origin_mailbox: self.pick(&mailboxes).unwrap_or_default(),
+                    origin_denom,
+                },
+            );
+        }
         if self.m.rng.one_in(2) {
             let content = Any::pack(&gov1b::TextProposal {
                 title: "t".into(),
@@ -2984,6 +3275,8 @@ pub fn run(
     let mut accts = Vec::new();
     let mut chain_id = String::new();
     let mut last_fb: Option<abci::RequestFinalizeBlock> = None;
+    // The validator updates of the last two replayed blocks.
+    let mut recent_updates: [Vec<abci::ValidatorUpdate>; 2] = Default::default();
     let mut last_pp: Option<abci::RequestPrepareProposal> = None;
     let (mut cons_conn, mut mem_conn) = (0u32, 0u32);
     for r in records.iter().filter(|r| r.dir == Direction::Request) {
@@ -3041,6 +3334,8 @@ pub fn run(
                         {
                             app_version = v.app;
                         }
+                        recent_updates.rotate_left(1);
+                        recent_updates[1].clone_from(&o.validator_updates);
                     }
                     (response::Value::Exception(_), Err(_)) => {
                         // Both halted (e.g. an upgrade without handler).
@@ -3133,6 +3428,11 @@ pub fn run(
         wire: WireGen::default(),
     };
     gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
+    let mut hl_seq = HlSeq {
+        on: std::env::var("DELIVER_HL").is_ok(),
+        v10: app_version >= 10,
+        ..HlSeq::default()
+    };
     let mut ids = BTreeSet::new();
     for t in &pool_txs {
         for w in t.windows(66) {
@@ -3166,6 +3466,11 @@ pub fn run(
             }
         }
     }
+    if gn.validators.is_empty() {
+        // No operator address in the scenario's messages and events: the
+        // bonded validators from the Rust app (same state as Go).
+        gn.validators.extend(bonded_validators(&mut rust));
+    }
     if let Some(ids) = gn.dict.ints.get("proposal_id") {
         gn.proposals.clone_from(ids);
     }
@@ -3189,10 +3494,18 @@ pub fn run(
                 .collect()
         })
         .unwrap_or_default();
+    let no_votes = initial.is_empty();
     // valsets[h]: the set that signs block h.
     let mut valsets: BTreeMap<i64, ValSet> = BTreeMap::new();
+    // The updates of block h change the set of block h + 2 (the first
+    // generated block looks up the set of the block after it).
     valsets.insert(template.height, initial.clone());
-    valsets.insert(template.height + 1, initial);
+    let next = apply_updates(&initial, &recent_updates[0]);
+    valsets.insert(
+        template.height + 2,
+        apply_updates(&next, &recent_updates[1]),
+    );
+    valsets.insert(template.height + 1, next);
     let mut times: BTreeMap<i64, pbjson_types::Timestamp> = BTreeMap::new();
     // Gas sweep: successful single-signer txs re-sent with gas limits
     // spread below what Go used, so they run out of gas at many points of
@@ -3289,6 +3602,60 @@ pub fn run(
                 for t in sweep_txs(&mut gn, i, &msgs, used) {
                     stats.swept += 1;
                     txs.push(t);
+                }
+            }
+            if hl_seq.on && hl_seq.pending.is_none() {
+                let msg = hl_seq.msg(&gn);
+                if let Some(t) = sign_simple(&gn, HL_ACCT, vec![msg], 3_000_000) {
+                    gn.accts[HL_ACCT].seq += 1;
+                    hl_seq.pending = Some(t.clone());
+                    txs.push(t);
+                }
+                // The generated votes (any option) stay off the proposal.
+                gn.proposals.retain(|p| *p != hl_seq.proposal);
+                // Steps 16 / 17: every result and CheckTx failure printed.
+                scripted |= hl_seq.step >= 16;
+                if hl_seq.step == 16 && !hl_seq.delegated {
+                    // Enough stake behind the fuzz accounts' votes to pass
+                    // the proposal of step 16 (sent with each try of the
+                    // step until a block holds them).
+                    // Spread over the bonded validators (only bonded stake
+                    // is tallied; one may be jailed for downtime before
+                    // the tally).
+                    let vals = bonded_validators(&mut rust);
+                    if !vals.is_empty() {
+                        for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
+                            let v = vals[i % vals.len()].clone();
+                            let msg =
+                                Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
+                                    delegator_address: gn.accts[i].acc.clone(),
+                                    validator_address: v,
+                                    amount: Some(Coin {
+                                        denom: "utia".into(),
+                                        amount: "800000000000000".into(),
+                                    }),
+                                });
+                            if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
+                                gn.accts[i].seq += 1;
+                                txs.push(t);
+                            }
+                        }
+                    }
+                }
+                if hl_seq.step == 17 {
+                    // Every other single-key fuzz account votes yes too.
+                    for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
+                        let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                            proposal_id: hl_seq.proposal,
+                            voter: gn.accts[i].acc.clone(),
+                            option: 1,
+                            metadata: String::new(),
+                        });
+                        if let Some(t) = sign_simple(&gn, i, vec![vote], 400_000) {
+                            gn.accts[i].seq += 1;
+                            txs.push(t);
+                        }
+                    }
                 }
             }
             let k = match gn.m.rng.below(20) {
@@ -3415,7 +3782,13 @@ pub fn run(
         // Votes of the last block's validators.
         // The commit of the previous block, by its signers (fuzz
         // validators sometimes absent); sometimes evidence against one.
-        let signers = valsets.get(&(height - 1)).cloned().unwrap_or_default();
+        // A scenario recorded without commit votes (the ibctesting
+        // fixtures: validators without slashing signing info) gets none.
+        let signers = if no_votes {
+            Vec::new()
+        } else {
+            valsets.get(&(height - 1)).cloned().unwrap_or_default()
+        };
         let commit = abci::CommitInfo {
             round: 0,
             votes: signers
@@ -3434,13 +3807,15 @@ pub fn run(
                 .collect(),
         };
         let mut misbehavior = Vec::new();
-        if gn.m.rng.one_in(20) {
+        if !no_votes && gn.m.rng.one_in(20) {
             let back = 1 + gn.m.rng.below(4) as i64;
             let h = (height - back).max(template.height + 1);
             if let Some(set) = valsets.get(&h) {
                 let fuzzv: Vec<_> = set
                     .iter()
-                    .filter(|v| v.2 || gn.m.rng.one_in(50))
+                    // `DELIVER_HL` keeps the scenario's validators bonded
+                    // for its proposal's tally.
+                    .filter(|v| v.2 || (!hl_seq.on && gn.m.rng.one_in(50)))
                     .cloned()
                     .collect();
                 if let Some((a, p, _)) = gn.pick(&fuzzv) {
@@ -3640,6 +4015,29 @@ pub fn run(
         valsets.insert(height + 2, apply_updates(&next, &g.validator_updates));
         valsets.retain(|h, _| *h + 8 > height);
         times.retain(|h, _| *h + 8 > height);
+        if hl_seq.pending.is_some() {
+            if let Some((t, res)) = fb
+                .txs
+                .iter()
+                .zip(&g.tx_results)
+                .find(|(t, _)| Some(*t) == hl_seq.pending.as_ref())
+            {
+                let u = type_urls(app_version, t)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                hl_seq.result(&u, res);
+            } else {
+                // Not in the block (CheckTx or PrepareProposal dropped it).
+                hl_seq
+                    .results
+                    .push(format!("step {} not finalized", hl_seq.step));
+                hl_seq.pending = None;
+            }
+            for l in hl_seq.results.drain(..) {
+                stats.script.push(format!("h={height} HL {l}"));
+            }
+        }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
             if scripted {
                 stats.script.push(format!(
@@ -3706,6 +4104,16 @@ pub fn run(
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
             for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
                 *stats.gov_results.entry(a.value.clone()).or_default() += 1;
+                if hl_seq.on {
+                    let attrs: Vec<String> = e
+                        .attributes
+                        .iter()
+                        .map(|a| format!("{}={}", a.key, a.value))
+                        .collect();
+                    stats
+                        .script
+                        .push(format!("h={height} HL gov {}", attrs.join(" ")));
+                }
             }
         }
         if let Some(d) = ibc.as_mut() {
@@ -3748,6 +4156,17 @@ pub fn run(
         };
         go.call_or_exception(cons_conn, &commit_req)?;
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        if b % 25 == 24 || b + 1 == blocks {
+            let (c, l) = query_echo(&mut go, cons_conn, &mut rust, &gn, &mut stats.queries);
+            stats.mismatches.extend(
+                c.into_iter()
+                    .map(|c| format!("{scenario} h={height} query {c}")),
+            );
+            stats.log_mismatches.extend(
+                l.into_iter()
+                    .map(|l| format!("{scenario} h={height} query {l}")),
+            );
+        }
         if let Some(v) = o
             .consensus_param_updates
             .as_ref()
@@ -3760,6 +4179,163 @@ pub fn run(
         stats.ibc = d.stats;
     }
     Ok(stats)
+}
+
+/// The operator addresses of the bonded validators (Rust's committed
+/// state, the same as Go's).
+fn bonded_validators(rust: &mut app::App) -> Vec<String> {
+    use celestia_proto::cosmos::staking::v1beta1 as st;
+    let r = rust.query(&abci::RequestQuery {
+        data: st::QueryValidatorsRequest {
+            status: "BOND_STATUS_BONDED".into(),
+            pagination: None,
+        }
+        .encode_to_vec(),
+        path: "/cosmos.staking.v1beta1.Query/Validators".into(),
+        height: 0,
+        prove: false,
+    });
+    st::QueryValidatorsResponse::decode(r.value.as_slice())
+        .map(|v| {
+            v.validators
+                .into_iter()
+                .map(|v| v.operator_address)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The queries that return stored messages (`Any`s, customtypes,
+/// `stdtime` / `stdduration` fields as the handlers stored them, or as the
+/// query re-packs them: gov `v1beta1` proposals convert messages to legacy
+/// content) sent to both apps on the committed state: (code / value
+/// differences, log differences).
+fn query_echo(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    gn: &Gen,
+    counts: &mut BTreeMap<String, (u64, u64)>,
+) -> (Vec<String>, Vec<String>) {
+    // `{1: s}` / `{1: n}` requests.
+    let s1 = |s: &str| {
+        encode(&[Field {
+            num: 1,
+            wt: 2,
+            val: s.as_bytes().to_vec(),
+        }])
+    };
+    let n1 = |n: u64| {
+        let mut v = Vec::new();
+        put_varint(&mut v, n);
+        encode(&[Field {
+            num: 1,
+            wt: 0,
+            val: v,
+        }])
+    };
+    let mut reqs: Vec<(&str, Vec<u8>)> = [
+        "/cosmos.gov.v1.Query/Proposals",
+        "/cosmos.gov.v1beta1.Query/Proposals",
+        "/cosmos.gov.v1.Query/Params",
+        "/cosmos.staking.v1beta1.Query/Validators",
+        "/cosmos.staking.v1beta1.Query/Params",
+        "/cosmos.auth.v1beta1.Query/Accounts",
+        "/cosmos.auth.v1beta1.Query/Params",
+        "/cosmos.bank.v1beta1.Query/Params",
+        "/cosmos.bank.v1beta1.Query/DenomsMetadata",
+        "/cosmos.distribution.v1beta1.Query/Params",
+        "/cosmos.slashing.v1beta1.Query/Params",
+        "/cosmos.consensus.v1.Query/Params",
+        "/cosmos.upgrade.v1beta1.Query/CurrentPlan",
+        "/ibc.core.client.v1.Query/ClientStates",
+        "/ibc.core.client.v1.Query/ClientParams",
+        "/ibc.core.connection.v1.Query/Connections",
+        "/ibc.core.channel.v1.Query/Channels",
+        "/hyperlane.core.v1.Query/Mailboxes",
+        "/hyperlane.core.interchain_security.v1.Query/Isms",
+        "/hyperlane.core.post_dispatch.v1.Query/Igps",
+        "/hyperlane.core.post_dispatch.v1.Query/MerkleTreeHooks",
+        "/hyperlane.core.post_dispatch.v1.Query/NoopHooks",
+        "/hyperlane.warp.v1.Query/Tokens",
+    ]
+    .into_iter()
+    .map(|p| (p, Vec::new()))
+    .collect();
+    for id in gn.proposals.iter().rev().take(8) {
+        for p in [
+            "/cosmos.gov.v1.Query/Proposal",
+            "/cosmos.gov.v1beta1.Query/Proposal",
+            "/cosmos.gov.v1.Query/Votes",
+            "/cosmos.gov.v1beta1.Query/Votes",
+            "/cosmos.gov.v1.Query/Deposits",
+        ] {
+            reqs.push((p, n1(*id)));
+        }
+    }
+    for a in &gn.accts {
+        for p in [
+            "/cosmos.authz.v1beta1.Query/GranterGrants",
+            "/cosmos.authz.v1beta1.Query/GranteeGrants",
+            "/cosmos.feegrant.v1beta1.Query/Allowances",
+            "/cosmos.feegrant.v1beta1.Query/AllowancesByGranter",
+            "/cosmos.auth.v1beta1.Query/Account",
+        ] {
+            reqs.push((p, s1(&a.acc)));
+        }
+    }
+    let (mut c, mut l) = (Vec::new(), Vec::new());
+    for (path, data) in reqs {
+        let req = abci::RequestQuery {
+            data,
+            path: path.into(),
+            height: 0,
+            prove: false,
+        };
+        let g = match go.call_or_exception(
+            conn,
+            &Request {
+                value: Some(request::Value::Query(req.clone())),
+            },
+        ) {
+            Ok(Response {
+                value: Some(response::Value::Query(g)),
+            }) => g,
+            other => {
+                c.push(format!("{path}: Go query failed: {other:?}"));
+                continue;
+            }
+        };
+        let r = rust.query(&req);
+        let e = counts.entry(path.to_owned()).or_default();
+        e.0 += 1;
+        if g.code == 0 && !g.value.is_empty() {
+            e.1 += 1;
+        }
+        let what = || format!("{path} {}", hex::encode(&req.data));
+        if (g.code, &g.codespace, &g.value) != (r.code, &r.codespace, &r.value) {
+            c.push(format!(
+                "{} go={}/{} {}\n    rust={}/{} {}\n    go log={:?} rust log={:?}",
+                what(),
+                g.codespace,
+                g.code,
+                hex::encode(&g.value),
+                r.codespace,
+                r.code,
+                hex::encode(&r.value),
+                g.log,
+                r.log
+            ));
+        } else if g.log != r.log {
+            l.push(format!(
+                "{} go log={:?} rust log={:?}",
+                what(),
+                g.log,
+                r.log
+            ));
+        }
+    }
+    (c, l)
 }
 
 /// After an app-hash split (both committed): the entries of every module
