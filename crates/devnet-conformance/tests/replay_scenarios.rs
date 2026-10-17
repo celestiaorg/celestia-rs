@@ -222,6 +222,18 @@ fn v9_upgrade_parity() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `workloads/v9-upgrade-boundary.sh`, recorded on a live devnet with the
+/// real binary switch: authz grants (one for a v10-only message, which v9
+/// refuses, security.md 68), a fee allowance and a vesting account made at
+/// v9 and used at v10, a staking `MsgUpdateParams` proposal submitted at v9
+/// and executed at v10, MsgTryUpgrade before quorum and while pending,
+/// fibre escrow / withdrawal and the valaddr host right after the stores
+/// are mounted. Logs and events too.
+#[test]
+fn v9_upgrade_boundary_parity() -> anyhow::Result<()> {
+    assert_full_parity("v9-upgrade-boundary")
+}
+
 /// The state right after the commit that switches binaries (security.md
 /// 70), as Go's freshly opened v10 app has it until the next commit,
 /// found by `fuzz-diff deliver` (`DELIVER_UPGRADE`): CheckTx runs on a check

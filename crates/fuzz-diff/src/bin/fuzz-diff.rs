@@ -515,6 +515,9 @@ fn main() -> anyhow::Result<()> {
         for (t, n) in &st.upgrade_built {
             println!("UPGRADE_TX {t} {n}");
         }
+        for (t, n) in &st.upgrade_check {
+            println!("UPGRADE_CHECK {n} {t}");
+        }
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
             st.replayed,

@@ -9,7 +9,8 @@
 #
 # v10 scenarios need celestia-appd v10.4.0, v9-* scenarios v9.0.8 (both as
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
-# v9-upgrade switches binaries mid-run and is not supported.
+# v9-upgrade switches binaries mid-run and is not supported (deliver-diff.sh
+# supports it: GO_APPD_NEXT).
 set -euo pipefail
 SCENARIO=${1:?scenario}
 PER=${2:-20}

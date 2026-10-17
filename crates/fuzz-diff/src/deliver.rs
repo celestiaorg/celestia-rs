@@ -165,6 +165,9 @@ pub struct Stats {
     pub phases: BTreeMap<String, (u64, u64, u64, u64)>,
     /// `DELIVER_UPGRADE`: the driver's txs by first message type.
     pub upgrade_built: BTreeMap<String, u64>,
+    /// `DELIVER_UPGRADE`: Go's `CheckTx` rejections by phase, code and log
+    /// (digits dropped).
+    pub upgrade_check: BTreeMap<String, u64>,
 }
 
 /// A funded account.
@@ -3584,6 +3587,14 @@ pub fn run(
         let mut txs: Vec<Vec<u8>> = Vec::new();
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
+        let block_av = app_version;
+        // The blocks around the upgrade height also take every generated
+        // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
+        // app's empty check state and rejects most of them).
+        let force_raw = upg.on
+            && upg
+                .upgrade_height
+                .is_some_and(|h| (h..=h + 2).contains(&height));
         if upg.on && !bootstrap {
             txs = upg.txs(&mut gn, b, height, &hl_seq.token);
         }
@@ -3780,6 +3791,19 @@ pub fn run(
                 }
             }
             check_rejected.push(g.code != 0);
+            if upg.on && g.code != 0 {
+                let reason: String = gostr::to_go_bytes(&g.log)
+                    .escape_ascii()
+                    .to_string()
+                    .chars()
+                    .filter(|c| !c.is_ascii_digit())
+                    .take(80)
+                    .collect();
+                *stats
+                    .upgrade_check
+                    .entry(format!("{phase} {}/{} {reason}", g.codespace, g.code))
+                    .or_default() += 1;
+            }
             if scripted && g.code != 0 {
                 stats.script.push(format!(
                     "h={height} CheckTx code {}/{}: {}",
@@ -3989,7 +4013,7 @@ pub fn run(
         } else {
             Vec::new()
         };
-        if (scripted || gn.m.rng.one_in(3)) && !txs.is_empty() {
+        if (scripted || force_raw || gn.m.rng.one_in(3)) && !txs.is_empty() {
             let mut raw = proc.clone();
             raw.txs.clone_from(&txs);
             if let Ok((size, root)) = app::proposal::block_data_root(app_version, &raw.txs) {
@@ -4016,7 +4040,7 @@ pub fn run(
                         .collect::<Vec<_>>()
                         .join(",")
                 ));
-            } else if g == accepted && (scripted || gn.m.rng.one_in(2)) {
+            } else if g == accepted && (scripted || force_raw || gn.m.rng.one_in(2)) {
                 final_txs.clone_from(&raw.txs);
             }
             if scripted {
@@ -4230,7 +4254,15 @@ pub fn run(
         }
         let near = upg.on && upg.upgrade_height.is_some_and(|h| (height - h).abs() <= 5);
         if upg.on {
-            upg.observe(&mut gn, &mut rust, &fb.txs, &g.tx_results, height);
+            upg.observe(
+                &mut gn,
+                &mut rust,
+                &fb.txs,
+                &g.tx_results,
+                &g.events,
+                block_av,
+                height,
+            );
             upg.after_commit(&mut rust, height);
             let e = stats.phases.entry(phase).or_default();
             e.0 += 1;
@@ -4285,6 +4317,11 @@ pub fn run(
             upg.v10_from,
             upg.vesting.len()
         ));
+    }
+    for (k, n) in &upg.v9_proposals_ended {
+        stats
+            .upgrade
+            .push(format!("proposals submitted at v9 that ended at {k}: {n}"));
     }
     stats.upgrade_built = upg.built;
     Ok(stats)

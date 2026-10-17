@@ -157,6 +157,10 @@ pub(super) struct Upgrade {
     pub routers: usize,
     /// Notable results (signal / try-upgrade / boundary txs).
     pub log: Vec<String>,
+    /// Proposal ids seen at app version 9.
+    pub v9_proposals: BTreeSet<u64>,
+    /// How the proposals of `v9_proposals` ended, by app version and result.
+    pub v9_proposals_ended: BTreeMap<String, u64>,
     /// Txs the driver built, by type URL of their first message.
     pub built: BTreeMap<String, u64>,
 }
@@ -306,7 +310,70 @@ impl Upgrade {
                 .collect();
             self.push(gn, &mut out, HL_ACCT, msgs, 2_000_000);
         }
-        // v10 proposals submitted at v9: every account votes yes.
+        // Proposals submitted while the upgrade is pending end at v10:
+        // one that always passes (no message, or bank params as they are)
+        // and one of a random gov message.
+        if !v10 && self.upgrade_height.is_some() {
+            let i = gn.m.rng.below(ACCOUNTS);
+            #[allow(deprecated)]
+            let msgs = if gn.m.rng.one_in(2) {
+                Vec::new()
+            } else {
+                vec![Any::pack(
+                    &celestia_proto::cosmos::bank::v1beta1::MsgUpdateParams {
+                        authority: GOV.into(),
+                        params: Some(celestia_proto::cosmos::bank::v1beta1::Params {
+                            send_enabled: Vec::new(),
+                            default_send_enabled: true,
+                        }),
+                    },
+                )]
+            };
+            let p = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+                messages: msgs,
+                initial_deposit: vec![Coin {
+                    denom: "utia".into(),
+                    amount: "100000000000".into(),
+                }],
+                proposer: gn.accts[i].acc.clone(),
+                metadata: String::new(),
+                title: "pending".into(),
+                summary: "pending".into(),
+                expedited: false,
+            });
+            self.push(gn, &mut out, i, vec![p], 2_000_000);
+            let i = (i + 1) % ACCOUNTS;
+            let mut msgs = vec![gn.valid_gov_msg()];
+            // Types v9 decodes (a proposal is stored as submitted and
+            // unpacked again by v10's codec when it executes).
+            let t: Vec<MessageDescriptor> = gn
+                .types
+                .iter()
+                .filter(|md| registered(9, &format!("/{}", md.full_name())))
+                .cloned()
+                .collect();
+            if !t.is_empty() && gn.m.rng.one_in(2) {
+                let md = t[gn.m.rng.below(t.len())].clone();
+                msgs.push(Any {
+                    type_url: format!("/{}", md.full_name()),
+                    value: gn.synth(&md, &Gen::gov_who(), 1),
+                });
+            }
+            let p = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+                messages: msgs,
+                initial_deposit: vec![Coin {
+                    denom: "utia".into(),
+                    amount: "100000000000".into(),
+                }],
+                proposer: gn.accts[i].acc.clone(),
+                metadata: String::new(),
+                title: "pending".into(),
+                summary: "pending".into(),
+                expedited: gn.m.rng.one_in(2),
+            });
+            self.push(gn, &mut out, i, vec![p], 2_000_000);
+        }
+        // Proposals submitted at v9: every account votes yes.
         if !v10 || near {
             let ids: Vec<u64> = gn
                 .proposals
@@ -707,14 +774,48 @@ impl Upgrade {
 
     /// After a finalized block: the held txs and vesting accounts it
     /// included, logged results of the driver's signal txs.
+    #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
         gn: &mut Gen,
         rust: &mut app::App,
         txs: &[Vec<u8>],
         results: &[abci::ExecTxResult],
+        block_events: &[abci::Event],
+        block_version: u64,
         height: i64,
     ) {
+        // Proposals submitted at app version 9 and how they ended.
+        if block_version < 10 {
+            for p in &gn.proposals {
+                self.v9_proposals.insert(*p);
+            }
+        }
+        for e in block_events
+            .iter()
+            .filter(|e| e.r#type == "active_proposal")
+        {
+            let get = |k: &str| {
+                e.attributes
+                    .iter()
+                    .find(|a| a.key == k)
+                    .map(|a| a.value.clone())
+                    .unwrap_or_default()
+            };
+            if let Ok(id) = get("proposal_id").parse::<u64>()
+                && self.v9_proposals.contains(&id)
+            {
+                self.log.push(format!(
+                    "h={height} proposal {id} (submitted at v9) ended at app version {block_version}: {} {}",
+                    get("proposal_result"),
+                    get("proposal_log").chars().take(120).collect::<String>()
+                ));
+                *self
+                    .v9_proposals_ended
+                    .entry(format!("v{block_version} {}", get("proposal_result")))
+                    .or_default() += 1;
+            }
+        }
         for (t, r) in txs.iter().zip(results) {
             let urls = type_urls(gn.app_version, t);
             if urls.iter().any(|u| u.contains("signal.v1.")) || self.held.contains(t) {
