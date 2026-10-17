@@ -438,9 +438,11 @@ pub fn validate_consensus_state(c: &ConsensusState) -> Result<()> {
         return Err(cerr::invalid_consensus("root cannot be empty"));
     }
     if !c.next_validators_hash.is_empty() && c.next_validators_hash.len() != 32 {
-        return Err(crate::errors::unregistered(
-            "next validators hash is invalid",
-        ));
+        // `errorsmod.Wrap(cmttypes.ValidateHash(..), "next validators hash is invalid")`.
+        return Err(crate::errors::unregistered(format!(
+            "next validators hash is invalid: expected size to be 32 bytes, got {} bytes",
+            c.next_validators_hash.len()
+        )));
     }
     if ts_nanos(c.timestamp.as_ref()).div_euclid(1_000_000_000) <= 0 {
         return Err(cerr::invalid_consensus(
