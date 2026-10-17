@@ -300,7 +300,34 @@ and sometimes duplicate-vote / light-client-attack evidence; block time
 sometimes jumps (unbonding completion, proposal ends, allowance and grant
 expiry). `fuzz-diff coverage` prints, per registered message type, whether
 each app version decodes it, whether Rust routes it, and how often Go
-executed it in the recorded scenarios.
+executed it in the recorded scenarios. `DELIVER_SWEEP` re-sends
+successful txs with gas limits below what Go used (see the store access
+order audit below); `DELIVER_SCRIPT=<file>` runs scripted txs first
+(`<account index> <type URL> <hex value> [gas]` or `vote <account
+index>`, a yes vote on the latest proposal, per line, `---` between
+blocks; the block is finalized unfiltered and each result printed, and
+the results of the proposals that ended are counted);
+`fuzz-diff genesis <scenario>` writes a `genesis.json` from the recorded
+`InitChain` for the scenarios recorded without one (`ibc-edge`,
+`ibc-upgrades`), which the scripts use; `fuzz-diff accounts` prints the
+fuzz accounts. `DELIVER_IBC` adds a mock IBC counterparty
+(`crates/fuzz-diff/src/ibcmock.rs`): a chain whose `ibc` and `upgrade`
+IAVL stores sit under a multistore root that its headers (one ed25519
+validator the harness holds) commit to, so every step it "makes" is
+written into its store and proven with real ICS-23 proofs. It drives the
+chain under test through the success paths in order: three 07-tendermint
+clients, connection init / ack, an ICS-20 channel (init / ack) and an
+ICS-27 host channel (try / confirm); then packets both ways (transfers
+with PFM memos, redundant relays, flipped proof bits, acknowledgements,
+error acknowledgements, timeouts), ICA host txs in either encoding (with
+a fee grant whose amount has a sign, and keys gogoproto skips),
+misbehaviour on the second client, `MsgUpgradeClient` of the third,
+ICS-27 channel upgrades the counterparty proposes (try, confirm with the
+counterparty flushing or flush complete, open, cancel on an error
+receipt, timeout) and transfer channels the counterparty closes
+(`MsgTimeoutOnClose`, `MsgChannelCloseConfirm`). Hyperlane owner
+operations target objects their signer created (a create message first
+when it has none), and ownership changes are followed.
 
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
@@ -478,6 +505,10 @@ hand-written network messages.
 | `fuzz-diff deliver` round 3 (2026-10-16; seeds 31/32, then 41/42 with the multisig accounts) | v10: 12 + 6 scenarios, v9: 10 + 6 scenarios, 300 blocks each (~58 000 more txs through `CheckTx`) | findings 51–54 fixed; the reruns of both seeds are clean; round 4 (seeds 51/52, all 22 scenarios, 300 blocks each, ~37 000 txs through `CheckTx`, ~2 300 of them multisig-signed, ~16 % of those accepted) is clean |
 | `fuzz-diff deliver` rounds 5–6 (2026-10-16; seeds 61–98, all 22 scenarios each; new flows: legacy gov votes, deposits and text proposals, proposal cancellation by its proposer, vesting accounts for fresh addresses, ICS-20 transfers; app-hash splits dump the differing store entries) | ~24 runs of 10–12 scenarios, 300 blocks each (~400 000 txs through `CheckTx`) | findings 55–60 fixed; reruns of the failing seeds clean; log-only differences down ~80 % |
 | `fuzz-diff deliver` round 7 (2026-10-16; seeds 201–212 and 301–340; gas limits just below what Go used for the same message type (7× more out-of-gas inside handlers), hyperlane owner operations on objects the fuzz accounts created, multisig ISMs with sorted validator sets) | 52 runs of 10–12 scenarios, 300 blocks each (~800 000 txs through `CheckTx`) | finding 61 fixed; otherwise clean; then seeds 401–420 and, with the default (long) slashing, unbonding and voting parameters (`DELIVER_KEEP_PARAMS`), seeds 501–508: clean |
+| `fuzz-diff deliver` round 8 (2026-10-16; seed 701; gas sweep, hyperlane process / pay-for-gas / announce flows, gov proposals of `MsgExecLegacyContent` and staking `MsgUpdateParams`, `ibc-edge` with a generated genesis) and `DELIVER_SCRIPT` cases | `staking-lifecycle`, `gov`, `hyperlane`, `authz-feegrant`, `ibc-edge`, 200 blocks each (~9 900 txs through `CheckTx`, ~4 200 gas-sweep copies) | sweep clean; finding 64 found with a scripted `MsgGrant`; `ibc-edge`'s recorded client updates carry part-set totals of 10 000 (finding 63) |
+| `fuzz-diff --ops json_ica_pb` (2026-10-16; protobuf ICA `CosmosTx`: devnet txs' messages and fee-grant / authz / gov seeds with wide keys, groups, overlong varints, `+N` amounts, then protobuf mutations) | v10, v9: 6 × 1 000 000 each | findings 62-64 fixed; the seeds that differed before the fix are clean |
+| `fuzz-diff deliver` round 9 (2026-10-17; seeds 801/802, 901, 911/912, 921/922; `DELIVER_IBC` (the mock counterparty) and `DELIVER_SWEEP` on every run; hyperlane owner operations on owned objects) | v10: 15 scenarios, then 8 again; v9: 10, then 7; 200–300 blocks each (~95 000 txs through `CheckTx`, ~38 000 gas-sweep copies) | clean (one `utf8` run stopped when a parallel run's cleanup removed its Go home directory; its rerun is clean). Go executed successfully for the first time: `MsgSubmitMisbehaviour`, `MsgUpgradeClient`, `MsgChannelOpenAck` / `Confirm` / `Try` of new channels, `MsgChannelUpgradeTry` / `Confirm` / `Open` / `Cancel` / `Timeout`, `MsgChannelCloseConfirm`, `MsgTimeoutOnClose`, ICA host txs, and the hyperlane owner operations (`MsgSetMailbox`, `MsgSetToken`, `MsgSetIgpOwner`, `MsgSetDestinationGasConfig`, `MsgEnrollRemoteRouter` / `MsgUnrollRemoteRouter`, routing ISM domains and owner) |
+| `DELIVER_SCRIPT` gov proposals (2026-10-17; fuzz accounts delegate, one proposal each of `MsgExecLegacyContent` (text) and staking `MsgUpdateParams`, all accounts vote yes) | `gov`, `v9-gov`, 40 blocks | both proposals pass and execute on v10 (Go and Rust alike); on v9 the staking one does, the text proposal fails identically (no legacy handler for it). Never reachable in either version: ICS-27 controller messages (celestia-app wires no controller), mint `MsgUpdateParams` (celestia's mint has no `Msg` service), crisis (not wired), `MsgChannelUpgradeInit` / `Ack` and the other IBC `MsgUpdateParams` / `MsgRecoverClient` / `MsgIBCSoftwareUpgrade` except through gov |
 | `fuzz-diff --ops aminosign` (2026-10-16; seeds: the delivery generator's amino-JSON-signed txs, nested messages included) | v10, v9: 1 400 000 inputs (~110 000 decodable); a second round with the multisig signers and new flows: 1 200 000 more | finding 46 fixed; then clean (the second round's only differences were Go's `GetSigningTxData` dereferencing a nil fee, which the ante handler reaches first on chain; the harness models it) |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 

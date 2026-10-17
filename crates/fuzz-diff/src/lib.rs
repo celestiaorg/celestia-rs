@@ -22,6 +22,7 @@ pub mod corpus;
 pub mod craft;
 pub mod deliver;
 pub mod exec;
+pub mod ibcmock;
 pub mod jsonops;
 pub mod mutate;
 pub mod oracle;

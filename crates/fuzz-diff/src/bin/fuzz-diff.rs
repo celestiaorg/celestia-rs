@@ -298,6 +298,12 @@ fn main() -> anyhow::Result<()> {
         for (c, n) in &st.codes {
             println!("CODE {n} {c}");
         }
+        for (k, n) in &st.ibc {
+            println!("IBC {k} {n}");
+        }
+        for (k, n) in &st.gov_results {
+            println!("GOV {k} {n}");
+        }
         for l in &st.script {
             println!("SCRIPT {l}");
         }

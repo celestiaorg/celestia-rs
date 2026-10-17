@@ -144,6 +144,10 @@ pub struct Stats {
     pub swept: u64,
     /// Results of the scripted txs (`DELIVER_SCRIPT`).
     pub script: Vec<String>,
+    /// Results of the proposals that ended (`active_proposal` events).
+    pub gov_results: BTreeMap<String, u64>,
+    /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
+    pub ibc: BTreeMap<&'static str, u64>,
 }
 
 /// A funded account.
@@ -1766,6 +1770,59 @@ impl Gen {
         self.pick(&any).unwrap_or_else(|| self.hex_id())
     }
 
+    /// A create message for a hyperlane object of `kind` owned by account
+    /// `i` (or for what it needs first: an ISM for a mailbox, a mailbox for
+    /// a token).
+    fn hl_create(&mut self, kind: u8, i: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = self.accts[i].acc.clone();
+        let isms: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == HL_ISM)
+            .map(|o| o.1.clone())
+            .collect();
+        let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+        match kind {
+            HL_ROUTING_ISM => Any::pack(&ism::MsgCreateRoutingIsm {
+                creator: me,
+                routes: Vec::new(),
+            }),
+            HL_IGP => Any::pack(&pd::MsgCreateIgp {
+                owner: me,
+                denom: "utia".into(),
+            }),
+            HL_HOOK => Any::pack(&pd::MsgCreateNoopHook { owner: me }),
+            HL_MAILBOX if !isms.is_empty() => Any::pack(&core::MsgCreateMailbox {
+                owner: me,
+                local_domain: 1 + self.m.rng.below(5) as u32,
+                default_ism: self.pick(&isms).unwrap_or_default(),
+                default_hook: String::new(),
+                required_hook: String::new(),
+            }),
+            HL_TOKEN if !mailboxes.is_empty() => {
+                let origin_mailbox = self.pick(&mailboxes).unwrap_or_default();
+                if self.m.rng.one_in(2) {
+                    Any::pack(&warp::MsgCreateCollateralToken {
+                        owner: me,
+                        origin_mailbox,
+                        origin_denom: "utia".into(),
+                    })
+                } else {
+                    Any::pack(&warp::MsgCreateSyntheticToken {
+                        owner: me,
+                        origin_mailbox,
+                    })
+                }
+            }
+            HL_TOKEN => self.hl_create(HL_MAILBOX, i),
+            _ => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+        }
+    }
+
     /// A random 32-byte hyperlane id (`0x` + 64 hex digits).
     fn hex_id(&mut self) -> String {
         let mut b = [0u8; 32];
@@ -1780,6 +1837,33 @@ impl Gen {
     /// configs, owner and claims, mailbox settings, warp token settings and
     /// remote routers, multisig ISMs with sorted validator sets.
     fn flow_hyperlane(&mut self, i: usize) -> Any {
+        let op = self.m.rng.below(19);
+        self.flow_hyperlane_op(i, op)
+    }
+
+    /// An owner operation on a hyperlane object a fuzz account owns, signed
+    /// by that account (sent unmutated: the success paths).
+    fn hl_owner_msg(&mut self) -> Option<Any> {
+        let cands: Vec<(u8, usize)> = self
+            .hl_objects
+            .iter()
+            .filter(|o| matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN))
+            .map(|o| (o.0, o.2))
+            .collect();
+        let (kind, i) = self.pick(&cands)?;
+        let ops: &[usize] = match kind {
+            HL_ROUTING_ISM => &[0, 1, 2],
+            HL_IGP => &[3, 4, 5],
+            HL_MAILBOX => &[6],
+            _ => &[7, 8, 9, 10],
+        };
+        let op = ops[self.m.rng.below(ops.len())];
+        Some(self.flow_hyperlane_op(i, op))
+    }
+
+    /// Hyperlane flow `op` (see [`Self::flow_hyperlane`]) signed by `i`.
+    #[allow(clippy::too_many_lines)]
+    fn flow_hyperlane_op(&mut self, i: usize, op: usize) -> Any {
         use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
         use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
         use celestia_proto::hyperlane::core::v1 as core;
@@ -1790,7 +1874,22 @@ impl Gen {
         let domain = 1 + self.m.rng.below(5) as u32;
         let empty_or =
             |s: String, rng: &mut crate::mutate::Rng| if rng.one_in(4) { String::new() } else { s };
-        match self.m.rng.below(19) {
+        // The object an owner operation targets: one the signer owns, else
+        // (mostly) a create message for one first.
+        let target = match op {
+            0..=2 => Some(HL_ROUTING_ISM),
+            3..=5 => Some(HL_IGP),
+            6 => Some(HL_MAILBOX),
+            7..=10 => Some(HL_TOKEN),
+            _ => None,
+        };
+        if let Some(kind) = target
+            && !self.hl_objects.iter().any(|o| o.0 == kind && o.2 == i)
+            && !self.m.rng.one_in(8)
+        {
+            return self.hl_create(kind, i);
+        }
+        match op {
             13..=15 => {
                 if let Some(m) = self.hl_process(i) {
                     return m;
@@ -2379,7 +2478,11 @@ impl Gen {
                 self.msg(s)
             })
             .collect();
-        if self.m.rng.one_in(8) {
+        if self.m.rng.one_in(10)
+            && let Some(m) = self.hl_owner_msg()
+        {
+            msgs = vec![m];
+        } else if self.m.rng.one_in(8) {
             // MsgExec by `i` of messages signed by a granter.
             let n = self.accts.len();
             let g = if self.m.rng.one_in(4) {
@@ -3039,6 +3142,12 @@ pub fn run(
     // spread below what Go used, so they run out of gas at many points of
     // the message handlers (store access order and iterator charges).
     let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
+    // A mock IBC counterparty driving the IBC success paths.
+    let mut ibc = std::env::var("DELIVER_IBC")
+        .is_ok()
+        .then(crate::ibcmock::Driver::default);
+    // The relayer: the last single-key fuzz account.
+    let relayer = ACCOUNTS - 1;
     let mut script = match std::env::var("DELIVER_SCRIPT") {
         Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         Err(_) => std::collections::VecDeque::new(),
@@ -3077,13 +3186,48 @@ pub fn run(
             }
         } else if let Some(block) = script.pop_front() {
             scripted = true;
-            for (i, msg, gas) in block {
+            for (i, mut msg, gas) in block {
+                // `vote <account>`: a yes vote on the latest proposal.
+                if msg.type_url == "vote" {
+                    msg = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                        proposal_id: gn.proposals.iter().copied().max().unwrap_or(1),
+                        voter: gn.accts[i].acc.clone(),
+                        option: 1,
+                        metadata: String::new(),
+                    });
+                }
                 if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
                     gn.accts[i].seq += 1;
                     txs.push(t);
                 }
             }
         } else {
+            if let Some(d) = ibc.as_mut() {
+                let accounts: Vec<(String, Vec<u8>)> = gn
+                    .accts
+                    .iter()
+                    .take(ACCOUNTS)
+                    .map(|a| (a.acc.clone(), a.addr.clone()))
+                    .collect();
+                let mut c = crate::ibcmock::StepCtx {
+                    now: time.seconds,
+                    rng: &mut gn.m.rng,
+                    signer: gn.accts[relayer].acc.clone(),
+                    accounts,
+                };
+                for msgs in d.step(&mut c) {
+                    if let Some(t) = sign_simple(&gn, relayer, msgs, 8_000_000) {
+                        gn.accts[relayer].seq += 1;
+                        txs.push(t);
+                    }
+                }
+                for id in [d.a_transfer.clone(), d.a_client.clone(), d.a_conn.clone()]
+                    .into_iter()
+                    .flatten()
+                {
+                    gn.dict.string("source_channel", id.as_bytes());
+                }
+            }
             if sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
                 for t in sweep_txs(&mut gn, i, &msgs, used) {
@@ -3488,6 +3632,14 @@ pub fn run(
             gn.dict.harvest_events(&res.events);
         }
         gn.dict.harvest_events(&g.events);
+        for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
+            for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
+                *stats.gov_results.entry(a.value.clone()).or_default() += 1;
+            }
+        }
+        if let Some(d) = ibc.as_mut() {
+            d.observe(&g.tx_results);
+        }
         let (c, l) = finalize_diff(&g, &o);
         let block_txs = || fb.txs.iter().map(hex::encode).collect::<Vec<_>>().join(",");
         stats.log_mismatches.extend(l.into_iter().map(|l| {
@@ -3532,6 +3684,9 @@ pub fn run(
         {
             gn.app_version = v.app;
         }
+    }
+    if let Some(d) = ibc {
+        stats.ibc = d.stats;
     }
     Ok(stats)
 }
@@ -3772,8 +3927,9 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, he
 
 /// Blocks of scripted txs (`DELIVER_SCRIPT`), run before the generated
 /// ones: one tx per line, `<account index> <type URL> <hex value> [gas]`
-/// (one message, signed in direct mode); a line `---` ends a block; `#`
-/// starts a comment.
+/// (one message, signed in direct mode), or `vote <account index>` (a yes
+/// vote on the latest proposal); a line `---` ends a block; `#` starts a
+/// comment.
 type Script = std::collections::VecDeque<Vec<(usize, Any, u64)>>;
 
 fn read_script(text: &str, accounts: usize) -> anyhow::Result<Script> {
@@ -3789,6 +3945,19 @@ fn read_script(text: &str, accounts: usize) -> anyhow::Result<Script> {
             continue;
         }
         let f: Vec<&str> = line.split_whitespace().collect();
+        if let ["vote", i] = f.as_slice() {
+            let i: usize = i.parse()?;
+            anyhow::ensure!(i < accounts, "account index {i} out of range");
+            cur.push((
+                i,
+                Any {
+                    type_url: "vote".into(),
+                    value: Vec::new(),
+                },
+                1_000_000,
+            ));
+            continue;
+        }
         let [i, url, val, rest @ ..] = f.as_slice() else {
             anyhow::bail!("bad script line {line:?}");
         };
@@ -3914,6 +4083,28 @@ fn learn_hyperlane(gn: &mut Gen, msgs: &[Any], data: &[u8]) {
                     );
                 }
             }
+            ("/hyperlane.core.v1.MsgSetMailbox", _) => {
+                if let Ok(x) = core::MsgSetMailbox::decode(v) {
+                    hl_transfer(gn, &x.mailbox_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgSetToken", _) => {
+                if let Ok(x) = warp::MsgSetToken::decode(v) {
+                    hl_transfer(gn, &x.token_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgSetIgpOwner", _) => {
+                if let Ok(x) = pd::MsgSetIgpOwner::decode(v) {
+                    hl_transfer(gn, &x.igp_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner", _) => {
+                if let Ok(x) =
+                    celestia_proto::hyperlane::core::interchain_security::v1::MsgUpdateRoutingIsmOwner::decode(v)
+                {
+                    hl_transfer(gn, &x.ism_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
             ("/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig", _) => {
                 if let Ok(x) = pd::MsgSetDestinationGasConfig::decode(v)
                     && let Some(c) = x.destination_gas_config
@@ -3923,6 +4114,26 @@ fn learn_hyperlane(gn: &mut Gen, msgs: &[Any], data: &[u8]) {
             }
             _ => {}
         }
+    }
+}
+
+/// A hyperlane object changed owner (`new_owner` set) or was renounced:
+/// its tracked owner follows, or it is dropped when no fuzz account owns
+/// it any more.
+fn hl_transfer(gn: &mut Gen, id: &str, new_owner: &str, renounce: bool) {
+    if !renounce && new_owner.is_empty() {
+        return;
+    }
+    let to = (!renounce)
+        .then(|| gn.accts.iter().position(|a| a.acc == new_owner))
+        .flatten();
+    match to {
+        Some(k) => {
+            for o in gn.hl_objects.iter_mut().filter(|o| o.1 == id) {
+                o.2 = k;
+            }
+        }
+        None => gn.hl_objects.retain(|o| o.1 != id),
     }
 }
 

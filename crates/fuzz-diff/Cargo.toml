@@ -32,6 +32,8 @@ hex = "0.4"
 http = "1"
 keyring = { path = "../tier-5-node/keyring" }
 k256 = { version = "0.13", features = ["ecdsa"] }
+ics23 = "0.12"
+multistore = { path = "../tier-2-state-and-store/multistore" }
 prost = "0.13"
 prost-reflect = "0.14"
 legacy-amino = { path = "../tier-1-protocol-types/legacy-amino" }
