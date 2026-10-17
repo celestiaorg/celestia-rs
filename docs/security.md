@@ -540,9 +540,10 @@ Volumes (one seed each; inputs / Go accepted):
 | total oracle inputs (`fuzz-diff wire 10 2 2`, `wire 9 2 2`) | 1 403 962 | 1 352 190 |
 | `DELIVER_WIRE` campaigns (300 blocks, 10 txs per block, sweep, store dump): txs to `CheckTx` / finalized / Go code 0 | 12 scenarios: 40 133 / 11 855 / 1 799 | 10 scenarios: 33 090 / 10 736 / 1 499 |
 | of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 2 734 / 718 / 26 149 | 2 405 / 651 / 20 948 |
-| second round (seeds 5 and 6, with the query comparison; `hyperlane` / `zkism-forwarding` also with `DELIVER_HL`): blocks / txs to `CheckTx` / finalized / Go code 0 | 17 scenarios, 4 906 / 55 726 / 18 821 / 2 925 | 8 scenarios, 2 200 / 24 882 / 8 552 / 1 420 |
-| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 3 970 / 1 083 / 34 554 | 1 808 / 507 / 14 965 |
-| queries compared (stored messages echoed) | 24 633 | 10 649 |
+| second round, oracle (`wire 10 8 7` + `wire 10 12 8`; `wire 9 8 7` + `wire 9 12 8`): message rewrites per level (tx, `MsgExec`, gov proposal, ICA `CosmosTx`; each through `tx` and `aminosign`) | 1 650 766 per level, 11 561 490 inputs | 1 592 651 per level, 11 154 685 inputs |
+| second round, `DELIVER_WIRE` (seeds 5-7, with the query comparison; `hyperlane` / `zkism-forwarding` also with `DELIVER_HL`): runs, blocks / txs to `CheckTx` / finalized / Go code 0 | 21 runs, 6 106 / 69 488 / 23 237 / 3 429 | 12 runs, 3 400 / 39 175 / 13 086 / 2 018 |
+| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 5 010 / 1 361 / 43 395 | 2 733 / 730 / 24 230 |
+| queries compared (stored messages echoed) | 30 177 | 16 468 |
 
 Results: findings 65 (the first run: 6 distinct mismatches, all one cause)
 and 66 (the first `DELIVER_WIRE` run of the `ibc` scenario); 67 from
