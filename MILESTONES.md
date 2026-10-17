@@ -28,28 +28,24 @@ question 2).
 | M10 | completed   | Rust P2P (secret connection, MConn, PEX), mempool, block sync — `p2p`, CAT `mempool`, `blocksync`, `evidence`, `statesync` done; `celestia-rs start` block-syncs / state-syncs from Go and serves Go (`blocksync-interop.sh`); propagation + consensus gossip with Go validators (`mixed-validators.sh`), txs both ways (`mempool-interop.sh`) | Rust node peers with Go nodes and gossips blocks/txs |
 | M11 | completed   | RPC & gRPC: ABCI `Query` (store proofs, historical heights, gRPC routing), every query service, gRPC server and REST gateway in `celestia-rs abci` | Responses match Go for a canned request corpus (13 scenarios, 46.8k ABCI + 30.6k REST requests, `devnet-conformance/tests/query_corpus.rs`) |
 | M12 | completed   | Node binary, CLI, keys, double-sign guard, pruning — operator CLI at Go parity (`init`, `keys` on Go test/file keyrings, `genesis` add-account/gentx/collect/validate, `tx` (incl. staking create/edit-validator, unbond, redelegate, `--gas auto`, generic `tx <module> <msg> --json`; `--generate-only` identical to Go's, `devnet/cli`)/`query`/`status`, `config`, `rollback`, `export` = Go's export on 15 devnet scenarios), `--network mainnet\|mocha\|arabica\|local`, SIGTERM shutdown, `halt-height`/`halt-time`, upgrade halt with `upgrade-info.json`, pruning + `min-retain-blocks`, Prometheus metrics, ulimit check; `conformance/devnet/operator.sh`, `docs/operator-guide.md` | Release-ready for the Mac Mini: `release` / `dist` profiles, `macos-14` CI job (release build + smoke tests), tag-triggered release workflow (aarch64-apple-darwin, x86_64 / aarch64 Linux + SHA-256), launchd plist / systemd unit (`packaging/`), Mocha + mainnet validator runbooks (`docs/operator-guide.md` §11-12). `start --network mocha` over P2P is the first step of M13 on the Mac (OPEN_QUESTIONS #1) |
-| M13 | in progress | Mocha validator soak; mainnet full node. 2026-10-15 on the Mac Mini M4: route A (P2P state sync from Mocha's Go peers) restored snapshot 1,716,000 and reached consensus 47 s after start, outbound-only with 13 peers; `check-apphash.sh` OK against two providers. Validator `celestia-rs validator` bonded at 1,720,896, signing from 1,720,898, under launchd since 1,721,185; the switch-over exposed a delayed-precommit-on-SIGTERM bug (one `conflicting data` refusal, 3 missed blocks), fixed with a sim test | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1% (owner, 2026-10-16; shortened from 72 h the same day: a longer soak adds little signal); then a mainnet full node on the Mac |
+| M13 | completed   | Mocha validator soak; mainnet full node. 2026-10-15 on the Mac Mini M4: route A (P2P state sync from Mocha's Go peers) restored snapshot 1,716,000 and reached consensus 47 s after start, outbound-only with 13 peers; `check-apphash.sh` OK against two providers. Validator `celestia-rs validator` bonded at 1,720,896, signing from 1,720,898, under launchd since 1,721,185; the switch-over exposed a delayed-precommit-on-SIGTERM bug (one `conflicting data` refusal, 3 missed blocks), fixed with a sim test. **Passed 2026-10-17:** 24 h (02:30 UTC 10-16 to 02:31 UTC 10-17, heights 1,724,885-1,755,047) with every app-hash check OK (289/289 five-minute samples), no double-sign-guard refusal, 69 of 30,162 blocks missed (0.23%; all absent precommits in commits the next proposer closed early), never jailed or catching up, 6-11 outbound peers, RSS <= 2.1 GB, data <= 1.5 GB, background state-sync snapshots on | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1% (owner, 2026-10-16; shortened from 72 h the same day: a longer soak adds little signal); then a mainnet full node on the Mac |
 | M14 | pending     | Mainnet validator | Signs mainnet blocks; no double-signs; no evidence |
 | F1  | in progress | **Fuzzing**: differential fuzzing of tx decoding, signers, square construction and ProcessProposal against Go v10.4.0 / v9.0.8 (`crates/fuzz-diff`, `conformance/fuzzoracle`), crash-only libFuzzer targets for p2p / ABCI / RPC / light-client input (`fuzz/`); findings fixed with regressions (`docs/security.md`, "Fuzzing") | Nightly `fuzz-diff` and `cargo-fuzz` jobs find no mismatch or crash |
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
 ## Current focus
 
-**M13 — Mocha validator on the owner's Mac Mini (next).** Everything that
-can be done from the development container is done (M12): the runbook is
-`docs/operator-guide.md` §11 ("Running a Mocha validator on a Mac"),
-mainnet in §12. Steps on the Mac, in order: (1) install (release archive
-or `cargo build --profile dist`), `init --network mocha`, operator key in
-the `file` keyring, faucet; (2) bootstrap — route A, P2P state sync from
-Mocha peers (never run against Mocha yet: the first real test of the Rust
-P2P stack on a public network), else route B, Polkachu snapshot +
-`follow` over HTTPS, then `start`; (3) catch up over P2P block sync and
-`packaging/check-apphash.sh` OK; (4) `tx staking create-validator`
-(commission >= 0.20, Mocha's minimum); (5) soak under launchd with
-Prometheus alerts on height, missed blocks and app hash. Report back:
-which bootstrap route worked, peers / block sync rate, missed blocks per
-day, RSS and disk per day, any `failed signing vote` line. Owner choices:
-OPEN_QUESTIONS #4.
+**M13 passed (2026-10-17); next: a mainnet full node on the Mac.** The
+Mocha validator `celestia-rs validator` (Mac Mini M4, outbound-only,
+runbook `docs/operator-guide.md` §11) bootstrapped by P2P state sync from
+Mocha's Go peers (route A, consensus 47 s after start), bonded at
+1,720,896 and passed the 24 h acceptance soak: every app hash matched, no
+double-sign-guard refusal, 0.23% missed blocks. It keeps running under
+launchd. The run fixed a delayed-precommit-on-SIGTERM divergence and made
+state-sync snapshots asynchronous (Go parity). Misses come from commits a
+proposer closes early, which this outbound-only node is too late for
+(like ~20 other Mocha validators); inbound 26656 would reduce them. Next
+per ADR 0001: the mainnet full node on the Mac (§12), then M14.
 
 **S3 — following public networks over HTTPS (2026-10-15).** P2P is
 blocked from the development container, so `celestia-rs follow`
