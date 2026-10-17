@@ -168,18 +168,27 @@ fn get_and_clear_in_flight_packet(
 
 /// `userRecoverableAccount`.
 fn user_recoverable_account(ifp: &InFlightPacket) -> Result<Vec<u8>> {
+    // Go's `sender, err := sdk.AccAddressFromBech32(...)` shadows `err`:
+    // only an unmarshal error joins the fallback's.
     let first = match PacketData::decode(&ifp.packet_data) {
         Ok(d) => match sdk::address::acc_from_bech32(&d.receiver) {
             Ok(a) => return Ok(a),
-            Err(e) => e.log,
+            Err(_) => None,
         },
-        Err(e) => e,
+        Err(e) => Some(e),
     };
-    match encoding::bech32::decode(&ifp.original_sender_address) {
+    // `bech32.DecodeAndConvert`: any prefix, up to 1023 characters.
+    match encoding::bech32::decode_and_convert(&ifp.original_sender_address) {
         Ok((_, bz)) => Ok(bz),
-        Err(e) => Err(plain(format!(
-            "failed to get user recoverable account: failed to decode bech32 addresses: {first}\n{e}"
-        ))),
+        Err(e) => {
+            let joined = match first {
+                Some(f) => format!("{f}\n{e}"),
+                None => e,
+            };
+            Err(plain(format!(
+                "failed to get user recoverable account: failed to decode bech32 addresses: {joined}"
+            )))
+        }
     }
 }
 
@@ -685,6 +694,30 @@ mod tests {
         assert!(
             denom_for_this_chain("transfer", "channel-0", "transfer", "channel-1", "stake")
                 .starts_with("ibc/")
+        );
+    }
+
+    /// The fallback is `bech32.DecodeAndConvert`: any prefix, up to 1023
+    /// characters, so a 90-character prefix (beyond BIP-173's 83) decodes
+    /// (security.md finding 74); the shadowed `err` leaves the receiver's
+    /// error out of the joined text.
+    #[test]
+    fn user_recoverable_account_falls_back_like_go() {
+        let long_hrp = format!("{}1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc53m8tvl", "a".repeat(90));
+        let data = br#"{"amount":"1","denom":"utia","receiver":"pfm","sender":"s"}"#.to_vec();
+        let ifp = |sender: &str| InFlightPacket {
+            original_sender_address: sender.to_owned(),
+            packet_data: data.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            user_recoverable_account(&ifp(&long_hrp)).unwrap(),
+            (1..=20).collect::<Vec<u8>>()
+        );
+        assert_eq!(
+            user_recoverable_account(&ifp("x")).unwrap_err().log,
+            "failed to get user recoverable account: failed to decode bech32 addresses: \
+             decoding bech32 failed: invalid bech32 string length 1"
         );
     }
 }

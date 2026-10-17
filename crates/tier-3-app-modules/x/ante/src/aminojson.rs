@@ -13,11 +13,16 @@ type Res<T> = Result<T, String>;
 
 /// `SignModeHandler.GetSignBytes` for `SIGN_MODE_LEGACY_AMINO_JSON`.
 pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
-    // decode.RejectUnknownFields(body, allowUnknownNonCriticals=false): the
-    // decoder already rejected unknown critical fields.
+    // decode.RejectUnknownFields(body, allowUnknownNonCriticals=false) over
+    // x/tx's descriptors (the interface registry's file resolver).
     if tx.body_has_unknown_non_criticals {
         return Err("unknown field found in TxBody".into());
     }
+    reject_unknown_fields(
+        &tx.body_bytes,
+        &message("cosmos.tx.v1beta1.TxBody")?,
+        10_000,
+    )?;
     let body = &tx.body;
     if !body.extension_options.is_empty() || !body.non_critical_extension_options.is_empty() {
         return Err(
@@ -53,8 +58,11 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
                 w.push(',');
             }
             // adapter.go: Amount = coin.Amount.String() (math.Int).
-            let amount =
-                math::Int::parse(&c.amount).map_or_else(|_| c.amount.clone(), |a| a.to_string());
+            let amount = if c.amount.is_empty() {
+                "<nil>".to_owned()
+            } else {
+                math::Int::parse(&c.amount).map_or_else(|_| c.amount.clone(), |a| a.to_string())
+            };
             let mut m = DynamicMessage::new(coin_desc.clone());
             m.set_field_by_name("denom", Value::String(c.denom.clone()));
             m.set_field_by_name("amount", Value::String(amount));
@@ -123,6 +131,167 @@ fn message(name: &str) -> Res<MessageDescriptor> {
         .ok_or_else(|| format!("can't resolve type URL /{name}"))
 }
 
+/// Fields whose message type the interface registry's file resolver
+/// resolves to a placeholder descriptor (ibc-go v8.7.2's `tx.proto` is
+/// built without `upgrade.proto`): x/tx sees no fields in them, so any
+/// content is an unknown field (`fuzzoracle placeholders`, the fields
+/// reachable from txs; identical at both app versions).
+const PLACEHOLDER_FIELDS: &[(&str, &str)] = &[
+    (
+        "ibc.core.channel.v1.MsgChannelUpgradeAck",
+        "counterparty_upgrade",
+    ),
+    (
+        "ibc.core.channel.v1.MsgChannelUpgradeCancel",
+        "error_receipt",
+    ),
+    (
+        "ibc.core.channel.v1.MsgChannelUpgradeConfirm",
+        "counterparty_upgrade",
+    ),
+    ("ibc.core.channel.v1.MsgChannelUpgradeInit", "fields"),
+    (
+        "ibc.core.channel.v1.MsgChannelUpgradeTry",
+        "counterparty_upgrade_fields",
+    ),
+];
+
+fn wire_type_name(wt: u8) -> String {
+    match wt {
+        0 => "varint".into(),
+        1 => "fixed64".into(),
+        2 => "bytes".into(),
+        3 => "start_group".into(),
+        4 => "end_group".into(),
+        5 => "fixed32".into(),
+        t => format!("unknown type: {t}"),
+    }
+}
+
+/// Whether every `type_url` occurrence in the `Any` bytes `b` is UTF-8.
+fn any_type_urls_utf8(mut b: &[u8]) -> bool {
+    while let Some((tag, m)) = read_varint(b) {
+        b = &b[m..];
+        let n = match tag & 7 {
+            0 => read_varint(b).map(|(_, n)| (n, None)),
+            1 => (b.len() >= 8).then_some((8, None)),
+            5 => (b.len() >= 4).then_some((4, None)),
+            2 => read_varint(b).and_then(|(l, n)| {
+                let end = n.checked_add(usize::try_from(l).ok()?)?;
+                (end <= b.len()).then_some((end, Some(n)))
+            }),
+            _ => None,
+        };
+        let Some((end, start)) = n else { return true };
+        if tag >> 3 == 1
+            && let Some(s) = start
+            && std::str::from_utf8(&b[s..end]).is_err()
+        {
+            return false;
+        }
+        b = &b[end..];
+    }
+    true
+}
+
+fn read_varint(b: &[u8]) -> Option<(u64, usize)> {
+    let mut v = 0u64;
+    for (i, &x) in b.iter().enumerate().take(10) {
+        v |= u64::from(x & 0x7f) << (7 * i);
+        if x < 0x80 {
+            return Some((v, i + 1));
+        }
+    }
+    None
+}
+
+/// x/tx `decode.RejectUnknownFields(bz, desc, false, resolver)`: every
+/// unknown field, critical or not, at any depth (through `Any`s) is an
+/// error; `placeholder` descriptors have no fields.
+fn reject_unknown_fields(bz: &[u8], desc: &MessageDescriptor, limit: usize) -> Res<()> {
+    reject_unknown_in(bz, desc, false, limit)
+}
+
+fn reject_unknown_in(
+    mut bz: &[u8],
+    desc: &MessageDescriptor,
+    placeholder: bool,
+    limit: usize,
+) -> Res<()> {
+    if bz.is_empty() {
+        return Ok(());
+    }
+    if limit == 0 {
+        return Err("recursion limit reached".into());
+    }
+    while !bz.is_empty() {
+        let Some((tag, m)) = read_varint(bz) else {
+            return Err("invalid length".into());
+        };
+        let (num, wt) = (tag >> 3, (tag & 7) as u8);
+        let field = if placeholder {
+            None
+        } else {
+            u32::try_from(num).ok().and_then(|n| desc.get_field(n))
+        };
+        if field.is_none() {
+            return Err(format!(
+                "{}: {{TagNum: {num}, WireType:\"{}\"}}: unknown protobuf field",
+                desc.full_name(),
+                wire_type_name(wt)
+            ));
+        }
+        bz = &bz[m..];
+        let n = match wt {
+            0 => read_varint(bz).map(|(_, n)| n),
+            1 => (bz.len() >= 8).then_some(8),
+            5 => (bz.len() >= 4).then_some(4),
+            2 => read_varint(bz).and_then(|(l, n)| {
+                let end = n.checked_add(usize::try_from(l).ok()?)?;
+                (end <= bz.len()).then_some(end)
+            }),
+            _ => None,
+        };
+        let Some(n) = n else {
+            return Err(format!(
+                "could not consume field value for tagNum: {num}, wireType: \"{}\"",
+                wire_type_name(wt)
+            ));
+        };
+        let value = &bz[..n];
+        bz = &bz[n..];
+        let Some(field) = field else { continue };
+        let prost_reflect::Kind::Message(sub) = field.kind() else {
+            continue;
+        };
+        let Some((_, o)) = read_varint(value) else {
+            return Err("could not consume length prefix".into());
+        };
+        let inner = &value[o..];
+        if sub.full_name() == "google.protobuf.Any" {
+            reject_unknown_in(inner, &sub, false, limit - 1)?;
+            let any = <celestia_proto::Any as prost::Message>::decode(inner)
+                .map_err(|e| e.to_string())?;
+            // protobuf-go's `anypb.Any` (proto3) checks every occurrence
+            // of the type URL for UTF-8 (the last one is kept).
+            if !any_type_urls_utf8(inner) {
+                return Err("string field contains invalid UTF-8".into());
+            }
+            let name = any.type_url.trim_start_matches('/');
+            let d = pool()
+                .get_message_by_name(name)
+                .ok_or_else(|| format!("proto: not found: {name}"))?;
+            reject_unknown_in(&any.value, &d, false, limit - 1)?;
+            continue;
+        }
+        let ph = PLACEHOLDER_FIELDS
+            .iter()
+            .any(|(m, f)| *m == desc.full_name() && *f == field.name());
+        reject_unknown_in(inner, &sub, ph, limit - 1)?;
+    }
+    Ok(())
+}
+
 /// The `amino.name` of hyperlane-cosmos v1.1.0's protos (celestia-app
 /// v9.0.8) where it differs from v1.3.0's (vendored), at app version 9.
 fn v9_amino_name(full_name: &str) -> Option<&'static str> {
@@ -170,9 +339,25 @@ impl Encoder {
     /// `marshalAny`: resolves the packed type and writes
     /// `{"type":<amino name or type URL>,"value":…}`.
     pub fn marshal_any(&self, type_url: &str, value: &[u8], w: &mut String) -> Res<()> {
+        // `proto.Unmarshal` into the resolved type: the generated (pulsar)
+        // unmarshal for the types protoregistry knows, `dynamicpb` (UTF-8
+        // checked in proto3 strings, strict varints) for the rest, as in
+        // `GetSigners` (finding 1).
+        celestia_proto::signers::unpack_check(type_url, value).map_err(|e| {
+            e.trim_start_matches(&format!("cannot unmarshal msg {type_url}: "))
+                .to_owned()
+        })?;
         let name = type_url.rsplit('/').next().unwrap_or(type_url);
         let desc = message(name)?;
         let value = go_form_strings(&desc, value, 0).unwrap_or_else(|| value.to_vec());
+        let value = if celestia_proto::getsigners_schema::PROTOV2_TYPES
+            .binary_search(&type_url)
+            .is_ok()
+        {
+            pulsar_last_wins(&desc, &value, 0).unwrap_or(value)
+        } else {
+            value
+        };
         let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
         self.begin_marshal(&msg, w, true)
     }
@@ -720,6 +905,83 @@ fn go_form_strings(desc: &MessageDescriptor, mut b: &[u8], depth: usize) -> Opti
         out.extend_from_slice(&start[..start.len() - b.len()]);
     }
     Some(out)
+}
+
+/// The generated (pulsar) unmarshal of the types `protoregistry.GlobalTypes`
+/// knows unmarshals each occurrence of a singular message field into a
+/// fresh message: the last occurrence wins (`dynamicpb` and gogoproto
+/// merge them). Rewrites `b` (a message of `desc`) to its last occurrences,
+/// recursively (`Any` values are resolved again by `marshalAny`).
+fn pulsar_last_wins(desc: &MessageDescriptor, b: &[u8], depth: usize) -> Option<Vec<u8>> {
+    use prost_reflect::Kind;
+    if depth > 100 {
+        return None;
+    }
+    // (field number, start, end, payload range) of every field.
+    type WireField = (u32, usize, usize, Option<(usize, usize)>);
+    let mut fields: Vec<WireField> = Vec::new();
+    let mut rest = b;
+    while !rest.is_empty() {
+        let start = b.len() - rest.len();
+        let tag = wire_varint(&mut rest)?;
+        let num = u32::try_from(tag >> 3).ok()?;
+        let payload = match tag & 7 {
+            0 => {
+                wire_varint(&mut rest)?;
+                None
+            }
+            1 => {
+                rest = rest.get(8..)?;
+                None
+            }
+            5 => {
+                rest = rest.get(4..)?;
+                None
+            }
+            2 => {
+                let len = usize::try_from(wire_varint(&mut rest)?).ok()?;
+                let p0 = b.len() - rest.len();
+                rest = rest.get(len..)?;
+                Some((p0, p0 + len))
+            }
+            _ => return None,
+        };
+        fields.push((num, start, b.len() - rest.len(), payload));
+    }
+    let mut out = Vec::with_capacity(b.len());
+    for (i, &(num, start, end, payload)) in fields.iter().enumerate() {
+        let fd = desc.get_field(num);
+        let msg = match fd.as_ref().map(FieldDescriptor::kind) {
+            Some(Kind::Message(m)) => Some(m),
+            _ => None,
+        };
+        let (Some(fd), Some(m), Some((p0, p1))) = (fd, msg, payload) else {
+            out.extend_from_slice(&b[start..end]);
+            continue;
+        };
+        let singular = !fd.is_list() && !fd.is_map();
+        if singular && fields[i + 1..].iter().any(|f| f.0 == num) {
+            continue;
+        }
+        if m.full_name() == "google.protobuf.Any" {
+            out.extend_from_slice(&b[start..end]);
+            continue;
+        }
+        let inner = pulsar_last_wins(&m, &b[p0..p1], depth + 1)?;
+        out.extend_from_slice(&b[start..p0 - varint_len((p1 - p0) as u64)]);
+        put_varint(&mut out, inner.len() as u64);
+        out.extend_from_slice(&inner);
+    }
+    Some(out)
+}
+
+fn varint_len(mut v: u64) -> usize {
+    let mut n = 1;
+    while v >= 0x80 {
+        v >>= 7;
+        n += 1;
+    }
+    n
 }
 
 /// Go `encoding/json` string encoding (HTML-safe escaping, `\b`/`\f`

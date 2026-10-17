@@ -169,6 +169,31 @@ impl Reactor {
         lock(&self.peers).get(id).cloned()
     }
 
+    /// `peerStatsRoutine`: a vote or block part of `peer` was added to the
+    /// state machine; every 10 000th marks the peer good in the address
+    /// book (`votesToContributeToBecomeGoodPeer`,
+    /// `blocksToContributeToBecomeGoodPeer`).
+    pub fn record_peer_contribution(&self, peer: &str, block_part: bool) {
+        const TO_BECOME_GOOD: usize = 10_000;
+        let Ok(id) = peer.parse::<NodeId>() else {
+            return;
+        };
+        let Some(ps) = self.peer_state(&id) else {
+            return;
+        };
+        let n = if block_part {
+            ps.record_block_part()
+        } else {
+            ps.record_vote()
+        };
+        if n.is_multiple_of(TO_BECOME_GOOD)
+            && let Some(sw) = self.switch()
+            && let Some(p) = sw.get_peer(&id)
+        {
+            sw.mark_peer_as_good(&p);
+        }
+    }
+
     /// Round states of all peers (diagnostics).
     #[must_use]
     pub fn peer_round_states(&self) -> Vec<(NodeId, PeerRoundState)> {

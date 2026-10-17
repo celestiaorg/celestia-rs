@@ -34,18 +34,103 @@ pub fn decode_proof(proof: &[u8]) -> Result<MerkleProof> {
     })
 }
 
+/// ics23 (Go v0.11.0) `doHash`: no `NO_HASH`, `KECCAK256` or `BLAKE3`.
+fn go_do_hash(op: i32, pre: &[u8]) -> core::result::Result<Vec<u8>, String> {
+    use ics23::HostFunctionsProvider as H;
+    type M = HostFunctionsManager;
+    Ok(match op {
+        1 => M::sha2_256(pre).to_vec(),
+        2 => M::sha2_512(pre).to_vec(),
+        4 => M::ripemd160(pre).to_vec(),
+        5 => M::ripemd160(&M::sha2_256(pre)).to_vec(),
+        6 => M::sha2_512_truncated(pre).to_vec(),
+        7 => M::blake2b_512(pre).to_vec(),
+        8 => M::blake2s_256(pre).to_vec(),
+        _ => return Err(format!("unsupported hashop: {op}")),
+    })
+}
+
+/// `doLengthOp`.
+fn go_length_op(op: i32, data: Vec<u8>) -> core::result::Result<Vec<u8>, String> {
+    let n = data.len();
+    let prefixed = |p: Vec<u8>| {
+        let mut p = p;
+        p.extend_from_slice(&data);
+        p
+    };
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(match op {
+        7 if n != 32 => return Err(format!("data was {n} bytes, not 32")),
+        8 if n != 64 => return Err(format!("data was {n} bytes, not 64")),
+        0 | 7 | 8 => data,
+        1 => {
+            let mut v = Vec::new();
+            prost::encoding::encode_varint(n as u64, &mut v);
+            prefixed(v)
+        }
+        3 => prefixed((n as u32).to_be_bytes().to_vec()),
+        4 => prefixed((n as u32).to_le_bytes().to_vec()),
+        5 => prefixed((n as u64).to_be_bytes().to_vec()),
+        6 => prefixed((n as u64).to_le_bytes().to_vec()),
+        _ => return Err(format!("unsupported lengthop: {op}")),
+    })
+}
+
+/// `prepareLeafData`: `doHashOrNoop`, then the length op.
+fn go_prepare_leaf(hash: i32, length: i32, data: &[u8]) -> core::result::Result<Vec<u8>, String> {
+    let h = if hash == 0 {
+        data.to_vec()
+    } else {
+        go_do_hash(hash, data)?
+    };
+    go_length_op(length, h)
+}
+
+/// ics23 (Go) `ExistenceProof.Calculate()` with Go's errors (`leaf, ...`,
+/// `inner, ...`).
+fn go_calculate_existence(ex: &ics23::ExistenceProof) -> core::result::Result<Vec<u8>, String> {
+    let leaf = ex
+        .leaf
+        .as_ref()
+        .ok_or("existence Proof needs defined LeafOp")?;
+    let leaf_hash = (|| {
+        if ex.key.is_empty() {
+            return Err("leaf op needs key".to_owned());
+        }
+        if ex.value.is_empty() {
+            return Err("leaf op needs value".to_owned());
+        }
+        let pkey = go_prepare_leaf(leaf.prehash_key, leaf.length, &ex.key)
+            .map_err(|e| format!("prehash key, {e}"))?;
+        let pvalue = go_prepare_leaf(leaf.prehash_value, leaf.length, &ex.value)
+            .map_err(|e| format!("prehash value, {e}"))?;
+        let mut data = leaf.prefix.clone();
+        data.extend_from_slice(&pkey);
+        data.extend_from_slice(&pvalue);
+        go_do_hash(leaf.hash, &data)
+    })()
+    .map_err(|e| format!("leaf, {e}"))?;
+    let mut res = leaf_hash;
+    for step in &ex.path {
+        if res.is_empty() {
+            return Err("inner, inner op needs child value".into());
+        }
+        let mut pre = step.prefix.clone();
+        pre.extend_from_slice(&res);
+        pre.extend_from_slice(&step.suffix);
+        res = go_do_hash(step.hash, &pre).map_err(|e| format!("inner, {e}"))?;
+    }
+    Ok(res)
+}
+
 fn calculate(p: &ics23::CommitmentProof) -> core::result::Result<Vec<u8>, String> {
     match &p.proof {
-        Some(Proof::Exist(ex)) => {
-            ics23::calculate_existence_root::<HostFunctionsManager>(ex).map_err(|e| e.to_string())
-        }
+        Some(Proof::Exist(ex)) => go_calculate_existence(ex),
         Some(Proof::Nonexist(non)) => {
             if let Some(l) = &non.left {
-                ics23::calculate_existence_root::<HostFunctionsManager>(l)
-                    .map_err(|e| e.to_string())
+                go_calculate_existence(l)
             } else if let Some(r) = &non.right {
-                ics23::calculate_existence_root::<HostFunctionsManager>(r)
-                    .map_err(|e| e.to_string())
+                go_calculate_existence(r)
             } else {
                 Err("Nonexistence proof has empty Left and Right proof".into())
             }

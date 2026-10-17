@@ -47,8 +47,65 @@ use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
-/// Funded accounts added to the genesis.
+mod upgrade;
+
+/// Funded single-key accounts added to the genesis (the multisig ones of
+/// [`multisig_trees`] follow).
 const ACCOUNTS: usize = 12;
+const HL_MAILBOX: u8 = 0;
+const HL_ISM: u8 = 1;
+const HL_ROUTING_ISM: u8 = 2;
+const HL_HOOK: u8 = 3;
+const HL_IGP: u8 = 4;
+const HL_TOKEN: u8 = 5;
+
+/// The hyperlane object kind a create message's response id names.
+fn hl_kind(response_type_url: &str) -> Option<u8> {
+    let t = response_type_url.rsplit('.').next()?;
+    Some(match t {
+        "MsgCreateMailboxResponse" => HL_MAILBOX,
+        "MsgCreateRoutingIsmResponse" => HL_ROUTING_ISM,
+        "MsgCreateNoopIsmResponse"
+        | "MsgCreateMerkleRootMultisigIsmResponse"
+        | "MsgCreateMessageIdMultisigIsmResponse" => HL_ISM,
+        "MsgCreateMerkleTreeHookResponse" | "MsgCreateNoopHookResponse" => HL_HOOK,
+        "MsgCreateIgpResponse" => HL_IGP,
+        "MsgCreateCollateralTokenResponse"
+        | "MsgCreateSyntheticTokenResponse"
+        | "MsgCreateNativeSyntheticTokenResponse" => HL_TOKEN,
+        _ => return None,
+    })
+}
+
+/// Hyperlane objects the fuzz accounts created, as far as messages that
+/// target them successfully need to know.
+#[derive(Default)]
+struct HlState {
+    /// Mailbox id -> local domain.
+    mailbox_domain: BTreeMap<String, u32>,
+    /// Noop ISMs (they verify every message).
+    noop_isms: BTreeSet<String>,
+    /// Token id -> origin mailbox.
+    token_mailbox: BTreeMap<String, String>,
+    /// Enrolled remote routers: (token id, domain, receiver contract).
+    routers: Vec<(String, u32, String)>,
+    /// IGP id -> denom.
+    igp_denom: BTreeMap<String, String>,
+    /// Destination gas configs set: (IGP id, domain).
+    igp_domains: Vec<(String, u32)>,
+    /// Message ids dispatched (`MsgRemoteTransfer` responses).
+    message_ids: Vec<String>,
+}
+
+fn push_capped<T>(v: &mut Vec<T>, x: T) {
+    v.push(x);
+    if v.len() > 64 {
+        v.remove(0);
+    }
+}
+
+/// The multisig public key type URL.
+const MULTISIG_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 /// Their utia balance each.
 const BALANCE: u128 = 1_000_000_000_000_000;
 /// The gov module account.
@@ -65,6 +122,9 @@ pub struct Stats {
     pub checked: u64,
     /// Of which Go accepted.
     pub check_ok: u64,
+    /// Generated txs with a multisig signer info sent to `CheckTx`, and of
+    /// those Go accepted.
+    pub multisig: (u64, u64),
     /// Txs finalized in generated blocks.
     pub delivered: u64,
     /// Of which Go executed successfully (code 0).
@@ -82,19 +142,313 @@ pub struct Stats {
     pub log_mismatches: Vec<String>,
     /// The run stopped at an app-hash split.
     pub split: bool,
+    /// Gas-sweep copies sent to `CheckTx` (`DELIVER_SWEEP`).
+    pub swept: u64,
+    /// Results of the scripted txs (`DELIVER_SCRIPT`).
+    pub script: Vec<String>,
+    /// Results of the proposals that ended (`active_proposal` events).
+    pub gov_results: BTreeMap<String, u64>,
+    /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
+    pub ibc: BTreeMap<&'static str, u64>,
+    /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
+    /// code 0, in txs Go's `CheckTx` rejected).
+    pub wire: BTreeMap<String, (u64, u64, u64)>,
+    /// Queries that echo stored messages (`query_echo`), by path: (sent,
+    /// Go code 0 with a non-empty value).
+    pub queries: BTreeMap<String, (u64, u64)>,
+    /// `DELIVER_UPGRADE`: the signal / try-upgrade results and the
+    /// switch.
+    pub upgrade: Vec<String>,
+    /// `DELIVER_UPGRADE`: per phase of the upgrade (see
+    /// `upgrade::Upgrade::phase`): (blocks, txs finalized, of those Go code
+    /// 0, txs Go's `CheckTx` rejected).
+    pub phases: BTreeMap<String, (u64, u64, u64, u64)>,
+    /// `DELIVER_UPGRADE`: the driver's txs by first message type.
+    pub upgrade_built: BTreeMap<String, u64>,
+    /// `DELIVER_UPGRADE`: Go's `CheckTx` rejections by phase, code and log
+    /// (digits dropped).
+    pub upgrade_check: BTreeMap<String, u64>,
+    /// Comet's mempool recheck after a `Commit` (`ReCheckTx` of the txs
+    /// Go's `CheckTx` accepted and no block included), by phase ("switch"
+    /// for the first recheck on the next app version's fresh check
+    /// state): (rechecked, removed: code != 0 or `PostCheckMaxGas`).
+    pub recheck: BTreeMap<String, (u64, u64)>,
+    /// `DELIVER_SIM`: every generated tx simulated on both apps before its
+    /// `CheckTx` (`Service/Simulate`), as signed and as `--gas auto`
+    /// builds it (empty signatures), by first message type: (simulated,
+    /// Go succeeded, gas or code differed).
+    pub sim: BTreeMap<String, (u64, u64, u64)>,
 }
 
 /// A funded account.
 struct Acct {
+    /// The secp256k1 key (of a multisig account: its first single key,
+    /// unused).
     key: keyring::KeyRecord,
     acc: String,
     val: String,
     number: u64,
     seq: u64,
+    /// Address bytes.
+    addr: Vec<u8>,
+    /// The public key packed in an `Any`.
+    pk: Any,
+    /// The key tree of a multisig (`LegacyAminoPubKey`) account.
+    ms: Option<MsKey>,
+}
+
+/// A multisig key tree over the single fuzz accounts (by index).
+#[derive(Clone, Debug)]
+enum MsKey {
+    Single(usize),
+    Multi { threshold: u32, members: Vec<MsKey> },
+}
+
+/// The multisig accounts added after the single ones: 2-of-3, 1-of-2,
+/// nested, 4-of-8 (more sub-keys than `tx_sig_limit`), a repeated sub-key
+/// and 1-of-1.
+fn multisig_trees() -> Vec<MsKey> {
+    use MsKey::{Multi, Single};
+    let m = |threshold, members| Multi { threshold, members };
+    vec![
+        m(2, vec![Single(0), Single(1), Single(2)]),
+        m(1, vec![Single(3), Single(4)]),
+        m(2, vec![Single(5), m(1, vec![Single(3), Single(4)])]),
+        m(4, (0..8).map(Single).collect()),
+        m(2, vec![Single(6), Single(6), Single(7)]),
+        m(1, vec![Single(8)]),
+    ]
+}
+
+fn ms_pubkey(singles: &[Acct], k: &MsKey) -> x_ante::pubkey::PubKey {
+    use x_ante::pubkey::PubKey;
+    match k {
+        MsKey::Single(i) => PubKey::Secp256k1(singles[*i].key.pub_key.to_vec()),
+        MsKey::Multi { threshold, members } => {
+            let keys: Vec<PubKey> = members.iter().map(|m| ms_pubkey(singles, m)).collect();
+            PubKey::Multisig {
+                threshold: *threshold,
+                anys: keys.iter().map(PubKey::to_any).collect(),
+                keys,
+            }
+        }
+    }
+}
+
+/// How one signer's signature is made: a single key in a sign mode
+/// (sometimes corrupted), or a multisig's chosen sub-signatures.
+#[derive(Clone, Debug)]
+enum Plan {
+    Single {
+        acct: usize,
+        mode: SignMode,
+        corrupt: bool,
+    },
+    Multi {
+        subs: Vec<Plan>,
+        /// 0: none, 1: an extra signature, 2: the last one dropped, 3: an
+        /// unknown field in `MultiSignature`.
+        tweak: u8,
+    },
+}
+
+impl Plan {
+    fn uses_amino(&self) -> bool {
+        match self {
+            Self::Single { mode, .. } => *mode == SignMode::LegacyAminoJson,
+            Self::Multi { subs, .. } => subs.iter().any(Self::uses_amino),
+        }
+    }
+}
+
+fn single_mode_info(mode: SignMode) -> ModeInfo {
+    ModeInfo {
+        sum: Some(mode_info::Sum::Single(mode_info::Single {
+            mode: mode as i32,
+        })),
+    }
+}
+
+type BitArray = celestia_proto::cosmos::crypto::multisig::v1beta1::CompactBitArray;
+
+fn bit_array(n: usize, set: &[usize]) -> BitArray {
+    let mut elems = vec![0u8; n.div_ceil(8)];
+    for &i in set {
+        if let Some(b) = elems.get_mut(i / 8) {
+            *b |= 1 << (7 - i % 8);
+        }
+    }
+    BitArray {
+        extra_bits_stored: (n % 8) as u32,
+        elems,
+    }
+}
+
+/// The mode info and signing plan of key tree `k`. With `rng`, the
+/// sub-signers, their modes and the encoding are varied (threshold +/- 1,
+/// bit-array sizes, mode-info counts, nested and mixed modes); without,
+/// the first `threshold` members sign in `mode`.
+fn ms_plan(
+    mut rng: Option<&mut crate::mutate::Rng>,
+    k: &MsKey,
+    mode: SignMode,
+) -> (ModeInfo, Plan) {
+    let other = |m| {
+        if m == SignMode::Direct {
+            SignMode::LegacyAminoJson
+        } else {
+            SignMode::Direct
+        }
+    };
+    match k {
+        MsKey::Single(i) => {
+            let (mode, corrupt) = match rng.as_deref_mut() {
+                Some(r) => (if r.one_in(6) { other(mode) } else { mode }, r.one_in(40)),
+                None => (mode, false),
+            };
+            (
+                single_mode_info(mode),
+                Plan::Single {
+                    acct: *i,
+                    mode,
+                    corrupt,
+                },
+            )
+        }
+        MsKey::Multi { threshold, members } => {
+            let n = members.len();
+            let t = *threshold as usize;
+            let mut set: Vec<usize> = (0..t.min(n)).collect();
+            let mut tweak = 0u8;
+            let mut ba_tweak = 0usize;
+            let mut mi_tweak = 0usize;
+            if let Some(r) = rng.as_deref_mut() {
+                let c = match r.below(10) {
+                    0..=5 => t,
+                    6 => t.saturating_sub(1),
+                    7 => n,
+                    8 => t + 1,
+                    _ => r.below(n + 1),
+                }
+                .min(n);
+                // c distinct indices, in order.
+                let mut all: Vec<usize> = (0..n).collect();
+                for j in (1..n).rev() {
+                    all.swap(j, r.below(j + 1));
+                }
+                set = all[..c].to_vec();
+                set.sort_unstable();
+                tweak = match r.below(40) {
+                    0 => 1,
+                    1 => 2,
+                    2 => 3,
+                    _ => 0,
+                };
+                ba_tweak = if r.below(30) < 5 { 1 + r.below(6) } else { 0 };
+                mi_tweak = match r.below(30) {
+                    0 => 1,
+                    1 => 2,
+                    _ => 0,
+                };
+            }
+            let mut mode_infos = Vec::new();
+            let mut subs = Vec::new();
+            for &j in &set {
+                let (mi, p) = ms_plan(rng.as_deref_mut(), &members[j], mode);
+                mode_infos.push(mi);
+                subs.push(p);
+            }
+            let mut ba = Some(bit_array(n, &set));
+            if let Some(b) = ba.as_mut() {
+                match ba_tweak {
+                    1 => b.extra_bits_stored = ((n + 1) % 8) as u32,
+                    2 => b.elems.push(0xff),
+                    3 => {
+                        b.elems.pop();
+                    }
+                    4 => {
+                        // A bit past the keys (in the last byte's padding).
+                        let pad = n % 8;
+                        if pad != 0
+                            && let Some(last) = b.elems.last_mut()
+                        {
+                            *last |= 1 << (7 - pad);
+                        }
+                    }
+                    5 => b.extra_bits_stored = 9,
+                    _ => {}
+                }
+            }
+            if ba_tweak == 6 {
+                ba = None;
+            }
+            match mi_tweak {
+                1 => {
+                    mode_infos.pop();
+                }
+                2 => mode_infos.push(single_mode_info(mode)),
+                _ => {}
+            }
+            (
+                ModeInfo {
+                    sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                        bitarray: ba,
+                        mode_infos,
+                    })),
+                },
+                Plan::Multi { subs, tweak },
+            )
+        }
+    }
+}
+
+/// The signature bytes of `p` over `direct` (the `SignDoc`) or `amino`
+/// (the amino-JSON sign bytes, when they could be built).
+fn sign_plan(accts: &[Acct], p: &Plan, direct: &[u8], amino: Option<&[u8]>) -> Vec<u8> {
+    match p {
+        Plan::Single {
+            acct,
+            mode,
+            corrupt,
+        } => {
+            let bytes = if *mode == SignMode::LegacyAminoJson {
+                amino
+            } else {
+                Some(direct)
+            };
+            let mut sig = bytes
+                .and_then(|b| accts[*acct].key.sign(b).ok())
+                .map_or_else(|| vec![1u8; 64], |s| s.to_vec());
+            if *corrupt {
+                sig[7] ^= 1;
+            }
+            sig
+        }
+        Plan::Multi { subs, tweak } => {
+            let mut signatures: Vec<Vec<u8>> = subs
+                .iter()
+                .map(|s| sign_plan(accts, s, direct, amino))
+                .collect();
+            match tweak {
+                1 => signatures.push(vec![1u8; 64]),
+                2 => {
+                    signatures.pop();
+                }
+                _ => {}
+            }
+            let mut out =
+                celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature { signatures }
+                    .encode_to_vec();
+            if *tweak == 3 {
+                out.extend_from_slice(&[0x18, 0x01]);
+            }
+            out
+        }
+    }
 }
 
 fn accounts(first_number: u64) -> Vec<Acct> {
-    (0..ACCOUNTS)
+    let singles = (0..ACCOUNTS)
         .map(|i| {
             let mut secret = hash::sha256(format!("fuzz-diff deliver {i}").as_bytes());
             secret[0] &= 0x7f;
@@ -109,14 +463,33 @@ fn accounts(first_number: u64) -> Vec<Acct> {
             let acc = key.bech32("celestia");
             let val = key.bech32("celestiavaloper");
             Acct {
+                addr: key.address().to_vec(),
+                pk: key.pubkey_any(),
                 key,
                 acc,
                 val,
                 number: first_number + i as u64,
                 seq: 0,
+                ms: None,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let mut out = singles;
+    for (j, t) in multisig_trees().into_iter().enumerate() {
+        let pk = ms_pubkey(&out[..ACCOUNTS], &t);
+        let addr = pk.address().unwrap_or_default();
+        out.push(Acct {
+            key: out[0].key.clone(),
+            acc: encoding::bech32::encode("celestia", &addr).unwrap_or_default(),
+            val: encoding::bech32::encode("celestiavaloper", &addr).unwrap_or_default(),
+            number: first_number + (ACCOUNTS + j) as u64,
+            seq: 0,
+            addr,
+            pk: pk.to_any(),
+            ms: Some(t),
+        });
+    }
+    out
 }
 
 fn max_account_number(v: &serde_json::Value, max: &mut u64) {
@@ -170,7 +543,7 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
             if c["denom"] == "utia" {
                 let n: u128 = c["amount"].as_str().unwrap_or("0").parse()?;
                 c["amount"] =
-                    serde_json::Value::String((n + BALANCE * ACCOUNTS as u128).to_string());
+                    serde_json::Value::String((n + BALANCE * accts.len() as u128).to_string());
             }
         }
     }
@@ -477,12 +850,310 @@ struct Gen {
     proposals: Vec<u64>,
     /// (delegator index, validator, creation height) of unbondings.
     unbondings: Vec<(usize, String, i64)>,
+    /// (proposal id, proposer index) of proposals the fuzz accounts made.
+    proposers: Vec<(u64, usize)>,
+    /// Gas Go used for txs that succeeded, by first message type: gas
+    /// limits just below it run out of gas inside the message handlers.
+    gas_seen: BTreeMap<String, u64>,
+    /// Hyperlane objects the fuzz accounts created: (kind, id, owner
+    /// index); kinds [`HL_MAILBOX`], [`HL_ISM`], [`HL_ROUTING_ISM`],
+    /// [`HL_HOOK`], [`HL_IGP`], [`HL_TOKEN`].
+    hl_objects: Vec<(u8, String, usize)>,
+    /// What the fuzz accounts' hyperlane objects are wired to.
+    hl: HlState,
     hex_ids: Vec<String>,
     chain_id: String,
     app_version: u64,
     height: i64,
     /// The `sdk.Msg` types the decoder knows at `app_version`.
     types: Vec<MessageDescriptor>,
+    /// Sign every tx in `SIGN_MODE_LEGACY_AMINO_JSON` ([`amino_sign_seeds`]).
+    force_amino: bool,
+    /// Systematic wire-level mutations (`DELIVER_WIRE`).
+    wire: WireGen,
+}
+
+/// State of `DELIVER_WIRE`: messages get a [`crate::wire`] mutation of
+/// the class used least so far.
+#[derive(Default)]
+struct WireGen {
+    on: bool,
+    /// Mutations applied, by class.
+    counts: BTreeMap<&'static str, u64>,
+    /// Classes applied to the messages of the tx being built.
+    pending: Vec<&'static str>,
+    /// Classes of the generated txs not yet finalized.
+    txs: BTreeMap<Vec<u8>, Vec<&'static str>>,
+}
+
+/// `DELIVER_HL`: the hyperlane success paths in order, one tx per
+/// generated block from a dedicated fuzz account, each step using the ids
+/// the earlier ones returned: a noop ISM, a mailbox on it, an IGP with a
+/// gas config, a merkle tree hook, the mailbox's hooks, a collateral
+/// token with an enrolled router, a transfer out (the IGP charges its
+/// fee), `MsgPayForGas`, `MsgClaim` (fees collected), `MsgProcessMessage`
+/// of a transfer in (the noop ISM verifies it), a synthetic token, a
+/// transfer in minting it and one out burning it; then the transfer /
+/// payment / claim / process steps repeat. Steps 16 and 17 (first pass,
+/// app version 10) propose a `MsgCreateNativeSyntheticToken` (gov-only)
+/// and have every fuzz account vote yes.
+#[derive(Default)]
+struct HlSeq {
+    on: bool,
+    step: usize,
+    tries: usize,
+    /// The tx of the current step, until it is finalized.
+    pending: Option<Vec<u8>>,
+    noop: String,
+    mailbox: String,
+    igp: String,
+    hook: String,
+    token: String,
+    synth: String,
+    message_id: String,
+    nonce: u32,
+    /// The fuzz accounts delegated for step 16 vote.
+    delegated: bool,
+    /// App version 10 (step 16 needs `MsgCreateNativeSyntheticToken`).
+    v10: bool,
+    /// The proposal of step 16 (`MsgCreateNativeSyntheticToken`).
+    proposal: u64,
+    /// Go's result of each step: (step, type URL, code, log).
+    results: Vec<String>,
+}
+
+/// The fuzz account `DELIVER_HL` signs with (the IBC relayer is the last).
+const HL_ACCT: usize = ACCOUNTS - 2;
+/// `DELIVER_HL`'s mailbox domain and its remote domain.
+const HL_LOCAL: u32 = 77;
+const HL_REMOTE: u32 = 88;
+/// `DELIVER_HL`'s enrolled remote router (the sender of incoming messages).
+const HL_ROUTER: &str = "0x00000000000000000000000000000000000000000000000000000000000ab0c0";
+
+impl HlSeq {
+    const LAST: usize = 17;
+    const REPEAT_FROM: usize = 8;
+
+    fn msg(&mut self, gn: &Gen) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = gn.accts[HL_ACCT].acc.clone();
+        let utia = |n: u64| Coin {
+            denom: "utia".into(),
+            amount: n.to_string(),
+        };
+        let router = |token: &str| warp::MsgEnrollRemoteRouter {
+            owner: me.clone(),
+            token_id: token.to_owned(),
+            remote_router: Some(warp::RemoteRouter {
+                receiver_domain: HL_REMOTE,
+                receiver_contract: HL_ROUTER.into(),
+                gas: "50000".into(),
+            }),
+        };
+        let transfer = |token: &str, amount: u64| warp::MsgRemoteTransfer {
+            sender: me.clone(),
+            token_id: token.to_owned(),
+            destination_domain: HL_REMOTE,
+            recipient: format!("0x{}", "11".repeat(32)),
+            amount: amount.to_string(),
+            custom_hook_id: String::new(),
+            gas_limit: "0".into(),
+            max_fee: Some(utia(10_000_000)),
+            custom_hook_metadata: String::new(),
+        };
+        match self.step {
+            0 => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+            1 => Any::pack(&core::MsgCreateMailbox {
+                owner: me,
+                local_domain: HL_LOCAL,
+                default_ism: self.noop.clone(),
+                default_hook: String::new(),
+                required_hook: String::new(),
+            }),
+            2 => Any::pack(&pd::MsgCreateIgp {
+                owner: me,
+                denom: "utia".into(),
+            }),
+            3 => Any::pack(&pd::MsgSetDestinationGasConfig {
+                owner: me,
+                igp_id: self.igp.clone(),
+                destination_gas_config: Some(pd::DestinationGasConfig {
+                    remote_domain: HL_REMOTE,
+                    gas_oracle: Some(pd::GasOracle {
+                        token_exchange_rate: "10000000000".into(),
+                        gas_price: "1".into(),
+                    }),
+                    gas_overhead: "1000".into(),
+                }),
+            }),
+            4 => Any::pack(&pd::MsgCreateMerkleTreeHook {
+                owner: me,
+                mailbox_id: self.mailbox.clone(),
+            }),
+            5 => Any::pack(&core::MsgSetMailbox {
+                owner: me,
+                mailbox_id: self.mailbox.clone(),
+                default_ism: String::new(),
+                default_hook: self.igp.clone(),
+                required_hook: self.hook.clone(),
+                new_owner: String::new(),
+                renounce_ownership: false,
+            }),
+            6 => Any::pack(&warp::MsgCreateCollateralToken {
+                owner: me,
+                origin_mailbox: self.mailbox.clone(),
+                origin_denom: "utia".into(),
+            }),
+            7 => Any::pack(&router(&self.token)),
+            8 => Any::pack(&transfer(&self.token, 5000)),
+            9 => Any::pack(&pd::MsgPayForGas {
+                sender: me,
+                igp_id: self.igp.clone(),
+                message_id: self.message_id.clone(),
+                destination_domain: HL_REMOTE,
+                gas_limit: "10000".into(),
+                amount: Some(utia(100_000)),
+            }),
+            10 => Any::pack(&pd::MsgClaim {
+                sender: me,
+                igp_id: self.igp.clone(),
+            }),
+            11 | 14 => {
+                let token = if self.step == 11 {
+                    self.token.clone()
+                } else {
+                    self.synth.clone()
+                };
+                self.nonce += 1;
+                let hex32 = |s: &str| {
+                    let b = hex::decode(s.trim_start_matches("0x")).unwrap_or_default();
+                    let mut out = [0u8; 32];
+                    let n = b.len().min(32);
+                    out[32 - n..].copy_from_slice(&b[b.len() - n..]);
+                    out
+                };
+                let mut m = vec![3u8];
+                m.extend_from_slice(&self.nonce.to_be_bytes());
+                m.extend_from_slice(&HL_REMOTE.to_be_bytes());
+                m.extend_from_slice(&hex32(HL_ROUTER));
+                m.extend_from_slice(&HL_LOCAL.to_be_bytes());
+                m.extend_from_slice(&hex32(&token));
+                let mut rcpt = [0u8; 32];
+                rcpt[12..].copy_from_slice(&gn.accts[HL_ACCT].addr[..20]);
+                m.extend_from_slice(&rcpt);
+                let mut amount = [0u8; 32];
+                amount[24..].copy_from_slice(&1000u64.to_be_bytes());
+                m.extend_from_slice(&amount);
+                Any::pack(&core::MsgProcessMessage {
+                    mailbox_id: self.mailbox.clone(),
+                    relayer: me,
+                    metadata: String::new(),
+                    message: format!("0x{}", hex::encode(m)),
+                })
+            }
+            12 => Any::pack(&warp::MsgCreateSyntheticToken {
+                owner: me,
+                origin_mailbox: self.mailbox.clone(),
+            }),
+            13 => Any::pack(&router(&self.synth)),
+            15 => Any::pack(&transfer(&self.synth, 500)),
+            16 => Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+                messages: vec![Any::pack(&warp::MsgCreateNativeSyntheticToken {
+                    owner: GOV.into(),
+                    origin_mailbox: self.mailbox.clone(),
+                    origin_denom: format!("native{}", self.nonce),
+                })],
+                initial_deposit: vec![utia(100_000_000_000)],
+                proposer: me,
+                metadata: String::new(),
+                title: "native".into(),
+                summary: "native".into(),
+                expedited: false,
+            }),
+            _ => Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                proposal_id: self.proposal,
+                voter: me,
+                option: 1,
+                metadata: String::new(),
+            }),
+        }
+    }
+
+    /// Records Go's result of the step's tx and moves on (a failed step is
+    /// retried twice, then skipped).
+    fn result(&mut self, type_url: &str, res: &abci::ExecTxResult) {
+        self.results.push(format!(
+            "step {} {type_url} code {}/{} gas {}: {}",
+            self.step,
+            res.codespace,
+            res.code,
+            res.gas_used,
+            gostr::to_go_bytes(&res.log)
+                .escape_ascii()
+                .to_string()
+                .chars()
+                .take(160)
+                .collect::<String>()
+        ));
+        self.pending = None;
+        // The delegations went into the same block as the step's tx.
+        self.delegated |= self.step == 16;
+        if res.code != 0 {
+            self.tries += 1;
+            if self.tries < 3 {
+                return;
+            }
+        }
+        if res.code == 0 {
+            let id =
+                celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(res.data.as_slice())
+                    .ok()
+                    .and_then(|d| d.msg_responses.into_iter().next())
+                    .and_then(|r| {
+                        parse_fields(&r.value)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .find(|f| f.num == 1 && f.wt == 2)
+                            .map(|f| String::from_utf8_lossy(&f.val).into_owned())
+                    })
+                    .unwrap_or_default();
+            match self.step {
+                0 => self.noop = id,
+                1 => self.mailbox = id,
+                2 => self.igp = id,
+                4 => self.hook = id,
+                6 => self.token = id,
+                8 | 15 => self.message_id = id,
+                12 => self.synth = id,
+                16 => {
+                    // `MsgSubmitProposalResponse.proposal_id` (varint 1).
+                    self.proposal = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(
+                        res.data.as_slice(),
+                    )
+                    .ok()
+                    .and_then(|d| d.msg_responses.into_iter().next())
+                    .and_then(|r| {
+                        celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse::decode(
+                            r.value.as_slice(),
+                        )
+                        .ok()
+                    })
+                    .map_or(0, |r| r.proposal_id);
+                }
+                _ => {}
+            }
+        }
+        self.tries = 0;
+        self.step =
+            if self.step >= Self::LAST || (self.step == 15 && (self.proposal != 0 || !self.v10)) {
+                Self::REPEAT_FROM
+            } else {
+                self.step + 1
+            };
+    }
 }
 
 /// A generated, signed tx.
@@ -495,8 +1166,13 @@ impl Gen {
         (!v.is_empty()).then(|| v[self.m.rng.below(v.len())].clone())
     }
 
+    /// A fuzz account: mostly a single-key one, sometimes a multisig.
     fn acct_idx(&mut self) -> usize {
-        self.m.rng.below(self.accts.len())
+        if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
+            self.m.rng.below(ACCOUNTS)
+        } else {
+            self.m.rng.below(self.accts.len())
+        }
     }
 
     fn address_value(&mut self) -> Vec<u8> {
@@ -1050,7 +1726,9 @@ impl Gen {
         let vals = self.validators.clone();
         let val = self.pick(&vals).unwrap_or_default();
         let val2 = self.pick(&vals).unwrap_or_default();
-        match self.m.rng.below(22) {
+        match self.m.rng.below(30) {
+            22..=26 => self.flow2(i),
+            27..=29 => self.flow_hyperlane(i),
             0 => Any::pack(&bank::MsgSend {
                 from_address: me,
                 to_address: other,
@@ -1305,6 +1983,10 @@ impl Gen {
                 let gw = Self::gov_who();
                 let mut msgs = Vec::new();
                 for _ in 0..n {
+                    if self.m.rng.one_in(3) {
+                        msgs.push(self.valid_gov_msg());
+                        continue;
+                    }
                     if t.is_empty() {
                         break;
                     }
@@ -1330,6 +2012,677 @@ impl Gen {
             _ => Any::pack(&celestia_proto::cosmos::slashing::v1beta1::MsgUnjail {
                 validator_addr: self.accts[i].val.clone(),
             }),
+        }
+    }
+
+    /// A gov-authority message Go executes when the proposal passes:
+    /// `MsgExecLegacyContent` of a text proposal, staking `MsgUpdateParams`
+    /// within celestia's parameter filter (sometimes outside it).
+    fn valid_gov_msg(&mut self) -> Any {
+        use celestia_proto::cosmos::gov::v1 as gov;
+        use celestia_proto::cosmos::gov::v1beta1 as gov1b;
+        use celestia_proto::cosmos::staking::v1beta1 as staking;
+        let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+        if self.app_version >= 10 && !mailboxes.is_empty() && self.m.rng.one_in(3) {
+            // Gov-only (`owner` is the authority): a native synthetic token
+            // on a mailbox the fuzz accounts created, for a new denom (or
+            // one with a supply).
+            let origin_denom = match self.m.rng.below(4) {
+                0 => "utia".into(),
+                1 => String::new(),
+                _ => format!("native{}", self.m.rng.below(1_000_000)),
+            };
+            return Any::pack(
+                &celestia_proto::hyperlane::warp::v1::MsgCreateNativeSyntheticToken {
+                    owner: GOV.into(),
+                    origin_mailbox: self.pick(&mailboxes).unwrap_or_default(),
+                    origin_denom,
+                },
+            );
+        }
+        if self.m.rng.one_in(2) {
+            let content = Any::pack(&gov1b::TextProposal {
+                title: "t".into(),
+                description: "d".into(),
+            });
+            return Any::pack(&gov::MsgExecLegacyContent {
+                content: Some(content),
+                authority: if self.m.rng.one_in(8) {
+                    self.accts[0].acc.clone()
+                } else {
+                    GOV.into()
+                },
+            });
+        }
+        let unbonding = if self.m.rng.one_in(6) {
+            3600
+        } else {
+            337 * 3600
+        };
+        Any::pack(&staking::MsgUpdateParams {
+            authority: GOV.into(),
+            params: Some(staking::Params {
+                unbonding_time: Some(pbjson_types::Duration {
+                    seconds: unbonding,
+                    nanos: 0,
+                }),
+                max_validators: [100, 100, 3, 0][self.m.rng.below(4)],
+                max_entries: 1 + self.m.rng.below(10) as u32,
+                historical_entries: self.m.rng.below(10_001) as u32,
+                bond_denom: if self.m.rng.one_in(8) {
+                    "uatom".into()
+                } else {
+                    "utia".into()
+                },
+                min_commission_rate: ["50000000000000000", "0", "1000000000000000000"]
+                    [self.m.rng.below(3)]
+                .into(),
+            }),
+        })
+    }
+
+    /// A hyperlane object of `kind` owned by account `i` (mostly), else any
+    /// object of that kind, else a random id.
+    fn hl_object(&mut self, kind: u8, i: usize) -> String {
+        let anyone = self.m.rng.one_in(8);
+        let own: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == kind && (o.2 == i || anyone))
+            .map(|o| o.1.clone())
+            .collect();
+        if let Some(id) = self.pick(&own) {
+            return id;
+        }
+        let any: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == kind)
+            .map(|o| o.1.clone())
+            .collect();
+        self.pick(&any).unwrap_or_else(|| self.hex_id())
+    }
+
+    /// A create message for a hyperlane object of `kind` owned by account
+    /// `i` (or for what it needs first: an ISM for a mailbox, a mailbox for
+    /// a token).
+    fn hl_create(&mut self, kind: u8, i: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = self.accts[i].acc.clone();
+        let isms: Vec<String> = self
+            .hl_objects
+            .iter()
+            .filter(|o| o.0 == HL_ISM)
+            .map(|o| o.1.clone())
+            .collect();
+        let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+        match kind {
+            HL_ROUTING_ISM => Any::pack(&ism::MsgCreateRoutingIsm {
+                creator: me,
+                routes: Vec::new(),
+            }),
+            HL_IGP => Any::pack(&pd::MsgCreateIgp {
+                owner: me,
+                denom: "utia".into(),
+            }),
+            HL_HOOK => Any::pack(&pd::MsgCreateNoopHook { owner: me }),
+            HL_MAILBOX if !isms.is_empty() => Any::pack(&core::MsgCreateMailbox {
+                owner: me,
+                local_domain: 1 + self.m.rng.below(5) as u32,
+                default_ism: self.pick(&isms).unwrap_or_default(),
+                default_hook: String::new(),
+                required_hook: String::new(),
+            }),
+            HL_TOKEN if !mailboxes.is_empty() => {
+                let origin_mailbox = self.pick(&mailboxes).unwrap_or_default();
+                if self.m.rng.one_in(2) {
+                    Any::pack(&warp::MsgCreateCollateralToken {
+                        owner: me,
+                        origin_mailbox,
+                        origin_denom: "utia".into(),
+                    })
+                } else {
+                    Any::pack(&warp::MsgCreateSyntheticToken {
+                        owner: me,
+                        origin_mailbox,
+                    })
+                }
+            }
+            HL_TOKEN => self.hl_create(HL_MAILBOX, i),
+            _ => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+        }
+    }
+
+    /// A random 32-byte hyperlane id (`0x` + 64 hex digits).
+    fn hex_id(&mut self) -> String {
+        let mut b = [0u8; 32];
+        for x in &mut b {
+            *x = self.m.rng.next_u64() as u8;
+        }
+        format!("0x{}", hex::encode(b))
+    }
+
+    /// Hyperlane owner operations on objects the fuzz accounts created (the
+    /// owner signs, mostly): routing ISM domains and owner, IGP gas
+    /// configs, owner and claims, mailbox settings, warp token settings and
+    /// remote routers, multisig ISMs with sorted validator sets.
+    fn flow_hyperlane(&mut self, i: usize) -> Any {
+        let op = self.m.rng.below(19);
+        self.flow_hyperlane_op(i, op)
+    }
+
+    /// An owner operation on a hyperlane object a fuzz account owns, signed
+    /// by that account (sent unmutated: the success paths).
+    fn hl_owner_msg(&mut self) -> Option<Any> {
+        let cands: Vec<(u8, usize)> = self
+            .hl_objects
+            .iter()
+            .filter(|o| matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN))
+            .map(|o| (o.0, o.2))
+            .collect();
+        let (kind, i) = self.pick(&cands)?;
+        let ops: &[usize] = match kind {
+            HL_ROUTING_ISM => &[0, 1, 2],
+            HL_IGP => &[3, 4, 5],
+            HL_MAILBOX => &[6],
+            _ => &[7, 8, 9, 10],
+        };
+        let op = ops[self.m.rng.below(ops.len())];
+        Some(self.flow_hyperlane_op(i, op))
+    }
+
+    /// Hyperlane flow `op` (see [`Self::flow_hyperlane`]) signed by `i`.
+    #[allow(clippy::too_many_lines)]
+    fn flow_hyperlane_op(&mut self, i: usize, op: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        use celestia_proto::hyperlane::core::v1 as core;
+        use celestia_proto::hyperlane::warp::v1 as warp;
+        let me = self.accts[i].acc.clone();
+        let n = self.accts.len();
+        let other = self.accts[(i + 1) % n].acc.clone();
+        let domain = 1 + self.m.rng.below(5) as u32;
+        let empty_or =
+            |s: String, rng: &mut crate::mutate::Rng| if rng.one_in(4) { String::new() } else { s };
+        // The object an owner operation targets: one the signer owns, else
+        // (mostly) a create message for one first.
+        let target = match op {
+            0..=2 => Some(HL_ROUTING_ISM),
+            3..=5 => Some(HL_IGP),
+            6 => Some(HL_MAILBOX),
+            7..=10 => Some(HL_TOKEN),
+            _ => None,
+        };
+        if let Some(kind) = target
+            && !self.hl_objects.iter().any(|o| o.0 == kind && o.2 == i)
+            && !self.m.rng.one_in(8)
+        {
+            return self.hl_create(kind, i);
+        }
+        match op {
+            13..=15 => {
+                if let Some(m) = self.hl_process(i) {
+                    return m;
+                }
+                Any::pack(&pd::MsgClaim {
+                    sender: me,
+                    igp_id: self.hl_object(HL_IGP, i),
+                })
+            }
+            16 => {
+                if let Some(m) = self.hl_pay_for_gas(i) {
+                    return m;
+                }
+                Any::pack(&pd::MsgClaim {
+                    sender: me,
+                    igp_id: self.hl_object(HL_IGP, i),
+                })
+            }
+            17 => self.hl_announce(i),
+            18 => {
+                // A mailbox whose default ISM verifies everything, and a
+                // synthetic token on it: what `MsgProcessMessage` needs to
+                // succeed (with a remote router enrolled).
+                let noop: Vec<String> = self.hl.noop_isms.iter().cloned().collect();
+                let mailboxes: Vec<String> = self.hl.mailbox_domain.keys().cloned().collect();
+                match self.m.rng.below(3) {
+                    0 if !noop.is_empty() => Any::pack(&core::MsgCreateMailbox {
+                        owner: me,
+                        local_domain: 1 + self.m.rng.below(5) as u32,
+                        default_ism: self.pick(&noop).unwrap_or_default(),
+                        default_hook: String::new(),
+                        required_hook: String::new(),
+                    }),
+                    1 if !mailboxes.is_empty() => Any::pack(&warp::MsgCreateSyntheticToken {
+                        owner: me,
+                        origin_mailbox: self.pick(&mailboxes).unwrap_or_default(),
+                    }),
+                    _ => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+                }
+            }
+            0 => {
+                let ism_id = self.hl_object(HL_ROUTING_ISM, i);
+                let target = self.hl_object(HL_ISM, i);
+                Any::pack(&ism::MsgSetRoutingIsmDomain {
+                    ism_id,
+                    route: Some(ism::Route {
+                        ism: target,
+                        domain,
+                    }),
+                    owner: me,
+                })
+            }
+            1 => Any::pack(&ism::MsgRemoveRoutingIsmDomain {
+                ism_id: self.hl_object(HL_ROUTING_ISM, i),
+                domain,
+                owner: me,
+            }),
+            2 => Any::pack(&ism::MsgUpdateRoutingIsmOwner {
+                ism_id: self.hl_object(HL_ROUTING_ISM, i),
+                owner: me,
+                new_owner: if self.m.rng.one_in(3) {
+                    String::new()
+                } else {
+                    other
+                },
+                renounce_ownership: self.m.rng.one_in(6),
+            }),
+            3 => Any::pack(&pd::MsgSetDestinationGasConfig {
+                owner: me,
+                igp_id: self.hl_object(HL_IGP, i),
+                destination_gas_config: Some(pd::DestinationGasConfig {
+                    remote_domain: domain,
+                    gas_oracle: Some(pd::GasOracle {
+                        token_exchange_rate: (1 + self.m.rng.below(10_000_000_000)).to_string(),
+                        gas_price: (1 + self.m.rng.below(1000)).to_string(),
+                    }),
+                    gas_overhead: (self.m.rng.below(300_000)).to_string(),
+                }),
+            }),
+            4 => Any::pack(&pd::MsgSetIgpOwner {
+                owner: me,
+                igp_id: self.hl_object(HL_IGP, i),
+                new_owner: if self.m.rng.one_in(3) {
+                    String::new()
+                } else {
+                    other
+                },
+                renounce_ownership: self.m.rng.one_in(6),
+            }),
+            5 => Any::pack(&pd::MsgClaim {
+                sender: me,
+                igp_id: self.hl_object(HL_IGP, i),
+            }),
+            6 => {
+                let mailbox_id = self.hl_object(HL_MAILBOX, i);
+                let default_ism = self.hl_object(HL_ISM, i);
+                let default_hook = self.hl_object(HL_HOOK, i);
+                let kind = if self.m.rng.one_in(2) {
+                    HL_IGP
+                } else {
+                    HL_HOOK
+                };
+                let required_hook = self.hl_object(kind, i);
+                let rng = &mut self.m.rng;
+                Any::pack(&core::MsgSetMailbox {
+                    owner: me,
+                    mailbox_id,
+                    default_ism: empty_or(default_ism, rng),
+                    default_hook: empty_or(default_hook, rng),
+                    required_hook: empty_or(required_hook, rng),
+                    new_owner: if rng.one_in(3) { other } else { String::new() },
+                    renounce_ownership: rng.one_in(8),
+                })
+            }
+            7 => {
+                let token_id = self.hl_object(HL_TOKEN, i);
+                let ism_id = self.hl_object(HL_ISM, i);
+                let rng = &mut self.m.rng;
+                Any::pack(&warp::MsgSetToken {
+                    owner: me,
+                    token_id,
+                    new_owner: if rng.one_in(3) { other } else { String::new() },
+                    ism_id: empty_or(ism_id, rng),
+                    renounce_ownership: rng.one_in(8),
+                })
+            }
+            8 | 9 => {
+                let token_id = self.hl_object(HL_TOKEN, i);
+                let receiver_contract = self.hex_id();
+                Any::pack(&warp::MsgEnrollRemoteRouter {
+                    owner: me,
+                    token_id,
+                    remote_router: Some(warp::RemoteRouter {
+                        receiver_domain: domain,
+                        receiver_contract,
+                        gas: (self.m.rng.below(500_000)).to_string(),
+                    }),
+                })
+            }
+            10 => Any::pack(&warp::MsgUnrollRemoteRouter {
+                owner: me,
+                token_id: self.hl_object(HL_TOKEN, i),
+                receiver_domain: domain,
+            }),
+            _ => {
+                let k = 1 + self.m.rng.below(5);
+                let mut vals: Vec<String> = (0..k)
+                    .map(|_| {
+                        let mut b = [0u8; 20];
+                        for x in &mut b {
+                            *x = self.m.rng.next_u64() as u8;
+                        }
+                        format!("0x{}", hex::encode(b))
+                    })
+                    .collect();
+                if !self.m.rng.one_in(5) {
+                    vals.sort();
+                }
+                let threshold = self.m.rng.below(k + 2) as u32;
+                if self.m.rng.one_in(2) {
+                    Any::pack(&ism::MsgCreateMerkleRootMultisigIsm {
+                        creator: me,
+                        validators: vals,
+                        threshold,
+                    })
+                } else {
+                    Any::pack(&ism::MsgCreateMessageIdMultisigIsm {
+                        creator: me,
+                        validators: vals,
+                        threshold,
+                    })
+                }
+            }
+        }
+    }
+
+    /// `MsgProcessMessage` of a warp transfer to a token the fuzz accounts
+    /// created, from one of its enrolled routers (sometimes with a field
+    /// off: version, destination, sender, body).
+    fn hl_process(&mut self, i: usize) -> Option<Any> {
+        use celestia_proto::hyperlane::core::v1 as core;
+        let routers = self.hl.routers.clone();
+        let (token, origin, sender) = self.pick(&routers)?;
+        let mailbox = self.hl.token_mailbox.get(&token)?.clone();
+        let domain = *self.hl.mailbox_domain.get(&mailbox)?;
+        let hex32 = |s: &str| {
+            let b = hex::decode(s.trim_start_matches("0x")).unwrap_or_default();
+            let mut out = [0u8; 32];
+            let n = b.len().min(32);
+            out[32 - n..].copy_from_slice(&b[b.len() - n..]);
+            out
+        };
+        let mut msg = Vec::new();
+        let version = if self.m.rng.one_in(12) { 1 } else { 3 };
+        msg.push(version);
+        msg.extend_from_slice(&(self.m.rng.next_u64() as u32).to_be_bytes());
+        msg.extend_from_slice(&origin.to_be_bytes());
+        let mut snd = hex32(&sender);
+        if self.m.rng.one_in(12) {
+            snd[31] ^= 1;
+        }
+        msg.extend_from_slice(&snd);
+        let dest = if self.m.rng.one_in(12) {
+            domain.wrapping_add(1)
+        } else {
+            domain
+        };
+        msg.extend_from_slice(&dest.to_be_bytes());
+        msg.extend_from_slice(&hex32(&token));
+        // Warp body: recipient (32 bytes) and amount (uint256).
+        let mut rcpt = [0u8; 32];
+        let k = self.acct_idx();
+        let addr = self.accts[k].addr.clone();
+        if self.m.rng.one_in(6) {
+            for b in &mut rcpt {
+                *b = self.m.rng.next_u64() as u8;
+            }
+        } else {
+            let n = addr.len().min(20);
+            rcpt[12..12 + n].copy_from_slice(&addr[..n]);
+        }
+        msg.extend_from_slice(&rcpt);
+        let mut amount = [0u8; 32];
+        let a: u128 = match self.m.rng.below(6) {
+            0 => 0,
+            1 => u128::MAX,
+            _ => 1 + self.m.rng.below(10_000_000) as u128,
+        };
+        amount[16..].copy_from_slice(&a.to_be_bytes());
+        if self.m.rng.one_in(10) {
+            amount[0] = 0xff;
+        }
+        msg.extend_from_slice(&amount);
+        if self.m.rng.one_in(10) {
+            let cut = 1 + self.m.rng.below(40);
+            msg.truncate(msg.len() - cut);
+        }
+        let mailbox_id = if self.m.rng.one_in(12) {
+            self.hl_object(HL_MAILBOX, i)
+        } else {
+            mailbox
+        };
+        Some(Any::pack(&core::MsgProcessMessage {
+            mailbox_id,
+            relayer: self.accts[i].acc.clone(),
+            metadata: if self.m.rng.one_in(10) {
+                "0xzz".into()
+            } else {
+                String::new()
+            },
+            message: format!("0x{}", hex::encode(msg)),
+        }))
+    }
+
+    /// `MsgPayForGas` to an IGP with a gas config for the domain, in its
+    /// denom (sometimes another one or zero).
+    fn hl_pay_for_gas(&mut self, i: usize) -> Option<Any> {
+        use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+        let configs = self.hl.igp_domains.clone();
+        let (igp, domain) = self.pick(&configs)?;
+        let denom = self.hl.igp_denom.get(&igp).cloned().unwrap_or_default();
+        let ids = self.hl.message_ids.clone();
+        let message_id = self.pick(&ids).unwrap_or_else(|| self.hex_id());
+        let destination_domain = if self.m.rng.one_in(8) {
+            domain.wrapping_add(7)
+        } else {
+            domain
+        };
+        let denom = if self.m.rng.one_in(8) {
+            "uatom".into()
+        } else {
+            denom
+        };
+        Some(Any::pack(&pd::MsgPayForGas {
+            sender: self.accts[i].acc.clone(),
+            igp_id: igp,
+            message_id,
+            destination_domain,
+            gas_limit: (self.m.rng.below(2_000_000)).to_string(),
+            amount: Some(Coin {
+                denom,
+                amount: (self.m.rng.below(100_000)).to_string(),
+            }),
+        }))
+    }
+
+    /// `MsgAnnounceValidator` signed with an Ethereum key from a small set
+    /// for a mailbox the fuzz accounts created (sometimes a location
+    /// announced before, a wrong validator or a corrupted signature).
+    fn hl_announce(&mut self, i: usize) -> Any {
+        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
+        let mailboxes: Vec<(String, u32)> = self
+            .hl
+            .mailbox_domain
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        let (mailbox, domain) = match self.pick(&mailboxes) {
+            Some(m) => m,
+            None => (self.hex_id(), 1),
+        };
+        let mut secret = [0u8; 32];
+        secret[31] = 1 + self.m.rng.below(4) as u8;
+        let Ok(sk) = k256::ecdsa::SigningKey::from_slice(&secret) else {
+            return Any::default();
+        };
+        let point = sk.verifying_key().to_encoded_point(false);
+        let h = x_hyperlane::util::keccak256(&[&point.as_bytes()[1..]]);
+        let mut validator = h[12..].to_vec();
+        let location = format!("s3://bucket/{}", self.m.rng.below(4));
+        let mbox = hex::decode(mailbox.trim_start_matches("0x")).unwrap_or_default();
+        let digest = x_hyperlane::ism::announcement_digest(&location, domain, &mbox);
+        let hash = x_hyperlane::util::eth_signing_hash(&digest);
+        let mut sig = match sk.sign_prehash_recoverable(&hash) {
+            Ok((s, rid)) => {
+                let mut v = s.to_bytes().to_vec();
+                v.push(27 + rid.to_byte());
+                v
+            }
+            Err(_) => vec![0u8; 65],
+        };
+        if self.m.rng.one_in(10) {
+            sig[3] ^= 1;
+        }
+        if self.m.rng.one_in(10) {
+            validator[0] ^= 1;
+        }
+        Any::pack(&ism::MsgAnnounceValidator {
+            validator: format!("0x{}", hex::encode(validator)),
+            storage_location: location,
+            signature: format!("0x{}", hex::encode(sig)),
+            mailbox_id: mailbox,
+            creator: self.accts[i].acc.clone(),
+        })
+    }
+
+    /// A random account address (no account yet).
+    fn fresh_addr(&mut self) -> String {
+        let mut a = [0u8; 20];
+        for b in &mut a {
+            *b = self.m.rng.next_u64() as u8;
+        }
+        encoding::bech32::encode("celestia", &a).unwrap_or_default()
+    }
+
+    /// More state-building flows: legacy (`v1beta1`) gov, proposal
+    /// cancellation by its proposer, vesting accounts for fresh addresses,
+    /// ICS-20 transfers.
+    fn flow2(&mut self, i: usize) -> Any {
+        use celestia_proto::cosmos::gov::v1 as gov;
+        use celestia_proto::cosmos::gov::v1beta1 as gov1b;
+        use celestia_proto::cosmos::vesting::v1beta1 as vesting;
+        let me = self.accts[i].acc.clone();
+        let p = self.proposals.clone();
+        let id = self.pick(&p).unwrap_or(1);
+        // A rough block time for absolute times (vesting starts and ends).
+        let now = 1_700_000_000 + self.height * 6;
+        let to = self.fresh_addr();
+        let utia = |n: u64| Coin {
+            denom: "utia".into(),
+            amount: n.to_string(),
+        };
+        match self.m.rng.below(9) {
+            0 => Any::pack(&gov1b::MsgVote {
+                proposal_id: id,
+                voter: me,
+                option: 1 + self.m.rng.below(4) as i32,
+            }),
+            1 => Any::pack(&gov1b::MsgVoteWeighted {
+                proposal_id: id,
+                voter: me,
+                options: vec![
+                    gov1b::WeightedVoteOption {
+                        option: 1,
+                        weight: "700000000000000000".into(),
+                    },
+                    gov1b::WeightedVoteOption {
+                        option: 2 + self.m.rng.below(3) as i32,
+                        weight: "300000000000000000".into(),
+                    },
+                ],
+            }),
+            2 => Any::pack(&gov1b::MsgDeposit {
+                proposal_id: id,
+                depositor: me,
+                amount: vec![utia(1_000_000_000)],
+            }),
+            3 => Any::pack(&gov1b::MsgSubmitProposal {
+                content: Some(Any::pack(&gov1b::TextProposal {
+                    title: "fuzz".into(),
+                    description: "fuzz text proposal".into(),
+                })),
+                initial_deposit: vec![utia(100_000_000_000)],
+                proposer: me,
+            }),
+            4 => {
+                let own: Vec<u64> = self
+                    .proposers
+                    .iter()
+                    .filter(|(_, k)| *k == i)
+                    .map(|(id, _)| *id)
+                    .collect();
+                Any::pack(&gov::MsgCancelProposal {
+                    proposal_id: self.pick(&own).unwrap_or(id),
+                    proposer: me,
+                })
+            }
+            5 => {
+                // Mostly 0 < start < end (start in the past or future).
+                let start = if self.m.rng.one_in(10) {
+                    0
+                } else {
+                    now + self.m.rng.below(2_000) as i64 - 1_500
+                };
+                let end = if self.m.rng.one_in(10) {
+                    start
+                } else {
+                    start + 1 + self.m.rng.below(10_000) as i64
+                };
+                Any::pack(&vesting::MsgCreateVestingAccount {
+                    from_address: me,
+                    to_address: to,
+                    amount: vec![utia(1 + self.m.rng.below(1_000_000) as u64)],
+                    end_time: end,
+                    delayed: self.m.rng.one_in(2),
+                    start_time: start,
+                })
+            }
+            6 => {
+                let n = 1 + self.m.rng.below(4);
+                let periods = (0..n)
+                    .map(|_| vesting::Period {
+                        length: 1 + self.m.rng.below(3_000) as i64,
+                        amount: vec![utia(1 + self.m.rng.below(100_000) as u64)],
+                    })
+                    .collect();
+                Any::pack(&vesting::MsgCreatePeriodicVestingAccount {
+                    from_address: me,
+                    to_address: to,
+                    start_time: now + self.m.rng.below(1_000) as i64 - 500,
+                    vesting_periods: periods,
+                })
+            }
+            7 => Any::pack(&vesting::MsgCreatePermanentLockedAccount {
+                from_address: me,
+                to_address: to,
+                amount: vec![utia(1 + self.m.rng.below(1_000_000) as u64)],
+            }),
+            _ => Any::pack(
+                &celestia_proto::ibc::applications::transfer::v1::MsgTransfer {
+                    source_port: "transfer".into(),
+                    source_channel: "channel-0".into(),
+                    token: Some(utia(1 + self.m.rng.below(1_000_000) as u64)),
+                    sender: me,
+                    receiver: self.fresh_addr(),
+                    timeout_height: None,
+                    timeout_timestamp: 4_000_000_000_000_000_000,
+                    memo: String::new(),
+                },
+            ),
         }
     }
 
@@ -1359,6 +2712,9 @@ impl Gen {
             }
             _ => self.flow(i),
         };
+        if self.wire.on && !self.m.rng.one_in(4) {
+            return self.wire_mutate(base);
+        }
         let Some(md) = desc_for_type_url(base.type_url.as_bytes()) else {
             return base;
         };
@@ -1375,6 +2731,35 @@ impl Gen {
         }
     }
 
+    /// `base` with one [`crate::wire`] mutation, of the class applied
+    /// least so far among those `base` has.
+    fn wire_mutate(&mut self, base: Any) -> Any {
+        let name = base.type_url.rsplit('/').next().unwrap_or_default();
+        let muts = crate::wire::enumerate(name, &base.value);
+        let Some(min) = muts
+            .iter()
+            .map(|m| self.wire.counts.get(m.class).copied().unwrap_or(0))
+            .min()
+        else {
+            return base;
+        };
+        let pick: Vec<&crate::wire::Mutation> = muts
+            .iter()
+            .filter(|m| self.wire.counts.get(m.class).copied().unwrap_or(0) == min)
+            .collect();
+        let classes: BTreeSet<&'static str> = pick.iter().map(|m| m.class).collect();
+        let classes: Vec<&'static str> = classes.into_iter().collect();
+        let class = classes[self.m.rng.below(classes.len())];
+        let pick: Vec<&&crate::wire::Mutation> = pick.iter().filter(|m| m.class == class).collect();
+        let mu = pick[self.m.rng.below(pick.len())];
+        *self.wire.counts.entry(class).or_default() += 1;
+        self.wire.pending.push(class);
+        Any {
+            type_url: base.type_url,
+            value: mu.bytes.clone(),
+        }
+    }
+
     /// A generated tx (signed), or `None` when it could not be built.
     #[allow(clippy::too_many_lines)]
     /// A blob tx (`MsgPayForBlobs` with its blobs) signed by account `i`,
@@ -1382,7 +2767,7 @@ impl Gen {
     /// commitment, size, namespace or share version.
     fn blob_tx(&mut self, i: usize) -> Option<Vec<u8>> {
         let a = &self.accts[i];
-        let signer = a.key.address();
+        let signer: [u8; 20] = a.addr.as_slice().try_into().unwrap_or([0u8; 20]);
         let acc = a.acc.clone();
         let n = 1 + self.m.rng.below(3);
         let mut blobs = Vec::new();
@@ -1431,7 +2816,11 @@ impl Gen {
         let total: u64 = msg.blob_sizes.iter().map(|s| u64::from(*s)).sum();
         let gas = 200_000 + total * 20 + if self.m.rng.one_in(8) { 0 } else { 100_000 };
         let gas = if self.m.rng.one_in(10) { gas / 4 } else { gas };
-        let inner = sign_simple(self, i, vec![Any::pack(&msg)], gas)?;
+        let mut pfb = Any::pack(&msg);
+        if self.wire.on && !self.m.rng.one_in(3) {
+            pfb = self.wire_mutate(pfb);
+        }
+        let inner = sign_simple(self, i, vec![pfb], gas)?;
         Some(txdecode::marshal_blob_tx(&inner, &blobs))
     }
 
@@ -1458,7 +2847,11 @@ impl Gen {
                 self.msg(s)
             })
             .collect();
-        if self.m.rng.one_in(8) {
+        if self.m.rng.one_in(10)
+            && let Some(m) = self.hl_owner_msg()
+        {
+            msgs = vec![m];
+        } else if self.m.rng.one_in(8) {
             // MsgExec by `i` of messages signed by a granter.
             let n = self.accts.len();
             let g = if self.m.rng.one_in(4) {
@@ -1498,9 +2891,19 @@ impl Gen {
             _ => {}
         }
         // Gas and fee.
+        let seen = body
+            .messages
+            .first()
+            .and_then(|m| self.gas_seen.get(&m.type_url).copied());
         let gas: u64 = match self.m.rng.below(20) {
             0 => 0,
             1 => 1000,
+            // Just below what a successful tx of this type used: out of gas
+            // somewhere in the message handler.
+            7..=9 if seen.is_some() => {
+                let g = seen.unwrap_or_default();
+                g.saturating_sub(self.m.rng.below((g / 3).max(1) as usize) as u64)
+            }
             2 => 50_000 + self.m.rng.below(100_000) as u64,
             3 => 100_000 + self.m.rng.below(200_000) as u64,
             4 => 200_000 + self.m.rng.below(300_000) as u64,
@@ -1550,7 +2953,7 @@ impl Gen {
             }
             _ => {}
         }
-        let amino = self.m.rng.one_in(10);
+        let amino = self.force_amino || self.m.rng.one_in(10);
         let unsigned_tx = |body: &TxBody, signer_infos: Vec<SignerInfo>, fee: Fee, sigs: usize| {
             #[allow(deprecated)]
             let auth = AuthInfo {
@@ -1572,7 +2975,7 @@ impl Gen {
             .and_then(|t| x_ante::txview::signers(&t).ok())
             .unwrap_or_default();
         if signers.is_empty() {
-            signers.push(self.accts[i].key.address().to_vec());
+            signers.push(self.accts[i].addr.clone());
         }
         if !payer.is_empty()
             && let Ok((_, p)) = encoding::bech32::decode(&payer)
@@ -1582,13 +2985,15 @@ impl Gen {
         }
         let idx: Vec<Option<usize>> = signers
             .iter()
-            .map(|s| {
-                self.accts
-                    .iter()
-                    .position(|a| a.key.address().as_slice() == s.as_slice())
-            })
+            .map(|s| self.accts.iter().position(|a| a.addr == *s))
             .collect();
         let mut infos = Vec::new();
+        let mut plans: Vec<Option<Plan>> = Vec::new();
+        let mode = if amino {
+            SignMode::LegacyAminoJson
+        } else {
+            SignMode::Direct
+        };
         for (k, ix) in idx.iter().enumerate() {
             let (pk, seq) = match ix {
                 Some(a) => {
@@ -1596,22 +3001,28 @@ impl Gen {
                     if self.m.rng.one_in(40) {
                         seq = seq.wrapping_add(1);
                     }
-                    (Some(self.accts[*a].key.pubkey_any()), seq)
+                    (Some(self.accts[*a].pk.clone()), seq)
                 }
-                None => (Some(self.accts[k % self.accts.len()].key.pubkey_any()), 0),
+                None => (Some(self.accts[k % self.accts.len()].pk.clone()), 0),
             };
-            let mode = if amino {
-                SignMode::LegacyAminoJson
-            } else {
-                SignMode::Direct
+            let (mi, plan) = match ix.and_then(|a| self.accts[a].ms.clone().map(|t| (a, t))) {
+                Some((_, t)) => {
+                    let (mi, p) = ms_plan(Some(&mut self.m.rng), &t, mode);
+                    (mi, Some(p))
+                }
+                None => (
+                    single_mode_info(mode),
+                    ix.map(|a| Plan::Single {
+                        acct: a,
+                        mode,
+                        corrupt: false,
+                    }),
+                ),
             };
+            plans.push(plan);
             infos.push(SignerInfo {
                 public_key: if self.m.rng.one_in(30) { None } else { pk },
-                mode_info: Some(ModeInfo {
-                    sum: Some(mode_info::Sum::Single(mode_info::Single {
-                        mode: mode as i32,
-                    })),
-                }),
+                mode_info: Some(mi),
                 sequence: seq,
             });
         }
@@ -1624,7 +3035,7 @@ impl Gen {
         let (body_bytes, auth_info_bytes, nsig) =
             unsigned_tx(&body, infos.clone(), fee, signers.len());
         let mut sigs = Vec::with_capacity(nsig);
-        let decoded = if amino {
+        let decoded = if plans.iter().flatten().any(Plan::uses_amino) {
             let unsigned = TxRaw {
                 body_bytes: body_bytes.clone(),
                 auth_info_bytes: auth_info_bytes.clone(),
@@ -1646,40 +3057,41 @@ impl Gen {
             } else {
                 acct.number
             };
-            let bytes = if amino {
-                let Some(tx) = &decoded else {
-                    sigs.push(vec![1u8; 64]);
-                    continue;
-                };
-                let sd = x_ante::signing::SignerData {
-                    address: acct.acc.clone(),
-                    chain_id: self.chain_id.clone(),
-                    account_number,
-                    sequence: infos[k].sequence,
-                    pub_key: acct.key.pubkey_any(),
-                };
-                if let Ok(b) = x_ante::aminojson::sign_bytes(&sd, tx) {
-                    b
-                } else {
-                    sigs.push(vec![1u8; 64]);
-                    continue;
-                }
-            } else {
-                SignDoc {
-                    body_bytes: body_bytes.clone(),
-                    auth_info_bytes: auth_info_bytes.clone(),
-                    chain_id: self.chain_id.clone(),
-                    account_number,
-                }
-                .encode_to_vec()
+            let Some(plan) = &plans[k] else {
+                sigs.push(vec![1u8; 64]);
+                continue;
             };
-            match acct.key.sign(&bytes) {
-                Ok(s) => sigs.push(s.to_vec()),
-                Err(_) => sigs.push(vec![1u8; 64]),
+            let amino_bytes = if plan.uses_amino() {
+                decoded.as_ref().and_then(|tx| {
+                    let sd = x_ante::signing::SignerData {
+                        address: acct.acc.clone(),
+                        chain_id: self.chain_id.clone(),
+                        account_number,
+                        sequence: infos[k].sequence,
+                        pub_key: acct.pk.clone(),
+                    };
+                    x_ante::aminojson::sign_bytes(&sd, tx).ok()
+                })
+            } else {
+                None
+            };
+            let direct = SignDoc {
+                body_bytes: body_bytes.clone(),
+                auth_info_bytes: auth_info_bytes.clone(),
+                chain_id: self.chain_id.clone(),
+                account_number,
             }
+            .encode_to_vec();
+            sigs.push(sign_plan(
+                &self.accts,
+                plan,
+                &direct,
+                amino_bytes.as_deref(),
+            ));
         }
         if self.m.rng.one_in(80)
             && let Some(s) = sigs.first_mut()
+            && s.len() > 5
         {
             s[5] ^= 1;
         }
@@ -1872,6 +3284,27 @@ pub fn run(
 ) -> anyhow::Result<Stats> {
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
+    // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
+    // signal tx (held back for generated block `n`).
+    let mut upg = upgrade::Upgrade::default();
+    let mut stop_at = i64::MAX;
+    if let Ok(n) = std::env::var("DELIVER_UPGRADE") {
+        let (h, held) = upgrade::held_signals(&records);
+        stop_at = h;
+        upg = upgrade::Upgrade {
+            on: true,
+            signal_at: n.parse().unwrap_or(20),
+            held,
+            ..Default::default()
+        };
+    } else if std::env::var("DELIVER_REPLAY_STOP").as_deref() == Ok("signal") {
+        // Only stop the replay there (e.g. `upgrade`, which signals v11 and
+        // halts: the generated blocks then run on its gov-upgrade state).
+        stop_at = upgrade::held_signals(&records).0;
+    }
+    // Go raised the app version in the last `FinalizeBlock`: the binary
+    // switches after its `Commit`.
+    let mut switch_to: Option<(u64, u64)> = None;
     let mut go = GoApp {
         addr: addr.to_owned(),
         conns: BTreeMap::new(),
@@ -1887,11 +3320,21 @@ pub fn run(
     let mut accts = Vec::new();
     let mut chain_id = String::new();
     let mut last_fb: Option<abci::RequestFinalizeBlock> = None;
+    // The validator updates of the last two replayed blocks.
+    let mut recent_updates: [Vec<abci::ValidatorUpdate>; 2] = Default::default();
     let mut last_pp: Option<abci::RequestPrepareProposal> = None;
     let (mut cons_conn, mut mem_conn) = (0u32, 0u32);
     for r in records.iter().filter(|r| r.dir == Direction::Request) {
         let mut req = Request::decode(r.bytes.as_slice())?;
         if matches!(req.value, Some(request::Value::Flush(_))) {
+            continue;
+        }
+        if upgrade::request_height(&req).is_some_and(|h| h >= stop_at) {
+            break;
+        }
+        if let Some(request::Value::CheckTx(ct)) = &req.value
+            && upg.held.contains(&ct.tx)
+        {
             continue;
         }
         if let Some(request::Value::InitChain(ic)) = &mut req.value {
@@ -1937,6 +3380,14 @@ pub fn run(
                             l.into_iter()
                                 .map(|l| format!("{scenario} replay h={}: {l}", fb.height)),
                         );
+                        if let Some(v) = g
+                            .consensus_param_updates
+                            .as_ref()
+                            .and_then(|c| c.version.as_ref())
+                            && v.app != app_version
+                        {
+                            switch_to = Some((app_version, v.app));
+                        }
                         if let Some(v) = o
                             .consensus_param_updates
                             .as_ref()
@@ -1944,6 +3395,8 @@ pub fn run(
                         {
                             app_version = v.app;
                         }
+                        recent_updates.rotate_left(1);
+                        recent_updates[1].clone_from(&o.validator_updates);
                     }
                     (response::Value::Exception(_), Err(_)) => {
                         // Both halted (e.g. an upgrade without handler).
@@ -1963,6 +3416,13 @@ pub fn run(
             }
             (Some(request::Value::Commit(_)), _) => {
                 rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+                if let Some((from, to)) = switch_to.take() {
+                    upgrade::switch_go(&mut go, from, to)?;
+                    stats.upgrade.push(format!(
+                        "replay h={}: Go switched binaries, app version {from} -> {to}",
+                        last_fb.as_ref().map_or(0, |f| f.height)
+                    ));
+                }
             }
             (Some(request::Value::CheckTx(ct)), response::Value::CheckTx(g)) => {
                 mem_conn = r.conn;
@@ -2019,15 +3479,23 @@ pub fn run(
         validators: Vec::new(),
         proposals: Vec::new(),
         unbondings: Vec::new(),
+        proposers: Vec::new(),
+        gas_seen: BTreeMap::new(),
+        hl_objects: Vec::new(),
+        hl: HlState::default(),
         hex_ids: Vec::new(),
         chain_id,
         app_version,
         height: template.height,
-        types: msg_types()
-            .iter()
-            .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
-            .cloned()
-            .collect(),
+        types: types_for(app_version, upg.on),
+        force_amino: false,
+        wire: WireGen::default(),
+    };
+    gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
+    let mut hl_seq = HlSeq {
+        on: std::env::var("DELIVER_HL").is_ok(),
+        v10: app_version >= 10,
+        ..HlSeq::default()
     };
     let mut ids = BTreeSet::new();
     for t in &pool_txs {
@@ -2062,6 +3530,11 @@ pub fn run(
             }
         }
     }
+    if gn.validators.is_empty() {
+        // No operator address in the scenario's messages and events: the
+        // bonded validators from the Rust app (same state as Go).
+        gn.validators.extend(bonded_validators(&mut rust));
+    }
     if let Some(ids) = gn.dict.ints.get("proposal_id") {
         gn.proposals.clone_from(ids);
     }
@@ -2085,11 +3558,39 @@ pub fn run(
                 .collect()
         })
         .unwrap_or_default();
+    let no_votes = initial.is_empty();
     // valsets[h]: the set that signs block h.
     let mut valsets: BTreeMap<i64, ValSet> = BTreeMap::new();
+    // The updates of block h change the set of block h + 2 (the first
+    // generated block looks up the set of the block after it).
     valsets.insert(template.height, initial.clone());
-    valsets.insert(template.height + 1, initial);
+    let next = apply_updates(&initial, &recent_updates[0]);
+    valsets.insert(
+        template.height + 2,
+        apply_updates(&next, &recent_updates[1]),
+    );
+    valsets.insert(template.height + 1, next);
     let mut times: BTreeMap<i64, pbjson_types::Timestamp> = BTreeMap::new();
+    // Gas sweep: successful single-signer txs re-sent with gas limits
+    // spread below what Go used, so they run out of gas at many points of
+    // the message handlers (store access order and iterator charges).
+    let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
+    // A mock IBC counterparty driving the IBC success paths.
+    let mut ibc = std::env::var("DELIVER_IBC")
+        .is_ok()
+        .then(crate::ibcmock::Driver::default);
+    // The relayer: the last single-key fuzz account.
+    let relayer = ACCOUNTS - 1;
+    let mut script = match std::env::var("DELIVER_SCRIPT") {
+        Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
+        Err(_) => std::collections::VecDeque::new(),
+    };
+    let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
+    let sim_on = std::env::var("DELIVER_SIM").is_ok();
+    let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
+    // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
+    // not in a block, not removed by a recheck (oldest first, capped).
+    let mut pool: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
     for b in 0..blocks {
         height += 1;
         gn.height = height;
@@ -2100,9 +3601,22 @@ pub fn run(
         }
         // Sequences from the committed state.
         for a in &mut gn.accts {
-            a.seq = rust.query_sequence(&a.key.address()).sequence;
+            a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
+        let mut scripted = false;
+        let phase = upg.phase(height, app_version);
+        let block_av = app_version;
+        // The blocks around the upgrade height also take every generated
+        // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
+        // app's empty check state and rejects most of them).
+        let force_raw = upg.on
+            && upg
+                .upgrade_height
+                .is_some_and(|h| (h..=h + 2).contains(&height));
+        if upg.on && !bootstrap {
+            txs = upg.txs(&mut gn, b, height, &hl_seq.token);
+        }
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
@@ -2120,14 +3634,123 @@ pub fn run(
                     }
                 }
             }
+        } else if let Some(block) = script.pop_front() {
+            scripted = true;
+            for (i, mut msg, gas) in block {
+                // `vote <account>`: a yes vote on the latest proposal.
+                if msg.type_url == "vote" {
+                    msg = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                        proposal_id: gn.proposals.iter().copied().max().unwrap_or(1),
+                        voter: gn.accts[i].acc.clone(),
+                        option: 1,
+                        metadata: String::new(),
+                    });
+                }
+                if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
+                    gn.accts[i].seq += 1;
+                    txs.push(t);
+                }
+            }
         } else {
+            if let Some(d) = ibc.as_mut() {
+                let accounts: Vec<(String, Vec<u8>)> = gn
+                    .accts
+                    .iter()
+                    .take(ACCOUNTS)
+                    .map(|a| (a.acc.clone(), a.addr.clone()))
+                    .collect();
+                let mut c = crate::ibcmock::StepCtx {
+                    now: time.seconds,
+                    rng: &mut gn.m.rng,
+                    signer: gn.accts[relayer].acc.clone(),
+                    accounts,
+                };
+                for msgs in d.step(&mut c) {
+                    if let Some(t) = sign_simple(&gn, relayer, msgs, 8_000_000) {
+                        gn.accts[relayer].seq += 1;
+                        txs.push(t);
+                    }
+                }
+                for id in [d.a_transfer.clone(), d.a_client.clone(), d.a_conn.clone()]
+                    .into_iter()
+                    .flatten()
+                {
+                    gn.dict.string("source_channel", id.as_bytes());
+                }
+            }
+            if sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+                let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
+                for t in sweep_txs(&mut gn, i, &msgs, used) {
+                    stats.swept += 1;
+                    txs.push(t);
+                }
+            }
+            if hl_seq.on && hl_seq.pending.is_none() {
+                let msg = hl_seq.msg(&gn);
+                if let Some(t) = sign_simple(&gn, HL_ACCT, vec![msg], 3_000_000) {
+                    gn.accts[HL_ACCT].seq += 1;
+                    hl_seq.pending = Some(t.clone());
+                    txs.push(t);
+                }
+                // The generated votes (any option) stay off the proposal.
+                gn.proposals.retain(|p| *p != hl_seq.proposal);
+                // Steps 16 / 17: every result and CheckTx failure printed.
+                scripted |= hl_seq.step >= 16;
+                if hl_seq.step == 16 && !hl_seq.delegated {
+                    // Enough stake behind the fuzz accounts' votes to pass
+                    // the proposal of step 16 (sent with each try of the
+                    // step until a block holds them).
+                    // Spread over the bonded validators (only bonded stake
+                    // is tallied; one may be jailed for downtime before
+                    // the tally).
+                    let vals = bonded_validators(&mut rust);
+                    if !vals.is_empty() {
+                        for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
+                            let v = vals[i % vals.len()].clone();
+                            let msg =
+                                Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
+                                    delegator_address: gn.accts[i].acc.clone(),
+                                    validator_address: v,
+                                    amount: Some(Coin {
+                                        denom: "utia".into(),
+                                        amount: "800000000000000".into(),
+                                    }),
+                                });
+                            if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
+                                gn.accts[i].seq += 1;
+                                txs.push(t);
+                            }
+                        }
+                    }
+                }
+                if hl_seq.step == 17 {
+                    // Every other single-key fuzz account votes yes too.
+                    for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
+                        let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                            proposal_id: hl_seq.proposal,
+                            voter: gn.accts[i].acc.clone(),
+                            option: 1,
+                            metadata: String::new(),
+                        });
+                        if let Some(t) = sign_simple(&gn, i, vec![vote], 400_000) {
+                            gn.accts[i].seq += 1;
+                            txs.push(t);
+                        }
+                    }
+                }
+            }
             let k = match gn.m.rng.below(20) {
                 0 => 0,
                 1 => per_block * 4,
                 _ => 1 + gn.m.rng.below(per_block.max(1)),
             };
             for _ in 0..k {
+                gn.wire.pending.clear();
                 if let Some(t) = gn.tx() {
+                    if !gn.wire.pending.is_empty() {
+                        let cls = std::mem::take(&mut gn.wire.pending);
+                        gn.wire.txs.insert(t.raw.clone(), cls);
+                    }
                     txs.push(t.raw);
                 }
             }
@@ -2135,6 +3758,9 @@ pub fn run(
         // CheckTx on both (sequences advance in check state).
         let mut check_rejected: Vec<bool> = Vec::new();
         for t in &txs {
+            if sim_on {
+                simulate_both(&mut go, cons_conn, &mut rust, app_version, t, &mut stats);
+            }
             let req = abci::RequestCheckTx {
                 tx: t.clone(),
                 r#type: 0,
@@ -2147,6 +3773,15 @@ pub fn run(
             )?)?;
             let o = rust.check_tx(&req);
             stats.checked += 1;
+            let multisig = t
+                .windows(MULTISIG_URL.len())
+                .any(|w| w == MULTISIG_URL.as_bytes());
+            if multisig {
+                stats.multisig.0 += 1;
+            }
+            if scripted && !matches!(&g, response::Value::CheckTx(c) if c.code == 0) {
+                stats.script.push(format!("h={height} CheckTx: go {g:?}"));
+            }
             let response::Value::CheckTx(g) = g else {
                 // Go's CheckTx returned an error (undecodable tx, ...).
                 check_rejected.push(true);
@@ -2162,23 +3797,47 @@ pub fn run(
             };
             if g.code == 0 {
                 stats.check_ok += 1;
+                pool.push_back(t.clone());
+                if pool.len() > 300 {
+                    pool.pop_front();
+                }
+                if multisig {
+                    stats.multisig.1 += 1;
+                }
                 // The generator signs the next tx of these accounts with
                 // the next sequence.
                 if let Ok(tx) = txdecode::decode_for(app_version, t)
                     && let Ok(sigs) = x_ante::txview::signers(&tx)
                 {
                     for s in sigs {
-                        if let Some(a) = gn
-                            .accts
-                            .iter_mut()
-                            .find(|a| a.key.address().as_slice() == s.as_slice())
-                        {
+                        if let Some(a) = gn.accts.iter_mut().find(|a| a.addr == s) {
                             a.seq += 1;
                         }
                     }
                 }
             }
             check_rejected.push(g.code != 0);
+            if upg.on && g.code != 0 {
+                let reason: String = gostr::to_go_bytes(&g.log)
+                    .escape_ascii()
+                    .to_string()
+                    .chars()
+                    .filter(|c| !c.is_ascii_digit())
+                    .take(80)
+                    .collect();
+                *stats
+                    .upgrade_check
+                    .entry(format!("{phase} {}/{} {reason}", g.codespace, g.code))
+                    .or_default() += 1;
+            }
+            if scripted && g.code != 0 {
+                stats.script.push(format!(
+                    "h={height} CheckTx code {}/{}: {}",
+                    g.codespace,
+                    g.code,
+                    gostr::to_go_bytes(&g.log).escape_ascii()
+                ));
+            }
             match &o {
                 Ok(o) if check_fields(o) == check_fields(&g) => {
                     if o.log != g.log {
@@ -2216,12 +3875,21 @@ pub fn run(
                 for u in type_urls(app_version, t) {
                     stats.per_type.entry(u).or_default().2 += 1;
                 }
+                for c in gn.wire.txs.get(t).into_iter().flatten() {
+                    stats.wire.entry((*c).to_owned()).or_default().2 += 1;
+                }
             }
         }
         // Votes of the last block's validators.
         // The commit of the previous block, by its signers (fuzz
         // validators sometimes absent); sometimes evidence against one.
-        let signers = valsets.get(&(height - 1)).cloned().unwrap_or_default();
+        // A scenario recorded without commit votes (the ibctesting
+        // fixtures: validators without slashing signing info) gets none.
+        let signers = if no_votes {
+            Vec::new()
+        } else {
+            valsets.get(&(height - 1)).cloned().unwrap_or_default()
+        };
         let commit = abci::CommitInfo {
             round: 0,
             votes: signers
@@ -2240,13 +3908,17 @@ pub fn run(
                 .collect(),
         };
         let mut misbehavior = Vec::new();
-        if gn.m.rng.one_in(20) {
+        if !no_votes && gn.m.rng.one_in(20) {
             let back = 1 + gn.m.rng.below(4) as i64;
             let h = (height - back).max(template.height + 1);
             if let Some(set) = valsets.get(&h) {
                 let fuzzv: Vec<_> = set
                     .iter()
-                    .filter(|v| v.2 || gn.m.rng.one_in(50))
+                    // `DELIVER_HL` keeps the scenario's validators bonded
+                    // for its proposal's tally.
+                    // `DELIVER_UPGRADE` too (its validator's signal
+                    // decides the upgrade).
+                    .filter(|v| (v.2 && !upg.late) || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50)))
                     .cloned()
                     .collect();
                 if let Some((a, p, _)) = gn.pick(&fuzzv) {
@@ -2367,7 +4039,7 @@ pub fn run(
         } else {
             Vec::new()
         };
-        if gn.m.rng.one_in(3) && !txs.is_empty() {
+        if (scripted || force_raw || gn.m.rng.one_in(3)) && !txs.is_empty() {
             let mut raw = proc.clone();
             raw.txs.clone_from(&txs);
             if let Ok((size, root)) = app::proposal::block_data_root(app_version, &raw.txs) {
@@ -2394,8 +4066,15 @@ pub fn run(
                         .collect::<Vec<_>>()
                         .join(",")
                 ));
-            } else if g == accepted && gn.m.rng.one_in(2) {
+            } else if g == accepted && (scripted || force_raw || gn.m.rng.one_in(2)) {
                 final_txs.clone_from(&raw.txs);
+            }
+            if scripted {
+                stats.script.push(format!(
+                    "h={height} {} txs, {} after PrepareProposal, unfiltered proposal: {g:?}",
+                    txs.len(),
+                    gp.txs.len()
+                ));
             }
         }
         let fb = abci::RequestFinalizeBlock {
@@ -2439,7 +4118,40 @@ pub fn run(
         valsets.insert(height + 2, apply_updates(&next, &g.validator_updates));
         valsets.retain(|h, _| *h + 8 > height);
         times.retain(|h, _| *h + 8 > height);
+        if hl_seq.pending.is_some() {
+            if let Some((t, res)) = fb
+                .txs
+                .iter()
+                .zip(&g.tx_results)
+                .find(|(t, _)| Some(*t) == hl_seq.pending.as_ref())
+            {
+                let u = type_urls(app_version, t)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                hl_seq.result(&u, res);
+            } else {
+                // Not in the block (CheckTx or PrepareProposal dropped it).
+                hl_seq
+                    .results
+                    .push(format!("step {} not finalized", hl_seq.step));
+                hl_seq.pending = None;
+            }
+            for l in hl_seq.results.drain(..) {
+                stats.script.push(format!("h={height} HL {l}"));
+            }
+        }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
+            if scripted {
+                stats.script.push(format!(
+                    "h={height} {:?} code {}/{} gas {}: {}",
+                    type_urls(app_version, t),
+                    res.codespace,
+                    res.code,
+                    res.gas_used,
+                    gostr::to_go_bytes(&res.log).escape_ascii()
+                ));
+            }
             stats.delivered += 1;
             if res.code == 0 {
                 stats.delivered_ok += 1;
@@ -2450,6 +4162,18 @@ pub fn run(
                 if res.code == 0 {
                     e.1 += 1;
                 }
+            }
+            for c in gn.wire.txs.remove(t).into_iter().flatten() {
+                let e = stats.wire.entry(c.to_owned()).or_default();
+                e.0 += 1;
+                if res.code == 0 {
+                    e.1 += 1;
+                }
+            }
+            if res.code == 0
+                && let Some(u) = type_urls(app_version, t).into_iter().next()
+            {
+                gn.gas_seen.insert(u, res.gas_used.unsigned_abs());
             }
             if res.code != 0 {
                 let first = type_urls(app_version, t)
@@ -2469,11 +4193,35 @@ pub fn run(
                     .or_default() += 1;
             }
             if res.code == 0 {
-                learn(&mut gn, app_version, t, &res.events, height);
+                learn(&mut gn, app_version, t, res, height);
+                if sweep_on && let Some(tpl) = sweep_template(&gn, app_version, t, res) {
+                    sweeps.push(tpl);
+                    if sweeps.len() > 64 {
+                        sweeps.remove(gn.m.rng.below(64));
+                    }
+                }
             }
             gn.dict.harvest_events(&res.events);
         }
         gn.dict.harvest_events(&g.events);
+        for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
+            for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
+                *stats.gov_results.entry(a.value.clone()).or_default() += 1;
+                if hl_seq.on {
+                    let attrs: Vec<String> = e
+                        .attributes
+                        .iter()
+                        .map(|a| format!("{}={}", a.key, a.value))
+                        .collect();
+                    stats
+                        .script
+                        .push(format!("h={height} HL gov {}", attrs.join(" ")));
+                }
+            }
+        }
+        if let Some(d) = ibc.as_mut() {
+            d.observe(&g.tx_results);
+        }
         let (c, l) = finalize_diff(&g, &o);
         let block_txs = || fb.txs.iter().map(hex::encode).collect::<Vec<_>>().join(",");
         stats.log_mismatches.extend(l.into_iter().map(|l| {
@@ -2490,6 +4238,19 @@ pub fn run(
             ));
             if g.app_hash != o.app_hash {
                 stats.split = true;
+                if std::env::var("DELIVER_DUMP_SPLIT").is_ok() {
+                    // Commit both and print the store entries that differ.
+                    let commit_req = Request {
+                        value: Some(request::Value::Commit(abci::RequestCommit {})),
+                    };
+                    go.call_or_exception(cons_conn, &commit_req)?;
+                    rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+                    for line in dump_split(&mut go, cons_conn, &mut rust) {
+                        stats
+                            .mismatches
+                            .push(format!("{scenario} h={height} store {line}"));
+                    }
+                }
                 return Ok(stats);
             }
         }
@@ -2498,15 +4259,537 @@ pub fn run(
         };
         go.call_or_exception(cons_conn, &commit_req)?;
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
-        if let Some(v) = o
+        // Go raised the app version: switch its binary after this
+        // `Commit` (the multiplexer); the Rust app continues.
+        if let Some(v) = g
             .consensus_param_updates
             .as_ref()
             .and_then(|c| c.version.as_ref())
+            && v.app != app_version
         {
+            upgrade::switch_go(&mut go, app_version, v.app)?;
+            stats.upgrade.push(format!(
+                "h={height}: Go switched binaries, app version {app_version} -> {}",
+                v.app
+            ));
+            app_version = v.app;
             gn.app_version = v.app;
+            gn.types = types_for(app_version, upg.on);
+            hl_seq.v10 = app_version >= 10;
+            upg.v10_from = Some(height + 1);
+        }
+        // `TxPool.Update`: the block's txs leave the mempool, the rest are
+        // rechecked against the new check state (`CheckTxType_Recheck`,
+        // `handleRecheckResult` with `PostCheckMaxGas`), which right after
+        // the switch is the next binary's fresh one.
+        pool.retain(|t| !fb.txs.contains(t));
+        let rphase = if upg.v10_from == Some(height + 1) {
+            "switch".to_owned()
+        } else if upg.on {
+            phase.clone()
+        } else {
+            "all".to_owned()
+        };
+        // Every block with `DELIVER_RECHECK`, else only at the switch: the
+        // recheck re-applies the pool's txs to the check state the
+        // generator signs from, and the harness proposes new txs only.
+        let do_recheck = recheck_all || rphase == "switch";
+        let mut kept = std::collections::VecDeque::new();
+        for t in std::mem::take(&mut pool) {
+            if !do_recheck {
+                kept.push_back(t);
+                continue;
+            }
+            let req = abci::RequestCheckTx {
+                tx: t.clone(),
+                r#type: 1,
+            };
+            let g = go_value(go.call_or_exception(
+                mem_conn,
+                &Request {
+                    value: Some(request::Value::CheckTx(req.clone())),
+                },
+            )?)?;
+            let o = rust.check_tx(&req);
+            let e = stats.recheck.entry(rphase.clone()).or_default();
+            e.0 += 1;
+            let response::Value::CheckTx(g) = g else {
+                stats.mismatches.push(format!(
+                    "{scenario} h={height} ReCheckTx tx={}: Go errored ({g:?}), Rust {:?}",
+                    hex::encode(&t),
+                    o.map(|o| o.code)
+                ));
+                e.1 += 1;
+                continue;
+            };
+            match &o {
+                Ok(o) if check_fields(o) == check_fields(&g) => {
+                    if o.log != g.log {
+                        stats.log_mismatches.push(format!(
+                            "{scenario} h={height} ReCheckTx log tx={}\n    go:   {}\n    rust: {}",
+                            hex::encode(&t),
+                            gostr::to_go_bytes(&g.log).escape_ascii(),
+                            gostr::to_go_bytes(&o.log).escape_ascii()
+                        ));
+                    }
+                }
+                _ => stats.mismatches.push(format!(
+                    "{scenario} h={height} ReCheckTx ({rphase}) tx={}\n  go=(code {} {} gas {}/{} prio {}) log={}\n  rust={:?}",
+                    hex::encode(&t),
+                    g.code,
+                    g.codespace,
+                    g.gas_used,
+                    g.gas_wanted,
+                    g.priority,
+                    gostr::to_go_bytes(&g.log).escape_ascii(),
+                    o.as_ref().map(|o| format!(
+                        "(code {} {} gas {}/{} prio {}) log={}",
+                        o.code,
+                        o.codespace,
+                        o.gas_used,
+                        o.gas_wanted,
+                        o.priority,
+                        gostr::to_go_bytes(&o.log).escape_ascii()
+                    ))
+                )),
+            }
+            // `PostCheckMaxGas` (the scenarios' consensus params have no
+            // gas limit, `-1`): a negative gas wanted fails it.
+            if g.code == 0 && g.gas_wanted >= 0 {
+                kept.push_back(t);
+            } else {
+                e.1 += 1;
+            }
+        }
+        pool = kept;
+        let near = upg.on && upg.upgrade_height.is_some_and(|h| (height - h).abs() <= 5);
+        if upg.on {
+            upg.observe(
+                &mut gn,
+                &mut rust,
+                &fb.txs,
+                &g.tx_results,
+                &g.events,
+                block_av,
+                height,
+            );
+            upg.after_commit(&mut rust, height);
+            let e = stats.phases.entry(phase).or_default();
+            e.0 += 1;
+            e.1 += fb.txs.len() as u64;
+            e.2 += g.tx_results.iter().filter(|r| r.code == 0).count() as u64;
+            e.3 += check_rejected.iter().filter(|r| **r).count() as u64;
+            // The whole state at the last v9 height and the first v10
+            // ones.
+            if upg
+                .upgrade_height
+                .is_some_and(|h| (h..=h + 1).contains(&height))
+            {
+                for line in dump_split(&mut go, cons_conn, &mut rust) {
+                    stats
+                        .mismatches
+                        .push(format!("{scenario} h={height} store {line}"));
+                }
+            }
+        }
+        if b % 25 == 24 || b + 1 == blocks || near || (upg.on && b % 5 == 4) {
+            let extra = if upg.on {
+                upgrade::queries(&gn, &hl_seq.token)
+            } else {
+                Vec::new()
+            };
+            let (c, l) = query_echo(
+                &mut go,
+                cons_conn,
+                &mut rust,
+                &gn,
+                &mut stats.queries,
+                extra,
+                !near && b % 25 != 24 && b + 1 != blocks,
+            );
+            stats.mismatches.extend(
+                c.into_iter()
+                    .map(|c| format!("{scenario} h={height} query {c}")),
+            );
+            stats.log_mismatches.extend(
+                l.into_iter()
+                    .map(|l| format!("{scenario} h={height} query {l}")),
+            );
         }
     }
+    if let Some(d) = ibc {
+        stats.ibc = d.stats;
+    }
+    stats.upgrade.append(&mut upg.log);
+    if let Some(h) = upg.upgrade_height {
+        stats.upgrade.push(format!(
+            "upgrade height {h}; app version 10 from {:?}; vesting accounts {}",
+            upg.v10_from,
+            upg.vesting.len()
+        ));
+    }
+    for (k, n) in &upg.v9_proposals_ended {
+        stats
+            .upgrade
+            .push(format!("proposals submitted at v9 that ended at {k}: {n}"));
+    }
+    stats.upgrade_built = upg.built;
     Ok(stats)
+}
+
+/// The operator addresses of the bonded validators (Rust's committed
+/// state, the same as Go's).
+fn bonded_validators(rust: &mut app::App) -> Vec<String> {
+    use celestia_proto::cosmos::staking::v1beta1 as st;
+    let r = rust.query(&abci::RequestQuery {
+        data: st::QueryValidatorsRequest {
+            status: "BOND_STATUS_BONDED".into(),
+            pagination: None,
+        }
+        .encode_to_vec(),
+        path: "/cosmos.staking.v1beta1.Query/Validators".into(),
+        height: 0,
+        prove: false,
+    });
+    st::QueryValidatorsResponse::decode(r.value.as_slice())
+        .map(|v| {
+            v.validators
+                .into_iter()
+                .map(|v| v.operator_address)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `Service/Simulate` of `tx` on both apps (`DELIVER_SIM`), signed and with
+/// its signatures emptied (`BuildSimTx`, what `--gas auto` simulates):
+/// the gas estimate (`gas_info`) and the code must agree; the rest of the
+/// response (events, data) and the error text are compared as logs.
+fn simulate_both(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    app_version: u64,
+    tx: &[u8],
+    stats: &mut Stats,
+) {
+    use celestia_proto::cosmos::tx::v1beta1::{SimulateRequest, SimulateResponse, TxRaw};
+    let first = type_urls(app_version, tx)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    let mut variants = vec![("signed", tx.to_vec())];
+    if let Ok(mut raw) = TxRaw::decode(tx) {
+        for s in &mut raw.signatures {
+            s.clear();
+        }
+        variants.push(("unsigned", raw.encode_to_vec()));
+    }
+    for (kind, bytes) in variants {
+        let req = abci::RequestQuery {
+            data: SimulateRequest {
+                tx_bytes: bytes.clone(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            path: "/cosmos.tx.v1beta1.Service/Simulate".into(),
+            height: 0,
+            prove: false,
+        };
+        let g = match go.call_or_exception(
+            conn,
+            &Request {
+                value: Some(request::Value::Query(req.clone())),
+            },
+        ) {
+            Ok(Response {
+                value: Some(response::Value::Query(g)),
+            }) => g,
+            other => {
+                stats
+                    .mismatches
+                    .push(format!("Simulate {kind}: Go query failed: {other:?}"));
+                continue;
+            }
+        };
+        let r = rust.query(&req);
+        let e = stats.sim.entry(first.clone()).or_default();
+        e.0 += 1;
+        if g.code == 0 {
+            e.1 += 1;
+        }
+        let gas = |v: &[u8]| {
+            SimulateResponse::decode(v)
+                .ok()
+                .and_then(|s| s.gas_info)
+                .map(|gi| (gi.gas_wanted, gi.gas_used))
+        };
+        let what = || format!("Simulate {kind} {first} tx={}", hex::encode(&bytes));
+        if (g.code, &g.codespace) != (r.code, &r.codespace) || gas(&g.value) != gas(&r.value) {
+            e.2 += 1;
+            stats.mismatches.push(format!(
+                "{} go={}/{} gas={:?} log={:?}\n    rust={}/{} gas={:?} log={:?}",
+                what(),
+                g.codespace,
+                g.code,
+                gas(&g.value),
+                g.log,
+                r.codespace,
+                r.code,
+                gas(&r.value),
+                r.log
+            ));
+        } else if g.value != r.value {
+            stats.log_mismatches.push(format!(
+                "{} response go={} rust={}",
+                what(),
+                hex::encode(&g.value),
+                hex::encode(&r.value)
+            ));
+        } else if g.log != r.log {
+            stats.log_mismatches.push(format!(
+                "{} go log={:?} rust log={:?}",
+                what(),
+                g.log,
+                r.log
+            ));
+        }
+    }
+}
+
+/// The queries that return stored messages (`Any`s, customtypes,
+/// `stdtime` / `stdduration` fields as the handlers stored them, or as the
+/// query re-packs them: gov `v1beta1` proposals convert messages to legacy
+/// content) sent to both apps on the committed state: (code / value
+/// differences, log differences).
+fn query_echo(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    gn: &Gen,
+    counts: &mut BTreeMap<String, (u64, u64)>,
+    extra: Vec<(&'static str, Vec<u8>)>,
+    only_extra: bool,
+) -> (Vec<String>, Vec<String>) {
+    // `{1: s}` / `{1: n}` requests.
+    let s1 = |s: &str| {
+        encode(&[Field {
+            num: 1,
+            wt: 2,
+            val: s.as_bytes().to_vec(),
+        }])
+    };
+    let n1 = |n: u64| {
+        let mut v = Vec::new();
+        put_varint(&mut v, n);
+        encode(&[Field {
+            num: 1,
+            wt: 0,
+            val: v,
+        }])
+    };
+    let mut reqs: Vec<(&str, Vec<u8>)> = [
+        "/cosmos.gov.v1.Query/Proposals",
+        "/cosmos.gov.v1beta1.Query/Proposals",
+        "/cosmos.gov.v1.Query/Params",
+        "/cosmos.staking.v1beta1.Query/Validators",
+        "/cosmos.staking.v1beta1.Query/Params",
+        "/cosmos.auth.v1beta1.Query/Accounts",
+        "/cosmos.auth.v1beta1.Query/Params",
+        "/cosmos.bank.v1beta1.Query/Params",
+        "/cosmos.bank.v1beta1.Query/DenomsMetadata",
+        "/cosmos.distribution.v1beta1.Query/Params",
+        "/cosmos.slashing.v1beta1.Query/Params",
+        "/cosmos.consensus.v1.Query/Params",
+        "/cosmos.upgrade.v1beta1.Query/CurrentPlan",
+        "/ibc.core.client.v1.Query/ClientStates",
+        "/ibc.core.client.v1.Query/ClientParams",
+        "/ibc.core.connection.v1.Query/Connections",
+        "/ibc.core.channel.v1.Query/Channels",
+        "/hyperlane.core.v1.Query/Mailboxes",
+        "/hyperlane.core.interchain_security.v1.Query/Isms",
+        "/hyperlane.core.post_dispatch.v1.Query/Igps",
+        "/hyperlane.core.post_dispatch.v1.Query/MerkleTreeHooks",
+        "/hyperlane.core.post_dispatch.v1.Query/NoopHooks",
+        "/hyperlane.warp.v1.Query/Tokens",
+    ]
+    .into_iter()
+    .map(|p| (p, Vec::new()))
+    .collect();
+    if only_extra {
+        reqs.clear();
+    }
+    reqs.extend(extra);
+    for id in gn.proposals.iter().rev().take(8) {
+        for p in [
+            "/cosmos.gov.v1.Query/Proposal",
+            "/cosmos.gov.v1beta1.Query/Proposal",
+            "/cosmos.gov.v1.Query/Votes",
+            "/cosmos.gov.v1beta1.Query/Votes",
+            "/cosmos.gov.v1.Query/Deposits",
+        ] {
+            reqs.push((p, n1(*id)));
+        }
+    }
+    for a in &gn.accts {
+        for p in [
+            "/cosmos.authz.v1beta1.Query/GranterGrants",
+            "/cosmos.authz.v1beta1.Query/GranteeGrants",
+            "/cosmos.feegrant.v1beta1.Query/Allowances",
+            "/cosmos.feegrant.v1beta1.Query/AllowancesByGranter",
+            "/cosmos.auth.v1beta1.Query/Account",
+        ] {
+            reqs.push((p, s1(&a.acc)));
+        }
+    }
+    let (mut c, mut l) = (Vec::new(), Vec::new());
+    for (path, data) in reqs {
+        let req = abci::RequestQuery {
+            data,
+            path: path.into(),
+            height: 0,
+            prove: false,
+        };
+        let g = match go.call_or_exception(
+            conn,
+            &Request {
+                value: Some(request::Value::Query(req.clone())),
+            },
+        ) {
+            Ok(Response {
+                value: Some(response::Value::Query(g)),
+            }) => g,
+            other => {
+                c.push(format!("{path}: Go query failed: {other:?}"));
+                continue;
+            }
+        };
+        let r = rust.query(&req);
+        let e = counts.entry(path.to_owned()).or_default();
+        e.0 += 1;
+        if g.code == 0 && !g.value.is_empty() {
+            e.1 += 1;
+        }
+        let what = || format!("{path} {}", hex::encode(&req.data));
+        if (g.code, &g.codespace, &g.value) != (r.code, &r.codespace, &r.value) {
+            c.push(format!(
+                "{} go={}/{} {}\n    rust={}/{} {}\n    go log={:?} rust log={:?}",
+                what(),
+                g.codespace,
+                g.code,
+                hex::encode(&g.value),
+                r.codespace,
+                r.code,
+                hex::encode(&r.value),
+                g.log,
+                r.log
+            ));
+        } else if g.log != r.log {
+            l.push(format!(
+                "{} go log={:?} rust log={:?}",
+                what(),
+                g.log,
+                r.log
+            ));
+        }
+    }
+    (c, l)
+}
+
+/// After an app-hash split (both committed): the entries of every module
+/// store that differ between Go and Rust (`/store/<name>/subspace`).
+fn dump_split(go: &mut GoApp, conn: u32, rust: &mut app::App) -> Vec<String> {
+    const STORES: &[&str] = &[
+        "acc",
+        "authz",
+        "bank",
+        "blob",
+        "capability",
+        "circuit",
+        "consensus",
+        "distribution",
+        "evidence",
+        "feegrant",
+        "fibre",
+        "gov",
+        "hyperlane",
+        "ibc",
+        "icahost",
+        "minfee",
+        "mint",
+        "packetfowardmiddleware",
+        "params",
+        "signal",
+        "slashing",
+        "staking",
+        "transfer",
+        "upgrade",
+        "valaddr",
+        "warp",
+        "zkism",
+    ];
+    fn pairs(v: &[u8]) -> BTreeMap<Vec<u8>, Vec<u8>> {
+        // kv.Pairs { repeated Pair pairs = 1 } / Pair { key = 1, value = 2 }.
+        let mut out = BTreeMap::new();
+        for p in parse_fields(v).unwrap_or_default() {
+            if p.num != 1 || p.wt != 2 {
+                continue;
+            }
+            let (mut k, mut val) = (Vec::new(), Vec::new());
+            for f in parse_fields(&p.val).unwrap_or_default() {
+                match f.num {
+                    1 => k = f.val,
+                    2 => val = f.val,
+                    _ => {}
+                }
+            }
+            out.insert(k, val);
+        }
+        out
+    }
+    let mut lines = Vec::new();
+    for s in STORES {
+        // A subspace query needs a non-empty prefix: one per first byte.
+        let (mut gp, mut rp) = (BTreeMap::new(), BTreeMap::new());
+        for first in 0..=255u8 {
+            let req = abci::RequestQuery {
+                data: vec![first],
+                path: format!("/store/{s}/subspace"),
+                height: 0,
+                prove: false,
+            };
+            let g = go.call_or_exception(
+                conn,
+                &Request {
+                    value: Some(request::Value::Query(req.clone())),
+                },
+            );
+            let g = match g {
+                Ok(Response {
+                    value: Some(response::Value::Query(g)),
+                }) => g,
+                other => {
+                    lines.push(format!("{s}: Go query failed: {other:?}"));
+                    break;
+                }
+            };
+            let r = rust.query(&req);
+            gp.extend(pairs(&g.value));
+            rp.extend(pairs(&r.value));
+        }
+        for k in gp.keys().chain(rp.keys()).collect::<BTreeSet<_>>() {
+            let (a, b) = (gp.get(k), rp.get(k));
+            if a != b {
+                lines.push(format!(
+                    "{s} key={}\n    go={}\n    rust={}",
+                    hex::encode(k),
+                    a.map_or_else(|| "<absent>".into(), hex::encode),
+                    b.map_or_else(|| "<absent>".into(), hex::encode)
+                ));
+            }
+        }
+    }
+    lines
 }
 
 /// The CometBFT address of a validator update's key.
@@ -2543,20 +4826,84 @@ fn apply_updates(set: &ValSet, updates: &[abci::ValidatorUpdate]) -> ValSet {
 
 /// Learns created objects from a delivered tx (validators, proposals,
 /// unbondings).
-fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], events: &[abci::Event], height: i64) {
+fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, height: i64) {
+    let events = &res.events;
+    let mut submitted = Vec::new();
     for e in events {
         for a in &e.attributes {
             if a.key == "proposal_id"
                 && let Ok(id) = a.value.parse::<u64>()
-                && !gn.proposals.contains(&id)
             {
-                gn.proposals.push(id);
+                if e.r#type == "submit_proposal" && !submitted.contains(&id) {
+                    submitted.push(id);
+                }
+                if !gn.proposals.contains(&id) {
+                    gn.proposals.push(id);
+                }
             }
         }
     }
     let Ok(t) = txdecode::decode_for(app_version, tx) else {
         return;
     };
+    // The proposers of the proposals the tx submitted, in order.
+    let proposers: Vec<String> = t
+        .body
+        .messages
+        .iter()
+        .filter_map(|a| match a.type_url.as_str() {
+            "/cosmos.gov.v1.MsgSubmitProposal" => {
+                celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(a.value.as_slice())
+                    .ok()
+                    .map(|m| m.proposer)
+            }
+            "/cosmos.gov.v1beta1.MsgSubmitProposal" => {
+                celestia_proto::cosmos::gov::v1beta1::MsgSubmitProposal::decode(a.value.as_slice())
+                    .ok()
+                    .map(|m| m.proposer)
+            }
+            _ => None,
+        })
+        .collect();
+    // Hyperlane objects: the create messages' response ids, owned by the
+    // message signer.
+    if let Ok(d) =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(res.data.as_slice())
+    {
+        for (r, m) in d.msg_responses.iter().zip(&t.body.messages) {
+            let Some(kind) = hl_kind(&r.type_url) else {
+                continue;
+            };
+            let id = parse_fields(&r.value)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|f| f.num == 1 && f.wt == 2)
+                .map(|f| String::from_utf8_lossy(&f.val).into_owned());
+            let owner = parse_fields(&m.value)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|f| f.wt == 2)
+                .find_map(|f| {
+                    let s = String::from_utf8_lossy(&f.val).into_owned();
+                    gn.accts.iter().position(|a| a.acc == s)
+                });
+            if let (Some(id), Some(o)) = (id, owner) {
+                gn.hl_objects.push((kind, id, o));
+                if gn.hl_objects.len() > 128 {
+                    gn.hl_objects.remove(0);
+                }
+            }
+        }
+    }
+    learn_hyperlane(gn, &t.body.messages, &res.data);
+    for (id, p) in submitted.iter().zip(&proposers) {
+        if let Some(k) = gn.accts.iter().position(|x| x.acc == *p) {
+            gn.proposers.push((*id, k));
+            if gn.proposers.len() > 64 {
+                gn.proposers.remove(0);
+            }
+        }
+    }
     for a in &t.body.messages {
         match a.type_url.as_str() {
             "/cosmos.staking.v1beta1.MsgCreateValidator" => {
@@ -2583,22 +4930,290 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], events: &[abci::Event], heig
     }
 }
 
+/// Blocks of scripted txs (`DELIVER_SCRIPT`), run before the generated
+/// ones: one tx per line, `<account index> <type URL> <hex value> [gas]`
+/// (one message, signed in direct mode), or `vote <account index>` (a yes
+/// vote on the latest proposal); a line `---` ends a block; `#` starts a
+/// comment.
+type Script = std::collections::VecDeque<Vec<(usize, Any, u64)>>;
+
+fn read_script(text: &str, accounts: usize) -> anyhow::Result<Script> {
+    let mut out = Script::new();
+    let mut cur = Vec::new();
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line == "---" {
+            out.push_back(std::mem::take(&mut cur));
+            continue;
+        }
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if let ["vote", i] = f.as_slice() {
+            let i: usize = i.parse()?;
+            anyhow::ensure!(i < accounts, "account index {i} out of range");
+            cur.push((
+                i,
+                Any {
+                    type_url: "vote".into(),
+                    value: Vec::new(),
+                },
+                1_000_000,
+            ));
+            continue;
+        }
+        let [i, url, val, rest @ ..] = f.as_slice() else {
+            anyhow::bail!("bad script line {line:?}");
+        };
+        let i: usize = i.parse()?;
+        anyhow::ensure!(i < accounts, "account index {i} out of range");
+        let gas = rest.first().map_or(Ok(4_000_000), |g| g.parse())?;
+        cur.push((
+            i,
+            Any {
+                type_url: (*url).to_owned(),
+                value: hex::decode(val)?,
+            },
+            gas,
+        ));
+    }
+    if !cur.is_empty() {
+        out.push_back(cur);
+    }
+    Ok(out)
+}
+
+/// A `genesis.json` for a scenario recorded without one (the ibctesting
+/// fixtures): chain id, genesis time, initial height and app state of the
+/// recorded `InitChain`, the consensus section of the `ibc` scenario's
+/// genesis (the Go app takes the consensus parameters of `InitChain`).
+pub fn genesis_json(scenario: &str) -> anyhow::Result<String> {
+    let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
+    let ic = parse(&data)?
+        .into_iter()
+        .filter(|r| r.dir == Direction::Request)
+        .find_map(|r| match Request::decode(r.bytes.as_slice()).ok()?.value {
+            Some(request::Value::InitChain(ic)) => Some(ic),
+            _ => None,
+        })
+        .ok_or_else(|| anyhow::anyhow!("no InitChain in {scenario}"))?;
+    let tpl = std::fs::read(devnet_conformance::scenario_dir("ibc").join("genesis.json"))?;
+    let mut g: serde_json::Value = serde_json::from_slice(&tpl)?;
+    let t = ic.time.unwrap_or_default();
+    let secs = t.seconds;
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // Civil date from days since the epoch (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    g["genesis_time"] = serde_json::Value::String(format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:09}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60,
+        t.nanos
+    ));
+    g["chain_id"] = serde_json::Value::String(ic.chain_id.clone());
+    g["initial_height"] = serde_json::Value::from(ic.initial_height.max(1));
+    g["app_state"] = serde_json::from_slice(&ic.app_state_bytes)?;
+    Ok(serde_json::to_string_pretty(&g)?)
+}
+
+/// The fuzz accounts' addresses (bech32), in index order.
+#[must_use]
+pub fn account_addresses() -> Vec<String> {
+    accounts(1).into_iter().map(|a| a.acc).collect()
+}
+
+/// Hyperlane wiring from a successful tx's messages and responses.
+fn learn_hyperlane(gn: &mut Gen, msgs: &[Any], data: &[u8]) {
+    use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
+    use celestia_proto::hyperlane::core::v1 as core;
+    use celestia_proto::hyperlane::warp::v1 as warp;
+    let Ok(d) = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(data) else {
+        return;
+    };
+    let resp_id = |r: &Any| {
+        parse_fields(&r.value)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|f| f.num == 1 && f.wt == 2)
+            .map(|f| String::from_utf8_lossy(&f.val).into_owned())
+    };
+    for (r, m) in d.msg_responses.iter().zip(msgs) {
+        let v = m.value.as_slice();
+        let id = resp_id(r);
+        match (m.type_url.as_str(), id) {
+            ("/hyperlane.core.v1.MsgCreateMailbox", Some(id)) => {
+                if let Ok(x) = core::MsgCreateMailbox::decode(v) {
+                    gn.hl.mailbox_domain.insert(id, x.local_domain);
+                }
+            }
+            ("/hyperlane.core.interchain_security.v1.MsgCreateNoopIsm", Some(id)) => {
+                gn.hl.noop_isms.insert(id);
+            }
+            ("/hyperlane.warp.v1.MsgCreateSyntheticToken", Some(id)) => {
+                if let Ok(x) = warp::MsgCreateSyntheticToken::decode(v) {
+                    gn.hl.token_mailbox.insert(id, x.origin_mailbox);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgCreateCollateralToken", Some(id)) => {
+                if let Ok(x) = warp::MsgCreateCollateralToken::decode(v) {
+                    gn.hl.token_mailbox.insert(id, x.origin_mailbox);
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgCreateIgp", Some(id)) => {
+                if let Ok(x) = pd::MsgCreateIgp::decode(v) {
+                    gn.hl.igp_denom.insert(id, x.denom);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgRemoteTransfer", Some(id)) => {
+                push_capped(&mut gn.hl.message_ids, id);
+            }
+            ("/hyperlane.warp.v1.MsgEnrollRemoteRouter", _) => {
+                if let Ok(x) = warp::MsgEnrollRemoteRouter::decode(v)
+                    && let Some(r) = x.remote_router
+                {
+                    push_capped(
+                        &mut gn.hl.routers,
+                        (x.token_id, r.receiver_domain, r.receiver_contract),
+                    );
+                }
+            }
+            ("/hyperlane.core.v1.MsgSetMailbox", _) => {
+                if let Ok(x) = core::MsgSetMailbox::decode(v) {
+                    hl_transfer(gn, &x.mailbox_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.warp.v1.MsgSetToken", _) => {
+                if let Ok(x) = warp::MsgSetToken::decode(v) {
+                    hl_transfer(gn, &x.token_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgSetIgpOwner", _) => {
+                if let Ok(x) = pd::MsgSetIgpOwner::decode(v) {
+                    hl_transfer(gn, &x.igp_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner", _) => {
+                if let Ok(x) =
+                    celestia_proto::hyperlane::core::interchain_security::v1::MsgUpdateRoutingIsmOwner::decode(v)
+                {
+                    hl_transfer(gn, &x.ism_id, &x.new_owner, x.renounce_ownership);
+                }
+            }
+            ("/hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig", _) => {
+                if let Ok(x) = pd::MsgSetDestinationGasConfig::decode(v)
+                    && let Some(c) = x.destination_gas_config
+                {
+                    push_capped(&mut gn.hl.igp_domains, (x.igp_id, c.remote_domain));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A hyperlane object changed owner (`new_owner` set) or was renounced:
+/// its tracked owner follows, or it is dropped when no fuzz account owns
+/// it any more.
+fn hl_transfer(gn: &mut Gen, id: &str, new_owner: &str, renounce: bool) {
+    if !renounce && new_owner.is_empty() {
+        return;
+    }
+    let to = (!renounce)
+        .then(|| gn.accts.iter().position(|a| a.acc == new_owner))
+        .flatten();
+    match to {
+        Some(k) => {
+            for o in gn.hl_objects.iter_mut().filter(|o| o.1 == id) {
+                o.2 = k;
+            }
+        }
+        None => gn.hl_objects.retain(|o| o.1 != id),
+    }
+}
+
+/// A sweep template from a tx Go executed successfully: its only signer
+/// (a fuzz account), its messages and the gas Go used.
+fn sweep_template(
+    gn: &Gen,
+    app_version: u64,
+    tx: &[u8],
+    res: &abci::ExecTxResult,
+) -> Option<(usize, Vec<Any>, u64)> {
+    if txdecode::unmarshal_blob_tx(tx).is_some() {
+        return None;
+    }
+    let t = txdecode::decode_for(app_version, tx).ok()?;
+    let signers = x_ante::txview::signers(&t).ok()?;
+    let [s] = signers.as_slice() else {
+        return None;
+    };
+    let i = gn.accts.iter().position(|a| a.addr == *s)?;
+    Some((i, t.body.messages.clone(), res.gas_used.unsigned_abs()))
+}
+
+/// Copies of a sweep template signed by account `i` with consecutive
+/// sequences and decreasing gas limits below `used` (a copy that runs out
+/// of gas in the ante handler fails `CheckTx`, and so do the rest).
+fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
+    let n = 3 + gn.m.rng.below(8);
+    let mut limits: Vec<u64> = (0..n)
+        .map(|_| match gn.m.rng.below(4) {
+            // Near the end of the handler.
+            0 => used.saturating_sub(1 + gn.m.rng.below(4000) as u64),
+            _ => used / 3 + gn.m.rng.below((used - used / 3).max(1) as usize) as u64,
+        })
+        .collect();
+    limits.sort_unstable_by(|a, b| b.cmp(a));
+    let mut out = Vec::new();
+    for l in limits {
+        if let Some(t) = sign_simple(gn, i, msgs.to_vec(), l) {
+            out.push(t);
+            gn.accts[i].seq += 1;
+        }
+    }
+    out
+}
+
 /// A plain direct-mode tx of `msgs` signed by account `i`.
 fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> {
+    sign_with(gn, i, msgs, gas, String::new())
+}
+
+/// [`sign_simple`] with the fee paid by `granter`'s allowance (when not
+/// empty).
+fn sign_with(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64, granter: String) -> Option<Vec<u8>> {
     let a = &gn.accts[i];
     let body = TxBody {
         messages: msgs,
         ..Default::default()
     };
+    let (mode_info, plan) = match &a.ms {
+        Some(t) => ms_plan(None, t, SignMode::Direct),
+        None => (
+            single_mode_info(SignMode::Direct),
+            Plan::Single {
+                acct: i,
+                mode: SignMode::Direct,
+                corrupt: false,
+            },
+        ),
+    };
     #[allow(deprecated)]
     let auth = AuthInfo {
         signer_infos: vec![SignerInfo {
-            public_key: Some(a.key.pubkey_any()),
-            mode_info: Some(ModeInfo {
-                sum: Some(mode_info::Sum::Single(mode_info::Single {
-                    mode: SignMode::Direct as i32,
-                })),
-            }),
+            public_key: Some(a.pk.clone()),
+            mode_info: Some(mode_info),
             sequence: a.seq,
         }],
         fee: Some(Fee {
@@ -2608,35 +5223,264 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
             }],
             gas_limit: gas,
             payer: String::new(),
-            granter: String::new(),
+            granter,
         }),
         tip: None,
     };
     let body_bytes = body.encode_to_vec();
     let auth_info_bytes = auth.encode_to_vec();
-    let sig = a
-        .key
-        .sign(
-            &SignDoc {
-                body_bytes: body_bytes.clone(),
-                auth_info_bytes: auth_info_bytes.clone(),
-                chain_id: gn.chain_id.clone(),
-                account_number: a.number,
-            }
-            .encode_to_vec(),
-        )
-        .ok()?;
+    let direct = SignDoc {
+        body_bytes: body_bytes.clone(),
+        auth_info_bytes: auth_info_bytes.clone(),
+        chain_id: gn.chain_id.clone(),
+        account_number: a.number,
+    }
+    .encode_to_vec();
+    let sig = sign_plan(&gn.accts, &plan, &direct, None);
     Some(
         TxRaw {
             body_bytes,
             auth_info_bytes,
-            signatures: vec![sig.to_vec()],
+            signatures: vec![sig],
         }
         .encode_to_vec(),
     )
 }
 
+/// Generated txs signed in `SIGN_MODE_LEGACY_AMINO_JSON` (the
+/// `aminosign` oracle op's seeds): the delivery generator's messages
+/// (nested ones too) with values harvested from the devnet txs.
+#[must_use]
+pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
+    let mut g = offline_gen(app_version, seed, true);
+    (0..n).filter_map(|_| g.tx().map(|b| b.raw)).collect()
+}
+
+/// Valid messages of every registered `sdk.Msg` type at `app_version` for
+/// the wire-level enumeration ([`crate::wire`]): per type, `per_type`
+/// synthesized ones and up to `per_type` from the recorded scenarios
+/// (signer rewritten to fuzz account 0), plus state-building flows.
+#[must_use]
+pub fn wire_bases(app_version: u64, seed: u64, per_type: usize) -> Vec<Any> {
+    let mut g = offline_gen(app_version, seed, false);
+    let who = g.who(0);
+    let mut out = Vec::new();
+    for md in g.types.clone() {
+        let url = format!("/{}", md.full_name());
+        for _ in 0..per_type {
+            out.push(Any {
+                type_url: url.clone(),
+                value: g.synth(&md, &who, 0),
+            });
+        }
+        let sc: Vec<Any> = g
+            .scenario_msgs
+            .iter()
+            .filter(|a| a.type_url == url)
+            .take(per_type)
+            .cloned()
+            .collect();
+        for a in sc {
+            out.push(Any {
+                type_url: a.type_url.clone(),
+                value: Gen::resign(&md, &a.value, &who),
+            });
+        }
+    }
+    for _ in 0..per_type * 40 {
+        out.push(g.flow(0));
+    }
+    out.retain(|a| registered(app_version, &a.type_url));
+    out
+}
+
+/// How [`wire_input`] carries a (mutated) message to the oracle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireWrap {
+    /// The tx's only message.
+    Direct,
+    /// In a `MsgExec` (fuzz account 0 the grantee).
+    Exec,
+    /// In a gov `MsgSubmitProposal`.
+    Gov,
+    /// The message of a protobuf ICA `CosmosTx` (`json_ica_pb`: the host's
+    /// decoding and `ValidateBasic`).
+    Ica,
+}
+
+/// The oracle input of `msg` carried as `w`: `(op, input)` pairs (the
+/// tx decoder, and the amino-JSON sign bytes where a tx carries it).
+#[must_use]
+pub fn wire_input(msg: &Any, w: WireWrap) -> Vec<(&'static str, Vec<u8>)> {
+    use celestia_proto::cosmos::authz::v1beta1 as authz;
+    use celestia_proto::cosmos::gov::v1 as gov;
+    use celestia_proto::ibc::applications::interchain_accounts::v1::CosmosTx;
+    let accts = wire_accounts();
+    let me = accts[0].acc.clone();
+    let inner = match w {
+        WireWrap::Direct => msg.clone(),
+        WireWrap::Exec => Any::pack(&authz::MsgExec {
+            grantee: me,
+            msgs: vec![msg.clone()],
+        }),
+        WireWrap::Gov => Any::pack(&gov::MsgSubmitProposal {
+            messages: vec![msg.clone()],
+            initial_deposit: Vec::new(),
+            proposer: me,
+            metadata: String::new(),
+            title: "t".into(),
+            summary: "s".into(),
+            expedited: false,
+        }),
+        WireWrap::Ica => {
+            return vec![(
+                "json_ica_pb",
+                CosmosTx {
+                    messages: vec![msg.clone()],
+                }
+                .encode_to_vec(),
+            )];
+        }
+    };
+    let body = TxBody {
+        messages: vec![inner],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    let tx = wire_tx(&body, &wire_auth_info(&accts[0]));
+    vec![("tx", tx.clone()), ("aminosign", tx)]
+}
+
+/// A tx of `body` and `auth_info` with one 64-byte signature.
+#[must_use]
+pub fn wire_tx(body: &[u8], auth_info: &[u8]) -> Vec<u8> {
+    TxRaw {
+        body_bytes: body.to_vec(),
+        auth_info_bytes: auth_info.to_vec(),
+        signatures: vec![vec![1u8; 64]],
+    }
+    .encode_to_vec()
+}
+
+fn wire_accounts() -> &'static [Acct] {
+    static A: std::sync::OnceLock<Vec<Acct>> = std::sync::OnceLock::new();
+    A.get_or_init(|| accounts(1))
+}
+
+fn wire_auth_info(a: &Acct) -> Vec<u8> {
+    #[allow(deprecated)]
+    AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(a.pk.clone()),
+            mode_info: Some(single_mode_info(SignMode::LegacyAminoJson)),
+            sequence: 3,
+        }],
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "5000".into(),
+            }],
+            gas_limit: 200_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec()
+}
+
+/// A valid tx body (one `MsgSend` of fuzz account 0) and auth info, for
+/// the enumeration of `TxBody` / `AuthInfo` themselves.
+#[must_use]
+pub fn wire_envelope() -> (Vec<u8>, Vec<u8>) {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    let accts = wire_accounts();
+    let body = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: accts[0].acc.clone(),
+            to_address: accts[1].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "1".into(),
+            }],
+        })],
+        memo: "m".into(),
+        timeout_height: 9,
+        extension_options: Vec::new(),
+        // No extension option type is registered: any would fail the
+        // decoder (the `default_explicit` class adds empty ones).
+        non_critical_extension_options: Vec::new(),
+    }
+    .encode_to_vec();
+    (body, wire_auth_info(&accts[0]))
+}
+
+/// A generator without a chain (the accounts at numbers from 1, the
+/// recorded scenarios' messages and values).
+fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
+    let mut g = Gen {
+        m: Mutator::new(seed),
+        dict: Dict::default(),
+        accts: accounts(1),
+        scenario_msgs: Vec::new(),
+        validators: Vec::new(),
+        proposals: vec![1, 2],
+        unbondings: Vec::new(),
+        proposers: Vec::new(),
+        gas_seen: BTreeMap::new(),
+        hl_objects: Vec::new(),
+        hl: HlState::default(),
+        hex_ids: Vec::new(),
+        chain_id: "c".into(),
+        app_version,
+        height: 10,
+        types: msg_types()
+            .iter()
+            .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
+            .cloned()
+            .collect(),
+        force_amino,
+        wire: WireGen::default(),
+    };
+    for t in crate::corpus::devnet_txs() {
+        g.m.harvest(&t);
+        let Ok(tx) = txdecode::decode_for(app_version, &t) else {
+            continue;
+        };
+        for a in &tx.body.messages {
+            if let Some(md) = desc_for_type_url(a.type_url.as_bytes()) {
+                g.dict.harvest(&md, &a.value, 0);
+                g.scenario_msgs.push(a.clone());
+            }
+        }
+    }
+    for (k, v) in &g.dict.strings {
+        if k.contains("validator") {
+            for x in v {
+                if x.starts_with(b"celestiavaloper1") {
+                    g.validators.push(String::from_utf8_lossy(x).into_owned());
+                }
+            }
+        }
+    }
+    g
+}
+
 /// Whether `type_url` is in the tx decoder's registry at `app_version`.
+/// The generated message types: those the decoder knows at
+/// `app_version`; with `both` (`DELIVER_UPGRADE`), those of app versions 9
+/// and 10 (v10-only ones before the upgrade, v9 shapes after).
+fn types_for(app_version: u64, both: bool) -> Vec<MessageDescriptor> {
+    msg_types()
+        .iter()
+        .filter(|md| {
+            let u = format!("/{}", md.full_name());
+            registered(app_version, &u) || (both && (registered(9, &u) || registered(10, &u)))
+        })
+        .cloned()
+        .collect()
+}
+
 fn registered(app_version: u64, type_url: &str) -> bool {
     let body = TxBody {
         messages: vec![Any {
@@ -2729,11 +5573,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(
             v["auth"]["accounts"].as_array().unwrap().len(),
-            1 + ACCOUNTS
+            1 + accts.len()
         );
         assert_eq!(
             v["bank"]["supply"][0]["amount"],
-            (5 + BALANCE * ACCOUNTS as u128).to_string()
+            (5 + BALANCE * accts.len() as u128).to_string()
         );
     }
 
@@ -2747,12 +5591,19 @@ mod tests {
             validators: vec!["celestiavaloper1x".into()],
             proposals: vec![1],
             unbondings: Vec::new(),
+            proposers: Vec::new(),
+            gas_seen: BTreeMap::new(),
+            hl_objects: Vec::new(),
+            hl: HlState::default(),
             hex_ids: Vec::new(),
             chain_id: "c".into(),
             app_version: 10,
             height: 5,
             types: msg_types().to_vec(),
+            force_amino: false,
+            wire: WireGen::default(),
         };
+        assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);
         for md in msg_types() {
             let who = g.who(0);

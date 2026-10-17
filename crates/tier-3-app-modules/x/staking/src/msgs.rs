@@ -171,7 +171,9 @@ pub fn handle_create_validator(
         )));
     }
 
-    let mut v = Validator::new(msg.validator_address.clone(), pk_any.clone(), description);
+    // `types.NewValidator` packs the unpacked key again
+    // (`NewAnyWithValue`): the stored `Any` is canonical.
+    let mut v = Validator::new(msg.validator_address.clone(), pk.to_any(), description);
     commission.update_time = ctx.header.time;
     v.commission = commission;
     v.min_self_delegation = min_self;
@@ -269,9 +271,8 @@ fn edit_validator(
     if description == pb::Description::default() {
         return Err(errs::invalid_request("empty description"));
     }
-    // `!msg.MinSelfDelegation.IsPositive()` / `msg.CommissionRate.GT(..)`
-    // on a nil value.
-    if nil_min_self || nil_rate {
+    // `!msg.MinSelfDelegation.IsPositive()` on a nil value.
+    if nil_min_self {
         return Err(nil_deref());
     }
     let min_self = if msg.min_self_delegation.is_empty() {
@@ -285,6 +286,10 @@ fn edit_validator(
         return Err(errs::invalid_request(
             "minimum self delegation must be a positive integer",
         ));
+    }
+    // `msg.CommissionRate.GT(..)` on a nil value, after the check above.
+    if nil_rate {
+        return Err(nil_deref());
     }
     let rate = if msg.commission_rate.is_empty() {
         None
@@ -456,7 +461,7 @@ pub fn handle_cancel_unbonding_delegation(
     }
     let Some(mut ubd) = store::get_ubd(ctx, &del, &val)? else {
         return Err(sdk::error::internal(format!(
-            "unbonding delegation with delegator {} not found for validator {}",
+            "rpc error: code = NotFound desc = unbonding delegation with delegator {} not found for validator {}",
             msg.delegator_address, msg.validator_address
         )));
     };

@@ -47,14 +47,20 @@ fn safe_sub(a: &Coins, fee: &Coins) -> Result<(Coins, bool)> {
     Ok((d, n))
 }
 
+/// `Coins.IsValid()` on the coins as Go decoded them (`Err`: the panic of
+/// a nil amount it reaches).
+fn raw_valid(cs: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<bool> {
+    Ok(sdk::coins::raw_coins_validate(cs)?.is_ok())
+}
+
 fn basic_validate(a: &BasicAllowance) -> Result<()> {
     if !a.spend_limit.is_empty() {
-        let s = coins(&a.spend_limit)?;
         // Coins.IsValid also rejects non-positive amounts, so Go's separate
         // IsAllPositive check is unreachable.
-        if !s.is_valid() {
+        if !raw_valid(&a.spend_limit)? {
             return Err(sdkerr::invalid_coins(format!(
-                "send amount is invalid: {s}"
+                "send amount is invalid: {}",
+                sdk::coins::raw_coins_string(&a.spend_limit)
             )));
         }
     }
@@ -69,6 +75,10 @@ fn basic_validate(a: &BasicAllowance) -> Result<()> {
 impl Allowance {
     /// Decodes a packed allowance.
     pub fn from_any(any: &Any) -> Result<Self> {
+        // gogoproto's decoding: a nested inner allowance is kept as the tx
+        // carried it (see `txdecode::prost_compatible`).
+        let fixed = txdecode::prost_compatible(any);
+        let any = fixed.as_ref().unwrap_or(any);
         let v = any.value.as_slice();
         Ok(match any.type_url.as_str() {
             u if u == BasicAllowance::type_url() => Self::Basic(decode(v)?),
@@ -93,6 +103,8 @@ impl Allowance {
     /// resolves the whole tree first, so the grant handler runs this
     /// before it.
     pub fn check_shape(any: &Any) -> Result<()> {
+        let fixed = txdecode::prost_compatible(any);
+        let any = fixed.as_ref().unwrap_or(any);
         if any.type_url == AllowedMsgAllowance::type_url() {
             let a: AllowedMsgAllowance = decode(any.value.as_slice())?;
             let Some(inner) = a.allowance.as_ref() else {
@@ -134,6 +146,22 @@ impl Allowance {
         }
     }
 
+    /// `NewAnyWithValue` of the allowance Go holds after changing it
+    /// (`SetAllowance` re-packs the inner allowance too): canonical
+    /// gogoproto encoding at every level.
+    #[must_use]
+    pub fn to_canonical_any(&self) -> Any {
+        match self {
+            Self::AllowedMsg(inner, msgs) => {
+                txdecode::gogo_repack(&Any::pack(&AllowedMsgAllowance {
+                    allowance: Some(inner.to_canonical_any()),
+                    allowed_messages: msgs.clone(),
+                }))
+            }
+            other => txdecode::gogo_repack(&other.to_any()),
+        }
+    }
+
     /// `ExpiresAt`.
     pub fn expires_at(&self) -> Result<Option<Timestamp>> {
         Ok(match self {
@@ -149,21 +177,22 @@ impl Allowance {
             Self::Basic(a) => basic_validate(a),
             Self::Periodic(a) => {
                 Self::Basic(a.basic.clone().unwrap_or_default()).validate_basic()?;
-                let psl = coins(&a.period_spend_limit)?;
-                if !psl.is_valid() {
+                if !raw_valid(&a.period_spend_limit)? {
                     return Err(sdkerr::invalid_coins(format!(
-                        "spend amount is invalid: {psl}"
+                        "spend amount is invalid: {}",
+                        sdk::coins::raw_coins_string(&a.period_spend_limit)
                     )));
                 }
-                if psl.is_empty() {
+                if a.period_spend_limit.is_empty() {
                     return Err(sdkerr::invalid_coins("spend limit must be positive"));
                 }
-                let pcs = coins(&a.period_can_spend)?;
-                if !pcs.is_valid() {
+                if !raw_valid(&a.period_can_spend)? {
                     return Err(sdkerr::invalid_coins(format!(
-                        "can spend amount is invalid: {pcs}"
+                        "can spend amount is invalid: {}",
+                        sdk::coins::raw_coins_string(&a.period_can_spend)
                     )));
                 }
+                let psl = coins(&a.period_spend_limit)?;
                 let basic = a.basic.clone().unwrap_or_default();
                 if !basic.spend_limit.is_empty() {
                     let bsl = coins(&basic.spend_limit)?;
@@ -313,4 +342,44 @@ fn try_reset_period(a: &mut PeriodicAllowance, now: &Timestamp) -> Result<()> {
     }
     a.period_reset = Some(next);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+
+    use super::*;
+
+    fn c(denom: &str, amount: &str) -> PbCoin {
+        PbCoin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    #[test]
+    fn nil_spend_limit_amount_panics_like_go() {
+        // Coins.IsValid reaches IsPositive on the nil amount: panic.
+        let a = Allowance::Basic(BasicAllowance {
+            spend_limit: vec![c("utia", "")],
+            expiration: None,
+        });
+        assert!(a.validate_basic().unwrap_err().is_panic());
+        // An invalid denom fails first.
+        let a = Allowance::Basic(BasicAllowance {
+            spend_limit: vec![c("u", "")],
+            expiration: None,
+        });
+        let e = a.validate_basic().unwrap_err();
+        assert!(!e.is_panic());
+        assert_eq!(e.log, "send amount is invalid: <nil>u: invalid coins");
+        let a = Allowance::Periodic(PeriodicAllowance {
+            basic: None,
+            period: None,
+            period_spend_limit: vec![c("utia", "5")],
+            period_can_spend: vec![c("utia", "")],
+            period_reset: None,
+        });
+        assert!(a.validate_basic().unwrap_err().is_panic());
+    }
 }

@@ -239,7 +239,7 @@ pub fn validate_blob_namespace(ns: Namespace) -> Result<()> {
 }
 
 fn namespace_from_bytes(b: &[u8]) -> core::result::Result<Namespace, String> {
-    Namespace::from_slice(b).map_err(|e| e.to_string())
+    Namespace::from_slice_go(b)
 }
 
 /// `MsgPayForBlobs.ValidateBasic`.

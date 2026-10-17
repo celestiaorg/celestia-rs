@@ -459,19 +459,21 @@ pub fn validate_channel(ch: &Channel) -> Result<()> {
 
 /// `Order.String()`.
 #[must_use]
-pub fn order_name(o: i32) -> &'static str {
-    match Order::try_from(o) {
+pub fn order_name(o: i32) -> std::borrow::Cow<'static, str> {
+    // gogoproto `EnumName`: an unknown value prints as its number.
+    std::borrow::Cow::Borrowed(match Order::try_from(o) {
         Ok(Order::NoneUnspecified) => "ORDER_NONE_UNSPECIFIED",
         Ok(Order::Unordered) => "ORDER_UNORDERED",
         Ok(Order::Ordered) => "ORDER_ORDERED",
-        Err(_) => "UNKNOWN",
-    }
+        Err(_) => return std::borrow::Cow::Owned(o.to_string()),
+    })
 }
 
 /// `State.String()`.
 #[must_use]
-pub fn state_name(s: i32) -> &'static str {
-    match State::try_from(s) {
+pub fn state_name(s: i32) -> std::borrow::Cow<'static, str> {
+    // gogoproto `EnumName`: an unknown value prints as its number.
+    std::borrow::Cow::Borrowed(match State::try_from(s) {
         Ok(State::UninitializedUnspecified) => "STATE_UNINITIALIZED_UNSPECIFIED",
         Ok(State::Init) => "STATE_INIT",
         Ok(State::Tryopen) => "STATE_TRYOPEN",
@@ -479,8 +481,8 @@ pub fn state_name(s: i32) -> &'static str {
         Ok(State::Closed) => "STATE_CLOSED",
         Ok(State::Flushing) => "STATE_FLUSHING",
         Ok(State::Flushcomplete) => "STATE_FLUSHCOMPLETE",
-        Err(_) => "UNKNOWN",
-    }
+        Err(_) => return std::borrow::Cow::Owned(s.to_string()),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -568,12 +570,12 @@ fn emit_packet_event(
         attrs.push(("connection_id", hop(ch)));
         attrs.push((
             "packet_channel_ordering",
-            order_name(ch.ordering).to_owned(),
+            order_name(ch.ordering).into_owned(),
         ));
     } else {
         attrs.push((
             "packet_channel_ordering",
-            order_name(ch.ordering).to_owned(),
+            order_name(ch.ordering).into_owned(),
         ));
         attrs.push(("packet_connection", hop(ch)));
         attrs.push(("connection_id", hop(ch)));
@@ -600,14 +602,15 @@ pub(crate) fn connection_open(c: &ConnectionEnd) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn conn_state_name(s: i32) -> &'static str {
-    match ConnState::try_from(s) {
+pub(crate) fn conn_state_name(s: i32) -> std::borrow::Cow<'static, str> {
+    // gogoproto `EnumName`: an unknown value prints as its number.
+    std::borrow::Cow::Borrowed(match ConnState::try_from(s) {
         Ok(ConnState::UninitializedUnspecified) => "STATE_UNINITIALIZED_UNSPECIFIED",
         Ok(ConnState::Init) => "STATE_INIT",
         Ok(ConnState::Tryopen) => "STATE_TRYOPEN",
         Ok(ConnState::Open) => "STATE_OPEN",
-        Err(_) => "UNKNOWN",
-    }
+        Err(_) => return std::borrow::Cow::Owned(s.to_string()),
+    })
 }
 
 fn single_version_supports(c: &ConnectionEnd, order: i32) -> Result<()> {
@@ -616,7 +619,7 @@ fn single_version_supports(c: &ConnectionEnd, order: i32) -> Result<()> {
             "single version must be negotiated on connection before opening channel",
         ));
     }
-    if !crate::connection::verify_supported_feature(&c.versions[0], order_name(order)) {
+    if !crate::connection::verify_supported_feature(&c.versions[0], &order_name(order)) {
         return Err(conerr::invalid_version(format!(
             "connection version does not support channel ordering: {}",
             order_name(order)
@@ -1118,7 +1121,9 @@ pub fn send_packet(
     let latest = cs.latest_height();
     let latest_ts = crate::connection::get_timestamp_at_height(ctx, &conn, &latest)?;
     if crate::height::timeout_elapsed(timeout_height, timeout_timestamp, &latest, latest_ts) {
-        return Err(cherr::timeout_elapsed("invalid packet timeout"));
+        let t = packet_timeout(timeout_height, timeout_timestamp);
+        return Err(crate::upgrade::err_timeout_elapsed(&t, &latest, latest_ts)
+            .wrap("invalid packet timeout"));
     }
     let commitment = commit_packet(&packet);
     set_next_sequence_send(ctx, port, chan, seq.wrapping_add(1))?;
@@ -1140,6 +1145,17 @@ pub enum Outcome {
     NoOp,
 }
 
+/// `types.NewTimeout(height, timestamp)`.
+fn packet_timeout(
+    height: &Height,
+    timestamp: u64,
+) -> celestia_proto::ibc::core::channel::v1::Timeout {
+    celestia_proto::ibc::core::channel::v1::Timeout {
+        height: Some(*height),
+        timestamp,
+    }
+}
+
 /// `RecvPacket` (runs in the caller's cache branch).
 pub fn recv_packet(
     ctx: &mut Context<'_>,
@@ -1159,9 +1175,10 @@ pub fn recv_packet(
     if let Some(up) = get_counterparty_upgrade(ctx, &p.destination_port, &p.destination_channel)?
         && p.sequence >= up.next_sequence_send
     {
-        return Err(cherr::invalid_packet(
-            "cannot flush packet at sequence greater than or equal to counterparty next sequence send",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "cannot flush packet at sequence greater than or equal to counterparty next sequence send ({}) ≥ ({}).",
+            p.sequence, up.next_sequence_send
+        )));
     }
     let cap_name = host::channel_capability_path(&p.destination_port, &p.destination_channel);
     if !SCOPED.authenticate_capability(ctx, cap, &cap_name)? {
@@ -1171,14 +1188,16 @@ pub fn recv_packet(
     }
     let cp = ch.counterparty.clone().unwrap_or_default();
     if p.source_port != cp.port_id {
-        return Err(cherr::invalid_packet(
-            "packet source port doesn't match the counterparty's port",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet source port doesn't match the counterparty's port ({} ≠ {})",
+            p.source_port, cp.port_id
+        )));
     }
     if p.source_channel != cp.channel_id {
-        return Err(cherr::invalid_packet(
-            "packet source channel doesn't match the counterparty's channel",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet source channel doesn't match the counterparty's channel ({} ≠ {})",
+            p.source_channel, cp.channel_id
+        )));
     }
     let conn = get_connection(ctx, &hop(&ch))?;
     connection_open(&conn)?;
@@ -1187,7 +1206,11 @@ pub fn recv_packet(
     let self_ts = crate::lightclients::tendermint::block_time(ctx) as u64;
     let th = p.timeout_height.unwrap_or_default();
     if crate::height::timeout_elapsed(&th, p.timeout_timestamp, &self_height, self_ts) {
-        return Err(cherr::timeout_elapsed("packet timeout elapsed"));
+        let t = packet_timeout(&th, p.timeout_timestamp);
+        return Err(
+            crate::upgrade::err_timeout_elapsed(&t, &self_height, self_ts)
+                .wrap("packet timeout elapsed"),
+        );
     }
     let commitment = commit_packet(p);
     verify(
@@ -1415,14 +1438,16 @@ pub fn acknowledge_packet(
     }
     let cp = ch.counterparty.clone().unwrap_or_default();
     if p.destination_port != cp.port_id {
-        return Err(cherr::invalid_packet(
-            "packet destination port doesn't match the counterparty's port",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination port doesn't match the counterparty's port ({} ≠ {})",
+            p.destination_port, cp.port_id
+        )));
     }
     if p.destination_channel != cp.channel_id {
-        return Err(cherr::invalid_packet(
-            "packet destination channel doesn't match the counterparty's channel",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination channel doesn't match the counterparty's channel ({} ≠ {})",
+            p.destination_channel, cp.channel_id
+        )));
     }
     let conn = get_connection(ctx, &hop(&ch))?;
     connection_open(&conn)?;
@@ -1492,20 +1517,26 @@ pub fn timeout_packet(
     })?;
     let cp = ch.counterparty.clone().unwrap_or_default();
     if p.destination_port != cp.port_id {
-        return Err(cherr::invalid_packet(
-            "packet destination port doesn't match the counterparty's port",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination port doesn't match the counterparty's port ({} ≠ {})",
+            p.destination_port, cp.port_id
+        )));
     }
     if p.destination_channel != cp.channel_id {
-        return Err(cherr::invalid_packet(
-            "packet destination channel doesn't match the counterparty's channel",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination channel doesn't match the counterparty's channel ({} ≠ {})",
+            p.destination_channel, cp.channel_id
+        )));
     }
     let conn = get_connection(ctx, &hop(&ch))?;
     let proof_ts = crate::connection::get_timestamp_at_height(ctx, &conn, proof_height)?;
     let th = p.timeout_height.unwrap_or_default();
     if !crate::height::timeout_elapsed(&th, p.timeout_timestamp, proof_height, proof_ts) {
-        return Err(cherr::timeout_not_reached("packet timeout not reached"));
+        let t = packet_timeout(&th, p.timeout_timestamp);
+        return Err(
+            crate::upgrade::err_timeout_not_reached(&t, proof_height, proof_ts)
+                .wrap("packet timeout not reached"),
+        );
     }
     let commitment = get_packet_commitment(ctx, &p.source_port, &p.source_channel, p.sequence)?;
     if commitment.is_empty() {
@@ -1619,7 +1650,7 @@ pub fn timeout_executed(ctx: &mut Context<'_>, cap: &Capability, p: &Packet) -> 
                 ("connection_id", hop(&ch)),
                 (
                     "packet_channel_ordering",
-                    order_name(ch.ordering).to_owned(),
+                    order_name(ch.ordering).into_owned(),
                 ),
             ],
         )));
@@ -1654,14 +1685,16 @@ pub fn timeout_on_close(
     }
     let cp = ch.counterparty.clone().unwrap_or_default();
     if p.destination_port != cp.port_id {
-        return Err(cherr::invalid_packet(
-            "packet destination port doesn't match the counterparty's port",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination port doesn't match the counterparty's port ({} ≠ {})",
+            p.destination_port, cp.port_id
+        )));
     }
     if p.destination_channel != cp.channel_id {
-        return Err(cherr::invalid_packet(
-            "packet destination channel doesn't match the counterparty's channel",
-        ));
+        return Err(cherr::invalid_packet(format!(
+            "packet destination channel doesn't match the counterparty's channel ({} ≠ {})",
+            p.destination_channel, cp.channel_id
+        )));
     }
     let conn = get_connection(ctx, &hop(&ch))?;
     let commitment = get_packet_commitment(ctx, &p.source_port, &p.source_channel, p.sequence)?;

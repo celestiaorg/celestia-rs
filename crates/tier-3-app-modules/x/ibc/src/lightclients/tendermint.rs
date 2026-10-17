@@ -438,9 +438,11 @@ pub fn validate_consensus_state(c: &ConsensusState) -> Result<()> {
         return Err(cerr::invalid_consensus("root cannot be empty"));
     }
     if !c.next_validators_hash.is_empty() && c.next_validators_hash.len() != 32 {
-        return Err(crate::errors::unregistered(
-            "next validators hash is invalid",
-        ));
+        // `errorsmod.Wrap(cmttypes.ValidateHash(..), "next validators hash is invalid")`.
+        return Err(crate::errors::unregistered(format!(
+            "next validators hash is invalid: expected size to be 32 bytes, got {} bytes",
+            c.next_validators_hash.len()
+        )));
     }
     if ts_nanos(c.timestamp.as_ref()).div_euclid(1_000_000_000) <= 0 {
         return Err(cerr::invalid_consensus(
@@ -549,13 +551,22 @@ pub fn validate_header_basic(h: &Header) -> Result<()> {
     let Some(th) = sh.header.as_ref() else {
         return Err(cerr::invalid_header("tendermint header cannot be nil"));
     };
+    light::signed_header_from_proto(Some(sh)).map_err(|e| {
+        crate::errors::unregistered(format!("header is not a tendermint header: {e}"))
+    })?;
     light::validate_signed_header(Some(sh), &th.chain_id)
         .map_err(|e| crate::errors::unregistered(format!("header failed basic validation: {e}")))?;
     let hh = header_height(h)?;
-    if height::gte(&h.trusted_height.unwrap_or_default(), &hh) {
-        return Err(tmerr::invalid_header_height(
-            "TrustedHeight must be less than header height",
-        ));
+    let trusted = h.trusted_height.unwrap_or_default();
+    if height::gte(&trusted, &hh) {
+        // `%d` of the `Height` structs.
+        return Err(tmerr::invalid_header_height(format!(
+            "TrustedHeight {{{} {}}} must be less than header height {{{} {}}}",
+            trusted.revision_number,
+            trusted.revision_height,
+            hh.revision_number,
+            hh.revision_height
+        )));
     }
     if h.validator_set.is_none() {
         return Err(cerr::invalid_header("validator set is nil"));

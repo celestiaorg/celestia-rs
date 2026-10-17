@@ -206,8 +206,9 @@ pub enum SigData {
     Multi {
         /// Signer bit array (may be nil).
         bitarray: Option<CompactBitArray>,
-        /// Sub-signatures.
-        signatures: Vec<SigData>,
+        /// Sub-signatures: one per `MultiSignature` entry, `None` (Go's nil
+        /// interface) past the mode infos.
+        signatures: Vec<Option<SigData>>,
     },
 }
 
@@ -300,9 +301,12 @@ pub fn mode_info_to_sig_data(mi: &ModeInfo, sig: &[u8]) -> R<SigData> {
         }),
         Some(mode_info::Sum::Multi(m)) => {
             let sigs = decode_multisignatures(sig)?;
-            let mut out = Vec::with_capacity(sigs.len());
+            // `make([]signing.SignatureData, len(sigs))`, filled for the
+            // mode infos (more mode infos than signatures: index panic).
+            let mut out = vec![None; sigs.len()];
             for (i, mi) in m.mode_infos.iter().enumerate() {
-                out.push(mode_info_to_sig_data(mi, idx(&sigs, i)?)?);
+                let d = mode_info_to_sig_data(mi, idx(&sigs, i)?)?;
+                out[i] = Some(d);
             }
             Ok(SigData::Multi {
                 bitarray: m.bitarray.clone(),
@@ -407,5 +411,46 @@ pub fn submit_proposal_msgs(any: &Any) -> R<Option<Vec<Any>>> {
         Some(Ok(m)) => Ok(Some(m.messages)),
         Some(Err(e)) => Err(Fail::Err(errs::tx_decode(e.to_string()))),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+    use prost::Message as _;
+
+    use super::*;
+
+    fn single() -> ModeInfo {
+        ModeInfo {
+            sum: Some(mode_info::Sum::Single(mode_info::Single { mode: 1 })),
+        }
+    }
+
+    fn multi(mode_infos: Vec<ModeInfo>) -> ModeInfo {
+        ModeInfo {
+            sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                bitarray: None,
+                mode_infos,
+            })),
+        }
+    }
+
+    #[test]
+    fn multisig_entries_past_the_mode_infos_are_nil() {
+        // Go: `make([]SignatureData, len(sigs))` filled per mode info.
+        let sig = MultiSignature {
+            signatures: vec![vec![1; 64], vec![2; 64]],
+        }
+        .encode_to_vec();
+        let d = mode_info_to_sig_data(&multi(vec![single()]), &sig).unwrap();
+        let SigData::Multi { signatures, .. } = d else {
+            unreachable!()
+        };
+        assert_eq!(signatures.len(), 2);
+        assert!(signatures[0].is_some() && signatures[1].is_none());
+        // More mode infos than signatures: index out of range.
+        let r = mode_info_to_sig_data(&multi(vec![single(), single(), single()]), &sig);
+        assert!(matches!(r, Err(Fail::Panic(_))));
     }
 }

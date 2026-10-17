@@ -36,6 +36,24 @@ pub(crate) mod iface {
 
 include!("registry_table.rs");
 
+/// The Go interface type of `iface` as `%v` prints a `reflect.Type`
+/// (`tx.TxExtensionOptionI`); `%T` of the `UnpackAny` target is the pointer
+/// to it.
+pub(crate) fn iface_go_type(iface: u32) -> &'static str {
+    match iface {
+        iface::MSG => "types.Msg",
+        iface::PUB_KEY => "types.PubKey",
+        iface::AUTHORIZATION => "authz.Authorization",
+        iface::FEE_ALLOWANCE => "feegrant.FeeAllowanceI",
+        iface::CONTENT => "v1beta1.Content",
+        iface::EVIDENCE => "exported.Evidence",
+        iface::CLIENT_STATE => "exported.ClientState",
+        iface::CONSENSUS_STATE => "exported.ConsensusState",
+        iface::CLIENT_MESSAGE => "exported.ClientMessage",
+        _ => "tx.TxExtensionOptionI",
+    }
+}
+
 fn lookup(type_url: &[u8]) -> Option<&'static (&'static str, &'static str, u32)> {
     TYPE_URLS
         .binary_search_by(|(u, _, _)| u.as_bytes().cmp(type_url))
@@ -62,7 +80,7 @@ pub(crate) fn resolve(type_url: &[u8]) -> Option<&'static MessageInfo> {
 pub(crate) fn resolve_impl(type_url: &[u8], iface: u32) -> Option<&'static MessageInfo> {
     lookup(type_url)
         .filter(|(_, _, bits)| bits & iface != 0)
-        .and_then(|(_, name, _)| celestia_proto::wire_table::message(name))
+        .and_then(|(_, name, _)| crate::gogo::info(name).ok())
 }
 
 /// Whether `iface` has any registered implementation (`interfaceImpls`

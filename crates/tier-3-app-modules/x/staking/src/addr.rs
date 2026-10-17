@@ -17,11 +17,18 @@ fn encode(prefix: &str, addr: &[u8]) -> Result<String> {
 }
 
 fn decode(prefix: &str, s: &str) -> Result<Vec<u8>> {
+    // Go's codec returns these as plain errors, which every caller wraps
+    // (`ErrInvalidAddress.Wrapf("invalid ... address: %s", err)`): the
+    // log is Go's text alone (the code stays `ErrInvalidAddress`).
     if s.trim().is_empty() {
-        return Err(errs::invalid_address("empty address string is not allowed"));
+        return Err(sdk::SdkError::new(
+            "sdk",
+            7,
+            "empty address string is not allowed",
+        ));
     }
     let (hrp, bytes) =
-        encoding::bech32::decode(s).map_err(|e| errs::invalid_address(format!("{s}: {e}")))?;
+        encoding::bech32::decode_and_convert(s).map_err(|e| sdk::SdkError::new("sdk", 7, e))?;
     if hrp != prefix {
         return Err(errs::logic(format!(
             "hrp does not match bech32 prefix: expected '{prefix}' got '{hrp}'"
@@ -112,6 +119,16 @@ impl PubKey {
                 }
                 Ok(hash::ripemd160(&hash::sha256(k)).to_vec())
             }
+        }
+    }
+
+    /// `codectypes.NewAnyWithValue(pk)`: the key re-marshaled canonically
+    /// (a duplicated or unknown field of the tx's `Any` is not kept).
+    #[must_use]
+    pub fn to_any(&self) -> Any {
+        match self {
+            Self::Ed25519(k) => Any::pack(&ed25519::PubKey { key: k.clone() }),
+            Self::Secp256k1(k) => Any::pack(&secp256k1::PubKey { key: k.clone() }),
         }
     }
 

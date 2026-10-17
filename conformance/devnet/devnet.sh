@@ -123,7 +123,11 @@ cp "$H"/config/{config.toml,node_key.json,priv_validator_key.json} "$H/core/conf
 echo '{"height":"0","round":0,"step":0}' > "$H/core/data/priv_validator_state.json"
 
 PIDS=()
-cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
+cleanup() {
+  kill "${PIDS[@]}" 2>/dev/null || true
+  # The v10 app started by an UPGRADE_TO_V10 switch (also on failure).
+  if [ -f "$WORK/app-v10.pid" ]; then kill "$(cat "$WORK/app-v10.pid")" 2>/dev/null || true; fi
+}
 trap cleanup EXIT
 celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
 APP_PID=$!; PIDS+=($APP_PID); sleep 4

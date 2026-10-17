@@ -32,7 +32,15 @@ pub(crate) fn unmarshal(
             if data.is_empty() {
                 return Ok(prev);
             }
-            let v = math::Int::unmarshal(data).map_err(|e| big_err(data, &e))?;
+            let v = math::Int::unmarshal(data).map_err(
+                |e| match math::Int::unmarshal_overflow_bits(data) {
+                    Some(bits) => GoError::new(format!(
+                        "integer out of range; got: {bits}, max: {}",
+                        math::MAX_BIT_LEN
+                    )),
+                    None => big_err(data, &e),
+                },
+            )?;
             Ok(Some(v.marshal()))
         }
         LEGACY_DEC => {
@@ -90,7 +98,18 @@ fn hex_address(data: &[u8]) -> GoResult<Vec<u8>> {
         let lower = match c {
             b'0'..=b'9' | b'a'..=b'f' => c,
             b'A'..=b'F' => c + 32,
-            _ => return Err(GoError::new("encoding/hex: invalid byte")),
+            // `hex.InvalidByteError`: `%#U` of the byte.
+            _ => {
+                let ch = char::from(c);
+                let quoted = if gostr::is_print(ch) {
+                    format!(" '{ch}'")
+                } else {
+                    String::new()
+                };
+                return Err(GoError::new(format!(
+                    "encoding/hex: invalid byte: U+{c:04X}{quoted}"
+                )));
+            }
         };
         out.push(lower);
     }
@@ -111,16 +130,32 @@ fn ecdsa_pk(data: &[u8]) -> GoResult<()> {
         .map_err(|_| GoError::new("wrong ECDSA PK bytes, unknown curve type"))
 }
 
+/// `%#v` of a gogoproto `*types.Timestamp` / `*types.Duration` (their
+/// generated `GoString`): `&timestamppb.Timestamp{Seconds: 1,\nNanos: 2,\n}`.
+fn go_string(kind: &str, secs: i64, nanos: i32) -> String {
+    format!("&{kind}{{Seconds: {secs},\nNanos: {nanos},\n}}")
+}
+
 /// gogoproto `types.validateTimestamp`.
 pub(crate) fn validate_timestamp(secs: i64, nanos: i32) -> GoResult<()> {
+    let ts = || go_string("timestamppb.Timestamp", secs, nanos);
     if secs < ZERO_TIME_SECONDS {
-        return Err(GoError::new("timestamp: before 0001-01-01"));
+        return Err(GoError::new(format!(
+            "timestamp: {} before 0001-01-01",
+            ts()
+        )));
     }
     if secs >= 253_402_300_800 {
-        return Err(GoError::new("timestamp: after 10000-01-01"));
+        return Err(GoError::new(format!(
+            "timestamp: {} after 10000-01-01",
+            ts()
+        )));
     }
     if !(0..1_000_000_000).contains(&nanos) {
-        return Err(GoError::new("timestamp: nanos not in range [0, 1e9)"));
+        return Err(GoError::new(format!(
+            "timestamp: {}: nanos not in range [0, 1e9)",
+            ts()
+        )));
     }
     Ok(())
 }
@@ -130,25 +165,39 @@ pub(crate) fn validate_timestamp(secs: i64, nanos: i32) -> GoResult<()> {
 pub(crate) fn validate_duration(secs: i64, nanos: i32) -> GoResult<()> {
     // int64(10000 * 365.25 * 24 * 60 * 60)
     const MAX_SECONDS: i64 = 315_576_000_000;
+    let d = || go_string("durationpb.Duration", secs, nanos);
     if !(-MAX_SECONDS..=MAX_SECONDS).contains(&secs) {
-        return Err(GoError::new("duration: seconds out of range"));
+        return Err(GoError::new(format!(
+            "duration: {}: seconds out of range",
+            d()
+        )));
     }
     if nanos <= -1_000_000_000 || nanos >= 1_000_000_000 {
-        return Err(GoError::new("duration: nanos out of range"));
+        return Err(GoError::new(format!(
+            "duration: {}: nanos out of range",
+            d()
+        )));
     }
     if (secs < 0 && nanos > 0) || (secs > 0 && nanos < 0) {
-        return Err(GoError::new(
-            "duration: seconds and nanos have different signs",
-        ));
+        return Err(GoError::new(format!(
+            "duration: {}: seconds and nanos have different signs",
+            d()
+        )));
     }
-    let mut d = secs.wrapping_mul(1_000_000_000);
-    if d / 1_000_000_000 != secs {
-        return Err(GoError::new("duration: out of range for time.Duration"));
+    let mut total = secs.wrapping_mul(1_000_000_000);
+    if total / 1_000_000_000 != secs {
+        return Err(GoError::new(format!(
+            "duration: {} is out of range for time.Duration",
+            d()
+        )));
     }
     if nanos != 0 {
-        d = d.wrapping_add(i64::from(nanos));
-        if (d < 0) != (nanos < 0) {
-            return Err(GoError::new("duration: out of range for time.Duration"));
+        total = total.wrapping_add(i64::from(nanos));
+        if (total < 0) != (nanos < 0) {
+            return Err(GoError::new(format!(
+                "duration: {} is out of range for time.Duration",
+                d()
+            )));
         }
     }
     Ok(())

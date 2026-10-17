@@ -116,11 +116,17 @@ pub fn get_allowance(ctx: &mut Context<'_>, granter: &[u8], grantee: &[u8]) -> R
     Allowance::from_grant(&g)
 }
 
-fn new_grant(granter: &[u8], grantee: &[u8], a: &Allowance) -> Grant {
+/// `feegrant.NewGrant`: the allowance packed again (`NewAnyWithValue`,
+/// gogoproto's canonical encoding: customtype amounts as `Int.String()`,
+/// merged and reordered fields). `raw` is the allowance as the tx carried
+/// it, when it was not changed since: Go marshals a nested `Any` (the
+/// inner allowance of an `AllowedMsgAllowance`) from its bytes as
+/// received.
+fn new_grant(granter: &[u8], grantee: &[u8], a: &Allowance, raw: Option<&Any>) -> Grant {
     Grant {
         granter: bech32(granter),
         grantee: bech32(grantee),
-        allowance: Some(a.to_any()),
+        allowance: Some(raw.map_or_else(|| a.to_canonical_any(), txdecode::gogo_repack)),
     }
 }
 
@@ -130,6 +136,7 @@ pub fn grant_allowance(
     granter: &[u8],
     grantee: &[u8],
     a: &Allowance,
+    raw: Option<&Any>,
 ) -> Result<()> {
     if get_allowance(ctx, granter, grantee).is_ok() {
         return Err(sdkerr::invalid_request("fee allowance already exists"));
@@ -154,7 +161,7 @@ pub fn grant_allowance(
         }
         ctx.set(STORE_KEY, queue_key(exp, &key[1..]), Vec::new())?;
     }
-    let grant = new_grant(granter, grantee, a);
+    let grant = new_grant(granter, grantee, a, raw);
     ctx.set(STORE_KEY, key, grant.encode_to_vec())?;
     ctx.events.emit(event(
         "set_feegrant",
@@ -170,7 +177,7 @@ fn update_allowance(
     a: &Allowance,
 ) -> Result<()> {
     get_grant(ctx, granter, grantee)?;
-    let grant = new_grant(granter, grantee, a);
+    let grant = new_grant(granter, grantee, a, None);
     ctx.set(
         STORE_KEY,
         allowance_key(granter, grantee),
@@ -277,7 +284,7 @@ pub fn handle_grant_allowance(
             Allowance::from_any(any)
         })?;
     a.validate_basic()?;
-    grant_allowance(ctx, &granter, &grantee, &a)?;
+    grant_allowance(ctx, &granter, &grantee, &a, msg.allowance.as_ref())?;
     Ok(MsgGrantAllowanceResponse {})
 }
 
@@ -312,7 +319,7 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
         let granter = acc_from_bech32(&g.granter)?;
         let grantee = acc_from_bech32(&g.grantee)?;
         let a = Allowance::from_grant(g)?;
-        grant_allowance(ctx, &granter, &grantee, &a)?;
+        grant_allowance(ctx, &granter, &grantee, &a, None)?;
     }
     Ok(())
 }
@@ -341,3 +348,109 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
 
 /// Keeps `SdkError` reachable for downstream signatures.
 pub type FeegrantError = SdkError;
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+    use celestia_proto::cosmos::feegrant::v1beta1::{AllowedMsgAllowance, BasicAllowance};
+    use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    use super::*;
+
+    fn allowance(amount: &str) -> Any {
+        Any::pack(&BasicAllowance {
+            spend_limit: vec![PbCoin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }],
+            expiration: None,
+        })
+    }
+
+    #[test]
+    fn grants_are_stored_as_go_repacks_them() {
+        let mut m = MultiStore::new();
+        for s in [STORE_KEY, x_auth::STORE_KEY, x_bank::STORE_KEY] {
+            m.mount(s, Kind::Iavl).unwrap();
+        }
+        let mut ctx = Context::new(&mut m, Header::default(), ExecMode::Finalize);
+        let (granter, a, b) = ([1u8; 20], [2u8; 20], [3u8; 20]);
+        // The allowance itself is re-marshaled: `+1` is `Int.String()`.
+        handle_grant_allowance(
+            &mut ctx,
+            &MsgGrantAllowance {
+                granter: bech32(&granter),
+                grantee: bech32(&a),
+                allowance: Some(allowance("+1")),
+            },
+        )
+        .unwrap();
+        let g = get_grant(&mut ctx, &granter, &a).unwrap();
+        assert_eq!(g.allowance, Some(allowance("1")));
+        // A nested `Any` keeps the bytes the tx carried.
+        let inner = allowance("+1");
+        handle_grant_allowance(
+            &mut ctx,
+            &MsgGrantAllowance {
+                granter: bech32(&granter),
+                grantee: bech32(&b),
+                allowance: Some(Any::pack(&AllowedMsgAllowance {
+                    allowance: Some(inner.clone()),
+                    allowed_messages: vec!["/cosmos.bank.v1beta1.MsgSend".into()],
+                })),
+            },
+        )
+        .unwrap();
+        let g = get_grant(&mut ctx, &granter, &b).unwrap();
+        let stored = AllowedMsgAllowance::decode(g.allowance.unwrap().value.as_slice()).unwrap();
+        assert_eq!(stored.allowance, Some(inner));
+    }
+
+    #[test]
+    fn allowances_with_wide_field_keys_decode_as_gogoproto_does() {
+        // An ICA host tx (no unknown-field check) carrying a field key past
+        // u32::MAX: gogoproto truncates the field number to int32 (1024, an
+        // unknown field it skips) at any depth; Go grants the allowance and
+        // stores the inner one as received.
+        let mut wide = Vec::new();
+        prost::encoding::encode_varint((1 << 35) + (1024 << 3), &mut wide);
+        wide.push(1);
+        let mut m = MultiStore::new();
+        for s in [STORE_KEY, x_auth::STORE_KEY, x_bank::STORE_KEY] {
+            m.mount(s, Kind::Iavl).unwrap();
+        }
+        let mut ctx = Context::new(&mut m, Header::default(), ExecMode::Finalize);
+        let granter = [1u8; 20];
+        for (k, (inner_wide, outer_wide)) in [(true, false), (false, true), (true, true)]
+            .into_iter()
+            .enumerate()
+        {
+            let mut inner = allowance("+1");
+            if inner_wide {
+                inner.value.extend_from_slice(&wide);
+            }
+            let mut outer = Any::pack(&AllowedMsgAllowance {
+                allowance: Some(inner.clone()),
+                allowed_messages: vec!["/cosmos.bank.v1beta1.MsgSend".into()],
+            });
+            if outer_wide {
+                outer.value.extend_from_slice(&wide);
+            }
+            let grantee = [10 + u8::try_from(k).unwrap_or(0); 20];
+            handle_grant_allowance(
+                &mut ctx,
+                &MsgGrantAllowance {
+                    granter: bech32(&granter),
+                    grantee: bech32(&grantee),
+                    allowance: Some(outer),
+                },
+            )
+            .unwrap();
+            let g = get_grant(&mut ctx, &granter, &grantee).unwrap();
+            let stored =
+                AllowedMsgAllowance::decode(g.allowance.unwrap().value.as_slice()).unwrap();
+            assert_eq!(stored.allowance, Some(inner));
+            assert!(get_allowance(&mut ctx, &granter, &grantee).is_ok());
+        }
+    }
+}

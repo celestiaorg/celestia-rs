@@ -9,7 +9,8 @@
 #
 # v10 scenarios need celestia-appd v10.4.0, v9-* scenarios v9.0.8 (both as
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
-# v9-upgrade switches binaries mid-run and is not supported.
+# v9-upgrade switches binaries mid-run and is not supported (deliver-diff.sh
+# supports it: GO_APPD_NEXT).
 set -euo pipefail
 SCENARIO=${1:?scenario}
 PER=${2:-20}
@@ -22,7 +23,14 @@ WORK=$(mktemp -d)
 H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
-cp "$IN/genesis.json" "$H/config/genesis.json"
+FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
+# Scenarios recorded without a genesis file (the ibctesting fixtures): one
+# from the recorded InitChain.
+if [ -f "$IN/genesis.json" ]; then
+  cp "$IN/genesis.json" "$H/config/genesis.json"
+else
+  "$FUZZ_DIFF" genesis "$SCENARIO" >"$H/config/genesis.json"
+fi
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true; rm -rf "$WORK"' EXIT

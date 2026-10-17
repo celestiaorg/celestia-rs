@@ -119,7 +119,12 @@ fn duration_nanos(d: Option<&pbjson_types::Duration>) -> i128 {
     })
 }
 
+/// The message as Go's filter sees it (gogoproto's decoding: a repeated
+/// `stdduration` such as `unbonding_time` is the last occurrence, where
+/// prost would merge them).
 fn decode<M: Message + Default>(any: &Any) -> sdk::Result<M> {
+    let fixed = txdecode::prost_compatible(any);
+    let any = fixed.as_ref().unwrap_or(any);
     M::decode(any.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
 }
 

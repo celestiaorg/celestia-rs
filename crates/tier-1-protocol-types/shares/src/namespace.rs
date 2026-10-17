@@ -114,6 +114,36 @@ impl Namespace {
         id
     }
 
+    /// go-square v4 `share.NewNamespaceFromBytes` with Go's error texts
+    /// (`invalid namespace length: 3. Must be 29 bytes`, `unsupported
+    /// namespace version 7`, `unsupported namespace id with version 0. ID
+    /// [0 1 ...] must start with 18 leading zeros`).
+    pub fn from_slice_go(bytes: &[u8]) -> core::result::Result<Self, String> {
+        if bytes.len() != NAMESPACE_SIZE {
+            return Err(format!(
+                "invalid namespace length: {}. Must be {NAMESPACE_SIZE} bytes",
+                bytes.len()
+            ));
+        }
+        let version = bytes[0];
+        if version != NAMESPACE_VERSION_ZERO && version != NAMESPACE_VERSION_MAX {
+            return Err(format!("unsupported namespace version {version}"));
+        }
+        let id = &bytes[1..];
+        if version == NAMESPACE_VERSION_ZERO
+            && id[..NAMESPACE_VERSION_ZERO_PREFIX_SIZE]
+                .iter()
+                .any(|b| *b != 0)
+        {
+            let items: Vec<String> = id.iter().map(u8::to_string).collect();
+            return Err(format!(
+                "unsupported namespace id with version {version}. ID [{}] must start with {NAMESPACE_VERSION_ZERO_PREFIX_SIZE} leading zeros",
+                items.join(" ")
+            ));
+        }
+        Self::from_slice(bytes).map_err(|e| e.to_string())
+    }
+
     /// Validate this namespace against go-square v1 namespace rules.
     pub fn validate_basic(&self) -> Result<()> {
         match self.version() {

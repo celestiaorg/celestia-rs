@@ -133,7 +133,7 @@ fn is_incomplete(data: Option<&SigData>) -> bool {
         None => true,
         Some(SigData::Single { signature, .. }) => signature.is_empty(),
         Some(SigData::Multi { signatures, .. }) => {
-            signatures.is_empty() || signatures.iter().any(|s| is_incomplete(Some(s)))
+            signatures.is_empty() || signatures.iter().any(|s| is_incomplete(s.as_ref()))
         }
     }
 }

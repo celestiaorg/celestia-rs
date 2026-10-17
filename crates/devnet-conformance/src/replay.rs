@@ -142,6 +142,11 @@ pub fn replay_into(
     until: Option<i64>,
 ) -> anyhow::Result<Report> {
     let exchanges: Vec<Exchange> = load_exchanges(scenario)?;
+    // Recorded by `conformance/ibcvectors` on celestia-app's `test/interop`
+    // setup, which raises CometBFT's `MaxBlockPartsCount` to 10 000.
+    if matches!(scenario, "ibc-edge" | "ibc-upgrades") {
+        app::ibc::set_max_block_parts_count(10_000);
+    }
     let mut report = Report::default();
     let mut height = from;
     let mut skipping = from > 0;

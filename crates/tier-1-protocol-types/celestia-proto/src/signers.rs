@@ -122,17 +122,122 @@ fn skip_group(b: &mut &[u8], num: u32, depth: usize) -> Option<()> {
     }
 }
 
+/// gogoproto-style varint (the pulsar generated unmarshal): up to 64 bits
+/// of shift, any 10th byte.
+fn lenient_varint(b: &mut &[u8]) -> Option<u64> {
+    let mut v = 0u64;
+    let mut shift = 0u32;
+    loop {
+        if shift >= 64 {
+            return None;
+        }
+        let (&x, rest) = b.split_first()?;
+        *b = rest;
+        v |= u64::from(x & 0x7f).checked_shl(shift).unwrap_or(0);
+        if x < 0x80 {
+            return Some(v);
+        }
+        shift += 7;
+    }
+}
+
+/// What the generated (pulsar) unmarshal of a `protoregistry.GlobalTypes`
+/// type rejects in bytes gogoproto accepted. The pulsar code itself reads
+/// like gogoproto (field numbers cut to `int32`, unknown fields skipped by
+/// `runtime.Skip`), but it decodes every embedded message with
+/// `options.Unmarshal`: a nested pulsar type the same way, a well-known
+/// type (`google.protobuf.Timestamp`, `Duration`, `Any`) with protobuf-go's
+/// table-driven decoder, which rejects field numbers past 2^29 - 1, varints
+/// with a 10th byte above 1, groups whose end tag does not match and
+/// invalid UTF-8 in `Any.type_url` ([`dynamicpb_check`]'s rules). Such a
+/// well-known type keeps unknown fields in gogoproto (`XXX_unrecognized`),
+/// so a non-critical unknown field numbered 2^29..2^31 in a grant's
+/// expiration passes the tx decoder and fails `GetSigners`.
+fn pulsar_check(msg: &str, mut b: &[u8], depth: usize) -> Result<(), String> {
+    const WIRE: &str = "proto: cannot parse invalid wire-format data";
+    if depth > 10_000 {
+        return Err("exceeded maximum recursion depth".into());
+    }
+    let info = crate::wire_table::message(msg);
+    while !b.is_empty() {
+        let tag = lenient_varint(&mut b).ok_or(WIRE)?;
+        let num = (tag >> 3) as u32 as i32;
+        let wt = tag & 7;
+        if wt == 4 || num <= 0 {
+            return Err(WIRE.into());
+        }
+        let child = info
+            .and_then(|m| m.field(num as u32))
+            .filter(|f| f.ty == crate::wire_table::ty::MESSAGE)
+            .map(|f| f.type_name);
+        match wt {
+            0 => {
+                lenient_varint(&mut b).ok_or(WIRE)?;
+            }
+            1 | 5 => {
+                let n = if wt == 1 { 8 } else { 4 };
+                b = b.get(n..).ok_or(WIRE)?;
+            }
+            2 => {
+                let len = lenient_varint(&mut b)
+                    .and_then(|l| usize::try_from(l).ok())
+                    .ok_or(WIRE)?;
+                let payload = b.get(..len).ok_or(WIRE)?;
+                b = &b[len..];
+                match child {
+                    Some(c) if c.starts_with("google.protobuf.") => {
+                        dynamicpb_check(c, payload, depth + 1)?;
+                    }
+                    Some(c) => pulsar_check(c, payload, depth + 1)?,
+                    None => {}
+                }
+            }
+            3 => {
+                // runtime.Skip: groups counted by depth, end numbers not
+                // matched.
+                let mut d = 1usize;
+                while d > 0 {
+                    let t = lenient_varint(&mut b).ok_or(WIRE)?;
+                    match t & 7 {
+                        0 => {
+                            lenient_varint(&mut b).ok_or(WIRE)?;
+                        }
+                        1 => b = b.get(8..).ok_or(WIRE)?,
+                        5 => b = b.get(4..).ok_or(WIRE)?,
+                        2 => {
+                            let len = lenient_varint(&mut b)
+                                .and_then(|l| usize::try_from(l).ok())
+                                .ok_or(WIRE)?;
+                            b = b.get(len..).ok_or(WIRE)?;
+                        }
+                        3 => d += 1,
+                        4 => d -= 1,
+                        _ => return Err(WIRE.into()),
+                    }
+                }
+            }
+            _ => return Err(WIRE.into()),
+        }
+    }
+    Ok(())
+}
+
 /// The check `anyutil.Unpack` makes before Go's `GetMsgV1Signers` reads
 /// the signers of a message (top-level, `MsgExec` inner, gov proposal and
 /// ICA messages): a type decoded with `dynamicpb` ([`getsigners_schema`])
 /// must hold valid UTF-8 in its proto3 strings and varints protobuf-go can
-/// parse; pulsar and unregistered types pass. `Err` is Go's error text.
+/// parse; a pulsar type must hold well-known-type fields protobuf-go can
+/// parse ([`pulsar_check`]); unregistered types pass. `Err` is Go's error
+/// text.
 ///
 /// [`getsigners_schema`]: crate::getsigners_schema
 pub fn unpack_check(type_url: &str, value: &[u8]) -> Result<(), String> {
-    use crate::getsigners_schema::DYNAMIC_ROOTS;
+    use crate::getsigners_schema::{DYNAMIC_ROOTS, PROTOV2_TYPES};
     if let Ok(r) = DYNAMIC_ROOTS.binary_search_by(|(u, _)| (*u).cmp(type_url)) {
         dynamicpb_check(DYNAMIC_ROOTS[r].1, value, 0)
+            .map_err(|e| format!("cannot unmarshal msg {type_url}: {e}"))?;
+    } else if PROTOV2_TYPES.binary_search(&type_url).is_ok() {
+        pulsar_check(type_url.trim_start_matches('/'), value, 0)
             .map_err(|e| format!("cannot unmarshal msg {type_url}: {e}"))?;
     }
     Ok(())
@@ -151,6 +256,49 @@ pub fn get_signers_go(type_url: &str, bytes: &[u8]) -> Option<Result<Vec<Signer>
 mod tests {
     use super::*;
     use prost::Message;
+
+    /// A pulsar type's nested `google.protobuf.Timestamp` is decoded by
+    /// protobuf-go's table-driven decoder: a (non-critical, so past the tx
+    /// decoder) unknown field numbered 2^31 - 1 fails `GetSigners`; the
+    /// same field in the pulsar message itself is skipped.
+    #[test]
+    fn pulsar_nested_well_known_types_are_strict() {
+        fn varint(mut v: u64, out: &mut Vec<u8>) {
+            while v >= 0x80 {
+                out.push((v as u8) | 0x80);
+                v >>= 7;
+            }
+            out.push(v as u8);
+        }
+        fn bytes_field(n: u64, v: &[u8]) -> Vec<u8> {
+            let mut o = Vec::new();
+            varint(n << 3 | 2, &mut o);
+            varint(v.len() as u64, &mut o);
+            o.extend_from_slice(v);
+            o
+        }
+        let mut unknown = Vec::new();
+        varint(((1u64 << 31) - 1) << 3, &mut unknown);
+        unknown.push(1);
+        let url = "/cosmos.authz.v1beta1.MsgGrant";
+        let grant = |exp: &[u8]| {
+            let g = [bytes_field(2, exp)].concat();
+            [
+                bytes_field(1, b"g"),
+                bytes_field(2, b"h"),
+                bytes_field(3, &g),
+            ]
+            .concat()
+        };
+        assert!(unpack_check(url, &grant(&[0x08, 0x01])).is_ok());
+        let bad = grant(&[[0x08, 0x01].as_slice(), &unknown].concat());
+        assert_eq!(
+            unpack_check(url, &bad).unwrap_err(),
+            "cannot unmarshal msg /cosmos.authz.v1beta1.MsgGrant: proto: cannot parse invalid wire-format data"
+        );
+        let top = [grant(&[0x08, 0x01]), unknown].concat();
+        assert!(unpack_check(url, &top).is_ok());
+    }
 
     #[test]
     fn bank_send_and_multisend() {

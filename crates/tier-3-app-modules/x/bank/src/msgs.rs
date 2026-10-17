@@ -46,8 +46,11 @@ pub mod errors {
     }
 }
 
+/// `AddressCodec().StringToBytes`, failing as the msg server does
+/// (`ErrInvalidAddress.Wrapf("invalid %s address: %s", err)`).
 fn parse_addr(s: &str, what: &str) -> Result<Vec<u8>> {
-    x_auth::parse_bech32(s).map_err(|e| e.wrap(format!("invalid {what} address")))
+    sdk::address::acc_codec_to_bytes(s)
+        .map_err(|e| errs::invalid_address(format!("invalid {what} address: {}", e.log)))
 }
 
 fn all_positive(c: &Coins) -> bool {
@@ -95,7 +98,9 @@ pub fn handle_send(ctx: &mut Context<'_>, msg: &MsgSend) -> Result<MsgSendRespon
 /// `if !coins.IsValid() || !coins.IsAllPositive()` on the coins as Go
 /// decoded them: a nil amount `Validate` reaches panics (`Sign` of a nil
 /// `big.Int`), the error carries `Coins.String()` of the raw coins.
-fn valid_raw_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
+pub(crate) fn valid_raw_coins(
+    coins: &[celestia_proto::cosmos::base::v1beta1::Coin],
+) -> Result<Coins> {
     if !sdk::coins::raw_coins_is_valid(coins)? || coins.is_empty() {
         return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins)));
     }
@@ -107,12 +112,14 @@ fn valid_raw_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Res
 }
 
 fn validate_input(i: &Input) -> Result<Coins> {
-    x_auth::parse_bech32(&i.address)?;
+    sdk::address::acc_from_bech32_go(&i.address)
+        .map_err(|e| errs::invalid_address(format!("invalid input address: {e}")))?;
     valid_raw_coins(&i.coins)
 }
 
 fn validate_output(o: &Output) -> Result<Coins> {
-    x_auth::parse_bech32(&o.address)?;
+    sdk::address::acc_from_bech32_go(&o.address)
+        .map_err(|e| errs::invalid_address(format!("invalid output address: {e}")))?;
     valid_raw_coins(&o.coins)
 }
 
@@ -266,4 +273,40 @@ pub fn handle_set_send_enabled(
         )?;
     }
     Ok(celestia_proto::cosmos::bank::v1beta1::MsgSetSendEnabledResponse {})
+}
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+
+    use super::*;
+
+    #[test]
+    fn output_sum_overflow_panics_like_go() {
+        // `totalOut.Add(out.Coins...)` past 256 bits: math.Int.Add panics.
+        let addr = x_auth::bech32(&[1; 20]).unwrap();
+        let coin = |a: &str| {
+            vec![PbCoin {
+                denom: "utia".into(),
+                amount: a.into(),
+            }]
+        };
+        let max = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+        let input = Input {
+            address: addr.clone(),
+            coins: coin("2000"),
+        };
+        let outputs = vec![
+            Output {
+                address: addr.clone(),
+                coins: coin(max),
+            },
+            Output {
+                address: addr,
+                coins: coin("1000"),
+            },
+        ];
+        let e = validate_input_outputs(&input, &outputs).unwrap_err();
+        assert!(e.is_panic(), "{e:?}");
+    }
 }

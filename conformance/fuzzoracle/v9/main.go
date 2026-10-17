@@ -15,6 +15,9 @@
 //	utf8schema strings dynamicpb validates as UTF-8 in GetSigners decoding
 //	v2types   type URLs and whether protoregistry.GlobalTypes resolves them (GetSigners decoding)
 //	text      fmt.Sprintf("%v", msg) of an encoded Any unpacked by the registry (hex)
+//	aminosign SIGN_MODE_LEGACY_AMINO_JSON sign bytes of every signer (aminosign.go)
+//	desc      fields of a message descriptor as the interface registry resolves it
+//	placeholders fields whose type resolves to a placeholder descriptor
 //	fibre     x/fibre/types.TryParseFibreTx (v9: go-square rc4 tx.TryParseFibreTx)
 //	eds       da.ConstructEDS(txs, appVersion, max) + NewDataAvailabilityHeader;
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
@@ -364,6 +367,12 @@ func main() {
 			o = msgText(enc.InterfaceRegistry, input)
 		case op == "fibre":
 			o = tryParseFibreTx(input)
+		case op == "aminosign":
+			o = aminoSign(a.GetTxConfig(), dec, input)
+		case op == "desc":
+			o = descFields(enc.InterfaceRegistry, input)
+		case op == "placeholders":
+			o = placeholders(enc.InterfaceRegistry)
 		case op == "eds":
 			o = constructEDS(input)
 		case strings.HasPrefix(op, "json_"):

@@ -362,6 +362,12 @@ impl VoteSet {
         Ok(())
     }
 
+    /// Peers' +2/3 claims (`peerMaj23s`, by peer id).
+    #[must_use]
+    pub fn peer_maj23s(&self) -> &BTreeMap<String, BlockId> {
+        &self.peer_maj23s
+    }
+
     /// `BitArray`.
     #[must_use]
     pub fn bit_array(&self) -> BitArray {

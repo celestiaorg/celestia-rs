@@ -206,19 +206,69 @@ pub fn set_token(ctx: &mut Context<'_>, id: u64, t: &HypToken) -> Result<()> {
     ctx.set(STORE_KEY, token_key(id), t.to_proto().encode_to_vec())
 }
 
-/// `EnrolledRouters.Get` (`None` when absent).
+/// `EnrolledRouters.Get` (`None` when absent, or when the app version's
+/// codec cannot read the stored value: every caller of Go's `Get` but the
+/// forwarding module treats both the same).
 pub fn get_enrolled_router(
     ctx: &mut Context<'_>,
     token: u64,
     domain: u32,
 ) -> Result<Option<RemoteRouter>> {
-    ctx.get(STORE_KEY, &router_key(token, domain))?
-        .map(|b| {
-            pb::RemoteRouter::decode(b.as_slice())
-                .map_err(|e| internal(e.to_string()))
-                .and_then(|p| RemoteRouter::from_proto(&p))
-        })
-        .transpose()
+    Ok(enrolled_router(ctx, token, domain)?.ok())
+}
+
+/// `EnrolledRouters.Get` with Go's error text (`collections` not found /
+/// value decode).
+pub fn enrolled_router(
+    ctx: &mut Context<'_>,
+    token: u64,
+    domain: u32,
+) -> Result<core::result::Result<RemoteRouter, String>> {
+    let v9 = is_v9(ctx);
+    Ok(match ctx.get(STORE_KEY, &router_key(token, domain))? {
+        None => Err(format!(
+            "collections: not found: key '(\"{token}\", \"{domain}\")' of type github.com/cosmos/gogoproto/hyperlane.warp.v1.RemoteRouter"
+        )),
+        Some(b) => decode_router(v9, &b)
+            .map_err(|e| format!("collections: encoding error: value decode: {e}")),
+    })
+}
+
+/// A stored `RemoteRouter` as the app version's codec reads it. At app
+/// version 10 (hyperlane-cosmos v1.3.0) `receiver_contract` is the
+/// `HexAddress` customtype: its gogoproto `Unmarshal` rejects what v1.1.0
+/// (app version 9: a plain string, any non-empty value) may have stored,
+/// and the value read is canonical (`0x` + lowercase hex). Errors are Go's
+/// decode error text (security.md 71).
+pub fn decode_router(v9: bool, b: &[u8]) -> core::result::Result<RemoteRouter, String> {
+    let mut p = pb::RemoteRouter::decode(b).map_err(|e| e.to_string())?;
+    if !v9 && !p.receiver_contract.is_empty() {
+        p.receiver_contract = unmarshal_hex_address(&p.receiver_contract)?.to_string();
+    }
+    RemoteRouter::from_proto(&p).map_err(|e| e.log)
+}
+
+/// `util.HexAddress.Unmarshal`: exactly 66 bytes, then `DecodeHexAddress`
+/// (an optional lowercase `0x`, 64 hex digits, `hex.DecodeString`).
+fn unmarshal_hex_address(s: &str) -> core::result::Result<HexAddress, String> {
+    if s.len() != 66 {
+        return Err("invalid hex address length".into());
+    }
+    let h = s.strip_prefix("0x").unwrap_or(s);
+    if h.len() != 64 {
+        return Err("invalid hex address length".into());
+    }
+    if let Some(&bad) = h.as_bytes().iter().find(|b| !b.is_ascii_hexdigit()) {
+        // `hex.InvalidByteError`: `%#U` of the byte as a rune.
+        let c = char::from(bad);
+        let printable = (0x20..0x7f).contains(&bad) || (0xa1..=0xff).contains(&bad) && bad != 0xad;
+        return Err(if printable {
+            format!("encoding/hex: invalid byte: U+{bad:04X} '{c}'")
+        } else {
+            format!("encoding/hex: invalid byte: U+{bad:04X}")
+        });
+    }
+    HexAddress::decode(h)
 }
 
 /// `EnrolledRouters.Has`.
@@ -405,7 +455,12 @@ fn msg_receiver_contract(ctx: &Context<'_>, s: &str) -> Result<String> {
 /// v1.1.0, ADR 0004).
 fn is_v9(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    v != 0 && v < 10
+    if v == 0 {
+        // Query contexts carry no consensus params: the app version of the
+        // ABCI call (security.md 71).
+        return sdk::version::is_v9(sdk::version::app_version());
+    }
+    v < 10
 }
 
 /// `Keeper.RemoteReceiveCollateral`.
@@ -1022,4 +1077,60 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<pb::GenesisState> {
         tokens,
         remote_routers,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Found by `fuzz-diff deliver` across the v9 -> v10 upgrade
+    // (security.md 71): routers hyperlane-cosmos v1.1.0 stored at app
+    // version 9 as plain strings, read by v1.3.0's `HexAddress` customtype.
+    #[test]
+    fn v9_routers_read_at_app_version_10() {
+        let stored = |s: &str| {
+            pb::RemoteRouter {
+                receiver_domain: 7,
+                receiver_contract: s.into(),
+                gas: "50000".into(),
+            }
+            .encode_to_vec()
+        };
+        let upper = format!("0x{}", "AB".repeat(32));
+        let lower = format!("0x{}", "ab".repeat(32));
+        assert_eq!(
+            decode_router(false, &stored(&upper))
+                .unwrap()
+                .receiver_contract,
+            lower
+        );
+        assert_eq!(
+            decode_router(true, &stored(&upper))
+                .unwrap()
+                .receiver_contract,
+            upper
+        );
+        for (s, err) in [
+            ("ab".repeat(32), "invalid hex address length".to_owned()),
+            ("0x1234".into(), "invalid hex address length".into()),
+            (
+                format!("0X{}", "00".repeat(32)),
+                "invalid hex address length".into(),
+            ),
+            (
+                format!("0x{}", "z".repeat(64)),
+                "encoding/hex: invalid byte: U+007A 'z'".into(),
+            ),
+            (
+                format!("0x{}\u{e9}", "a".repeat(62)),
+                "encoding/hex: invalid byte: U+00C3 '\u{c3}'".into(),
+            ),
+        ] {
+            assert_eq!(decode_router(false, &stored(&s)).unwrap_err(), err, "{s}");
+            assert_eq!(
+                decode_router(true, &stored(&s)).unwrap().receiver_contract,
+                s
+            );
+        }
+    }
 }

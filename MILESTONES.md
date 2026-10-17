@@ -28,12 +28,20 @@ is not, until F1's exit criteria are met).
 
 ## M13 — Mocha validator soak, mainnet full node
 
-Done on the Mac Mini M4 (2026-10-15): route A (P2P state sync from Mocha's
-Go peers) restored snapshot 1,716,000 and reached consensus 47 s after
-start, outbound-only with 13 peers; `check-apphash.sh` OK against two
-providers. Validator `celestia-rs validator` bonded at 1,720,896, signing
-from 1,720,898, under launchd since 1,721,185. Runbook:
-`docs/operator-guide.md` §11.
+The Mocha validator soak passed on 2026-10-17; the mainnet full node
+remains. On the Mac Mini M4, route A (P2P state sync from Mocha's Go
+peers) restored snapshot 1,716,000 and reached consensus 47 s after
+start, outbound-only with 13 peers. Validator `celestia-rs validator`
+bonded at 1,720,896, signing from 1,720,898, under launchd since
+1,721,185. Runbook: `docs/operator-guide.md` §11.
+
+The 24 h acceptance soak ran from 2026-10-16 02:30 UTC to 2026-10-17
+02:31 UTC (heights 1,724,885–1,755,047): all 289 five-minute app-hash
+checks matched, no double-sign-guard refusal, 69 of 30,162 blocks missed
+(0.23%), never jailed or catching up, 6–11 outbound peers, RSS <= 2.1 GB,
+data <= 1.5 GB, background state-sync snapshots on. Misses were absent
+precommits in commits the next proposer closed early; inbound 26656
+would reduce them.
 
 Incidents so far, each fixed with a test: a delayed precommit on SIGTERM
 (one `conflicting data` refusal, 3 missed blocks); a state-sync snapshot
@@ -42,11 +50,6 @@ now on a background thread, OPEN_QUESTIONS #7).
 
 Remaining:
 
-- [ ] 24 h of clean signing on a build with both fixes (no app-hash
-  mismatch, no double-sign-guard refusal, missed blocks < 1%). Report:
-  missed blocks per day, RSS and disk per day, any `failed signing vote`.
-- [ ] Re-enable snapshots (`snapshot-interval` 1500) on the background
-  snapshot build and watch RSS through the first one (OPEN_QUESTIONS #7).
 - [ ] Mainnet full node on the Mac over P2P (§12: route B, Polkachu
   snapshot, then `start --network mainnet`), at the tip with
   `check-apphash.sh` OK, running until M14. This is also F1.8's live

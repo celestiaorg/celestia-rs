@@ -198,26 +198,7 @@ impl fmt::Display for HyperlaneMessage {
 /// `sdk.AccAddressFromBech32` (and the bech32 `address.Codec.StringToBytes`)
 /// with the `celestia` prefix.
 pub fn acc_address_from_bech32(s: &str) -> Result<Vec<u8>, String> {
-    if s.trim().is_empty() {
-        return Err("empty address string is not allowed".into());
-    }
-    let (hrp, bz) = encoding::bech32::decode(s).map_err(|e| e.to_string())?;
-    if hrp != encoding::bech32::ACCOUNT_PREFIX {
-        return Err(format!(
-            "invalid Bech32 prefix; expected {}, got {hrp}",
-            encoding::bech32::ACCOUNT_PREFIX
-        ));
-    }
-    if bz.is_empty() {
-        return Err("addresses cannot be empty: unknown address".into());
-    }
-    if bz.len() > 255 {
-        return Err(format!(
-            "address max length is 255, got {}: unknown address",
-            bz.len()
-        ));
-    }
-    Ok(bz)
+    sdk::address::acc_from_bech32_go(s)
 }
 
 /// `sdk.AccAddress.String()`: bech32 with the `celestia` prefix, empty for

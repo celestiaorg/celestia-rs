@@ -92,6 +92,12 @@ pub type QResult<T> = Result<T, QueryError>;
 
 impl From<SdkError> for QueryError {
     fn from(e: SdkError) -> Self {
+        // A Go runtime panic inside the handler (e.g. a nil store of a
+        // query view, security.md 70): `BaseApp.Query` recovers it as
+        // `ErrPanic`.
+        if e.codespace == "undefined" && e.code == 111_222 {
+            return Self::Panic(e.log);
+        }
         Self::Sdk(e)
     }
 }

@@ -57,6 +57,30 @@ impl Tx {
         &self.body.messages
     }
 
+    /// The messages as `sdk.Tx.GetMsgs()` returns them in Go (the decoded
+    /// gogoproto structs, [`Self::normalized_msgs`]). Code that decodes a
+    /// message's fields must read these: prost reads the bytes as received
+    /// differently from gogoproto where the tx decoder's unknown-field
+    /// check does not look (packed scalars: 10-byte varints with high bits,
+    /// an element running past its packed run; a repeated `stdtime` /
+    /// `stdduration`, which gogoproto overwrites and prost merges; a
+    /// repeated oneof message, which gogoproto replaces). Falls back to the
+    /// bytes as received for a tx built without them.
+    #[must_use]
+    pub fn gogo_msgs(&self) -> &[Any] {
+        if self.normalized_msgs.len() == self.body.messages.len()
+            && self
+                .normalized_msgs
+                .iter()
+                .zip(&self.body.messages)
+                .all(|(n, r)| n.type_url == r.type_url)
+        {
+            &self.normalized_msgs
+        } else {
+            &self.body.messages
+        }
+    }
+
     /// Gas limit from the fee (0 if absent).
     #[must_use]
     pub fn gas_limit(&self) -> u64 {

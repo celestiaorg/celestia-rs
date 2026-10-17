@@ -55,12 +55,17 @@ impl Unpacker<'_> {
         }
         *self.calls -= 1;
         if !registry::has_impls(iface) {
-            return Err(GoError::new("no registered implementations of type").into());
+            return Err(GoError::new(format!(
+                "no registered implementations of type {}",
+                registry::iface_go_type(iface)
+            ))
+            .into());
         }
         let Some(info) = registry::resolve_impl(&type_url, iface) else {
             return Err(GoError::new(format!(
-                "no concrete type registered for type URL {} against interface",
-                gostr::from_go_bytes(&type_url)
+                "no concrete type registered for type URL {} against interface *{}",
+                gostr::from_go_bytes(&type_url),
+                registry::iface_go_type(iface)
             ))
             .into());
         };

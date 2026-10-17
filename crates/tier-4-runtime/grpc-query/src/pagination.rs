@@ -56,7 +56,11 @@ fn range_raw(
             abs_end.as_deref(),
             reverse,
         )
-        .map_err(|e| QueryError::Plain(e.to_string()))?;
+        .map_err(|e| match e {
+            // A nil store of a query view (Go panics, security.md 70).
+            sdk::StoreError::NilStore => QueryError::Panic(e.to_string()),
+            e => QueryError::Plain(e.to_string()),
+        })?;
     Ok(Some(
         items
             .into_iter()

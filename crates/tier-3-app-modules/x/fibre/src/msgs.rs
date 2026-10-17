@@ -159,6 +159,31 @@ pub fn validate_basic_escrow(signer: &str, amount: Option<&PbCoin>) -> Result<()
     validate_coin_positive(amount)
 }
 
+/// go-square v4 `share.NewNamespaceFromBytes` (29 bytes) with Go's texts.
+fn namespace_from_bytes(bz: &[u8]) -> core::result::Result<shares::Namespace, String> {
+    shares::Namespace::from_slice_go(bz)
+}
+
+/// `share.Namespace.ValidateForBlob` (go-square v4) with Go's texts.
+fn validate_for_blob(ns: shares::Namespace) -> core::result::Result<(), String> {
+    if ns.is_parity_shares() || ns.is_tail_padding() {
+        return Err(format!(
+            "invalid data namespace({}): parity and tail padding namespace are forbidden",
+            hex::encode(ns.as_bytes())
+        ));
+    }
+    if ns.is_reserved() {
+        return Err(format!(
+            "invalid data namespace({}): reserved data is forbidden",
+            hex::encode(ns.as_bytes())
+        ));
+    }
+    if ns.version() != 0 {
+        return Err(format!("blob version {} is not supported", ns.version()));
+    }
+    Ok(())
+}
+
 /// `PaymentPromise.ValidateBasic`.
 pub fn validate_basic_promise(p: &PaymentPromise) -> Result<()> {
     let req = |s: String| errs::invalid_request(s);
@@ -175,11 +200,9 @@ pub fn validate_basic_promise(p: &PaymentPromise) -> Result<()> {
             p.namespace.len()
         )));
     }
-    let ns = shares::Namespace::from_slice(&p.namespace)
-        .map_err(|e| req(format!("invalid namespace: {e}")))?;
-    if ns.is_reserved() || ns.version() != 0 {
-        return Err(req("invalid blob namespace".into()));
-    }
+    let ns =
+        namespace_from_bytes(&p.namespace).map_err(|e| req(format!("invalid namespace: {e}")))?;
+    validate_for_blob(ns).map_err(|e| req(format!("invalid blob namespace: {e}")))?;
     if p.blob_size == 0 {
         return Err(req("blob size must be positive".into()));
     }
@@ -190,8 +213,9 @@ pub fn validate_basic_promise(p: &PaymentPromise) -> Result<()> {
         )));
     }
     if p.blob_version != 0 {
+        // `validateBlobVersion` wraps `ErrInvalidRequest` itself.
         return Err(req(format!(
-            "invalid blob version: unsupported blob version: {}",
+            "invalid blob version: unsupported blob version: {}: invalid request",
             p.blob_version
         )));
     }
@@ -331,8 +355,9 @@ pub fn validate_payment_promise_stateful_internal(
 ) -> Result<core::result::Result<Timestamp, String>> {
     if p.chain_id != ctx.header.chain_id {
         return Ok(Err(format!(
-            "payment promise chain_id {:?} does not match executing chain {:?}",
-            p.chain_id, ctx.header.chain_id
+            "payment promise chain_id {} does not match executing chain {}",
+            gostr::quote(&p.chain_id),
+            gostr::quote(&ctx.header.chain_id)
         )));
     }
     let params = get_params(ctx)?;

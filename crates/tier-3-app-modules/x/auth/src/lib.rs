@@ -81,8 +81,7 @@ pub fn bech32(addr: &[u8]) -> Result<String> {
 
 /// Parses a bech32 account address.
 pub fn parse_bech32(s: &str) -> Result<Address> {
-    let (hrp, bytes) =
-        encoding::bech32::decode(s).map_err(|e| errs::invalid_address(format!("{s}: {e}")))?;
+    let (hrp, bytes) = encoding::bech32::decode_and_convert(s).map_err(errs::invalid_address)?;
     if hrp != BECH32_PREFIX {
         return Err(errs::invalid_address(format!(
             "invalid Bech32 prefix; expected {BECH32_PREFIX}, got {hrp}"
@@ -356,7 +355,10 @@ pub fn get_module_account(ctx: &mut Context<'_>, name: &str) -> Result<Option<Mo
     if let Some(acc) = get_account(ctx, &addr)? {
         return match acc {
             Account::Module(m) => Ok(Some(m)),
-            _ => Err(errs::logic("account is not a module account")),
+            // `panic("account is not a module account")`: reachable for
+            // the fibre address between the v10 switch and its upgrade
+            // handler (v9 does not block it, security.md 72).
+            _ => Err(sdk::error::go_panic("account is not a module account")),
         };
     }
     let number = next_account_number(ctx)?;
@@ -450,6 +452,25 @@ mod tests {
         ms.mount(STORE_KEY, Kind::Iavl)?;
         let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
         f(&mut ctx)
+    }
+
+    // Found by `fuzz-diff deliver` across the v9 -> v10 upgrade
+    // (security.md 72): a base account at the fibre address (v9 does not
+    // block it) makes `GetModuleAccount` panic until the v10 handler
+    // replaces it (queries between the switch and that handler).
+    #[test]
+    fn module_address_holding_a_base_account_panics() -> Result<()> {
+        with_ctx(|ctx| {
+            let addr = module_address("fibre");
+            let acc = new_account_with_address(ctx, &addr)?;
+            set_account(ctx, &acc)?;
+            let e = get_module_account(ctx, "fibre").unwrap_err();
+            assert_eq!(
+                (e.codespace, e.code, &*e.log),
+                ("undefined", 111_222, "account is not a module account")
+            );
+            Ok(())
+        })
     }
 
     #[test]

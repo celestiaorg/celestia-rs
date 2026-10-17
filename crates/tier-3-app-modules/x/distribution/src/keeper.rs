@@ -229,15 +229,26 @@ pub fn calculate_delegation_rewards(
     let mut start_period = info.previous_period;
     let mut stake = info.stake;
     if height > info.height {
-        for (_, period, fraction) in store::slash_events_between(ctx, &val, info.height, height)? {
-            if period > start_period {
-                let r = rewards_between(ctx, &val, start_period, period, &stake)?;
-                rewards = rewards.add(&r)?;
-                stake =
-                    m(stake.checked_mul_truncate(&m(LegacyDec::one().checked_sub(&fraction))?))?;
-                start_period = period;
-            }
-        }
+        // Go's handler runs inside the iteration: its reads come before
+        // the `Next` that charges the event's gas (an out-of-gas happens
+        // at the same point).
+        store::for_each_slash_event_between(
+            ctx,
+            &val,
+            info.height,
+            height,
+            |ctx, _, period, fraction| {
+                if period > start_period {
+                    let r = rewards_between(ctx, &val, start_period, period, &stake)?;
+                    rewards = rewards.add(&r)?;
+                    stake =
+                        m(stake
+                            .checked_mul_truncate(&m(LegacyDec::one().checked_sub(&fraction))?))?;
+                    start_period = period;
+                }
+                Ok(false)
+            },
+        )?;
     }
     let current_stake = v.tokens_from_shares(&d.shares)?;
     if stake > current_stake {

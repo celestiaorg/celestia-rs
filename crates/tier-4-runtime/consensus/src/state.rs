@@ -157,6 +157,14 @@ pub enum Event {
         /// App hash after the block.
         app_hash: Vec<u8>,
     },
+    /// A peer's vote or block part was added (`statsMsgQueue`, drained
+    /// by the reactor's `peerStatsRoutine`).
+    PeerContribution {
+        /// The peer.
+        peer_id: String,
+        /// A block part (else a vote).
+        block_part: bool,
+    },
     /// Conflicting votes reported to the evidence pool.
     ConflictingVotes {
         /// Vote A.
@@ -899,13 +907,26 @@ impl ConsensusState {
                 {
                     self.handle_complete_proposal(height);
                 }
+                self.peer_contribution(added, &mi.peer_id, true);
             }
             ConsensusMessage::Vote(v) => {
-                let _ = self.try_add_vote(&v, &mi.peer_id);
+                let added = matches!(self.try_add_vote(&v, &mi.peer_id), Ok(true));
+                self.peer_contribution(added, &mi.peer_id, false);
             }
             other => {
                 tracing::debug!(msg = ?other, "unknown msg type for the state machine");
             }
+        }
+    }
+
+    /// `cs.statsMsgQueue <- mi` for an added message of a peer (own
+    /// messages have no peer to credit).
+    fn peer_contribution(&mut self, added: bool, peer_id: &str, block_part: bool) {
+        if added && !peer_id.is_empty() {
+            self.events.push(Event::PeerContribution {
+                peer_id: peer_id.to_owned(),
+                block_part,
+            });
         }
     }
 

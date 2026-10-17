@@ -142,7 +142,7 @@ pub fn decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
                     tx.blobs = blobs;
                     Ok(tx)
                 }
-                Some(Err(e)) => Err(undefined(format!("{e:?}"))),
+                Some(Err(e)) => Err(undefined(e.to_string())),
                 None => index_wrapper_decode_v9(raw),
             }
         })
@@ -249,6 +249,9 @@ pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
 /// decode.
 #[must_use]
 pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
+    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+        return with_v9(|| gogo_marshaled(any));
+    }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
     let Ok(mut d) = gogo::unmarshal(name, &any.value) else {
         return any.clone();
@@ -267,9 +270,15 @@ pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
 /// they are not gogoproto's canonical encoding (field order, repeated
 /// scalars, non-nullable `stdtime` / customtype fields left out, ...).
 /// `any` is returned unchanged when its type is unknown or does not
-/// decode (Go fails earlier in those cases).
+/// decode (Go fails earlier in those cases). Executing at app version 9
+/// (`sdk::version`), the v9.0.8 schema applies (e.g. hyperlane-cosmos
+/// v1.1.0's `RemoteRouter.receiver_contract` is a string, not a
+/// non-nullable `HexAddress`).
 #[must_use]
 pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
+    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+        return with_v9(|| gogo_repack(any));
+    }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
     match gogo::unmarshal(name, &any.value) {
         Ok(d) => celestia_proto::Any {
@@ -278,6 +287,26 @@ pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
         },
         Err(_) => any.clone(),
     }
+}
+
+/// The message `any` as Go's handlers see it, re-encoded so prost decodes
+/// the same struct: gogoproto's decoding ([`gogo_unmarshal`], with the
+/// executing app version's schema; nested `Any` values too, see
+/// `gogo::Mode::Struct`). prost reads some encodings differently or not at
+/// all: a repeated `stdtime` / `stdduration` field is merged by prost and
+/// replaced by gogoproto (`StdTimeUnmarshal` overwrites); keys past
+/// `u32::MAX`, mismatched groups and 10-byte varints above 1 fail prost;
+/// v9.0.8's `MsgForward` has no fields 7 and 8.
+/// `None` when gogoproto cannot decode it (Go never runs such a message).
+#[must_use]
+pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any> {
+    let name = any.type_url.rsplit('/').next().unwrap_or_default();
+    let v9 = v9() || sdk::version::is_v9(sdk::version::app_version());
+    let value = scoped_v9(v9, || gogo_unmarshal(name, &any.value)).ok()?;
+    Some(celestia_proto::Any {
+        type_url: any.type_url.clone(),
+        value,
+    })
 }
 
 /// [`decode`] or [`decode_v9`] by app version.
@@ -311,7 +340,7 @@ fn decode_inner(raw: &[u8]) -> sdk::Result<Tx> {
             tx.blobs = blobs;
             Ok(tx)
         }
-        Some(Err(e)) => Err(undefined(format!("{e:?}"))),
+        Some(Err(e)) => Err(undefined(e.to_string())),
         None => index_wrapper_decode(raw),
     }
 }

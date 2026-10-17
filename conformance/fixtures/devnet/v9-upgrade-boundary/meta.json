@@ -1,0 +1,9 @@
+{
+  "scenario": "v9-upgrade-boundary",
+  "chain_id": "test",
+  "celestia_app": "v9.0.8",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 90,
+  "workload": "v9-upgrade-boundary.sh",
+  "generated_at": "2026-10-17T05:13:55Z"
+}

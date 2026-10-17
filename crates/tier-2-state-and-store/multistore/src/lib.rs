@@ -772,6 +772,22 @@ impl Store {
         })
     }
 
+    /// The stores [`Self::view_at`] leaves empty because they did not exist
+    /// at `version` (no tree version and absent from its commit info: a
+    /// store added by a later upgrade). Go's `CacheMultiStoreWithVersion`
+    /// swallows their load error and keeps a nil store there.
+    pub fn absent_at(&self, version: Version) -> Result<Vec<String>> {
+        let info = self.read_commit_info(version)?;
+        Ok(self
+            .stores
+            .iter()
+            .filter(|(name, store)| {
+                !store.tree().version_exists(version) && info.store_info(name).is_none()
+            })
+            .map(|(name, _)| name.clone())
+            .collect())
+    }
+
     /// Return historical commit info by version.
     pub fn get_commit_info(&self, version: Version) -> Result<CommitInfo> {
         self.read_commit_info(version)

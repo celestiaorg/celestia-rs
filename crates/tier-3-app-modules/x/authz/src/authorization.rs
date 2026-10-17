@@ -130,9 +130,11 @@ impl Authorization {
                 if a.spend_limit.is_empty() {
                     return Err(sdkerr::invalid_coins("spend limit cannot be nil"));
                 }
-                let lim = Coins::from_proto(&a.spend_limit)?;
-                if !lim.iter().all(|c| c.amount.is_positive()) {
-                    return Err(sdkerr::invalid_coins("spend limit must be positive"));
+                // IsAllPositive: a nil amount panics once reached.
+                for c in &a.spend_limit {
+                    if !sdk::coins::raw_is_positive(c)? {
+                        return Err(sdkerr::invalid_coins("spend limit must be positive"));
+                    }
                 }
                 let mut seen = std::collections::HashSet::new();
                 for addr in &a.allow_list {
@@ -144,12 +146,13 @@ impl Authorization {
             }
             Self::Transfer(a) => validate_transfer(a),
             Self::Stake(a) => {
-                if let Some(m) = &a.max_tokens {
+                if let Some(m) = &a.max_tokens
+                    && sdk::coins::raw_is_negative(m)?
+                {
                     let c = Coin::from_proto(m)?;
-                    if c.amount.is_negative() {
-                        return Err(errors::negative_max_tokens()
-                            .wrap(format!("negative coin amount: {c}")));
-                    }
+                    return Err(
+                        errors::negative_max_tokens().wrap(format!("negative coin amount: {c}"))
+                    );
                 }
                 if a.authorization_type == 0 {
                     return Err(errors::unknown_authorization_type());
@@ -262,9 +265,8 @@ fn validate_transfer(a: &ibc_transfer::TransferAuthorization) -> Result<()> {
         if al.spend_limit.is_empty() {
             return Err(ibc_err(6, "invalid coins", "spend limit cannot be nil"));
         }
-        let valid = Coins::from_proto(&al.spend_limit).is_ok_and(|c| c.is_valid());
-        if !valid {
-            return Err(ibc_err(6, "invalid coins", "invalid spend limit"));
+        if let Err(e) = sdk::coins::raw_coins_validate(&al.spend_limit)? {
+            return Err(ibc_err(6, "invalid coins", &e));
         }
         x_ibc::host::port_identifier_validator(&al.source_port)
             .map_err(|e| e.wrap("invalid source port ID"))?;
@@ -502,4 +504,61 @@ fn accept_stake(
             policy: a.policy.clone(),
         })),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(denom: &str, amount: &str) -> PbCoin {
+        PbCoin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    #[test]
+    fn nil_amounts_panic_like_go() {
+        // SendAuthorization: IsAllPositive reaches the nil amount.
+        let a = Authorization::Send(SendAuthorization {
+            spend_limit: vec![c("u", "")],
+            allow_list: Vec::new(),
+        });
+        assert!(a.validate_basic().unwrap_err().is_panic());
+        // ... unless an earlier coin is not positive.
+        let a = Authorization::Send(SendAuthorization {
+            spend_limit: vec![c("utia", "0"), c("uxyz", "")],
+            allow_list: Vec::new(),
+        });
+        assert!(!a.validate_basic().unwrap_err().is_panic());
+        // StakeAuthorization: MaxTokens.IsNegative.
+        let a = Authorization::Stake(staking::StakeAuthorization {
+            max_tokens: Some(c("utia", "")),
+            authorization_type: 1,
+            policy: None,
+        });
+        assert!(a.validate_basic().unwrap_err().is_panic());
+        // TransferAuthorization: SpendLimit.Validate's own error text.
+        let alloc = |spend_limit| ibc_transfer::Allocation {
+            source_port: "transfer".into(),
+            source_channel: "channel-0".into(),
+            spend_limit,
+            allow_list: Vec::new(),
+            allowed_packet_data: Vec::new(),
+        };
+        let a = Authorization::Transfer(ibc_transfer::TransferAuthorization {
+            allocations: vec![alloc(vec![c("u", "")])],
+        });
+        let e = a.validate_basic().unwrap_err();
+        assert_eq!(e.log, "invalid denom: u: invalid coins");
+        let a = Authorization::Transfer(ibc_transfer::TransferAuthorization {
+            allocations: vec![alloc(vec![c("utia", "0")])],
+        });
+        let e = a.validate_basic().unwrap_err();
+        assert_eq!(e.log, "coin 0utia amount is not positive: invalid coins");
+        let a = Authorization::Transfer(ibc_transfer::TransferAuthorization {
+            allocations: vec![alloc(vec![c("utia", "")])],
+        });
+        assert!(a.validate_basic().unwrap_err().is_panic());
+    }
 }

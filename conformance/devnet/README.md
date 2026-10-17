@@ -84,7 +84,14 @@ APP_V9=1 conformance/devnet/devnet.sh v9-staking 40 conformance/devnet/workloads
 APP_V9=1 conformance/devnet/devnet.sh v9-exec 30 conformance/devnet/workloads/v9-exec.sh
 APP_V9=1 conformance/devnet/devnet.sh v9-utf8 30 conformance/devnet/workloads/utf8.sh
 APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh v9-upgrade 40 conformance/devnet/workloads/v9-upgrade.sh
+APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh v9-upgrade-boundary 90 conformance/devnet/workloads/v9-upgrade-boundary.sh
 ```
+
+Right after the switch the v10 app's check state has an empty header
+(height 0) until its first commit, so CheckTx rejects signed txs (account
+number 0): upgrade workloads wait two blocks before sending under v10.
+`crates/fuzz-diff` `DELIVER_UPGRADE` fuzzes the same boundary in process
+(`deliver-diff.sh`, `GO_APPD_NEXT`).
 
 A v9 CheckTx that returns a Go error (e.g. a non-canonical BlobTx or a
 duplicated TxRaw field) makes celestia-core stop its socket client, so

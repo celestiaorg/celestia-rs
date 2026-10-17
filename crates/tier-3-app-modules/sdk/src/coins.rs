@@ -17,6 +17,13 @@ pub fn math_err(e: math::MathError) -> crate::SdkError {
     sdk::invalid_coins(e.to_string())
 }
 
+/// Go's panic from `math.Int.Add` (`Coin.Add`, `Coins.Add`) when a sum
+/// exceeds 256 bits.
+#[must_use]
+pub fn add_panic(e: math::MathError) -> crate::SdkError {
+    crate::error::go_panic(e.to_string())
+}
+
 /// One coin.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Coin {
@@ -43,12 +50,57 @@ fn nil_amount_panic() -> crate::SdkError {
     crate::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
 }
 
-/// `coin.IsPositive()` on the coin as Go decoded it (`""` is a nil amount).
-fn raw_is_positive(c: &pb::Coin) -> Result<bool> {
+/// `coin.IsPositive()` on the coin as Go decoded it (`""` is a nil amount:
+/// `Err` is Go's nil-pointer panic).
+pub fn raw_is_positive(c: &pb::Coin) -> Result<bool> {
     if c.amount.is_empty() {
         return Err(nil_amount_panic());
     }
     Ok(Amount::parse(&c.amount).is_ok_and(|a| a.is_positive()))
+}
+
+/// `coin.IsNegative()` on the coin as Go decoded it (`Err`: the panic of a
+/// nil amount).
+pub fn raw_is_negative(c: &pb::Coin) -> Result<bool> {
+    if c.amount.is_empty() {
+        return Err(nil_amount_panic());
+    }
+    Ok(Amount::parse(&c.amount).is_ok_and(|a| a.is_negative()))
+}
+
+/// `sdk.Coins.Validate()` of coins as Go decoded them: the inner `Err` is
+/// Go's error text, the outer one the panic Go raises on a nil amount it
+/// reaches.
+pub fn raw_coins_validate(coins: &[pb::Coin]) -> Result<std::result::Result<(), String>> {
+    let Some((first, rest)) = coins.split_first() else {
+        return Ok(Ok(()));
+    };
+    if !is_valid_denom(&first.denom) {
+        return Ok(Err(format!("invalid denom: {}", first.denom)));
+    }
+    if !raw_is_positive(first)? {
+        return Ok(Err(format!(
+            "coin {} amount is not positive",
+            raw_coins_string(std::slice::from_ref(first))
+        )));
+    }
+    let mut low = first.denom.as_str();
+    for c in rest {
+        if !is_valid_denom(&c.denom) {
+            return Ok(Err(format!("invalid denom: {}", c.denom)));
+        }
+        if c.denom.as_str() < low {
+            return Ok(Err(format!("denomination {} is not sorted", c.denom)));
+        }
+        if c.denom == low {
+            return Ok(Err(format!("duplicate denomination {}", c.denom)));
+        }
+        if !raw_is_positive(c)? {
+            return Ok(Err(format!("coin {} amount is not positive", c.denom)));
+        }
+        low = &c.denom;
+    }
+    Ok(Ok(()))
 }
 
 /// `sdk.Coins.IsValid()` of coins as Go decoded them (unsanitized, a nil
@@ -225,7 +277,7 @@ impl Coins {
                     j += 1;
                     Coin::with_amount(
                         a.denom.clone(),
-                        a.amount.checked_add(&b.amount).map_err(math_err)?,
+                        a.amount.checked_add(&b.amount).map_err(add_panic)?,
                     )
                 }
                 (Some(a), Some(b)) if a.denom < b.denom => {

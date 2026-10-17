@@ -70,12 +70,39 @@ fn unpack_pub_key(any: &Any) -> Option<PubKey> {
     PubKey::from_any(any).ok()
 }
 
-/// `len(publicKey.Bytes()) == 0`.
-fn empty_key(pk: &PubKey) -> bool {
-    match pk {
-        PubKey::Secp256k1(k) | PubKey::Secp256r1(k) | PubKey::Ed25519(k) => k.is_empty(),
-        PubKey::Multisig { .. } => false,
+/// `GetPubKey` then `err != nil || publicKey == nil || len(publicKey.Bytes())
+/// == 0` of `ValidateBasic`: `Ok(true)` when the key is missing, not a
+/// public key or empty. A multisig key's `Bytes()` is its amino encoding,
+/// which panics on a sub-key that was never unpacked (an empty type URL:
+/// `UnpackAny` leaves it nil) or has no amino registration (secp256r1).
+fn key_missing(any: Option<&Any>) -> Result<bool> {
+    fn has_empty_sub_key(any: &Any) -> bool {
+        any.type_url == x_ante::pubkey::MULTISIG_TYPE_URL
+            && celestia_proto::cosmos::crypto::multisig::LegacyAminoPubKey::decode(
+                any.value.as_slice(),
+            )
+            .is_ok_and(|m| {
+                m.public_keys
+                    .iter()
+                    .any(|k| k.type_url.is_empty() || has_empty_sub_key(k))
+            })
     }
+    let Some(any) = any else { return Ok(true) };
+    if has_empty_sub_key(any) {
+        return Err(sdk::error::go_panic(
+            "amino: cannot marshal a nil sub-key of a multisig public key",
+        ));
+    }
+    let Some(pk) = unpack_pub_key(any) else {
+        return Ok(true);
+    };
+    Ok(match &pk {
+        PubKey::Secp256k1(k) | PubKey::Secp256r1(k) | PubKey::Ed25519(k) => k.is_empty(),
+        PubKey::Multisig { .. } => {
+            pk.amino_bytes().map_err(ante_fail)?;
+            false
+        }
+    })
 }
 
 /// `ConsensusState.GetPubKey`.
@@ -100,10 +127,10 @@ pub fn validate_consensus_state(c: &sm::ConsensusState) -> Result<()> {
             "diversifier cannot contain only spaces",
         ));
     }
-    match consensus_pub_key(c) {
-        Ok(pk) if !empty_key(&pk) => Ok(()),
-        _ => Err(cerr::invalid_consensus("public key cannot be empty")),
+    if key_missing(c.public_key.as_ref())? {
+        return Err(cerr::invalid_consensus("public key cannot be empty"));
     }
+    Ok(())
 }
 
 /// `Header.ValidateBasic`.
@@ -119,10 +146,10 @@ pub fn validate_header(h: &sm::Header) -> Result<()> {
     if h.signature.is_empty() {
         return Err(cerr::invalid_header("signature cannot be empty"));
     }
-    match h.new_public_key.as_ref().and_then(unpack_pub_key) {
-        Some(pk) if !empty_key(&pk) => Ok(()),
-        _ => Err(cerr::invalid_header("new public key cannot be empty")),
+    if key_missing(h.new_public_key.as_ref())? {
+        return Err(cerr::invalid_header("new public key cannot be empty"));
     }
+    Ok(())
 }
 
 /// `SignatureAndData.ValidateBasic`.
@@ -196,7 +223,7 @@ fn signature_data_from_proto(d: &Data) -> Result<SigData> {
             signatures: m
                 .signatures
                 .iter()
-                .map(signature_data_from_proto)
+                .map(|s| signature_data_from_proto(s).map(Some))
                 .collect::<Result<_>>()?,
         }),
         None => Err(sdk::error::go_panic("unexpected case <nil>")),

@@ -595,7 +595,7 @@ pub fn validate_msg_transfer(msg: &MsgTransfer) -> Result<()> {
     if !token.amount.is_positive() {
         return Err(ierr::insufficient_funds(token.to_string()));
     }
-    sdk::address::acc_from_bech32_go(&msg.sender).map_err(|e| {
+    sdk::address::acc_from_bech32_go_v(&msg.sender).map_err(|e| {
         ierr::invalid_address(format!("string could not be parsed as address: {e}"))
     })?;
     if msg.receiver.trim().is_empty() {
@@ -632,7 +632,7 @@ pub fn update_params(
 
 /// `MsgUpdateParams.ValidateBasic`.
 pub fn validate_msg_update_params(msg: &MsgUpdateParams) -> Result<()> {
-    sdk::address::acc_from_bech32_go(&msg.signer)
+    sdk::address::acc_from_bech32_go_v(&msg.signer)
         .map(|_| ())
         .map_err(|e| ierr::invalid_address(format!("string could not be parsed as address: {e}")))
 }
@@ -926,10 +926,14 @@ impl IbcModule for TransferModule {
             ierr::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
         })?;
         // `ModuleCdc.MustMarshalJSON(&ack)` must reproduce the bytes.
-        if *gostr::to_go_bytes(&ack.marshal()) != *acknowledgement {
-            return Err(ierr::invalid_type(
-                "acknowledgement did not marshal to expected bytes",
-            ));
+        let marshaled = ack.marshal();
+        let bz = gostr::to_go_bytes(&marshaled);
+        if *bz != *acknowledgement {
+            return Err(ierr::invalid_type(format!(
+                "acknowledgement did not marshal to expected bytes: {} \u{2260} {}",
+                hex::encode_upper(&*bz),
+                hex::encode_upper(acknowledgement)
+            )));
         }
         if let x_ibc::channel::AckResponse::Error(_) = ack {
             refund_packet_token(ctx, p, &data)?;

@@ -111,10 +111,10 @@ fn validate_coin(c: Option<&PbCoin>) -> core::result::Result<Coin, String> {
 
 /// `MsgForward.ValidateBasic` (every failure is unregistered).
 pub fn validate_basic(m: &MsgForward) -> Result<()> {
-    acc_from_bech32(&m.signer)
-        .map_err(|e| internal(format!("invalid signer address: {}", e.log)))?;
-    acc_from_bech32(&m.forward_addr)
-        .map_err(|e| internal(format!("invalid forward address: {}", e.log)))?;
+    // `errors.Wrap` keeps the code (`ErrUnknownAddress` for an empty or
+    // over-long address, plain errors otherwise).
+    acc_from_bech32(&m.signer).map_err(|e| e.wrap("invalid signer address"))?;
+    acc_from_bech32(&m.forward_addr).map_err(|e| e.wrap("invalid forward address"))?;
     decode_hex_address(&m.dest_recipient)
         .map_err(|e| internal(format!("invalid dest_recipient hex format: {e}")))?;
     decode_hex_address(&m.token_id)
@@ -144,14 +144,11 @@ pub fn quote_igp_fee(
     hook: Option<HexAddress>,
     hook_metadata: &[u8],
 ) -> core::result::Result<Coin, String> {
-    let router = x_warp::get_enrolled_router(ctx, token.id.internal_id(), dest_domain)
+    // `GetEnrolledRouter`: "no router for domain %d: %w" of the
+    // collections error (not found, or a v9 router v10 cannot decode).
+    let router = x_warp::enrolled_router(ctx, token.id.internal_id(), dest_domain)
         .map_err(|e| e.log)?
-        .ok_or_else(|| {
-            format!(
-                "no router for domain {dest_domain}: collections: not found: key '({}, {dest_domain})'",
-                token.id.internal_id()
-            )
-        })?;
+        .map_err(|e| format!("no router for domain {dest_domain}: {e}"))?;
     let metadata = StandardHookMetadata {
         address: Vec::new(),
         gas_limit: router.gas,
@@ -188,8 +185,9 @@ pub fn forward(
 ) -> Result<MsgForwardResponse> {
     let forward_addr = acc_from_bech32(&m.forward_addr).map_err(|e| {
         internal(format!(
-            "invalid forward_addr {:?}: {}",
-            m.forward_addr, e.log
+            "invalid forward_addr {}: {}",
+            gostr::quote(&m.forward_addr),
+            e.log
         ))
     })?;
     let dest_recipient = decode_hex_address(&m.dest_recipient)
@@ -348,9 +346,11 @@ fn forward_token(
         )
         .map_err(|e| format!("failed to collect IGP fee from relayer: {}", e.log))?;
     }
-    let router = x_warp::get_enrolled_router(ctx, token.id.internal_id(), dest_domain)
+    // `GetEnrolledRouter`: "no router for domain %d: %w" of the
+    // collections error (not found, or a v9 router v10 cannot decode).
+    let router = x_warp::enrolled_router(ctx, token.id.internal_id(), dest_domain)
         .map_err(|e| e.log)?
-        .ok_or_else(|| format!("no router for domain {dest_domain}"))?;
+        .map_err(|e| format!("no router for domain {dest_domain}: {e}"))?;
     let args = TransferArgs {
         sender: to_bech32(ACC_PREFIX, forward_addr),
         destination_domain: dest_domain,

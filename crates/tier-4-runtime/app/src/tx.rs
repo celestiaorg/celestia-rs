@@ -124,9 +124,11 @@ pub struct MsgsResult {
 
 /// First signer of `msg` as an account bech32 string (`createEvents`).
 fn sender_of(msg: &Any) -> Option<String> {
+    // `GetMsgV1Signers` reads the re-marshaled message.
+    let msg = &txdecode::gogo_repack(msg);
     let signers = celestia_proto::signers::get_signers(&msg.type_url, &msg.value)?.ok()?;
     let bytes = match signers.into_iter().next()? {
-        Signer::Str(s) => encoding::bech32::decode(&s).ok()?.1,
+        Signer::Str(s) => encoding::bech32::decode_and_convert(&s).ok()?.1,
         Signer::Raw(b) => b,
     };
     x_auth::bech32(&bytes).ok()

@@ -1549,9 +1549,12 @@ dependencies = [
  "hash",
  "hex",
  "http",
+ "ics23",
+ "k256",
  "keyring",
  "legacy-amino",
  "merkle",
+ "multistore",
  "pbjson-types",
  "prost",
  "prost-reflect",
@@ -1565,6 +1568,7 @@ dependencies = [
  "txdecode",
  "x-ante",
  "x-gov",
+ "x-hyperlane",
  "x-ibc",
  "x-icahost",
  "x-packetforward",
@@ -4441,6 +4445,7 @@ dependencies = [
  "sdk",
  "serde",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-bank",
  "x-feegrant",
@@ -4585,6 +4590,7 @@ dependencies = [
  "prost",
  "sdk",
  "serde_json",
+ "txdecode",
  "x-auth",
  "x-bank",
 ]
@@ -4616,6 +4622,7 @@ name = "x-forwarding"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "hash",
  "math",
  "sdk",
@@ -4835,6 +4842,7 @@ name = "x-valaddr"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "pbjson-types",
  "prost",
  "sdk",
@@ -4863,6 +4871,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "celestia-proto",
+ "gostr",
  "hash",
  "hex",
  "prost",

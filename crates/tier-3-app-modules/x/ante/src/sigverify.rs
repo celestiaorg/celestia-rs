@@ -46,7 +46,7 @@ fn signature_data_to_bz(data: Option<&SigData>) -> R<Vec<Vec<u8>>> {
         Some(SigData::Multi { signatures, .. }) => {
             let mut sigs = Vec::new();
             for d in signatures {
-                sigs.extend(signature_data_to_bz(Some(d))?);
+                sigs.extend(signature_data_to_bz(d.as_ref())?);
             }
             let agg = celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature {
                 signatures: sigs.clone(),
@@ -177,7 +177,7 @@ fn consume_sig_gas(
                 }
                 let sub_pk = idx(keys, usize::try_from(i).unwrap_or(usize::MAX))?.clone();
                 let sub_sig = idx(signatures, sig_index)?.clone();
-                consume_sig_gas(ctx, Some(&sub_pk), Some(&sub_sig), params)?;
+                consume_sig_gas(ctx, Some(&sub_pk), sub_sig.as_ref(), params)?;
                 sig_index += 1;
             }
             Ok(())
@@ -208,7 +208,7 @@ fn only_legacy_amino_signers(data: Option<&SigData>) -> bool {
         Some(SigData::Single { mode, .. }) => *mode == signing::SIGN_MODE_LEGACY_AMINO_JSON,
         Some(SigData::Multi { signatures, .. }) => signatures
             .iter()
-            .all(|s| only_legacy_amino_signers(Some(s))),
+            .all(|s| only_legacy_amino_signers(s.as_ref())),
         None => false,
     }
 }

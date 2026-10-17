@@ -266,8 +266,12 @@ error text (reported separately).
 skips signatures and never commits, so it cannot see a state write or a
 `LastResultsHash` difference; here the generated txs are *signed* and
 *finalized*. The scenario's `InitChain` app state gets 12 funded accounts
-whose keys the harness holds (and short slashing window, unbonding and
-voting periods); the recorded blocks are replayed into Go and Rust (each
+whose keys the harness holds and 6 funded multisig accounts over them
+(2-of-3, 1-of-2, nested, 4-of-8 above `tx_sig_limit`, a repeated sub-key,
+1-of-1; signed with any subset of sub-keys, mixed and nested sign modes,
+and bit arrays, mode-info lists and `MultiSignature`s that do not match),
+and short slashing window, unbonding and
+voting periods; the recorded blocks are replayed into Go and Rust (each
 `FinalizeBlock` compared), then generated blocks follow on the final state:
 every `CheckTx` (code, gas, priority, address, sequence; logs separately),
 Go's `PrepareProposal` against Rust's, `ProcessProposal` of Go's block and
@@ -287,13 +291,64 @@ txs, blob txs at share-boundary sizes (with mismatched commitments, sizes,
 namespaces, share versions), and ante variants (fees, gas limits from 0 to
 `MaxUint64`, memo lengths, timeout heights, extension options, fee granter
 and payer, `SIGN_MODE_LEGACY_AMINO_JSON`, missing public keys, wrong
-sequences, account numbers and signatures). Blocks carry the tracked
+sequences, account numbers and signatures; gas limits just below what Go
+used for a successful tx of the same type). With `DELIVER_DUMP_SPLIT`
+set, an app-hash split commits both apps and prints every module store
+entry that differs (`/store/<name>/subspace`). Blocks carry the tracked
 validator set's votes (fuzz validators sometimes absent: downtime jailing)
 and sometimes duplicate-vote / light-client-attack evidence; block time
 sometimes jumps (unbonding completion, proposal ends, allowance and grant
 expiry). `fuzz-diff coverage` prints, per registered message type, whether
 each app version decodes it, whether Rust routes it, and how often Go
-executed it in the recorded scenarios.
+executed it in the recorded scenarios. `DELIVER_SWEEP` re-sends
+successful txs with gas limits below what Go used (see the store access
+order audit below); `DELIVER_SCRIPT=<file>` runs scripted txs first
+(`<account index> <type URL> <hex value> [gas]` or `vote <account
+index>`, a yes vote on the latest proposal, per line, `---` between
+blocks; the block is finalized unfiltered and each result printed, and
+the results of the proposals that ended are counted);
+`fuzz-diff genesis <scenario>` writes a `genesis.json` from the recorded
+`InitChain` for the scenarios recorded without one (`ibc-edge`,
+`ibc-upgrades`), which the scripts use; `fuzz-diff accounts` prints the
+fuzz accounts. `DELIVER_IBC` adds a mock IBC counterparty
+(`crates/fuzz-diff/src/ibcmock.rs`): a chain whose `ibc` and `upgrade`
+IAVL stores sit under a multistore root that its headers (one ed25519
+validator the harness holds) commit to, so every step it "makes" is
+written into its store and proven with real ICS-23 proofs. It drives the
+chain under test through the success paths in order: three 07-tendermint
+clients, connection init / ack, an ICS-20 channel (init / ack) and an
+ICS-27 host channel (try / confirm); then packets both ways (transfers
+with PFM memos, redundant relays, flipped proof bits, acknowledgements,
+error acknowledgements, timeouts), ICA host txs in either encoding (with
+a fee grant whose amount has a sign, and keys gogoproto skips),
+misbehaviour on the second client, `MsgUpgradeClient` of the third,
+ICS-27 channel upgrades the counterparty proposes (try, confirm with the
+counterparty flushing or flush complete, open, cancel on an error
+receipt, timeout) and transfer channels the counterparty closes
+(`MsgTimeoutOnClose`, `MsgChannelCloseConfirm`). Hyperlane owner
+operations target objects their signer created (a create message first
+when it has none), and ownership changes are followed. `DELIVER_HL`
+drives the hyperlane success paths in order, one tx per block from a
+dedicated account, each step using the ids the earlier ones returned: a
+noop ISM, a mailbox on it, an IGP with a gas config, a merkle tree hook
+and the mailbox's hooks, a collateral token with an enrolled router,
+`MsgRemoteTransfer` (the IGP charges its fee), `MsgPayForGas`,
+`MsgClaim`, `MsgProcessMessage` of a transfer in (the noop ISM verifies
+it; collateral released), a synthetic token minted by a second
+`MsgProcessMessage` and burned by a transfer out; at app version 10 a gov
+proposal of `MsgCreateNativeSyntheticToken` that the fuzz accounts pass
+(delegating to the bonded validators first; with `DELIVER_HL` evidence
+never names the scenario's own validators, whose jailing would leave no
+bonded stake to tally); then the transfer / payment / claim / process
+steps repeat (`SCRIPT ... HL step` lines give Go's result of each). In
+`hyperlane`, `zkism-forwarding`, `v9-hyperlane` and `v9-zkism-forwarding`
+(200 blocks, with `DELIVER_WIRE`, seed 6) Go executed `MsgPayForGas`
+11-13 times, `MsgClaim` 2-13 (a generated `MsgSetIgpOwner` sometimes takes
+the IGP), `MsgProcessMessage` 22-26, `MsgRemoteTransfer` 22-25 and
+`MsgCreateSyntheticToken` 11-13 per scenario, and at app version 10 the
+`MsgCreateNativeSyntheticToken` proposal passed in both scenarios; no
+mismatch. Generated gov proposals carry `MsgCreateNativeSyntheticToken`
+too (a fuzz-created mailbox; a new denom, `utia` or empty).
 
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
@@ -371,6 +426,287 @@ keys): with the old gov code 161 of 940 simulated txs differed from Go
 v10.4.0 in code or gas (Go fails at the metadata title check, Rust went on
 to the signer check); after the fix none of 940.
 
+### Store access order in transactions (2026-10-16)
+
+Finding 60 was a loop that collected an iterator's entries before
+processing them: same total gas, but a tx running out of gas inside the
+loop stops at a different point (`gas_used`, `LastResultsHash`). Every
+gas-metered iteration reachable from a tx (and the begin / end blockers,
+where only the final state counts) was compared with the Go source, both
+app versions. `sdk::context::Iter` charges like `gaskv` (the seek of the
+first element at creation, each `Next` charges the element it leaves, a
+`break` before `Next` charges nothing more), so a loop is exact when it
+calls `next` where Go calls `Next` and does its reads and writes in
+between.
+
+| Keeper | Loop (tx path unless noted) | Go | Rust | Divergent? |
+|---|---|---|---|---|
+| distribution | `IterateValidatorSlashEventsBetween` (rewards of `MsgDelegate`, `MsgUndelegate`, `MsgWithdrawDelegatorReward`, ...) | handler per event before `Next` | `for_each_slash_event_between` | fixed (60) |
+| distribution | `DeleteValidatorSlashEvents`, `DeleteValidatorHistoricalRewards` (`AfterValidatorRemoved`, last undelegation of an unbonded validator) | delete inside the loop | `delete_prefix` | no |
+| gov | `ChargeDeposit` (`MsgCancelProposal`) | `GetDeposits` (collect), then refund / delete per deposit | `get_deposits`, then the same | no |
+| gov | `deleteVotes` (`MsgCancelProposal`) | `Votes.Clear`: collect keys, then delete | same | no |
+| gov | `RefundAndDeleteDeposits`, `DeleteAndBurnDeposits`, tally (end blocker) | walk with refund / delete inside | same | no |
+| feegrant | `RemoveExpiredAllowances` (`MsgPruneAllowances`, limit 75; end blocker 200) | two deletes per entry, stop at the limit before `Next` | same | no |
+| authz | `DequeueAndDeleteExpiredGrants` (begin blocker) | walk, delete inside | same | no |
+| staking | `HasReceivingRedelegation` (`MsgBeginRedelegate`) | prefix iterator, `Valid` only | first `next` | no |
+| staking | `GetValidatorDelegations`, `GetUnbondingDelegationsFromValidator`, `GetRedelegationsFromSrcValidator` (slashing: begin blocker) | collect with a read per index entry | same | no |
+| staking | power index (reverse), last validators, unbonding / redelegation queues (end blocker) | as Go | same | no |
+| bank | `GetAllBalances` (`SpendableCoins`) | `Balances.Walk` | same | no |
+| signal | `TallyVotingPower` (`MsgTryUpgrade`) | validator read, delete of removed validators' signals and power read inside the loop, return at the threshold | same | no |
+| signal | `ResetTally` | delete inside | same | no |
+| fibre | `ReduceWithdrawalsForPayment` (`MsgPayForFibre`) | `for ; Valid() && remaining.IsPositive(); Next()` (the post `Next` runs before the condition) | same, `next` before the `break` | no |
+| fibre / valaddr | withdrawals, processed payments, stale providers (begin / end blockers) | as Go | same | no |
+| hyperlane | `AnnounceValidator`: storage locations (`Iterate` + `Values`) | collect | same | no (the only iteration in hyperlane-cosmos tx paths) |
+| IBC 07-tendermint | `pruneOldestConsensusState` (`MsgUpdateClient`; not in CheckTx) | first element, callback stops before `Next` | first `next` only | no |
+| IBC 07-tendermint | `GetNextConsensusState` / `GetPreviousConsensusState` (misbehaviour checks) | `Valid`, `Value`, one `Next` / reverse iterator | same | no |
+| IBC channel | `HasInflightPackets` (upgrades, timeouts on close) | `Valid` only | first `next` | no |
+| auth, slashing, upgrade, mint, circuit, consensus, blob, minfee, zkism, forwarding, evidence, capability, transfer, ICA host, PFM, warp | no iteration on a tx path (genesis export, queries, begin / end blockers only) | | | no |
+
+Beyond loops, every read, write and charge sequence of a successful tx is
+checked by the gas sweep of `fuzz-diff deliver` (`DELIVER_SWEEP`): each tx
+Go executes successfully (single signer, a fuzz account) becomes a
+template that later blocks re-send with consecutive sequences and gas
+limits spread below what Go used (a quarter of them within 4 000 of it),
+so the copies run out of gas at many points of the ante handler and the
+message handlers; `gas_used` of an out-of-gas tx is the first charge past
+the limit, so any difference in the order or size of the charges shows as
+a result mismatch.
+
+### Wire-level sweep (2026-10-17)
+
+Findings 46, 56, 57, 61, 62 and 64 were all one class: Rust reading or
+re-encoding protobuf bytes differently from the Go decoder of that path
+(gogoproto, pulsar, protobuf-go, `dynamicpb`, `unknownproto`). Random
+mutation sampled the class; `crates/fuzz-diff/src/wire.rs` enumerates it.
+For a valid encoded message it produces every rewrite below, at every
+depth (embedded messages, `stdtime` / `stdduration` fields, `Any` values
+resolved through the schema; at most 5 levels, the first two occurrences
+of a repeated field, 6 000 rewrites per message):
+
+| Classes | Rewrite |
+|---|---|
+| `dup_same`, `dup_last`, `dup_first` | a singular scalar / string / bytes / customtype field repeated (same value; another value after; before): `Int` `""`, `0`, `-1`, `+1`; `LegacyDec`; `HexAddress` |
+| `msg_empty_last`, `msg_empty_first`, `msg_split`, `msg_part_last`, `msg_alt_last` | a singular embedded message (`stdtime`, `stdduration`, `Any`, oneof members included) repeated: empty after / before, its fields split over two occurrences (an `Any`'s URL and value apart), a part after, a copy with one scalar changed after |
+| `packed`, `unpacked`, `packed_mixed`, `packed_empty`, `repeated_interleaved`, `packed_long10`, `packed_nonmin`, `unpacked_long10` | repeated scalars packed / unpacked / both, an empty run, elements between other fields, 10-byte and non-minimal varints inside a run |
+| `reorder_rev`, `reorder_rot` | fields out of order |
+| `unknown`, `unknown_alias` | unknown fields: `max+1`, 1023-1025, 1031, 2047, 2048, 3072, 19000, 19999, 2^29-1, 2^29, 2^31-1, 2^31, keys past 2^32 (gogoproto's `int32` truncation, also aliasing a known field), each wire type, first and last |
+| `wrong_wt` | a known field with every other wire type (group included) |
+| `zero_len`, `default_explicit`, `drop` | an embedded message emptied; absent fields with explicit defaults (empty packed runs, `""` / `"0"` customtypes, empty messages); a field removed |
+| `nonmin_tag`, `nonmin_val`, `nonmin_len`, `long10_tag`, `long10_val`, `long10_len` | `0x80 .. 0x00` padding and 10-byte varints with high bits in keys, values, length prefixes |
+| `group`, `group_mismatch`, `group_lone_end`, `group_open`, `group_known`, `field0`, `wt67` | wire types 3 / 4 at the start, middle and end (nested, mismatched end, lone end, unterminated, on known numbers); field number 0; wire types 6 / 7 |
+| `oneof_two`, `oneof_two_first` | two members of one oneof |
+| `any_url_*`, `any_value_*` | type URL without `/`, with a host, `//`, trailing space, empty, two URLs; value empty, with trailing bytes (field 0, a non-critical and a critical field), truncated, two values |
+
+No message reachable from a tx has a map field (the schema's only map is
+PFM's genesis `InFlightPacketsEntry`). `SIGN_MODE_TEXTUAL` is not enabled
+(`authtx.DefaultSignModes`); `DIRECT` / `DIRECT_AUX` sign the bytes as
+received, so `SIGN_MODE_LEGACY_AMINO_JSON` is the only sign-bytes encoder.
+
+`fuzz-diff wire <app version> [per type] [seed] [cap] [dir]` takes, per
+registered `sdk.Msg` type, synthesized messages, the recorded scenarios'
+messages (signer rewritten) and state-building flows, and sends every
+rewrite as the tx's message, inside `MsgExec` and inside a gov proposal
+(oracle ops `tx`: `TxDecode`, `unknownproto`, `UnpackInterfaces`, gogoproto
+re-encoding of each message, `GetSigners`; and `aminosign`: amino-JSON
+sign bytes) and as the message of a protobuf ICA `CosmosTx` (`json_ica_pb`:
+the host's decoding and `ValidateBasic`); the `TxBody` and `AuthInfo` of a
+valid tx are enumerated too. `DELIVER_WIRE=1 fuzz-diff deliver` gives
+every generated message (top level, in `MsgExec`, in proposals, the
+`MsgPayForBlobs` of blob txs; with `DELIVER_IBC` the ICA host's messages,
+plus a periodic fee allowance with `stdtime` / `stdduration` fields) one
+rewrite of the class used least so far, signed and finalized on both apps
+(`CheckTx`, ante with signatures, routing and `ValidateBasic`, execution
+with `DELIVER_SWEEP`'s gas sweep, the stores with `DELIVER_DUMP_SPLIT`);
+`WIRE <class> delivered= go_ok= check_rejected=` lines give the volume
+per class. Queries that echo stored messages are compared too: every 25
+blocks and at the end of a run, the ABCI query response (code, codespace,
+value bytes; log separately) of both apps on the committed state for gov
+`v1` / `v1beta1` proposals (`v1beta1` converts messages to legacy
+content), votes and deposits of the latest proposals, authz grants by
+granter and grantee, fee allowances by grantee and granter, accounts
+(public keys as stored), validators (consensus keys), the module
+parameters set by gov `MsgUpdateParams`, IBC client states, connections
+and channels, and hyperlane mailboxes, ISMs, IGPs, hooks and tokens
+(`QUERY <path> sent=` lines).
+
+Volumes (one seed each; inputs / Go accepted):
+
+| Level | v10 | v9 |
+|---|---|---|
+| `TxBody` / `AuthInfo` rewrites (`tx`, `aminosign`) | 505 / 208, 1 027 / 128 | same |
+| message in a tx (`tx`; `aminosign`) | 200 112 / 84 226 | 192 716 / 80 302 |
+| in `MsgExec`; in a gov proposal (`tx`; `aminosign`) | 200 112 / 84 226 each | 192 716 / 80 302 each |
+| ICA `CosmosTx` (`json_ica_pb`) | 200 112 / 148 317 | 192 716 / 142 567 |
+| total oracle inputs (`fuzz-diff wire 10 2 2`, `wire 9 2 2`) | 1 403 962 | 1 352 190 |
+| `DELIVER_WIRE` campaigns (300 blocks, 10 txs per block, sweep, store dump): txs to `CheckTx` / finalized / Go code 0 | 12 scenarios: 40 133 / 11 855 / 1 799 | 10 scenarios: 33 090 / 10 736 / 1 499 |
+| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 2 734 / 718 / 26 149 | 2 405 / 651 / 20 948 |
+| second round, oracle (`wire 10 8 7` + `wire 10 12 8`; `wire 9 8 7` + `wire 9 12 8`): message rewrites per level (tx, `MsgExec`, gov proposal, ICA `CosmosTx`; each through `tx` and `aminosign`) | 1 650 766 per level, 11 561 490 inputs | 1 592 651 per level, 11 154 685 inputs |
+| second round, `DELIVER_WIRE` (seeds 5-7, with the query comparison; `hyperlane` / `zkism-forwarding` also with `DELIVER_HL`): runs, blocks / txs to `CheckTx` / finalized / Go code 0 | 21 runs, 6 106 / 69 488 / 23 237 / 3 429 | 12 runs, 3 400 / 39 175 / 13 086 / 2 018 |
+| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 5 010 / 1 361 / 43 395 | 2 733 / 730 / 24 230 |
+| queries compared (stored messages echoed) | 30 177 | 16 468 |
+
+Results: findings 65 (the first run: 6 distinct mismatches, all one cause)
+and 66 (the first `DELIVER_WIRE` run of the `ibc` scenario); 67 from
+reading every place Rust decodes a tx's messages outside the router. After
+the fixes: no mismatch in the oracle sweeps above, and none in the
+`DELIVER_WIRE` campaigns. The second round found no mismatch and no query
+difference. It closed two harness gaps: from the third generated block on,
+the commit had left out every validator without a power change (the
+scenario's validators missed blocks and were jailed for downtime, so no
+gov proposal could pass), and the ibctesting scenarios (`ibc-edge`,
+`ibc-upgrades`: validators without slashing signing info) halted both
+apps at the first vote or evidence; their blocks now carry neither.
+
+```bash
+target/release/fuzz-diff wire 10 2 2 0 /tmp/wire-findings
+DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_DUMP_SPLIT=1 GO_APPD=$DEVNET_BIN/celestia-appd \
+  crates/fuzz-diff/deliver-diff.sh gov 300 10 1
+DELIVER_WIRE=1 DELIVER_IBC=1 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh ibc 300 10 1
+```
+
+### Upgrade boundary (2026-10-17)
+
+Mainnet moves from app version 9 to 10 by signalling; the multiplexer
+then swaps binaries inside `Commit`. `DELIVER_UPGRADE=<n>` runs `deliver`
+across it: `v9-upgrade` (chain `test`, delay 3) is replayed up to its
+validator's first signal tx, the generated blocks run on Go v9.0.8, the
+held signal is sent from block `n`, and after the `Commit` that raised the
+app version the harness stops Go and starts v10.4.0 on the same home
+(`deliver-diff.sh` `GO_APPD_NEXT`, as `abci-recorder`'s switch mode); the
+Rust app stays one process. Compared every block: app hash (every store
+dumped at `H` and `H+1`), results, gas, events, `CheckTx`,
+`PrepareProposal`, `ProcessProposal`; signal / upgrade / consensus /
+fibre / valaddr / module-account / router queries every 5 blocks and
+every block near `H`. The driver (`crates/fuzz-diff/src/deliver/upgrade.rs`):
+fuzz validators (a minority of the power, signalling 0 / 9 / 10 / 11 /
+`u64::MAX`), `MsgTryUpgrade` before quorum, in the signal's block, until
+pending and while pending; authz grants (incl. for v10-only messages),
+fee allowances (incl. limited to v10-only messages), vesting accounts
+(new keys, used at v10), a locked account and a send at the fibre
+address, gov proposals submitted at v9 (also while pending) and executed
+at v10, hyperlane routers enrolled in v9's shapes (upper-case, no `0x`,
+short, non-hex, `0X`, non-ASCII) and transferred over at v10; around `H`
+fibre escrow / withdrawal, valaddr hosts, `MsgCreateNativeSyntheticToken`
+(direct and proposed), `MsgForward` with and without fields 7/8, `MsgExec`
+of the v9 grants, fees paid by the v9 allowances; every generated tx is
+also proposed unfiltered at `H..H+2`; late at v10 the fuzz validators take
+5/6 of the power and signal 10 / 9. `DELIVER_HL`, `DELIVER_IBC` (packets
+in flight across the switch), `DELIVER_WIRE` and `DELIVER_SWEEP` combine
+with it. Plus a live devnet with the real switch
+(`workloads/v9-upgrade-boundary.sh`, fixture replayed with full parity).
+
+Findings 68-72. Volumes after the fixes (24 runs, seeds 1-41, 0
+mismatches): 3 275 generated blocks, 32 065 txs to `CheckTx` (17 526
+accepted), 15 987 delivered (9 611 code 0), 3 047 gas-sweep copies; per
+phase (blocks / delivered / Go code 0): before the signal 543 / 3 257 /
+2 209, `H-2` 24 / 203 / 56, `H-1` 24 / 260 / 144, `H` 24 / 366 / 237,
+`H+1` 24 / 446 / 339, `H+2` 24 / 351 / 269, `H+3` 24 / 349 / 267,
+`H+4..20` 408 / 2 117 / 1 366, later 2 180 / 8 638 / 4 724. Driver txs:
+1 909 `MsgSignalVersion`, 1 005 `MsgTryUpgrade`, 1 716 escrow deposits,
+518 withdrawals, 475 valaddr hosts, 500 `MsgForward`, 941 `MsgExec`, 229
+grants / allowances, 239 vesting accounts, 853 proposals (58 submitted at
+v9 ended at v10: 41 passed, 10 failed on execution, 7 rejected), 269
+transfers over v9 routers.
+
+```bash
+GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd \
+  DELIVER_UPGRADE=20 DELIVER_HL=1 DELIVER_IBC=1 \
+  crates/fuzz-diff/deliver-diff.sh v9-upgrade 150 6 1
+APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh \
+  v9-upgrade-boundary 90 conformance/devnet/workloads/v9-upgrade-boundary.sh
+```
+
+### Log parity, mempool recheck and simulation (2026-10-17)
+
+`fuzz-diff deliver` reports every difference of a tx result's log, info,
+events or signers, of a `CheckTx` log and of a query's log as a `LOG`
+line. Three more comparisons were added:
+
+- `DELIVER_SIM`: every generated tx is simulated on both apps before its
+  `CheckTx` (`/cosmos.tx.v1beta1.Service/Simulate` through ABCI Query, as
+  signed and with its signatures emptied the way `--gas auto` builds the
+  simulated tx). The `gas_info` and the code must agree (a mismatch);
+  the response's other bytes and the error text are logs.
+  `deliver-diff.sh` now enables Go's gRPC server: without it the SDK never
+  registers the tx service on the query router and Go answers `unknown
+  query path`.
+- Comet's mempool recheck: after the `Commit` that switches binaries
+  (`DELIVER_UPGRADE`), and after every `Commit` with `DELIVER_RECHECK`, the
+  txs Go's `CheckTx` accepted and no block included are rechecked on both
+  apps in order (`CheckTxType_Recheck`), and a tx leaves the modelled pool
+  as in `TxPool.handleRecheckResult` (code, then `PostCheckMaxGas`).
+  `RECHECK <phase>` lines give the volume.
+- The mock IBC counterparty's every third `MsgUpdateClient` carries a
+  commit signature flag outside 1..=3 (finding 73).
+
+Before the fixes, 13 runs (`ibc`, `fibre`, `gov`, `hyperlane`, `staking`,
+`authz-feegrant`, `utf8`, `vesting`, `blob`, `zkism-forwarding`,
+`v9-ibc`, `v9-gov`, `v9-hyperlane`; 100 blocks, 8 txs per block) gave 69
+tx-result / `CheckTx` log differences besides Go panic stacks and
+protobuf-go's randomized space, and the earlier `DELIVER_UPGRADE` batch
+(20 runs, `DELIVER_IBC` / `DELIVER_HL`) 615: IBC packet and timeout
+errors without Go's details (`current height: 0-52, timeout height
+0-1`, `(channel-0 ≠ channel-7)`, `next sequence send (17) ≥ (17).`),
+unknown enum values printed `UNKNOWN` (Go prints the number), the
+07-tendermint light client's errors without their values and wrappers
+(`invalid header: new header has a time from the future <time> (now:
+<time>; max clock drift: 10m0s)`, `untrustedHeader.ValidateBasic
+failed: ...`), the bech32 decoder's texts (the `bech32` crate's instead
+of `decoding bech32 failed: invalid checksum (expected ... got ...)`,
+account / validator codec errors as `GetFromBech32`'s, a doubled
+`: invalid address`), `cosmossdk.io/errors`' `%v` frame where ibc-go
+formats an address error with `%v` (`addresses cannot be empty: unknown
+address [celestiaorg/cosmos-sdk@v0.52.12/types/address.go:173]`; v9.0.8:
+`@v0.52.8`), the staking gRPC status prefix (`rpc error: code = NotFound
+desc = ...`), fibre payment-promise validation without its `invalid
+request` wrap and values, `%q` printed as Rust's `{:?}`, gov's nil
+weight (`<nil>`) and `VoteOption.Format` (`byte(vo)`), `json.Marshal` of
+an empty options slice (`null` / `[]`), the PFM fallback's joined error,
+an out-of-gas panic inside the IBC redundant-relay ante check (Go's
+`out of gas in location: ReadFlat; gasWanted: ..., gasUsed: ...`). The
+same 13 runs after the fixes (seeds 13 / 14): 0 mismatches; the only
+tx-result / `CheckTx` log differences left are Go panic stacks (98) and
+protobuf-go's space (21), plus 3 since fixed (gov `byte(vo)` and `[]`,
+authz's codec error). The tx decoder's texts (`no registered
+implementations of type tx.TxExtensionOptionI`, `could not consume field
+value for tagNum: 7, wireType: "bytes"; unexpected EOF`, `integer out of
+range; got: 300, max: 256`, gogoproto's `%#v` of timestamps and
+durations, go-square's blob and namespace errors, `encoding/hex: invalid
+byte: U+0067 'g'`) were fixed from the simulation's logs: Go fails an
+undecodable tx in `CheckTx` without a `ResponseCheckTx`, so only
+`Simulate` and a malicious block's results show them.
+
+`Simulate` logs: of 12 228 differences in those runs, 11 672 are only
+the `[file:line]` frame `cosmossdk.io/errors` appends when the tx
+service formats the error with `%v`: the Go source line of the innermost
+`errorsmod.Wrap` of each error (and the build machine's module cache
+path for modules outside `github.com`, e.g. `cosmossdk.io/errors`
+itself). Emulating it needs the Go source position of every error site;
+not done. The rest are Go panic stacks, protobuf-go's space and
+gogoproto's `wrong wireType = 2 for field RevisionHeight` (Rust prints
+the field number; the schema table has no Go field names).
+
+Gas estimates: 0 differences in `gas_info` or code in 32 236 simulations
+(both variants; Go succeeded in 4 750) over 128 first-message types (every
+message type the generator builds), both app versions and an upgrade run.
+
+Mempool recheck after the v9 -> v10 switch: 3 `DELIVER_UPGRADE` runs
+(seeds 21-23, `DELIVER_RECHECK`, with `DELIVER_IBC` / `DELIVER_HL` /
+`DELIVER_WIRE` / `DELIVER_SWEEP`): 274 rechecks on the switch (every
+pool tx: the fresh v10 check state has height 0, so `gas_wanted` is -1
+and `PostCheckMaxGas` removes it; the check state still applies its
+sequence), 27 041 rechecks in all, 0 differences in code, gas, priority,
+sequence or log. The Rust node's mempool calls the same `App` after
+`switch_on_commit` (`BlockExecutor::commit` -> `TxPool::update` ->
+`recheck_transactions`, a port of celestia-core v0.42.3's), so the
+node removes the same txs.
+
+```bash
+DELIVER_SIM=1 DELIVER_IBC=1 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh ibc 100 8 13
+GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd DELIVER_UPGRADE=20 \
+  DELIVER_RECHECK=1 DELIVER_IBC=1 crates/fuzz-diff/deliver-diff.sh v9-upgrade 80 6 21
+```
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation
@@ -421,7 +757,15 @@ hand-written network messages.
 | `fuzz-diff` other `json_*` ops with the new mutations, `json_ack_check` | v10, v9: 30 000 each, then all 11 `json_*` ops 2 × 40 000 per version | finding 34 fixed; then clean |
 | `ibc-upgrades` fixture regenerated (2026-10-16) with 13 proto3json ICA packets carrying `null`s (a `null` message, `null` coins / outputs / amounts, `null` in `MsgExec.msgs` and `MsgVoteWeighted.options`, a one-byte secp256r1 key, a quoted `null` proposal id, `time.Parse`'s lenient forms) executed by celestia-app v10.4.0 | 237 heights, 3 txs failing with Go panics, the rest error acks | finding 35 fixed; then full parity (app hash, code, gas, data at every height). Remaining log differences: the panic logs (Go's recorded stack trace) and two pre-existing error texts |
 | `fuzz-diff exec` `EXEC_MODE=json` | `gov` 940 simulated txs (v10) | finding 29: 161 code / gas mismatches before, none after |
-| `fuzz-diff deliver` (signed txs finalized; 2026-10-16) | v10: `gov`, `staking`, `staking-lifecycle`, `hyperlane`, `authz-feegrant`, `fibre`, `vesting`, `zkism-forwarding`, `ibc`, `utf8`, `blob`, `consensus`, `evidence`; v9: `v9-gov`, `v9-staking`, `v9-hyperlane`, `v9-authz-feegrant`, `v9-vesting`, `v9-zkism-forwarding`, `v9-ibc`, `v9-utf8`, `v9-blob`, `v9-exec` (300 generated blocks each after the replay; ~7 300 blocks, ~41 000 txs through `CheckTx`, ~9 000 finalized) | findings 36–45 fixed (the first gov run stopped at the signal app-hash split after 229 blocks) |
+| `fuzz-diff deliver` (signed txs finalized; 2026-10-16) | v10: `gov`, `staking`, `staking-lifecycle`, `hyperlane`, `authz-feegrant`, `fibre`, `vesting`, `zkism-forwarding`, `ibc`, `utf8`, `blob`, `consensus`, `evidence`; v9: `v9-gov`, `v9-staking`, `v9-hyperlane`, `v9-authz-feegrant`, `v9-vesting`, `v9-zkism-forwarding`, `v9-ibc`, `v9-utf8`, `v9-blob`, `v9-exec` (300 generated blocks each after the replay; ~7 300 blocks, ~41 000 txs through `CheckTx`, ~9 000 finalized) | findings 36–45 fixed (the first gov run stopped at the signal app-hash split after 229 blocks); a second round (14 v10 and 10 v9 scenarios, 300 blocks each, ~40 000 more txs) found 47–50, and its CheckTx mismatches where Go failed signature verification led to the `aminosign` op and finding 46; after the fixes the v9 round is clean |
+| `fuzz-diff deliver` round 3 (2026-10-16; seeds 31/32, then 41/42 with the multisig accounts) | v10: 12 + 6 scenarios, v9: 10 + 6 scenarios, 300 blocks each (~58 000 more txs through `CheckTx`) | findings 51–54 fixed; the reruns of both seeds are clean; round 4 (seeds 51/52, all 22 scenarios, 300 blocks each, ~37 000 txs through `CheckTx`, ~2 300 of them multisig-signed, ~16 % of those accepted) is clean |
+| `fuzz-diff deliver` rounds 5–6 (2026-10-16; seeds 61–98, all 22 scenarios each; new flows: legacy gov votes, deposits and text proposals, proposal cancellation by its proposer, vesting accounts for fresh addresses, ICS-20 transfers; app-hash splits dump the differing store entries) | ~24 runs of 10–12 scenarios, 300 blocks each (~400 000 txs through `CheckTx`) | findings 55–60 fixed; reruns of the failing seeds clean; log-only differences down ~80 % |
+| `fuzz-diff deliver` round 7 (2026-10-16; seeds 201–212 and 301–340; gas limits just below what Go used for the same message type (7× more out-of-gas inside handlers), hyperlane owner operations on objects the fuzz accounts created, multisig ISMs with sorted validator sets) | 52 runs of 10–12 scenarios, 300 blocks each (~800 000 txs through `CheckTx`) | finding 61 fixed; otherwise clean; then seeds 401–420 and, with the default (long) slashing, unbonding and voting parameters (`DELIVER_KEEP_PARAMS`), seeds 501–508: clean |
+| `fuzz-diff deliver` round 8 (2026-10-16; seed 701; gas sweep, hyperlane process / pay-for-gas / announce flows, gov proposals of `MsgExecLegacyContent` and staking `MsgUpdateParams`, `ibc-edge` with a generated genesis) and `DELIVER_SCRIPT` cases | `staking-lifecycle`, `gov`, `hyperlane`, `authz-feegrant`, `ibc-edge`, 200 blocks each (~9 900 txs through `CheckTx`, ~4 200 gas-sweep copies) | sweep clean; finding 64 found with a scripted `MsgGrant`; `ibc-edge`'s recorded client updates carry part-set totals of 10 000 (finding 63) |
+| `fuzz-diff --ops json_ica_pb` (2026-10-16; protobuf ICA `CosmosTx`: devnet txs' messages and fee-grant / authz / gov seeds with wide keys, groups, overlong varints, `+N` amounts, then protobuf mutations) | v10, v9: 6 × 1 000 000 each | findings 62-64 fixed; the seeds that differed before the fix are clean |
+| `fuzz-diff deliver` round 9 (2026-10-17; seeds 801/802, 901, 911/912, 921/922; `DELIVER_IBC` (the mock counterparty) and `DELIVER_SWEEP` on every run; hyperlane owner operations on owned objects) | v10: 15 scenarios, then 8 again; v9: 10, then 7; 200–300 blocks each (~95 000 txs through `CheckTx`, ~38 000 gas-sweep copies) | clean (one `utf8` run stopped when a parallel run's cleanup removed its Go home directory; its rerun is clean). Go executed successfully for the first time: `MsgSubmitMisbehaviour`, `MsgUpgradeClient`, `MsgChannelOpenAck` / `Confirm` / `Try` of new channels, `MsgChannelUpgradeTry` / `Confirm` / `Open` / `Cancel` / `Timeout`, `MsgChannelCloseConfirm`, `MsgTimeoutOnClose`, ICA host txs, and the hyperlane owner operations (`MsgSetMailbox`, `MsgSetToken`, `MsgSetIgpOwner`, `MsgSetDestinationGasConfig`, `MsgEnrollRemoteRouter` / `MsgUnrollRemoteRouter`, routing ISM domains and owner) |
+| `DELIVER_SCRIPT` gov proposals (2026-10-17; fuzz accounts delegate, one proposal each of `MsgExecLegacyContent` (text) and staking `MsgUpdateParams`, all accounts vote yes) | `gov`, `v9-gov`, 40 blocks | both proposals pass and execute on v10 (Go and Rust alike); on v9 the staking one does, the text proposal fails identically (no legacy handler for it). Never reachable in either version: ICS-27 controller messages (celestia-app wires no controller), mint `MsgUpdateParams` (celestia's mint has no `Msg` service), crisis (not wired), `MsgChannelUpgradeInit` / `Ack` and the other IBC `MsgUpdateParams` / `MsgRecoverClient` / `MsgIBCSoftwareUpgrade` except through gov |
+| `fuzz-diff --ops aminosign` (2026-10-16; seeds: the delivery generator's amino-JSON-signed txs, nested messages included) | v10, v9: 1 400 000 inputs (~110 000 decodable); a second round with the multisig signers and new flows: 1 200 000 more | finding 46 fixed; then clean (the second round's only differences were Go's `GetSigningTxData` dereferencing a nil fee, which the ante handler reaches first on chain; the harness models it) |
 | `utf8` / `v9-utf8` devnet scenarios (Go v10.4.0 / v9.0.8 behind celestia-core) | 17 workload txs each, 62 / 57 heights | full parity (app hash, tx results, CheckTx, proposals, logs and events byte for byte); `utf8` query corpus (3 537 ABCI + 2 264 REST) identical |
 
 ### Findings (2026-10-15)
@@ -476,6 +820,35 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 43 | zkism `MsgSubmitMessages` / `MsgUpdateInterchainSecurityModule` (both versions) | `id` is a non-nullable `HexAddress` customtype: absent, it is the zero address (`ism identifier must be non-zero`, `sdk`/18); Rust parsed the empty string (`invalid hex address length`, `sdk`/2) | code split from one tx | `decode_id` with `HexAddress::from_proto` |
 | 44 | ICA host `MsgUpdateParams` (both versions) | `Params.Validate` is a plain `fmt.Errorf` (`undefined`/1, `%s` of the slice: `[a b]`); Rust used `ErrInvalidRequest` (code 18) | `ValidateBasic` (CheckTx) and gov execution code split | `x_icahost::validate_params` |
 | 45 | forwarding `MsgForward.ValidateBasic` (both versions) | `MaxIgpFee` is a non-nullable `Coin`: without amount, `Coin.Validate` fails `amount is nil`; Rust read it as zero and went on (to the ante handler) | code split from one tx | `validate_coin` |
+| 46 | `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes (x/tx v0.13.9 `aminojson`, both versions) | (a) `GetSignBytes` runs x/tx `decode.RejectUnknownFields(body, allowUnknownNonCriticals=false)` over the interface registry's descriptors, where ibc-go's `tx.proto` resolves `UpgradeFields`, `Upgrade` and `ErrorReceipt` as *placeholders* (no fields): any content in `MsgChannelUpgradeInit.fields`, `...Try.counterparty_upgrade_fields`, `...Ack` / `...Confirm.counterparty_upgrade`, `...Cancel.error_receipt` is an unknown field, and so is any non-critical unknown field at any depth; (b) `marshalAny` unmarshals every nested `Any` with protobuf-go: `dynamicpb` types reject invalid UTF-8 in proto3 strings (the `GetSigners` rule of finding 1, now for messages inside `MsgExec`, proposals, `v1beta1` content, authorizations, ...), and every occurrence of an `Any`'s `type_url` must be UTF-8; (c) the generated (pulsar) unmarshal of the `protoregistry.GlobalTypes` types keeps the *last* occurrence of a singular message field (`dynamicpb` and gogoproto merge them); a fee coin without amount is `<nil>`. Rust encoded all of these, so it verified signatures Go rejects (and rejected signatures over Go's sign doc) | a tx signed in amino-JSON executes on one side only: state split | `aminojson::reject_unknown_fields` (placeholder fields from the new oracle op `placeholders`), `unpack_check` in `marshal_any`, `pulsar_last_wins`; oracle op `aminosign` (`fuzz-diff --ops aminosign`), 26 regressions |
+| 47 | gov `v1beta1.MsgSubmitProposal` and `MsgExecLegacyContent` (both versions) | without content, `GetContent` / `LegacyContentFromMessage` call `GetCachedValue` on a nil `*Any`: **panic** (also inside `SubmitProposal`'s check of a proposal's `MsgExecLegacyContent`); Rust returned `invalid proposal content` (code 5) | code split from one tx | `go_panic` in `legacy_submit_proposal` / `exec_legacy_content` |
+| 48 | vesting `MsgCreateVestingAccount` (both versions) | `validateAmount`'s `IsValid` reaches a nil amount: **panic**; Rust failed decoding the amount (`invalid coins`) | code split from one tx | `valid_raw_coins` |
+| 49 | distribution `MsgDepositValidatorRewardsPool` / `MsgCommunityPoolSpend` (both versions) | the depositor, validator and recipient address-codec errors are returned unwrapped (`undefined`/1 for an empty or malformed address, `ErrLogic` for a wrong prefix); Rust used the staking decoder's `ErrInvalidAddress` (code 7) | code split from one tx | `sdk::address::{acc,val}_codec_to_bytes` |
+| 50 | forwarding `MsgForward.ValidateBasic` (both versions) | `errors.Wrap` keeps the code of `AccAddressFromBech32`'s error (`ErrUnknownAddress`, code 9, for an empty or over-long address); Rust made every failure code 1 | CheckTx / FinalizeBlock code split | `SdkError::wrap` |
+| 51 | multisig signatures (`ModeInfoAndSigToSignatureData`, both versions) | Go sizes a multisig's sub-signatures by the `MultiSignature` entries (`make([]SignatureData, len(sigs))`) and fills only those with a mode info: a `MultiSignature` with more entries than `mode_infos` carries nil sub-signatures, and `SetPubKeyDecorator`'s event loop fails with `got empty SignatureData` (code 1). Rust built the list from the mode infos only, so the extra entries vanished and the multisig verified: Rust accepted (`CheckTx`, `PrepareProposal`) and executed txs Go rejects | state split from one tx signed by a multisig account (anyone holding a threshold of its keys) | `SigData::Multi` sub-signatures are `Option`s (`None` past the mode infos; `improper signature data type for index n` in verification); found by the deliver harness's new multisig accounts |
+| 52 | authz grants (both versions) | `SendAuthorization.ValidateBasic`'s `IsAllPositive`, `StakeAuthorization`'s `MaxTokens.IsNegative` and `TransferAuthorization`'s `SpendLimit.Validate` reach a nil amount: **panic**; Rust failed decoding (`invalid coins`, code 10). `TransferAuthorization` also wraps `Coins.Validate`'s own text (`invalid denom: u`, `coin 0utia amount is not positive`), not `invalid spend limit` | code split from one `MsgGrant` | `sdk::coins::{raw_is_positive, raw_is_negative, raw_coins_validate}` |
+| 53 | feegrant allowances (both versions) | `BasicAllowance` / `PeriodicAllowance.ValidateBasic`'s `IsValid` reaches a nil amount: **panic**; the error texts print the coins as decoded (`<nil>` amounts) | code split from one `MsgGrantAllowance` | `raw_valid`, `raw_coins_string` |
+| 54 | staking `MsgEditValidator` (both versions) | the nil `commission_rate` dereference comes after the `min_self_delegation` check: a non-positive minimum (`-0`) with an empty commission rate is `ErrInvalidRequest` (code 18) in Go; Rust panicked first | code split from one tx | check order as Go |
+| 55 | `Coins.Add` past 256 bits (both versions) | `math.Int.Add` panics on overflow (`integer overflow`), e.g. `ValidateInputOutputs` summing a `MsgMultiSend`'s outputs (`2^256-1` and `1000`); Rust returned `ErrInvalidCoins` (code 10). Same for a balance or supply sum | code split from one tx | `sdk::coins::add_panic` in `Coins::add`, `add_coins`, `mint_coins` |
+| 56 | staking `MsgCreateValidator` (both versions) | `types.NewValidator` packs the unpacked consensus key again (`NewAnyWithValue`): the stored `ConsensusPubkey` is canonical. Rust stored the tx's `Any` as received, so a key encoded with a repeated field (the same key twice) made the validator record longer: different gas and **app hash** | state split from one valid `MsgCreateValidator` | `PubKey::to_any` |
+| 57 | feegrant / authz grants (both versions) | `feegrant.NewGrant` / `authz.NewGrant` re-marshal the decoded allowance / authorization (gogoproto: customtype amounts as `Int.String()`, `+1` is `1`; repeated singular messages merged), while a nested `Any` (an `AllowedMsgAllowance`'s inner allowance) keeps the bytes as received until `SetAllowance` re-packs it. Rust stored the prost re-encoding of the raw values (`+1`): different gas and **app hash** | state split from one `MsgGrantAllowance` / `MsgGrant` | `txdecode::gogo_repack` of the message's `Any` at grant time, `Allowance::to_canonical_any` after a change |
+| 58 | gov proposal messages at app version 9 | `SetMsgs` / `NewLegacyContent` re-marshal with the executing binary's types: v9.0.8 (hyperlane-cosmos v1.1.0) has `RemoteRouter.receiver_contract` as a string, the v10 fork as a non-nullable `HexAddress` (66 bytes when absent). Rust re-packed with the v10 schema at app version 9: a `MsgEnrollRemoteRouter` proposal was 68 bytes longer (submit-proposal gas, proposal writes): gas split, out-of-gas at a different point | gas / result split from one proposal | `gogo_repack` / `gogo_marshaled` follow the executing app version (`sdk::version`) |
+| 59 | ante logs (both versions; log only) | `SetUpContextDecorator` recovers a later decorator's out-of-gas panic as `out of gas in location: <descriptor>; gasWanted: N, gasUsed: N`; Rust logged `out of gas` (store reads) or the location only. `DeductFeeDecorator` prints the fee payer `[]byte` with `%s` (raw bytes), not bech32 | `CheckTx` / `DeliverTx` log text | `run_ante` rewrites the out-of-gas error; `gostr::from_go_bytes` |
+| 60 | distribution `CalculateDelegationRewards` (both versions) | `IterateValidatorSlashEventsBetween` runs the handler (historical-rewards reads of `calculateDelegationRewardsBetween`) while the iterator stands on the event, before the `Next` that charges it; Rust collected every event first and then read. Same total gas, but a tx running out of gas inside the loop (a `MsgDelegate` to a slashed validator with a tight gas limit) stopped at a different point: `gas_used` differed (`LastResultsHash`) | result split from one tx | `store::for_each_slash_event_between` |
+| 61 | message field keys past `u32::MAX` (both versions) | gogoproto truncates a field number to `int32` (`fieldNum := int32(wire >> 3)`): a key past `u32::MAX` is an unknown field to skip (or aliases a known field); prost rejects it (`invalid key value`). The tx decoder ports gogoproto, but the router decoded each message's bytes with prost again: Rust failed a message Go executes (`ValidateBasic` and handlers) | code split; a valid message with such a field executes on Go only: state split | `txdecode::prost_compatible` (gogoproto's decoding re-encoded) before `route` / `validate_basic` |
+| 62 | ICA host protobuf `CosmosTx` (both versions) | the host decodes the packet's messages with gogoproto and runs them without the tx decoder's unknown-field check. gogoproto skips what prost cannot: a field key past `u32::MAX`, a group whose end tag does not match its start, a 10-byte varint whose last byte is above 1. In the `Any` of a message (kept as `XXX_unrecognized`) Rust failed the whole `CosmosTx`; inside a nested `Any` (a fee allowance, an IBC client message, an authorization) Rust failed decoding that value. At app version 9 `MsgForward` has no fields 7 and 8: Go skips them, Rust read them as v10's custom hook (or failed on another wire type) | an ICA packet executes on Go and fails on Rust (different acknowledgement: state split); `MsgGrantAllowance` is in celestia's default host allow list | `gogo::Mode::Struct` drops the unknown fields prost cannot skip and re-encodes nested `Any`s with gogoproto's decoding (except where Go stores them as received: an `AllowedMsgAllowance`'s inner allowance, the messages of `MsgExec`, of a proposal and of the `CosmosTx`); fee-grant allowances decode through `prost_compatible`; v9 `MsgForward` schema; new oracle op `json_ica_pb` (protobuf `CosmosTx` + `ValidateBasic`), regressions |
+| 63 | IBC `ValidateBasic` (both versions) | (a) 07-tendermint: `PartSetHeaderFromProto` rejects a part-set total above `MaxBlockPartsCount` (2049) in a header's `LastBlockID` or its commit's `BlockID`; Rust did not check it, so a `MsgUpdateClient` / misbehaviour Go rejects in `ValidateBasic` (CheckTx, code 1) went on to the handler in Rust (another code and gas). (b) 06-solomachine: `len(publicKey.Bytes())` of a multisig key amino-encodes it, which panics on a sub-key that was never unpacked (empty type URL) or has no amino registration (secp256r1); Rust returned `ErrInvalidHeader` / `ErrInvalidConsensus` or passed | (a) code / gas split from one tx anyone can send; (b) panic vs error | `light::validate_block_id` checks the count first (the ibctesting fixtures were recorded on celestia's `test/interop` setup, which raises it to 10 000: their replay sets that); `solomachine::key_missing` |
+| 64 | repeated `stdtime` / `stdduration` fields (both versions) | gogoproto's `StdTimeUnmarshal` / `StdDurationUnmarshal` overwrite the field on each occurrence; prost merges the occurrences (an empty last one leaves the first). A `MsgGrant` whose `grant.expiration` repeats with an empty last occurrence expires at Unix 0 in Go (`expiration must be after the current block time`) and was granted in Rust; the same in a nested `Any` (a fee allowance's expiration or period), and in the ante handler's parameter filter (`unbonding_time` of a gov-proposed staking `MsgUpdateParams`) | state split from one tx anyone can send | the router, `ValidateBasic` and the ante decorators decode messages through `txdecode::prost_compatible`, now always gogoproto's decoding re-encoded (nested `Any`s too); found with the new `DELIVER_SCRIPT` |
+| 65 | `GetSigners` of pulsar types (x/tx `anyutil.Unpack`, both versions) | The generated (pulsar) unmarshal of a `protoregistry.GlobalTypes` type reads like gogoproto, but decodes each embedded message with `options.Unmarshal`: a well-known type (`google.protobuf.Timestamp`, `Duration`, `Any`) goes through protobuf-go's table-driven decoder, which rejects field numbers past 2^29 - 1 (`cannot parse invalid wire-format data`), 10-byte varints with a last byte above 1, mismatched groups and invalid UTF-8 in `Any.type_url`. A non-critical unknown field (bit 11 set) numbered 2^29..2^31 passes the tx decoder's `RejectUnknownFields` in the body, so `MsgGrant{grant.expiration: {..., field 2^31-1}}` (also gov `MsgUpdateParams` durations, `MsgSoftwareUpgrade` plan time, any `Any` in a pulsar message) fails `GetSigners` in Go (the ante handler rejects the tx) while Rust checked only the `dynamicpb` types and executed it; the `MsgExec`, gov and ICA paths read re-marshaled bytes, where gogoproto keeps an `Any`'s unknown fields (`XXX_unrecognized`) | state split from one `MsgGrant` anyone can sign (DIRECT mode) | `signers::pulsar_check` in `unpack_check`; found by `fuzz-diff wire` (`unknown` class, depth 3); 12 regressions |
+| 66 | ICA host `authenticateTx` (both versions) | The host decodes a protobuf `CosmosTx` with gogoproto (no unknown-field check) and Go's `GetMsgV1Signers` reads the re-marshaled message; Rust checked the re-marshaled bytes but read the signers from the message as received with prost, which fails on encodings gogoproto accepts (a `MsgSend` coin denom whose length prefix is a 10-byte varint with high bits): Rust failed the whole ICA tx Go executes (different acknowledgement, balances, a fee grant stored on Go only) | state split from one ICA packet (any controller of an interchain account on a counterparty chain) | `host::msg_v1_signers` reads both from `gogo_repack`; the `message.sender` event attribute too (`tx::sender_of`); found by `DELIVER_WIRE=1 DELIVER_IBC=1 fuzz-diff deliver ibc` (app-hash split at the first mutated ICA packet) |
+| 67 | messages read as received outside the router (both versions) | Go's `ValidateBlobTx`, `validatePayForFibreTxShape` and ibc-go's `RedundantRelayDecorator` read `GetMsgs()` (the gogoproto structs); Rust decoded the bytes as received with prost, which differs where the tx decoder's unknown-field check does not look: packed scalars (10-byte varints with high bits, an element read past its run), repeated `stdtime` (gogoproto overwrites: a `PaymentPromise.creation_timestamp` of `{nanos: 5}` then `{seconds: -62135596800}` is zero in Go, not in prost) and repeated oneof messages (gogoproto replaces). The blob case is unreachable (the `dynamicpb` `GetSigners` check rejects such packed runs first); the fibre shape check and `MsgUpdateClient`'s header time in the relay decorator gave other `CheckTx` codes | `CheckTx` code split (mempool); defense in depth | `Tx::gogo_msgs` (the normalized messages) in `validate_blob_tx`, `fibre_tx::validate_shape`, `redundant_relay`; `proposal::tests::blob_tx_validation_reads_the_gogoproto_message` |
+| 68 | v9 msg service router (app version 9) | celestia-app v9.0.8 (no `fibre` tag, hyperlane-cosmos v1.1.0) registers no msg service for the types v10 added (fibre, valaddr, `MsgCreateNativeSyntheticToken`). The type URLs are not decodable at v9, but authz `MsgGrant` checks a `GenericAuthorization`'s `msg` string with `HandlerByTypeURL`: Go fails it (`ErrInvalidType` "/celestia.fibre.v1.MsgDepositToEscrow doesn't exist."), Rust's router (v10's handlers at every version) stored the grant | app-hash split from one `MsgGrant` anyone can send on mainnet today (app version 9) | `router::has_handler` is false for `txdecode::added_in_v10` types below app version 10; `router::tests::v10_types_have_no_handler_at_app_version_9`; found by `DELIVER_UPGRADE` (its v9 setup grants v10-only messages) |
+| 69 | staking / slashing `Params.Validate` text (both versions) | the errors are plain `fmt.Errorf`s with the value (`max validators must be positive: 0`, `unbonding time must be positive: <ns>`, `downtime jail duration must be positive: <Duration>`, the commission bounds with the decimal); Rust dropped the values. A passed gov proposal whose `MsgUpdateParams` fails stores the error as the proposal's `failed_reason` | app-hash split at the end of a passed proposal's voting period | Go's texts in `x-staking` `Params::validate` and `x-slashing`; `types::tests::params_validate_errors_match_go` |
+| 70 | the binary switch (`Commit` of the upgrade height) | the multiplexer stops v9.0.8 after that `Commit` and opens v10.4.0, whose `Init` sets the check state to `Header{ChainID}` (height 0, Go's zero time) until the next commit: `CheckTx` verifies signatures with account number 0 and an infinite gas meter (`gas_wanted` -1), vesting balances are all locked, periodic allowances reset from year 1; Rust kept the last block's header. In the same window (and in any historical query) the stores the upgrade adds have no version: `CacheMultiStoreWithVersion` leaves a nil store and any access panics (`runtime error: invalid memory address or nil pointer dereference`, `ErrPanic`); Rust read them as empty. The fresh-process check header also used 1970 instead of Go's zero time | `CheckTx` / query split between the upgrade's `Commit` and the next block (mempool, RPC); not consensus | `App::switch_on_commit` and `init_check_header` (Go's zero time, also on open); `sdk::MultiStore::view_at` nil stores (`StoreError::NilStore` → recovered panic); `replay_scenarios::v9_upgrade_switch_state` |
+| 71 | hyperlane routers stored at app version 9, read at 10 | v1.1.0 stores `RemoteRouter.receiver_contract` as any non-empty string; v1.3.0 reads it as the `HexAddress` customtype (`Unmarshal`: exactly `0x` + 64 hex digits, canonical lowercase). At v10 Go fails `RemoteRouters` (`failed to retrieve item: invalid hex address length`), `QuoteRemoteTransfer` and the forwarding module's lookups (`collections: encoding error: value decode: ...`) on such a router and returns upper-case ones lower-cased; Rust returned the stored strings (and its forwarding errors lacked Go's `collections` text) | query split for every token with a v9-shaped router after the upgrade; tx logs | `x_warp::decode_router` / `enrolled_router` by app version (query contexts read it from `sdk::version`); `x_warp::tests::v9_routers_read_at_app_version_10` |
+| 72 | `GetModuleAccount` of an address holding another account | Go panics (`account is not a module account`); Rust returned `ErrLogic`. Every module address is blocked except gov's (created at genesis), but v9 does not know fibre's: a send or a vesting account to it at app version 9 leaves an account there, and between the switch and the v10 handler (which replaces it) the v10 app's `ModuleAccounts` / `ModuleAccountByName` queries panic | query split at the upgrade height; the code split it would give in a tx is unreachable (the handler runs first) | `x_auth::get_module_account` returns Go's panic; `tests::module_address_holding_a_base_account_panics`; the `DELIVER_UPGRADE` driver funds the fibre address at v9 |
+| 73 | IBC 07-tendermint light client (`MsgUpdateClient`, misbehaviour; both versions) | celestia-core's `CommitSig.FromProto` converts the protobuf `int32` `BlockIdFlag` with `BlockIDFlag(...)`, a `byte`: only the low 8 bits count, so a signature with flag `258` or `-254` is a `Commit` signature (verified and tallied) and `257` is `Absent`; the flag is not in the signed vote, so anyone relaying a valid header can rewrite it. Rust's port compared the `int32` (`unknown BlockIDFlag`) | Go accepts the client update, Rust fails the tx: app-hash divergence from one relayed header (found by `DELIVER_IBC` once its mock counterparty sent such flags: CheckTx code split, then an app-hash split) | `lightclients::light::flag` truncates like Go; `light::tests::block_id_flag_is_truncated_to_a_byte_like_go`; the mock counterparty's every third `MsgUpdateClient` carries a wide flag (`update_client_wide_flag`) |
+| 74 | PFM `userRecoverableAccount` (both versions) | the fallback decodes the in-flight packet's original sender with `bech32.DecodeAndConvert` (any prefix, at most 1023 characters); Rust used the `bech32` crate, which rejects prefixes longer than 83 characters (BIP-173) and has no total limit. The original sender is the counterparty user's choice | a forward whose refund falls back to the original sender moves funds in Go and fails in Rust (or the reverse above 1023 characters): app-hash divergence | `encoding::bech32::decode_and_convert` there (and for the account / validator codecs, `x_auth::parse_bech32`, hyperlane's `AccAddressFromBech32`, the event sender); `middleware::tests::user_recoverable_account_falls_back_like_go` |
 
 Open:
 
@@ -488,8 +861,12 @@ Open:
 
 - Error text (logs; not hashed, code and gas match) that still differs
   from Go, judged infeasible or not worth emulating: Go panics log a
-  stack (goroutine ids, addresses); protobuf-go randomizes a space in its errors;
-  address-codec errors are worded differently in a few modules. gRPC
+  stack (goroutine ids, addresses); protobuf-go randomizes a space in its
+  errors (`proto:` followed by a space or U+00A0, chosen per binary);
+  `Simulate`'s error carries `cosmossdk.io/errors`' `%v` source frame
+  (`[celestiaorg/cosmos-sdk@v0.52.12/x/auth/ante/sigverify.go:290]`, see
+  "Log parity" above); gogoproto's `wrong wireType` names the Go field.
+  gRPC
   status messages carry Go forms (tonic cannot send Go's invalid bytes);
   ABCI, REST and RPC carry Go's bytes. Fixed since: gogoproto's text form
   in `failed to execute message; message %v` and gov's
@@ -499,6 +876,24 @@ Open:
   type names (`errUnknownField "*types.MsgForward": {TagNum: 7,
   WireType:"bytes"}`, `txdecode::go_types` from the protos' `go_package`). Logs and events of every devnet
   scenario match Go byte for byte (`KNOWN_EVENT_LOG_GAPS` is empty).
+- Go itself (both versions, Rust matches it): x/signal compares versions
+  with `ctx.BlockHeader().Version.App`, but `FinalizeBlock` builds the
+  header without a version (0). `MsgSignalVersion` therefore accepts any
+  version, and `MsgTryUpgrade` with a 5/6 quorum on the current version
+  (or a lower one) succeeds instead of failing with
+  `ErrInvalidUpgradeVersion`: it stores an upgrade the `EndBlocker` never
+  applies (not increasing) and never clears, so every later signal and
+  try-upgrade fails with `ErrUpgradePending`. Once 5/6 of the power has
+  re-signalled the running version (e.g. automation signalling again
+  after an upgrade), anyone's `MsgTryUpgrade` disables upgrades by
+  signalling for good. Reproduced by the `DELIVER_UPGRADE` late phase.
+- An event attribute of ibc-go's callbacks (`ibccallbackerror-error`,
+  ICS-20 `ValidateBasic`'s `amount must be strictly positive: got %d`)
+  prints a `math.Int` by its pointer: `%d` of the struct reaches the
+  unexported `*big.Int` field, which `fmt` prints as an address. Go's
+  output is nondeterministic (`{53814906916832}` and `{26591903563872}`
+  for the same packet in two runs), so Rust prints the value (`got 0`);
+  events are not hashed.
 - Go itself: `TxDecodeAmino` of a 2 MB `StdTx` with ~20 000 nested
   `MsgExec` grew the Go process past 10 GB (quadratic copying in
   go-amino); the oracle caps amino inputs at 256 KB.

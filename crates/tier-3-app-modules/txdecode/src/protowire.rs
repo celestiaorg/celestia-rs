@@ -27,13 +27,15 @@ pub(crate) const DEFAULT_RECURSION_LIMIT: i32 = 10_000;
 /// `protowire.ParseError` messages (for logs only).
 pub(crate) fn parse_error(n: isize) -> &'static str {
     match n {
+        // `io.ErrUnexpectedEOF`; the others are protobuf-go's
+        // `internal/errors.New` values, prefixed `proto: `.
         ERR_TRUNCATED => "unexpected EOF",
-        ERR_FIELD_NUMBER => "invalid field number",
-        ERR_OVERFLOW => "variable length integer overflow",
-        ERR_RESERVED => "cannot parse reserved wire type",
-        ERR_END_GROUP => "mismatching end group marker",
-        ERR_RECURSION_DEPTH => "exceeded maximum recursion depth",
-        _ => "parse error",
+        ERR_FIELD_NUMBER => "proto: invalid field number",
+        ERR_OVERFLOW => "proto: variable length integer overflow",
+        ERR_RESERVED => "proto: cannot parse reserved wire type",
+        ERR_END_GROUP => "proto: mismatching end group marker",
+        ERR_RECURSION_DEPTH => "proto: exceeded maximum recursion depth",
+        _ => "proto: parse error",
     }
 }
 

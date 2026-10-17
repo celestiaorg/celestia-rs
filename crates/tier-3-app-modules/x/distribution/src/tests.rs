@@ -185,3 +185,29 @@ fn allocate_withdraw_rewards_and_commission() {
     .unwrap_err();
     assert_eq!((e.codespace, e.code), ("distribution", 7));
 }
+
+#[test]
+fn slash_event_handler_runs_before_the_events_iteration_gas() {
+    // Go's `IterateValidatorSlashEventsBetween` calls the handler while
+    // the iterator stands on the event: the iterator's creation charges
+    // the first event, each `Next` charges the event it moves past, so the
+    // handler's own gas comes in between (an out-of-gas in the handler of
+    // the first event comes before the second charge).
+    let mut m = MultiStore::new();
+    m.mount(crate::STORE_KEY, Kind::Iavl).unwrap();
+    let mut ctx = Context::new(&mut m, header(1), ExecMode::Finalize);
+    let val = [7u8; 20];
+    let f = LegacyDec::from_str_go("0.1").unwrap();
+    store::set_slash_event(&mut ctx, &val, 3, 1, &f).unwrap();
+    store::set_slash_event(&mut ctx, &val, 4, 2, &f).unwrap();
+    let start = ctx.gas.consumed();
+    let mut seen = Vec::new();
+    store::for_each_slash_event_between(&mut ctx, &val, 1, 10, |ctx, h, p, _| {
+        seen.push((h, p, ctx.gas.consumed() - start));
+        Ok(false)
+    })
+    .unwrap();
+    // key 38 bytes, value 22 bytes: 3 * (38 + 22) + 30 per charge.
+    assert_eq!(seen, vec![(3, 1, 210), (4, 2, 420)]);
+    assert_eq!(ctx.gas.consumed() - start, 630);
+}

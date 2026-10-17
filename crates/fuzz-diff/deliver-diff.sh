@@ -11,8 +11,18 @@
 #
 # v10 scenarios need celestia-appd v10.4.0, v9-* scenarios v9.0.8 (both as
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
-# v9-upgrade switches binaries mid-run and is not supported. Environment:
-# DELIVER_TYPES=<substr,...> narrows the synthesized message types.
+# Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
+# types.
+#
+# The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.4.0): when Go
+# raises the app version, the harness stops the Go app after that Commit
+# and starts GO_APPD_NEXT on the same home and address (the multiplexer's
+# switch, as abci-recorder reproduces it); the Rust app continues.
+#   GO_APPD=.../v9/celestia-appd GO_APPD_NEXT=.../celestia-appd \
+#     DELIVER_UPGRADE=20 crates/fuzz-diff/deliver-diff.sh v9-upgrade 120
+# DELIVER_UPGRADE=<n> stops the replay before the scenario's signal txs and
+# sends them from generated block n (see crates/fuzz-diff/src/deliver/upgrade.rs);
+# without it the recorded upgrade of v9-upgrade is replayed (switch included).
 set -euo pipefail
 SCENARIO=${1:?scenario}
 BLOCKS=${2:-200}
@@ -26,11 +36,45 @@ WORK=$(mktemp -d)
 H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
-cp "$IN/genesis.json" "$H/config/genesis.json"
+FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
+# Scenarios recorded without a genesis file (the ibctesting fixtures): one
+# from the recorded InitChain.
+if [ -f "$IN/genesis.json" ]; then
+  cp "$IN/genesis.json" "$H/config/genesis.json"
+else
+  "$FUZZ_DIFF" genesis "$SCENARIO" >"$H/config/genesis.json"
+fi
+# The gRPC server on: the SDK then registers the tx service on the gRPC
+# query router, so ABCI Query serves `Service/Simulate` (`DELIVER_SIM`) as
+# a node with comet and gRPC enabled does.
+GRPC=$((39690 + ${DEVNET_PORT_OFFSET:-0}))
+python3 - "$H/config/app.toml" "$GRPC" <<'PY'
+import re, sys
+p, port = sys.argv[1], sys.argv[2]
+s = open(p).read()
+i = s.index("[grpc]")
+j = s.index("[", i + 1)
+sec = re.sub(r'(?m)^enable = .*$', 'enable = true', s[i:j])
+sec = re.sub(r'(?m)^address = .*$', 'address = "127.0.0.1:%s"' % port, sec)
+open(p, "w").write(s[:i] + sec + s[j:])
+PY
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
+echo $APP >"$WORK/app.pid"
+if [ -n "${GO_APPD_NEXT:-}" ]; then
+  # Run by the harness after the Commit that raised the app version.
+  cat >"$WORK/switch.sh" <<SH
+set -e
+OLD=\$(cat "$WORK/app.pid")
+kill \$OLD; while kill -0 \$OLD 2>/dev/null; do sleep 0.2; done
+GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$GO_APPD_NEXT" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >>"$WORK/app.log" 2>&1 &
+echo \$! >"$WORK/app.pid"
+until (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; do sleep 0.2; done
+SH
+  export DELIVER_SWITCH_CMD="bash $WORK/switch.sh"
+fi
 # GO_LOG=<file> keeps the Go app's log.
-trap 'kill $APP 2>/dev/null || true; if [ -n "${GO_LOG:-}" ]; then cp "$WORK/app.log" "$GO_LOG"; fi; rm -rf "$WORK"' EXIT
+trap 'kill "$(cat "$WORK/app.pid")" 2>/dev/null || true; if [ -n "${GO_LOG:-}" ]; then cp "$WORK/app.log" "$GO_LOG"; fi; rm -rf "$WORK"' EXIT
 for _ in $(seq 1 60); do
   (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
   sleep 1
