@@ -168,6 +168,16 @@ pub struct Stats {
     /// `DELIVER_UPGRADE`: Go's `CheckTx` rejections by phase, code and log
     /// (digits dropped).
     pub upgrade_check: BTreeMap<String, u64>,
+    /// Comet's mempool recheck after a `Commit` (`ReCheckTx` of the txs
+    /// Go's `CheckTx` accepted and no block included), by phase ("switch"
+    /// for the first recheck on the next app version's fresh check
+    /// state): (rechecked, removed: code != 0 or `PostCheckMaxGas`).
+    pub recheck: BTreeMap<String, (u64, u64)>,
+    /// `DELIVER_SIM`: every generated tx simulated on both apps before its
+    /// `CheckTx` (`Service/Simulate`), as signed and as `--gas auto`
+    /// builds it (empty signatures), by first message type: (simulated,
+    /// Go succeeded, gas or code differed).
+    pub sim: BTreeMap<String, (u64, u64, u64)>,
 }
 
 /// A funded account.
@@ -3576,6 +3586,11 @@ pub fn run(
         Err(_) => std::collections::VecDeque::new(),
     };
     let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
+    let sim_on = std::env::var("DELIVER_SIM").is_ok();
+    let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
+    // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
+    // not in a block, not removed by a recheck (oldest first, capped).
+    let mut pool: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
     for b in 0..blocks {
         height += 1;
         gn.height = height;
@@ -3743,6 +3758,9 @@ pub fn run(
         // CheckTx on both (sequences advance in check state).
         let mut check_rejected: Vec<bool> = Vec::new();
         for t in &txs {
+            if sim_on {
+                simulate_both(&mut go, cons_conn, &mut rust, app_version, t, &mut stats);
+            }
             let req = abci::RequestCheckTx {
                 tx: t.clone(),
                 r#type: 0,
@@ -3779,6 +3797,10 @@ pub fn run(
             };
             if g.code == 0 {
                 stats.check_ok += 1;
+                pool.push_back(t.clone());
+                if pool.len() > 300 {
+                    pool.pop_front();
+                }
                 if multisig {
                     stats.multisig.1 += 1;
                 }
@@ -4256,6 +4278,90 @@ pub fn run(
             hl_seq.v10 = app_version >= 10;
             upg.v10_from = Some(height + 1);
         }
+        // `TxPool.Update`: the block's txs leave the mempool, the rest are
+        // rechecked against the new check state (`CheckTxType_Recheck`,
+        // `handleRecheckResult` with `PostCheckMaxGas`), which right after
+        // the switch is the next binary's fresh one.
+        pool.retain(|t| !fb.txs.contains(t));
+        let rphase = if upg.v10_from == Some(height + 1) {
+            "switch".to_owned()
+        } else if upg.on {
+            phase.clone()
+        } else {
+            "all".to_owned()
+        };
+        // Every block with `DELIVER_RECHECK`, else only at the switch: the
+        // recheck re-applies the pool's txs to the check state the
+        // generator signs from, and the harness proposes new txs only.
+        let do_recheck = recheck_all || rphase == "switch";
+        let mut kept = std::collections::VecDeque::new();
+        for t in std::mem::take(&mut pool) {
+            if !do_recheck {
+                kept.push_back(t);
+                continue;
+            }
+            let req = abci::RequestCheckTx {
+                tx: t.clone(),
+                r#type: 1,
+            };
+            let g = go_value(go.call_or_exception(
+                mem_conn,
+                &Request {
+                    value: Some(request::Value::CheckTx(req.clone())),
+                },
+            )?)?;
+            let o = rust.check_tx(&req);
+            let e = stats.recheck.entry(rphase.clone()).or_default();
+            e.0 += 1;
+            let response::Value::CheckTx(g) = g else {
+                stats.mismatches.push(format!(
+                    "{scenario} h={height} ReCheckTx tx={}: Go errored ({g:?}), Rust {:?}",
+                    hex::encode(&t),
+                    o.map(|o| o.code)
+                ));
+                e.1 += 1;
+                continue;
+            };
+            match &o {
+                Ok(o) if check_fields(o) == check_fields(&g) => {
+                    if o.log != g.log {
+                        stats.log_mismatches.push(format!(
+                            "{scenario} h={height} ReCheckTx log tx={}\n    go:   {}\n    rust: {}",
+                            hex::encode(&t),
+                            gostr::to_go_bytes(&g.log).escape_ascii(),
+                            gostr::to_go_bytes(&o.log).escape_ascii()
+                        ));
+                    }
+                }
+                _ => stats.mismatches.push(format!(
+                    "{scenario} h={height} ReCheckTx ({rphase}) tx={}\n  go=(code {} {} gas {}/{} prio {}) log={}\n  rust={:?}",
+                    hex::encode(&t),
+                    g.code,
+                    g.codespace,
+                    g.gas_used,
+                    g.gas_wanted,
+                    g.priority,
+                    gostr::to_go_bytes(&g.log).escape_ascii(),
+                    o.as_ref().map(|o| format!(
+                        "(code {} {} gas {}/{} prio {}) log={}",
+                        o.code,
+                        o.codespace,
+                        o.gas_used,
+                        o.gas_wanted,
+                        o.priority,
+                        gostr::to_go_bytes(&o.log).escape_ascii()
+                    ))
+                )),
+            }
+            // `PostCheckMaxGas` (the scenarios' consensus params have no
+            // gas limit, `-1`): a negative gas wanted fails it.
+            if g.code == 0 && g.gas_wanted >= 0 {
+                kept.push_back(t);
+            } else {
+                e.1 += 1;
+            }
+        }
+        pool = kept;
         let near = upg.on && upg.upgrade_height.is_some_and(|h| (height - h).abs() <= 5);
         if upg.on {
             upg.observe(
@@ -4353,6 +4459,102 @@ fn bonded_validators(rust: &mut app::App) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// `Service/Simulate` of `tx` on both apps (`DELIVER_SIM`), signed and with
+/// its signatures emptied (`BuildSimTx`, what `--gas auto` simulates):
+/// the gas estimate (`gas_info`) and the code must agree; the rest of the
+/// response (events, data) and the error text are compared as logs.
+fn simulate_both(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    app_version: u64,
+    tx: &[u8],
+    stats: &mut Stats,
+) {
+    use celestia_proto::cosmos::tx::v1beta1::{SimulateRequest, SimulateResponse, TxRaw};
+    let first = type_urls(app_version, tx)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    let mut variants = vec![("signed", tx.to_vec())];
+    if let Ok(mut raw) = TxRaw::decode(tx) {
+        for s in &mut raw.signatures {
+            s.clear();
+        }
+        variants.push(("unsigned", raw.encode_to_vec()));
+    }
+    for (kind, bytes) in variants {
+        let req = abci::RequestQuery {
+            data: SimulateRequest {
+                tx_bytes: bytes.clone(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            path: "/cosmos.tx.v1beta1.Service/Simulate".into(),
+            height: 0,
+            prove: false,
+        };
+        let g = match go.call_or_exception(
+            conn,
+            &Request {
+                value: Some(request::Value::Query(req.clone())),
+            },
+        ) {
+            Ok(Response {
+                value: Some(response::Value::Query(g)),
+            }) => g,
+            other => {
+                stats
+                    .mismatches
+                    .push(format!("Simulate {kind}: Go query failed: {other:?}"));
+                continue;
+            }
+        };
+        let r = rust.query(&req);
+        let e = stats.sim.entry(first.clone()).or_default();
+        e.0 += 1;
+        if g.code == 0 {
+            e.1 += 1;
+        }
+        let gas = |v: &[u8]| {
+            SimulateResponse::decode(v)
+                .ok()
+                .and_then(|s| s.gas_info)
+                .map(|gi| (gi.gas_wanted, gi.gas_used))
+        };
+        let what = || format!("Simulate {kind} {first} tx={}", hex::encode(&bytes));
+        if (g.code, &g.codespace) != (r.code, &r.codespace) || gas(&g.value) != gas(&r.value) {
+            e.2 += 1;
+            stats.mismatches.push(format!(
+                "{} go={}/{} gas={:?} log={:?}\n    rust={}/{} gas={:?} log={:?}",
+                what(),
+                g.codespace,
+                g.code,
+                gas(&g.value),
+                g.log,
+                r.codespace,
+                r.code,
+                gas(&r.value),
+                r.log
+            ));
+        } else if g.value != r.value {
+            stats.log_mismatches.push(format!(
+                "{} response go={} rust={}",
+                what(),
+                hex::encode(&g.value),
+                hex::encode(&r.value)
+            ));
+        } else if g.log != r.log {
+            stats.log_mismatches.push(format!(
+                "{} go log={:?} rust log={:?}",
+                what(),
+                g.log,
+                r.log
+            ));
+        }
+    }
 }
 
 /// The queries that return stored messages (`Any`s, customtypes,

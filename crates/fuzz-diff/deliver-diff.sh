@@ -44,6 +44,20 @@ if [ -f "$IN/genesis.json" ]; then
 else
   "$FUZZ_DIFF" genesis "$SCENARIO" >"$H/config/genesis.json"
 fi
+# The gRPC server on: the SDK then registers the tx service on the gRPC
+# query router, so ABCI Query serves `Service/Simulate` (`DELIVER_SIM`) as
+# a node with comet and gRPC enabled does.
+GRPC=$((39690 + ${DEVNET_PORT_OFFSET:-0}))
+python3 - "$H/config/app.toml" "$GRPC" <<'PY'
+import re, sys
+p, port = sys.argv[1], sys.argv[2]
+s = open(p).read()
+i = s.index("[grpc]")
+j = s.index("[", i + 1)
+sec = re.sub(r'(?m)^enable = .*$', 'enable = true', s[i:j])
+sec = re.sub(r'(?m)^address = .*$', 'address = "127.0.0.1:%s"' % port, sec)
+open(p, "w").write(s[:i] + sec + s[j:])
+PY
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 echo $APP >"$WORK/app.pid"

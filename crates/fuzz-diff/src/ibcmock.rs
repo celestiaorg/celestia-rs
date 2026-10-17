@@ -427,6 +427,10 @@ pub struct StepCtx<'a> {
 pub struct Driver {
     /// The counterparty.
     pub cp: Cp,
+    /// `MsgUpdateClient`s built (every third one's commit signature carries
+    /// a `BlockIdFlag` outside 1..=3 that Go's `BlockIDFlag(byte)`
+    /// conversion truncates to `Commit`; the flag is not signed).
+    updates: u64,
     phase: u8,
     waited: u32,
     /// The chain under test's client of the counterparty, and a second one
@@ -505,7 +509,19 @@ impl Driver {
         if h <= self.trusted {
             return None;
         }
-        let header = self.cp.header(h, self.trusted, None);
+        let mut header = self.cp.header(h, self.trusted, None);
+        self.updates += 1;
+        if self.updates.is_multiple_of(3)
+            && let Some(sig) = header
+                .signed_header
+                .as_mut()
+                .and_then(|sh| sh.commit.as_mut())
+                .and_then(|c| c.signatures.first_mut())
+        {
+            const WIDE: [i32; 4] = [2 + 256, 2 - 256, 2 + 256 * 8_388_607, i32::MIN + 2];
+            sig.block_id_flag = WIDE[usize::try_from(self.updates / 3 % 4).unwrap_or(0)];
+            self.bump("update_client_wide_flag");
+        }
         Some(Any::pack(
             &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
                 client_id: client,
