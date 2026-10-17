@@ -47,6 +47,8 @@ use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
+mod upgrade;
+
 /// Funded single-key accounts added to the genesis (the multisig ones of
 /// [`multisig_trees`] follow).
 const ACCOUNTS: usize = 12;
@@ -154,6 +156,15 @@ pub struct Stats {
     /// Queries that echo stored messages (`query_echo`), by path: (sent,
     /// Go code 0 with a non-empty value).
     pub queries: BTreeMap<String, (u64, u64)>,
+    /// `DELIVER_UPGRADE`: the signal / try-upgrade results and the
+    /// switch.
+    pub upgrade: Vec<String>,
+    /// `DELIVER_UPGRADE`: per phase of the upgrade (see
+    /// `upgrade::Upgrade::phase`): (blocks, txs finalized, of those Go code
+    /// 0, txs Go's `CheckTx` rejected).
+    pub phases: BTreeMap<String, (u64, u64, u64, u64)>,
+    /// `DELIVER_UPGRADE`: the driver's txs by first message type.
+    pub upgrade_built: BTreeMap<String, u64>,
 }
 
 /// A funded account.
@@ -3260,6 +3271,23 @@ pub fn run(
 ) -> anyhow::Result<Stats> {
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
+    // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
+    // signal tx (held back for generated block `n`).
+    let mut upg = upgrade::Upgrade::default();
+    let mut stop_at = i64::MAX;
+    if let Ok(n) = std::env::var("DELIVER_UPGRADE") {
+        let (h, held) = upgrade::held_signals(&records);
+        stop_at = h;
+        upg = upgrade::Upgrade {
+            on: true,
+            signal_at: n.parse().unwrap_or(20),
+            held,
+            ..Default::default()
+        };
+    }
+    // Go raised the app version in the last `FinalizeBlock`: the binary
+    // switches after its `Commit`.
+    let mut switch_to: Option<(u64, u64)> = None;
     let mut go = GoApp {
         addr: addr.to_owned(),
         conns: BTreeMap::new(),
@@ -3282,6 +3310,14 @@ pub fn run(
     for r in records.iter().filter(|r| r.dir == Direction::Request) {
         let mut req = Request::decode(r.bytes.as_slice())?;
         if matches!(req.value, Some(request::Value::Flush(_))) {
+            continue;
+        }
+        if upgrade::request_height(&req).is_some_and(|h| h >= stop_at) {
+            break;
+        }
+        if let Some(request::Value::CheckTx(ct)) = &req.value
+            && upg.held.contains(&ct.tx)
+        {
             continue;
         }
         if let Some(request::Value::InitChain(ic)) = &mut req.value {
@@ -3327,6 +3363,14 @@ pub fn run(
                             l.into_iter()
                                 .map(|l| format!("{scenario} replay h={}: {l}", fb.height)),
                         );
+                        if let Some(v) = g
+                            .consensus_param_updates
+                            .as_ref()
+                            .and_then(|c| c.version.as_ref())
+                            && v.app != app_version
+                        {
+                            switch_to = Some((app_version, v.app));
+                        }
                         if let Some(v) = o
                             .consensus_param_updates
                             .as_ref()
@@ -3355,6 +3399,13 @@ pub fn run(
             }
             (Some(request::Value::Commit(_)), _) => {
                 rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+                if let Some((from, to)) = switch_to.take() {
+                    upgrade::switch_go(&mut go, from, to)?;
+                    stats.upgrade.push(format!(
+                        "replay h={}: Go switched binaries, app version {from} -> {to}",
+                        last_fb.as_ref().map_or(0, |f| f.height)
+                    ));
+                }
             }
             (Some(request::Value::CheckTx(ct)), response::Value::CheckTx(g)) => {
                 mem_conn = r.conn;
@@ -3419,11 +3470,7 @@ pub fn run(
         chain_id,
         app_version,
         height: template.height,
-        types: msg_types()
-            .iter()
-            .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
-            .cloned()
-            .collect(),
+        types: types_for(app_version, upg.on),
         force_amino: false,
         wire: WireGen::default(),
     };
@@ -3536,6 +3583,10 @@ pub fn run(
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
         let mut scripted = false;
+        let phase = upg.phase(height, app_version);
+        if upg.on && !bootstrap {
+            txs = upg.txs(&mut gn, b, height, &hl_seq.token);
+        }
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
@@ -3815,7 +3866,9 @@ pub fn run(
                     .iter()
                     // `DELIVER_HL` keeps the scenario's validators bonded
                     // for its proposal's tally.
-                    .filter(|v| v.2 || (!hl_seq.on && gn.m.rng.one_in(50)))
+                    // `DELIVER_UPGRADE` too (its validator's signal
+                    // decides the upgrade).
+                    .filter(|v| v.2 || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50)))
                     .cloned()
                     .collect();
                 if let Some((a, p, _)) = gn.pick(&fuzzv) {
@@ -4156,8 +4209,62 @@ pub fn run(
         };
         go.call_or_exception(cons_conn, &commit_req)?;
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
-        if b % 25 == 24 || b + 1 == blocks {
-            let (c, l) = query_echo(&mut go, cons_conn, &mut rust, &gn, &mut stats.queries);
+        // Go raised the app version: switch its binary after this
+        // `Commit` (the multiplexer); the Rust app continues.
+        if let Some(v) = g
+            .consensus_param_updates
+            .as_ref()
+            .and_then(|c| c.version.as_ref())
+            && v.app != app_version
+        {
+            upgrade::switch_go(&mut go, app_version, v.app)?;
+            stats.upgrade.push(format!(
+                "h={height}: Go switched binaries, app version {app_version} -> {}",
+                v.app
+            ));
+            app_version = v.app;
+            gn.app_version = v.app;
+            gn.types = types_for(app_version, upg.on);
+            hl_seq.v10 = app_version >= 10;
+            upg.v10_from = Some(height + 1);
+        }
+        let near = upg.on && upg.upgrade_height.is_some_and(|h| (height - h).abs() <= 5);
+        if upg.on {
+            upg.observe(&mut gn, &mut rust, &fb.txs, &g.tx_results, height);
+            upg.after_commit(&mut rust, height);
+            let e = stats.phases.entry(phase).or_default();
+            e.0 += 1;
+            e.1 += fb.txs.len() as u64;
+            e.2 += g.tx_results.iter().filter(|r| r.code == 0).count() as u64;
+            e.3 += check_rejected.iter().filter(|r| **r).count() as u64;
+            // The whole state at the last v9 height and the first v10
+            // ones.
+            if upg
+                .upgrade_height
+                .is_some_and(|h| (h..=h + 1).contains(&height))
+            {
+                for line in dump_split(&mut go, cons_conn, &mut rust) {
+                    stats
+                        .mismatches
+                        .push(format!("{scenario} h={height} store {line}"));
+                }
+            }
+        }
+        if b % 25 == 24 || b + 1 == blocks || near || (upg.on && b % 5 == 4) {
+            let extra = if upg.on {
+                upgrade::queries(&gn, &hl_seq.token)
+            } else {
+                Vec::new()
+            };
+            let (c, l) = query_echo(
+                &mut go,
+                cons_conn,
+                &mut rust,
+                &gn,
+                &mut stats.queries,
+                extra,
+                !near && b % 25 != 24 && b + 1 != blocks,
+            );
             stats.mismatches.extend(
                 c.into_iter()
                     .map(|c| format!("{scenario} h={height} query {c}")),
@@ -4167,17 +4274,19 @@ pub fn run(
                     .map(|l| format!("{scenario} h={height} query {l}")),
             );
         }
-        if let Some(v) = o
-            .consensus_param_updates
-            .as_ref()
-            .and_then(|c| c.version.as_ref())
-        {
-            gn.app_version = v.app;
-        }
     }
     if let Some(d) = ibc {
         stats.ibc = d.stats;
     }
+    stats.upgrade.append(&mut upg.log);
+    if let Some(h) = upg.upgrade_height {
+        stats.upgrade.push(format!(
+            "upgrade height {h}; app version 10 from {:?}; vesting accounts {}",
+            upg.v10_from,
+            upg.vesting.len()
+        ));
+    }
+    stats.upgrade_built = upg.built;
     Ok(stats)
 }
 
@@ -4216,6 +4325,8 @@ fn query_echo(
     rust: &mut app::App,
     gn: &Gen,
     counts: &mut BTreeMap<String, (u64, u64)>,
+    extra: Vec<(&'static str, Vec<u8>)>,
+    only_extra: bool,
 ) -> (Vec<String>, Vec<String>) {
     // `{1: s}` / `{1: n}` requests.
     let s1 = |s: &str| {
@@ -4262,6 +4373,10 @@ fn query_echo(
     .into_iter()
     .map(|p| (p, Vec::new()))
     .collect();
+    if only_extra {
+        reqs.clear();
+    }
+    reqs.extend(extra);
     for id in gn.proposals.iter().rev().take(8) {
         for p in [
             "/cosmos.gov.v1.Query/Proposal",
@@ -4829,6 +4944,12 @@ fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
 
 /// A plain direct-mode tx of `msgs` signed by account `i`.
 fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> {
+    sign_with(gn, i, msgs, gas, String::new())
+}
+
+/// [`sign_simple`] with the fee paid by `granter`'s allowance (when not
+/// empty).
+fn sign_with(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64, granter: String) -> Option<Vec<u8>> {
     let a = &gn.accts[i];
     let body = TxBody {
         messages: msgs,
@@ -4859,7 +4980,7 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
             }],
             gas_limit: gas,
             payer: String::new(),
-            granter: String::new(),
+            granter,
         }),
         tip: None,
     };
@@ -5103,6 +5224,20 @@ fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
 }
 
 /// Whether `type_url` is in the tx decoder's registry at `app_version`.
+/// The generated message types: those the decoder knows at
+/// `app_version`; with `both` (`DELIVER_UPGRADE`), those of app versions 9
+/// and 10 (v10-only ones before the upgrade, v9 shapes after).
+fn types_for(app_version: u64, both: bool) -> Vec<MessageDescriptor> {
+    msg_types()
+        .iter()
+        .filter(|md| {
+            let u = format!("/{}", md.full_name());
+            registered(app_version, &u) || (both && (registered(9, &u) || registered(10, &u)))
+        })
+        .cloned()
+        .collect()
+}
+
 fn registered(app_version: u64, type_url: &str) -> bool {
     let body = TxBody {
         messages: vec![Any {

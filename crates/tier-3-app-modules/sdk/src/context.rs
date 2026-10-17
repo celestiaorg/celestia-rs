@@ -46,7 +46,11 @@ pub struct Header {
 
 impl From<StoreError> for SdkError {
     fn from(e: StoreError) -> Self {
-        sdk::io(e.to_string())
+        match e {
+            // A Go panic, recovered by the query / tx runner.
+            StoreError::NilStore => crate::error::go_panic(e.to_string()),
+            e => sdk::io(e.to_string()),
+        }
     }
 }
 

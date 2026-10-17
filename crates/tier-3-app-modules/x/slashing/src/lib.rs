@@ -167,8 +167,13 @@ impl Params {
                 self.min_signed_per_window
             ));
         }
-        if sdk::time::duration_nanos(&self.downtime_jail_duration) <= 0 {
-            return e("downtime jail duration must be positive".into());
+        let jail = sdk::time::duration_nanos(&self.downtime_jail_duration);
+        if jail <= 0 {
+            // `%s` of a `time.Duration` (security.md 69).
+            return e(format!(
+                "downtime jail duration must be positive: {}",
+                sdk::time::go_duration_string(jail)
+            ));
         }
         for (name, v) in [
             ("double sign", &self.slash_fraction_double_sign),

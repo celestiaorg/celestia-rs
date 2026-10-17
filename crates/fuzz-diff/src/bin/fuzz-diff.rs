@@ -506,6 +506,15 @@ fn main() -> anyhow::Result<()> {
         for (c, (n, ok, rej)) in &st.wire {
             println!("WIRE {c} delivered={n} go_ok={ok} check_rejected={rej}");
         }
+        for l in &st.upgrade {
+            println!("UPGRADE {l}");
+        }
+        for (p, (b, n, ok, rej)) in &st.phases {
+            println!("PHASE {p}: blocks={b} delivered={n} go_ok={ok} check_rejected={rej}");
+        }
+        for (t, n) in &st.upgrade_built {
+            println!("UPGRADE_TX {t} {n}");
+        }
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
             st.replayed,

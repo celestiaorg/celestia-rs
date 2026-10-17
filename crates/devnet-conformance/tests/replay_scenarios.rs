@@ -222,6 +222,79 @@ fn v9_upgrade_parity() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The state right after the commit that switches binaries (security.md
+/// 70), as Go's freshly opened v10 app has it until the next commit,
+/// found by `fuzz-diff deliver` (`DELIVER_UPGRADE`): CheckTx runs on a check
+/// state with an empty header (height 0: signatures verified with account
+/// number 0, an infinite gas meter), and the stores the upgrade adds are
+/// nil in a query of the last v9 height (a recovered nil-pointer panic).
+#[test]
+fn v9_upgrade_switch_state() -> anyhow::Result<()> {
+    use celestia_proto::celestia_core_proto::abci;
+    let exchanges = devnet_conformance::load_exchanges("v9-upgrade")?;
+    // The height whose FinalizeBlock raised the app version.
+    let switch = exchanges
+        .iter()
+        .find_map(|e| match (&e.request.value, &e.response.value) {
+            (
+                Some(abci::request::Value::FinalizeBlock(r)),
+                Some(abci::response::Value::FinalizeBlock(g)),
+            ) if g
+                .consensus_param_updates
+                .as_ref()
+                .and_then(|c| c.version.as_ref())
+                .is_some_and(|v| v.app == 10) =>
+            {
+                Some(r.height)
+            }
+            _ => None,
+        })
+        .expect("upgrade height");
+    // The txs Go executed at app version 10 (signed with their real
+    // account numbers; the validator's is 0).
+    let txs: Vec<Vec<u8>> = exchanges
+        .iter()
+        .filter_map(|e| match &e.request.value {
+            Some(abci::request::Value::FinalizeBlock(r)) if r.height > switch + 1 => {
+                Some(r.txs.clone())
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let mut app = app::App::new();
+    let r = devnet_conformance::replay::replay_into("v9-upgrade", &mut app, 0, Some(switch))?;
+    assert!(r.errors.is_empty() && r.first_mismatch.is_none(), "{r:?}");
+    let mut rejected = 0;
+    for tx in txs {
+        let c = app
+            .check_tx(&abci::RequestCheckTx { tx, r#type: 0 })
+            .unwrap();
+        assert_eq!(c.gas_wanted, -1);
+        if c.code != 0 {
+            rejected += 1;
+            assert_eq!((c.code, c.codespace.as_str()), (4, "sdk"));
+            assert_eq!(
+                c.log,
+                "signature verification failed; please verify account number (0) and chain-id (test): (unable to verify single signer signature): unauthorized"
+            );
+        }
+    }
+    assert!(rejected > 0);
+    let q = app.query(&abci::RequestQuery {
+        data: Vec::new(),
+        path: "/celestia.fibre.v1.Query/Params".into(),
+        height: 0,
+        prove: false,
+    });
+    assert_eq!((q.code, q.codespace.as_str()), (111_222, "undefined"));
+    assert_eq!(
+        q.log,
+        "runtime error: invalid memory address or nil pointer dereference: panic"
+    );
+    Ok(())
+}
+
 /// Full parity plus byte-identical logs and events (non-consensus fields
 /// of `FinalizeBlock`): the strings of these scenarios carry invalid UTF-8.
 fn assert_full_parity(scenario: &str) -> anyhow::Result<()> {

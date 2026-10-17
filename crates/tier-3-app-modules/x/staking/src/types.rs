@@ -811,19 +811,23 @@ impl Params {
         }
     }
 
-    /// `Params.Validate` (errors are unregistered in Go).
+    /// `Params.Validate` (errors are unregistered in Go; their text is
+    /// stored as a failed proposal's `failed_reason`, security.md 69).
     pub fn validate(&self) -> Result<()> {
         fn e(s: impl Into<String>) -> SdkError {
             sdk::error::internal(s)
         }
-        if sdk::time::duration_nanos(&self.unbonding_time) <= 0 {
-            return Err(e("unbonding time must be positive"));
+        let nanos = sdk::time::duration_nanos(&self.unbonding_time);
+        if nanos <= 0 {
+            // `fmt.Errorf("... must be positive: %d", v)` of a
+            // `time.Duration`: its nanoseconds.
+            return Err(e(format!("unbonding time must be positive: {nanos}")));
         }
         if self.max_validators == 0 {
-            return Err(e("max validators must be positive"));
+            return Err(e("max validators must be positive: 0"));
         }
         if self.max_entries == 0 {
-            return Err(e("max entries must be positive"));
+            return Err(e("max entries must be positive: 0"));
         }
         if self.bond_denom.trim().is_empty() {
             return Err(e("bond denom cannot be blank"));
@@ -832,10 +836,16 @@ impl Params {
             return Err(e(format!("invalid denom: {}", self.bond_denom)));
         }
         if self.min_commission_rate.is_negative() {
-            return Err(e("minimum commission rate cannot be negative"));
+            return Err(e(format!(
+                "minimum commission rate cannot be negative: {}",
+                self.min_commission_rate
+            )));
         }
         if self.min_commission_rate > LegacyDec::one() {
-            return Err(e("minimum commission rate cannot be greater than 100%"));
+            return Err(e(format!(
+                "minimum commission rate cannot be greater than 100%: {}",
+                self.min_commission_rate
+            )));
         }
         Ok(())
     }
@@ -895,6 +905,48 @@ mod tests {
         assert_eq!(
             crate::addr::cons_to_string(&v.cons_addr().unwrap()).unwrap(),
             "celestiavalcons130ac546luk0yh33fteucdqpzxy575z02jyus7k"
+        );
+    }
+
+    // Found by `fuzz-diff deliver` (security.md 69): a gov proposal whose
+    // staking `MsgUpdateParams` fails stores Go's error text as the
+    // proposal's `failed_reason` (cosmos-sdk `x/staking/types/params.go`).
+    #[test]
+    fn params_validate_errors_match_go() {
+        let log = |f: &dyn Fn(&mut Params)| {
+            let mut p = Params {
+                unbonding_time: Duration {
+                    seconds: 600,
+                    nanos: 0,
+                },
+                max_validators: 100,
+                max_entries: 7,
+                historical_entries: 0,
+                bond_denom: "utia".into(),
+                min_commission_rate: LegacyDec::zero(),
+            };
+            p.validate().unwrap();
+            f(&mut p);
+            p.validate().unwrap_err().log
+        };
+        assert_eq!(
+            log(&|p| p.max_validators = 0),
+            "max validators must be positive: 0"
+        );
+        assert_eq!(
+            log(&|p| p.max_entries = 0),
+            "max entries must be positive: 0"
+        );
+        assert_eq!(
+            log(&|p| p.unbonding_time = Duration {
+                seconds: -3600,
+                nanos: 0
+            }),
+            "unbonding time must be positive: -3600000000000"
+        );
+        assert_eq!(
+            log(&|p| p.min_commission_rate = "1.5".parse::<LegacyDec>().unwrap()),
+            "minimum commission rate cannot be greater than 100%: 1.500000000000000000"
         );
     }
 }

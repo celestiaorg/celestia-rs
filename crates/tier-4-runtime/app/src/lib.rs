@@ -61,6 +61,10 @@ pub struct App {
     /// Header of the check state (`setState(execModeCheck, ...)` at
     /// InitChain and Commit).
     check_header: Header,
+    /// The block being finalized changed the app version: its `Commit` is
+    /// where the multiplexer switches to the next binary, a fresh process
+    /// (`BaseApp.Init`: check state with an empty header).
+    switch_on_commit: bool,
     /// Node-local `minimum-gas-prices` (utia) for CheckTx; `None` (the v10
     /// default `""`) means `appconsts.DefaultMinGasPrice`.
     node_min_gas_price: Option<math::LegacyDec>,
@@ -230,6 +234,7 @@ impl App {
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
             check_header: Header::default(),
+            switch_on_commit: false,
             node_min_gas_price: None,
             node: NodeOptions::default(),
             proposed: proposal::ProposedSquare::default(),
@@ -364,12 +369,21 @@ impl App {
             self.chain_id = String::from_utf8_lossy(&chain_id).into_owned();
         }
         self.ms.reset_check();
-        // BaseApp.Init: `setState(execModeCheck, Header{ChainID})`.
-        self.check_header = Header {
-            chain_id: self.chain_id.clone(),
-            ..Header::default()
-        };
+        self.check_header = self.init_check_header();
         Ok(())
+    }
+
+    /// `BaseApp.Init`: `setState(execModeCheck, Header{ChainID})`, height 0
+    /// and Go's zero `time.Time` (0001-01-01, security.md 70).
+    fn init_check_header(&self) -> Header {
+        Header {
+            chain_id: self.chain_id.clone(),
+            time: pbjson_types::Timestamp {
+                seconds: -62_135_596_800,
+                nanos: 0,
+            },
+            ..Header::default()
+        }
     }
 
     /// The snapshot manager of a storage-backed app.
@@ -599,6 +613,10 @@ impl App {
         events.extend(end);
         let cp = x_consensus::get_params(&mut ctx)?;
         drop(ctx);
+        self.switch_on_commit = cp
+            .as_ref()
+            .and_then(|c| c.version.as_ref())
+            .is_some_and(|v| v.app != app_version);
 
         self.ms.flush()?;
         let app_hash = self.ms.working_hash()?.to_vec();
@@ -645,6 +663,14 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
+        if std::mem::take(&mut self.switch_on_commit) {
+            // The multiplexer stops this binary after the commit and opens
+            // the next app version's (`multiplexer/abci` `Commit`): its
+            // `LoadLatestVersion` / `Init` sets the check state (CheckTx,
+            // queries) to `Header{ChainID}`, height 0 and zero time, until
+            // the next commit (ADR 0004; security.md 70).
+            self.check_header = self.init_check_header();
+        }
         self.mount_upgrade_stores()?;
         self.snapshot_if_applicable();
         Ok(ResponseCommit {

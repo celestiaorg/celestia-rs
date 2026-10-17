@@ -24,4 +24,4 @@ pub mod version;
 
 pub use context::{Context, ExecMode, Header};
 pub use error::{Result, SdkError};
-pub use store::{Kind, MultiStore};
+pub use store::{Kind, MultiStore, StoreError};

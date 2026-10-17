@@ -781,8 +781,20 @@ fn remote_routers(
         4,
         req.pagination.as_ref(),
     )?;
+    // `GetPaginatedPrefixFromMap`: each item through the app version's
+    // value codec (v10: a v9 router's receiver contract must be a
+    // `HexAddress`, security.md 71).
+    let v9 = sdk::version::is_v9(sdk::version::app_version());
+    let remote_routers = items
+        .iter()
+        .map(|(_, v)| {
+            x_warp::decode_router(v9, v)
+                .map(|r| r.to_proto())
+                .map_err(|e| internal(format!("failed to retrieve item: {e}")))
+        })
+        .collect::<QResult<Vec<_>>>()?;
     Ok(warppb::QueryRemoteRoutersResponse {
-        remote_routers: decode_all(&items)?,
+        remote_routers,
         pagination: page(pagination),
     })
 }

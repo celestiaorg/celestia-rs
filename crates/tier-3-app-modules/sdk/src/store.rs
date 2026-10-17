@@ -43,6 +43,11 @@ pub struct MultiStore {
     stacks: [Vec<Layer>; 2],
     /// Index of the stack used by reads/writes (set by the borrowing context).
     active: usize,
+    /// Query views ([`Self::view_at`]): stores that did not exist at the
+    /// viewed version. Go keeps a nil store for them, so any access panics
+    /// (`runtime error: invalid memory address or nil pointer
+    /// dereference`).
+    nil_stores: std::collections::BTreeSet<String>,
 }
 
 /// Which branch of committed state a context operates on.
@@ -66,6 +71,9 @@ pub enum StoreError {
     /// Empty key.
     #[error("empty key")]
     EmptyKey,
+    /// Access to a store a query view does not have (Go: a nil store).
+    #[error("runtime error: invalid memory address or nil pointer dereference")]
+    NilStore,
 }
 
 impl From<multistore::Error> for StoreError {
@@ -96,6 +104,7 @@ impl MultiStore {
             volatile: BTreeMap::new(),
             stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
             active: 0,
+            nil_stores: std::collections::BTreeSet::new(),
         }
     }
 
@@ -123,6 +132,9 @@ impl MultiStore {
     /// `CacheMultiStoreWithVersion`): IAVL stores at `version`, transient
     /// and memory stores as they are now. Writes go to cache layers that
     /// are dropped with the view.
+    /// Stores added after `version` (e.g. the v10 upgrade's `fibre` and
+    /// `valaddr` at the upgrade height) are nil there: any access fails
+    /// with [`StoreError::NilStore`].
     pub fn view_at(&self, version: i64) -> Result<Self, StoreError> {
         Ok(Self {
             root: self.root.view_at(version)?,
@@ -130,7 +142,15 @@ impl MultiStore {
             volatile: self.volatile.clone(),
             stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
             active: 0,
+            nil_stores: self.root.absent_at(version)?.into_iter().collect(),
         })
+    }
+
+    fn check_nil(&self, store: &str) -> Result<(), StoreError> {
+        if self.nil_stores.contains(store) {
+            return Err(StoreError::NilStore);
+        }
+        Ok(())
     }
 
     /// Mounts a store.
@@ -227,6 +247,7 @@ impl MultiStore {
 
     /// Reads `key`, walking cache layers top-down.
     pub fn get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        self.check_nil(store)?;
         for layer in self.stacks[self.active].iter().rev() {
             if let Some(v) = layer.get(store).and_then(|w| w.get(key)) {
                 return Ok(v.clone());
@@ -237,6 +258,7 @@ impl MultiStore {
 
     /// Writes `key` in the top layer.
     pub fn set(&mut self, store: &str, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
+        self.check_nil(store)?;
         if key.is_empty() {
             return Err(StoreError::EmptyKey);
         }
@@ -250,6 +272,7 @@ impl MultiStore {
 
     /// Deletes `key` in the top layer.
     pub fn delete(&mut self, store: &str, key: &[u8]) -> Result<(), StoreError> {
+        self.check_nil(store)?;
         if key.is_empty() {
             return Err(StoreError::EmptyKey);
         }
@@ -278,6 +301,7 @@ impl MultiStore {
         end: Option<&[u8]>,
         reverse: bool,
     ) -> Result<Entries, StoreError> {
+        self.check_nil(store)?;
         let lo = start.map_or(Bound::Unbounded, |s| Bound::Included(s.to_vec()));
         let hi = end.map_or(Bound::Unbounded, |e| Bound::Excluded(e.to_vec()));
         let mut merged: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();

@@ -22,6 +22,16 @@ macro_rules! routes {
         /// Whether a handler is registered for `type_url`.
         #[must_use]
         pub fn has_handler(type_url: &str) -> bool {
+            // celestia-app v9.0.8 (no `fibre` build tag, hyperlane-cosmos
+            // v1.1.0) registers no msg service for the types v10 added:
+            // `MsgServiceRouter.HandlerByTypeURL` is nil at app version 9
+            // (e.g. authz `MsgGrant` of a `GenericAuthorization` for one:
+            // "<type> doesn't exist.", ADR 0004).
+            if sdk::version::is_v9(sdk::version::app_version())
+                && txdecode::added_in_v10(type_url)
+            {
+                return false;
+            }
             $( if type_url == <$ty>::type_url() { return true; } )*
             $( if type_url == <$wty>::type_url() { return true; } )*
             crate::hyperlane::has_handler(type_url) || crate::ibc::has_handler(type_url)
@@ -328,6 +338,30 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
 mod tests {
     use super::*;
     use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    // Found by `fuzz-diff deliver` across the v9 -> v10 upgrade
+    // (security.md 68): celestia-app v9.0.8 has no msg service for the
+    // types v10 added, so authz `MsgGrant` of a `GenericAuthorization` for
+    // one fails (`ErrInvalidType` "... doesn't exist.") at app version 9;
+    // Rust stored the grant (app hash split).
+    #[test]
+    fn v10_types_have_no_handler_at_app_version_9() {
+        for url in [
+            "/celestia.fibre.v1.MsgDepositToEscrow",
+            "/celestia.fibre.v1.MsgPayForFibre",
+            "/celestia.valaddr.v1.MsgSetFibreProviderInfo",
+            "/hyperlane.warp.v1.MsgCreateNativeSyntheticToken",
+        ] {
+            sdk::version::set_app_version(9);
+            assert!(!has_handler(url), "{url}");
+            sdk::version::set_app_version(10);
+            assert!(has_handler(url), "{url}");
+        }
+        sdk::version::set_app_version(9);
+        assert!(has_handler("/cosmos.bank.v1beta1.MsgSend"));
+        assert!(has_handler("/hyperlane.warp.v1.MsgCreateSyntheticToken"));
+        sdk::version::set_app_version(0);
+    }
 
     // Found by `fuzz-diff deliver`: Go v10.4.0 / v9.0.8 route x/auth's
     // MsgUpdateParams (Rust failed it as unroutable before the ante
