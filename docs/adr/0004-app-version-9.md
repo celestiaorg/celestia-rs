@@ -200,6 +200,15 @@ work: stored as given, compared lowercased, decoded when dispatching.)
   multiplexer's binary switch inside `Commit`, so the fixture holds v9
   responses up to `H` and v10 responses (store loader + `v10` handler) from
   `H+1`.
+- `v9-upgrade-boundary` (live devnet with the real switch): grants, a fee
+  allowance, a vesting account and a gov proposal made at v9 and used /
+  executed at v10, fibre and valaddr right after the stores are mounted.
+- `fuzz-diff deliver` across the switch (`DELIVER_UPGRADE`, Go v9.0.8
+  then v10.4.0 behind the multiplexer's switch, docs/security.md "Upgrade
+  boundary"): findings 68-72. Between the switching `Commit` and the next
+  one the v10 app runs on a fresh check state (height 0) and its query
+  views have no `fibre` / `valaddr` store at `H`; the Rust app reproduces
+  both (`App::switch_on_commit`, nil stores).
 - All existing v10 fixtures stay at parity.
 - At parity (2026-10-15): `v9-empty`, `v9-staking`, `v9-gov`,
   `v9-authz-feegrant`, `v9-vesting`, `v9-blob`, `v9-hyperlane`, `v9-ibc`,

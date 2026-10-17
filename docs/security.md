@@ -564,6 +564,58 @@ DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_DUMP_SPLIT=1 GO_APPD=$DEVNET_BIN/celestia
 DELIVER_WIRE=1 DELIVER_IBC=1 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh ibc 300 10 1
 ```
 
+### Upgrade boundary (2026-10-17)
+
+Mainnet moves from app version 9 to 10 by signalling; the multiplexer
+then swaps binaries inside `Commit`. `DELIVER_UPGRADE=<n>` runs `deliver`
+across it: `v9-upgrade` (chain `test`, delay 3) is replayed up to its
+validator's first signal tx, the generated blocks run on Go v9.0.8, the
+held signal is sent from block `n`, and after the `Commit` that raised the
+app version the harness stops Go and starts v10.4.0 on the same home
+(`deliver-diff.sh` `GO_APPD_NEXT`, as `abci-recorder`'s switch mode); the
+Rust app stays one process. Compared every block: app hash (every store
+dumped at `H` and `H+1`), results, gas, events, `CheckTx`,
+`PrepareProposal`, `ProcessProposal`; signal / upgrade / consensus /
+fibre / valaddr / module-account / router queries every 5 blocks and
+every block near `H`. The driver (`crates/fuzz-diff/src/deliver/upgrade.rs`):
+fuzz validators (a minority of the power, signalling 0 / 9 / 10 / 11 /
+`u64::MAX`), `MsgTryUpgrade` before quorum, in the signal's block, until
+pending and while pending; authz grants (incl. for v10-only messages),
+fee allowances (incl. limited to v10-only messages), vesting accounts
+(new keys, used at v10), a locked account and a send at the fibre
+address, gov proposals submitted at v9 (also while pending) and executed
+at v10, hyperlane routers enrolled in v9's shapes (upper-case, no `0x`,
+short, non-hex, `0X`, non-ASCII) and transferred over at v10; around `H`
+fibre escrow / withdrawal, valaddr hosts, `MsgCreateNativeSyntheticToken`
+(direct and proposed), `MsgForward` with and without fields 7/8, `MsgExec`
+of the v9 grants, fees paid by the v9 allowances; every generated tx is
+also proposed unfiltered at `H..H+2`; late at v10 the fuzz validators take
+5/6 of the power and signal 10 / 9. `DELIVER_HL`, `DELIVER_IBC` (packets
+in flight across the switch), `DELIVER_WIRE` and `DELIVER_SWEEP` combine
+with it. Plus a live devnet with the real switch
+(`workloads/v9-upgrade-boundary.sh`, fixture replayed with full parity).
+
+Findings 68-72. Volumes after the fixes (24 runs, seeds 1-41, 0
+mismatches): 3 275 generated blocks, 32 065 txs to `CheckTx` (17 526
+accepted), 15 987 delivered (9 611 code 0), 3 047 gas-sweep copies; per
+phase (blocks / delivered / Go code 0): before the signal 543 / 3 257 /
+2 209, `H-2` 24 / 203 / 56, `H-1` 24 / 260 / 144, `H` 24 / 366 / 237,
+`H+1` 24 / 446 / 339, `H+2` 24 / 351 / 269, `H+3` 24 / 349 / 267,
+`H+4..20` 408 / 2 117 / 1 366, later 2 180 / 8 638 / 4 724. Driver txs:
+1 909 `MsgSignalVersion`, 1 005 `MsgTryUpgrade`, 1 716 escrow deposits,
+518 withdrawals, 475 valaddr hosts, 500 `MsgForward`, 941 `MsgExec`, 229
+grants / allowances, 239 vesting accounts, 853 proposals (58 submitted at
+v9 ended at v10: 41 passed, 10 failed on execution, 7 rejected), 269
+transfers over v9 routers.
+
+```bash
+GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd \
+  DELIVER_UPGRADE=20 DELIVER_HL=1 DELIVER_IBC=1 \
+  crates/fuzz-diff/deliver-diff.sh v9-upgrade 150 6 1
+APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh \
+  v9-upgrade-boundary 90 conformance/devnet/workloads/v9-upgrade-boundary.sh
+```
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation
@@ -727,6 +779,20 @@ Open:
   type names (`errUnknownField "*types.MsgForward": {TagNum: 7,
   WireType:"bytes"}`, `txdecode::go_types` from the protos' `go_package`). Logs and events of every devnet
   scenario match Go byte for byte (`KNOWN_EVENT_LOG_GAPS` is empty).
+- Go itself (both versions, Rust matches it): x/signal compares versions
+  with `ctx.BlockHeader().Version.App`, but `FinalizeBlock` builds the
+  header without a version (0). `MsgSignalVersion` therefore accepts any
+  version, and `MsgTryUpgrade` with a 5/6 quorum on the current version
+  (or a lower one) succeeds instead of failing with
+  `ErrInvalidUpgradeVersion`: it stores an upgrade the `EndBlocker` never
+  applies (not increasing) and never clears, so every later signal and
+  try-upgrade fails with `ErrUpgradePending`. Once 5/6 of the power has
+  re-signalled the running version (e.g. automation signalling again
+  after an upgrade), anyone's `MsgTryUpgrade` disables upgrades by
+  signalling for good. Reproduced by the `DELIVER_UPGRADE` late phase.
+- An event attribute of ibc-go's callbacks (`ibccallbackerror-error`)
+  prints a `math.Int` by its pointer (`got {53814906916832}`): the address
+  differs between Go processes; events are not hashed.
 - Go itself: `TxDecodeAmino` of a 2 MB `StdTx` with ~20 000 nested
   `MsgExec` grew the Go process past 10 GB (quadratic copying in
   go-amino); the oracle caps amino inputs at 256 KB.

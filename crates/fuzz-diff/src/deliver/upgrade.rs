@@ -155,6 +155,13 @@ pub(super) struct Upgrade {
     pub voted: BTreeSet<u64>,
     /// The v9-shaped hyperlane routers were enrolled (step).
     pub routers: usize,
+    /// Late at v10: the fuzz validators hold the power (see `txs`).
+    pub late: bool,
+    pub late_delegated: bool,
+    /// The fuzz validator that takes the power.
+    pub late_val: usize,
+    /// The bonded validators' operators (late phase).
+    pub bonded: Vec<String>,
     /// Notable results (signal / try-upgrade / boundary txs).
     pub log: Vec<String>,
     /// Proposal ids seen at app version 9.
@@ -283,11 +290,64 @@ impl Upgrade {
         if !v10 && (2..12).contains(&b) {
             self.v9_setup(gn, &mut out, b);
         }
-        // Validator signals: the fuzz validators (any version, mostly 10).
+        // Late at v10 the fuzz validators take over 5/6 of the power and
+        // signal the current version (or 9). Go compares with
+        // `BlockHeader().Version.App`, which `FinalizeBlock` never sets
+        // (0): MsgTryUpgrade schedules an "upgrade" to 10 (or 9) that the
+        // EndBlocker never applies, and the signal module stays pending
+        // for good (security.md, open items). No signal above 10 from then
+        // on (a v11 quorum would halt both apps).
+        self.late = self.v10_from.is_some_and(|h| height >= h + 40);
         let vals = Self::fuzz_validators(gn);
-        if !vals.is_empty() && (gn.m.rng.one_in(3) || near) {
-            let i = vals[gn.m.rng.below(vals.len())];
-            let version = [10, 10, 10, 9, 11, 0, u64::MAX, 12][gn.m.rng.below(8)];
+        let bonded: Vec<usize> = vals
+            .iter()
+            .copied()
+            .filter(|i| self.bonded.contains(&gn.accts[*i].val))
+            .collect();
+        if self.late && !self.late_delegated && !bonded.is_empty() {
+            self.late_val = bonded[bonded.len() - 1];
+            self.late_delegated = true;
+            // The generator's own signals (any version) stop.
+            let signal = "celestia.signal.v1.MsgSignalVersion";
+            gn.types.retain(|md| md.full_name() != signal);
+            gn.scenario_msgs.retain(|a| !a.type_url.ends_with(signal));
+            // The bootstrap stake moves from the scenario's validator.
+            let val0 = gn.validators.first().cloned().unwrap_or_default();
+            for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
+                use celestia_proto::cosmos::staking::v1beta1 as st;
+                let coin = |n: &str| {
+                    Some(Coin {
+                        denom: "utia".into(),
+                        amount: n.into(),
+                    })
+                };
+                let msgs = vec![
+                    Any::pack(&st::MsgUndelegate {
+                        delegator_address: gn.accts[i].acc.clone(),
+                        validator_address: val0.clone(),
+                        amount: coin("100000000000000"),
+                    }),
+                    Any::pack(&st::MsgDelegate {
+                        delegator_address: gn.accts[i].acc.clone(),
+                        validator_address: gn.accts[self.late_val].val.clone(),
+                        amount: coin("450000000000000"),
+                    }),
+                ];
+                self.push(gn, &mut out, i, msgs, 1_000_000);
+            }
+        }
+        // Validator signals: the fuzz validators (any version, mostly 10).
+        if !vals.is_empty() && (gn.m.rng.one_in(3) || near || self.late) {
+            let i = if self.late && vals.contains(&self.late_val) {
+                self.late_val
+            } else {
+                vals[gn.m.rng.below(vals.len())]
+            };
+            let version = if self.late {
+                [10, 10, 10, 9][gn.m.rng.below(4)]
+            } else {
+                [10, 10, 10, 9, 11, 0, u64::MAX, 12][gn.m.rng.below(8)]
+            };
             let msg = Any::pack(&signal::MsgSignalVersion {
                 validator_address: gn.accts[i].val.clone(),
                 version,
@@ -302,7 +362,7 @@ impl Upgrade {
         // signal, until pending, repeated while pending, and at v10.
         let tries = if !self.held.is_empty() && b + 1 < self.signal_at {
             usize::from(gn.m.rng.one_in(4))
-        } else if (self.upgrade_height.is_none() && !v10) || near {
+        } else if (self.upgrade_height.is_none() && !v10) || near || self.late {
             1 + gn.m.rng.below(2)
         } else {
             usize::from(gn.m.rng.one_in(5))
@@ -792,7 +852,11 @@ impl Upgrade {
                 let v = gn.pick(&vals).unwrap_or(i);
                 let m = Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
                     validator_address: gn.accts[v].val.clone(),
-                    version: [9, 10, 11][gn.m.rng.below(3)],
+                    version: if self.late {
+                        [9, 10][gn.m.rng.below(2)]
+                    } else {
+                        [9, 10, 11][gn.m.rng.below(3)]
+                    },
                 });
                 self.push(gn, out, v, vec![m], 200_000);
             }
@@ -846,8 +910,28 @@ impl Upgrade {
         for (t, r) in txs.iter().zip(results) {
             let urls = type_urls(gn.app_version, t);
             if urls.iter().any(|u| u.contains("signal.v1.")) || self.held.contains(t) {
+                // The signalled versions (and by which validator).
+                let signals: Vec<String> = txdecode::decode_for(gn.app_version, t)
+                    .map(|tx| {
+                        tx.body
+                            .messages
+                            .iter()
+                            .filter_map(|a| {
+                                celestia_proto::celestia::signal::v1::MsgSignalVersion::decode(
+                                    a.value.as_slice(),
+                                )
+                                .ok()
+                                .filter(|_| a.type_url.ends_with("MsgSignalVersion"))
+                                .map(|m| {
+                                    let tail = m.validator_address.len().saturating_sub(6);
+                                    format!("{}@{}", m.version, &m.validator_address[tail..])
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 self.log.push(format!(
-                    "h={height} {}{urls:?} code {}/{}: {}",
+                    "h={height} {}{urls:?}{signals:?} code {}/{}: {}",
                     if self.held.contains(t) { "held " } else { "" },
                     r.codespace,
                     r.code,
@@ -882,6 +966,31 @@ impl Upgrade {
 
     /// After `Commit`: the pending upgrade from the signal module.
     pub fn after_commit(&mut self, rust: &mut app::App, height: i64) {
+        if self.v10_from.is_some_and(|h| height + 1 >= h + 40) && !self.late_delegated {
+            self.bonded = bonded_validators(rust);
+        }
+        if self.late {
+            let mut data = Vec::new();
+            put_varint(&mut data, 10);
+            let r = rust.query(&abci::RequestQuery {
+                data: encode(&[Field {
+                    num: 1,
+                    wt: 0,
+                    val: data,
+                }]),
+                path: "/celestia.signal.v1.Query/VersionTally".into(),
+                height: 0,
+                prove: false,
+            });
+            if let Ok(t) = celestia_proto::celestia::signal::v1::QueryVersionTallyResponse::decode(
+                r.value.as_slice(),
+            ) {
+                self.log.push(format!(
+                    "h={height} tally of 10: {} / threshold {} / total {}",
+                    t.voting_power, t.threshold_power, t.total_voting_power
+                ));
+            }
+        }
         if self.upgrade_height.is_some() {
             return;
         }

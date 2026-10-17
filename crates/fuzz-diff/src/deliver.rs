@@ -3896,7 +3896,7 @@ pub fn run(
                     // for its proposal's tally.
                     // `DELIVER_UPGRADE` too (its validator's signal
                     // decides the upgrade).
-                    .filter(|v| v.2 || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50)))
+                    .filter(|v| (v.2 && !upg.late) || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50)))
                     .cloned()
                     .collect();
                 if let Some((a, p, _)) = gn.pick(&fuzzv) {
