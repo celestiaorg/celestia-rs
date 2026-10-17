@@ -148,6 +148,9 @@ pub struct Stats {
     pub gov_results: BTreeMap<String, u64>,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
+    /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
+    /// code 0, in txs Go's `CheckTx` rejected).
+    pub wire: BTreeMap<String, (u64, u64, u64)>,
 }
 
 /// A funded account.
@@ -839,6 +842,21 @@ struct Gen {
     types: Vec<MessageDescriptor>,
     /// Sign every tx in `SIGN_MODE_LEGACY_AMINO_JSON` ([`amino_sign_seeds`]).
     force_amino: bool,
+    /// Systematic wire-level mutations (`DELIVER_WIRE`).
+    wire: WireGen,
+}
+
+/// State of `DELIVER_WIRE`: messages get a [`crate::wire`] mutation of
+/// the class used least so far.
+#[derive(Default)]
+struct WireGen {
+    on: bool,
+    /// Mutations applied, by class.
+    counts: BTreeMap<&'static str, u64>,
+    /// Classes applied to the messages of the tx being built.
+    pending: Vec<&'static str>,
+    /// Classes of the generated txs not yet finalized.
+    txs: BTreeMap<Vec<u8>, Vec<&'static str>>,
 }
 
 /// A generated, signed tx.
@@ -2379,6 +2397,9 @@ impl Gen {
             }
             _ => self.flow(i),
         };
+        if self.wire.on && !self.m.rng.one_in(4) {
+            return self.wire_mutate(base);
+        }
         let Some(md) = desc_for_type_url(base.type_url.as_bytes()) else {
             return base;
         };
@@ -2392,6 +2413,35 @@ impl Gen {
                 type_url: base.type_url,
                 value: self.m.mutate(&base.value),
             },
+        }
+    }
+
+    /// `base` with one [`crate::wire`] mutation, of the class applied
+    /// least so far among those `base` has.
+    fn wire_mutate(&mut self, base: Any) -> Any {
+        let name = base.type_url.rsplit('/').next().unwrap_or_default();
+        let muts = crate::wire::enumerate(name, &base.value);
+        let Some(min) = muts
+            .iter()
+            .map(|m| self.wire.counts.get(m.class).copied().unwrap_or(0))
+            .min()
+        else {
+            return base;
+        };
+        let pick: Vec<&crate::wire::Mutation> = muts
+            .iter()
+            .filter(|m| self.wire.counts.get(m.class).copied().unwrap_or(0) == min)
+            .collect();
+        let classes: BTreeSet<&'static str> = pick.iter().map(|m| m.class).collect();
+        let classes: Vec<&'static str> = classes.into_iter().collect();
+        let class = classes[self.m.rng.below(classes.len())];
+        let pick: Vec<&&crate::wire::Mutation> = pick.iter().filter(|m| m.class == class).collect();
+        let mu = pick[self.m.rng.below(pick.len())];
+        *self.wire.counts.entry(class).or_default() += 1;
+        self.wire.pending.push(class);
+        Any {
+            type_url: base.type_url,
+            value: mu.bytes.clone(),
         }
     }
 
@@ -2451,7 +2501,11 @@ impl Gen {
         let total: u64 = msg.blob_sizes.iter().map(|s| u64::from(*s)).sum();
         let gas = 200_000 + total * 20 + if self.m.rng.one_in(8) { 0 } else { 100_000 };
         let gas = if self.m.rng.one_in(10) { gas / 4 } else { gas };
-        let inner = sign_simple(self, i, vec![Any::pack(&msg)], gas)?;
+        let mut pfb = Any::pack(&msg);
+        if self.wire.on && !self.m.rng.one_in(3) {
+            pfb = self.wire_mutate(pfb);
+        }
+        let inner = sign_simple(self, i, vec![pfb], gas)?;
         Some(txdecode::marshal_blob_tx(&inner, &blobs))
     }
 
@@ -3076,7 +3130,9 @@ pub fn run(
             .cloned()
             .collect(),
         force_amino: false,
+        wire: WireGen::default(),
     };
+    gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
     let mut ids = BTreeSet::new();
     for t in &pool_txs {
         for w in t.windows(66) {
@@ -3241,7 +3297,12 @@ pub fn run(
                 _ => 1 + gn.m.rng.below(per_block.max(1)),
             };
             for _ in 0..k {
+                gn.wire.pending.clear();
                 if let Some(t) = gn.tx() {
+                    if !gn.wire.pending.is_empty() {
+                        let cls = std::mem::take(&mut gn.wire.pending);
+                        gn.wire.txs.insert(t.raw.clone(), cls);
+                    }
                     txs.push(t.raw);
                 }
             }
@@ -3345,6 +3406,9 @@ pub fn run(
             if *rej {
                 for u in type_urls(app_version, t) {
                     stats.per_type.entry(u).or_default().2 += 1;
+                }
+                for c in gn.wire.txs.get(t).into_iter().flatten() {
+                    stats.wire.entry((*c).to_owned()).or_default().2 += 1;
                 }
             }
         }
@@ -3593,6 +3657,13 @@ pub fn run(
             }
             for u in type_urls(app_version, t) {
                 let e = stats.per_type.entry(u).or_default();
+                e.0 += 1;
+                if res.code == 0 {
+                    e.1 += 1;
+                }
+            }
+            for c in gn.wire.txs.remove(t).into_iter().flatten() {
+                let e = stats.wire.entry(c.to_owned()).or_default();
                 e.0 += 1;
                 if res.code == 0 {
                     e.1 += 1;
@@ -4241,6 +4312,172 @@ fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> 
 /// (nested ones too) with values harvested from the devnet txs.
 #[must_use]
 pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
+    let mut g = offline_gen(app_version, seed, true);
+    (0..n).filter_map(|_| g.tx().map(|b| b.raw)).collect()
+}
+
+/// Valid messages of every registered `sdk.Msg` type at `app_version` for
+/// the wire-level enumeration ([`crate::wire`]): per type, `per_type`
+/// synthesized ones and up to `per_type` from the recorded scenarios
+/// (signer rewritten to fuzz account 0), plus state-building flows.
+#[must_use]
+pub fn wire_bases(app_version: u64, seed: u64, per_type: usize) -> Vec<Any> {
+    let mut g = offline_gen(app_version, seed, false);
+    let who = g.who(0);
+    let mut out = Vec::new();
+    for md in g.types.clone() {
+        let url = format!("/{}", md.full_name());
+        for _ in 0..per_type {
+            out.push(Any {
+                type_url: url.clone(),
+                value: g.synth(&md, &who, 0),
+            });
+        }
+        let sc: Vec<Any> = g
+            .scenario_msgs
+            .iter()
+            .filter(|a| a.type_url == url)
+            .take(per_type)
+            .cloned()
+            .collect();
+        for a in sc {
+            out.push(Any {
+                type_url: a.type_url.clone(),
+                value: Gen::resign(&md, &a.value, &who),
+            });
+        }
+    }
+    for _ in 0..per_type * 40 {
+        out.push(g.flow(0));
+    }
+    out.retain(|a| registered(app_version, &a.type_url));
+    out
+}
+
+/// How [`wire_input`] carries a (mutated) message to the oracle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireWrap {
+    /// The tx's only message.
+    Direct,
+    /// In a `MsgExec` (fuzz account 0 the grantee).
+    Exec,
+    /// In a gov `MsgSubmitProposal`.
+    Gov,
+    /// The message of a protobuf ICA `CosmosTx` (`json_ica_pb`: the host's
+    /// decoding and `ValidateBasic`).
+    Ica,
+}
+
+/// The oracle input of `msg` carried as `w`: `(op, input)` pairs (the
+/// tx decoder, and the amino-JSON sign bytes where a tx carries it).
+#[must_use]
+pub fn wire_input(msg: &Any, w: WireWrap) -> Vec<(&'static str, Vec<u8>)> {
+    use celestia_proto::cosmos::authz::v1beta1 as authz;
+    use celestia_proto::cosmos::gov::v1 as gov;
+    use celestia_proto::ibc::applications::interchain_accounts::v1::CosmosTx;
+    let accts = wire_accounts();
+    let me = accts[0].acc.clone();
+    let inner = match w {
+        WireWrap::Direct => msg.clone(),
+        WireWrap::Exec => Any::pack(&authz::MsgExec {
+            grantee: me,
+            msgs: vec![msg.clone()],
+        }),
+        WireWrap::Gov => Any::pack(&gov::MsgSubmitProposal {
+            messages: vec![msg.clone()],
+            initial_deposit: Vec::new(),
+            proposer: me,
+            metadata: String::new(),
+            title: "t".into(),
+            summary: "s".into(),
+            expedited: false,
+        }),
+        WireWrap::Ica => {
+            return vec![(
+                "json_ica_pb",
+                CosmosTx {
+                    messages: vec![msg.clone()],
+                }
+                .encode_to_vec(),
+            )];
+        }
+    };
+    let body = TxBody {
+        messages: vec![inner],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    let tx = wire_tx(&body, &wire_auth_info(&accts[0]));
+    vec![("tx", tx.clone()), ("aminosign", tx)]
+}
+
+/// A tx of `body` and `auth_info` with one 64-byte signature.
+#[must_use]
+pub fn wire_tx(body: &[u8], auth_info: &[u8]) -> Vec<u8> {
+    TxRaw {
+        body_bytes: body.to_vec(),
+        auth_info_bytes: auth_info.to_vec(),
+        signatures: vec![vec![1u8; 64]],
+    }
+    .encode_to_vec()
+}
+
+fn wire_accounts() -> &'static [Acct] {
+    static A: std::sync::OnceLock<Vec<Acct>> = std::sync::OnceLock::new();
+    A.get_or_init(|| accounts(1))
+}
+
+fn wire_auth_info(a: &Acct) -> Vec<u8> {
+    #[allow(deprecated)]
+    AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(a.pk.clone()),
+            mode_info: Some(single_mode_info(SignMode::LegacyAminoJson)),
+            sequence: 3,
+        }],
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "5000".into(),
+            }],
+            gas_limit: 200_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec()
+}
+
+/// A valid tx body (one `MsgSend` of fuzz account 0) and auth info, for
+/// the enumeration of `TxBody` / `AuthInfo` themselves.
+#[must_use]
+pub fn wire_envelope() -> (Vec<u8>, Vec<u8>) {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    let accts = wire_accounts();
+    let body = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: accts[0].acc.clone(),
+            to_address: accts[1].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "1".into(),
+            }],
+        })],
+        memo: "m".into(),
+        timeout_height: 9,
+        extension_options: Vec::new(),
+        // No extension option type is registered: any would fail the
+        // decoder (the `default_explicit` class adds empty ones).
+        non_critical_extension_options: Vec::new(),
+    }
+    .encode_to_vec();
+    (body, wire_auth_info(&accts[0]))
+}
+
+/// A generator without a chain (the accounts at numbers from 1, the
+/// recorded scenarios' messages and values).
+fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
     let mut g = Gen {
         m: Mutator::new(seed),
         dict: Dict::default(),
@@ -4262,7 +4499,8 @@ pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
             .filter(|md| registered(app_version, &format!("/{}", md.full_name())))
             .cloned()
             .collect(),
-        force_amino: true,
+        force_amino,
+        wire: WireGen::default(),
     };
     for t in crate::corpus::devnet_txs() {
         g.m.harvest(&t);
@@ -4285,7 +4523,7 @@ pub fn amino_sign_seeds(app_version: u64, seed: u64, n: usize) -> Vec<Vec<u8>> {
             }
         }
     }
-    (0..n).filter_map(|_| g.tx().map(|b| b.raw)).collect()
+    g
 }
 
 /// Whether `type_url` is in the tx decoder's registry at `app_version`.
@@ -4409,6 +4647,7 @@ mod tests {
             height: 5,
             types: msg_types().to_vec(),
             force_amino: false,
+            wire: WireGen::default(),
         };
         assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);

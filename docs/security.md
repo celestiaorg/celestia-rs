@@ -451,6 +451,80 @@ message handlers; `gas_used` of an out-of-gas tx is the first charge past
 the limit, so any difference in the order or size of the charges shows as
 a result mismatch.
 
+### Wire-level sweep (2026-10-17)
+
+Findings 46, 56, 57, 61, 62 and 64 were all one class: Rust reading or
+re-encoding protobuf bytes differently from the Go decoder of that path
+(gogoproto, pulsar, protobuf-go, `dynamicpb`, `unknownproto`). Random
+mutation sampled the class; `crates/fuzz-diff/src/wire.rs` enumerates it.
+For a valid encoded message it produces every rewrite below, at every
+depth (embedded messages, `stdtime` / `stdduration` fields, `Any` values
+resolved through the schema; at most 5 levels, the first two occurrences
+of a repeated field, 6 000 rewrites per message):
+
+| Classes | Rewrite |
+|---|---|
+| `dup_same`, `dup_last`, `dup_first` | a singular scalar / string / bytes / customtype field repeated (same value; another value after; before): `Int` `""`, `0`, `-1`, `+1`; `LegacyDec`; `HexAddress` |
+| `msg_empty_last`, `msg_empty_first`, `msg_split`, `msg_part_last`, `msg_alt_last` | a singular embedded message (`stdtime`, `stdduration`, `Any`, oneof members included) repeated: empty after / before, its fields split over two occurrences (an `Any`'s URL and value apart), a part after, a copy with one scalar changed after |
+| `packed`, `unpacked`, `packed_mixed`, `packed_empty`, `repeated_interleaved`, `packed_long10`, `packed_nonmin`, `unpacked_long10` | repeated scalars packed / unpacked / both, an empty run, elements between other fields, 10-byte and non-minimal varints inside a run |
+| `reorder_rev`, `reorder_rot` | fields out of order |
+| `unknown`, `unknown_alias` | unknown fields: `max+1`, 1023-1025, 1031, 2047, 2048, 3072, 19000, 19999, 2^29-1, 2^29, 2^31-1, 2^31, keys past 2^32 (gogoproto's `int32` truncation, also aliasing a known field), each wire type, first and last |
+| `wrong_wt` | a known field with every other wire type (group included) |
+| `zero_len`, `default_explicit`, `drop` | an embedded message emptied; absent fields with explicit defaults (empty packed runs, `""` / `"0"` customtypes, empty messages); a field removed |
+| `nonmin_tag`, `nonmin_val`, `nonmin_len`, `long10_tag`, `long10_val`, `long10_len` | `0x80 .. 0x00` padding and 10-byte varints with high bits in keys, values, length prefixes |
+| `group`, `group_mismatch`, `group_lone_end`, `group_open`, `group_known`, `field0`, `wt67` | wire types 3 / 4 at the start, middle and end (nested, mismatched end, lone end, unterminated, on known numbers); field number 0; wire types 6 / 7 |
+| `oneof_two`, `oneof_two_first` | two members of one oneof |
+| `any_url_*`, `any_value_*` | type URL without `/`, with a host, `//`, trailing space, empty, two URLs; value empty, with trailing bytes (field 0, a non-critical and a critical field), truncated, two values |
+
+No message reachable from a tx has a map field (the schema's only map is
+PFM's genesis `InFlightPacketsEntry`). `SIGN_MODE_TEXTUAL` is not enabled
+(`authtx.DefaultSignModes`); `DIRECT` / `DIRECT_AUX` sign the bytes as
+received, so `SIGN_MODE_LEGACY_AMINO_JSON` is the only sign-bytes encoder.
+
+`fuzz-diff wire <app version> [per type] [seed] [cap] [dir]` takes, per
+registered `sdk.Msg` type, synthesized messages, the recorded scenarios'
+messages (signer rewritten) and state-building flows, and sends every
+rewrite as the tx's message, inside `MsgExec` and inside a gov proposal
+(oracle ops `tx`: `TxDecode`, `unknownproto`, `UnpackInterfaces`, gogoproto
+re-encoding of each message, `GetSigners`; and `aminosign`: amino-JSON
+sign bytes) and as the message of a protobuf ICA `CosmosTx` (`json_ica_pb`:
+the host's decoding and `ValidateBasic`); the `TxBody` and `AuthInfo` of a
+valid tx are enumerated too. `DELIVER_WIRE=1 fuzz-diff deliver` gives
+every generated message (top level, in `MsgExec`, in proposals, the
+`MsgPayForBlobs` of blob txs; with `DELIVER_IBC` the ICA host's messages,
+plus a periodic fee allowance with `stdtime` / `stdduration` fields) one
+rewrite of the class used least so far, signed and finalized on both apps
+(`CheckTx`, ante with signatures, routing and `ValidateBasic`, execution
+with `DELIVER_SWEEP`'s gas sweep, the stores with `DELIVER_DUMP_SPLIT`);
+`WIRE <class> delivered= go_ok= check_rejected=` lines give the volume
+per class. Queries that echo stored messages read the stores compared
+there (`query_corpus` covers the query code).
+
+Volumes (one seed each; inputs / Go accepted):
+
+| Level | v10 | v9 |
+|---|---|---|
+| `TxBody` / `AuthInfo` rewrites (`tx`, `aminosign`) | 505 / 208, 1 027 / 128 | same |
+| message in a tx (`tx`; `aminosign`) | 200 112 / 84 226 | 192 716 / 80 302 |
+| in `MsgExec`; in a gov proposal (`tx`; `aminosign`) | 200 112 / 84 226 each | 192 716 / 80 302 each |
+| ICA `CosmosTx` (`json_ica_pb`) | 200 112 / 148 317 | 192 716 / 142 567 |
+| total oracle inputs (`fuzz-diff wire 10 2 2`, `wire 9 2 2`) | 1 403 962 | 1 352 190 |
+| `DELIVER_WIRE` campaigns (300 blocks, 10 txs per block, sweep, store dump): txs to `CheckTx` / finalized / Go code 0 | 12 scenarios: 40 133 / 11 855 / 1 799 | 10 scenarios: 33 090 / 10 736 / 1 499 |
+| of which rewritten messages: in finalized txs / Go code 0 / in txs Go's `CheckTx` rejected | 2 734 / 718 / 26 149 | 2 405 / 651 / 20 948 |
+
+Results: findings 65 (the first run: 6 distinct mismatches, all one cause)
+and 66 (the first `DELIVER_WIRE` run of the `ibc` scenario); 67 from
+reading every place Rust decodes a tx's messages outside the router. After
+the fixes: no mismatch in the oracle sweeps above, and none in the
+`DELIVER_WIRE` campaigns.
+
+```bash
+target/release/fuzz-diff wire 10 2 2 0 /tmp/wire-findings
+DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_DUMP_SPLIT=1 GO_APPD=$DEVNET_BIN/celestia-appd \
+  crates/fuzz-diff/deliver-diff.sh gov 300 10 1
+DELIVER_WIRE=1 DELIVER_IBC=1 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh ibc 300 10 1
+```
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation
@@ -583,6 +657,9 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 62 | ICA host protobuf `CosmosTx` (both versions) | the host decodes the packet's messages with gogoproto and runs them without the tx decoder's unknown-field check. gogoproto skips what prost cannot: a field key past `u32::MAX`, a group whose end tag does not match its start, a 10-byte varint whose last byte is above 1. In the `Any` of a message (kept as `XXX_unrecognized`) Rust failed the whole `CosmosTx`; inside a nested `Any` (a fee allowance, an IBC client message, an authorization) Rust failed decoding that value. At app version 9 `MsgForward` has no fields 7 and 8: Go skips them, Rust read them as v10's custom hook (or failed on another wire type) | an ICA packet executes on Go and fails on Rust (different acknowledgement: state split); `MsgGrantAllowance` is in celestia's default host allow list | `gogo::Mode::Struct` drops the unknown fields prost cannot skip and re-encodes nested `Any`s with gogoproto's decoding (except where Go stores them as received: an `AllowedMsgAllowance`'s inner allowance, the messages of `MsgExec`, of a proposal and of the `CosmosTx`); fee-grant allowances decode through `prost_compatible`; v9 `MsgForward` schema; new oracle op `json_ica_pb` (protobuf `CosmosTx` + `ValidateBasic`), regressions |
 | 63 | IBC `ValidateBasic` (both versions) | (a) 07-tendermint: `PartSetHeaderFromProto` rejects a part-set total above `MaxBlockPartsCount` (2049) in a header's `LastBlockID` or its commit's `BlockID`; Rust did not check it, so a `MsgUpdateClient` / misbehaviour Go rejects in `ValidateBasic` (CheckTx, code 1) went on to the handler in Rust (another code and gas). (b) 06-solomachine: `len(publicKey.Bytes())` of a multisig key amino-encodes it, which panics on a sub-key that was never unpacked (empty type URL) or has no amino registration (secp256r1); Rust returned `ErrInvalidHeader` / `ErrInvalidConsensus` or passed | (a) code / gas split from one tx anyone can send; (b) panic vs error | `light::validate_block_id` checks the count first (the ibctesting fixtures were recorded on celestia's `test/interop` setup, which raises it to 10 000: their replay sets that); `solomachine::key_missing` |
 | 64 | repeated `stdtime` / `stdduration` fields (both versions) | gogoproto's `StdTimeUnmarshal` / `StdDurationUnmarshal` overwrite the field on each occurrence; prost merges the occurrences (an empty last one leaves the first). A `MsgGrant` whose `grant.expiration` repeats with an empty last occurrence expires at Unix 0 in Go (`expiration must be after the current block time`) and was granted in Rust; the same in a nested `Any` (a fee allowance's expiration or period), and in the ante handler's parameter filter (`unbonding_time` of a gov-proposed staking `MsgUpdateParams`) | state split from one tx anyone can send | the router, `ValidateBasic` and the ante decorators decode messages through `txdecode::prost_compatible`, now always gogoproto's decoding re-encoded (nested `Any`s too); found with the new `DELIVER_SCRIPT` |
+| 65 | `GetSigners` of pulsar types (x/tx `anyutil.Unpack`, both versions) | The generated (pulsar) unmarshal of a `protoregistry.GlobalTypes` type reads like gogoproto, but decodes each embedded message with `options.Unmarshal`: a well-known type (`google.protobuf.Timestamp`, `Duration`, `Any`) goes through protobuf-go's table-driven decoder, which rejects field numbers past 2^29 - 1 (`cannot parse invalid wire-format data`), 10-byte varints with a last byte above 1, mismatched groups and invalid UTF-8 in `Any.type_url`. A non-critical unknown field (bit 11 set) numbered 2^29..2^31 passes the tx decoder's `RejectUnknownFields` in the body, so `MsgGrant{grant.expiration: {..., field 2^31-1}}` (also gov `MsgUpdateParams` durations, `MsgSoftwareUpgrade` plan time, any `Any` in a pulsar message) fails `GetSigners` in Go (the ante handler rejects the tx) while Rust checked only the `dynamicpb` types and executed it; the `MsgExec`, gov and ICA paths read re-marshaled bytes, where gogoproto keeps an `Any`'s unknown fields (`XXX_unrecognized`) | state split from one `MsgGrant` anyone can sign (DIRECT mode) | `signers::pulsar_check` in `unpack_check`; found by `fuzz-diff wire` (`unknown` class, depth 3); 12 regressions |
+| 66 | ICA host `authenticateTx` (both versions) | The host decodes a protobuf `CosmosTx` with gogoproto (no unknown-field check) and Go's `GetMsgV1Signers` reads the re-marshaled message; Rust checked the re-marshaled bytes but read the signers from the message as received with prost, which fails on encodings gogoproto accepts (a `MsgSend` coin denom whose length prefix is a 10-byte varint with high bits): Rust failed the whole ICA tx Go executes (different acknowledgement, balances, a fee grant stored on Go only) | state split from one ICA packet (any controller of an interchain account on a counterparty chain) | `host::msg_v1_signers` reads both from `gogo_repack`; the `message.sender` event attribute too (`tx::sender_of`); found by `DELIVER_WIRE=1 DELIVER_IBC=1 fuzz-diff deliver ibc` (app-hash split at the first mutated ICA packet) |
+| 67 | messages read as received outside the router (both versions) | Go's `ValidateBlobTx`, `validatePayForFibreTxShape` and ibc-go's `RedundantRelayDecorator` read `GetMsgs()` (the gogoproto structs); Rust decoded the bytes as received with prost, which differs where the tx decoder's unknown-field check does not look: packed scalars (10-byte varints with high bits, an element read past its run), repeated `stdtime` (gogoproto overwrites: a `PaymentPromise.creation_timestamp` of `{nanos: 5}` then `{seconds: -62135596800}` is zero in Go, not in prost) and repeated oneof messages (gogoproto replaces). The blob case is unreachable (the `dynamicpb` `GetSigners` check rejects such packed runs first); the fibre shape check and `MsgUpdateClient`'s header time in the relay decorator gave other `CheckTx` codes | `CheckTx` code split (mempool); defense in depth | `Tx::gogo_msgs` (the normalized messages) in `validate_blob_tx`, `fibre_tx::validate_shape`, `redundant_relay`; `proposal::tests::blob_tx_validation_reads_the_gogoproto_message` |
 
 Open:
 

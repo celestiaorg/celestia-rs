@@ -356,7 +356,7 @@ pub fn redundant_relay(
     let recheck = is_recheck_tx(ctx.mode);
     let mut redundancies = 0usize;
     let mut packet_msgs = 0usize;
-    for m in tx.msgs() {
+    for m in tx.gogo_msgs() {
         let kind = match m.type_url.as_str() {
             "/ibc.core.channel.v1.MsgRecvPacket" => IbcPacketMsg::RecvPacket,
             "/ibc.core.channel.v1.MsgAcknowledgement" => IbcPacketMsg::Acknowledgement,

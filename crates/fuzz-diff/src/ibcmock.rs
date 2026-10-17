@@ -1414,6 +1414,53 @@ impl Driver {
                 },
             ));
         }
+        if std::env::var("DELIVER_WIRE").is_ok() {
+            // Systematic wire mutations (`crate::wire`) of host messages:
+            // the host decodes them with gogoproto and no unknown-field
+            // check. A periodic allowance with an expiration exercises the
+            // stdtime / stdduration and customtype classes.
+            use celestia_proto::cosmos::feegrant::v1beta1 as fg;
+            if c.rng.one_in(2) {
+                let ts = |s: i64| pbjson_types::Timestamp {
+                    seconds: s,
+                    nanos: 5,
+                };
+                let du = |s: i64| pbjson_types::Duration {
+                    seconds: s,
+                    nanos: 7,
+                };
+                msgs.push(Any::pack(&fg::MsgGrantAllowance {
+                    granter: ica.clone(),
+                    grantee: c.accounts[c.rng.below(c.accounts.len())].0.clone(),
+                    allowance: Some(Any::pack(&fg::PeriodicAllowance {
+                        basic: Some(fg::BasicAllowance {
+                            spend_limit: vec![Coin {
+                                denom: "utia".into(),
+                                amount: "9".into(),
+                            }],
+                            expiration: Some(ts(c.now + 86_400)),
+                        }),
+                        period: Some(du(3600)),
+                        period_spend_limit: vec![Coin {
+                            denom: "utia".into(),
+                            amount: "3".into(),
+                        }],
+                        period_can_spend: Vec::new(),
+                        period_reset: Some(ts(c.now + 60)),
+                    })),
+                }));
+            }
+            for m in &mut msgs {
+                if c.rng.one_in(3) {
+                    continue;
+                }
+                let name = m.type_url.rsplit('/').next().unwrap_or_default().to_owned();
+                let muts = crate::wire::enumerate(&name, &m.value);
+                if !muts.is_empty() {
+                    m.value.clone_from(&muts[c.rng.below(muts.len())].bytes);
+                }
+            }
+        }
         let mut tx = Vec::new();
         for m in &msgs {
             prost::encoding::message::encode(1, m, &mut tx);

@@ -28,6 +28,7 @@ pub mod mutate;
 pub mod oracle;
 pub mod pp;
 pub mod simdiff;
+pub mod wire;
 
 use serde::{Deserialize, Serialize};
 

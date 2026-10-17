@@ -97,7 +97,7 @@ pub fn to_share_blob(b: &sdk::tx::Blob) -> Result<shares::Blob, String> {
 
 /// `ValidateBlobTx` on a decoded `BlobTx` (`inner` is its decoded SDK tx).
 pub fn validate_blob_tx(inner: &Tx, u: &UnwrappedBlobTx) -> sdk::Result<()> {
-    let pfb = x_blob::pfb_from_msgs(inner.msgs())?;
+    let pfb = x_blob::pfb_from_msgs(inner.gogo_msgs())?;
     let blobs = u
         .blobs
         .iter()
@@ -846,6 +846,68 @@ mod tests {
             hex::encode(root),
             "3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353"
         );
+    }
+
+    /// A `MsgPayForBlobs` whose `blob_sizes` are packed 10-byte varints
+    /// with high bits in the last byte: the tx decoder's unknown-field
+    /// check does not parse packed runs and gogoproto keeps the low bits
+    /// (`ValidateBlobTxSkipCommitment` reads `GetMsgs()`), so Go accepts
+    /// the blob tx; prost rejects the varint. Also an element read past
+    /// its packed run is not reachable without a valid field after it.
+    #[test]
+    fn blob_tx_validation_reads_the_gogoproto_message() {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::tx::v1beta1::TxBody;
+        use prost::Message as _;
+        let ns = shares::Namespace::new_v0(&[1u8; 10]).unwrap();
+        let data = vec![7u8; 100];
+        let blob = shares::Blob::new_v0(ns, data.clone()).unwrap();
+        let c = square::create_commitment(&blob, merkle::root_from_byte_slices, 64).unwrap();
+        let signer = encoding::bech32::encode("celestia", &[3u8; 20]).unwrap();
+        let field = |num: u8, v: &[u8]| {
+            let mut o = vec![num << 3 | 2, u8::try_from(v.len()).unwrap()];
+            o.extend_from_slice(v);
+            o
+        };
+        // 100 as 10 bytes, last byte 0x7e (bits past 64 that gogoproto drops).
+        let mut long = vec![0xe4];
+        long.extend([0x80; 8]);
+        long.push(0x7e);
+        let pfb = [
+            field(1, signer.as_bytes()),
+            field(2, ns.as_bytes()),
+            field(3, &long),
+            field(4, &c),
+            field(8, &[0]),
+        ]
+        .concat();
+        let msg = Any {
+            type_url: "/celestia.blob.v1.MsgPayForBlobs".into(),
+            value: pfb,
+        };
+        assert!(MsgPayForBlobs::decode(msg.value.as_slice()).is_err());
+        let body = TxBody {
+            messages: vec![msg],
+            ..Default::default()
+        };
+        let raw = celestia_proto::cosmos::tx::v1beta1::TxRaw {
+            body_bytes: body.encode_to_vec(),
+            auth_info_bytes: Vec::new(),
+            signatures: Vec::new(),
+        }
+        .encode_to_vec();
+        let tx = txdecode::decode(&raw).unwrap();
+        let u = UnwrappedBlobTx {
+            tx: raw,
+            blobs: vec![sdk::tx::Blob {
+                namespace_id: ns.id().to_vec(),
+                namespace_version: 0,
+                share_version: 0,
+                data,
+                signer: Vec::new(),
+            }],
+        };
+        validate_blob_tx(&tx, &u).unwrap();
     }
 
     #[test]

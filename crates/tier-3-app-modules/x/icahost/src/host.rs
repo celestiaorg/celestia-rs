@@ -605,31 +605,7 @@ fn authenticate_tx(
                 m.type_url
             )));
         }
-        // `GetMsgV1Signers`: `anyutil.Unpack` (dynamicpb UTF-8 / varint
-        // checks) first; its plain error keeps code 1 through `Wrapf`.
-        let repacked = txdecode::scoped_v9(is_v9(ctx), || txdecode::gogo_repack(m));
-        if let Err(e) = celestia_proto::signers::unpack_check(&repacked.type_url, &repacked.value) {
-            return Err(sdk::address::undefined(format!(
-                "failed to obtain message signers for message type {}: {e}",
-                m.type_url
-            )));
-        }
-        let signers = match celestia_proto::signers::get_signers(&m.type_url, &m.value) {
-            Some(Ok(s)) => s,
-            Some(Err(e)) => {
-                return Err(x_ibc::errors::unregistered(format!(
-                    "failed to obtain message signers for message type {}: {e}",
-                    m.type_url
-                )));
-            }
-            None => Vec::new(),
-        };
-        let signers = x_ante::txview::signer_bytes(&m.type_url, signers).map_err(|e| {
-            e.wrap(format!(
-                "failed to obtain message signers for message type {}",
-                m.type_url
-            ))
-        })?;
+        let signers = msg_v1_signers(is_v9(ctx), m)?;
         for bytes in signers {
             let got = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &bytes);
             if got != ica {
@@ -640,6 +616,39 @@ fn authenticate_tx(
         }
     }
     Ok(())
+}
+
+/// `GetMsgV1Signers` of a host message: Go marshals the decoded message
+/// again (`NewAnyWithValue`), runs `anyutil.Unpack` on those bytes
+/// (dynamicpb UTF-8 / varint checks; its plain error keeps code 1 through
+/// `Wrapf`) and reads the signers from them. The message as received may
+/// hold encodings prost cannot read that gogoproto accepted (a 10-byte
+/// length prefix with high bits), so the signers come from the
+/// re-marshaled bytes too.
+fn msg_v1_signers(v9: bool, m: &Any) -> Result<Vec<Vec<u8>>> {
+    let repacked = txdecode::scoped_v9(v9, || txdecode::gogo_repack(m));
+    if let Err(e) = celestia_proto::signers::unpack_check(&repacked.type_url, &repacked.value) {
+        return Err(sdk::address::undefined(format!(
+            "failed to obtain message signers for message type {}: {e}",
+            m.type_url
+        )));
+    }
+    let signers = match celestia_proto::signers::get_signers(&repacked.type_url, &repacked.value) {
+        Some(Ok(s)) => s,
+        Some(Err(e)) => {
+            return Err(x_ibc::errors::unregistered(format!(
+                "failed to obtain message signers for message type {}: {e}",
+                m.type_url
+            )));
+        }
+        None => Vec::new(),
+    };
+    x_ante::txview::signer_bytes(&m.type_url, signers).map_err(|e| {
+        e.wrap(format!(
+            "failed to obtain message signers for message type {}",
+            m.type_url
+        ))
+    })
 }
 
 /// `executeTx`.
@@ -1159,6 +1168,39 @@ pub fn module_query_safe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `MsgSend` whose coin denom has a 10-byte length prefix with high
+    /// bits: gogoproto decodes it (the host has no unknown-field check),
+    /// Go reads the signers from the re-marshaled message.
+    #[test]
+    fn signers_read_from_the_remarshaled_message() {
+        let from = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &[7u8; 20]);
+        let field = |n: u8, v: &[u8]| {
+            let mut o = vec![n << 3 | 2, u8::try_from(v.len()).unwrap()];
+            o.extend_from_slice(v);
+            o
+        };
+        let mut coin = vec![
+            0x0a, 0x84, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x7e,
+        ];
+        coin.extend_from_slice(b"utia");
+        coin.extend(field(2, b"5"));
+        let value = [
+            field(1, from.as_bytes()),
+            field(2, from.as_bytes()),
+            field(3, &coin),
+        ]
+        .concat();
+        let m = Any {
+            type_url: "/cosmos.bank.v1beta1.MsgSend".into(),
+            value,
+        };
+        assert!(matches!(
+            celestia_proto::signers::get_signers(&m.type_url, &m.value),
+            Some(Err(_)) | None
+        ));
+        assert_eq!(msg_v1_signers(false, &m).unwrap(), vec![vec![7u8; 20]]);
+    }
 
     #[test]
     fn metadata_roundtrip() {

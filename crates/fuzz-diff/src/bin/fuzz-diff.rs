@@ -89,6 +89,196 @@ fn signature(op: &str, diff: &str) -> String {
     format!("{op}: {}", s.chars().take(160).collect::<String>())
 }
 
+/// `fuzz-diff wire <app version> [per type] [seed] [cap per base]
+/// [findings dir]`: the systematic wire-level sweep ([`fuzz_diff::wire`]).
+/// Every registered message type's valid messages
+/// ([`fuzz_diff::deliver::wire_bases`]) get every structural mutation at
+/// every depth (`cap` > 0 samples that many per base message), each sent
+/// as a tx's message, inside `MsgExec`, inside a gov proposal (ops `tx` and
+/// `aminosign`) and as an ICA `CosmosTx` message (`json_ica_pb`); the
+/// `TxBody` and `AuthInfo` of a valid tx are enumerated too. Prints each
+/// distinct mismatch and the volume per level and class.
+#[allow(
+    clippy::similar_names,
+    clippy::items_after_statements,
+    clippy::type_complexity
+)]
+fn wire(args: &[String]) -> anyhow::Result<()> {
+    use fuzz_diff::deliver::{WireWrap, wire_bases, wire_envelope, wire_input, wire_tx};
+    use fuzz_diff::wire::enumerate;
+    let av: u64 = args.first().context("app version")?.parse()?;
+    let per_type: usize = args.get(1).map_or(Ok(2), |s| s.parse())?;
+    let seed: u64 = args.get(2).map_or(Ok(1), |s| s.parse())?;
+    let cap: usize = args.get(3).map_or(Ok(0), |s| s.parse())?;
+    let findings = args.get(4).map(PathBuf::from);
+    let start = Instant::now();
+    let mut oracle = Oracle::start(av)?;
+    let mut m = Mutator::new(seed);
+    // (level, class) -> (inputs, Go accepted, mismatches)
+    let stats: std::cell::RefCell<BTreeMap<(String, String), (u64, u64, u64)>> =
+        std::cell::RefCell::default();
+    let found: std::cell::RefCell<BTreeMap<String, usize>> = std::cell::RefCell::default();
+    let done = std::cell::Cell::new(0u64);
+    type Item = (String, &'static str, String, &'static str, Vec<u8>);
+    let flush = |batch: &mut Vec<Item>, oracle: &mut Oracle| -> anyhow::Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        if done.get() / fuzz_diff::oracle::RESTART_EVERY
+            != (done.get() + batch.len() as u64) / fuzz_diff::oracle::RESTART_EVERY
+        {
+            *oracle = Oracle::start(av)?;
+        }
+        let reqs: Vec<(&str, &[u8])> = batch.iter().map(|x| (x.3, x.4.as_slice())).collect();
+        let go = oracle.query_batch(&reqs)?;
+        for ((level, class, path, op, input), g) in batch.iter().zip(&go) {
+            done.set(done.get() + 1);
+            if g.err == fuzz_diff::oracle::TOO_LARGE {
+                continue;
+            }
+            let r = rust_out(av, op, input);
+            let mut stats = stats.borrow_mut();
+            let st = stats
+                .entry((format!("{level}/{op}"), (*class).to_owned()))
+                .or_default();
+            st.0 += 1;
+            if g.ok {
+                st.1 += 1;
+            }
+            if let Some(diff) = compare(op, g, &r) {
+                st.2 += 1;
+                let sig = format!("{class}: {}", signature(op, &diff));
+                let mut found = found.borrow_mut();
+                let n = found.len();
+                let e = found.entry(sig.clone()).or_insert(0);
+                *e += 1;
+                if *e > 1 {
+                    continue;
+                }
+                println!(
+                    "MISMATCH #{n} [{sig}] level {level} path {path}\n  input {op} {}\n  {diff}",
+                    hex::encode(input)
+                );
+                if let Some(dir) = &findings {
+                    std::fs::create_dir_all(dir)?;
+                    let j = serde_json::json!({
+                        "app_version": av, "op": op, "level": level, "class": class,
+                        "path": path, "input": hex::encode(input), "go": g, "rust": r,
+                        "diff": diff,
+                    });
+                    std::fs::write(
+                        dir.join(format!("wire-v{av}-{n}.json")),
+                        serde_json::to_vec_pretty(&j)?,
+                    )?;
+                }
+            }
+        }
+        batch.clear();
+        Ok(())
+    };
+    let mut batch: Vec<Item> = Vec::new();
+    // The envelope: TxBody and AuthInfo themselves.
+    let (body, auth) = wire_envelope();
+    for (name, level) in [
+        ("cosmos.tx.v1beta1.TxBody", "body"),
+        ("cosmos.tx.v1beta1.AuthInfo", "auth_info"),
+    ] {
+        let src = if level == "body" { &body } else { &auth };
+        for mu in enumerate(name, src) {
+            let tx = if level == "body" {
+                wire_tx(&mu.bytes, &auth)
+            } else {
+                wire_tx(&body, &mu.bytes)
+            };
+            batch.push((level.into(), mu.class, mu.path.clone(), "tx", tx.clone()));
+            batch.push((level.into(), mu.class, mu.path, "aminosign", tx));
+        }
+    }
+    flush(&mut batch, &mut oracle)?;
+    let bases = wire_bases(av, seed, per_type);
+    eprintln!("app version {av}: {} base messages", bases.len());
+    for (bi, base) in bases.iter().enumerate() {
+        let name = base.type_url.rsplit('/').next().unwrap_or_default();
+        let mut muts = enumerate(name, &base.value);
+        if cap > 0 && muts.len() > cap {
+            // Every class at least once, then a sample.
+            let mut seen = std::collections::BTreeSet::new();
+            let mut keep = Vec::new();
+            let mut rest = Vec::new();
+            for mu in muts {
+                if seen.insert(mu.class) {
+                    keep.push(mu);
+                } else {
+                    rest.push(mu);
+                }
+            }
+            while keep.len() < cap && !rest.is_empty() {
+                let k = m.rng.below(rest.len());
+                keep.push(rest.swap_remove(k));
+            }
+            muts = keep;
+        }
+        muts.push(fuzz_diff::wire::Mutation {
+            class: "none",
+            path: String::new(),
+            bytes: base.value.clone(),
+        });
+        for mu in muts {
+            let any = celestia_proto::Any {
+                type_url: base.type_url.clone(),
+                value: mu.bytes,
+            };
+            for w in [
+                WireWrap::Direct,
+                WireWrap::Exec,
+                WireWrap::Gov,
+                WireWrap::Ica,
+            ] {
+                for (op, input) in wire_input(&any, w) {
+                    batch.push((
+                        format!("{w:?}").to_lowercase(),
+                        mu.class,
+                        format!("{}{}", base.type_url, mu.path),
+                        op,
+                        input,
+                    ));
+                }
+            }
+            if batch.len() >= 8000 {
+                flush(&mut batch, &mut oracle)?;
+            }
+        }
+        if batch.len() >= 4000 || bi + 1 == bases.len() {
+            flush(&mut batch, &mut oracle)?;
+            eprintln!(
+                "  {}/{} bases, {} inputs, {} distinct mismatches, {:.0}s",
+                bi + 1,
+                bases.len(),
+                done.get(),
+                found.borrow().len(),
+                start.elapsed().as_secs_f64()
+            );
+        }
+    }
+    flush(&mut batch, &mut oracle)?;
+    eprintln!(
+        "done: {} inputs in {:.0}s",
+        done.get(),
+        start.elapsed().as_secs_f64()
+    );
+    let found = found.into_inner();
+    for ((level, class), (n, ok, mm)) in &stats.into_inner() {
+        println!("STAT {level} {class} inputs={n} go_ok={ok} mismatches={mm}");
+    }
+    for (sig, n) in &found {
+        eprintln!("  {n:6}  {sig}");
+    }
+    if !found.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
 /// `fuzz-diff record <app version> <note> < lines`: each stdin line is
 /// `<op> <hex input>`; prints one regression entry per line (JSON with the
 /// Go outcome) for `tests/regressions.jsonl`, and reports on stderr whether
@@ -234,6 +424,9 @@ fn main() -> anyhow::Result<()> {
         }
         return Ok(());
     }
+    if argv.get(1).map(String::as_str) == Some("wire") {
+        return wire(&argv[2..]);
+    }
     if argv.get(1).map(String::as_str) == Some("craft") {
         return craft(&argv[2..]);
     }
@@ -306,6 +499,9 @@ fn main() -> anyhow::Result<()> {
         }
         for l in &st.script {
             println!("SCRIPT {l}");
+        }
+        for (c, (n, ok, rej)) in &st.wire {
+            println!("WIRE {c} delivered={n} go_ok={ok} check_rejected={rej}");
         }
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",

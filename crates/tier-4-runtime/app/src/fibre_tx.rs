@@ -85,7 +85,7 @@ pub fn count_pff(msgs: &[Any]) -> usize {
 /// `validatePayForFibreTxShape`.
 pub fn validate_shape(tx: &Tx) -> Result<(), SdkError> {
     let url = pff_type_url();
-    let msgs = tx.msgs();
+    let msgs = tx.gogo_msgs();
     for m in msgs {
         if m.type_url != url {
             continue;
