@@ -3287,6 +3287,10 @@ pub fn run(
             held,
             ..Default::default()
         };
+    } else if std::env::var("DELIVER_REPLAY_STOP").as_deref() == Ok("signal") {
+        // Only stop the replay there (e.g. `upgrade`, which signals v11 and
+        // halts: the generated blocks then run on its gov-upgrade state).
+        stop_at = upgrade::held_signals(&records).0;
     }
     // Go raised the app version in the last `FinalizeBlock`: the binary
     // switches after its `Commit`.

@@ -252,6 +252,33 @@ impl Upgrade {
             );
             self.push(gn, &mut out, i, vec![msg], 400_000);
         }
+        // An account at the fibre module address before the upgrade (v9
+        // does not block it): a locked vesting account, then a send. The
+        // v10 handler's `ensureFibreModuleAccount` replaces it.
+        if !v10 && (2..4).contains(&b) {
+            let fibre = module_address("fibre");
+            let from = gn.accts[5].acc.clone();
+            let utia = vec![Coin {
+                denom: "utia".into(),
+                amount: "777000".into(),
+            }];
+            let msg = if b == 2 {
+                Any::pack(
+                    &celestia_proto::cosmos::vesting::v1beta1::MsgCreatePermanentLockedAccount {
+                        from_address: from,
+                        to_address: fibre,
+                        amount: utia,
+                    },
+                )
+            } else {
+                Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+                    from_address: from,
+                    to_address: fibre,
+                    amount: utia,
+                })
+            };
+            self.push(gn, &mut out, 5, vec![msg], 300_000);
+        }
         // Grants, allowances and vesting accounts made at v9, used at v10.
         if !v10 && (2..12).contains(&b) {
             self.v9_setup(gn, &mut out, b);
@@ -936,6 +963,15 @@ pub(super) fn queries(gn: &Gen, hl_token: &str) -> Vec<(&'static str, Vec<u8>)> 
         ("/cosmos.evidence.v1beta1.Query/AllEvidence", Vec::new()),
         ("/cosmos.bank.v1beta1.Query/TotalSupply", Vec::new()),
     ];
+    let fibre = module_address("fibre");
+    for p in [
+        "/cosmos.auth.v1beta1.Query/Account",
+        "/cosmos.auth.v1beta1.Query/AccountInfo",
+        "/cosmos.bank.v1beta1.Query/AllBalances",
+        "/cosmos.bank.v1beta1.Query/SpendableBalances",
+    ] {
+        q.push((p, s1(&fibre)));
+    }
     for v in [9, 10, 11, 0] {
         q.push(("/celestia.signal.v1.Query/VersionTally", n1(v)));
         q.push(("/celestia.signal.v1.Query/GetMissingValidators", n1(v)));
