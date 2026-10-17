@@ -616,6 +616,97 @@ APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test conformance/devnet/devnet.sh \
   v9-upgrade-boundary 90 conformance/devnet/workloads/v9-upgrade-boundary.sh
 ```
 
+### Log parity, mempool recheck and simulation (2026-10-17)
+
+`fuzz-diff deliver` reports every difference of a tx result's log, info,
+events or signers, of a `CheckTx` log and of a query's log as a `LOG`
+line. Three more comparisons were added:
+
+- `DELIVER_SIM`: every generated tx is simulated on both apps before its
+  `CheckTx` (`/cosmos.tx.v1beta1.Service/Simulate` through ABCI Query, as
+  signed and with its signatures emptied the way `--gas auto` builds the
+  simulated tx). The `gas_info` and the code must agree (a mismatch);
+  the response's other bytes and the error text are logs.
+  `deliver-diff.sh` now enables Go's gRPC server: without it the SDK never
+  registers the tx service on the query router and Go answers `unknown
+  query path`.
+- Comet's mempool recheck: after the `Commit` that switches binaries
+  (`DELIVER_UPGRADE`), and after every `Commit` with `DELIVER_RECHECK`, the
+  txs Go's `CheckTx` accepted and no block included are rechecked on both
+  apps in order (`CheckTxType_Recheck`), and a tx leaves the modelled pool
+  as in `TxPool.handleRecheckResult` (code, then `PostCheckMaxGas`).
+  `RECHECK <phase>` lines give the volume.
+- The mock IBC counterparty's every third `MsgUpdateClient` carries a
+  commit signature flag outside 1..=3 (finding 73).
+
+Before the fixes, 13 runs (`ibc`, `fibre`, `gov`, `hyperlane`, `staking`,
+`authz-feegrant`, `utf8`, `vesting`, `blob`, `zkism-forwarding`,
+`v9-ibc`, `v9-gov`, `v9-hyperlane`; 100 blocks, 8 txs per block) gave 69
+tx-result / `CheckTx` log differences besides Go panic stacks and
+protobuf-go's randomized space, and the earlier `DELIVER_UPGRADE` batch
+(20 runs, `DELIVER_IBC` / `DELIVER_HL`) 615: IBC packet and timeout
+errors without Go's details (`current height: 0-52, timeout height
+0-1`, `(channel-0 ≠ channel-7)`, `next sequence send (17) ≥ (17).`),
+unknown enum values printed `UNKNOWN` (Go prints the number), the
+07-tendermint light client's errors without their values and wrappers
+(`invalid header: new header has a time from the future <time> (now:
+<time>; max clock drift: 10m0s)`, `untrustedHeader.ValidateBasic
+failed: ...`), the bech32 decoder's texts (the `bech32` crate's instead
+of `decoding bech32 failed: invalid checksum (expected ... got ...)`,
+account / validator codec errors as `GetFromBech32`'s, a doubled
+`: invalid address`), `cosmossdk.io/errors`' `%v` frame where ibc-go
+formats an address error with `%v` (`addresses cannot be empty: unknown
+address [celestiaorg/cosmos-sdk@v0.52.12/types/address.go:173]`; v9.0.8:
+`@v0.52.8`), the staking gRPC status prefix (`rpc error: code = NotFound
+desc = ...`), fibre payment-promise validation without its `invalid
+request` wrap and values, `%q` printed as Rust's `{:?}`, gov's nil
+weight (`<nil>`) and `VoteOption.Format` (`byte(vo)`), `json.Marshal` of
+an empty options slice (`null` / `[]`), the PFM fallback's joined error,
+an out-of-gas panic inside the IBC redundant-relay ante check (Go's
+`out of gas in location: ReadFlat; gasWanted: ..., gasUsed: ...`). The
+same 13 runs after the fixes (seeds 13 / 14): 0 mismatches; the only
+tx-result / `CheckTx` log differences left are Go panic stacks (98) and
+protobuf-go's space (21), plus 3 since fixed (gov `byte(vo)` and `[]`,
+authz's codec error). The tx decoder's texts (`no registered
+implementations of type tx.TxExtensionOptionI`, `could not consume field
+value for tagNum: 7, wireType: "bytes"; unexpected EOF`, `integer out of
+range; got: 300, max: 256`, gogoproto's `%#v` of timestamps and
+durations, go-square's blob and namespace errors, `encoding/hex: invalid
+byte: U+0067 'g'`) were fixed from the simulation's logs: Go fails an
+undecodable tx in `CheckTx` without a `ResponseCheckTx`, so only
+`Simulate` and a malicious block's results show them.
+
+`Simulate` logs: of 12 228 differences in those runs, 11 672 are only
+the `[file:line]` frame `cosmossdk.io/errors` appends when the tx
+service formats the error with `%v`: the Go source line of the innermost
+`errorsmod.Wrap` of each error (and the build machine's module cache
+path for modules outside `github.com`, e.g. `cosmossdk.io/errors`
+itself). Emulating it needs the Go source position of every error site;
+not done. The rest are Go panic stacks, protobuf-go's space and
+gogoproto's `wrong wireType = 2 for field RevisionHeight` (Rust prints
+the field number; the schema table has no Go field names).
+
+Gas estimates: 0 differences in `gas_info` or code in 32 236 simulations
+(both variants; Go succeeded in 4 750) over 128 first-message types (every
+message type the generator builds), both app versions and an upgrade run.
+
+Mempool recheck after the v9 -> v10 switch: 3 `DELIVER_UPGRADE` runs
+(seeds 21-23, `DELIVER_RECHECK`, with `DELIVER_IBC` / `DELIVER_HL` /
+`DELIVER_WIRE` / `DELIVER_SWEEP`): 274 rechecks on the switch (every
+pool tx: the fresh v10 check state has height 0, so `gas_wanted` is -1
+and `PostCheckMaxGas` removes it; the check state still applies its
+sequence), 27 041 rechecks in all, 0 differences in code, gas, priority,
+sequence or log. The Rust node's mempool calls the same `App` after
+`switch_on_commit` (`BlockExecutor::commit` -> `TxPool::update` ->
+`recheck_transactions`, a port of celestia-core v0.42.3's), so the
+node removes the same txs.
+
+```bash
+DELIVER_SIM=1 DELIVER_IBC=1 GO_APPD=$DEVNET_BIN/celestia-appd crates/fuzz-diff/deliver-diff.sh ibc 100 8 13
+GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd DELIVER_UPGRADE=20 \
+  DELIVER_RECHECK=1 DELIVER_IBC=1 crates/fuzz-diff/deliver-diff.sh v9-upgrade 80 6 21
+```
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation
@@ -756,6 +847,8 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 70 | the binary switch (`Commit` of the upgrade height) | the multiplexer stops v9.0.8 after that `Commit` and opens v10.4.0, whose `Init` sets the check state to `Header{ChainID}` (height 0, Go's zero time) until the next commit: `CheckTx` verifies signatures with account number 0 and an infinite gas meter (`gas_wanted` -1), vesting balances are all locked, periodic allowances reset from year 1; Rust kept the last block's header. In the same window (and in any historical query) the stores the upgrade adds have no version: `CacheMultiStoreWithVersion` leaves a nil store and any access panics (`runtime error: invalid memory address or nil pointer dereference`, `ErrPanic`); Rust read them as empty. The fresh-process check header also used 1970 instead of Go's zero time | `CheckTx` / query split between the upgrade's `Commit` and the next block (mempool, RPC); not consensus | `App::switch_on_commit` and `init_check_header` (Go's zero time, also on open); `sdk::MultiStore::view_at` nil stores (`StoreError::NilStore` → recovered panic); `replay_scenarios::v9_upgrade_switch_state` |
 | 71 | hyperlane routers stored at app version 9, read at 10 | v1.1.0 stores `RemoteRouter.receiver_contract` as any non-empty string; v1.3.0 reads it as the `HexAddress` customtype (`Unmarshal`: exactly `0x` + 64 hex digits, canonical lowercase). At v10 Go fails `RemoteRouters` (`failed to retrieve item: invalid hex address length`), `QuoteRemoteTransfer` and the forwarding module's lookups (`collections: encoding error: value decode: ...`) on such a router and returns upper-case ones lower-cased; Rust returned the stored strings (and its forwarding errors lacked Go's `collections` text) | query split for every token with a v9-shaped router after the upgrade; tx logs | `x_warp::decode_router` / `enrolled_router` by app version (query contexts read it from `sdk::version`); `x_warp::tests::v9_routers_read_at_app_version_10` |
 | 72 | `GetModuleAccount` of an address holding another account | Go panics (`account is not a module account`); Rust returned `ErrLogic`. Every module address is blocked except gov's (created at genesis), but v9 does not know fibre's: a send or a vesting account to it at app version 9 leaves an account there, and between the switch and the v10 handler (which replaces it) the v10 app's `ModuleAccounts` / `ModuleAccountByName` queries panic | query split at the upgrade height; the code split it would give in a tx is unreachable (the handler runs first) | `x_auth::get_module_account` returns Go's panic; `tests::module_address_holding_a_base_account_panics`; the `DELIVER_UPGRADE` driver funds the fibre address at v9 |
+| 73 | IBC 07-tendermint light client (`MsgUpdateClient`, misbehaviour; both versions) | celestia-core's `CommitSig.FromProto` converts the protobuf `int32` `BlockIdFlag` with `BlockIDFlag(...)`, a `byte`: only the low 8 bits count, so a signature with flag `258` or `-254` is a `Commit` signature (verified and tallied) and `257` is `Absent`; the flag is not in the signed vote, so anyone relaying a valid header can rewrite it. Rust's port compared the `int32` (`unknown BlockIDFlag`) | Go accepts the client update, Rust fails the tx: app-hash divergence from one relayed header (found by `DELIVER_IBC` once its mock counterparty sent such flags: CheckTx code split, then an app-hash split) | `lightclients::light::flag` truncates like Go; `light::tests::block_id_flag_is_truncated_to_a_byte_like_go`; the mock counterparty's every third `MsgUpdateClient` carries a wide flag (`update_client_wide_flag`) |
+| 74 | PFM `userRecoverableAccount` (both versions) | the fallback decodes the in-flight packet's original sender with `bech32.DecodeAndConvert` (any prefix, at most 1023 characters); Rust used the `bech32` crate, which rejects prefixes longer than 83 characters (BIP-173) and has no total limit. The original sender is the counterparty user's choice | a forward whose refund falls back to the original sender moves funds in Go and fails in Rust (or the reverse above 1023 characters): app-hash divergence | `encoding::bech32::decode_and_convert` there (and for the account / validator codecs, `x_auth::parse_bech32`, hyperlane's `AccAddressFromBech32`, the event sender); `middleware::tests::user_recoverable_account_falls_back_like_go` |
 
 Open:
 
@@ -768,8 +861,12 @@ Open:
 
 - Error text (logs; not hashed, code and gas match) that still differs
   from Go, judged infeasible or not worth emulating: Go panics log a
-  stack (goroutine ids, addresses); protobuf-go randomizes a space in its errors;
-  address-codec errors are worded differently in a few modules. gRPC
+  stack (goroutine ids, addresses); protobuf-go randomizes a space in its
+  errors (`proto:` followed by a space or U+00A0, chosen per binary);
+  `Simulate`'s error carries `cosmossdk.io/errors`' `%v` source frame
+  (`[celestiaorg/cosmos-sdk@v0.52.12/x/auth/ante/sigverify.go:290]`, see
+  "Log parity" above); gogoproto's `wrong wireType` names the Go field.
+  gRPC
   status messages carry Go forms (tonic cannot send Go's invalid bytes);
   ABCI, REST and RPC carry Go's bytes. Fixed since: gogoproto's text form
   in `failed to execute message; message %v` and gov's
@@ -790,9 +887,13 @@ Open:
   re-signalled the running version (e.g. automation signalling again
   after an upgrade), anyone's `MsgTryUpgrade` disables upgrades by
   signalling for good. Reproduced by the `DELIVER_UPGRADE` late phase.
-- An event attribute of ibc-go's callbacks (`ibccallbackerror-error`)
-  prints a `math.Int` by its pointer (`got {53814906916832}`): the address
-  differs between Go processes; events are not hashed.
+- An event attribute of ibc-go's callbacks (`ibccallbackerror-error`,
+  ICS-20 `ValidateBasic`'s `amount must be strictly positive: got %d`)
+  prints a `math.Int` by its pointer: `%d` of the struct reaches the
+  unexported `*big.Int` field, which `fmt` prints as an address. Go's
+  output is nondeterministic (`{53814906916832}` and `{26591903563872}`
+  for the same packet in two runs), so Rust prints the value (`got 0`);
+  events are not hashed.
 - Go itself: `TxDecodeAmino` of a 2 MB `StdTx` with ~20 000 nested
   `MsgExec` grew the Go process past 10 GB (quadratic copying in
   go-amino); the oracle caps amino inputs at 256 KB.

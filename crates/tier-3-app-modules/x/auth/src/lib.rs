@@ -81,8 +81,7 @@ pub fn bech32(addr: &[u8]) -> Result<String> {
 
 /// Parses a bech32 account address.
 pub fn parse_bech32(s: &str) -> Result<Address> {
-    let (hrp, bytes) =
-        encoding::bech32::decode(s).map_err(|e| errs::invalid_address(format!("{s}: {e}")))?;
+    let (hrp, bytes) = encoding::bech32::decode_and_convert(s).map_err(errs::invalid_address)?;
     if hrp != BECH32_PREFIX {
         return Err(errs::invalid_address(format!(
             "invalid Bech32 prefix; expected {BECH32_PREFIX}, got {hrp}"

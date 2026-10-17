@@ -144,8 +144,13 @@ impl Validator {
         if self.voting_power < 0 {
             return Err("validator has negative voting power".into());
         }
-        if self.address != self.pub_key.address() {
-            return Err("validator address is incorrectly derived from pubkey".into());
+        let addr = self.pub_key.address();
+        if self.address != addr {
+            return Err(format!(
+                "validator address is incorrectly derived from pubkey. Exp: {}, got {}",
+                hex::encode_upper(&addr),
+                hex::encode_upper(&self.address)
+            ));
         }
         Ok(())
     }
@@ -277,31 +282,54 @@ fn block_id_is_zero(b: &tm::BlockId) -> bool {
 /// `HeaderFromProto` (includes `Header.ValidateBasic`).
 pub fn validate_header(h: &tm::Header) -> LResult<()> {
     validate_block_id(&h.last_block_id.clone().unwrap_or_default())?;
-    if h.version.as_ref().map_or(0, |v| v.block) != BLOCK_PROTOCOL {
-        return Err("block protocol is incorrect".into());
+    let block = h.version.as_ref().map_or(0, |v| v.block);
+    if block != BLOCK_PROTOCOL {
+        return Err(format!(
+            "block protocol is incorrect: got: {block}, want: {BLOCK_PROTOCOL} "
+        ));
     }
-    if gostr::go_len(&h.chain_id) > MAX_CHAIN_ID_LEN {
-        return Err("chainID is too long".into());
+    let chain_len = gostr::go_len(&h.chain_id);
+    if chain_len > MAX_CHAIN_ID_LEN {
+        return Err(format!(
+            "chainID is too long; got: {chain_len}, max: {MAX_CHAIN_ID_LEN}"
+        ));
     }
-    if h.height <= 0 {
-        return Err("non-positive Height".into());
+    if h.height < 0 {
+        return Err("negative Height".into());
     }
-    validate_block_id(&h.last_block_id.clone().unwrap_or_default())?;
-    validate_hash(&h.last_commit_hash)?;
-    validate_hash(&h.data_hash)?;
-    validate_hash(&h.evidence_hash)?;
+    if h.height == 0 {
+        return Err("zero Height".into());
+    }
+    validate_block_id(&h.last_block_id.clone().unwrap_or_default())
+        .map_err(|e| format!("wrong LastBlockID: {e}"))?;
+    validate_hash(&h.last_commit_hash).map_err(|e| format!("wrong LastCommitHash: {e}"))?;
+    validate_hash(&h.data_hash).map_err(|e| format!("wrong DataHash: {e}"))?;
+    validate_hash(&h.evidence_hash).map_err(|e| format!("wrong EvidenceHash: {e}"))?;
     if h.proposer_address.len() != 20 {
-        return Err("invalid ProposerAddress length".into());
+        return Err(format!(
+            "invalid ProposerAddress length; got: {}, expected: 20",
+            h.proposer_address.len()
+        ));
     }
-    validate_hash(&h.validators_hash)?;
-    validate_hash(&h.next_validators_hash)?;
-    validate_hash(&h.consensus_hash)?;
-    validate_hash(&h.last_results_hash)
+    validate_hash(&h.validators_hash).map_err(|e| format!("wrong ValidatorsHash: {e}"))?;
+    validate_hash(&h.next_validators_hash).map_err(|e| format!("wrong NextValidatorsHash: {e}"))?;
+    validate_hash(&h.consensus_hash).map_err(|e| format!("wrong ConsensusHash: {e}"))?;
+    validate_hash(&h.last_results_hash).map_err(|e| format!("wrong LastResultsHash: {e}"))
+}
+
+/// `CommitSig.FromProto`'s `BlockIDFlag(csp.BlockIdFlag)`: Go's
+/// `BlockIDFlag` is a `byte`, so the protobuf `int32` is truncated to its
+/// low 8 bits (`258` and `-254` are `Commit`); the flag is not part of the
+/// signed vote.
+fn flag(cs: &tm::CommitSig) -> u8 {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let f = cs.block_id_flag as u8;
+    f
 }
 
 /// `CommitSig.ValidateBasic` (`FromProto`).
 fn validate_commit_sig(cs: &tm::CommitSig) -> LResult<()> {
-    match cs.block_id_flag {
+    match flag(cs) {
         1 => {
             if !cs.validator_address.is_empty() {
                 return Err("validator address is present".into());
@@ -315,13 +343,16 @@ fn validate_commit_sig(cs: &tm::CommitSig) -> LResult<()> {
         }
         2 | 3 => {
             if cs.validator_address.len() != 20 {
-                return Err("expected ValidatorAddress size to be 20 bytes".into());
+                return Err(format!(
+                    "expected ValidatorAddress size to be 20 bytes, got {} bytes",
+                    cs.validator_address.len()
+                ));
             }
             if cs.signature.is_empty() {
                 return Err("signature is missing".into());
             }
             if cs.signature.len() > MAX_SIGNATURE_SIZE {
-                return Err("signature is too big".into());
+                return Err(format!("signature is too big (max: {MAX_SIGNATURE_SIZE})"));
             }
         }
         f => return Err(format!("unknown BlockIDFlag: {f}")),
@@ -332,7 +363,10 @@ fn validate_commit_sig(cs: &tm::CommitSig) -> LResult<()> {
 /// `CommitFromProto` (includes `Commit.ValidateBasic`).
 pub fn validate_commit(c: &tm::Commit) -> LResult<()> {
     if c.signatures.len() > MAX_VOTES_COUNT {
-        return Err("commit has too many signatures".into());
+        return Err(format!(
+            "commit has too many signatures: {}, max: {MAX_VOTES_COUNT}",
+            c.signatures.len()
+        ));
     }
     let bid = c.block_id.clone().unwrap_or_default();
     validate_block_id(&bid)?;
@@ -419,17 +453,25 @@ pub fn validate_signed_header(sh: Option<&tm::SignedHeader>, chain_id: &str) -> 
     let c = sh.commit.as_ref().ok_or("missing commit")?;
     if h.chain_id != chain_id {
         return Err(format!(
-            "header belongs to another chain {:?}, not {chain_id:?}",
-            h.chain_id
+            "header belongs to another chain {}, not {}",
+            gostr::quote(&h.chain_id),
+            gostr::quote(chain_id)
         ));
     }
     if c.height != h.height {
-        return Err("header and commit height mismatch".into());
+        return Err(format!(
+            "header and commit height mismatch: {} vs {}",
+            h.height, c.height
+        ));
     }
     let hhash = header_hash(h).unwrap_or_default();
     let chash = c.block_id.clone().unwrap_or_default().hash;
     if hhash != chash {
-        return Err("commit signs block, header is another block".into());
+        return Err(format!(
+            "commit signs block {}, header is block {}",
+            hex::encode_upper(&chash),
+            hex::encode_upper(&hhash)
+        ));
     }
     Ok(())
 }
@@ -450,7 +492,7 @@ pub fn signed_header_from_proto(sh: Option<&tm::SignedHeader>) -> LResult<()> {
 #[must_use]
 pub fn vote_sign_bytes(chain_id: &str, c: &tm::Commit, idx: usize) -> Vec<u8> {
     let sig = &c.signatures[idx];
-    let block_id = if sig.block_id_flag == 2 {
+    let block_id = if flag(sig) == 2 {
         c.block_id.clone().unwrap_or_default()
     } else {
         tm::BlockId::default()
@@ -494,13 +536,17 @@ fn verify_commit_sigs(
     let mut seen = std::collections::BTreeSet::new();
     for (idx, sig) in commit.signatures.iter().enumerate() {
         // Light verification ignores everything but votes for the block.
-        if sig.block_id_flag != 2 {
+        if flag(sig) != 2 {
             continue;
         }
         let val = if by_index {
             let v = &vals.validators[idx];
             if v.address != sig.validator_address {
-                return Err(format!("validator address mismatch at index {idx}"));
+                return Err(format!(
+                    "validator address mismatch at index {idx}: expected {}, got {}",
+                    hex::encode_upper(&v.address),
+                    hex::encode_upper(&sig.validator_address)
+                ));
             }
             v
         } else {
@@ -514,7 +560,10 @@ fn verify_commit_sigs(
         };
         let msg = vote_sign_bytes(chain_id, commit, idx);
         if !val.pub_key.verify(&msg, &sig.signature) {
-            return Err(format!("wrong signature (#{idx})"));
+            return Err(format!(
+                "wrong signature (#{idx}): {}",
+                hex::encode_upper(&sig.signature)
+            ));
         }
         tallied = tallied.saturating_add(val.voting_power);
         if tallied > needed {
@@ -535,18 +584,40 @@ pub fn verify_commit_light(
     commit: &tm::Commit,
 ) -> LResult<()> {
     if vals.validators.len() != commit.signatures.len() {
-        return Err("invalid commit -- wrong set size".into());
+        return Err(format!(
+            "Invalid commit -- wrong set size: {} vs {}",
+            vals.validators.len(),
+            commit.signatures.len()
+        ));
     }
     if height != commit.height {
-        return Err("invalid commit -- wrong height".into());
+        return Err(format!(
+            "Invalid commit -- wrong height: {height} vs {}",
+            commit.height
+        ));
     }
     let cbid = commit.block_id.clone().unwrap_or_default();
     if block_id.hash != cbid.hash || part_set_header(Some(block_id)) != part_set_header(Some(&cbid))
     {
-        return Err("invalid commit -- wrong block ID".into());
+        return Err(format!(
+            "invalid commit -- wrong block ID: want {}, got {}",
+            block_id_string(block_id),
+            block_id_string(&cbid)
+        ));
     }
     let needed = vals.total_voting_power * 2 / 3;
     verify_commit_sigs(chain_id, vals, commit, needed, true)
+}
+
+/// `BlockID.String()`: `hash:total:fingerprint(part set hash)`.
+fn block_id_string(b: &tm::BlockId) -> String {
+    let psh = part_set_header(Some(b));
+    format!(
+        "{}:{}:{}",
+        hex::encode_upper(&b.hash),
+        psh.total,
+        hex::encode_upper(&psh.hash[..psh.hash.len().min(6)])
+    )
 }
 
 /// `ValidatorSet.VerifyCommitLightTrusting`.
@@ -566,7 +637,7 @@ pub fn verify_commit_light_trusting(
     let product = vals
         .total_voting_power
         .checked_mul(num)
-        .ok_or("int64 overflow while calculating voting power needed")?;
+        .ok_or("int64 overflow while calculating voting power needed. please provide smaller trustLevel numerator")?;
     let needed = product.wrapping_div(den);
     verify_commit_sigs(chain_id, vals, commit, needed, false)
 }
@@ -600,6 +671,20 @@ pub struct Params {
     pub trust_denominator: u64,
 }
 
+/// `time.Time.String()` of a UTC time in nanoseconds.
+fn go_time(n: Nanos) -> String {
+    sdk::time::go_time_string(&sdk::time::from_nanos(n))
+}
+
+/// `ErrOldHeaderExpired`.
+fn old_header_expired(trusted: &Trusted, p: &Params) -> String {
+    format!(
+        "old header has expired at {} (now: {})",
+        go_time(trusted.time + p.trusting_period),
+        go_time(p.now)
+    )
+}
+
 fn header_expired(trusted: &Trusted, p: &Params) -> bool {
     trusted.time + p.trusting_period <= p.now
 }
@@ -610,20 +695,39 @@ fn verify_new_header_and_vals(
     trusted: &Trusted,
     p: &Params,
 ) -> LResult<()> {
-    validate_signed_header(Some(sh), &trusted.chain_id)?;
+    validate_signed_header(Some(sh), &trusted.chain_id)
+        .map_err(|e| format!("untrustedHeader.ValidateBasic failed: {e}"))?;
     let h = sh.header.as_ref().ok_or("missing header")?;
     if h.height <= trusted.height {
-        return Err("expected new header height to be greater than one of old header".into());
+        return Err(format!(
+            "expected new header height {} to be greater than one of old header {}",
+            h.height, trusted.height
+        ));
     }
     let t = ts_nanos(h.time.as_ref());
     if t <= trusted.time {
-        return Err("expected new header time to be after old header time".into());
+        return Err(format!(
+            "expected new header time {} to be after old header time {}",
+            go_time(t),
+            go_time(trusted.time)
+        ));
     }
     if t >= p.now + p.max_clock_drift {
-        return Err("new header has a time from the future".into());
+        return Err(format!(
+            "new header has a time from the future {} (now: {}; max clock drift: {})",
+            go_time(t),
+            go_time(p.now),
+            sdk::time::go_duration_string(p.max_clock_drift)
+        ));
     }
-    if h.validators_hash != vals.hash() {
-        return Err("expected new header validators to match those that were supplied".into());
+    let vals_hash = vals.hash();
+    if h.validators_hash != vals_hash {
+        return Err(format!(
+            "expected new header validators ({}) to match those that were supplied ({}) at height {}",
+            hex::encode_upper(&h.validators_hash),
+            hex::encode_upper(&vals_hash),
+            h.height
+        ));
     }
     Ok(())
 }
@@ -642,22 +746,32 @@ pub fn verify(
     if h.height != trusted.height + 1 {
         // VerifyNonAdjacent.
         if header_expired(trusted, p) {
-            return Err("old header has expired".into());
+            return Err(old_header_expired(trusted, p));
         }
-        verify_new_header_and_vals(untrusted, untrusted_vals, trusted, p)?;
+        verify_new_header_and_vals(untrusted, untrusted_vals, trusted, p)
+            .map_err(|e| format!("invalid header: {e}"))?;
         verify_commit_light_trusting(
             &trusted.chain_id,
             trusted_vals,
             commit,
             p.trust_numerator,
             p.trust_denominator,
-        )?;
+        )
+        .map_err(|e| {
+            // `ErrNotEnoughVotingPowerSigned` -> `ErrNewValSetCantBeTrusted`.
+            if e.starts_with("invalid commit -- insufficient voting power") {
+                format!("cant trust new val set: {e}")
+            } else {
+                e
+            }
+        })?;
     } else {
         // VerifyAdjacent.
         if header_expired(trusted, p) {
-            return Err("old header has expired".into());
+            return Err(old_header_expired(trusted, p));
         }
-        verify_new_header_and_vals(untrusted, untrusted_vals, trusted, p)?;
+        verify_new_header_and_vals(untrusted, untrusted_vals, trusted, p)
+            .map_err(|e| format!("invalid header: {e}"))?;
         if h.validators_hash != trusted.next_validators_hash {
             return Err(format!(
                 "expected old header next validators ({}) to match those from new header ({})",
@@ -673,6 +787,7 @@ pub fn verify(
         h.height,
         commit,
     )
+    .map_err(|e| format!("invalid header: {e}"))
 }
 
 /// `light.ValidateTrustLevel`.
@@ -684,4 +799,56 @@ pub fn validate_trust_level(numerator: u64, denominator: u64) -> LResult<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sig(flag: i32) -> tm::CommitSig {
+        tm::CommitSig {
+            block_id_flag: flag,
+            validator_address: vec![1; 20],
+            timestamp: None,
+            signature: vec![2; 64],
+        }
+    }
+
+    /// Go's `BlockIDFlag(csp.BlockIdFlag)` keeps the low byte of the
+    /// protobuf `int32` (security.md finding 73): `258` and `-254` are
+    /// `Commit` signatures (verified and counted), `257` is `Absent`.
+    #[test]
+    fn block_id_flag_is_truncated_to_a_byte_like_go() {
+        assert!(validate_commit_sig(&sig(258)).is_ok());
+        assert!(validate_commit_sig(&sig(-254)).is_ok());
+        assert_eq!(
+            validate_commit_sig(&sig(260)).unwrap_err(),
+            "unknown BlockIDFlag: 4"
+        );
+        let absent = tm::CommitSig {
+            block_id_flag: 257,
+            ..Default::default()
+        };
+        assert!(validate_commit_sig(&absent).is_ok());
+        let commit = |flag| tm::Commit {
+            height: 5,
+            round: 0,
+            block_id: Some(tm::BlockId {
+                hash: vec![3; 32],
+                part_set_header: Some(tm::PartSetHeader {
+                    total: 1,
+                    hash: vec![4; 32],
+                }),
+            }),
+            signatures: vec![sig(flag)],
+        };
+        assert_eq!(
+            vote_sign_bytes("c", &commit(2), 0),
+            vote_sign_bytes("c", &commit(2 + 256), 0)
+        );
+        assert_eq!(
+            vote_sign_bytes("c", &commit(i32::MIN + 2), 0),
+            vote_sign_bytes("c", &commit(2), 0)
+        );
+    }
 }

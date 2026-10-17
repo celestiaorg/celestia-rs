@@ -185,8 +185,9 @@ pub fn forward(
 ) -> Result<MsgForwardResponse> {
     let forward_addr = acc_from_bech32(&m.forward_addr).map_err(|e| {
         internal(format!(
-            "invalid forward_addr {:?}: {}",
-            m.forward_addr, e.log
+            "invalid forward_addr {}: {}",
+            gostr::quote(&m.forward_addr),
+            e.log
         ))
     })?;
     let dest_recipient = decode_hex_address(&m.dest_recipient)

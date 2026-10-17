@@ -115,7 +115,7 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
         }
         for msg in &m.messages {
             let mid = hex::decode(msg.strip_prefix("0x").unwrap_or(msg))
-                .map_err(|e| undefined(format!("invalid message id {msg:?}: {e}")))?;
+                .map_err(|e| undefined(format!("invalid message id {}: {e}", gostr::quote(msg))))?;
             set_message(ctx, internal_id(&id), &mid)?;
         }
     }

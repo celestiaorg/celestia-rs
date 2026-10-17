@@ -82,7 +82,8 @@ pub fn submit_proposal(
     if msg.summary.is_empty() {
         return Err(sdkerr::invalid_request("proposal summary cannot be empty"));
     }
-    let proposer = acc_from_bech32(&msg.proposer).map_err(|e| invalid_address("proposer", &e))?;
+    let proposer = sdk::address::acc_codec_to_bytes(&msg.proposer)
+        .map_err(|e| invalid_address("proposer", &e))?;
     if msg.messages.is_empty() && msg.metadata.is_empty() {
         return Err(
             errors::no_proposal_msgs().wrap("either metadata or Msgs length must be non-nil")
@@ -147,7 +148,7 @@ pub fn cancel_proposal(
     ctx: &mut Context<'_>,
     msg: &v1::MsgCancelProposal,
 ) -> Result<v1::MsgCancelProposalResponse> {
-    acc_from_bech32(&msg.proposer).map_err(|e| invalid_address("proposer", &e))?;
+    sdk::address::acc_codec_to_bytes(&msg.proposer).map_err(|e| invalid_address("proposer", &e))?;
     keeper::cancel_proposal(ctx, msg.proposal_id, &msg.proposer)?;
     ctx.events.emit(event(
         "cancel_proposal",
@@ -211,7 +212,8 @@ pub fn validate_basic_exec_legacy_content(msg: &v1::MsgExecLegacyContent) -> Res
 
 /// `MsgVote`.
 pub fn vote(ctx: &mut Context<'_>, msg: &v1::MsgVote) -> Result<v1::MsgVoteResponse> {
-    let voter = acc_from_bech32(&msg.voter).map_err(|e| invalid_address("voter", &e))?;
+    let voter =
+        sdk::address::acc_codec_to_bytes(&msg.voter).map_err(|e| invalid_address("voter", &e))?;
     if !keeper::valid_vote_option(msg.option) {
         return Err(errors::invalid_vote().wrap(keeper::vote_option_name(msg.option)));
     }
@@ -228,9 +230,21 @@ pub fn vote_weighted(
     ctx: &mut Context<'_>,
     msg: &v1::MsgVoteWeighted,
 ) -> Result<v1::MsgVoteWeightedResponse> {
-    let voter = acc_from_bech32(&msg.voter).map_err(|e| invalid_address("voter", &e))?;
+    vote_weighted_from(ctx, msg, "null")
+}
+
+/// `VoteWeighted`; `no_options` is `json.Marshal` of an empty
+/// `msg.Options`: `null` as decoded (nil), `[]` as the v1beta1 server
+/// builds it (`make([]*v1.WeightedVoteOption, 0)`).
+fn vote_weighted_from(
+    ctx: &mut Context<'_>,
+    msg: &v1::MsgVoteWeighted,
+    no_options: &str,
+) -> Result<v1::MsgVoteWeightedResponse> {
+    let voter =
+        sdk::address::acc_codec_to_bytes(&msg.voter).map_err(|e| invalid_address("voter", &e))?;
     if msg.options.is_empty() {
-        return Err(sdkerr::invalid_request("[]"));
+        return Err(sdkerr::invalid_request(no_options));
     }
     let mut total = math::LegacyDec::zero();
     let mut used = Vec::new();
@@ -260,8 +274,8 @@ pub fn vote_weighted(
 
 /// `MsgDeposit`.
 pub fn deposit(ctx: &mut Context<'_>, msg: &v1::MsgDeposit) -> Result<v1::MsgDepositResponse> {
-    let depositor =
-        acc_from_bech32(&msg.depositor).map_err(|e| invalid_address("depositor", &e))?;
+    let depositor = sdk::address::acc_codec_to_bytes(&msg.depositor)
+        .map_err(|e| invalid_address("depositor", &e))?;
     // `validateDeposit`: `IsValid` and `IsAllPositive` (false for no coins)
     // of the coins as decoded, `ErrInvalidCoins.Wrap(amount.String())`.
     if !sdk::coins::raw_coins_is_valid(&msg.amount)? || msg.amount.is_empty() {
@@ -474,15 +488,22 @@ pub fn legacy_vote_weighted(
         .options
         .iter()
         .map(|o| {
-            let w = math::LegacyDec::unmarshal(o.weight.as_bytes())
-                .map_err(|e| undefined(e.to_string()))?;
+            // `opt.Weight.String()`: an empty encoding leaves the
+            // `LegacyDec` nil, which prints `<nil>`.
+            let weight = if o.weight.is_empty() {
+                "<nil>".to_owned()
+            } else {
+                math::LegacyDec::unmarshal(o.weight.as_bytes())
+                    .map_err(|e| undefined(e.to_string()))?
+                    .to_string()
+            };
             Ok(v1::WeightedVoteOption {
                 option: o.option,
-                weight: w.to_string(),
+                weight,
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    vote_weighted(
+    vote_weighted_from(
         ctx,
         &v1::MsgVoteWeighted {
             proposal_id: msg.proposal_id,
@@ -490,6 +511,7 @@ pub fn legacy_vote_weighted(
             options,
             metadata: String::new(),
         },
+        "[]",
     )?;
     Ok(v1beta1::MsgVoteWeightedResponse {})
 }

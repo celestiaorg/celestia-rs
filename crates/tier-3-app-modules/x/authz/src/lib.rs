@@ -380,8 +380,10 @@ pub fn handle_grant(
     if gostr::equal_fold(&msg.grantee, &msg.granter) {
         return Err(errors::grantee_is_granter());
     }
-    let grantee = acc_from_bech32(&msg.grantee).map_err(|e| invalid_address("grantee", &e))?;
-    let granter = acc_from_bech32(&msg.granter).map_err(|e| invalid_address("granter", &e))?;
+    let grantee = sdk::address::acc_codec_to_bytes(&msg.grantee)
+        .map_err(|e| invalid_address("grantee", &e))?;
+    let granter = sdk::address::acc_codec_to_bytes(&msg.granter)
+        .map_err(|e| invalid_address("granter", &e))?;
     let grant = msg.grant.clone().unwrap_or_default();
     let Some(any) = &grant.authorization else {
         return Err(sdkerr::invalid_type("authorization is nil"));
@@ -418,8 +420,10 @@ pub fn handle_revoke(ctx: &mut Context<'_>, msg: &MsgRevoke) -> Result<MsgRevoke
     if gostr::equal_fold(&msg.grantee, &msg.granter) {
         return Err(errors::grantee_is_granter());
     }
-    let grantee = acc_from_bech32(&msg.grantee).map_err(|e| invalid_address("grantee", &e))?;
-    let granter = acc_from_bech32(&msg.granter).map_err(|e| invalid_address("granter", &e))?;
+    let grantee = sdk::address::acc_codec_to_bytes(&msg.grantee)
+        .map_err(|e| invalid_address("grantee", &e))?;
+    let granter = sdk::address::acc_codec_to_bytes(&msg.granter)
+        .map_err(|e| invalid_address("granter", &e))?;
     if msg.msg_type_url.is_empty() {
         return Err(sdkerr::invalid_request("missing msg method name"));
     }
@@ -436,7 +440,8 @@ pub fn handle_exec(
     if msg.grantee.is_empty() {
         return Err(undefined("empty address string is not allowed"));
     }
-    let grantee = acc_from_bech32(&msg.grantee).map_err(|e| invalid_address("grantee", &e))?;
+    let grantee = sdk::address::acc_codec_to_bytes(&msg.grantee)
+        .map_err(|e| invalid_address("grantee", &e))?;
     if msg.msgs.is_empty() {
         return Err(sdkerr::invalid_request("messages cannot be empty"));
     }

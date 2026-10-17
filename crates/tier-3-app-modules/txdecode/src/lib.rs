@@ -142,7 +142,7 @@ pub fn decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
                     tx.blobs = blobs;
                     Ok(tx)
                 }
-                Some(Err(e)) => Err(undefined(format!("{e:?}"))),
+                Some(Err(e)) => Err(undefined(e.to_string())),
                 None => index_wrapper_decode_v9(raw),
             }
         })
@@ -340,7 +340,7 @@ fn decode_inner(raw: &[u8]) -> sdk::Result<Tx> {
             tx.blobs = blobs;
             Ok(tx)
         }
-        Some(Err(e)) => Err(undefined(format!("{e:?}"))),
+        Some(Err(e)) => Err(undefined(e.to_string())),
         None => index_wrapper_decode(raw),
     }
 }

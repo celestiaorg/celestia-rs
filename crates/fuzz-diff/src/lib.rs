@@ -320,11 +320,7 @@ fn rust_blob_tx(app_version: u64, input: &[u8]) -> Out {
         None => Out::default(),
         Some(Err(e)) => Out {
             is_wrapper: true,
-            err: match e {
-                txdecode::BlobTxError::NonCanonical => "non-canonical BlobTx encoding".into(),
-                txdecode::BlobTxError::Nested => "nested BlobTx wrapper".into(),
-                txdecode::BlobTxError::Invalid(s) => trunc(&s),
-            },
+            err: trunc(&e.to_string()),
             ..Out::default()
         },
         Some(Ok(b)) => Out {

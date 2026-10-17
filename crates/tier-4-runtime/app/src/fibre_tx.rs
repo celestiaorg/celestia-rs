@@ -5,7 +5,7 @@
 
 use celestia_proto::Any;
 use celestia_proto::celestia::fibre::v1::{
-    MsgDepositToEscrow, MsgPayForFibre, MsgPaymentPromiseTimeout, PaymentPromise,
+    MsgDepositToEscrow, MsgPayForFibre, MsgPaymentPromiseTimeout,
 };
 use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
 use prost::{Message, Name};
@@ -22,57 +22,6 @@ pub fn pff_type_url() -> String {
 /// `apperr.ErrInvalidPayForFibreTx`.
 fn invalid_pff(log: impl Into<String>) -> SdkError {
     SdkError::new("app", 11_146, log)
-}
-
-/// Seconds of Go's zero `time.Time` as a protobuf timestamp.
-const GO_ZERO_TIME_SECONDS: i64 = -62_135_596_800;
-
-/// `share.Namespace.ValidateForBlob` on raw bytes.
-fn valid_blob_namespace(bz: &[u8]) -> bool {
-    Namespace::from_slice(bz).is_ok_and(|ns| !ns.is_reserved() && ns.version() == 0)
-}
-
-/// `PaymentPromise.ValidateBasic` (the error kind is irrelevant to callers:
-/// it is wrapped in `ErrInvalidPayForFibreTx`).
-fn validate_promise(p: &PaymentPromise) -> Result<(), String> {
-    if p.chain_id.is_empty() {
-        return Err("chain ID cannot be empty".into());
-    }
-    if p.namespace.is_empty() {
-        return Err("namespace cannot be empty".into());
-    }
-    if p.namespace.len() != shares::NAMESPACE_SIZE {
-        return Err("namespace must be 29 bytes".into());
-    }
-    if !valid_blob_namespace(&p.namespace) {
-        return Err("invalid blob namespace".into());
-    }
-    if p.blob_size == 0 {
-        return Err("blob size must be positive".into());
-    }
-    if p.commitment.len() != 32 {
-        return Err("commitment must be 32 bytes".into());
-    }
-    if p.blob_version != 0 {
-        return Err(format!("unsupported blob version: {}", p.blob_version));
-    }
-    if p.height <= 0 {
-        return Err("height must be positive".into());
-    }
-    let zero = p
-        .creation_timestamp
-        .as_ref()
-        .is_none_or(|t| t.seconds == GO_ZERO_TIME_SECONDS && t.nanos == 0);
-    if zero {
-        return Err("creation timestamp cannot be zero".into());
-    }
-    if p.signer_public_key.as_ref().map_or(0, |k| k.key.len()) != 33 {
-        return Err("signer public key must be 33 bytes".into());
-    }
-    if p.signature.is_empty() {
-        return Err("signature cannot be empty".into());
-    }
-    Ok(())
 }
 
 /// Number of `MsgPayForFibre` messages (`countMsgPayForFibre`).
@@ -98,11 +47,14 @@ pub fn validate_shape(tx: &Tx) -> Result<(), SdkError> {
         }
         let msg =
             MsgPayForFibre::decode(m.value.as_slice()).map_err(|e| invalid_pff(e.to_string()))?;
-        validate_promise(&msg.payment_promise.unwrap_or_default()).map_err(|e| {
-            invalid_pff(format!(
-                "invalid payment promise: {e}: invalid MsgPayForFibre transaction"
-            ))
-        })?;
+        x_fibre::msgs::validate_basic_promise(&msg.payment_promise.unwrap_or_default()).map_err(
+            |e| {
+                invalid_pff(format!(
+                    "invalid payment promise: {}: invalid MsgPayForFibre transaction",
+                    e.log
+                ))
+            },
+        )?;
     }
     Ok(())
 }

@@ -132,35 +132,68 @@ pub fn atoi(s: &str) -> Option<i64> {
     i64::try_from(v).ok()
 }
 
+/// `strconv.Atoi` with Go's errors (`strconv.Atoi: parsing "x": invalid
+/// syntax` / `value out of range`; the first problem from the left wins).
+fn atoi_go(s: &str) -> core::result::Result<i64, String> {
+    let fail = |why: &str| format!("strconv.Atoi: parsing {}: {why}", gostr::quote(s));
+    let b = gostr::to_go_bytes(s);
+    let (neg, digits) = match b.first() {
+        Some(b'+') => (false, &b[1..]),
+        Some(b'-') => (true, &b[1..]),
+        _ => (false, &b[..]),
+    };
+    if digits.is_empty() {
+        return Err(fail("invalid syntax"));
+    }
+    let mut n: u64 = 0;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return Err(fail("invalid syntax"));
+        }
+        n = n
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u64::from(c - b'0')))
+            .ok_or_else(|| fail("value out of range"))?;
+    }
+    let limit = i64::MAX.unsigned_abs() + u64::from(neg);
+    if n > limit {
+        return Err(fail("value out of range"));
+    }
+    #[allow(clippy::cast_possible_wrap)]
+    Ok(if neg {
+        (n as i64).wrapping_neg()
+    } else {
+        n as i64
+    })
+}
+
 /// `ValidateHost`.
 pub fn validate_host(host: &str) -> Result<()> {
     if host.is_empty() {
         return Err(err_invalid_host_address("host cannot be empty"));
     }
-    if host.len() > MAX_HOST_LEN {
+    if gostr::go_len(host) > MAX_HOST_LEN {
         return Err(err_invalid_host_address(format!(
             "host must be at most {MAX_HOST_LEN} characters, got {}",
-            host.len()
+            gostr::go_len(host)
         )));
     }
+    let q = gostr::quote(host);
     let (h, port) = split_host_port(host).map_err(|e| {
         err_invalid_host_address(format!(
-            "host must be in host:port form, got {host:?}: address {host}: {e}"
+            "host must be in host:port form, got {q}: address {host}: {e}"
         ))
     })?;
     if h.is_empty() {
         return Err(err_invalid_host_address(format!(
-            "host part cannot be empty in {host:?}"
+            "host part cannot be empty in {q}"
         )));
     }
-    let Some(port) = atoi(port) else {
-        return Err(err_invalid_host_address(format!(
-            "port must be numeric in {host:?}"
-        )));
-    };
+    let port = atoi_go(port)
+        .map_err(|e| err_invalid_host_address(format!("port must be numeric in {q}: {e}")))?;
     if !(1..=65_535).contains(&port) {
         return Err(err_invalid_host_address(format!(
-            "port {port} in {host:?} out of range [1, 65535]"
+            "port {port} in {q} out of range [1, 65535]"
         )));
     }
     Ok(())
@@ -264,14 +297,15 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     for p in &gs.fibre_providers {
         let addr = cons_from_bech32(&p.validator_consensus_address).map_err(|e| {
             undefined(format!(
-                "invalid validator consensus address {:?}: {}",
-                p.validator_consensus_address, e.log
+                "invalid validator consensus address {}: {}",
+                gostr::quote(&p.validator_consensus_address),
+                e.log
             ))
         })?;
         if !seen.insert(addr.clone()) {
             return Err(undefined(format!(
-                "duplicate validator consensus address {:?}",
-                p.validator_consensus_address
+                "duplicate validator consensus address {}",
+                gostr::quote(&p.validator_consensus_address)
             )));
         }
         entries.push((addr, p.info.clone().unwrap_or_default()));

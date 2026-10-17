@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+gostr = { path = "../../../tier-0-primitives/gostr" }
 ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
 ark-ec = { version = "0.5", default-features = false }
 ark-ff = { version = "0.5", default-features = false }

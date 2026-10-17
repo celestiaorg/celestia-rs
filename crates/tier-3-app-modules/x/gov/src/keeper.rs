@@ -561,7 +561,13 @@ pub fn weighted_option_string(o: &WeightedVoteOption) -> String {
     use std::fmt::Write as _;
     let mut s = String::new();
     if o.option != 0 {
-        let _ = write!(s, "option:{} ", vote_option_name(o.option));
+        // The text marshaler prints a value without a name through
+        // `VoteOption.Format`'s `%v`: `byte(vo)`.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let byte = o.option as u8;
+        let name = celestia_proto::cosmos::gov::v1::VoteOption::try_from(o.option)
+            .map_or_else(|_| byte.to_string(), |v| v.as_str_name().to_owned());
+        let _ = write!(s, "option:{name} ");
     }
     if !o.weight.is_empty() {
         let _ = write!(s, "weight:{:?} ", o.weight);

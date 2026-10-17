@@ -4622,6 +4622,7 @@ name = "x-forwarding"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "hash",
  "math",
  "sdk",
@@ -4841,6 +4842,7 @@ name = "x-valaddr"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "pbjson-types",
  "prost",
  "sdk",
@@ -4869,6 +4871,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "celestia-proto",
+ "gostr",
  "hash",
  "hex",
  "prost",

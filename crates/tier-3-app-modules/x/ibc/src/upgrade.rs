@@ -210,7 +210,7 @@ fn elapsed(t: &Timeout, h: &Height, ts: u64) -> bool {
 }
 
 /// `Timeout.ErrTimeoutElapsed`.
-fn err_timeout_elapsed(t: &Timeout, h: &Height, ts: u64) -> SdkError {
+pub(crate) fn err_timeout_elapsed(t: &Timeout, h: &Height, ts: u64) -> SdkError {
     if height_elapsed(t, h) {
         return cherr::timeout_elapsed(format!(
             "current height: {}, timeout height {}",
@@ -225,7 +225,7 @@ fn err_timeout_elapsed(t: &Timeout, h: &Height, ts: u64) -> SdkError {
 }
 
 /// `Timeout.ErrTimeoutNotReached`.
-fn err_timeout_not_reached(t: &Timeout, h: &Height, ts: u64) -> SdkError {
+pub(crate) fn err_timeout_not_reached(t: &Timeout, h: &Height, ts: u64) -> SdkError {
     let th = t.height.unwrap_or_default();
     let zero = th.revision_number == 0 && th.revision_height == 0;
     if !zero && !height_elapsed(t, h) {
@@ -377,7 +377,7 @@ fn validate_self_upgrade_fields(
     }
     if !crate::connection::verify_supported_feature(
         &conn.versions[0],
-        order_name(proposed.ordering),
+        &order_name(proposed.ordering),
     ) {
         return Err(conerr::invalid_version(format!(
             "connection version {} does not support channel ordering: {}",
@@ -547,7 +547,7 @@ fn upgrade_event(ty: &str, port: &str, chan: &str, ch: &Channel, up: &Upgrade) -
             ("counterparty_channel_id", cp.channel_id),
             ("connection_hops", first_hop(&f)),
             ("version", f.version.clone()),
-            ("ordering", order_name(f.ordering).to_owned()),
+            ("ordering", order_name(f.ordering).into_owned()),
             ("upgrade_sequence", ch.upgrade_sequence.to_string()),
         ],
     ))
@@ -558,14 +558,14 @@ fn state_event(ty: &str, port: &str, chan: &str, ch: &Channel, open: bool) -> [E
     let mut attrs = vec![
         ("port_id", port.to_owned()),
         ("channel_id", chan.to_owned()),
-        ("channel_state", state_name(ch.state).to_owned()),
+        ("channel_state", state_name(ch.state).into_owned()),
         ("counterparty_port_id", cp.port_id),
         ("counterparty_channel_id", cp.channel_id),
     ];
     if open {
         attrs.push(("connection_hops", hop(ch)));
         attrs.push(("version", ch.version.clone()));
-        attrs.push(("ordering", order_name(ch.ordering).to_owned()));
+        attrs.push(("ordering", order_name(ch.ordering).into_owned()));
     }
     attrs.push(("upgrade_sequence", ch.upgrade_sequence.to_string()));
     with_message(sdk::event::event(ty, attrs))
@@ -582,7 +582,7 @@ pub fn flush_complete_event(port: &str, chan: &str, ch: &Channel) -> [Event; 2] 
             ("channel_id", chan.to_owned()),
             ("counterparty_port_id", cp.port_id),
             ("counterparty_channel_id", cp.channel_id),
-            ("channel_state", state_name(ch.state).to_owned()),
+            ("channel_state", state_name(ch.state).into_owned()),
         ],
     ))
 }
@@ -1300,7 +1300,7 @@ pub fn emit_upgrade(ty: &str, port: &str, chan: &str, ch: &Channel, up: &Upgrade
                 ("counterparty_channel_id", cp.channel_id),
                 ("connection_hops", first_hop(&f)),
                 ("version", f.version.clone()),
-                ("ordering", order_name(f.ordering).to_owned()),
+                ("ordering", order_name(f.ordering).into_owned()),
                 (
                     "timeout_height",
                     host::height_string(&t.height.unwrap_or_default()),

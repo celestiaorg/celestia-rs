@@ -348,14 +348,15 @@ fn conn_events(
     ]
 }
 
-fn state_name(s: i32) -> &'static str {
-    match State::try_from(s) {
+fn state_name(s: i32) -> std::borrow::Cow<'static, str> {
+    // gogoproto `EnumName`: an unknown value prints as its number.
+    std::borrow::Cow::Borrowed(match State::try_from(s) {
         Ok(State::UninitializedUnspecified) => "STATE_UNINITIALIZED_UNSPECIFIED",
         Ok(State::Init) => "STATE_INIT",
         Ok(State::Tryopen) => "STATE_TRYOPEN",
         Ok(State::Open) => "STATE_OPEN",
-        Err(_) => "UNKNOWN",
-    }
+        Err(_) => return std::borrow::Cow::Owned(s.to_string()),
+    })
 }
 
 /// `ConnOpenInit`.

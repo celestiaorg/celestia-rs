@@ -248,14 +248,11 @@ fn run_ante(
             };
             // SetUpContextDecorator recovers the out-of-gas panic of any
             // later decorator: `out of gas in location: %v; gasWanted: %d,
-            // gasUsed: %d` (the meter at the panic).
+            // gasUsed: %d` (the meter at the panic). The panic unwinds past
+            // every wrap a decorator added (e.g. the IBC redundant-relay
+            // check's `receive packet verification failed: ...`).
             let fail = match fail {
-                Fail::Err(e)
-                    if e.codespace == "sdk"
-                        && e.code == 11
-                        && (e.log == "out of gas"
-                            || e.log.starts_with("out of gas in location: ")) =>
-                {
+                Fail::Err(e) if e.codespace == "sdk" && e.code == 11 => {
                     match ctx.gas.first_out_of_gas() {
                         Some((descriptor, used)) => {
                             Fail::Err(sdk::error::sdk::out_of_gas(format!(

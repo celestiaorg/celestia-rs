@@ -46,8 +46,11 @@ pub mod errors {
     }
 }
 
+/// `AddressCodec().StringToBytes`, failing as the msg server does
+/// (`ErrInvalidAddress.Wrapf("invalid %s address: %s", err)`).
 fn parse_addr(s: &str, what: &str) -> Result<Vec<u8>> {
-    x_auth::parse_bech32(s).map_err(|e| e.wrap(format!("invalid {what} address")))
+    sdk::address::acc_codec_to_bytes(s)
+        .map_err(|e| errs::invalid_address(format!("invalid {what} address: {}", e.log)))
 }
 
 fn all_positive(c: &Coins) -> bool {

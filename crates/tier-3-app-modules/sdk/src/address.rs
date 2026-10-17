@@ -36,7 +36,7 @@ pub fn from_bech32(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
     if s.trim().is_empty() {
         return Err(undefined("empty address string is not allowed"));
     }
-    let (hrp, bz) = encoding::bech32::decode(s).map_err(|e| undefined(e.to_string()))?;
+    let (hrp, bz) = encoding::bech32::decode_and_convert(s).map_err(undefined)?;
     if hrp != prefix {
         return Err(undefined(format!(
             "invalid Bech32 prefix; expected {prefix}, got {hrp}"
@@ -75,25 +75,71 @@ fn codec_to_bytes(s: &str, prefix: &str) -> Result<Vec<u8>, SdkError> {
 /// `bech32.DecodeAndConvert`'s `decoding bech32 failed: ...`, the prefix
 /// check, then `VerifyAddressFormat` (wrapping `unknown address`).
 pub fn acc_from_bech32_go(s: &str) -> Result<Vec<u8>, String> {
+    acc_from_bech32_frames(s).map_err(|(e, _)| e)
+}
+
+/// [`acc_from_bech32_go`] as Go's `%v` prints the error: an error built by
+/// `errorsmod.Wrap` (`VerifyAddressFormat`'s) appends the frame where it
+/// was created (`cosmossdk.io/errors` `writeSimpleFrame`), i.e. the
+/// executing celestia-app's cosmos-sdk module path and line.
+pub fn acc_from_bech32_go_v(s: &str) -> Result<Vec<u8>, String> {
+    acc_from_bech32_frames(s).map_err(|(e, line)| match line {
+        Some(line) => format!(
+            "{e} [celestiaorg/cosmos-sdk@{}/types/address.go:{line}]",
+            if crate::version::is_v9(crate::version::app_version()) {
+                "v0.52.8"
+            } else {
+                "v0.52.12"
+            }
+        ),
+        None => e,
+    })
+}
+
+/// `AccAddressFromBech32`: the error text and, for the errors
+/// `VerifyAddressFormat` builds with `errorsmod.Wrap(f)`, its line in
+/// `types/address.go` (the same in celestia-app v10.4.0's and v9.0.8's
+/// cosmos-sdk).
+fn acc_from_bech32_frames(s: &str) -> Result<Vec<u8>, (String, Option<u32>)> {
     if s.trim().is_empty() {
-        return Err("empty address string is not allowed".into());
+        return Err(("empty address string is not allowed".into(), None));
     }
-    let (hrp, bz) = encoding::bech32::decode_and_convert(s)?;
+    let (hrp, bz) = encoding::bech32::decode_and_convert(s).map_err(|e| (e, None))?;
     if hrp != ACC_PREFIX {
-        return Err(format!(
-            "invalid Bech32 prefix; expected {ACC_PREFIX}, got {hrp}"
+        return Err((
+            format!("invalid Bech32 prefix; expected {ACC_PREFIX}, got {hrp}"),
+            None,
         ));
     }
     if bz.is_empty() {
-        return Err("addresses cannot be empty: unknown address".into());
+        return Err((
+            "addresses cannot be empty: unknown address".into(),
+            Some(173),
+        ));
     }
     if bz.len() > 255 {
-        return Err(format!(
-            "address max length is 255, got {}: unknown address",
-            bz.len()
+        return Err((
+            format!(
+                "address max length is 255, got {}: unknown address",
+                bz.len()
+            ),
+            Some(177),
         ));
     }
     Ok(bz)
+}
+
+/// The account `address.Codec` with its error's text (`err.Error()`, as
+/// `%s` prints it): `empty address string is not allowed`, `decoding bech32
+/// failed: ...`, `hrp does not match bech32 prefix: ...: internal logic
+/// error`, `addresses cannot be empty: unknown address`.
+pub fn acc_codec_go(s: &str) -> Result<Vec<u8>, String> {
+    acc_codec_to_bytes(s).map_err(|e| e.log)
+}
+
+/// The validator operator `address.Codec` with its error's text.
+pub fn val_codec_go(s: &str) -> Result<Vec<u8>, String> {
+    val_codec_to_bytes(s).map_err(|e| e.log)
 }
 
 /// Go `sdk.AccAddressFromBech32` / the account address codec.

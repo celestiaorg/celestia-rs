@@ -17,6 +17,7 @@ gostr = { path = "../../../tier-0-primitives/gostr" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 encoding = { path = "../../../tier-0-primitives/encoding" }
 hash = { path = "../../../tier-0-primitives/hash" }
+hex = "0.4"
 math = { path = "../../../tier-0-primitives/math" }
 prost = "0.13"
 sdk = { path = "../../sdk" }
@@ -25,6 +26,3 @@ x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
 x-capability = { path = "../capability" }
 x-ibc = { path = "../ibc" }
-
-[dev-dependencies]
-hex = "0.4"

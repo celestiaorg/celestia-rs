@@ -140,9 +140,29 @@ pub enum BlobTxError {
     NonCanonical,
     /// `ErrNestedBlobTx`.
     Nested,
+    /// `ErrNonCanonicalBlobTx` for unknown fields in blob `i`.
+    NonCanonicalBlob(usize),
     /// Any other error (no blobs, invalid namespace, share version, signer,
     /// data size, …).
     Invalid(String),
+}
+
+impl std::fmt::Display for BlobTxError {
+    /// Go's error texts.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NonCanonical => f.write_str("non-canonical BlobTx encoding"),
+            Self::Nested => f.write_str("nested BlobTx wrapper"),
+            Self::NonCanonicalBlob(i) => write!(f, "non-canonical BlobTx encoding: blob {i}"),
+            Self::Invalid(s) => f.write_str(s),
+        }
+    }
+}
+
+/// Go's `%v` of a `[]byte`: `[0 1 255]`.
+fn go_byte_list(b: &[u8]) -> String {
+    let items: Vec<String> = b.iter().map(u8::to_string).collect();
+    format!("[{}]", items.join(" "))
 }
 
 /// A valid `BlobTx`: the inner SDK tx and its blobs.
@@ -203,11 +223,9 @@ fn validate_blob_tx(tx: &[u8], p: BlobTxProto) -> Result<UnwrappedBlobTx, BlobTx
     let mut blobs = Vec::with_capacity(p.blobs.len());
     for (i, b) in p.blobs.into_iter().enumerate() {
         if b.has_unknown {
-            return Err(BlobTxError::NonCanonical);
+            return Err(BlobTxError::NonCanonicalBlob(i));
         }
-        blobs.push(
-            new_blob_from_proto(b).map_err(|e| BlobTxError::Invalid(format!("blob {i}: {e}")))?,
-        );
+        blobs.push(new_blob_from_proto(b).map_err(BlobTxError::Invalid)?);
     }
     let canonical = marshal_blob_tx(&p.tx, &blobs);
     if canonical != tx {
@@ -236,14 +254,21 @@ fn new_blob_from_proto(p: BlobProto) -> Result<Blob, String> {
         ));
     }
     if p.namespace_id.len() != NAMESPACE_ID_SIZE {
-        return Err("invalid namespace: unsupported namespace id length".into());
+        return Err(format!(
+            "invalid namespace: unsupported namespace id length: id {} must be {NAMESPACE_ID_SIZE} bytes but it was {} bytes",
+            go_byte_list(&p.namespace_id),
+            p.namespace_id.len()
+        ));
     }
     if ns_version == 0
         && p.namespace_id[..VERSION_ZERO_PREFIX]
             .iter()
             .any(|&b| b != 0)
     {
-        return Err("invalid namespace: unsupported namespace id with version 0".into());
+        return Err(format!(
+            "invalid namespace: unsupported namespace id with version 0. ID {} must start with {VERSION_ZERO_PREFIX} leading zeros",
+            go_byte_list(&p.namespace_id)
+        ));
     }
     // NewBlob.
     if p.data.is_empty() {
@@ -268,7 +293,10 @@ fn new_blob_from_proto(p: BlobProto) -> Result<Blob, String> {
                 return Err("share version 2 requires signer of size 20 bytes".into());
             }
             if p.data.len() != 4 + 32 {
-                return Err("share version 2 requires data of size 36 bytes".into());
+                return Err(format!(
+                    "share version 2 requires data of size 36 bytes (fibre_blob_version + commitment), got {}",
+                    p.data.len()
+                ));
             }
         }
         v => {

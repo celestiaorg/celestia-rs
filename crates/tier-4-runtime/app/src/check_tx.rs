@@ -66,7 +66,9 @@ impl App {
             return Ok(error_response(&e, 0, 0));
         }
         match txdecode::unmarshal_blob_tx(raw) {
-            Some(Err(BlobTxError::NonCanonical | BlobTxError::Nested)) => {
+            Some(Err(
+                BlobTxError::NonCanonical | BlobTxError::Nested | BlobTxError::NonCanonicalBlob(_),
+            )) => {
                 let e = SdkError::new("app", 11_147, "blob tx is not canonically encoded");
                 return Ok(error_response(&e, 0, 0));
             }
@@ -115,7 +117,7 @@ impl App {
         }
         let blob = match txdecode::unmarshal_blob_tx_v9(raw) {
             Some(Err(BlobTxError::Invalid(e))) => return Err(e),
-            Some(Err(e)) => return Err(format!("{e:?}")),
+            Some(Err(e)) => return Err(e.to_string()),
             Some(Ok(u)) => Some(u),
             None => None,
         };

@@ -972,9 +972,9 @@ pub fn is_host_msg(type_url: &str) -> bool {
 }
 
 fn signer_check(signer: &str) -> Result<()> {
-    x_auth::parse_bech32(signer).map(|_| ()).map_err(|e| {
-        ierr::invalid_address(format!("string could not be parsed as address: {}", e.log))
-    })
+    sdk::address::acc_from_bech32_go_v(signer)
+        .map(|_| ())
+        .map_err(|e| ierr::invalid_address(format!("string could not be parsed as address: {e}")))
 }
 
 /// `ValidateBasic` of the host messages (`None` for other messages).

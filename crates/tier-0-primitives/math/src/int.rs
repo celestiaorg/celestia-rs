@@ -241,6 +241,15 @@ impl Int {
         Self::from_bigint(i)
     }
 
+    /// The bit length of a non-empty `data` that [`Int::unmarshal`] rejects
+    /// as out of range (Go's `integer out of range; got: %d, max: 256`);
+    /// `None` when it parses within range or does not parse.
+    #[must_use]
+    pub fn unmarshal_overflow_bits(data: &[u8]) -> Option<u64> {
+        let i = parse_go_big_int(data, Base::Auto)?;
+        big_int_overflows(&i).then(|| i.bits())
+    }
+
     /// JSON encoding (Go `MarshalJSON`): the decimal string as a JSON string.
     #[must_use]
     pub fn to_json(&self) -> String {

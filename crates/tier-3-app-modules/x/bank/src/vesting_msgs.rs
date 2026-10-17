@@ -17,9 +17,9 @@ pub fn handle_create_vesting_account(
     ctx: &mut Context<'_>,
     msg: &pb::MsgCreateVestingAccount,
 ) -> Result<pb::MsgCreateVestingAccountResponse> {
-    let from = sdk::address::acc_from_bech32(&msg.from_address)
+    let from = sdk::address::acc_codec_to_bytes(&msg.from_address)
         .map_err(|e| errs::invalid_address(format!("invalid 'from' address: {}", e.log)))?;
-    let to = sdk::address::acc_from_bech32(&msg.to_address)
+    let to = sdk::address::acc_codec_to_bytes(&msg.to_address)
         .map_err(|e| errs::invalid_address(format!("invalid 'to' address: {}", e.log)))?;
     // `validateAmount`: `IsValid` / `IsAllPositive` of the raw coins (a nil
     // amount `Validate` reaches panics).

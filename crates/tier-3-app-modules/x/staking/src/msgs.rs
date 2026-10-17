@@ -461,7 +461,7 @@ pub fn handle_cancel_unbonding_delegation(
     }
     let Some(mut ubd) = store::get_ubd(ctx, &del, &val)? else {
         return Err(sdk::error::internal(format!(
-            "unbonding delegation with delegator {} not found for validator {}",
+            "rpc error: code = NotFound desc = unbonding delegation with delegator {} not found for validator {}",
             msg.delegator_address, msg.validator_address
         )));
     };

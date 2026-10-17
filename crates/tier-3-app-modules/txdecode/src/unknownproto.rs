@@ -142,7 +142,8 @@ fn walk(
         let n = protowire::consume_field_value(tag_num, wire_type, bz);
         if n < 0 {
             return Err(GoError::new(format!(
-                "could not consume field value for tagNum: {tag_num}; {}",
+                "could not consume field value for tagNum: {tag_num}, wireType: {}; {}",
+                gostr::quote(&wire_type_string(wire_type)),
                 protowire::parse_error(n)
             )));
         }
