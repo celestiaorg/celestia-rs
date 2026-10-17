@@ -272,6 +272,14 @@ impl PeerState {
         self.lock().0.clone()
     }
 
+    /// The round state and the statistics under one lock
+    /// (`PeerState.MarshalJSON`).
+    #[must_use]
+    pub fn round_state_and_stats(&self) -> (PeerRoundState, PeerStats) {
+        let g = self.lock();
+        (g.0.clone(), g.1)
+    }
+
     /// `GetHeight`.
     #[must_use]
     pub fn height(&self) -> i64 {

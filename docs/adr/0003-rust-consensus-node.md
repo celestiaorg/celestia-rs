@@ -77,9 +77,9 @@ Live double-sign evidence (`conformance/devnet/double-sign-evidence.sh`):
 conflicting prevotes reach a Rust validator only; it verifies and gossips
 the evidence, the network commits it and slashes the signer.
 
-Next: Arabica / Mocha full node (M12-M13); remaining deferred items are in
-the M9 commit notes (peer stats / `MarkPeerAsGood`, `dump_consensus_state`
-peer round states).
+Next: Arabica / Mocha full node (M12-M13). The M9 deferred items (peer
+stats / `MarkPeerAsGood`, `dump_consensus_state` peer round states) are
+done (2026-10-17, below).
 
 Soak (`conformance/devnet/soak.sh`, 2026-10-14/15): 2 Go + 3 Rust
 validators, Go and Rust full nodes, links through a chaos proxy, 2.34 h,
@@ -154,8 +154,24 @@ and reports gas wanted -1 (every tx rejected; Go and Rust alike). The
 soak works around each (it records the stall and restarts / reconnects
 the stuck nodes, sends no traffic to a syncing node). Rust fix:
 `/consensus_state` now carries the height's votes (`height_vote_set`,
-Go's `HeightVoteSet.MarshalJSON`), which was empty. Open:
-`/dump_consensus_state` still lacks Go's vote sets and peer round states.
+Go's `HeightVoteSet.MarshalJSON`), which was empty.
+
+`/dump_consensus_state` (2026-10-17) is Go's `GetRoundStateJSON`: the
+whole round state encoded on request from the reactor's snapshot
+(proposal with its untagged `Type`, proposal / locked / valid blocks
+and their part sets as `count/total` plus the parts' bit array, the
+height's votes, `last_commit` as `VoteSetJSON` with `peer_maj_23s`,
+validators, last validators), and per peer `node_address`
+(`id@ip:port`) with `PeerState.MarshalJSON` (the peer round state's bit
+arrays as `x_` strings, `null` for Go's nil arrays, and `stats`). The
+stats are now counted: the state machine reports every vote / block
+part of a peer it added (`statsMsgQueue`) and the reactor records it,
+marking the peer good every 10 000 (`peerStatsRoutine`). Go writes
+`peer_maj_23s` in map order (random with more than one entry); Rust
+sorts by peer id. Checked against a 2 Go + 2 Rust validator devnet: 24
+samples of each node kind at heights 7-10 (propose, prevote, precommit
+with locked / valid blocks), every key path, key order and value form
+the same, peers' vote counts alike.
 
 ## Implementation notes
 

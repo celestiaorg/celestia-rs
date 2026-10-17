@@ -366,8 +366,12 @@ impl rpc::NodeStatus for NodeShared {
                     is_outbound: p.is_outbound(),
                     connection_status: connection_status_json(&p.status()),
                     remote_ip: p.remote_ip().to_string(),
-                    socket_addr: p.remote_addr().to_string(),
-                    peer_state: None,
+                    socket_addr: p.socket_addr().to_string(),
+                    peer_state: self
+                        .consensus
+                        .get()
+                        .and_then(|r| r.peer_state(&p.id()))
+                        .map(|ps| peer_state_json(&ps)),
                 }
             })
             .collect()
@@ -421,7 +425,10 @@ impl rpc::NodeStatus for NodeShared {
         Ok("Dialing peers in progress. See /net_info for details".into())
     }
     fn round_state_json(&self) -> String {
-        self.lock().0.clone()
+        match self.consensus.get() {
+            Some(r) => round_state_full_json(&r.snapshot().rs),
+            None => self.lock().0.clone(),
+        }
     }
     fn round_state_simple_json(&self) -> String {
         let g = self.lock();
@@ -468,6 +475,165 @@ fn height_vote_set_json(votes: &consensus::height_vote_set::HeightVoteSet) -> rp
             })
             .collect(),
     )
+}
+
+/// `bits.BitArray.MarshalJSON` (`"x_x"`; Go's nil array is `null`).
+fn bit_array_json(b: &ctypes::BitArray) -> rpc::json::J {
+    if b.is_nil() {
+        return rpc::json::J::Null;
+    }
+    rpc::json::J::str(
+        b.0.iter()
+            .map(|&x| if x { 'x' } else { '_' })
+            .collect::<String>(),
+    )
+}
+
+/// `PartSet.MarshalJSON` (`count/total` and the parts' bit array; a nil
+/// set is `null`).
+fn part_set_json(p: Option<&ctypes::PartSet>) -> rpc::json::J {
+    use rpc::json::J;
+    p.map_or(J::Null, |p| {
+        J::obj([
+            (
+                "count/total",
+                J::str(format!("{}/{}", p.count(), p.total())),
+            ),
+            (
+                "parts_bit_array",
+                bit_array_json(&ctypes::BitArray(p.bit_array())),
+            ),
+        ])
+    })
+}
+
+/// `types.Proposal` under cmtjson (`Type` has no JSON tag).
+fn proposal_json(p: &ctypes::Proposal) -> rpc::json::J {
+    use rpc::json::J;
+    J::obj([
+        ("Type", J::num(p.msg_type)),
+        ("height", J::i64s(p.height)),
+        ("round", J::num(p.round)),
+        ("pol_round", J::num(p.pol_round)),
+        ("block_id", rpc::encode::block_id(&p.block_id)),
+        ("timestamp", J::time(&p.timestamp)),
+        ("signature", J::b64n(&p.signature)),
+    ])
+}
+
+/// `VoteSet.MarshalJSON` (`VoteSetJSON`). Go writes `peer_maj_23s` in map
+/// iteration order (random with more than one entry); here by peer id.
+fn vote_set_json(vs: Option<&consensus::VoteSet>) -> rpc::json::J {
+    use rpc::json::J;
+    vs.map_or(J::Null, |vs| {
+        J::obj([
+            (
+                "votes",
+                J::Arr(vs.vote_strings().into_iter().map(J::str).collect()),
+            ),
+            ("votes_bit_array", J::str(vs.bit_array_string())),
+            (
+                "peer_maj_23s",
+                J::Obj(
+                    vs.peer_maj23s()
+                        .iter()
+                        .map(|(k, b)| (k.clone(), rpc::encode::block_id(b)))
+                        .collect(),
+                ),
+            ),
+        ])
+    })
+}
+
+/// `cmtjson.Marshal(cs.RoundState)` (`GetRoundStateJSON`, the
+/// `round_state` of `/dump_consensus_state`).
+fn round_state_full_json(rs: &consensus::RoundState) -> String {
+    use rpc::json::J;
+    let block = |b: Option<&ctypes::Block>| b.map_or(J::Null, rpc::encode::block);
+    J::obj([
+        ("height", J::i64s(rs.height)),
+        ("round", J::num(rs.round)),
+        ("step", J::num(rs.step.as_u32())),
+        ("start_time", J::time(&rs.start_time)),
+        ("commit_time", J::time(&rs.commit_time)),
+        ("validators", rpc::encode::validator_set(&rs.validators)),
+        (
+            "proposal",
+            rs.proposal.as_ref().map_or(J::Null, proposal_json),
+        ),
+        ("proposal_block", block(rs.proposal_block.as_ref())),
+        (
+            "proposal_block_parts",
+            part_set_json(rs.proposal_block_parts.as_ref()),
+        ),
+        ("locked_round", J::num(rs.locked_round)),
+        ("locked_block", block(rs.locked_block.as_ref())),
+        (
+            "locked_block_parts",
+            part_set_json(rs.locked_block_parts.as_ref()),
+        ),
+        ("valid_round", J::num(rs.valid_round)),
+        ("valid_block", block(rs.valid_block.as_ref())),
+        (
+            "valid_block_parts",
+            part_set_json(rs.valid_block_parts.as_ref()),
+        ),
+        ("votes", height_vote_set_json(&rs.votes)),
+        ("commit_round", J::num(rs.commit_round)),
+        ("last_commit", vote_set_json(rs.last_commit.as_ref())),
+        (
+            "last_validators",
+            rpc::encode::validator_set(&rs.last_validators),
+        ),
+        (
+            "triggered_timeout_precommit",
+            J::Bool(rs.triggered_timeout_precommit),
+        ),
+    ])
+    .encode()
+}
+
+/// `PeerState.MarshalJSON`: the peer's round state and statistics (Go
+/// `int`s as strings under cmtjson).
+fn peer_state_json(ps: &consensus::peer_state::PeerState) -> String {
+    use rpc::json::J;
+    let (prs, stats) = ps.round_state_and_stats();
+    J::obj([
+        (
+            "round_state",
+            J::obj([
+                ("height", J::i64s(prs.height)),
+                ("round", J::num(prs.round)),
+                ("step", J::num(prs.step.as_u32())),
+                ("start_time", J::time(&prs.start_time)),
+                ("proposal", J::Bool(prs.proposal)),
+                (
+                    "proposal_block_part_set_header",
+                    rpc::encode::part_set_header(&prs.proposal_block_part_set_header),
+                ),
+                (
+                    "proposal_block_parts",
+                    bit_array_json(&prs.proposal_block_parts),
+                ),
+                ("proposal_pol_round", J::num(prs.proposal_pol_round)),
+                ("proposal_pol", bit_array_json(&prs.proposal_pol)),
+                ("prevotes", bit_array_json(&prs.prevotes)),
+                ("precommits", bit_array_json(&prs.precommits)),
+                ("last_commit_round", J::num(prs.last_commit_round)),
+                ("last_commit", bit_array_json(&prs.last_commit)),
+                ("catchup_commit_round", J::num(prs.catchup_commit_round)),
+                ("catchup_commit", bit_array_json(&prs.catchup_commit)),
+            ]),
+        ),
+        (
+            "stats",
+            J::obj([
+                ("votes", J::str(stats.votes.to_string())),
+                ("block_parts", J::str(stats.block_parts.to_string())),
+            ]),
+        ),
+    ])
+    .encode()
 }
 
 impl NodeShared {
@@ -530,27 +696,15 @@ impl NodeShared {
                 }),
             ),
         ]);
-        let full = rpc::json::J::obj([
-            ("height", rpc::json::J::i64s(rs.height)),
-            ("round", rpc::json::J::num(rs.round)),
-            ("step", rpc::json::J::num(rs.step.as_u32())),
-            ("start_time", rpc::json::J::time(&rs.start_time)),
-            ("commit_time", rpc::json::J::time(&rs.commit_time)),
-            ("validators", rpc::encode::validator_set(&rs.validators)),
-            ("locked_round", rpc::json::J::num(rs.locked_round)),
-            ("valid_round", rpc::json::J::num(rs.valid_round)),
-            ("commit_round", rpc::json::J::num(rs.commit_round)),
-            (
-                "last_validators",
-                rpc::encode::validator_set(&rs.last_validators),
-            ),
-            (
-                "triggered_timeout_precommit",
-                rpc::json::J::Bool(rs.triggered_timeout_precommit),
-            ),
-        ]);
+        // With the consensus reactor, `dump_consensus_state` encodes its
+        // snapshot on request (Go's `GetRoundStateJSON` under the lock).
+        let full = if self.consensus.get().is_some() {
+            String::new()
+        } else {
+            round_state_full_json(rs)
+        };
         let votes = height_vote_set_json(&rs.votes).encode();
-        *self.lock() = (full.encode(), simple.encode(), votes);
+        *self.lock() = (full, simple.encode(), votes);
     }
 
     /// Refreshes the votes of the round state (a vote was added).

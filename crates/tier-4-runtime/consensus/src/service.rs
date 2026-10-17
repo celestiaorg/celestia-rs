@@ -115,6 +115,10 @@ fn dispatch(reactor: &Reactor, ev: &Event) {
         Event::ConflictingVotes { vote_a, vote_b } => {
             tracing::error!(?vote_a, ?vote_b, "conflicting votes");
         }
+        Event::PeerContribution {
+            peer_id,
+            block_part,
+        } => reactor.record_peer_contribution(peer_id, *block_part),
         Event::Broadcast(_) | Event::NewBlock { .. } => {}
     }
 }
