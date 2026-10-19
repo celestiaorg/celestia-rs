@@ -1579,6 +1579,7 @@ dependencies = [
  "x-icahost",
  "x-packetforward",
  "x-transfer",
+ "x-zkism",
  "zstd",
 ]
 

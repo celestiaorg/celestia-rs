@@ -24,6 +24,8 @@ package main
 //	c_secp256r1 1 public key (33 bytes, cosmos-sdk), 2 message, 3 signature
 //	c_ics23     1 ibc-go MerkleProof, 2 root, 3 value (absent: non-membership),
 //	            4.. path segments
+//	c_groth16   1 SP1 Groth16 verifying key, 2 proof, 3 program vkey,
+//	            4 public values (x/zkism)
 
 import (
 	"crypto/sha256"
@@ -32,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 
+	zkismtypes "github.com/celestiaorg/celestia-app/v10/x/zkism/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -43,10 +46,14 @@ import (
 	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
+	gnarklogger "github.com/consensys/gnark/logger"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256r1"
 	commitmenttypes "github.com/cosmos/ibc-go/v8/modules/core/23-commitment/types"
 	"google.golang.org/protobuf/encoding/protowire"
 )
+
+// gnark logs every verification to stdout, the oracle's protocol.
+func init() { gnarklogger.Disable() }
 
 func h(b []byte) string { return hex.EncodeToString(b) }
 
@@ -366,6 +373,21 @@ func consensusOp(op string, in []byte) (o out) {
 			break
 		}
 		c.data("ok", func() string { return strconv.FormatBool(pk.VerifySignature(first(m, 2), first(m, 3))) })
+	case "c_groth16":
+		var v *zkismtypes.SP1Groth16Verifier
+		// As stored keys are: ValidateGroth16Vkey (ValidateBasic and
+		// genesis) guards gnark's decoder, whose length prefixes would
+		// otherwise allocate without bound.
+		if !c.run("vk", func() (e error) {
+			if e = zkismtypes.ValidateGroth16Vkey(first(m, 1)); e != nil {
+				return e
+			}
+			v, e = zkismtypes.NewSP1Groth16Verifier(first(m, 1))
+			return
+		}) {
+			break
+		}
+		c.run("verify", func() error { return v.VerifyProof(first(m, 2), first(m, 3), first(m, 4)) })
 	case "c_ics23":
 		// What the IBC keepers do with a counterparty proof:
 		// cdc.Unmarshal, then MerkleProof.Verify(Non)Membership with the

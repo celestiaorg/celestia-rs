@@ -277,7 +277,7 @@ test), then start that harness's count again.
   each op clean for at least 10⁸ inputs after its last fix.
 
   *Progress (2026-10-19):* `conformance/fuzzoracle/v10/consensus.go` and
-  `crates/fuzz-diff/src/consensus.rs` add fifteen ops (`c_vote`,
+  `crates/fuzz-diff/src/consensus.rs` add sixteen ops (`c_vote`,
   `c_proposal`, `c_header`, `c_block`, `c_commit` with full / light /
   light-all-signatures / trusting verification, `c_valset` with updates
   and proposer priorities, `c_valupd`, `c_params` with `ValidateUpdate`,
@@ -285,7 +285,9 @@ test), then start that harness's count again.
   `c_secp256k1`, and `c_prop` for the propagation messages: compact
   block sign bytes, proofs and re-encoding, have / want parts, and
   `c_secp256r1` against cosmos-sdk's account keys, and `c_ics23`:
-  ibc-go `MerkleProof` decoding and (non-)membership verification),
+  ibc-go `MerkleProof` decoding and (non-)membership verification, and
+  `c_groth16`: x/zkism's SP1 verifying-key checks and gnark Groth16
+  verification),
   seeded
   from the ctypes and propagation fixtures; the nightly
   `fuzz-exec` runs them as the `consensus` job (2 h per night). They found
@@ -294,7 +296,7 @@ test), then start that harness's count again.
   `Data.hash` scan; the header's chain id), all fixed; the 5 031 inputs
   that differed before the fixes agree, 215 of them pinned in
   `tests/regressions.jsonl`. Open: `ValidateBlock` against a state, the
-  NMT / SP1 proof differentials, and the 10⁸ inputs per op.
+  NMT proof differential, and the 10⁸ inputs per op.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.

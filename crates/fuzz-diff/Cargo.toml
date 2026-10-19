@@ -53,6 +53,7 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 x-gov = { path = "../tier-3-app-modules/x/gov" }
 x-hyperlane = { path = "../tier-3-app-modules/x/hyperlane" }
 x-ibc = { path = "../tier-3-app-modules/x/ibc" }
+x-zkism = { path = "../tier-3-app-modules/x/zkism" }
 x-icahost = { path = "../tier-3-app-modules/x/icahost" }
 x-packetforward = { path = "../tier-3-app-modules/x/packetforward" }
 x-transfer = { path = "../tier-3-app-modules/x/transfer" }

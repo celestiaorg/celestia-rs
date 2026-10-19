@@ -39,6 +39,7 @@ pub const OPS: &[&str] = &[
     "c_prop",
     "c_secp256r1",
     "c_ics23",
+    "c_groth16",
 ];
 
 /// Splits the input into its length-delimited fields.
@@ -446,6 +447,25 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 );
             }
         }
+        "c_groth16" => {
+            use x_zkism::groth16;
+            let vk_bytes = first(m, 1).unwrap_or_default();
+            let vk = match x_zkism::msgs::validate_groth16_vkey(vk_bytes)
+                .and_then(|()| groth16::new_verifying_key(vk_bytes))
+            {
+                Ok(v) => v,
+                Err(e) => return c.put("vk", &format!("err:{e}")),
+            };
+            c.put("vk", "ok");
+            let r = groth16::sp1_verify(
+                &vk,
+                vk_bytes,
+                first(m, 2).unwrap_or_default(),
+                first(m, 3).unwrap_or_default(),
+                first(m, 4).unwrap_or_default(),
+            );
+            c.run("verify", r.map_err(|e| format!("{e:?}")));
+        }
         "c_ics23" => {
             use x_ibc::commitment as cm;
             let mp = match cm::decode_proof(first(m, 1).unwrap_or_default()) {
@@ -728,7 +748,7 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
         // from an absent one (`cannot be nil`), which prost cannot.
         let class_only = matches!(
             op,
-            "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd" | "c_ics23"
+            "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd" | "c_ics23" | "c_groth16"
         ) || k.ends_with("_add");
         // `duplicate entry ... in [changes]`: Go sorts the changes with an
         // unstable sort, so entries sharing an address print in an order
@@ -977,6 +997,27 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .map(|c| hx(&c["vals"]))
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
+            }
+        }
+        "c_groth16" => {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tier-3-app-modules/x/zkism/testdata");
+            let rd = |p: &str| std::fs::read(dir.join(p)).unwrap_or_default();
+            let vk = rd("groth16_vk.bin");
+            for (case, vkey) in [
+                (
+                    "state_transition",
+                    "004ac29c473e811dece0f8dd76c8eda80f886d263efb393ec81f54173e54f160",
+                ),
+                (
+                    "state_membership",
+                    "00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63",
+                ),
+            ] {
+                let proof = rd(&format!("{case}/proof.bin"));
+                let values = rd(&format!("{case}/public_values.bin"));
+                let vkey = hex::decode(vkey).unwrap_or_default();
+                out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
             }
         }
         "c_ics23" => {
