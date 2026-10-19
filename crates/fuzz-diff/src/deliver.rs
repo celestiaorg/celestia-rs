@@ -3588,6 +3588,11 @@ pub fn run(
     };
     let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
     let sim_on = std::env::var("DELIVER_SIM").is_ok();
+    // `DELIVER_GOVPASS`: the fuzz accounts pass every proposal (deposit and
+    // yes votes, re-sent every 4 blocks), so each proposal's messages run
+    // and a failure's text is stored in `failed_reason` (state).
+    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
+    let mut govpass_delegated = false;
     let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
     // not in a block, not removed by a recheck (oldest first, capped).
@@ -3729,6 +3734,59 @@ pub fn run(
                     for i in (0..ACCOUNTS - 1).filter(|&i| i != HL_ACCT) {
                         let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
                             proposal_id: hl_seq.proposal,
+                            voter: gn.accts[i].acc.clone(),
+                            option: 1,
+                            metadata: String::new(),
+                        });
+                        if let Some(t) = sign_simple(&gn, i, vec![vote], 400_000) {
+                            gn.accts[i].seq += 1;
+                            txs.push(t);
+                        }
+                    }
+                }
+            }
+            if govpass && !govpass_delegated {
+                // Stake on every bonded validator (only bonded stake is
+                // tallied; one may be jailed for downtime).
+                let vals = bonded_validators(&mut rust);
+                if !vals.is_empty() {
+                    govpass_delegated = true;
+                    for i in 0..ACCOUNTS - 1 {
+                        let msg =
+                            Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
+                                delegator_address: gn.accts[i].acc.clone(),
+                                validator_address: vals[i % vals.len()].clone(),
+                                amount: Some(Coin {
+                                    denom: "utia".into(),
+                                    amount: "800000000000000".into(),
+                                }),
+                            });
+                        if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
+                            gn.accts[i].seq += 1;
+                            txs.push(t);
+                        }
+                    }
+                }
+            } else if govpass && b % 4 == 0 && !gn.proposals.is_empty() {
+                // One message per tx: a vote on an ended proposal fails
+                // alone.
+                let ids: Vec<u64> = gn.proposals.iter().rev().take(6).copied().collect();
+                for &id in &ids {
+                    let deposit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgDeposit {
+                        proposal_id: id,
+                        depositor: gn.accts[0].acc.clone(),
+                        amount: vec![Coin {
+                            denom: "utia".into(),
+                            amount: "60000000".into(),
+                        }],
+                    });
+                    if let Some(t) = sign_simple(&gn, 0, vec![deposit], 600_000) {
+                        gn.accts[0].seq += 1;
+                        txs.push(t);
+                    }
+                    for i in 0..ACCOUNTS - 1 {
+                        let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                            proposal_id: id,
                             voter: gn.accts[i].acc.clone(),
                             option: 1,
                             metadata: String::new(),

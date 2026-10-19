@@ -15,6 +15,8 @@ CORE_VERSION=${CORE_VERSION:-v0.42.3}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$BIN"
+# Absolute: `go build -o` runs from the module's source directory.
+BIN=$(cd "$BIN" && pwd)
 
 retry() { # <cmd...>: up to 5 attempts with backoff
   local n

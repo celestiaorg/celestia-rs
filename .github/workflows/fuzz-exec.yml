@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["json","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
+        job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8

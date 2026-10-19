@@ -1,0 +1,14 @@
+# deliver findings, replayed against Go by `crates/fuzz-diff/nightly.sh regressions`
+# (fuzz-exec.yml): one run per line, `<scenario> <blocks> <txs-per-block> <seed> [ENV=1 ...]`.
+# Findings that a unit test or tests/regressions.jsonl cannot pin (they need
+# a whole chain state) are pinned here; each must stay clean.
+#
+# PFM refund mint overflow: Go panics (code 111222), Rust code 1 (FinalizeBlock and,
+# through the redundant relay ante check, CheckTx).
+ibc-edge 100 8 3000 DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1
+# Weighted vote option text (`weight:"\377\376"`) in a failed proposal's failed_reason:
+# app-hash split.
+v9-upgrade 100 6 3003 GO_APPD_NEXT=v10 DELIVER_UPGRADE=13 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1 DELIVER_SWEEP=1
+# After the v9 -> v10 switch the next Go binary has empty memory stores: its
+# recheck fails IBC txs with `capability not found`.
+v9-upgrade 100 6 3007 GO_APPD_NEXT=v10 DELIVER_UPGRADE=17 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1

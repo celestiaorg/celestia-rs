@@ -5,7 +5,8 @@
 # the seed so that consecutive nights cover different combinations.
 #
 # usage: crates/fuzz-diff/nightly.sh <job> <seed> [findings-dir]
-#   job: json | exec | pp | deliver-<k>of<n> | upgrade-<k>of<n> | campaign-<k>of<n>
+#   job: regressions | json | exec | pp | deliver-<k>of<n> | upgrade-<k>of<n> |
+#        campaign-<k>of<n>
 #
 # Environment:
 #   DEVNET_BIN   Go binaries: $DEVNET_BIN/celestia-appd (v10.4.0) and
@@ -73,6 +74,7 @@ run() {
   echo "  rc=$rc $(($(date +%s) - t0))s: $line" | tee -a "$SUMMARY"
   if [ $rc -ne 0 ]; then
     FAILED=1
+    echo "$name" >>"$FINDINGS/failed"
     grep -m 20 '^MISMATCH' "$out.out" | sed 's/^/  /' | cut -c1-400 | tee -a "$SUMMARY"
     { echo "seed=$SEED"; echo "env: ${envs[*]}"; echo "cmd: $*"; } >"$out.repro"
   else
@@ -118,6 +120,7 @@ deliver_flags() {
   [ $((s % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
   [ $((s % 4)) -eq 1 ] && f+=(DELIVER_RECHECK=1)
   [ $((s % 5)) -eq 2 ] && f+=(DELIVER_SIM=1)
+  [ $((s % 3)) -eq 1 ] && f+=(DELIVER_GOVPASS=1)
   [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
   echo "${f[@]}"
 }
@@ -142,6 +145,21 @@ upgrade_run() { # <seed> <flags...>
 }
 
 case $JOB in
+regressions)
+  # Pinned deliver findings (crates/fuzz-diff/deliver-regressions.txt).
+  n=0
+  while read -r scen blocks per seed envs; do
+    [ -n "$scen" ] || continue
+    n=$((n + 1))
+    # GO_APPD_NEXT=v10 names the v10 binary (the v9 -> v10 switch).
+    envs=${envs//GO_APPD_NEXT=v10/GO_APPD_NEXT=$V10}
+    appd=$(appd_for "$scen")
+    case $scen in v9-upgrade*) appd=$V9 ;; esac
+    # shellcheck disable=SC2086
+    run "regression-$n-$scen-s$seed" 0 GO_APPD="$appd" $envs -- \
+      "$ROOT/crates/fuzz-diff/deliver-diff.sh" "$scen" "$blocks" "$per" "$seed"
+  done < <(grep -v '^#' "$ROOT/crates/fuzz-diff/deliver-regressions.txt")
+  ;;
 json)
   OPS=json_count,json_gov,json_pfm,json_pfm_next,json_ica_tx,json_ica_vb,json_ica_pd,json_ica_md,json_ics20,json_ack,json_ack_check,json_ica_pb
   half=$((BUDGET / 2 - 60))
@@ -212,7 +230,7 @@ campaign-*of*)
   k=${JOB#campaign-}; n=${k#*of}; k=${k%of*}
   items=()
   for scen in "${V10_SCENARIOS[@]}" "${V9_SCENARIOS[@]}"; do
-    items+=("d:$scen")
+    items+=("d:$scen" "g:$scen")
   done
   for i in $(seq 1 12); do items+=("u:$i"); done
   for it in $(shard "$k" "$n" 0 "${items[@]}"); do
@@ -223,6 +241,15 @@ campaign-*of*)
       case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
       deliver_run "$scen" "$SEED" "${f[@]}"
+      ;;
+    g:*)
+      # The same with every proposal passed (handler error texts reach
+      # state through `failed_reason`).
+      scen=${it#g:}
+      f=(DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_RECHECK=1)
+      case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
+      [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
+      deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
       ;;
     u:*)
       i=${it#u:}
