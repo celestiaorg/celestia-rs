@@ -215,13 +215,15 @@ PY
 
 python3 -I "$work/server.py" "$work/www" >"$work/port" 2>"$work/server.log" &
 server_pid=$!
+# Up to a minute: a cold python3 can be slow to start on a fresh runner.
 i=0
 while [ ! -s "$work/port" ]; do
   i=$((i + 1))
-  [ $i -lt 100 ] || {
+  if [ $i -gt 600 ] || ! kill -0 "$server_pid" 2>/dev/null; then
+    echo "the mock server did not start ($(command -v python3), $(python3 --version 2>&1)):"
     cat "$work/server.log"
     exit 1
-  }
+  fi
   sleep 0.1
 done
 base=http://127.0.0.1:$(head -n 1 "$work/port")
