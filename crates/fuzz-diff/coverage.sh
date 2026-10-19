@@ -16,6 +16,9 @@ BLOCKS=${2:-150}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
 cd "$ROOT"
+# Its own target directory: a build in target/ while this runs would
+# replace instrumented libraries.
+export CARGO_TARGET_DIR=$ROOT/target/cov
 # shellcheck disable=SC1090
 source <(cargo llvm-cov show-env --export-prefix --release)
 cargo llvm-cov clean --workspace

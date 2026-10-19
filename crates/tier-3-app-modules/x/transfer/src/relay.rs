@@ -948,10 +948,9 @@ impl IbcModule for TransferModule {
             ("acknowledgement", ack_text(&ack)),
         ]));
         match ack {
-            x_ibc::channel::AckResponse::Result(r) => ctx.events.emit(packet_event(vec![(
-                "success",
-                String::from_utf8_lossy(&r).into_owned(),
-            )])),
+            x_ibc::channel::AckResponse::Result(r) => ctx
+                .events
+                .emit(packet_event(vec![("success", gostr::from_go_vec(r))])),
             x_ibc::channel::AckResponse::Error(e) => {
                 ctx.events.emit(packet_event(vec![("error", e)]));
             }

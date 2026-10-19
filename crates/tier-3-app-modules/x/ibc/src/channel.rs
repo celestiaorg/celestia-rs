@@ -535,7 +535,7 @@ fn channel_event(
 fn packet_attrs(p: &Packet, data: bool) -> Vec<(&'static str, String)> {
     let mut attrs = Vec::new();
     if data {
-        attrs.push(("packet_data", String::from_utf8_lossy(&p.data).into_owned()));
+        attrs.push(("packet_data", gostr::from_go_bytes(&p.data).into_owned()));
         attrs.push(("packet_data_hex", hex_lower(&p.data)));
     }
     attrs.extend([
@@ -563,7 +563,7 @@ fn emit_packet_event(
     let data = matches!(ty, "send_packet" | "recv_packet" | "write_acknowledgement");
     let mut attrs = packet_attrs(p, data);
     if let Some(a) = ack {
-        attrs.push(("packet_ack", String::from_utf8_lossy(a).into_owned()));
+        attrs.push(("packet_ack", gostr::from_go_bytes(a).into_owned()));
         attrs.push(("packet_ack_hex", hex_lower(a)));
     }
     if ty == "timeout_packet" {
@@ -1766,4 +1766,23 @@ pub fn prune_acknowledgements(
     }
     put_u64(ctx, start_key.into_bytes(), seq)?;
     Ok((seq - start, end.wrapping_sub(seq)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `packet_data` is Go's `string(packet.GetData())`: the event carries
+    /// the packet's bytes as they are (a U+10FFFF and invalid bytes too).
+    #[test]
+    fn packet_data_attribute_keeps_the_bytes() {
+        let data = b"{\"r\":\"\xf4\x8f\xbf\xbf\xff\"}".to_vec();
+        let p = Packet {
+            data: data.clone(),
+            ..Default::default()
+        };
+        let attrs = packet_attrs(&p, true);
+        assert_eq!(attrs[0].0, "packet_data");
+        assert_eq!(gostr::to_go_bytes(&attrs[0].1).as_ref(), data.as_slice());
+    }
 }
