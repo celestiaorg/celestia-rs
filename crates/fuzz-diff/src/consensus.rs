@@ -315,6 +315,12 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("unmarshal", &format!("err:{e}")),
             };
             c.put("unmarshal", "ok");
+            let addrs: std::collections::BTreeSet<&Vec<u8>> =
+                pvs.validators.iter().map(|v| &v.address).collect();
+            if addrs.len() != pvs.validators.len() {
+                // Not comparable, see `compare`.
+                return c.put("duplicate_addresses", "1");
+            }
             let mut vals = match ValidatorSet::from_proto(&pvs) {
                 Ok(v) => v,
                 Err(e) => return c.put("valset", &format!("err:{e}")),
@@ -590,15 +596,8 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
     if go.out.starts_with("unmarshal=panic:") {
         return None;
     }
-    if op == "c_valset"
-        && go.out.lines().any(|l| {
-            l.strip_prefix("priorities=").is_some_and(|p| {
-                let addrs: Vec<&str> = p.split(',').filter_map(|e| e.split(':').next()).collect();
-                let set: std::collections::BTreeSet<&&str> = addrs.iter().collect();
-                set.len() != addrs.len()
-            })
-        })
-    {
+    // (Go's `applyRemovals` drops one entry of such an address, Rust all.)
+    if op == "c_valset" && rust.out.contains("duplicate_addresses=1") {
         return None;
     }
     if go.ok != rust.ok {
