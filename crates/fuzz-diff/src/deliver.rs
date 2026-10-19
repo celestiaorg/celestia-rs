@@ -47,6 +47,7 @@ use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
+mod trace;
 mod upgrade;
 
 /// Funded single-key accounts added to the genesis (the multisig ones of
@@ -3309,7 +3310,7 @@ pub fn run(
         addr: addr.to_owned(),
         conns: BTreeMap::new(),
     };
-    let mut rust = app::App::new();
+    let mut rust = trace::Traced::new(app::App::new())?;
     let mut stats = Stats::default();
     let mut m = Mutator::new(seed);
     let pool_txs: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
@@ -4314,12 +4315,19 @@ pub fn run(
             let e = stats.recheck.entry(rphase.clone()).or_default();
             e.0 += 1;
             let response::Value::CheckTx(g) = g else {
-                stats.mismatches.push(format!(
-                    "{scenario} h={height} ReCheckTx tx={}: Go errored ({g:?}), Rust {:?}",
-                    hex::encode(&t),
-                    o.map(|o| o.code)
-                ));
-                e.1 += 1;
+                // Go's CheckTx returned an error (e.g. a tx the next
+                // binary no longer decodes): Rust must error too, and
+                // comet's `recheckTransactions` only logs it, so the tx
+                // stays in the pool (Rust's `recheck_transactions` alike).
+                if let Ok(o) = &o {
+                    stats.mismatches.push(format!(
+                        "{scenario} h={height} ReCheckTx tx={}: Go errored ({g:?}), Rust code {} log={}",
+                        hex::encode(&t),
+                        o.code,
+                        gostr::to_go_bytes(&o.log).escape_ascii()
+                    ));
+                }
+                kept.push_back(t);
                 continue;
             };
             match &o {

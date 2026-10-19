@@ -322,6 +322,9 @@ pub fn verify_secp256k1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     // A tx's signature is checked by CheckTx, PrepareProposal,
     // ProcessProposal and FinalizeBlock: remember the valid ones.
     let digest = hash::sha256(msg);
+    if !sig_cache_enabled() {
+        return verify_secp256k1_prehashed(key, &digest, sig);
+    }
     let entry = verified_cache_key(key, &digest, sig);
     if VERIFIED.contains(&entry) {
         return true;
@@ -331,6 +334,14 @@ pub fn verify_secp256k1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
         VERIFIED.insert(entry);
     }
     valid
+}
+
+/// Whether [`VERIFIED`] is used. `CELESTIA_RS_SIG_CACHE=off` disables it
+/// (read once), so determinism checks can compare runs with and without it.
+fn sig_cache_enabled() -> bool {
+    static ENABLED: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("CELESTIA_RS_SIG_CACHE").as_deref() != Ok("off"));
+    *ENABLED
 }
 
 /// Identifies one `(key, sha256(msg), sig)` verification.

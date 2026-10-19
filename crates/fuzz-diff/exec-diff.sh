@@ -46,9 +46,15 @@ PY
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true; rm -rf "$WORK"' EXIT
-for _ in $(seq 1 60); do
-  (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
+UP=
+for _ in $(seq 1 300); do
+  (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && UP=1 && break
   sleep 1
 done
+if [ -z "$UP" ]; then
+  echo "Go celestia-appd did not listen on $PORT within 300 s" >&2
+  tail -n 20 "$WORK/app.log" >&2
+  exit 3
+fi
 FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
 "$FUZZ_DIFF" exec "$SCENARIO" "127.0.0.1:$PORT" "127.0.0.1:$GRPC" "$PER" "$SEED"

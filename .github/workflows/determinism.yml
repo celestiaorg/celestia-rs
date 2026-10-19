@@ -1,0 +1,111 @@
+name: determinism
+
+# Determinism of the signing binary (MILESTONES.md C1.3 / F1.9): on
+# x86_64 Linux and aarch64 macOS (macos-14, the Mac Mini's target), with
+# the `release` and `dist` profiles, `deliver` runs clean against Go and its
+# DELIVER_TRACE (a digest of every Rust ABCI response, per height) is
+# byte-identical under one square thread, the signature cache off, across
+# profiles and across targets. `pp` runs clean with `dist` on both.
+
+on:
+  schedule:
+    - cron: "41 2 * * *"  # 02:41 UTC daily
+  workflow_dispatch:
+    inputs:
+      blocks:
+        description: "Generated blocks per deliver run"
+        default: "120"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  GOFLAGS: -mod=mod
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  traces:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: conformance/devnet-oracle/go.mod
+          cache-dependency-path: conformance/devnet-oracle/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: determinism
+      - id: cache
+        uses: actions/cache@v6
+        with:
+          path: target/devnet-bin
+          key: determinism-bin-${{ runner.os }}-${{ runner.arch }}-app-v10.4.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Build celestia-appd v10.4.0 and v9.0.8
+        run: |
+          APPD_ONLY=1 conformance/devnet/build-bins.sh
+          APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
+      - name: Build fuzz-diff (release, dist)
+        run: |
+          cargo build --locked --release -p fuzz-diff
+          cargo build --locked --profile dist -p fuzz-diff
+      - name: Traces (release)
+        env:
+          DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
+          FUZZ_DIFF: ${{ github.workspace }}/target/release/fuzz-diff
+        run: crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" release "${{ inputs.blocks || '120' }}"
+      - name: Traces (dist)
+        if: always()
+        env:
+          DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
+          FUZZ_DIFF: ${{ github.workspace }}/target/dist/fuzz-diff
+        run: crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" dist "${{ inputs.blocks || '120' }}"
+      - name: release and dist traces identical
+        run: |
+          set -e
+          cd "$RUNNER_TEMP/traces"
+          for t in release/*.trace; do
+            cmp "$t" "dist/${t#release/}"
+          done
+          mkdir -p "$RUNNER_TEMP/upload"
+          cp release/*.trace "$RUNNER_TEMP/upload/"
+      - name: ProcessProposal differential (dist)
+        env:
+          FUZZ_DIFF: ${{ github.workspace }}/target/dist/fuzz-diff
+        run: |
+          set -e
+          GO_APPD=target/devnet-bin/celestia-appd crates/fuzz-diff/pp-diff.sh blob 20 1
+          GO_APPD=target/devnet-bin/celestia-appd crates/fuzz-diff/pp-diff.sh ibc 20 2
+          GO_APPD=target/devnet-bin/v9/celestia-appd crates/fuzz-diff/pp-diff.sh v9-blob 20 3
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: traces-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/upload
+          retention-days: 14
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: determinism-logs-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/traces
+          retention-days: 14
+
+  # The same traces on x86_64 Linux and aarch64 macOS.
+  across-targets:
+    needs: traces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: traces-*
+      - run: |
+          set -e
+          ls
+          diff -r traces-Linux-X64 traces-macOS-ARM64
+          echo "identical: $(ls traces-Linux-X64 | wc -l) traces"
