@@ -324,6 +324,11 @@ test), then start that harness's count again.
   devnet fixtures and parity target are re-pinned to the exact tagged
   versions mainnet runs, the Go diff between versions is ported, and
   F1.1–F1.9 rerun on them.
+  *Checked 2026-10-19 (mainnet at 15,109,660, upgrade at 15,116,658):*
+  mainnet nodes report celestia-app 9.0.8; the newest releases on the Go
+  module proxy are celestia-app v10.4.0 and v9.0.8 and celestia-core
+  v0.42.3, the versions pinned here. Recheck before the upgrade height
+  and before M14.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the
