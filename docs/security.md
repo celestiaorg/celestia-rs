@@ -217,8 +217,21 @@ a temp dir and compared with the committed fixtures):
 ## Fuzzing
 
 Two harnesses, both run nightly (`.github/workflows/nightly.yml`, jobs
-`fuzz-diff` and `cargo-fuzz`). Findings are fixed in the crates by porting
-Go and pinned by regression tests that run on stable without Go.
+`fuzz-diff` and `cargo-fuzz`; the execution differentials `json_*`, `exec`,
+`pp` and `deliver` in `.github/workflows/fuzz-exec.yml`, driven by
+`crates/fuzz-diff/nightly.sh`; determinism across builds and targets in
+`.github/workflows/determinism.yml`). Findings are fixed in the crates by
+porting Go and pinned by regression tests that run on stable without Go
+(`deliver` findings that need a whole chain are pinned as Go-backed runs in
+`crates/fuzz-diff/deliver-regressions.txt`, replayed first every night).
+
+`DELIVER_GOVPASS` makes the fuzz accounts pass every proposal (stake on
+every bonded validator, a deposit and yes votes every 4 blocks): each
+proposal's messages then run in gov's EndBlocker, and a failing message's
+error text is stored in the proposal's `failed_reason`, so error texts of
+every handler a proposal can carry are compared through the app hash
+(finding 76). `DELIVER_TRACE=<file>` writes a digest of every Rust ABCI
+response per committed height (`crates/fuzz-diff/determinism.sh`).
 
 ### Differential fuzzing against Go (`crates/fuzz-diff`)
 
@@ -849,6 +862,10 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 72 | `GetModuleAccount` of an address holding another account | Go panics (`account is not a module account`); Rust returned `ErrLogic`. Every module address is blocked except gov's (created at genesis), but v9 does not know fibre's: a send or a vesting account to it at app version 9 leaves an account there, and between the switch and the v10 handler (which replaces it) the v10 app's `ModuleAccounts` / `ModuleAccountByName` queries panic | query split at the upgrade height; the code split it would give in a tx is unreachable (the handler runs first) | `x_auth::get_module_account` returns Go's panic; `tests::module_address_holding_a_base_account_panics`; the `DELIVER_UPGRADE` driver funds the fibre address at v9 |
 | 73 | IBC 07-tendermint light client (`MsgUpdateClient`, misbehaviour; both versions) | celestia-core's `CommitSig.FromProto` converts the protobuf `int32` `BlockIdFlag` with `BlockIDFlag(...)`, a `byte`: only the low 8 bits count, so a signature with flag `258` or `-254` is a `Commit` signature (verified and tallied) and `257` is `Absent`; the flag is not in the signed vote, so anyone relaying a valid header can rewrite it. Rust's port compared the `int32` (`unknown BlockIDFlag`) | Go accepts the client update, Rust fails the tx: app-hash divergence from one relayed header (found by `DELIVER_IBC` once its mock counterparty sent such flags: CheckTx code split, then an app-hash split) | `lightclients::light::flag` truncates like Go; `light::tests::block_id_flag_is_truncated_to_a_byte_like_go`; the mock counterparty's every third `MsgUpdateClient` carries a wide flag (`update_client_wide_flag`) |
 | 74 | PFM `userRecoverableAccount` (both versions) | the fallback decodes the in-flight packet's original sender with `bech32.DecodeAndConvert` (any prefix, at most 1023 characters); Rust used the `bech32` crate, which rejects prefixes longer than 83 characters (BIP-173) and has no total limit. The original sender is the counterparty user's choice | a forward whose refund falls back to the original sender moves funds in Go and fails in Rust (or the reverse above 1023 characters): app-hash divergence | `encoding::bech32::decode_and_convert` there (and for the account / validator codecs, `x_auth::parse_bech32`, hyperlane's `AccAddressFromBech32`, the event sender); `middleware::tests::user_recoverable_account_falls_back_like_go` |
+| 75 | Go panics in message handlers that Rust handled as values (both versions) | A Go panic unwinds to the nearest `recover` (runTx, gov's `safeExecuteHandler`, distribution's `addDecCoins` / deposit guard, celestia's `executeTxMsgs`); Rust returns it as an `SdkError`, which a caller can rebuild into another error. PFM's refund on an error acknowledgement mints the voucher back (`MintCoins` -> `Coin.Add` overflow panics in Go): Rust's PFM wrapped it as `cannot mint coins ...` (`undefined`/1) where Go fails the tx with `ErrPanic` (111222); through the redundant relay ante check the same in CheckTx | `LastResultsHash` split from one acknowledgement relayed for a forwarded packet of a near-max-supply IBC denom | `kvstore::unwind` + `sdk::error::recover`: inside a recover scope the first `go_panic` raised is the outcome, whatever the callers did with it, and gas stops at it (Go's meter is not touched after the panic); scopes at runTx's message loop, the ante chain (a panic there becomes `Fail::Panic`, Go's gas accounting), gov's proposal execution, both distribution recovers and `executeTxMsgs`; `sdk::error::tests::recover_*`, `kvstore::unwind::tests`; `ibc-edge` seed 3000 in `crates/fuzz-diff/deliver-regressions.txt`. Found by the nightly `fuzz-exec` rotation (`deliver ibc-edge`, `DELIVER_IBC` / `WIRE` / `SWEEP`) |
+| 76 | gov `MsgVoteWeighted` error text (both versions) | `WeightedVoteOption.String()` is gogoproto's compact text: a string is quoted byte by byte with octal escapes; Rust wrote `{:?}` of the Go form (`"\u{10ffff}\u{10fffe}"` for the bytes `ff fe`). A proposal whose `MsgVoteWeighted` fails stores the text in `failed_reason` | app-hash split from a passed proposal whose vote message fails on execution (error texts of every handler a proposal can run are state) | `x_ante::gogotext::quote`; `gov::keeper::tests::weighted_option_string_quotes_like_gogoproto`; `v9-upgrade` seed 3003 in `deliver-regressions.txt` |
+| 77 | the binary switch: memory stores (mempool only) | the multiplexer's next binary starts with empty memory stores: until its first BeginBlock (`x/capability` `InitMemStore`) CheckTx finds no capability, so comet's recheck after the switch drops IBC packet txs with `capability not found`; Rust (one process) still had them | mempool contents at the upgrade height (no consensus effect) | `App::commit` clears the memory stores at the switch (`MultiStore::clear_memory_stores`); `v9-upgrade` seed 3007 in `deliver-regressions.txt` |
+| 78 | legacy amino JSON (`TxEncodeAmino` / `TxDecodeAmino` queries) | Go 1.26's `Time.UnmarshalJSON` runs `time.Parse(RFC3339)` (strict checks disabled): one- or two-digit hours, any skipped fraction digits, and `ParseError` texts naming the failing element with `time.quote` (`\xNN`); Rust required fixed positions and always reported `as "2006"`. Also `%#U` of an invalid hex byte (Latin-1 code point, char only if printable), `strconv.Quote` escapes of non-printable runes, the unsigned string in the dec precision error, and invalid bytes replaced per byte (Go's JSON) | query responses only | ported in `legacy-amino` (`time::go_parse_rfc3339`, `go_lossy`); 8 cases in `tests/regressions.jsonl`. Open (non-blocking nightly step): go-amino JSON syntax errors raised on JSON it builds internally, two Go `reflect.Set` panics and one input Go accepts (`282816a91a00`) |
 
 Open:
 
@@ -858,6 +875,27 @@ Open:
   proof with two variants, `Acknowledgement` with `result` and `error`)
   decodes nondeterministically in Go (a consensus risk of Go nodes among
   themselves). Rust decodes them by name (the last one sorted wins).
+  **Reachability on mainnet (F1.11, checked 2026-10-19):** gogoproto
+  v1.7.2 `jsonpb` ranges over `sprops.OneofTypes` (a map) and sets each
+  member present, so the last one in Go's random order wins. Mainnet's ICA
+  host `allow_messages` (queried from two public REST endpoints) holds
+  `MsgTransfer`, `MsgSend`, the staking and distribution messages,
+  `MsgVote`, `MsgGrantAllowance` and `MsgRevokeAllowance`: none has a oneof
+  in its proto3json form (allowances are `Any`s), so the
+  `StakeAuthorization` case cannot be sent there. Acknowledgements: core
+  `AcknowledgePacket` (ibc-go v8.7.2 `packet.go`) re-marshals a decoded
+  `Acknowledgement` and fails unless the bytes are equal, which an ack with
+  two members never is, so ICS-20's and PFM's decodes (PFM checks no bytes
+  itself) only see single-member acks. ICS-23 proofs are protobuf. No
+  path that reaches Go's nondeterminism is known on mainnet today.
+  **Policy:** the Rust decoding stays deterministic; if Go validators ever
+  diverge among themselves, the Rust validator follows the chain only
+  while its own execution matches the committed app hash, and otherwise
+  halts (the app-hash-halt response in `MILESTONES.md` C1.5): it never
+  signs a block on a state it did not compute. Upstream report: drafted in
+  [`docs/upstream/gogoproto-jsonpb-oneof.md`](upstream/gogoproto-jsonpb-oneof.md),
+  for the owner to file (re-check the ICA allow list whenever mainnet
+  governance changes it).
 
 - Error text (logs; not hashed, code and gas match) that still differs
   from Go, judged infeasible or not worth emulating: Go panics log a

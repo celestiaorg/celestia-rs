@@ -99,18 +99,37 @@ Every item must pass on the commit the canary runs.
   v10.4.0 and v9.0.8, rotating scenarios with a new seed per night; a
   mismatch fails the job. Exit: running, and clean for **7 consecutive
   nights** before M14 starts.
+  *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
+  drives `crates/fuzz-diff/nightly.sh` over 12 jobs: pinned `deliver`
+  regressions (`deliver-regressions.txt`), `json_*` at both versions,
+  `exec` (mode per round), `pp`, six `deliver` shards and two
+  `DELIVER_UPGRADE` shards, each looping new seeds and flag sets
+  (`IBC`, `HL`, `WIRE`, `SWEEP`, `RECHECK`, `SIM`, `GOVPASS`) for 2 h. Its
+  first local smoke found findings 75-77 (fixed); the 7-night count starts
+  at the first clean night.
 
 - [ ] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
   clean on the Mac (or a `macos-14` runner) with the `dist` profile; the
   same seeds byte-identical under `RAYON_NUM_THREADS=1` and the default,
   with the signature cache on and off, and in `release` vs `dist`; a
   recorded replay gives the same app hashes on x86_64 and aarch64.
+  *In CI since 2026-10-19:* `.github/workflows/determinism.yml` (daily, Linux
+  x86_64 and `macos-14` aarch64): `crates/fuzz-diff/determinism.sh` runs six
+  `deliver` cases (v10, v9, the upgrade) with `DELIVER_TRACE`, a digest of
+  every Rust ABCI response per height, which must be byte-identical with
+  `CELESTIA_RS_SQUARE_THREADS=1` (the code has no rayon; this is its thread
+  knob), `CELESTIA_RS_SIG_CACHE=off`, `release` vs `dist` and across the two
+  targets; `pp` clean with `dist` on both. Done when that job is green on
+  the release commit.
 
 - [ ] **C1.4 Fresh `deliver` campaign on the release commit.** At least
   one run of every devnet scenario at both app versions, plus
   `DELIVER_UPGRADE` over at least 10 seeds, with `DELIVER_IBC`,
   `DELIVER_HL`, `DELIVER_WIRE`, `DELIVER_SWEEP` and `DELIVER_RECHECK`;
   no mismatch. A finding is fixed, pinned and the campaign rerun.
+  *Tooling ready:* run `fuzz-exec` by hand with `campaign: true` on the
+  release commit (8 jobs: every scenario with all those flags, again with
+  `DELIVER_GOVPASS`, and the upgrade over 12 seeds).
 
 - [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
   copied (no second process may ever hold it); operator key offline or
@@ -281,7 +300,10 @@ test), then start that harness's count again.
   versions mainnet runs, the Go diff between versions is ported, and
   F1.1–F1.9 rerun on them.
 
-- [ ] **F1.11 Known Go nondeterminism decided.** Go's `jsonpb` decodes two
+- [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
+  mainnet reachability checked (`docs/security.md`, open Go items); the
+  upstream report is drafted in `docs/upstream/gogoproto-jsonpb-oneof.md`
+  and waits for the owner to file it.* Go's `jsonpb` decodes two
   members of one oneof in map order (random), so such a proto3json ICA
   message decodes differently among Go nodes (`docs/security.md`, open).
   Exit: report it upstream, and record the policy in `docs/security.md`
