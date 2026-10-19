@@ -315,6 +315,17 @@ latest_version() {
     version=$(latest_stable_tag || true)
     [ -z "$version" ] || return 0
   fi
+  # Without a token, the releases feed: it lists pre-releases too, and
+  # isn't rate limited like the API, whose 60 requests an hour per IP
+  # shared hosts (CI runners, NAT) run out of.
+  if [ -z "$token" ]; then
+    version=$(get "$GITHUB_URL/$REPO/releases.atom" - 2>/dev/null |
+      sed -n 's|.*href="[^"]*/releases/tag/\([^"]*\)".*|\1|p' | head -n 1)
+    if [ -n "$version" ]; then
+      [ "$1" = 1 ] || say "no stable release yet; using the newest pre-release, $version"
+      return 0
+    fi
+  fi
   # Drafts aren't listed; pre-releases are, newest first.
   if ! json=$(api "/repos/$REPO/releases?per_page=10"); then
     if use_gh_token; then

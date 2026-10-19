@@ -76,6 +76,8 @@ set_releases mock/pre "v0.1.0-alpha.2 1" "v0.1.0-alpha.1 1"
 mkdir -p "$work/www/mock/none" && : >"$work/www/mock/none/releases.txt"
 set_releases mock/private "v0.2.0 0" "v0.1.0 0"
 : >"$work/www/mock/private/private"
+set_releases mock/ratelimited "v0.1.0-rc.1 1"
+: >"$work/www/mock/ratelimited/ratelimited"
 set_releases mock/bad "v9.9.9 0"
 for f in "$work"/www/mock/bad/releases/download/v9.9.9/*.sha256; do
   printf '%064d  x\n' 0 >"$f"
@@ -165,6 +167,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         repo = "/".join(p[:2])
         if private(repo):
             return self.not_found()
+        if p[2:] == ["releases.atom"]:
+            return self.feed(host, repo)
         if p[2:] == ["releases", "latest"]:
             stable = [r for r in (releases(repo) or []) if not r["prerelease"]]
             # With no stable release, GitHub redirects to the releases page.
@@ -174,9 +178,28 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self.send(200, b"<html>release page</html>", "text/html")
         return super().do_GET()
 
+    def feed(self, host, repo):
+        # GitHub's Atom feed: releases (pre-releases too) newest first, each
+        # linking its tag page, after the feed's own links.
+        rs = releases(repo)
+        if rs is None:
+            return self.not_found()
+        entries = "".join(
+            '<entry><id>tag:github.com,2008:Repository/1/%s</id>'
+            '<link rel="alternate" type="text/html" href="http://%s/%s/releases/tag/%s"/>'
+            '<title>%s</title></entry>\n' % (r["tag_name"], host, repo, r["tag_name"], r["tag_name"])
+            for r in rs)
+        body = ('<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n'
+                '<link type="text/html" rel="alternate" href="http://%s/%s/releases"/>\n'
+                '<link type="application/atom+xml" rel="self" href="http://%s/%s/releases.atom"/>\n'
+                '%s</feed>\n' % (host, repo, host, repo, entries))
+        return self.send(200, body.encode(), "application/atom+xml")
+
     def api(self, host, auth, repo, rest):
         if auth and auth != TOKEN:
             return self.send(401, b'{"message":"Bad credentials"}', "application/json")
+        if not auth and os.path.exists(os.path.join(root, repo, "ratelimited")):
+            return self.send(403, b'{"message":"API rate limit exceeded"}', "application/json")
         rs = releases(repo)
         if rs is None or (private(repo) and auth != TOKEN):
             return self.not_found()
@@ -317,6 +340,10 @@ new_home pre
 if run mock/pre && [ "$(installed)" = v0.1.0-alpha.2 ] && has_out "no stable release yet"; then
   pass "$t"
 else fail "$t"; fi
+
+t="pre-releases only, API rate-limited: the releases feed still finds the newest"
+new_home ratelimited
+if run mock/ratelimited && [ "$(installed)" = v0.1.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
 
 t="a source-built binary already in bin is replaced and kept as .prev"
 new_home srcbuild
