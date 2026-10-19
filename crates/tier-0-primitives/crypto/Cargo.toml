@@ -17,7 +17,7 @@ blst = "=0.3.14"
 ed25519-consensus = "2.1"
 hash = { path = "../hash" }
 # libsecp256k1 (C, vendored): ~2.5x k256's verification speed (CheckTx).
-secp256k1 = "0.31"
+secp256k1 = "0.33"
 
 [dev-dependencies]
 hex = "0.4"
