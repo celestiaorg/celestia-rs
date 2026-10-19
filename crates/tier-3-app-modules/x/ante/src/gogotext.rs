@@ -120,6 +120,15 @@ pub fn go_opts(f: &FieldDescriptor) -> GoOpts {
     }
 }
 
+/// A string field as the text marshaler writes it ([`write_string`]):
+/// `s` in its Go form (`gostr`), so invalid bytes are escaped as Go does.
+#[must_use]
+pub fn quote(s: &str) -> String {
+    let mut w = String::new();
+    write_string(&mut w, &gostr::to_go_bytes(s));
+    w
+}
+
 /// `writeString`: quoted, byte by byte, `\n` `\r` `\t` `\"` `\\` escaped,
 /// other bytes outside 0x20..0x7f as three-digit octal.
 fn write_string(w: &mut String, s: &[u8]) {

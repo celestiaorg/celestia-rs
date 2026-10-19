@@ -570,7 +570,7 @@ pub fn weighted_option_string(o: &WeightedVoteOption) -> String {
         let _ = write!(s, "option:{name} ");
     }
     if !o.weight.is_empty() {
-        let _ = write!(s, "weight:{:?} ", o.weight);
+        let _ = write!(s, "weight:{} ", x_ante::gogotext::quote(&o.weight));
     }
     s
 }
@@ -630,4 +630,33 @@ pub fn add_vote(
         ],
     ));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The text marshaler quotes a string byte by byte (octal for bytes
+    /// outside 0x20..0x7f); Rust's `{:?}` wrote the Go form's chars. The
+    /// text ends up in a failed proposal's `failed_reason`, so the app hash
+    /// split (nightly fuzz-exec, `v9-upgrade` seed 3003).
+    #[test]
+    fn weighted_option_string_quotes_like_gogoproto() {
+        let o = WeightedVoteOption {
+            option: 2,
+            weight: gostr::from_go_vec(vec![0xff, 0xfe]),
+        };
+        assert_eq!(
+            weighted_option_string(&o),
+            "option:VOTE_OPTION_ABSTAIN weight:\"\\377\\376\" "
+        );
+        let o = WeightedVoteOption {
+            option: 0,
+            weight: "0.5\u{e9}\"\n".into(),
+        };
+        assert_eq!(
+            weighted_option_string(&o),
+            "weight:\"0.5\\303\\251\\\"\\n\" "
+        );
+    }
 }
