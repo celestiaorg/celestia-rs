@@ -222,6 +222,11 @@ test), then start that harness's count again.
   its error codes in `deliver`, and every uncovered branch of a message
   handler or ante decorator is listed with the reason it cannot be reached
   (or a harness change that reaches it).
+  *Progress (2026-10-19):* `crates/fuzz-diff/coverage.sh` (instrumented
+  run of every harness, 176 runs clean) and `coverage-table.py`; report in
+  `docs/fuzz-coverage.md`: 76.6% of tier-3 module lines, 83% of `x-ante`,
+  80% of the tx decoder, 89% of `proposal.rs`; the per-message table, the
+  types never executed with reasons, and what is open.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
   harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /
