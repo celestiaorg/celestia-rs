@@ -18,13 +18,13 @@ BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
 cd "$ROOT"
 # Its own target directory: a build in target/ while this runs would
 # replace instrumented libraries.
-export CARGO_TARGET_DIR=$ROOT/target/cov
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/cov}
 # shellcheck disable=SC1090
 source <(cargo llvm-cov show-env --export-prefix --release)
 cargo llvm-cov clean --workspace
-cargo build --release -p fuzz-diff
-FUZZ_DIFF=$CARGO_LLVM_COV_TARGET_DIR/release/fuzz-diff
-[ -x "$FUZZ_DIFF" ] || FUZZ_DIFF=$ROOT/target/release/fuzz-diff
+cargo build --release -p fuzz-diff || exit 1
+FUZZ_DIFF=$CARGO_TARGET_DIR/release/fuzz-diff
+[ -x "$FUZZ_DIFF" ] || { echo "no instrumented fuzz-diff at $FUZZ_DIFF" >&2; exit 1; }
 export FUZZ_DIFF
 V10=$BIN/celestia-appd
 V9=$BIN/v9/celestia-appd
