@@ -80,8 +80,9 @@ jobs:
           - { image: "archlinux:latest", setup: "pacman -Sy --noconfirm python", shell: sh }
     container: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v7
+      # Before checkout, which needs tar (not in amazonlinux).
       - run: ${{ matrix.setup }}
+      - uses: actions/checkout@v7
       - run: sh scripts/test-install.sh
         env:
           TEST_SHELL: ${{ matrix.shell }}
@@ -138,9 +139,10 @@ jobs:
           - { os: ubuntu-latest, image: "fedora:latest", setup: "dnf install -y tar gzip" }
           - { os: ubuntu-latest, image: "amazonlinux:2023", setup: "dnf install -y tar gzip" }
     steps:
-      - uses: actions/checkout@v7
+      # Before checkout, which needs tar (not in amazonlinux).
       - if: matrix.setup
         run: ${{ matrix.setup }}
+      - uses: actions/checkout@v7
       # Anonymous, like a user. PRs test their own copy of the installer;
       # everything else runs the README's command, which fetches the script
       # from main.

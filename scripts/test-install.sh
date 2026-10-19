@@ -244,7 +244,9 @@ new_home() {
 
 # run REPO [ARGS...]: run the installer piped into $shell, as the README
 # does. T_TOKEN is the GitHub token to pass (none by default) and T_GH the
-# fake gh to put on PATH (in or out; out by default). Output goes to
+# fake gh to put on PATH (in or out; out by default); set them in a
+# subshell, `(T_GH=in && run ...)`, since bash 3.2 (macOS sh) keeps an
+# assignment written before a function call. Output goes to
 # $work/out; the exit status is the installer's.
 run() {
   repo=$1
@@ -305,9 +307,7 @@ t="--prerelease picks the newest release, pre-releases included"
 if run mock/stable --prerelease && [ "$(installed)" = v0.3.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
 
 t="CELESTIA_RS_VERSION works like --version"
-set +e
-CELESTIA_RS_VERSION=v0.1.0 run mock/stable
-set -e
+(export CELESTIA_RS_VERSION=v0.1.0 && run mock/stable) || true
 if [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
 
 t="with no stable release, falls back to the newest pre-release"
@@ -341,32 +341,32 @@ else fail "$t"; fi
 
 t="token: installs the latest stable release through the API"
 new_home token
-if T_TOKEN=secret run mock/stable && [ "$(installed)" = v0.2.0 ]; then pass "$t"; else fail "$t"; fi
+if (T_TOKEN=secret && run mock/stable) && [ "$(installed)" = v0.2.0 ]; then pass "$t"; else fail "$t"; fi
 
 t="token: --prerelease and --version work through the API"
-if T_TOKEN=secret run mock/stable --prerelease && [ "$(installed)" = v0.3.0-rc.1 ] &&
-  T_TOKEN=secret run mock/stable --version v0.1.0 && [ "$(installed)" = v0.1.0 ]; then
+if (T_TOKEN=secret && run mock/stable --prerelease) && [ "$(installed)" = v0.3.0-rc.1 ] &&
+  (T_TOKEN=secret && run mock/stable --version v0.1.0) && [ "$(installed)" = v0.1.0 ]; then
   pass "$t"
 else fail "$t"; fi
 
 t="token: with no stable release, falls back to the newest pre-release"
 new_home token-pre
-if T_TOKEN=secret run mock/pre && [ "$(installed)" = v0.1.0-alpha.2 ]; then pass "$t"; else fail "$t"; fi
+if (T_TOKEN=secret && run mock/pre) && [ "$(installed)" = v0.1.0-alpha.2 ]; then pass "$t"; else fail "$t"; fi
 
 t="private repo: installs with GITHUB_TOKEN"
 new_home private
-if T_TOKEN=secret run mock/private && [ "$(installed)" = v0.2.0 ]; then pass "$t"; else fail "$t"; fi
+if (T_TOKEN=secret && run mock/private) && [ "$(installed)" = v0.2.0 ]; then pass "$t"; else fail "$t"; fi
 
 t="private repo: falls back to a logged-in gh CLI's token"
 new_home private-gh
-if T_GH=in run mock/private && [ "$(installed)" = v0.2.0 ] &&
+if (T_GH=in && run mock/private) && [ "$(installed)" = v0.2.0 ] &&
   [ "$(grep -c "using the GitHub CLI's login" "$work/out")" = 1 ]; then
   pass "$t"
 else fail "$t"; fi
 
 t="private repo: --version falls back to a logged-in gh CLI's token"
 new_home private-gh-version
-if T_GH=in run mock/private --version v0.1.0 && [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
+if (T_GH=in && run mock/private --version v0.1.0) && [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
 
 t="private repo: without credentials, says to set GITHUB_TOKEN"
 new_home private-none
@@ -376,7 +376,7 @@ else fail "$t"; fi
 
 t="a bad token fails without installing"
 new_home badtoken
-if ! T_TOKEN=wrong run mock/private && [ ! -e "$h/.celestia-rs/bin/celestia-rs" ]; then
+if ! (T_TOKEN=wrong && run mock/private) && [ ! -e "$h/.celestia-rs/bin/celestia-rs" ]; then
   pass "$t"
 else fail "$t"; fi
 

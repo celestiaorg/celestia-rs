@@ -400,8 +400,9 @@ Is $1 a release with a $2 build? If the repository is private, set GITHUB_TOKEN
 
   want=$(cut -d' ' -f1 <"$tmp/$name.tar.gz.sha256")
   got=$(file_sha256 "$tmp/$name.tar.gz")
-  [ -n "$want" ] && [ "$want" = "$got" ] ||
+  if [ -z "$want" ] || [ "$want" != "$got" ]; then
     err "checksum mismatch for $name.tar.gz: expected $want, got $got"
+  fi
   say "verified SHA-256 $got"
 
   tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
