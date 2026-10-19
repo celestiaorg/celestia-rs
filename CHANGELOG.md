@@ -376,6 +376,10 @@
 
 ### Fixed
 
+- The 07-tendermint `client state height < proof height` error prints the
+  heights as Go's `%d` does (`{1 20}`), so a failed gov proposal stores
+  the same `failed_reason` as Go (app-hash split on the v9 -> v10 upgrade
+  path, `docs/security.md` 91). #59
 - `version --long` prints the git `commit:` (`-dirty` for a modified
   work tree; `CELESTIA_RS_GIT_COMMIT` for builds outside a checkout,
   else `unknown`) and the `build_profile:`, and no longer prints the bare
