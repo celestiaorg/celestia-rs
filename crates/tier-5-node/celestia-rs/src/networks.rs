@@ -3,7 +3,7 @@
 //! Chain IDs and genesis SHA-256 hashes come from celestia-app v10.4.0
 //! (`pkg/appconsts/chain_ids.go`, `cmd/celestia-appd/cmd/download_genesis.go`),
 //! seeds / peers / state-sync RPC servers from its `scripts/mainnet.sh` and
-//! `scripts/mocha.sh`. Genesis files are fetched at runtime from the URL list
+//! `scripts/mocha.sh` (mainnet seeds and peers: see [`MAINNET`]). Genesis files are fetched at runtime from the URL list
 //! and verified against the embedded hash; nothing here is contacted at
 //! build or test time.
 //!
@@ -42,22 +42,19 @@ pub const MAINNET: Network = Network {
     genesis_urls: &[
         "https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/genesis.json",
     ],
+    // `scripts/mainnet.sh` lists 13 seeds that were all dead or unusable
+    // on 2026-10-18. These passed a TCP and secret-connection handshake
+    // check that day: the seeds come from the cosmos chain-registry, the
+    // persistent peers (which serve snapshots for state sync) from the
+    // chain-registry and `celestiaorg/networks` peer lists.
     seeds: &[
-        "12ad7c73c7e1f2460941326937a039139aa78884@celestia-mainnet-seed.itrocket.net:40656",
-        "400f3d9e30b69e78a7fb891f60d76fa3c73f0ecc@celestia.rpc.kjnodes.com:12059",
-        "59df4b3832446cd0f9c369da01f2aa5fe9647248@135.181.220.61:11756",
-        "86bd5cb6e762f673f1706e5889e039d5406b4b90@seed.celestia.node75.org:20356",
-        "ebc272824924ea1a27ea3183dd0b9ba713494f83@celestia-mainnet-seed.autostake.com:27206",
-        "9b1d22c3a78487d1a664a4b6a331fce527d14fb4@seed.celestia.mainnet.dteam.tech:27656",
-        "9aa8a73ea9364aa3cf7806d4dd25b6aed88d8152@celestia.seed.mzonder.com:13156",
-        "6f6a3a908634b79b6fe7c4988efec2553f188234@celestia.seed.nodeshub.online:11656",
-        "e8657b97bcfcf7e522f2481f17358c4273ee0d55@185.144.99.12:26656",
-        "2030b8d022cd3c65b6f267943df82d69c3e6ba64@celestia-rpc.tienthuattoan.com:26656",
-        "20e1000e88125698264454a884812746c2eb4807@seeds.lavenderfive.com:11656",
-        "0c8ec01f1c37734274e7ac2f91021a55194bb0bb@65.109.26.242:11656",
-        "edc6bc6ee3c37a698225e17bd4b8c687ee05f977@celestia-seed.easy2stake.com:26756",
+        "8542cd7e6bf9d260fef543bc49e59be5a3fa9074@seed.publicnode.com:26656",
+        "ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0@seeds.polkachu.com:11656",
     ],
-    persistent_peers: &[],
+    persistent_peers: &[
+        "076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam.tech:28656",
+        "8dcecfd3fb44990af00408bbd70ab141c33d4513@67.213.115.125:36656",
+    ],
     rpc_servers: &["https://celestia-rpc.polkachu.com:443"],
 };
 
@@ -214,6 +211,34 @@ mod tests {
                 assert!(hex::decode(id).is_ok(), "{p}");
                 assert!(addr.rsplit_once(':').unwrap().1.parse::<u16>().is_ok());
             }
+        }
+    }
+
+    /// Mainnet seeds and peers found dead or unusable on 2026-10-18
+    /// (no DNS, no TCP, no secret-connection handshake, or legacy
+    /// propagation only) stay out of the built-in lists.
+    #[test]
+    fn mainnet_peers_exclude_dead_nodes() {
+        const DEAD: [&str; 13] = [
+            "12ad7c73c7e1f2460941326937a039139aa78884",
+            "400f3d9e30b69e78a7fb891f60d76fa3c73f0ecc",
+            "59df4b3832446cd0f9c369da01f2aa5fe9647248",
+            "86bd5cb6e762f673f1706e5889e039d5406b4b90",
+            "ebc272824924ea1a27ea3183dd0b9ba713494f83",
+            "9b1d22c3a78487d1a664a4b6a331fce527d14fb4",
+            "9aa8a73ea9364aa3cf7806d4dd25b6aed88d8152",
+            "6f6a3a908634b79b6fe7c4988efec2553f188234",
+            "e8657b97bcfcf7e522f2481f17358c4273ee0d55",
+            "2030b8d022cd3c65b6f267943df82d69c3e6ba64",
+            "20e1000e88125698264454a884812746c2eb4807",
+            "0c8ec01f1c37734274e7ac2f91021a55194bb0bb",
+            "edc6bc6ee3c37a698225e17bd4b8c687ee05f977",
+        ];
+        assert!(!MAINNET.seeds.is_empty());
+        assert!(!MAINNET.persistent_peers.is_empty());
+        for p in MAINNET.seeds.iter().chain(MAINNET.persistent_peers) {
+            let id = p.split_once('@').unwrap().0;
+            assert!(!DEAD.contains(&id), "{p}");
         }
     }
 

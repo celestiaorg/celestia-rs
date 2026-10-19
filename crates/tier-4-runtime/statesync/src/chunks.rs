@@ -297,6 +297,11 @@ impl ChunkQueue {
     /// `Next`: the next chunk in order, blocking until it arrives (up to
     /// the chunk timeout).
     pub fn next(&self) -> Result<Chunk, ChunkError> {
+        self.next_until(None)
+    }
+
+    /// [`ChunkQueue::next`], ending early (`Done`) once `cancel` is set.
+    pub fn next_until(&self, cancel: Option<&AtomicBool>) -> Result<Chunk, ChunkError> {
         let mut q = self.lock();
         let index = Self::next_up(&q)?;
         if let Some(c) = Self::load(&q, index)? {
@@ -304,7 +309,7 @@ impl ChunkQueue {
             return Ok(c);
         }
         drop(q);
-        match self.wait_for(index, self.chunk_timeout, None) {
+        match self.wait_for(index, self.chunk_timeout, cancel) {
             Wait::Arrived => {}
             Wait::Closed | Wait::Canceled => return Err(ChunkError::Done),
             Wait::TimedOut => return Err(ChunkError::Timeout),

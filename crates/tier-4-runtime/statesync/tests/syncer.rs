@@ -482,3 +482,66 @@ fn state_provider_errors() {
     );
     assert!(h.conn.0.lock().unwrap().offered.is_empty());
 }
+
+/// A stop request (node shutdown) ends snapshot discovery promptly
+/// instead of sleeping out the discovery time over and over.
+#[test]
+fn stop_interrupts_discovery() {
+    let h = harness(&["aa"], None);
+    let s = Arc::clone(&h.syncer);
+    let start = std::time::Instant::now();
+    let stopper = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        s.stop();
+    });
+    let got = h.syncer.sync_any(Duration::from_secs(60), &|| {}).err();
+    stopper.join().unwrap();
+    assert_eq!(got, Some(SyncError::Stopped));
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        start.elapsed()
+    );
+}
+
+/// A syncer stopped before it starts returns at once.
+#[test]
+fn stop_before_sync_any() {
+    let h = harness(&["aa"], None);
+    h.syncer.stop();
+    let start = std::time::Instant::now();
+    assert_eq!(
+        h.syncer.sync_any(Duration::from_secs(60), &|| {}).err(),
+        Some(SyncError::Stopped)
+    );
+    assert!(start.elapsed() < Duration::from_secs(1));
+}
+
+/// A stop while waiting for a chunk that never arrives ends the restore
+/// without waiting out the chunk timeout.
+#[test]
+fn stop_interrupts_chunk_wait() {
+    // peers answer chunk 0 only; chunk 1 never arrives
+    let h = harness_answering(&["aa"], None, 1);
+    assert!(h.syncer.add_snapshot(&h.peers[0], snap(1, 1, 3)));
+    {
+        let mut s = h.conn.0.lock().unwrap();
+        s.offers = [OfferR::Accept as i32].into();
+        s.applies = [accept()].into();
+    }
+    let s = Arc::clone(&h.syncer);
+    let start = std::time::Instant::now();
+    let stopper = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        s.stop();
+    });
+    let got = h.syncer.sync_any(Duration::ZERO, &|| {}).err();
+    stopper.join().unwrap();
+    assert_eq!(got, Some(SyncError::Stopped));
+    // well under the harness's 5 s chunk timeout
+    assert!(
+        start.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        start.elapsed()
+    );
+}

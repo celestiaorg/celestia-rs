@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use celestia_core_proto::tendermint::abci;
@@ -45,6 +45,8 @@ pub enum SyncError {
     NoSnapshots,
     /// `light.ErrNoWitnesses` from the state provider.
     NoWitnesses,
+    /// The node is shutting down ([`Syncer::stop`]).
+    Stopped,
     /// Any other error (Go message).
     Msg(String),
 }
@@ -61,6 +63,7 @@ impl std::fmt::Display for SyncError {
             Self::Timeout => f.write_str("timed out waiting for chunk"),
             Self::NoSnapshots => f.write_str("no suitable snapshots found"),
             Self::NoWitnesses => f.write_str("no witnesses connected. please reset light client"),
+            Self::Stopped => f.write_str("state sync stopped"),
             Self::Msg(s) => f.write_str(s),
         }
     }
@@ -106,6 +109,8 @@ pub struct Syncer {
     snapshots: Arc<SnapshotPool>,
     chunks: Mutex<Option<Arc<ChunkQueue>>>,
     on_peer_rejected: Mutex<Option<PeerRejectedFn>>,
+    stopped: AtomicBool,
+    wake: (Mutex<()>, Condvar),
 }
 
 impl std::fmt::Debug for Syncer {
@@ -135,6 +140,56 @@ impl Syncer {
             snapshots: Arc::new(SnapshotPool::new()),
             chunks: Mutex::new(None),
             on_peer_rejected: Mutex::new(None),
+            stopped: AtomicBool::new(false),
+            wake: (Mutex::new(()), Condvar::new()),
+        }
+    }
+
+    /// Stops a running (or later) [`Syncer::sync_any`] for node shutdown:
+    /// discovery and chunk waits end and it returns
+    /// [`SyncError::Stopped`]. Go stops the syncer with the reactor's
+    /// `OnStop`; here a SIGTERM / SIGINT must also end discovery.
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        {
+            let _g = self
+                .wake
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.wake.1.notify_all();
+        }
+        if let Some(q) = self.current_chunks() {
+            q.notify();
+        }
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::SeqCst)
+    }
+
+    /// Sleeps up to `d`; `Err(Stopped)` when stopped meanwhile.
+    fn sleep(&self, d: Duration) -> Result<(), SyncError> {
+        let deadline = std::time::Instant::now() + d;
+        let mut g = self
+            .wake
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if self.is_stopped() {
+                return Err(SyncError::Stopped);
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return Ok(());
+            }
+            g = self
+                .wake
+                .1
+                .wait_timeout(g, deadline - now)
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .0;
         }
     }
 
@@ -201,11 +256,14 @@ impl Syncer {
         }
         if !discovery_time.is_zero() {
             tracing::info!(?discovery_time, "Discovering snapshots");
-            std::thread::sleep(discovery_time);
         }
+        self.sleep(discovery_time)?;
         let mut snapshot: Option<Snapshot> = None;
         let mut chunks: Option<Arc<ChunkQueue>> = None;
         loop {
+            if self.is_stopped() {
+                return Err(SyncError::Stopped);
+            }
             if snapshot.is_none() {
                 snapshot = self.snapshots.best();
                 chunks = None;
@@ -216,7 +274,7 @@ impl Syncer {
                 }
                 retry_hook();
                 tracing::info!("Discovering snapshots for {discovery_time:?}");
-                std::thread::sleep(discovery_time);
+                self.sleep(discovery_time)?;
                 continue;
             };
             let queue = if let Some(q) = &chunks {
@@ -232,7 +290,12 @@ impl Syncer {
             let mut snap_mut = snap.clone();
             match self.sync(&mut snap_mut, &queue) {
                 Ok(r) => return Ok(r),
-                Err(SyncError::Abort) => return Err(SyncError::Abort),
+                Err(e @ (SyncError::Abort | SyncError::Stopped)) => {
+                    if let Err(e) = queue.close() {
+                        tracing::error!(err = %e, "Failed to clean up chunk queue");
+                    }
+                    return Err(e);
+                }
                 Err(SyncError::RetrySnapshot) => {
                     queue.retry_all();
                     tracing::info!(
@@ -406,8 +469,12 @@ impl Syncer {
     fn apply_chunks(&self, chunks: &Arc<ChunkQueue>) -> Result<(), SyncError> {
         use abci::response_apply_snapshot_chunk::Result as R;
         loop {
-            let chunk = match chunks.next() {
+            if self.is_stopped() {
+                return Err(SyncError::Stopped);
+            }
+            let chunk = match chunks.next_until(Some(&self.stopped)) {
                 Ok(c) => c,
+                Err(ChunkError::Done) if self.is_stopped() => return Err(SyncError::Stopped),
                 Err(ChunkError::Done) => return Ok(()),
                 // `fmt.Errorf("failed to fetch chunk: %w", errTimeout)`:
                 // SyncAny matches it with errors.Is

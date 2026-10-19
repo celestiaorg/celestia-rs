@@ -489,7 +489,18 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         if let (true, Some((_, reactors)), Some(ss_opts)) =
             (state_sync_mode, &net, &opts.state_sync)
         {
-            state = crate::sync::state_sync(&reactors.statesync, ss_opts, &state, &ss, &bs)?;
+            let Some(synced) = crate::sync::state_sync(
+                &reactors.statesync,
+                ss_opts,
+                &state,
+                &ss,
+                &bs,
+                &opts.shutdown,
+            )?
+            else {
+                return Ok(None);
+            };
+            state = synced;
             state_synced = true;
         }
         if let Some((_, reactors)) = &net
@@ -526,7 +537,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     };
     let skip_wal = match result {
         Ok(None) => {
-            tracing::info!(height = state.last_block_height, "block sync stopped");
+            tracing::info!(height = state.last_block_height, "sync stopped");
             stop(&net);
             return Ok(());
         }

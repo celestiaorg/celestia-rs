@@ -226,3 +226,32 @@ async fn sync_between_rust_nodes() {
     client.stop();
     server.stop();
 }
+
+/// `stop_sync` (node shutdown) ends a running sync that is still
+/// discovering snapshots, and makes later syncs return at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_sync_interrupts_discovery() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_sw, r) = node(3, vec![], Arc::new(Client::default()), tmp.path());
+    let r2 = Arc::clone(&r);
+    let start = std::time::Instant::now();
+    let task =
+        tokio::task::spawn_blocking(move || r2.sync(Arc::new(Trusted), Duration::from_secs(60)));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    r.stop_sync();
+    let got = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("sync did not stop")
+        .unwrap();
+    assert_eq!(got.err(), Some(statesync::SyncError::Stopped));
+    assert!(start.elapsed() < Duration::from_secs(5));
+    // stopped for good: a new sync does not start discovering
+    let r3 = Arc::clone(&r);
+    let again =
+        tokio::task::spawn_blocking(move || r3.sync(Arc::new(Trusted), Duration::from_secs(60)));
+    let got = tokio::time::timeout(Duration::from_secs(2), again)
+        .await
+        .expect("stopped reactor started a sync")
+        .unwrap();
+    assert_eq!(got.err(), Some(statesync::SyncError::Stopped));
+}
