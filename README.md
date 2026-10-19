@@ -6,6 +6,31 @@ and [celestia-core](https://github.com/celestiaorg/celestia-core). One
 binary, `celestia-rs`, runs the state machine, Tendermint consensus, P2P,
 mempool, RPC and gRPC.
 
+## Install
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh
+```
+
+This installs the latest release to `~/.celestia-rs/bin` and adds it to your
+`PATH`. **Run the same command again to update.** Release builds cover
+macOS on Apple silicon and Linux on x86_64 and aarch64 (glibc); elsewhere,
+[build from source](#getting-started).
+
+Options go after `sh -s --`, e.g. `... | sh -s -- --version v0.1.0`:
+
+| | |
+|---|---|
+| `--version <tag>` | install a specific release (also how to roll back) |
+| `--prerelease` | allow pre-releases when picking the latest |
+| `--no-modify-path` | don't touch shell profiles |
+| `--uninstall` | remove the binary and the `PATH` setup (node data stays) |
+
+The installer checks each archive against the release's SHA-256 checksum,
+keeps the binary it replaces as `celestia-rs.prev`, and swaps the new one
+in atomically: a running node keeps its old binary until it restarts.
+Source: [`scripts/install.sh`](scripts/install.sh).
+
 ## Status
 
 **celestia-rs is validating on the Mocha testnet.** Validator
@@ -63,6 +88,8 @@ libsecp256k1 cut PrepareProposal on max-size squares from ~1.1x Go's
 latency to ~0.65x and ProcessProposal to ~0.25x.
 
 ## Getting started
+
+Install a release ([above](#install)), or build from source:
 
 ```
 cargo build --release -p celestia-rs

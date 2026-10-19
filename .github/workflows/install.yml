@@ -1,0 +1,173 @@
+name: install
+
+# Tests scripts/install.sh, the one-line installer in the README.
+#
+# - mock: scripts/test-install.sh against a mock GitHub on localhost, across
+#   macOS and Linux runners, Linux distros (glibc and musl) and shells.
+# - live: the real installer against the real GitHub releases, then runs the
+#   installed binary. After every release build, weekly, and on PRs that
+#   touch the installer. Skipped while the repo has no release.
+
+on:
+  pull_request:
+    paths:
+      - scripts/install.sh
+      - scripts/test-install.sh
+      - .github/workflows/install.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/install.sh
+      - scripts/test-install.sh
+      - .github/workflows/install.yml
+  # release.yml publishes with GITHUB_TOKEN, which doesn't fire `release`
+  # events for other workflows.
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck -s sh scripts/install.sh scripts/test-install.sh
+
+  mock:
+    if: github.event_name != 'workflow_run'
+    name: mock (${{ matrix.os }}, ${{ matrix.shell }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, shell: sh }
+          - { os: ubuntu-24.04, shell: bash }
+          - { os: ubuntu-24.04-arm, shell: sh }
+          - { os: macos-14, shell: sh }
+          - { os: macos-14, shell: zsh }
+          - { os: macos-15, shell: bash }
+    steps:
+      - uses: actions/checkout@v7
+      - name: zsh and fish (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
+      - run: scripts/test-install.sh
+        env:
+          TEST_SHELL: ${{ matrix.shell }}
+
+  mock-distro:
+    if: github.event_name != 'workflow_run'
+    name: mock (${{ matrix.image }}, ${{ matrix.shell }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # wget, not curl
+          - { image: "debian:12-slim", setup: "apt-get update && apt-get install -y --no-install-recommends python3 wget ca-certificates", shell: dash }
+          - { image: "debian:13-slim", setup: "apt-get update && apt-get install -y --no-install-recommends python3 curl ca-certificates mksh", shell: mksh }
+          - { image: "ubuntu:24.04", setup: "apt-get update && apt-get install -y --no-install-recommends python3 curl ca-certificates busybox", shell: "busybox sh" }
+          - { image: "fedora:latest", setup: "dnf install -y python3 tar gzip", shell: bash }
+          - { image: "amazonlinux:2023", setup: "dnf install -y --allowerasing python3 tar gzip", shell: sh }
+          - { image: "archlinux:latest", setup: "pacman -Sy --noconfirm python", shell: sh }
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: ${{ matrix.setup }}
+      - run: sh scripts/test-install.sh
+        env:
+          TEST_SHELL: ${{ matrix.shell }}
+
+  # Alpine (musl) has no release build: the installer must say so and stop.
+  musl:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    container: alpine:latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          set +e
+          sh scripts/install.sh --version v0.0.0 >out 2>&1
+          status=$?
+          cat out
+          [ $status -ne 0 ] && grep -q "musl libc" out && [ ! -e "$HOME/.celestia-rs/bin/celestia-rs" ]
+
+  live-check:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      has_release: ${{ steps.check.outputs.has_release }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -n "$(gh release list --limit 1 --json tagName --jq '.[].tagName')" ]; then
+            echo has_release=true >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice::no releases yet; skipping the live install"
+            echo has_release=false >>"$GITHUB_OUTPUT"
+          fi
+
+  live:
+    needs: live-check
+    if: needs.live-check.outputs.has_release == 'true'
+    name: live (${{ matrix.os }}${{ matrix.image && format(', {0}', matrix.image) || '' }})
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14 }
+          - { os: macos-15 }
+          - { os: ubuntu-22.04 }
+          - { os: ubuntu-24.04-arm }
+          # Minimal images: the binary's runtime libraries must be there.
+          - { os: ubuntu-latest, image: "debian:12-slim", setup: "apt-get update && apt-get install -y --no-install-recommends curl ca-certificates" }
+          - { os: ubuntu-latest, image: "ubuntu:22.04", setup: "apt-get update && apt-get install -y --no-install-recommends curl ca-certificates" }
+          - { os: ubuntu-latest, image: "fedora:latest", setup: "dnf install -y tar gzip" }
+          - { os: ubuntu-latest, image: "amazonlinux:2023", setup: "dnf install -y tar gzip" }
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.setup
+        run: ${{ matrix.setup }}
+      # Anonymous, like a user. PRs test their own copy of the installer;
+      # everything else runs the README's command, which fetches the script
+      # from main.
+      - name: Install (README command)
+        shell: sh
+        env:
+          PR: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -eu
+          if [ "$PR" = true ]; then
+            sh scripts/install.sh
+          else
+            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh
+          fi
+      - name: Run the installed binary
+        shell: sh
+        run: |
+          set -eu
+          . "$HOME/.celestia-rs/env"
+          command -v celestia-rs
+          celestia-rs version --long
+          home=$(mktemp -d)/node
+          celestia-rs init smoke --chain-id smoke-1 --home "$home"
+          test -f "$home/config/genesis.json"
+      # With a token: through the API.
+      - name: Re-running is a no-op
+        shell: sh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: sh scripts/install.sh 2>&1 | tee out && grep -q "already installed" out
