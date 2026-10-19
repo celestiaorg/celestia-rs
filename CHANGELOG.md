@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.0-rc.2 (2026-10-19)
+
 ### Added
 
 - Release process without manual tags (`docs/releasing.md`): the `prepare
