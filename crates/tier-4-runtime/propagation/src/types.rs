@@ -415,7 +415,17 @@ impl WantParts {
 
     /// `WantPartsFromProto` (validates).
     pub fn from_proto(w: &pp::WantParts) -> Result<Self, String> {
-        let pb = w.parts.clone().unwrap_or_default();
+        let mut pb = w.parts.clone().unwrap_or_default();
+        // Go: `bits.NewBitArray(w.Parts.Size())` sizes the array by the
+        // proto's encoded length (nil, an error, when 0), then `FromProto`
+        // takes the proto's `bits`, and its `elems` only when it has any.
+        let size = pb.encoded_len();
+        if size == 0 {
+            return Err("WantParts: nil parts".into());
+        }
+        if pb.elems.is_empty() {
+            pb.elems = vec![0; size.div_ceil(64)];
+        }
         BitArray::validate_proto(&pb).map_err(|e| format!("WantParts: {e}"))?;
         let wp = Self {
             parts: BitArray::from_proto(&pb),
@@ -801,4 +811,31 @@ pub fn txs_to_parts(
         });
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `WantPartsFromProto` sizes the array by the proto's encoded length:
+    /// `bits` without `elems` is accepted (Go's zeroed elements stay), an
+    /// empty array is `nil parts`.
+    #[test]
+    fn want_parts_bit_array_like_go() {
+        let w = |bits: i64, elems: Vec<u64>| pp::WantParts {
+            parts: Some(ctypes::proto::libs::bits::BitArray { bits, elems }),
+            height: 1,
+            round: 0,
+            prove: false,
+            missing_parts_count: 1,
+        };
+        let wp = WantParts::from_proto(&w(32, vec![])).unwrap();
+        assert_eq!(wp.parts.size(), 32);
+        assert!(wp.parts.true_indices().is_empty());
+        assert_eq!(
+            WantParts::from_proto(&w(0, vec![])).unwrap_err(),
+            "WantParts: nil parts"
+        );
+        assert!(WantParts::from_proto(&w(66, vec![1])).is_err());
+    }
 }

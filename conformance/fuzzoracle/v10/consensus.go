@@ -20,20 +20,24 @@ package main
 //	c_partset   1 PartSetHeader, 2.. Part
 //	c_ed25519   1 public key, 2 message, 3 signature
 //	c_secp256k1 1 public key (33 bytes), 2 message, 3 signature
+//	c_prop      1 propagation.Message
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/crypto/secp256k1"
 	"github.com/cometbft/cometbft/evidence"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -346,6 +350,46 @@ func consensusOp(op string, in []byte) (o out) {
 			}
 			vals, _ := types.ValidatorSetFromProto(&pvs)
 			c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(dve, chainID, vals) })
+		}
+	case "c_prop":
+		var pm protoprop.Message
+		if !c.run("unmarshal", func() error { return pm.Unmarshal(first(m, 1)) }) {
+			break
+		}
+		var msg proptypes.Message
+		if !c.run("from_proto", func() (e error) { msg, e = proptypes.MsgFromProto(&pm); return }) {
+			break
+		}
+		c.run("validate", msg.ValidateBasic)
+		enc := func(b []byte, err error) string {
+			if err != nil {
+				return "err:" + err.Error()
+			}
+			return h(b)
+		}
+		switch v := msg.(type) {
+		case *proptypes.CompactBlock:
+			c.data("sign_bytes", func() string { return enc(v.SignBytes()) })
+			c.data("proofs", func() string {
+				ps, err := v.Proofs()
+				if err != nil {
+					return "err:" + err.Error()
+				}
+				d := sha256.New()
+				for _, p := range ps {
+					b, _ := p.ToProto().Marshal()
+					d.Write(b)
+				}
+				return fmt.Sprintf("%d:%s", len(ps), h(d.Sum(nil)))
+			})
+			c.data("encode", func() string { return enc(v.ToProto().Marshal()) })
+		case *proptypes.HaveParts:
+			c.data("encode", func() string { return enc(v.ToProto().Marshal()) })
+		case *proptypes.WantParts:
+			c.data("parts", func() string { return fmt.Sprint(v.Parts.GetTrueIndices()) })
+			c.data("fields", func() string {
+				return fmt.Sprintf("%d/%d/%v/%d", v.Height, v.Round, v.Prove, v.MissingPartsCount)
+			})
 		}
 	case "c_partset":
 		var ph cmtproto.PartSetHeader

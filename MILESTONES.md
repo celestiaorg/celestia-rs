@@ -275,19 +275,20 @@ test), then start that harness's count again.
   each op clean for at least 10⁸ inputs after its last fix.
 
   *Progress (2026-10-19):* `conformance/fuzzoracle/v10/consensus.go` and
-  `crates/fuzz-diff/src/consensus.rs` add twelve ops (`c_vote`,
+  `crates/fuzz-diff/src/consensus.rs` add thirteen ops (`c_vote`,
   `c_proposal`, `c_header`, `c_block`, `c_commit` with full / light /
   light-all-signatures / trusting verification, `c_valset` with updates
   and proposer priorities, `c_valupd`, `c_params` with `ValidateUpdate`,
   `c_evidence` with duplicate-vote verification, `c_partset`, `c_ed25519`,
-  `c_secp256k1`), seeded from the ctypes fixtures; the nightly
+  `c_secp256k1`, and `c_prop` for the propagation messages: compact
+  block sign bytes, proofs and re-encoding, have / want parts), seeded
+  from the ctypes and propagation fixtures; the nightly
   `fuzz-exec` runs them as the `consensus` job (2 h per night). They found
-  security.md findings 79-86 (protobuf decoding: stdtime / stdduration,
+  security.md findings 79-86 and 88 (protobuf decoding: stdtime / stdduration,
   unknown groups, varints and keys, repeated fields, oneofs, the
   `Data.hash` scan; the header's chain id), all fixed; the 5 031 inputs
   that differed before the fixes agree, 215 of them pinned in
-  `tests/regressions.jsonl`. Open: `ValidateBlock` against a state, the
-  propagation messages, secp256r1, the ICS-23 / NMT / SP1 proof
+  `tests/regressions.jsonl`. Open: `ValidateBlock` against a state, secp256r1, the ICS-23 / NMT / SP1 proof
   differentials, and the 10⁸ inputs per op.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200

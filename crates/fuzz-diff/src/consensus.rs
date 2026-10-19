@@ -36,6 +36,7 @@ pub const OPS: &[&str] = &[
     "c_partset",
     "c_ed25519",
     "c_secp256k1",
+    "c_prop",
 ];
 
 /// Splits the input into its length-delimited fields.
@@ -435,6 +436,67 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                     "verify_duplicate",
                     evidence::verify::verify_duplicate_vote(dve, &chain_id, &vals),
                 );
+            }
+        }
+        "c_prop" => {
+            use propagation::types::Message as Msg;
+            let bz = first(m, 1).unwrap_or_default();
+            if let Err(e) = decode::<ctypes::proto::propagation::Message>(Some(bz)) {
+                return c.put("unmarshal", &format!("err:{e}"));
+            }
+            c.put("unmarshal", "ok");
+            let msg = match Msg::decode(bz) {
+                Ok(v) => v,
+                Err(e) => return c.put("from_proto", &format!("err:{e}")),
+            };
+            c.put("from_proto", "ok");
+            c.run(
+                "validate",
+                match &msg {
+                    Msg::CompactBlock(v) => v.validate_basic(),
+                    Msg::HaveParts(v) => v.validate_basic(),
+                    Msg::WantParts(v) => v.validate_basic(),
+                    Msg::RecoveryPart(v) => v.validate_basic(),
+                },
+            );
+            match &msg {
+                Msg::CompactBlock(v) => {
+                    c.put("sign_bytes", &hex::encode(v.sign_bytes()));
+                    match v.proofs() {
+                        Ok(ps) => {
+                            let mut all = Vec::new();
+                            for p in &ps {
+                                all.extend(p.to_proto().encode_to_vec());
+                            }
+                            c.put(
+                                "proofs",
+                                &format!("{}:{}", ps.len(), hex::encode(hash::sha256(&all))),
+                            );
+                        }
+                        Err(e) => c.put("proofs", &format!("err:{e}")),
+                    }
+                    c.put("encode", &hex::encode(v.to_proto().encode_to_vec()));
+                }
+                Msg::HaveParts(v) => c.put("encode", &hex::encode(v.to_proto().encode_to_vec())),
+                Msg::WantParts(v) => {
+                    // Go keeps elems' bits past `bits` (re-encoded as is);
+                    // compared by the bits that count.
+                    let idx: Vec<String> = v
+                        .parts
+                        .true_indices()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect();
+                    c.put("parts", &format!("[{}]", idx.join(" ")));
+                    c.put(
+                        "fields",
+                        &format!(
+                            "{}/{}/{}/{}",
+                            v.height, v.round, v.prove, v.missing_parts_count
+                        ),
+                    );
+                }
+                Msg::RecoveryPart(_) => {}
             }
         }
         "c_partset" => {
@@ -867,6 +929,17 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .map(|c| hx(&c["vals"]))
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
+            }
+        }
+        "c_prop" => {
+            let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../conformance/fixtures/consensus/propagation.json");
+            let f: serde_json::Value = std::fs::read(&p)
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+            for msg in f["messages"].as_array().into_iter().flatten() {
+                out.push(input(&[(1, &hx(&msg["hex"]))]));
             }
         }
         "c_partset" => {

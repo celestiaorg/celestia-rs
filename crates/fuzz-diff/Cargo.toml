@@ -23,6 +23,7 @@ evidence = { path = "../tier-4-runtime/evidence" }
 nodestore = { path = "../tier-4-runtime/nodestore" }
 zstd = "0.14"
 hash = { path = "../tier-0-primitives/hash" }
+propagation = { path = "../tier-4-runtime/propagation" }
 merkle = { path = "../tier-0-primitives/merkle" }
 shares = { path = "../tier-1-protocol-types/shares" }
 square = { path = "../tier-1-protocol-types/square" }
