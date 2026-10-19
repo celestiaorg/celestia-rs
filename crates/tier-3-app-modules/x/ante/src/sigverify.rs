@@ -83,8 +83,19 @@ pub fn set_pub_key(ctx: &mut Context<'_>, tx: &Tx, simulate: bool, deps: &impl A
         if acc.pub_key().is_some() {
             continue;
         }
-        if let Account::Module(_) = acc {
-            return Err(errs::invalid_pub_key("not supported for module accounts").into());
+        match acc {
+            Account::Module(_) => {
+                return Err(errs::invalid_pub_key("not supported for module accounts").into());
+            }
+            // ICS-27 `InterchainAccount.SetPubKey` (reached in simulation:
+            // otherwise no key matches the account's address).
+            Account::Interchain(_) => {
+                return Err(errs::invalid_pub_key(
+                    "cannot set public key for interchain account: interchain account does not support this action",
+                )
+                .into());
+            }
+            _ => {}
         }
         acc.base_mut().pub_key = Some(pk.to_any());
         x_auth::set_account(ctx, &acc)?;

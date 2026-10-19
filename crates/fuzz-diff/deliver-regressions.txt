@@ -12,3 +12,13 @@ v9-upgrade 100 6 3003 GO_APPD_NEXT=v10 DELIVER_UPGRADE=13 DELIVER_IBC=1 DELIVER_
 # After the v9 -> v10 switch the next Go binary has empty memory stores: its
 # recheck fails IBC txs with `capability not found`.
 v9-upgrade 100 6 3007 GO_APPD_NEXT=v10 DELIVER_UPGRADE=17 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# A solo machine ClientState without a consensus state panics Go's tx decoder:
+# PrepareProposal aborts (security.md 91).
+ibc-upgrades 300 8 3059 DELIVER_IBC=1
+# Solo machine MsgCreateClient whose consensus-state copies differ in a nested
+# Any's bytes: app-hash split (security.md 92).
+ibc-upgrades 300 8 3080 DELIVER_IBC=1 DELIVER_WIRE=1
+# An ICA MsgRecvPacket with a key past u32 in the SDK message count (security.md 93).
+ibc-edge 300 8 3020 DELIVER_IBC=1 DELIVER_WIRE=1
+# Simulate of a tx signed by an interchain account (security.md 94).
+v9-empty 300 8 3047 DELIVER_IBC=1 DELIVER_SIM=1

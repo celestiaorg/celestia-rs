@@ -66,8 +66,16 @@ pub fn unpack_client_message(any: &Any) -> Option<Result<ClientMessage>> {
 }
 
 /// The public key packed in `any` (`GetCachedValue().(cryptotypes.PubKey)`).
+/// The tx decoder keeps a solo machine key's `Any` as received (Go stores
+/// and compares those bytes), so the cached value is its gogoproto decoding.
 fn unpack_pub_key(any: &Any) -> Option<PubKey> {
-    PubKey::from_any(any).ok()
+    PubKey::from_any(&cached(any)).ok()
+}
+
+/// `any` with its value as gogoproto decodes it (as received when it does
+/// not decode).
+fn cached(any: &Any) -> std::borrow::Cow<'_, Any> {
+    txdecode::prost_compatible(any).map_or(std::borrow::Cow::Borrowed(any), std::borrow::Cow::Owned)
 }
 
 /// `GetPubKey` then `err != nil || publicKey == nil || len(publicKey.Bytes())
@@ -79,7 +87,7 @@ fn key_missing(any: Option<&Any>) -> Result<bool> {
     fn has_empty_sub_key(any: &Any) -> bool {
         any.type_url == x_ante::pubkey::MULTISIG_TYPE_URL
             && celestia_proto::cosmos::crypto::multisig::LegacyAminoPubKey::decode(
-                any.value.as_slice(),
+                cached(any).value.as_slice(),
             )
             .is_ok_and(|m| {
                 m.public_keys

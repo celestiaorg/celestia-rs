@@ -19,7 +19,8 @@ const ICA_HOST_PORT: &str = "icahost";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoStore;
 
-/// `countExecutableMsgs`. `ctx` is `None` when Go's context is
+/// `countExecutableMsgs` over `msgs` as `GetMsgs` returns them
+/// ([`sdk::tx::Tx::gogo_msgs`]). `ctx` is `None` when Go's context is
 /// `sdk.Context{}` (an ante decorator returned it): reading the channel
 /// then panics, reported as [`NoStore`].
 pub fn count_executable_msgs(
@@ -42,10 +43,12 @@ fn msg_weight(mut ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoS
             return Ok(1);
         };
         // GetMessages succeeds for every tx that decoded (the decoder
-        // unpacked each inner Any).
+        // unpacked each inner Any). The tx keeps inner messages as
+        // received: count their gogoproto decodings, as Go does.
         let mut n = 1;
         for m in &exec.msgs {
-            n += leaf_weight(ctx.as_deref_mut(), m)?;
+            let m = txdecode::prost_compatible(m).unwrap_or_else(|| m.clone());
+            n += leaf_weight(ctx.as_deref_mut(), &m)?;
         }
         return Ok(n);
     }
@@ -209,6 +212,48 @@ pub fn count_json_msgs(bz: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `MsgRecvPacket` of an ICA `EXECUTE_TX` packet with a protobuf key
+    /// past `u32::MAX` (nightly fuzz-exec, deliver `ibc-edge` seed 3020):
+    /// prost rejects the bytes as received, gogoproto decodes them, so Go
+    /// reads the packet (and its channel) where a prost decode counted one
+    /// message.
+    const RECV_PACKET_WIDE_KEY_TX: &[&str] = &[
+        "0a99080a96080a222f6962632e636f72652e6368616e6e656c2e76312e4d7367526563765061636b657412ef07f8ffff",
+        "ff3f010aa1010808123d696361636f6e74726f6c6c65722d63656c6573746961317a376e677a646a3336303670787371",
+        "76376a33646c70707963346533687967337279386d6c361a0a6368616e6e656c2d37372207696361686f73742a096368",
+        "616e6e656c2d3232327b2264617461223a222f77453d222c226d656d6f223a22222c2274797065223a22545950455f45",
+        "5845435554455f5458227d3a004080bca38fe6f290ed18128a060a88040a85040a6f636f6d6d69746d656e74732f706f",
+        "7274732f696361636f6e74726f6c6c65722d63656c6573746961317a376e677a646a333630367078737176376a33646c",
+        "70707963346533687967337279386d6c362f6368616e6e656c732f6368616e6e656c2d37372f73657175656e6365732f",
+        "38122038e09095f2376dcbac78cfdd112f40db01bf8e7949cf6615b8c2b0ca4addb5fb1a0c0801180120012a040002a0",
+        "02222a080112260204a0022054a67aa3a16a1991d0a5301aa94d0bb422fd3cb3d7adeb4e07c5d07a6cf16c2a20222a08",
+        "0112260406a00220bb3f0b2ab016eb6fa39e62192c8abd7005701389a42a5fbc13dda615cbe14cae20222a0801122606",
+        "0aa00220308490bde3d79e0e893bc9069f53914e9acdc8fdfc0cd13d08c03dfcd65cd84520222a080112260812a00220",
+        "1e77bc660823b156f1aedf6f81aab220162f4ca11c2f5a9894e2367824f57d4d20222c080112050a2ca002201a2120f7",
+        "60cf361192df1195ac6c740cf8a2000a3e38444053d80ad26a22211884cc77222a080112260e66a00220654e381bfeb3",
+        "503b0054624236813d406d7c4739ab394a3a08cdf6b6d80fda2820222b0801122710e601a00220b7bcd94bcb85d0f74d",
+        "5af3827de873efd6938fb41d05de07b992f29d84dafc7520222b0801122712f202a00220a3ae103512d85b18875a086c",
+        "d9f8f06396a5820ab7f467868eb4fdbe2b236561200afc010af9010a03696263122050bbb9f26ece7af5bf2aa2ebbc1c",
+        "4ebdb7760e5f1697904185665c00e864ca6b1a090801180120012a0100222708011201011a2003d82aa517051847a4bf",
+        "891c7d326e4e0d22a3e4c3e7d14bc142a2731b58604f22250801122101c79a386cfbf13f5f09038bd1e798c16eec9b67",
+        "8ba1d6a9807050519fc240c21622250801122101824b8fe40d0c9b2b3ebc3cee296aac01f7cbeb3bbd840e38c255e300",
+        "663eee5c22250801122101031f969cb5c7a5afd3f041faef0ceb3fc7455df48a1d7dc2b7dfe2321ca8ff4d2227080112",
+        "01011a201d39e1ea0f6c663ad7b33609b10bfb1fcd8704f6323396de95d198ce1958db9e1a050801109101222f63656c",
+        "65737469613136726b35377567337a366a30726d30337a7a657775686d76346430753863376b33663775773012680a50",
+        "0a460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2103b94287437114b67c",
+        "19738dae5c10de81dbdcd28c155c4037223c8049a4d0211b12040a020801180512140a0d0a0475746961120538303030",
+        "31108092f4011a40ebafa50a0a8c6b2bb48c97be983abf318ba12615a42ab05886b7295ca63a12474f79174c2c0aa166",
+        "6134c2e744a6945855a87761e11522644ffdc23a8803ad80",
+    ];
+
+    #[test]
+    fn counts_the_gogoproto_decoding() {
+        let raw = hex::decode(RECV_PACKET_WIDE_KEY_TX.concat()).unwrap();
+        let tx = txdecode::decode(&raw).unwrap();
+        assert_eq!(count_executable_msgs(None, tx.msgs()), Ok(1));
+        assert_eq!(count_executable_msgs(None, tx.gogo_msgs()), Err(NoStore));
+    }
 
     #[test]
     fn proto_and_json_counts() {
