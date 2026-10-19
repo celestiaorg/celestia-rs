@@ -5,10 +5,12 @@
 //!   the Go program in `conformance/fixturegen/`.
 //! - `repo-health` — run the local repository health gates.
 //! - `gen-proto` — regenerate committed prost bindings from `proto/`.
+//! - `bump-version` — set the `celestia-rs` binary's version for a release.
 
 // xtask is an internal CLI tool, not a library — stdout is its primary output.
 #![allow(clippy::print_stdout)]
 
+mod bump_version;
 mod gen_proto;
 mod refresh_fixtures;
 mod repo_health;
@@ -55,6 +57,18 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Set the celestia-rs binary's version (Cargo.toml, Cargo.lock) and cut
+    /// the CHANGELOG's Unreleased section for the release.
+    BumpVersion {
+        /// The new version, e.g. `0.1.0` or `0.1.0-rc.2` (a leading `v` is ok).
+        version: String,
+        /// The release date for the CHANGELOG heading (default: today, UTC).
+        #[arg(long)]
+        date: Option<String>,
+        /// Print the files that would change without writing them.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -71,5 +85,10 @@ fn main() -> Result<()> {
             skip_go,
         } => repo_health::run(dry_run, offline, skip_go),
         Cmd::GenProto { dry_run } => gen_proto::run(dry_run),
+        Cmd::BumpVersion {
+            version,
+            date,
+            dry_run,
+        } => bump_version::run(&version, date.as_deref(), dry_run),
     }
 }

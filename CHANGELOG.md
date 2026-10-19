@@ -4,6 +4,13 @@
 
 ### Added
 
+- Release process without manual tags (`docs/releasing.md`): the `prepare
+  release` workflow opens a PR made by `cargo xtask bump-version <version>`
+  (the binary crate's version, Cargo.lock and the CHANGELOG section);
+  merging it makes `release.yml` tag the commit, build, check that each
+  binary reports the version, and publish with the CHANGELOG section as
+  notes. A hand-pushed tag that doesn't match the crate version fails.
+
 - One-line installer, `scripts/install.sh` (README "Install"): installs or
   updates the latest release to `~/.celestia-rs/bin` and adds it to `PATH`
   (sh, bash, zsh, fish), verifying the archive's SHA-256; `--version`,
