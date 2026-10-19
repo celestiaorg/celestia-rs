@@ -1,4 +1,7 @@
 # Alert rules for celestia-rs nodes (docs/operator-guide.md §11.9).
+# severity=critical alerts are emailed by Grafana
+# (grafana/provisioning/alerting/celestia-rs.yml), except LowPeers; warnings
+# only show on the dashboard. Test: promtool test rules rules_test.yml
 # Firing alerts show in Grafana (Alerting > Alert rules, and the
 # dashboard's "Firing alerts" panel) and at http://127.0.0.1:9090/alerts.
 groups:
@@ -99,3 +102,10 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Less than 10% disk space left on the data volume"
+
+      - alert: DiskSpaceCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"} / node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"} < 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Less than 5% disk space left on the data volume; the nodes stop when it is full"

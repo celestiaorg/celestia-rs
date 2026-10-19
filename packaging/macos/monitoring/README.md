@@ -60,12 +60,42 @@ The `Network` variable selects mocha, mainnet or both.
 
 ## Alerts
 
-`rules.yml` defines the alerts from operator guide §11.9: node down,
-height stalled, app hash mismatch, not signing, missed blocks, jail risk,
-jailed, low peers, and low disk. Firing alerts show in the dashboard's
-"Firing alerts" panel, in Grafana under Alerting > Alert rules, and at
-`http://127.0.0.1:9090/alerts`. Notifications (Slack, email, phone) need a
-Grafana contact point, which this package does not set up.
+`rules.yml` defines the alerts from operator guide §11.9. Firing alerts
+show in the dashboard's "Firing alerts" panel, in Grafana under Alerting
+> Alert rules, and at `http://127.0.0.1:9090/alerts`.
+
+- **Critical (emailed):** NodeDown, HeightStalled, LastBlockOld,
+  AppHashMismatch, ValidatorNotSigning, ValidatorJailRisk,
+  ValidatorJailed, DiskSpaceCritical (< 5%).
+- **Warning (dashboard only):** LowPeers, CatchingUp,
+  ValidatorMissingBlocks, AppHashCheckFailing, MonitoringCollectorStale,
+  DiskSpaceLow (< 10%).
+
+`promtool test rules rules_test.yml` pins these severities.
+
+### Email alerts
+
+One Grafana rule (`grafana/provisioning/alerting/celestia-rs.yml`) emails
+every firing critical alert except LowPeers. You get one email per
+network, a reminder every 4 h while it lasts, and a resolved email. If
+Grafana cannot query Prometheus, you get an email about that too. If the
+Mac or Grafana is down, no email is sent.
+
+Grafana sends through Gmail and needs an app password. The Google
+account needs 2-Step Verification.
+
+1. Create an app password at https://myaccount.google.com/apppasswords.
+2. Save it on the Mac. It is not echoed or stored in the shell history:
+
+   ```sh
+   read -rs 'p?Gmail app password: ' && printf %s "${p// /}" > ~/.celestia-rs/monitoring/grafana/smtp-password; unset p
+   ```
+
+3. Re-run `ALERT_EMAIL=you@gmail.com packaging/macos/monitoring/install.sh`.
+   The address is saved, so later runs need no `ALERT_EMAIL`.
+
+To send a test email: Grafana > Alerting > Contact points >
+operator-email > Test.
 
 ## Files
 

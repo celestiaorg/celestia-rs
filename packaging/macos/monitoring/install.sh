@@ -5,6 +5,9 @@
 #   packaging/macos/monitoring/install.sh            # cron supervisor, no sudo
 #   packaging/macos/monitoring/install.sh --system   # LaunchDaemons (sudo)
 #
+# Set ALERT_EMAIL=you@gmail.com on the first run to get alert emails
+# (saved in ~/.celestia-rs/monitoring/alert-email; README.md, "Email alerts").
+#
 # Both modes start at boot without a login session. Without sudo, the
 # launchd user domain is not reachable over SSH, so a crontab entry
 # (@reboot and every minute) runs bin/supervise.sh, which restarts any
@@ -35,11 +38,18 @@ dns=$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' | sed
 root_url=${dns:+https://$dns/}
 root_url=${root_url:-http://127.0.0.1:3000/}
 
-render() { sed -e "s|__MON__|$MON|g" -e "s|__HOME__|$HOME|g" -e "s|__ROOT_URL__|$root_url|g" "$1" >"$2"; }
+mkdir -p "$MON"
+if [[ -n ${ALERT_EMAIL:-} ]]; then printf '%s\n' "$ALERT_EMAIL" >"$MON/alert-email"; fi
+alert_email=$(cat "$MON/alert-email" 2>/dev/null || true)
+
+render() {
+  sed -e "s|__MON__|$MON|g" -e "s|__HOME__|$HOME|g" -e "s|__ROOT_URL__|$root_url|g" \
+    -e "s|__ALERT_EMAIL__|$alert_email|g" "$1" >"$2"
+}
 
 # --- files -------------------------------------------------------------------
 mkdir -p "$MON"/{bin,logs,textfile,prometheus/data,launchd} \
-  "$MON"/grafana/{data,plugins,dashboards,provisioning/datasources,provisioning/dashboards,provisioning/alerting}
+  "$MON"/grafana/{data,plugins,dashboards,provisioning/datasources,provisioning/dashboards,provisioning/alerting,provisioning/plugins}
 install -m 755 "$here/node-metrics.sh" "$here/../../check-apphash.sh" "$MON/bin/"
 render "$here/nodes.conf" "$MON/nodes.conf"
 cp "$here/prometheus.yml" "$here/rules.yml" "$MON/prometheus/"
@@ -47,9 +57,17 @@ render "$here/grafana/grafana.ini" "$MON/grafana/grafana.ini"
 cp "$here/grafana/provisioning/datasources/prometheus.yml" "$MON/grafana/provisioning/datasources/"
 render "$here/grafana/provisioning/dashboards/celestia-rs.yml" "$MON/grafana/provisioning/dashboards/celestia-rs.yml"
 cp "$here"/grafana/dashboards/*.json "$MON/grafana/dashboards/"
+if [[ -n $alert_email ]]; then
+  render "$here/grafana/provisioning/alerting/celestia-rs.yml" "$MON/grafana/provisioning/alerting/celestia-rs.yml"
+else
+  rm -f "$MON/grafana/provisioning/alerting/celestia-rs.yml"
+  echo "note: no alert emails; re-run with ALERT_EMAIL=you@gmail.com to enable them" >&2
+fi
 if [[ ! -s $MON/grafana/admin-password ]]; then
   (umask 077; openssl rand -base64 18 | tr -d '\n' >"$MON/grafana/admin-password")
 fi
+# Grafana reads the Gmail app password from here; the operator writes it.
+[[ -f $MON/grafana/smtp-password ]] || (umask 077; : >"$MON/grafana/smtp-password")
 "$BREW/opt/prometheus/bin/promtool" check config "$MON/prometheus/prometheus.yml" >/dev/null
 
 # --- services ----------------------------------------------------------------
@@ -187,6 +205,8 @@ fi
 # The serve config is kept by tailscaled and survives reboots.
 [[ -n $dns ]] && tailscale serve --bg --https=443 http://127.0.0.1:3000 >/dev/null
 
+[[ -n $alert_email && ! -s $MON/grafana/smtp-password ]] &&
+  echo "note: alert emails to $alert_email need a Gmail app password in $MON/grafana/smtp-password (README.md)" >&2
 cat <<EOF
 Monitoring installed in $MON, supervised by $mode.
   Grafana:    $root_url  (anyone on the tailnet can view; admin password in $MON/grafana/admin-password)
