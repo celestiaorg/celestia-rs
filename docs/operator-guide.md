@@ -24,14 +24,27 @@ launchd).
 
 ## 1. Build or download
 
-**Download** (tagged releases; the repository is private, so through `gh`
-logged in with access to it). Each archive has a `.sha256` next to it and
+**Install** (tagged releases) with the installer from the README:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh
+```
+
+It puts the binary at `~/.celestia-rs/bin/celestia-rs` (the path section 8
+uses) and adds that directory to `PATH`. Re-run it to update, or pass
+`sh -s -- --version <tag>` to pin or roll back. It verifies the archive's
+SHA-256, keeps the binary it replaces as `celestia-rs.prev`, and swaps the
+new one in with a rename, so a running node keeps its binary until you
+restart it. `sh -s -- --help` lists the options.
+
+**Download** by hand instead. Each archive has a `.sha256` next to it and
 the release carries `SHA256SUMS`:
 
 ```sh
 V=v0.1.0                 # the tag to install
 T=aarch64-apple-darwin   # or x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
-gh release download $V --repo celestiaorg/celestia-rs --pattern "celestia-rs-$V-$T.tar.gz*"
+curl -fLO https://github.com/celestiaorg/celestia-rs/releases/download/$V/celestia-rs-$V-$T.tar.gz
+curl -fLO https://github.com/celestiaorg/celestia-rs/releases/download/$V/celestia-rs-$V-$T.tar.gz.sha256
 shasum -a 256 -c celestia-rs-$V-$T.tar.gz.sha256
 tar -xzf celestia-rs-$V-$T.tar.gz
 sudo install -m 755 celestia-rs-$V-$T/celestia-rs /usr/local/bin/celestia-rs

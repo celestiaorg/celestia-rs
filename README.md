@@ -6,6 +6,13 @@ and [celestia-core](https://github.com/celestiaorg/celestia-core). One
 binary, `celestia-rs`, runs the state machine, Tendermint consensus, P2P,
 mempool, RPC and gRPC.
 
+## Install
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh
+```
+
+
 ## Status
 
 **celestia-rs is an early, experimental project under rapid development.**
@@ -75,6 +82,8 @@ libsecp256k1 cut PrepareProposal on max-size squares from ~1.1x Go's
 latency to ~0.65x and ProcessProposal to ~0.25x.
 
 ## Getting started
+
+Install a release ([above](#install)), or build from source:
 
 ```
 cargo build --release -p celestia-rs

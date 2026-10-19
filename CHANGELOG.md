@@ -4,6 +4,13 @@
 
 ### Added
 
+- One-line installer, `scripts/install.sh` (README "Install"): installs or
+  updates the latest release to `~/.celestia-rs/bin` and adds it to `PATH`
+  (sh, bash, zsh, fish), verifying the archive's SHA-256; `--version`,
+  `--prerelease`, `--no-modify-path`, `--uninstall`. Tested against a mock
+  GitHub by `scripts/test-install.sh`, and against the real releases on
+  macOS and Linux by `.github/workflows/install.yml`.
+
 - `TxDecodeAmino` / `TxEncodeAmino` at app version 9 use celestia-app
   v9.0.8's amino type graph (hyperlane-cosmos v1.1.0 names), dumped by
   `conformance/aminoschema` built with `-tags v9`.
