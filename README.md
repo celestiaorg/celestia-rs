@@ -18,7 +18,7 @@ validators with no app-hash mismatch.
 |---|---|
 | Go parity target | celestia-app v10.4.0 / celestia-core v0.42.x, plus app version 9 (v9.0.8, mainnet today) and the v9 → v10 upgrade |
 | Mocha | Validating (M13: 24 h signing soak) |
-| Mainnet | Follows the tip with matching app hashes; full node next, then the consensus-split assurance gate (F1) before a mainnet validator (M14) |
+| Mainnet | Follows the tip with matching app hashes; full node next (through the v10 upgrade at 15,116,658), then the canary gate (C1) before a small-stake mainnet validator (M14); the consensus-split assurance gate (F1) before more stake |
 | Not yet | Production use on mainnet. Treat it as experimental. |
 
 Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:

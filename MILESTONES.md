@@ -15,16 +15,24 @@ app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004).
 
 ## Remaining milestones
 
-In order. M14 starts only when M13 **and** F1 have passed (owner,
-2026-10-16: local-file key signing is accepted; the consensus-split risk
-is not, until F1's exit criteria are met).
+In order. M14 is a **small-stake canary**: it starts when M13 **and** C1
+have passed (owner, 2026-10-19). F1 stays the gate for any Rust
+validator with more than canary stake (owner, 2026-10-16: local-file key
+signing is accepted; the consensus-split risk at meaningful stake is not,
+until F1's exit criteria are met).
 
 | #   | Status      | Milestone | Acceptance test |
 |-----|-------------|-----------|-----------------|
-| M13 | in progress | Mocha validator soak, then a mainnet full node on the Mac | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes |
-| F1  | in progress | **Consensus-split assurance** (mainnet gate): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
-| M14 | pending     | Mainnet validator | Signs mainnet blocks; no double-signs; no evidence |
+| M13 | in progress | Mocha validator soak, then a mainnet full node on the Mac | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes, through mainnet's v9 → v10 upgrade |
+| C1  | pending     | **Canary gate** for M14 | Every item of C1.1–C1.5 below met on the release commit |
+| M14 | pending     | Mainnet validator (small-stake canary) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
+| F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
+
+Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target) is
+scheduled at height **15,116,658** (`/signal/v1/upgrade`, queried
+2026-10-19 at height ~15,085,950; ~2.87 s blocks put it near
+2026-10-20 03:40 UTC).
 
 ## M13 — Mocha validator soak, mainnet full node
 
@@ -53,11 +61,70 @@ Remaining:
 - [ ] Mainnet full node on the Mac over P2P (§12: route B, Polkachu
   snapshot, then `start --network mainnet`), at the tip with
   `check-apphash.sh` OK, running until M14. This is also F1.8's live
-  replay.
+  replay. Bootstrap it before the v10 upgrade height (15,116,658) so it
+  executes the binary switch live (F1.5's real-world half); check app
+  hashes at every height from `H-2` to `H+3`. If the Mac is not at the
+  tip in time, an HTTPS `follow` across the height covers execution.
 
-## F1 — Consensus-split assurance (mainnet gate)
+## C1 — Canary gate (M14 entry)
 
-### Why this gates mainnet
+### Why a smaller gate for the canary
+
+Decided by the owner on 2026-10-19. One validator with stake near the
+active-set minimum cannot fork or halt mainnet (on 2026-10-19: 97 of 100
+slots bonded, smallest bonded validator ~12 TIA, ~463.8M TIA bonded;
+see F1's "Why this gates" below). On a split it votes nil or stops at the
+mismatched height while Go validators carry on; its proposals (a turn
+every few months at that stake) still pass Go's ProcessProposal and
+execution. What remains is the operator's own risk: downtime jailing
+(mainnet `slash_fraction_downtime` 0, jailed after missing 9,990 of
+10,000 blocks, 60 s) and double-signing (2% slash plus tombstoning,
+guarded by `privval`'s fsync-before-sign state). So the canary needs
+evidence that the binary it runs is at parity today and that new
+splits are caught in CI, not F1's saturation. An app-hash halt of the
+canary is a finding to fix, not an incident.
+
+### Items
+
+Every item must pass on the commit the canary runs.
+
+- [ ] **C1.1 Mainnet full node through the v10 upgrade.** M13's mainnet
+  full node (release build) at the tip across height 15,116,658 and then
+  at least **7 days** at v10, with every `check-apphash.sh` check and every
+  tx result matching. Partial F1.8 (c) and F1.5.
+
+- [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
+  `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
+  `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
+  v10.4.0 and v9.0.8, rotating scenarios with a new seed per night; a
+  mismatch fails the job. Exit: running, and clean for **7 consecutive
+  nights** before M14 starts.
+
+- [ ] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
+  clean on the Mac (or a `macos-14` runner) with the `dist` profile; the
+  same seeds byte-identical under `RAYON_NUM_THREADS=1` and the default,
+  with the signature cache on and off, and in `release` vs `dist`; a
+  recorded replay gives the same app hashes on x86_64 and aarch64.
+
+- [ ] **C1.4 Fresh `deliver` campaign on the release commit.** At least
+  one run of every devnet scenario at both app versions, plus
+  `DELIVER_UPGRADE` over at least 10 seeds, with `DELIVER_IBC`,
+  `DELIVER_HL`, `DELIVER_WIRE`, `DELIVER_SWEEP` and `DELIVER_RECHECK`;
+  no mismatch. A finding is fixed, pinned and the campaign rerun.
+
+- [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
+  copied (no second process may ever hold it); operator key offline or
+  hardware-backed; stake near the active-set minimum (raising it is an F1
+  decision); Mocha and mainnet in separate homes with distinct ports and
+  keys, or Mocha paused if the Mac's 16 GB is tight; alerts on halt,
+  missed blocks, double-sign-guard refusals and app-hash mismatch
+  (`check-apphash.sh`); a written response for an app-hash halt (stop,
+  keep `data/` and the WAL for the finding, do not reset the sign state,
+  unjail only on a fixed build).
+
+## F1 — Consensus-split assurance (gate for more than canary stake)
+
+### Why this gates meaningful stake
 
 A split is any input on which the Rust node and Go celestia-app /
 celestia-core reach a different decision: a different app hash,
@@ -70,10 +137,11 @@ are at parity anyway, `docs/security.md`).
 What a split costs depends on the stake running Rust. One Rust validator
 with a small share of stake cannot fork mainnet: on a split it stops at
 the mismatched height (or votes nil on blocks Go accepts) and is jailed for
-downtime while Go validators carry on. Rust stake at or above 1/3 halts the
-chain on a split, above 2/3 it could commit a block Go rejects. F1 is
-sized for the second case ("would we let a large share of mainnet stake
-run this?"), not only for the first.
+downtime while Go validators carry on (the M14 canary, gated by C1).
+Rust stake at or above 1/3 halts the chain on a split, above 2/3 it
+could commit a block Go rejects. F1 is sized for the second case ("would
+we let a large share of mainnet stake run this?"), not only for the
+first.
 
 ### Where fuzzing stands (2026-10-16)
 
@@ -239,9 +307,10 @@ Not consensus-relevant unless noted; tracked so nothing is lost.
   restoring from a Rust snapshot at app version 9).
 - [ ] Following Mocha from genesis over HTTPS (V9; part of F1.8 (b)).
 
-## M14 — Mainnet validator
+## M14 — Mainnet validator (small-stake canary)
 
-Starts when M13 and F1 have passed. Runbook: `docs/operator-guide.md` §12
+Starts when M13 and C1 have passed; more than canary stake waits for F1.
+Runbook: `docs/operator-guide.md` §12
 (real TIA above the 100th bonded validator's stake, a separate home and
 consensus key, route B bootstrap, the same binary through the v9 → v10
 upgrade). Local `priv_validator_key.json` signing with the double-sign
