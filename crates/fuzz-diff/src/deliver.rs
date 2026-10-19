@@ -872,6 +872,9 @@ struct Gen {
     force_amino: bool,
     /// Systematic wire-level mutations (`DELIVER_WIRE`).
     wire: WireGen,
+    /// Gov-authority messages built from the app's current parameters
+    /// (`DELIVER_GOVPASS`, see [`authority_msgs`]).
+    gov_msgs: Vec<Any>,
 }
 
 /// State of `DELIVER_WIRE`: messages get a [`crate::wire`] mutation of
@@ -2040,6 +2043,9 @@ impl Gen {
                     origin_denom,
                 },
             );
+        }
+        if !self.gov_msgs.is_empty() && self.m.rng.one_in(2) {
+            return self.gov_msgs[self.m.rng.below(self.gov_msgs.len())].clone();
         }
         if self.m.rng.one_in(2) {
             let content = Any::pack(&gov1b::TextProposal {
@@ -3491,6 +3497,7 @@ pub fn run(
         types: types_for(app_version, upg.on),
         force_amino: false,
         wire: WireGen::default(),
+        gov_msgs: Vec::new(),
     };
     gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
     let mut hl_seq = HlSeq {
@@ -3751,6 +3758,7 @@ pub fn run(
                 let vals = bonded_validators(&mut rust);
                 if !vals.is_empty() {
                     govpass_delegated = true;
+                    gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
                     for i in 0..ACCOUNTS - 1 {
                         let msg =
                             Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
@@ -3768,6 +3776,27 @@ pub fn run(
                     }
                 }
             } else if govpass && b % 4 == 0 && !gn.proposals.is_empty() {
+                // Each authority message in turn, in a proposal of its own
+                // (the deposits and votes below pass it).
+                if !gn.gov_msgs.is_empty() {
+                    let msg = gn.gov_msgs[(b as usize / 4) % gn.gov_msgs.len()].clone();
+                    let submit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+                        messages: vec![msg],
+                        initial_deposit: vec![Coin {
+                            denom: "utia".into(),
+                            amount: "100000000000".into(),
+                        }],
+                        proposer: gn.accts[1].acc.clone(),
+                        metadata: String::new(),
+                        title: "params".into(),
+                        summary: "params".into(),
+                        expedited: false,
+                    });
+                    if let Some(t) = sign_simple(&gn, 1, vec![submit], 2_000_000) {
+                        gn.accts[1].seq += 1;
+                        txs.push(t);
+                    }
+                }
                 // One message per tx: a vote on an ended proposal fails
                 // alone.
                 let ids: Vec<u64> = gn.proposals.iter().rev().take(6).copied().collect();
@@ -4525,6 +4554,153 @@ fn bonded_validators(rust: &mut app::App) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// A gRPC query of the Rust app (`None` if it fails).
+fn query_app<R: prost::Message + Default>(
+    rust: &mut app::App,
+    path: &str,
+    req: &impl prost::Message,
+) -> Option<R> {
+    let r = rust.query(&abci::RequestQuery {
+        data: req.encode_to_vec(),
+        path: path.into(),
+        height: 0,
+        prove: false,
+    });
+    (r.code == 0)
+        .then(|| R::decode(r.value.as_slice()).ok())
+        .flatten()
+}
+
+/// `DELIVER_GOVPASS`: gov-authority messages that set each module's
+/// parameters to their current values (handlers and celestia's parameter
+/// filter run, the state stays usable), and a community pool spend of 1
+/// utia to `recipient`.
+fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
+    use celestia_proto::celestia::{blob::v1 as blob, minfee::v1 as minfee};
+    use celestia_proto::cosmos::{
+        auth::v1beta1 as auth, bank::v1beta1 as bank, consensus::v1 as cons,
+        distribution::v1beta1 as distr, gov::v1 as gov, slashing::v1beta1 as slashing,
+    };
+    use celestia_proto::ibc::applications::transfer::v1 as transfer;
+    use celestia_proto::ibc::core::{
+        channel::v1 as channel, client::v1 as client, connection::v1 as connection,
+    };
+    let mut out = Vec::new();
+    let a = || GOV.to_owned();
+    macro_rules! params {
+        ($m:ident, $path:expr, $msg:ident { $who:ident }) => {
+            if let Some(r) =
+                query_app::<$m::QueryParamsResponse>(rust, $path, &$m::QueryParamsRequest {})
+            {
+                out.push(Any::pack(&$m::$msg {
+                    $who: a(),
+                    params: r.params,
+                }));
+            }
+        };
+    }
+    params!(
+        auth,
+        "/cosmos.auth.v1beta1.Query/Params",
+        MsgUpdateParams { authority }
+    );
+    params!(
+        bank,
+        "/cosmos.bank.v1beta1.Query/Params",
+        MsgUpdateParams { authority }
+    );
+    params!(
+        distr,
+        "/cosmos.distribution.v1beta1.Query/Params",
+        MsgUpdateParams { authority }
+    );
+    params!(
+        slashing,
+        "/cosmos.slashing.v1beta1.Query/Params",
+        MsgUpdateParams { authority }
+    );
+    params!(
+        minfee,
+        "/celestia.minfee.v1.Query/Params",
+        MsgUpdateMinfeeParams { authority }
+    );
+    params!(
+        blob,
+        "/celestia.blob.v1.Query/Params",
+        MsgUpdateBlobParams { authority }
+    );
+    params!(
+        transfer,
+        "/ibc.applications.transfer.v1.Query/Params",
+        MsgUpdateParams { signer }
+    );
+    if let Some(r) = query_app::<gov::QueryParamsResponse>(
+        rust,
+        "/cosmos.gov.v1.Query/Params",
+        &gov::QueryParamsRequest {
+            params_type: "tallying".into(),
+        },
+    ) {
+        out.push(Any::pack(&gov::MsgUpdateParams {
+            authority: a(),
+            params: r.params,
+        }));
+    }
+    if let Some(r) = query_app::<cons::QueryParamsResponse>(
+        rust,
+        "/cosmos.consensus.v1.Query/Params",
+        &cons::QueryParamsRequest {},
+    ) {
+        let p = r.params.unwrap_or_default();
+        out.push(Any::pack(&cons::MsgUpdateParams {
+            authority: a(),
+            block: p.block,
+            evidence: p.evidence,
+            validator: p.validator,
+            abci: p.abci,
+        }));
+    }
+    if let Some(r) = query_app::<client::QueryClientParamsResponse>(
+        rust,
+        "/ibc.core.client.v1.Query/ClientParams",
+        &client::QueryClientParamsRequest {},
+    ) {
+        out.push(Any::pack(&client::MsgUpdateParams {
+            signer: a(),
+            params: r.params,
+        }));
+    }
+    if let Some(r) = query_app::<connection::QueryConnectionParamsResponse>(
+        rust,
+        "/ibc.core.connection.v1.Query/ConnectionParams",
+        &connection::QueryConnectionParamsRequest {},
+    ) {
+        out.push(Any::pack(&connection::MsgUpdateParams {
+            signer: a(),
+            params: r.params,
+        }));
+    }
+    if let Some(r) = query_app::<channel::QueryChannelParamsResponse>(
+        rust,
+        "/ibc.core.channel.v1.Query/ChannelParams",
+        &channel::QueryChannelParamsRequest {},
+    ) {
+        out.push(Any::pack(&channel::MsgUpdateParams {
+            authority: a(),
+            params: r.params,
+        }));
+    }
+    out.push(Any::pack(&distr::MsgCommunityPoolSpend {
+        authority: a(),
+        recipient: recipient.to_owned(),
+        amount: vec![Coin {
+            denom: "utia".into(),
+            amount: "1".into(),
+        }],
+    }));
+    out
 }
 
 /// `Service/Simulate` of `tx` on both apps (`DELIVER_SIM`), signed and with
@@ -5507,6 +5683,7 @@ fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
             .collect(),
         force_amino,
         wire: WireGen::default(),
+        gov_msgs: Vec::new(),
     };
     for t in crate::corpus::devnet_txs() {
         g.m.harvest(&t);
@@ -5668,6 +5845,7 @@ mod tests {
             types: msg_types().to_vec(),
             force_amino: false,
             wire: WireGen::default(),
+            gov_msgs: Vec::new(),
         };
         assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);
