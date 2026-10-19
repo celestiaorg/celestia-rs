@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job that runs packaging/macos/celestia-rs-auto-update.sh every
+  hour (docs/operator-guide.md §8, "Following main automatically"). It
+  deploys the latest green commit on main to this Mac's nodes, canary
+  first, with rollback. Needs packaging/macos/celestia-rs.sudoers. Install:
+
+    install -m 755 packaging/macos/celestia-rs-auto-update.sh packaging/check-apphash.sh ~/.celestia-rs/bin/
+    sed -e "s|__USER__|$(id -un)|g" -e "s|__HOME__|$HOME|g" \
+      packaging/macos/org.celestia.celestia-rs-auto-update.plist \
+      | sudo tee /Library/LaunchDaemons/org.celestia.celestia-rs-auto-update.plist >/dev/null
+    sudo launchctl bootstrap system /Library/LaunchDaemons/org.celestia.celestia-rs-auto-update.plist
+
+  Run a pass now:  sudo launchctl kickstart system/org.celestia.celestia-rs-auto-update
+  Pause:           sudo launchctl bootout system/org.celestia.celestia-rs-auto-update
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.celestia.celestia-rs-auto-update</string>
+
+  <key>UserName</key>
+  <string>__USER__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/.celestia-rs/bin/celestia-rs-auto-update.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__/.celestia-rs</string>
+
+  <!-- One pass an hour; a pass that is still running (build, soak) is
+       not started twice. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/celestia-rs-auto-update.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/celestia-rs-auto-update.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <!-- cargo (rustup), git, curl and jq. -->
+    <key>PATH</key>
+    <string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
