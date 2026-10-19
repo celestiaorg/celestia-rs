@@ -37,6 +37,7 @@ pub const OPS: &[&str] = &[
     "c_ed25519",
     "c_secp256k1",
     "c_prop",
+    "c_secp256r1",
 ];
 
 /// Splits the input into its length-delimited fields.
@@ -444,6 +445,21 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 );
             }
         }
+        "c_secp256r1" => {
+            let key = first(m, 1).unwrap_or_default();
+            // Go: `secp256r1.PubKey.Unmarshal` (33 bytes, a compressed
+            // point on the curve).
+            if !x_ante::signing::p256_point_valid(key) {
+                return c.put("key", "err");
+            }
+            c.put("key", "ok");
+            let ok = x_ante::signing::verify_secp256r1(
+                key,
+                first(m, 2).unwrap_or_default(),
+                first(m, 3).unwrap_or_default(),
+            );
+            c.put("ok", &ok.to_string());
+        }
         "c_prop" => {
             use propagation::types::Message as Msg;
             let bz = first(m, 1).unwrap_or_default();
@@ -683,8 +699,8 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
         }
         // Part proofs: Go tells a present empty root (`wanted  got ...`)
         // from an absent one (`cannot be nil`), which prost cannot.
-        let class_only =
-            matches!(op, "c_ed25519" | "c_secp256k1" | "c_valupd") || k.ends_with("_add");
+        let class_only = matches!(op, "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd")
+            || k.ends_with("_add");
         // `duplicate entry ... in [changes]`: Go sorts the changes with an
         // unstable sort, so entries sharing an address print in an order
         // of its own (the text is not stored anywhere).
@@ -928,6 +944,29 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .map(|c| hx(&c["vals"]))
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
+            }
+        }
+        "c_secp256r1" => {
+            use p256::ecdsa::signature::Signer as _;
+            for i in 1u8..=8 {
+                let Ok(sk) = p256::ecdsa::SigningKey::from_slice(&[i; 32]) else {
+                    continue;
+                };
+                let pk = sk.verifying_key().to_encoded_point(true);
+                for msg in [&b""[..], b"celestia", &[i; 300]] {
+                    let sig: p256::ecdsa::Signature = sk.sign(msg);
+                    let low = sig.normalize_s().unwrap_or(sig);
+                    out.push(input(&[(1, pk.as_bytes()), (2, msg), (3, &low.to_bytes())]));
+                    // The high-S twin (Go rejects it).
+                    let (r, s) = low.split_scalars();
+                    if let Ok(high) = p256::ecdsa::Signature::from_scalars(r, -*s) {
+                        out.push(input(&[
+                            (1, pk.as_bytes()),
+                            (2, msg),
+                            (3, &high.to_bytes()),
+                        ]));
+                    }
+                }
             }
         }
         "c_prop" => {

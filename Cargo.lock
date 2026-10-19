@@ -1559,6 +1559,7 @@ dependencies = [
  "merkle",
  "multistore",
  "nodestore",
+ "p256",
  "pbjson-types",
  "propagation",
  "prost",

@@ -21,6 +21,7 @@ package main
 //	c_ed25519   1 public key, 2 message, 3 signature
 //	c_secp256k1 1 public key (33 bytes), 2 message, 3 signature
 //	c_prop      1 propagation.Message
+//	c_secp256r1 1 public key (33 bytes, cosmos-sdk), 2 message, 3 signature
 
 import (
 	"crypto/sha256"
@@ -40,6 +41,7 @@ import (
 	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256r1"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -351,6 +353,16 @@ func consensusOp(op string, in []byte) (o out) {
 			vals, _ := types.ValidatorSetFromProto(&pvs)
 			c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(dve, chainID, vals) })
 		}
+	case "c_secp256r1":
+		// The account key as the SDK decodes it (secp256r1.PubKey, whose
+		// key is the compressed point), then VerifySignature.
+		var pk secp256r1.PubKey
+		if !c.run("key", func() error {
+			return pk.Unmarshal(protowire.AppendBytes(protowire.AppendTag(nil, 1, protowire.BytesType), first(m, 1)))
+		}) {
+			break
+		}
+		c.data("ok", func() string { return strconv.FormatBool(pk.VerifySignature(first(m, 2), first(m, 3))) })
 	case "c_prop":
 		var pm protoprop.Message
 		if !c.run("unmarshal", func() error { return pm.Unmarshal(first(m, 1)) }) {

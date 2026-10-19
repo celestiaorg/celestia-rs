@@ -173,7 +173,7 @@ consensus)
   # celestia-core's types (votes, proposals, headers, blocks, commits,
   # validator sets and updates, params, evidence, part sets, signatures):
   # the v10 oracle only (v9 runs the same celestia-core).
-  OPS=c_vote,c_proposal,c_header,c_block,c_commit,c_valset,c_valupd,c_params,c_evidence,c_partset,c_ed25519,c_secp256k1,c_prop
+  OPS=c_vote,c_proposal,c_header,c_block,c_commit,c_valset,c_valupd,c_params,c_evidence,c_partset,c_ed25519,c_secp256k1,c_prop,c_secp256r1
   t=$((BUDGET - 60))
   run "consensus-s$SEED" "$t" -- "$FUZZ_DIFF" --app-version 10 --ops "$OPS" \
     --iters 1000000000 --max-secs "$t" --seed "$SEED" --findings "$FINDINGS/consensus"
