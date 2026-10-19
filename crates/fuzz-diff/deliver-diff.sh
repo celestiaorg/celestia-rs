@@ -35,7 +35,11 @@ IN=$ROOT/conformance/fixtures/devnet/$SCENARIO
 WORK=$(mktemp -d)
 H=$WORK/home
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
-"$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >/dev/null 2>&1
+"$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >"$WORK/init.log" 2>&1 || {
+  echo "$APPD init failed:" >&2
+  tail -n 20 "$WORK/init.log" >&2
+  exit 4
+}
 FUZZ_DIFF=${FUZZ_DIFF:-$ROOT/target/release/fuzz-diff}
 # Scenarios recorded without a genesis file (the ibctesting fixtures): one
 # from the recorded InitChain.
@@ -58,7 +62,7 @@ sec = re.sub(r'(?m)^enable = .*$', 'enable = true', s[i:j])
 sec = re.sub(r'(?m)^address = .*$', 'address = "127.0.0.1:%s"' % port, sec)
 open(p, "w").write(s[:i] + sec + s[j:])
 PY
-GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
+GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
 echo $APP >"$WORK/app.pid"
 if [ -n "${GO_APPD_NEXT:-}" ]; then
@@ -67,7 +71,7 @@ if [ -n "${GO_APPD_NEXT:-}" ]; then
 set -e
 OLD=\$(cat "$WORK/app.pid")
 kill \$OLD; while kill -0 \$OLD 2>/dev/null; do sleep 0.2; done
-GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$GO_APPD_NEXT" start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >>"$WORK/app.log" 2>&1 &
+GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$GO_APPD_NEXT" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >>"$WORK/app.log" 2>&1 &
 echo \$! >"$WORK/app.pid"
 until (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; do sleep 0.2; done
 SH
@@ -78,10 +82,11 @@ trap 'kill "$(cat "$WORK/app.pid")" 2>/dev/null || true; if [ -n "${GO_LOG:-}" ]
 UP=
 for _ in $(seq 1 300); do
   (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && UP=1 && break
+  kill -0 $APP 2>/dev/null || break
   sleep 1
 done
 if [ -z "$UP" ]; then
-  echo "Go celestia-appd did not listen on $PORT within 300 s" >&2
+  echo "Go celestia-appd exited or did not listen on $PORT within 300 s" >&2
   tail -n 20 "$WORK/app.log" >&2
   exit 3
 fi

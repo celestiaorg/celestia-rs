@@ -59,7 +59,7 @@ sed -i.bak -e 's#^addr_book_strict = true#addr_book_strict = false#' \
 rm -f "$V/config/config.toml.bak"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
-celestia-appd start --home "$V" --log_level "${GO_LOG_LEVEL:-info}" > "$W/go.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" --log_level "${GO_LOG_LEVEL:-info}" > "$W/go.log" 2>&1 & PIDS+=($!)
 
 h() { curl -s "localhost:$1/status" | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }
 for _ in $(seq 1 120); do [ "$(h $GO_RPC || echo 0)" -ge 2 ] 2>/dev/null && break; sleep 1; done

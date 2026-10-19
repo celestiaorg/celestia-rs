@@ -87,7 +87,7 @@ rm -f "$F/config/config.toml.bak"
 echo "go=$GO_ID rust=$R_ID"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; wait "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
-celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 "$RUST" --home "$R" --chain-id $CHAIN_ID --abci "127.0.0.1:$R_ABCI" --listen "127.0.0.1:$R_P2P" \
   --dial "$GO_ID@127.0.0.1:$GO_P2P" --rpc "127.0.0.1:$R_RPC" --go-rpc "127.0.0.1:$GO_RPC" \
   > "$W/rust.log" 2>&1 & RPID=$!; PIDS+=($RPID)

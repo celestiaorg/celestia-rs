@@ -89,7 +89,7 @@ PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
 "$ROOT/target/debug/celestia-rs" abci --addr "127.0.0.1:$(port 26658 0)" > "$W/rust.log" 2>&1 & PIDS+=($!)
 sleep 1
 cometbft start --home "$C" --proxy_app "tcp://127.0.0.1:$(port 26658 0)" > "$W/val.log" 2>&1 & VAL=$!; PIDS+=($VAL)
-celestia-appd start --home "$G" > "$W/full.log" 2>&1 & FULL=$!; PIDS+=($FULL)
+celestia-appd start --force-no-bbr --home "$G" > "$W/full.log" 2>&1 & FULL=$!; PIDS+=($FULL)
 
 h() { curl -s "localhost:$1/status" | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }
 fail() {

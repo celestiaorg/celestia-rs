@@ -93,7 +93,7 @@ statesync_config() { # config.toml trust-height trust-hash
   set_toml "$1" statesync discovery_time "\"5s\""
 }
 
-celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 wait_height "$(port 26657 0)" 2 "$W/val.log" || fail "validator did not start"
 if [ -n "$WORKLOAD" ]; then
   HOME_DIR=$V CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$(port 26657 0) bash "$WORKLOAD" > "$W/workload.log" 2>&1 || true
@@ -175,7 +175,7 @@ rm -f "$G/config/config.toml.bak"
 set_toml "$G/config/config.toml" p2p pex false
 read -r TH THASH < <(trust)
 statesync_config "$G/config/config.toml" "$TH" "$THASH"
-celestia-appd start --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
+celestia-appd start --force-no-bbr --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
 T3=$(( $(h "$(port 26657 0)") + EXTRA ))
 wait_height "$(port 26657 200)" "$T3" "$W/go.log" "$GPID" || fail "go node did not sync from the rust node"
 grep -E "Snapshot restored|Applied snapshot chunk|snapshot restored" "$W/go.log" | tail -2 || true

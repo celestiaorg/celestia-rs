@@ -72,7 +72,7 @@ sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$VAL_ID@127.0.0.1:$(po
 rm -f "$F/config/config.toml.bak"
 
 PIDS=(); cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }; trap cleanup EXIT
-celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 "$ROOT/target/debug/celestia-rs" abci --addr "127.0.0.1:$(port 26658 100)" > "$W/rust.log" 2>&1 & PIDS+=($!)
 sleep 1
 cometbft start --home "$F" --proxy_app "tcp://127.0.0.1:$(port 26658 100)" > "$W/fol.log" 2>&1 & FOL=$!; PIDS+=($FOL)

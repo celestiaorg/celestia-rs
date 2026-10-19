@@ -140,7 +140,7 @@ rust_home() { # dir moniker
   cp "$V/config/genesis.json" "$1/config/genesis.json"
 }
 
-celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 wait_go "$(port 26657 0)" 2 "$W/val.log" 120 || fail "validator did not start"
 T0=$(date +%s)
 HOME_DIR=$V CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$(port 26657 0) bash "$ROOT/conformance/devnet/workloads/blob.sh" > "$W/workload.log" 2>&1 || true
@@ -180,7 +180,7 @@ set_toml "$G/config/app.toml" state-sync snapshot-interval 0
 sed -i.bak "s#^persistent_peers = .*#persistent_peers = \"$R_ID@127.0.0.1:$R_P2P\"#" "$G/config/config.toml"
 rm -f "$G/config/config.toml.bak"
 set_toml "$G/config/config.toml" p2p pex false
-celestia-appd start --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
+celestia-appd start --force-no-bbr --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
 TARGET=$(( $(rh "$W/rust.log") - 2 ))
 wait_go "$(port 26657 200)" "$TARGET" "$W/go.log" 600 || fail "go node did not block-sync from the rust node to $TARGET (at $(gh "$(port 26657 200)"))"
 GH=$(gh "$(port 26657 200)")

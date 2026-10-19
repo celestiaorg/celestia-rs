@@ -129,7 +129,7 @@ cleanup() {
   if [ -f "$WORK/app-v10.pid" ]; then kill "$(cat "$WORK/app-v10.pid")" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
-celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
 APP_PID=$!; PIDS+=($APP_PID); sleep 4
 SWITCH=()
 if [ -n "${UPGRADE_TO_V10:-}" ]; then
@@ -138,7 +138,7 @@ if [ -n "${UPGRADE_TO_V10:-}" ]; then
   cat > "$WORK/switch.sh" <<SH
 set -e
 kill $APP_PID; while kill -0 $APP_PID 2>/dev/null; do sleep 0.2; done
-"$BIN/celestia-appd" start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >> "$WORK/app-v10.log" 2>&1 &
+"$BIN/celestia-appd" start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >> "$WORK/app-v10.log" 2>&1 &
 echo \$! > "$WORK/app-v10.pid"
 until (exec 3<>/dev/tcp/127.0.0.1/$P_APP) 2>/dev/null; do sleep 0.2; done
 SH

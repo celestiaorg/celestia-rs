@@ -110,7 +110,7 @@ rm -f "$G/config/config.toml.bak"
 echo "== start (Rust validator, Go full node)"
 start_rs() { RUST_LOG=${RUST_LOG:-info} "$RS" start --home "$R" >> "$W/rs.log" 2>&1 & RSPID=$!; PIDS+=($RSPID); }
 start_rs
-celestia-appd start --home "$G" >> "$W/go.log" 2>&1 & GOPID=$!; PIDS+=($GOPID)
+celestia-appd start --force-no-bbr --home "$G" >> "$W/go.log" 2>&1 & GOPID=$!; PIDS+=($GOPID)
 wait_height "$rpc_r" 4 120 || FAIL+=("rust validator did not reach height 4")
 wait_height "$rpc_g" 4 120 || FAIL+=("go full node did not follow to height 4")
 [ "$(block_hash "$rpc_r" 3)" = "$(block_hash "$rpc_g" 3)" ] || FAIL+=("block 3 differs between Rust and Go")

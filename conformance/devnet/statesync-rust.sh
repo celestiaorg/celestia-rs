@@ -93,7 +93,7 @@ header_app_hash() { # height -> app_hash of that header
   curl -s "$VAL_RPC/block?height=$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["block"]["header"]["app_hash"])'
 }
 
-celestia-appd start --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
+celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 wait_height "$(port 26657 0)" 2 "$W/val.log" || fail "validator did not start"
 if [ -n "$WORKLOAD" ]; then
   HOME_DIR=$V CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$(port 26657 0) bash "$WORKLOAD" > "$W/workload.log" 2>&1 || true
@@ -142,7 +142,7 @@ set_toml "$G/config/config.toml" statesync rpc_servers "\"$VAL_RPC,$VAL_RPC\""
 set_toml "$G/config/config.toml" statesync trust_height "$TH"
 set_toml "$G/config/config.toml" statesync trust_hash "\"$THASH\""
 set_toml "$G/config/config.toml" statesync discovery_time "\"5s\""
-celestia-appd start --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
+celestia-appd start --force-no-bbr --home "$G" > "$W/go.log" 2>&1 & GPID=$!; PIDS+=($GPID)
 for _ in $(seq 1 120); do
   grep -q "Snapshot restored" "$W/go.log" && break
   kill -0 $GPID 2>/dev/null || fail "go node exited"

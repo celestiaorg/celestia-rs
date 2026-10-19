@@ -75,7 +75,7 @@ start_node() { # <dir> <i>
   local h=$1/n$2 log
   log=$h/node.log
   if [ "$(cat "$h/kind")" = go ]; then
-    celestia-appd start --home "$h" >> "$log" 2>&1 &
+    celestia-appd start --force-no-bbr --home "$h" >> "$log" 2>&1 &
   else
     RUST_LOG=${RUST_LOG:-info} "$RS" start --home "$h" --p2p-laddr "127.0.0.1:$((26656 + OFF + 10 * $2))" \
       --persistent-peers "$(cat "$h/peers")" --moniker "node$2" --allow-duplicate-ip ${RS_EXTRA:-} >> "$log" 2>&1 &

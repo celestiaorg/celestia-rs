@@ -28,7 +28,7 @@ rm -f "$H/config/app.toml.bak"
 sed -i.bak -e "s#localhost:9090#localhost:$((9090 + OFF))#" -e "s#0.0.0.0:9090#0.0.0.0:$((9090 + OFF))#" \
   -e "s#tcp://localhost:1317#tcp://localhost:$((1317 + OFF))#" "$H/config/app.toml"
 rm -f "$H/config/app.toml.bak"
-celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >"$WORK/app.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >"$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true' EXIT
 sleep 5
