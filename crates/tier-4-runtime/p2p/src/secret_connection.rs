@@ -17,7 +17,6 @@ use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, Tag};
 use hkdf::Hkdf;
 use merlin::Transcript;
-use prost::Message as _;
 use sha2::Sha256;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
@@ -393,7 +392,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> SecretConnection<S> {
         });
         w?;
         let (body, _) = r?;
-        let bv = BytesValue::decode(body.as_slice())
+        let bv = celestia_core_proto::gogo_decode::<BytesValue>(body.as_slice())
             .map_err(|e| SecretConnectionError::Decode(e.to_string()))?;
         let mut rem_eph_pub = [0u8; 32];
         let n = bv.value.len().min(32);
@@ -450,7 +449,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> SecretConnection<S> {
         );
         w?;
         let (body, _) = r?;
-        let rem = pb::AuthSigMessage::decode(body.as_slice())
+        let rem = celestia_core_proto::gogo_decode::<pb::AuthSigMessage>(body.as_slice())
             .map_err(|e| SecretConnectionError::Decode(e.to_string()))?;
         let remote_pubkey: [u8; 32] = match rem.pub_key.and_then(|k| k.sum) {
             Some(pbcrypto::public_key::Sum::Ed25519(k)) => {

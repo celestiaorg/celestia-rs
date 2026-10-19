@@ -507,7 +507,8 @@ impl Reactor for PexReactor {
     }
 
     fn receive(&self, env: Envelope) -> Result<(), String> {
-        let msg = pb::Message::decode(env.message.as_slice()).map_err(|e| e.to_string())?;
+        let msg = celestia_core_proto::gogo_decode::<pb::Message>(env.message.as_slice())
+            .map_err(|e| e.to_string())?;
         let Some(sw) = self.switch() else {
             return Ok(());
         };

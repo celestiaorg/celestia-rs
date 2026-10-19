@@ -159,7 +159,7 @@ impl Reactor {
 
     /// `Receive` of raw bytes from `peer`; `Err` disconnects it.
     pub fn receive_bytes(&self, peer: &str, bytes: &[u8]) -> Result<(), String> {
-        let list = pb::EvidenceList::decode(bytes).map_err(|e| e.to_string())?;
+        let list = ctypes::gogo_decode::<pb::EvidenceList>(bytes).map_err(|e| e.to_string())?;
         let evis = evidence_list_from_proto(&list).map_err(|e| {
             tracing::error!(src = peer, err = %e, "Error decoding message");
             e

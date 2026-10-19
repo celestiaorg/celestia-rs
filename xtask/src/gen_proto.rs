@@ -59,6 +59,7 @@ const TARGETS: &[Target] = &[
     },
 ];
 
+#[allow(clippy::too_many_lines)]
 pub fn run(dry_run: bool) -> Result<()> {
     let root = repo_root()?;
     for target in TARGETS {
@@ -131,6 +132,16 @@ pub fn run(dry_run: bool) -> Result<()> {
         for (proto, rust) in target.extern_paths {
             pbjson.extern_path(*proto, *rust);
         }
+        for entry in std::fs::read_dir(&out)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|e| e == "rs") {
+                let body = std::fs::read_to_string(&path)?;
+                let fixed = gogo_oneofs(&body);
+                if fixed != body {
+                    std::fs::write(&path, fixed)?;
+                }
+            }
+        }
         let selectors: Vec<String> = packages.iter().map(|p| format!(".{p}")).collect();
         pbjson.build(&selectors).context("pbjson code generation")?;
         // Attach the serde impls to each package module.
@@ -154,6 +165,45 @@ pub fn run(dry_run: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// gogoproto oneofs: every oneof field is decoded through
+/// `prost::GogoOneof` (each occurrence replaces the oneof, as the gogoproto
+/// generated `Unmarshal` does; prost merges into a value of the same
+/// variant), and its enum gets the `prost::gogo_oneof!` impl. prost emits
+/// a message's nested module (`pub mod <message> {`) right after it, so
+/// the impl goes at the top of the next such module.
+fn gogo_oneofs(body: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(body.len() + 1024);
+    let mut pending: std::collections::VecDeque<(String, String)> =
+        std::collections::VecDeque::new();
+    for line in body.split_inclusive('\n') {
+        let mut line = line.to_owned();
+        if let Some(i) = line.find("oneof = \"") {
+            let start = i + "oneof = \"".len();
+            let end = start + line[start..].find('"').unwrap_or(0);
+            let path = line[start..end].to_owned();
+            if let Some((m, e)) = path.split_once("::") {
+                pending.push_back((m.to_owned(), e.to_owned()));
+                line.replace_range(start..end, &format!("::prost::GogoOneof::<{path}>"));
+            }
+        }
+        out.push_str(&line);
+        let t = line.trim();
+        if let Some((m, e)) = pending.front()
+            && t == format!("pub mod {m} {{")
+        {
+            let indent = &line[..line.len() - line.trim_start().len()];
+            let _ = writeln!(out, "{indent}    ::prost::gogo_oneof!({e});");
+            pending.pop_front();
+        }
+    }
+    assert!(
+        pending.is_empty(),
+        "gen-proto: oneof modules not found: {pending:?}"
+    );
+    out
 }
 
 /// Writes `registry.rs`: JSON <-> protobuf-bytes conversion keyed by

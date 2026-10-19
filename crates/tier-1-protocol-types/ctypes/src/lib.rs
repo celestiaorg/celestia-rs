@@ -45,6 +45,8 @@ pub mod validator;
 pub mod validator_set;
 pub mod vote;
 
+/// gogoproto-compatible top-level decoding of untrusted bytes.
+pub use celestia_core_proto::gogo_decode;
 /// The celestia-core protobuf bindings used by this crate.
 pub use celestia_core_proto::tendermint as proto;
 

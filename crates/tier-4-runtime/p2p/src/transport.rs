@@ -9,7 +9,6 @@ use std::sync::{Mutex, RwLock};
 use std::time::Duration;
 
 use celestia_core_proto::tendermint::p2p as pb;
-use prost::Message as _;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 
@@ -276,7 +275,7 @@ impl Transport {
             .await
             .map_err(|_| auth("handshake failed: i/o timeout".into()))?
             .map_err(|e| auth(format!("handshake failed: {e}")))?;
-        let theirs = pb::DefaultNodeInfo::decode(body.as_slice())
+        let theirs = celestia_core_proto::gogo_decode::<pb::DefaultNodeInfo>(body.as_slice())
             .map_err(|e| auth(format!("handshake failed: {e}")))?;
         let theirs = NodeInfo::from_proto(&theirs);
         theirs

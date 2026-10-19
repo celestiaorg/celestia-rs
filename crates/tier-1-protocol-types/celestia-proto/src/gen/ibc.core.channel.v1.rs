@@ -141,11 +141,12 @@ impl ::prost::Name for PacketId {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Acknowledgement {
-    #[prost(oneof = "acknowledgement::Response", tags = "21, 22")]
+    #[prost(oneof = "::prost::GogoOneof::<acknowledgement::Response>", tags = "21, 22")]
     pub response: ::core::option::Option<acknowledgement::Response>,
 }
 /// Nested message and enum types in `Acknowledgement`.
 pub mod acknowledgement {
+    ::prost::gogo_oneof!(Response);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Response {
         #[prost(bytes, tag = "21")]

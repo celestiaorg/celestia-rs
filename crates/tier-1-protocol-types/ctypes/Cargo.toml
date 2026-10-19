@@ -19,6 +19,7 @@ hash = { path = "../../tier-0-primitives/hash" }
 merkle = { path = "../../tier-0-primitives/merkle" }
 pbjson-types = "0.7"
 prost = "0.13"
+gostr = { path = "../../tier-0-primitives/gostr" }
 
 [dev-dependencies]
 hex = "0.4"

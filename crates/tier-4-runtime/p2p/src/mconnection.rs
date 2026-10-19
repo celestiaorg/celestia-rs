@@ -680,7 +680,8 @@ impl<R: ByteRead> RecvRoutine<R> {
             }
         })?;
         self.shared.recv_monitor.update(n, rate);
-        let packet = pb::Packet::decode(body.as_slice()).map_err(|e| e.to_string())?;
+        let packet = celestia_core_proto::gogo_decode::<pb::Packet>(body.as_slice())
+            .map_err(|e| e.to_string())?;
         match packet.sum {
             Some(pb::packet::Sum::PacketPing(_)) => {
                 self.shared.pings_received.fetch_add(1, Ordering::Relaxed);

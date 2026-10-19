@@ -277,7 +277,7 @@ impl Reactor {
         if ch == MEMPOOL_CHANNEL || ch == MEMPOOL_DATA_CHANNEL {
             validate_mempool_bytes(msg)?;
         }
-        let m = Message::decode(msg).map_err(|e| e.to_string())?;
+        let m = celestia_core_proto::gogo_decode::<Message>(msg).map_err(|e| e.to_string())?;
         match m.sum {
             None => Err("unknown message: <nil>".into()),
             Some(Sum::Txs(txs)) => self.receive_txs(src, txs),

@@ -18,6 +18,7 @@
     clippy::too_many_lines
 )]
 
+pub mod consensus;
 pub mod corpus;
 pub mod craft;
 pub mod deliver;
@@ -230,6 +231,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
         "fibre" => rust_fibre(app_version, input),
         "aminosign" => rust_aminosign(app_version, input),
         "eds" => rust_eds(app_version, input),
+        op if op.starts_with("c_") => consensus::rust_out(op, input),
         "amino_dec" => rust_amino(legacy_amino::tx_decode_amino_in(
             legacy_amino::Schema::for_app_version(app_version),
             input,
@@ -536,6 +538,7 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
         return Some(format!("Rust panicked: {}", rust.panic));
     }
     match op {
+        op if op.starts_with("c_") => consensus::compare(op, go, rust),
         "tx" => compare_tx(go, rust),
         "blobtx" => {
             if go.is_wrapper != rust.is_wrapper || go.ok != rust.ok {

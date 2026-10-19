@@ -298,9 +298,10 @@ impl Block {
     /// Decodes an encoded block and runs `BlockFromProto`, preserving
     /// whether `Data.hash` was present but empty.
     pub fn decode(bz: &[u8]) -> Result<Self> {
-        let bp = pb::Block::decode(bz).map_err(|e| Error::msg(e.to_string()))?;
+        let bp = celestia_core_proto::gogo_decode::<pb::Block>(bz)
+            .map_err(|e| Error::msg(e.to_string()))?;
         let mut b = Self::from_proto_parts(&bp)?;
-        if b.data.hash.is_none() && data_hash_field_present(bz) {
+        if b.data.hash.is_none() && celestia_core_proto::block_data_hash_present(bz) {
             b.data.hash = Some(Vec::new());
         }
         b.validate_basic()?;
@@ -388,46 +389,6 @@ fn find_field(b: &[u8], target: u64) -> Result<(usize, usize)> {
         }
     }
     Err(Error::msg("field not found"))
-}
-
-/// True when the encoded block's `Data` carries a `hash` field (possibly
-/// empty).
-fn data_hash_field_present(bz: &[u8]) -> bool {
-    let Ok((s, e)) = find_field(bz, 2) else {
-        return false;
-    };
-    let Some(data) = bz.get(s..e) else {
-        return false;
-    };
-    let mut off = 0;
-    let mut present = false;
-    while off < data.len() {
-        let Ok((tag, n)) = read_uvarint(&data[off..]) else {
-            return present;
-        };
-        off += n;
-        match tag & 7 {
-            2 => {
-                let Ok((len, n)) = read_uvarint(data.get(off..).unwrap_or_default()) else {
-                    return present;
-                };
-                off += n + usize::try_from(len).unwrap_or(usize::MAX / 2);
-                if tag >> 3 == 6 {
-                    present = true;
-                }
-            }
-            0 => {
-                let Ok((_, n)) = read_uvarint(data.get(off..).unwrap_or_default()) else {
-                    return present;
-                };
-                off += n;
-            }
-            1 => off += 8,
-            5 => off += 4,
-            _ => return present,
-        }
-    }
-    present
 }
 
 /// `MarshalBlockWithTxPositions`: encodes the block and records where each

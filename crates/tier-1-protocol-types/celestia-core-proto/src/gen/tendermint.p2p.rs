@@ -44,11 +44,12 @@ impl ::prost::Name for PacketMsg {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Packet {
-    #[prost(oneof = "packet::Sum", tags = "1, 2, 3")]
+    #[prost(oneof = "::prost::GogoOneof::<packet::Sum>", tags = "1, 2, 3")]
     pub sum: ::core::option::Option<packet::Sum>,
 }
 /// Nested message and enum types in `Packet`.
 pub mod packet {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]
@@ -199,11 +200,12 @@ impl ::prost::Name for PexAddrs {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
-    #[prost(oneof = "message::Sum", tags = "1, 2")]
+    #[prost(oneof = "::prost::GogoOneof::<message::Sum>", tags = "1, 2")]
     pub sum: ::core::option::Option<message::Sum>,
 }
 /// Nested message and enum types in `Message`.
 pub mod message {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]

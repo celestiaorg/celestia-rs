@@ -6,6 +6,7 @@ members = [
     "crates/tier-0-primitives/gostr",
     "crates/tier-0-primitives/gojson",
     "crates/tier-0-primitives/prost-gostr",
+    "crates/tier-0-primitives/prost-gostr-std",
     "crates/tier-0-primitives/hash",
     "crates/tier-0-primitives/math",
     "crates/tier-0-primitives/merkle",

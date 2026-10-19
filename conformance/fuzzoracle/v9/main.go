@@ -23,6 +23,8 @@
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
 //	          (0: SquareSizeUpperBound); out: "<square width> <data root hex>"
 //	json_*    the JSON decodes of consensus execution (jsondecode.go)
+//	c_*       celestia-core v0.42.3 consensus-layer validation (consensus.go;
+//	          v10 oracle only)
 //
 // The v9 oracle (`../v9`) is the same program built against celestia-app
 // v9.0.8 and go-square v4.0.0-rc4; keep the two files identical except for
@@ -43,8 +45,8 @@ import (
 	"strings"
 	"unsafe"
 
-	"cosmossdk.io/log"
 	errorsmod "cosmossdk.io/errors"
+	"cosmossdk.io/log"
 	"github.com/celestiaorg/celestia-app/v9/app"
 	"github.com/celestiaorg/celestia-app/v9/pkg/da"
 	"github.com/celestiaorg/go-square/v4/share"
@@ -375,6 +377,8 @@ func main() {
 			o = placeholders(enc.InterfaceRegistry)
 		case op == "eds":
 			o = constructEDS(input)
+		case strings.HasPrefix(op, "c_"):
+			o = consensusOp(op, input)
 		case strings.HasPrefix(op, "json_"):
 			o = jsonOp(enc.Codec, op, input)
 		case op == "amino_dec" || op == "amino_enc":

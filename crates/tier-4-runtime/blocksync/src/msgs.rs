@@ -76,7 +76,7 @@ fn too_many_sigs(what: &str, got: usize) -> MsgError {
 /// commit / extended-commit / evidence signatures before the full message
 /// is decoded (the `SigCount*` stubs keep only the repeated fields).
 pub fn validate_block_sync_bytes(msg: &[u8]) -> Result<(), MsgError> {
-    let stub = bcproto::SigCountMessage::decode(msg)
+    let stub = celestia_core_proto::gogo_decode::<bcproto::SigCountMessage>(msg)
         .map_err(|e| MsgError::Precheck(format!("malformed blocksync message {e}")))?;
     match stub.block_response {
         None => Ok(()),

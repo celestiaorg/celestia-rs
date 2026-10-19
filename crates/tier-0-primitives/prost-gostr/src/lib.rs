@@ -98,3 +98,68 @@ pub mod encoding {
         }
     }
 }
+
+/// A oneof's decoding as gogoproto generates it: each occurrence of one of
+/// its fields replaces the oneof with a fresh value (prost merges an
+/// occurrence into a value of the same variant, so a message whose oneof
+/// field occurs twice decoded to another value than in Go). The generated
+/// code names it in the parent's `#[prost(oneof = "...")]` attribute
+/// (`GogoOneof::<m::Sum>`), see [`gogo_oneof!`].
+pub struct GogoOneof<T>(core::marker::PhantomData<T>);
+
+/// The `#[derive(Oneof)]` functions [`GogoOneof`] wraps.
+pub trait GogoOneofField: Sized {
+    /// `Oneof::merge`.
+    fn merge_field<B: bytes::Buf>(
+        field: &mut Option<Self>,
+        tag: u32,
+        wire_type: encoding::WireType,
+        buf: &mut B,
+        ctx: encoding::DecodeContext,
+    ) -> Result<(), DecodeError>;
+    /// `Oneof::encoded_len`.
+    fn field_len(&self) -> usize;
+}
+
+impl<T: GogoOneofField> GogoOneof<T> {
+    /// Decodes one occurrence into a fresh value that replaces `field`.
+    pub fn merge<B: bytes::Buf>(
+        field: &mut Option<T>,
+        tag: u32,
+        wire_type: encoding::WireType,
+        buf: &mut B,
+        ctx: encoding::DecodeContext,
+    ) -> Result<(), DecodeError> {
+        let mut fresh = None;
+        T::merge_field(&mut fresh, tag, wire_type, buf, ctx)?;
+        *field = fresh;
+        Ok(())
+    }
+
+    /// The oneof's encoded length.
+    pub fn encoded_len(v: &T) -> usize {
+        v.field_len()
+    }
+}
+
+/// Implements [`GogoOneofField`] for a `#[derive(Oneof)]` enum (generated
+/// next to it by `cargo xtask gen-proto`).
+#[macro_export]
+macro_rules! gogo_oneof {
+    ($e:ident) => {
+        impl $crate::GogoOneofField for $e {
+            fn merge_field<B: $crate::bytes::Buf>(
+                field: &mut ::core::option::Option<Self>,
+                tag: u32,
+                wire_type: $crate::encoding::WireType,
+                buf: &mut B,
+                ctx: $crate::encoding::DecodeContext,
+            ) -> ::core::result::Result<(), $crate::DecodeError> {
+                $e::merge(field, tag, wire_type, buf, ctx)
+            }
+            fn field_len(&self) -> usize {
+                self.encoded_len()
+            }
+        }
+    };
+}

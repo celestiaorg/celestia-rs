@@ -526,7 +526,7 @@ impl Message {
     /// `MsgFromProto` (+ `ValidateBasic`).
     pub fn decode(bz: &[u8]) -> Result<Self, String> {
         use pp::message::Sum;
-        let m = pp::Message::decode(bz).map_err(|e| e.to_string())?;
+        let m = ctypes::gogo_decode::<pp::Message>(bz).map_err(|e| e.to_string())?;
         Ok(match m.sum.ok_or("propagation: nil message")? {
             Sum::CompactBlock(c) => Self::CompactBlock(Box::new(CompactBlock::from_proto(&c)?)),
             Sum::HaveParts(h) => Self::HaveParts(HaveParts::from_proto(&h)?),

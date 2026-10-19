@@ -18,7 +18,6 @@ use celestia_core_proto::tendermint::blocksync as bcproto;
 use ctypes::{Block, BlockId, ExtendedCommit, Time};
 use nodestore::{BlockExecutor, BlockStore, State, StateStore};
 use p2p::{ChannelDescriptor, Envelope, Peer, WeakSwitch};
-use prost::Message as _;
 
 use crate::msgs::{self, BLOCKSYNC_CHANNEL, MAX_MSG_SIZE, validate_block_sync_bytes, validate_msg};
 use crate::pool::{BlockPool, BlockRequest, PeerError, REQUEST_INTERVAL};
@@ -283,7 +282,8 @@ impl Reactor {
     pub fn receive_bytes(&self, peer: &str, bytes: &[u8]) -> Result<(), String> {
         use bcproto::message::Sum;
         validate_block_sync_bytes(bytes).map_err(|e| e.to_string())?;
-        let msg = bcproto::Message::decode(bytes).map_err(|e| e.to_string())?;
+        let msg = celestia_core_proto::gogo_decode::<bcproto::Message>(bytes)
+            .map_err(|e| e.to_string())?;
         if let Err(e) = validate_msg(&msg) {
             tracing::error!(peer, err = %e, "Peer sent us invalid msg");
             return Err(e.to_string());

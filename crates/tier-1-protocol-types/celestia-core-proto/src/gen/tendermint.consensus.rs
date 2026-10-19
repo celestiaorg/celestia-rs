@@ -180,11 +180,12 @@ impl ::prost::Name for VoteSetBits {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
-    #[prost(oneof = "message::Sum", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
+    #[prost(oneof = "::prost::GogoOneof::<message::Sum>", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub sum: ::core::option::Option<message::Sum>,
 }
 /// Nested message and enum types in `Message`.
 pub mod message {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]
@@ -272,11 +273,12 @@ impl ::prost::Name for EndHeight {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WalMessage {
-    #[prost(oneof = "wal_message::Sum", tags = "1, 2, 3, 4")]
+    #[prost(oneof = "::prost::GogoOneof::<wal_message::Sum>", tags = "1, 2, 3, 4")]
     pub sum: ::core::option::Option<wal_message::Sum>,
 }
 /// Nested message and enum types in `WALMessage`.
 pub mod wal_message {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]

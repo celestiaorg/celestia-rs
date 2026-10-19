@@ -40,7 +40,8 @@ fn last_stored_height_for(height: i64, last_height_changed: i64) -> i64 {
 }
 
 fn decode<M: Message + Default>(bz: &[u8], what: &str) -> Result<M> {
-    M::decode(bz).map_err(|e| Error::new(format!("{what}: data has been corrupted: {e}")))
+    ctypes::gogo_decode::<M>(bz)
+        .map_err(|e| Error::new(format!("{what}: data has been corrupted: {e}")))
 }
 
 /// State store handle (cheap to clone).

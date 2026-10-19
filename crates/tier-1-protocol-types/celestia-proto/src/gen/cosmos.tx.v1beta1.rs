@@ -148,11 +148,12 @@ impl ::prost::Name for SignerInfo {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModeInfo {
-    #[prost(oneof = "mode_info::Sum", tags = "1, 2")]
+    #[prost(oneof = "::prost::GogoOneof::<mode_info::Sum>", tags = "1, 2")]
     pub sum: ::core::option::Option<mode_info::Sum>,
 }
 /// Nested message and enum types in `ModeInfo`.
 pub mod mode_info {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct Single {
         #[prost(enumeration = "super::super::signing::v1beta1::SignMode", tag = "1")]

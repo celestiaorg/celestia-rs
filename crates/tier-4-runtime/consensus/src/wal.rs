@@ -246,7 +246,7 @@ pub fn decode_all(bz: &[u8]) -> (Vec<TimedWalMessage>, usize, Option<WalError>) 
                 ))),
             );
         }
-        let decoded = pbc::TimedWalMessage::decode(data)
+        let decoded = ctypes::gogo_decode::<pbc::TimedWalMessage>(data)
             .map_err(|e| e.to_string())
             .and_then(|p| TimedWalMessage::from_proto(&p));
         match decoded {
@@ -376,7 +376,7 @@ impl WalDecoder<'_> {
                 "checksums do not match: read: {crc}, actual: {actual}"
             )));
         }
-        let p = pbc::TimedWalMessage::decode(data.as_slice())
+        let p = ctypes::gogo_decode::<pbc::TimedWalMessage>(data.as_slice())
             .map_err(|e| WalError::Corruption(format!("failed to decode data: {e}")))?;
         TimedWalMessage::from_proto(&p)
             .map(Some)

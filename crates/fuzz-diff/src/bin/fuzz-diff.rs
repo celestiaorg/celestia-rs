@@ -590,6 +590,7 @@ fn main() -> anyhow::Result<()> {
                 v
             }
             op if op.starts_with("json_") => fuzz_diff::jsonops::seeds(op),
+            op if op.starts_with("c_") => fuzz_diff::consensus::seeds(op),
             "amino_dec" => amino
                 .iter()
                 .filter(|(o, _)| *o == "amino_dec")
@@ -663,6 +664,9 @@ fn main() -> anyhow::Result<()> {
                     json_mutate(&mut m, &s)
                 } else if op == "json_ica_pb" {
                     m.mutate_n(&s, k)
+                } else if op.starts_with("c_") && m.rng.one_in(8) {
+                    // Valid votes, commits and signatures as they are.
+                    s
                 } else if op.starts_with("json_") {
                     let mut x = s;
                     for _ in 0..k {

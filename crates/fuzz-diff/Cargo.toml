@@ -18,6 +18,10 @@ api-server = { path = "../tier-4-runtime/api-server" }
 anyhow.workspace = true
 app = { path = "../tier-4-runtime/app" }
 crypto = { path = "../tier-0-primitives/crypto" }
+ctypes = { path = "../tier-1-protocol-types/ctypes" }
+evidence = { path = "../tier-4-runtime/evidence" }
+nodestore = { path = "../tier-4-runtime/nodestore" }
+zstd = "0.14"
 hash = { path = "../tier-0-primitives/hash" }
 merkle = { path = "../tier-0-primitives/merkle" }
 shares = { path = "../tier-1-protocol-types/shares" }

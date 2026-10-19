@@ -30,7 +30,7 @@ pub struct Envelope {
 impl Envelope {
     /// Decode the message as `M`.
     pub fn decode<M: prost::Message + Default>(&self) -> Result<M, prost::DecodeError> {
-        M::decode(self.message.as_slice())
+        celestia_core_proto::gogo_decode::<M>(self.message.as_slice())
     }
 }
 

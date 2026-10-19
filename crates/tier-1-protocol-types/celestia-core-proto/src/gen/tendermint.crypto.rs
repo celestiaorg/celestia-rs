@@ -92,11 +92,12 @@ impl ::prost::Name for ProofOps {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
-    #[prost(oneof = "public_key::Sum", tags = "1, 2")]
+    #[prost(oneof = "::prost::GogoOneof::<public_key::Sum>", tags = "1, 2")]
     pub sum: ::core::option::Option<public_key::Sum>,
 }
 /// Nested message and enum types in `PublicKey`.
 pub mod public_key {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(bytes, tag = "1")]

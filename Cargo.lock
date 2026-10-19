@@ -792,7 +792,7 @@ dependencies = [
  "gostr",
  "pbjson",
  "pbjson-types",
- "prost-gostr",
+ "prost-gostr-std",
  "serde",
  "serde_json",
 ]
@@ -1160,6 +1160,7 @@ version = "0.0.1"
 dependencies = [
  "celestia-core-proto",
  "crypto",
+ "gostr",
  "hash",
  "hex",
  "merkle",
@@ -1542,8 +1543,10 @@ dependencies = [
  "app",
  "celestia-proto",
  "crypto",
+ "ctypes",
  "devnet-conformance",
  "encoding",
+ "evidence",
  "gojson",
  "gostr",
  "hash",
@@ -1555,6 +1558,7 @@ dependencies = [
  "legacy-amino",
  "merkle",
  "multistore",
+ "nodestore",
  "pbjson-types",
  "prost",
  "prost-reflect",
@@ -1573,6 +1577,7 @@ dependencies = [
  "x-icahost",
  "x-packetforward",
  "x-transfer",
+ "zstd",
 ]
 
 [[package]]
@@ -2953,6 +2958,14 @@ version = "0.0.1"
 dependencies = [
  "gostr",
  "prost",
+]
+
+[[package]]
+name = "prost-gostr-std"
+version = "0.0.1"
+dependencies = [
+ "pbjson-types",
+ "prost-gostr",
 ]
 
 [[package]]

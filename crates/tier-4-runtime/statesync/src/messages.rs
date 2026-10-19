@@ -45,7 +45,7 @@ impl Msg {
     /// Decodes and unwraps a message.
     pub fn decode(bz: &[u8]) -> Result<Self, String> {
         use pb::message::Sum;
-        let m = pb::Message::decode(bz).map_err(|e| e.to_string())?;
+        let m = celestia_core_proto::gogo_decode::<pb::Message>(bz).map_err(|e| e.to_string())?;
         match m.sum {
             Some(Sum::SnapshotsRequest(_)) => Ok(Self::SnapshotsRequest),
             Some(Sum::SnapshotsResponse(m)) => Ok(Self::SnapshotsResponse(m)),

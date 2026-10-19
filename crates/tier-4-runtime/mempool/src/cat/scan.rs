@@ -3,7 +3,6 @@
 //! with empty entries.
 
 use celestia_core_proto::tendermint::mempool::TxCountMessage;
-use prost::Message as _;
 
 use crate::MAX_TXS_PER_MESSAGE;
 
@@ -12,8 +11,8 @@ pub const ERR_TOO_MANY_TXS: &str = "txs message contains too many transactions";
 
 /// `validateMempoolBytes`.
 pub fn validate_mempool_bytes(msg: &[u8]) -> Result<(), String> {
-    let stub =
-        TxCountMessage::decode(msg).map_err(|e| format!("malformed mempool message: {e}"))?;
+    let stub = celestia_core_proto::gogo_decode::<TxCountMessage>(msg)
+        .map_err(|e| format!("malformed mempool message: {e}"))?;
     let Some(txs) = stub.txs else {
         // SeenTx / WantTx: nothing to count.
         return Ok(());
@@ -37,6 +36,7 @@ pub fn validate_mempool_bytes(msg: &[u8]) -> Result<(), String> {
 )]
 mod tests {
     use celestia_core_proto::tendermint::mempool::{Message, SeenTx, Txs, WantTx, message::Sum};
+    use prost::Message as _;
 
     use super::*;
 

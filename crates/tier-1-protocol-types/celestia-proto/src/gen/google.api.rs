@@ -26,11 +26,12 @@ pub struct HttpRule {
     pub response_body: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "11")]
     pub additional_bindings: ::prost::alloc::vec::Vec<HttpRule>,
-    #[prost(oneof = "http_rule::Pattern", tags = "2, 3, 4, 5, 6, 8")]
+    #[prost(oneof = "::prost::GogoOneof::<http_rule::Pattern>", tags = "2, 3, 4, 5, 6, 8")]
     pub pattern: ::core::option::Option<http_rule::Pattern>,
 }
 /// Nested message and enum types in `HttpRule`.
 pub mod http_rule {
+    ::prost::gogo_oneof!(Pattern);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Pattern {
         #[prost(string, tag = "2")]

@@ -596,7 +596,7 @@ impl ConsensusMessage {
 
     /// Decodes wire bytes.
     pub fn decode(bz: &[u8]) -> Result<Self, String> {
-        let m = pbc::Message::decode(bz).map_err(|e| e.to_string())?;
+        let m = ctypes::gogo_decode::<pbc::Message>(bz).map_err(|e| e.to_string())?;
         Self::from_proto(&m)
     }
 }

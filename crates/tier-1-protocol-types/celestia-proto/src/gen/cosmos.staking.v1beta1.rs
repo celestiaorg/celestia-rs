@@ -5,11 +5,12 @@ pub struct StakeAuthorization {
     pub max_tokens: ::core::option::Option<super::super::base::v1beta1::Coin>,
     #[prost(enumeration = "AuthorizationType", tag = "4")]
     pub authorization_type: i32,
-    #[prost(oneof = "stake_authorization::Policy", tags = "2, 3")]
+    #[prost(oneof = "::prost::GogoOneof::<stake_authorization::Policy>", tags = "2, 3")]
     pub policy: ::core::option::Option<stake_authorization::Policy>,
 }
 /// Nested message and enum types in `StakeAuthorization`.
 pub mod stake_authorization {
+    ::prost::gogo_oneof!(Policy);
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct Validators {
         #[prost(string, repeated, tag = "1")]

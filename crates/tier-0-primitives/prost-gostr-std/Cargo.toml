@@ -1,0 +1,17 @@
+[package]
+name = "prost-gostr-std"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "prost-gostr with gogoproto stdtime / stdduration field semantics (each occurrence of a Timestamp or Duration field replaces the previous one). Used as `prost` by celestia-core-proto, whose every Timestamp and Duration field is stdtime / stdduration."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+pbjson-types = "0.7"
+prost-gostr = { path = "../prost-gostr" }

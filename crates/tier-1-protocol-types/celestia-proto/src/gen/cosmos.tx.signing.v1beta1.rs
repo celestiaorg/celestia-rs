@@ -27,11 +27,12 @@ pub struct SignatureDescriptor {
 pub mod signature_descriptor {
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct Data {
-        #[prost(oneof = "data::Sum", tags = "1, 2")]
+        #[prost(oneof = "::prost::GogoOneof::<data::Sum>", tags = "1, 2")]
         pub sum: ::core::option::Option<data::Sum>,
     }
     /// Nested message and enum types in `Data`.
     pub mod data {
+        ::prost::gogo_oneof!(Sum);
         #[derive(Clone, PartialEq, ::prost::Message)]
         pub struct Single {
             #[prost(enumeration = "super::super::SignMode", tag = "1")]

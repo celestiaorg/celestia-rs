@@ -252,11 +252,12 @@ impl ::prost::Name for StatusResponse {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
-    #[prost(oneof = "message::Sum", tags = "1, 2, 3, 4, 5")]
+    #[prost(oneof = "::prost::GogoOneof::<message::Sum>", tags = "1, 2, 3, 4, 5")]
     pub sum: ::core::option::Option<message::Sum>,
 }
 /// Nested message and enum types in `Message`.
 pub mod message {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]

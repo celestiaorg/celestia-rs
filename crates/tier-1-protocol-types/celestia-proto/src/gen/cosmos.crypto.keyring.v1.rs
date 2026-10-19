@@ -5,11 +5,12 @@ pub struct Record {
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub pub_key: ::core::option::Option<crate::any::Any>,
-    #[prost(oneof = "record::Item", tags = "3, 4, 5, 6")]
+    #[prost(oneof = "::prost::GogoOneof::<record::Item>", tags = "3, 4, 5, 6")]
     pub item: ::core::option::Option<record::Item>,
 }
 /// Nested message and enum types in `Record`.
 pub mod record {
+    ::prost::gogo_oneof!(Item);
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct Local {
         #[prost(message, optional, tag = "1")]

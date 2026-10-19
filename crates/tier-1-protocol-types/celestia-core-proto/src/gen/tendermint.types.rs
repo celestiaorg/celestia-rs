@@ -704,11 +704,12 @@ impl SignedMsgType {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Evidence {
-    #[prost(oneof = "evidence::Sum", tags = "1, 2")]
+    #[prost(oneof = "::prost::GogoOneof::<evidence::Sum>", tags = "1, 2")]
     pub sum: ::core::option::Option<evidence::Sum>,
 }
 /// Nested message and enum types in `Evidence`.
 pub mod evidence {
+    ::prost::gogo_oneof!(Sum);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         #[prost(message, tag = "1")]

@@ -198,7 +198,8 @@ impl Inner {
             .map_err(|e| format!("database error: {e}"))?;
         for kv in iter {
             let (_, v) = kv.map_err(|e| format!("database error: {e}"))?;
-            let evpb = pb::Evidence::decode(v.as_slice()).map_err(|e| e.to_string())?;
+            let evpb =
+                ctypes::gogo_decode::<pb::Evidence>(v.as_slice()).map_err(|e| e.to_string())?;
             // `evList.Size()` after appending: one length-delimited field.
             let n = evpb.encoded_len();
             ev_list_size += 1 + prost::encoding::encoded_len_varint(n as u64) + n;
@@ -224,7 +225,7 @@ impl Inner {
         };
         let mut removed = Vec::new();
         for v in entries {
-            let ev = match pb::Evidence::decode(v.as_slice())
+            let ev = match ctypes::gogo_decode::<pb::Evidence>(v.as_slice())
                 .map_err(|e| e.to_string())
                 .and_then(|p| Evidence::from_proto(&p).map_err(|e| e.to_string()))
             {

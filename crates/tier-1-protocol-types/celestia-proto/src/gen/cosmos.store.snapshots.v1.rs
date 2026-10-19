@@ -39,11 +39,12 @@ impl ::prost::Name for Metadata {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SnapshotItem {
-    #[prost(oneof = "snapshot_item::Item", tags = "1, 2, 3, 4")]
+    #[prost(oneof = "::prost::GogoOneof::<snapshot_item::Item>", tags = "1, 2, 3, 4")]
     pub item: ::core::option::Option<snapshot_item::Item>,
 }
 /// Nested message and enum types in `SnapshotItem`.
 pub mod snapshot_item {
+    ::prost::gogo_oneof!(Item);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Item {
         #[prost(message, tag = "1")]

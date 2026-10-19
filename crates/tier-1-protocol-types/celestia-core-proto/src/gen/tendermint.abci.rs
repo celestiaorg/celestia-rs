@@ -2,13 +2,14 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Request {
     #[prost(
-        oneof = "request::Value",
+        oneof = "::prost::GogoOneof::<request::Value>",
         tags = "1, 2, 3, 5, 6, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
     )]
     pub value: ::core::option::Option<request::Value>,
 }
 /// Nested message and enum types in `Request`.
 pub mod request {
+    ::prost::gogo_oneof!(Value);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Value {
         #[prost(message, tag = "1")]
@@ -412,13 +413,14 @@ impl ::prost::Name for RequestQuerySequence {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
     #[prost(
-        oneof = "response::Value",
+        oneof = "::prost::GogoOneof::<response::Value>",
         tags = "1, 2, 3, 4, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub value: ::core::option::Option<response::Value>,
 }
 /// Nested message and enum types in `Response`.
 pub mod response {
+    ::prost::gogo_oneof!(Value);
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Value {
         #[prost(message, tag = "1")]

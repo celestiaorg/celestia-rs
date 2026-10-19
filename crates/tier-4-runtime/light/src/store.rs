@@ -142,7 +142,7 @@ impl Store for DbStore {
         let Some(bz) = bz.filter(|b| !b.is_empty()) else {
             return Err(StoreError::LightBlockNotFound);
         };
-        let pb = ctypes::proto::types::LightBlock::decode(bz.as_slice())
+        let pb = ctypes::gogo_decode::<ctypes::proto::types::LightBlock>(bz.as_slice())
             .map_err(|e| StoreError::Msg(format!("unmarshal error: {e}")))?;
         LightBlock::from_proto(&pb)
             .map_err(|e| StoreError::Msg(format!("proto conversion error: {e}")))

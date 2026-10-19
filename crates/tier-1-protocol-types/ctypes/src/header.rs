@@ -86,8 +86,10 @@ fn cdc_string(s: &str) -> Vec<u8> {
     if s.is_empty() {
         return Vec::new();
     }
+    // The Go bytes of the string (a chain id with invalid UTF-8 is hashed
+    // as those bytes, like Go's `cdcEncode`).
     let mut out = Vec::new();
-    prost::encoding::string::encode(1, &s.to_owned(), &mut out);
+    prost::encoding::bytes::encode(1, &gostr::to_go_bytes(s).into_owned(), &mut out);
     out
 }
 
@@ -146,10 +148,11 @@ impl Header {
                 self.version.block
             )));
         }
-        if self.chain_id.len() > MAX_CHAIN_ID_LEN {
+        // Go's `len`: bytes of the Go string.
+        if gostr::go_len(&self.chain_id) > MAX_CHAIN_ID_LEN {
             return Err(Error::msg(format!(
                 "chainID is too long; got: {}, max: {MAX_CHAIN_ID_LEN}",
-                self.chain_id.len()
+                gostr::go_len(&self.chain_id)
             )));
         }
         if self.height < 0 {

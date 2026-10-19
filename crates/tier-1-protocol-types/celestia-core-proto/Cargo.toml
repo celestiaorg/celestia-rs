@@ -10,7 +10,8 @@ description = "Prost bindings for celestia-core v0.42 protobufs (ABCI++, consens
 publish = false
 
 [dependencies]
-prost = { package = "prost-gostr", path = "../../tier-0-primitives/prost-gostr" }
+# stdtime / stdduration semantics for every Timestamp and Duration field.
+prost = { package = "prost-gostr-std", path = "../../tier-0-primitives/prost-gostr-std" }
 gostr = { path = "../../tier-0-primitives/gostr" }
 pbjson = "0.7"
 pbjson-types = "0.7"

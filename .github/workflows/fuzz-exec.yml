@@ -1,7 +1,7 @@
 name: fuzz-exec
 
 # Execution differentials against Go celestia-app v10.4.0 and v9.0.8
-# (MILESTONES.md C1.2 / F1.1): `json_*`, `exec`, `pp` and `deliver`
+# (MILESTONES.md C1.2 / F1.1): `json_*`, `c_*` (F1.7), `exec`, `pp` and `deliver`
 # (DELIVER_IBC / HL / WIRE / SWEEP / RECHECK / SIM, and DELIVER_UPGRADE on
 # v9-upgrade), sharded by crates/fuzz-diff/nightly.sh, which rotates
 # scenarios, modes and flags with the run number. A mismatch fails the job
@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
+        job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","consensus","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8

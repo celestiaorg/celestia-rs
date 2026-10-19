@@ -56,7 +56,8 @@ pub struct BlockStore {
 }
 
 fn decode<M: Message + Default>(bz: &[u8], what: &str) -> Result<M> {
-    M::decode(bz).map_err(|e| Error::new(format!("{what}: data has been corrupted: {e}")))
+    ctypes::gogo_decode::<M>(bz)
+        .map_err(|e| Error::new(format!("{what}: data has been corrupted: {e}")))
 }
 
 /// `evidence.IsEvidenceExpired`.
