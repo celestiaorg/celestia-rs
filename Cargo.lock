@@ -2127,6 +2127,7 @@ name = "legacy-amino"
 version = "0.0.1"
 dependencies = [
  "base64 0.23.1",
+ "gostr",
  "hex",
  "math",
  "num-bigint",

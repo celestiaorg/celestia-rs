@@ -590,6 +590,7 @@ pub(crate) fn unmarshal_bytes(raw: &[u8], go: &str) -> Result<Option<Vec<u8>>, S
 
 /// Go `strconv.Quote` (approximately: ASCII escapes, valid UTF-8 kept).
 pub(crate) fn go_quote(s: &[u8]) -> String {
+    use std::fmt::Write as _;
     let mut out = String::from("\"");
     let mut i = 0;
     while i < s.len() {
@@ -610,7 +611,14 @@ pub(crate) fn go_quote(s: &[u8]) -> String {
             }
             i += 1;
         } else if let Some((ch, n)) = decode_rune(&s[i..]) {
-            out.push(ch);
+            // `strconv.Quote`: a rune that is not printable is escaped.
+            if gostr::is_print(ch) {
+                out.push(ch);
+            } else if u32::from(ch) < 0x1_0000 {
+                let _ = write!(out, "\\u{:04x}", u32::from(ch));
+            } else {
+                let _ = write!(out, "\\U{:08x}", u32::from(ch));
+            }
             i += n;
         } else {
             out.push_str(&hex_escape(c));

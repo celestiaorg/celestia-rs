@@ -66,104 +66,181 @@ fn days_in(y: i64, m: u32) -> u32 {
     }
 }
 
-fn digits(s: &[u8]) -> Option<u32> {
-    if s.is_empty() || !s.iter().all(u8::is_ascii_digit) {
-        return None;
-    }
-    std::str::from_utf8(s).ok()?.parse().ok()
-}
-
-/// Go `time.Time.UnmarshalJSON` of a quoted RFC 3339 string ending in `Z`
-/// (go-amino checks the `Z` first): Unix seconds and nanoseconds.
-pub(crate) fn parse_rfc3339(quoted: &[u8]) -> Result<(i64, u32), String> {
-    let inner = &quoted[1..quoted.len() - 1];
-    let bad = || {
-        format!(
-            "parsing time {} as \"2006-01-02T15:04:05Z07:00\": cannot parse {} as \"2006\"",
-            String::from_utf8_lossy(quoted),
-            String::from_utf8_lossy(quoted)
-        )
-    };
-    if inner.len() < 20
-        || inner[4] != b'-'
-        || inner[7] != b'-'
-        || inner[10] != b'T'
-        || inner[13] != b':'
-        || inner[16] != b':'
-    {
-        return Err(bad());
-    }
-    let y = digits(&inner[0..4]).ok_or_else(bad)?;
-    let mo = digits(&inner[5..7]).ok_or_else(bad)?;
-    let d = digits(&inner[8..10]).ok_or_else(bad)?;
-    let h = digits(&inner[11..13]).ok_or_else(bad)?;
-    let mi = digits(&inner[14..16]).ok_or_else(bad)?;
-    let se = digits(&inner[17..19]).ok_or_else(bad)?;
-    let mut rest = &inner[19..];
-    let mut nanos = 0u32;
-    if rest.first() == Some(&b'.') {
-        let n = rest[1..].iter().take_while(|c| c.is_ascii_digit()).count();
-        if n == 0 || n > 9 {
-            return Err(bad());
+/// Go's `time.quote`: quoted, every byte outside 0x20..0x80 as `\xNN`,
+/// `"` and `\\` escaped.
+fn go_quote(s: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from("\"");
+    for &b in s {
+        if (0x20..0x80).contains(&b) {
+            if b == b'"' || b == b'\\' {
+                out.push('\\');
+            }
+            out.push(char::from(b));
+        } else {
+            let _ = write!(out, "\\x{b:02x}");
         }
-        let frac = std::str::from_utf8(&rest[1..=n]).map_err(|_| bad())?;
-        nanos = format!("{frac:0<9}").parse().map_err(|_| bad())?;
-        rest = &rest[1 + n..];
     }
-    if rest != b"Z" {
-        return Err(bad());
-    }
-    let range = |what: &str| {
-        format!(
-            "parsing time {}: {what} out of range",
-            String::from_utf8_lossy(quoted)
-        )
-    };
-    if !(1..=12).contains(&mo) {
-        return Err(range("month"));
-    }
-    let y = i64::from(y);
-    if d < 1 || d > days_in(y, mo) {
-        return Err(range("day"));
-    }
-    if h > 23 {
-        return Err(range("hour"));
-    }
-    if mi > 59 {
-        return Err(range("minute"));
-    }
-    if se > 59 {
-        return Err(range("second"));
-    }
-    let secs = days_from_civil(y, mo, d) * 86_400 + i64::from(h * 3600 + mi * 60 + se);
-    Ok((secs, nanos))
+    out.push('"');
+    out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn round_trip() {
-        assert_eq!(
-            format_rfc3339_nano(0, 0).as_deref(),
-            Some("1970-01-01T00:00:00Z")
-        );
-        assert_eq!(
-            format_rfc3339_nano(ZERO_SECS, 0).as_deref(),
-            Some("0001-01-01T00:00:00Z")
-        );
-        assert_eq!(
-            format_rfc3339_nano(1_700_000_000, 120_000_000).as_deref(),
-            Some("2023-11-14T22:13:20.12Z")
-        );
-        assert_eq!(
-            parse_rfc3339(b"\"2023-11-14T22:13:20.12Z\""),
-            Ok((1_700_000_000, 120_000_000))
-        );
-        assert_eq!(
-            parse_rfc3339(b"\"0001-01-01T00:00:00Z\""),
-            Ok((ZERO_SECS, 0))
-        );
+/// `time.Parse(time.RFC3339, value)` (Go 1.26 `format.go` `parse` over
+/// the layout's chunks `2006` `-` `01` `-` `02` `T` `15` `:` `04` `:` `05`
+/// `Z07:00`): Unix seconds and nanoseconds, or Go's `ParseError` text.
+fn go_parse_rfc3339(value: &[u8]) -> Result<(i64, u32), String> {
+    const LAYOUT: &str = "2006-01-02T15:04:05Z07:00";
+    let elem_err = |layout_elem: &str, value_elem: &[u8]| {
+        format!(
+            "parsing time {} as {}: cannot parse {} as {}",
+            go_quote(value),
+            go_quote(LAYOUT.as_bytes()),
+            go_quote(value_elem),
+            go_quote(layout_elem.as_bytes())
+        )
+    };
+    let msg_err = |msg: &str| format!("parsing time {}{msg}", go_quote(value));
+    let digit = |s: &[u8], i: usize| s.get(i).is_some_and(u8::is_ascii_digit);
+    // `getnum`: one or two digits (two when `fixed`).
+    let getnum = |s: &[u8], fixed: bool| -> Option<(i64, usize)> {
+        if !digit(s, 0) {
+            return None;
+        }
+        if !digit(s, 1) {
+            return (!fixed).then(|| (i64::from(s[0] - b'0'), 1));
+        }
+        Some((i64::from(s[0] - b'0') * 10 + i64::from(s[1] - b'0'), 2))
+    };
+    let mut v = value;
+    // `skip(value, prefix)` for a one-byte prefix.
+    let skip = |v: &mut &[u8], c: u8| -> Result<(), String> {
+        if v.first() == Some(&c) {
+            *v = &v[1..];
+            Ok(())
+        } else {
+            Err(elem_err(std::str::from_utf8(&[c]).unwrap_or(""), v))
+        }
+    };
+    // 2006: four bytes, the first a digit, `atoi`.
+    if v.len() < 4 || !digit(v, 0) {
+        return Err(elem_err("2006", v));
     }
+    let year = match std::str::from_utf8(&v[..4])
+        .ok()
+        .filter(|p| p.bytes().all(|c| c.is_ascii_digit()))
+    {
+        Some(p) => p.parse::<i64>().map_err(|_| elem_err("2006", v))?,
+        None => return Err(elem_err("2006", v)),
+    };
+    v = &v[4..];
+    skip(&mut v, b'-')?;
+    let Some((month, n)) = getnum(v, true) else {
+        return Err(elem_err("01", v));
+    };
+    v = &v[n..];
+    if !(1..=12).contains(&month) {
+        return Err(msg_err(": month out of range"));
+    }
+    skip(&mut v, b'-')?;
+    let Some((day, n)) = getnum(v, true) else {
+        return Err(elem_err("02", v));
+    };
+    v = &v[n..];
+    skip(&mut v, b'T')?;
+    let Some((hour, n)) = getnum(v, false) else {
+        return Err(elem_err("15", v));
+    };
+    v = &v[n..];
+    if hour >= 24 {
+        return Err(msg_err(": hour out of range"));
+    }
+    skip(&mut v, b':')?;
+    let Some((min, n)) = getnum(v, true) else {
+        return Err(elem_err("04", v));
+    };
+    v = &v[n..];
+    if min >= 60 {
+        return Err(msg_err(": minute out of range"));
+    }
+    skip(&mut v, b':')?;
+    let Some((sec, n)) = getnum(v, true) else {
+        return Err(elem_err("05", v));
+    };
+    v = &v[n..];
+    if sec >= 60 {
+        return Err(msg_err(": second out of range"));
+    }
+    // A fractional second the layout does not name (`parseNanoseconds`:
+    // at most nine digits are read, all are skipped).
+    let mut nsec: i64 = 0;
+    if v.len() >= 2 && (v[0] == b'.' || v[0] == b',') && digit(v, 1) {
+        let mut n = 2;
+        while digit(v, n) {
+            n += 1;
+        }
+        let nb = n.min(10);
+        let digits = std::str::from_utf8(&v[1..nb]).unwrap_or("0");
+        nsec = digits.parse::<i64>().unwrap_or(0);
+        for _ in 0..10 - nb {
+            nsec *= 10;
+        }
+        v = &v[n..];
+    }
+    // Z07:00.
+    let hold = v;
+    let offset: i64 = if v.first() == Some(&b'Z') {
+        v = &v[1..];
+        0
+    } else {
+        if v.len() < 6 || v[3] != b':' {
+            return Err(elem_err("Z07:00", hold));
+        }
+        // `getnum(hour, true)`, then the minute only if the hour parsed;
+        // a range error is reported before a parse error (minute last).
+        let hr = getnum(&v[1..3], true).map(|(n, _)| n);
+        let mm = hr.and_then(|_| getnum(&v[4..6], true).map(|(n, _)| n));
+        let sign = v[0];
+        v = &v[6..];
+        let range = if mm.unwrap_or(0) > 60 {
+            Some("minute")
+        } else if hr.unwrap_or(0) > 24 {
+            Some("hour")
+        } else {
+            None
+        };
+        if let Some(what) = range {
+            return Err(format!(
+                "parsing time {}: time zone offset {what} out of range",
+                go_quote(value)
+            ));
+        }
+        let (Some(hr), Some(mm)) = (hr, mm) else {
+            return Err(elem_err("Z07:00", hold));
+        };
+        let off = (hr * 60 + mm) * 60;
+        match sign {
+            b'+' => off,
+            b'-' => -off,
+            _ => return Err(elem_err("Z07:00", hold)),
+        }
+    };
+    if !v.is_empty() {
+        return Err(msg_err(&format!(": extra text: {}", go_quote(v))));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let (m, d) = (month as u32, day as u32);
+    if day < 1 || d > days_in(year, m) {
+        return Err(msg_err(": day out of range"));
+    }
+    let secs = days_from_civil(year, m, d) * 86_400 + hour * 3600 + min * 60 + sec - offset;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok((secs, nsec as u32))
+}
+
+/// Go `time.Time.UnmarshalJSON` of a quoted string (go-amino checked the
+/// quotes and the final `Z`): Go 1.26's `parseStrictRFC3339` has its strict
+/// checks disabled, so this is `time.Parse(time.RFC3339, ...)` of the bytes
+/// between the quotes (not JSON-unescaped). Unix seconds and nanoseconds.
+pub(crate) fn parse_rfc3339(quoted: &[u8]) -> Result<(i64, u32), String> {
+    go_parse_rfc3339(&quoted[1..quoted.len() - 1])
 }

@@ -25,6 +25,12 @@
     clippy::too_many_lines
 )]
 
+/// Bytes as Go's `encoding/json` writes a string of them (each invalid
+/// byte U+FFFD): what a Go caller of these functions sees in JSON.
+pub(crate) fn go_lossy(b: &[u8]) -> String {
+    gostr::lossy(&gostr::from_go_bytes(b)).into_owned()
+}
+
 mod binary;
 mod gojson;
 mod json;
@@ -118,7 +124,7 @@ pub fn tx_decode_amino_in(s: &Schema, bz: &[u8]) -> Result<String, Error> {
         let mut v = s.unmarshal_binary_bare(bz, root)?;
         s.unpack(root, &mut v, unpack::Mode::Binary)?;
         let out = s.marshal_json(root, &v)?;
-        Ok(String::from_utf8_lossy(&out).into_owned())
+        Ok(go_lossy(&out))
     })
 }
 

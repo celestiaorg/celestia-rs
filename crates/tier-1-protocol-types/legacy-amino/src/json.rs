@@ -306,7 +306,7 @@ impl Schema {
                 return err(format!(
                     "UnmarshalJSON wants to decode a {} but found a {}",
                     r.name,
-                    String::from_utf8_lossy(&name)
+                    crate::go_lossy(&name)
                 ));
             }
             bz = data;
@@ -330,13 +330,13 @@ impl Schema {
                 if !quoted {
                     return err(format!(
                         "Amino:JSON time must be an RFC3339Nano string, but got {}.",
-                        String::from_utf8_lossy(bz)
+                        crate::go_lossy(bz)
                     ));
                 }
                 if bz[bz.len() - 2] != b'Z' {
                     return err(format!(
                         "Amino:JSON time must be UTC and end with 'Z' but got {}.",
-                        String::from_utf8_lossy(bz)
+                        crate::go_lossy(bz)
                     ));
                 }
                 let (s, ns) = crate::time::parse_rfc3339(bz).map_err(Error::Go)?;
@@ -391,10 +391,7 @@ impl Schema {
                     ));
                 };
                 if i.bits() > 256 {
-                    return err(format!(
-                        "integer out of range: {}",
-                        String::from_utf8_lossy(&text)
-                    ));
+                    return err(format!("integer out of range: {}", crate::go_lossy(&text)));
                 }
                 return Ok(V::BigInt(Some(i)));
             }
@@ -421,14 +418,17 @@ impl Schema {
                             b'a'..=b'f' => c - b'a' + 10,
                             b'A'..=b'F' => c - b'A' + 10,
                             _ => {
-                                let ch = String::from_utf8_lossy(&[c])
-                                    .chars()
-                                    .next()
-                                    .unwrap_or('\u{fffd}');
+                                // `%#U` of `rune(byte)`: the Latin-1 code
+                                // point, its char only if printable.
+                                let ch = char::from(c);
+                                let shown = if gostr::is_print(ch) {
+                                    format!(" '{ch}'")
+                                } else {
+                                    String::new()
+                                };
                                 return err(format!(
-                                    "encoding/hex: invalid byte: U+{:04X} {}",
-                                    u32::from(c),
-                                    format_args!("'{ch}'")
+                                    "encoding/hex: invalid byte: U+{:04X}{shown}",
+                                    u32::from(c)
                                 ));
                             }
                         };
@@ -444,10 +444,10 @@ impl Schema {
         match t.kind {
             Kind::Interface => {
                 let (name, data) = decode_interface_json(bz)?;
-                let Some(&c) = self.by_name.get(String::from_utf8_lossy(&name).as_ref()) else {
+                let Some(&c) = self.by_name.get(crate::go_lossy(&name).as_str()) else {
                     return err(format!(
                         "unrecognized concrete type name {}",
-                        String::from_utf8_lossy(&name)
+                        crate::go_lossy(&name)
                     ));
                 };
                 let v = self.dec_json(&data, c)?;
@@ -511,7 +511,7 @@ impl Schema {
                 if !(bz[0] == b'"' && bz[bz.len() - 1] == b'"') || bz.len() < 2 {
                     return err(format!(
                         "invalid character -- Amino:JSON int/int64/uint/uint64 expects quoted values for javascript numeric support, got: {}.",
-                        String::from_utf8_lossy(bz)
+                        crate::go_lossy(bz)
                     ));
                 }
                 let inner = &bz[1..bz.len() - 1];
@@ -610,11 +610,13 @@ fn decode_interface_json(bz: &[u8]) -> Res<(Vec<u8>, Vec<u8>)> {
 
 /// `math.LegacyNewDecFromStr` with Go's error texts.
 fn parse_dec(text: &[u8]) -> Res<BigInt> {
-    let s = String::from_utf8_lossy(text);
+    let s = crate::go_lossy(text);
     match math::LegacyDec::from_str_go(&s) {
         Ok(d) => Ok(d.as_scaled().clone()),
+        // Go formats the string after stripping the sign.
         Err(math::MathError::ExcessPrecision(n)) => err(format!(
-            "value '{s}' exceeds max precision by {} decimal places: max precision 18",
+            "value '{}' exceeds max precision by {} decimal places: max precision 18",
+            s.strip_prefix('-').unwrap_or(&s),
             18 - i64::try_from(n).unwrap_or(0)
         )),
         Err(math::MathError::InvalidDecimalStr) => {
