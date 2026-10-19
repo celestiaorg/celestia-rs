@@ -40,6 +40,7 @@ pub const OPS: &[&str] = &[
     "c_secp256r1",
     "c_ics23",
     "c_groth16",
+    "c_vblock",
 ];
 
 /// Splits the input into its length-delimited fields.
@@ -447,6 +448,35 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 );
             }
         }
+        "c_vblock" => {
+            let ps = match decode::<ctypes::proto::state::State>(first(m, 1))
+                .and_then(|s| decode::<pb::Block>(first(m, 2)).map(|_| s))
+            {
+                Ok(v) => v,
+                Err(e) => return c.put("unmarshal", &format!("err:{e}")),
+            };
+            c.put("unmarshal", "ok");
+            let st = match nodestore::state::State::from_proto(&ps) {
+                Ok(v) => v,
+                Err(e) => return c.put("state", &format!("err:{e}")),
+            };
+            c.put("state", "ok");
+            let mut b = match Block::decode(first(m, 2).unwrap_or_default()) {
+                Ok(v) => v,
+                Err(e) => return c.put("block", &format!("err:{e}")),
+            };
+            c.put("block", "ok");
+            let now = go_parse_int(first(m, 3).unwrap_or_default());
+            #[allow(clippy::cast_possible_truncation)]
+            let now = ctypes::Time::from_unix(
+                now.div_euclid(1_000_000_000),
+                now.rem_euclid(1_000_000_000) as i32,
+            );
+            c.run(
+                "validate",
+                nodestore::execution::validate_block(&st, &mut b, now),
+            );
+        }
         "c_groth16" => {
             use x_zkism::groth16;
             let vk_bytes = first(m, 1).unwrap_or_default();
@@ -663,6 +693,12 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
     if op == "c_valset" && rust.out.contains("duplicate_addresses=1") {
         return None;
     }
+    // A state comes from the node's own store; Rust also loads stored
+    // states with an absent or empty validator set, which Go cannot (and
+    // Go panics on a stored state without consensus-param sub-messages).
+    if op == "c_vblock" && go.out.contains("\nstate=") && !go.out.contains("\nstate=ok") {
+        return None;
+    }
     if go.ok != rust.ok {
         return Some(format!("{op}: go {go:?}\n  rust {rust:?}"));
     }
@@ -694,16 +730,45 @@ pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
 /// values, e.g. out-of-range timestamps, while unmarshalling where Rust's
 /// prost decoder leaves them to `from_proto`; error texts of the two
 /// decoders differ); the signature ops compare outcomes only.
-/// Go `strconv.ParseInt(s, 10, 64)` with the error ignored: an
-/// out-of-range number saturates, anything else unparsable is 0.
+/// Go `strconv.ParseInt(s, 10, 64)` with the error ignored: a syntax
+/// error is 0, a range error saturates. Like Go it parses the digits as a
+/// `uint64` first, so a 20-digit number followed by junk is a syntax error.
 fn go_parse_int(b: &[u8]) -> i64 {
-    let s = String::from_utf8_lossy(b);
-    match s.parse::<i64>() {
-        Ok(v) => v,
-        Err(e) if *e.kind() == std::num::IntErrorKind::PosOverflow => i64::MAX,
-        Err(e) if *e.kind() == std::num::IntErrorKind::NegOverflow => i64::MIN,
-        Err(_) => 0,
+    let (neg, digits) = match b.first() {
+        Some(b'+') => (false, &b[1..]),
+        Some(b'-') => (true, &b[1..]),
+        _ => (false, b),
+    };
+    if digits.is_empty() {
+        return 0;
     }
+    let mut n: u64 = 0;
+    let mut range = false;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return 0;
+        }
+        if n > u64::MAX / 10 {
+            range = true;
+            break;
+        }
+        let n1 = n * 10 + u64::from(c - b'0');
+        if n1 < n * 10 {
+            range = true;
+            break;
+        }
+        n = n1;
+    }
+    let cutoff = 1u64 << 63;
+    if !neg && (range || n >= cutoff) {
+        return i64::MAX;
+    }
+    if neg && (range || n > cutoff) {
+        return i64::MIN;
+    }
+    #[allow(clippy::cast_possible_wrap)]
+    let v = n as i64;
+    if neg { v.wrapping_neg() } else { v }
 }
 
 fn canon(op: &str, out: &str) -> Vec<(String, String)> {
@@ -748,7 +813,13 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
         // from an absent one (`cannot be nil`), which prost cannot.
         let class_only = matches!(
             op,
-            "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd" | "c_ics23" | "c_groth16"
+            "c_ed25519"
+                | "c_secp256k1"
+                | "c_secp256r1"
+                | "c_valupd"
+                | "c_ics23"
+                | "c_groth16"
+                | "c_vblock"
         ) || k.ends_with("_add");
         // `duplicate entry ... in [changes]`: Go sorts the changes with an
         // unstable sort, so entries sharing an address print in an order
@@ -999,6 +1070,66 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
             }
         }
+        "c_vblock" => {
+            // Consecutive real blocks: the state after block h-1 and block h.
+            for name in ["real-blocks-blob", "real-blocks-empty"] {
+                let f = fixture(name);
+                let bs: Vec<&serde_json::Value> =
+                    f["blocks"].as_array().into_iter().flatten().collect();
+                for w in bs.windows(2) {
+                    let (prev, cur) = (w[0], w[1]);
+                    let bz = hx(&cur["block"]);
+                    let Ok(pbk) = ctypes::gogo_decode::<pb::Block>(&bz) else {
+                        continue;
+                    };
+                    let Ok(prev_block) = ctypes::gogo_decode::<pb::Block>(&hx(&prev["block"]))
+                    else {
+                        continue;
+                    };
+                    let h = pbk.header.clone().unwrap_or_default();
+                    let vs = |v: &serde_json::Value| {
+                        ctypes::gogo_decode::<pb::ValidatorSet>(&hx(v)).ok()
+                    };
+                    let state = ctypes::proto::state::State {
+                        version: Some(ctypes::proto::state::Version {
+                            consensus: h.version,
+                            software: String::new(),
+                        }),
+                        chain_id: h.chain_id.clone(),
+                        initial_height: 1,
+                        last_block_height: h.height - 1,
+                        last_block_id: Some(pb::BlockId {
+                            hash: hx(&prev["block_id_hash"]),
+                            part_set_header: Some(pb::PartSetHeader {
+                                total: u32::try_from(prev["parts_total"].as_u64().unwrap_or(0))
+                                    .unwrap_or(0),
+                                hash: hx(&prev["parts_hash"]),
+                            }),
+                        }),
+                        last_block_time: prev_block.header.as_ref().and_then(|x| x.time),
+                        next_validators: vs(&cur["next_vals"]),
+                        validators: vs(&cur["vals"]),
+                        last_validators: vs(&prev["vals"]),
+                        last_height_validators_changed: 1,
+                        consensus_params: ctypes::gogo_decode::<pb::ConsensusParams>(&hx(
+                            &cur["params"],
+                        ))
+                        .ok(),
+                        last_height_consensus_params_changed: 1,
+                        last_results_hash: h.last_results_hash.clone(),
+                        app_hash: h.app_hash.clone(),
+                        timeout_info: None,
+                    };
+                    let t = h.time.unwrap_or_default();
+                    let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
+                    out.push(input(&[
+                        (1, &state.encode_to_vec()),
+                        (2, &bz),
+                        (3, now.as_bytes()),
+                    ]));
+                }
+            }
+        }
         "c_groth16" => {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../tier-3-app-modules/x/zkism/testdata");
@@ -1120,5 +1251,34 @@ fn collect_block_protos(v: &serde_json::Value, out: &mut Vec<Vec<u8>>) {
         }
         serde_json::Value::Array(a) => a.iter().for_each(|x| collect_block_protos(x, out)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `c_vblock` seeds are valid blocks for their states (otherwise
+    /// the op compares error paths only).
+    #[test]
+    fn vblock_seeds_validate() {
+        let s = seeds("c_vblock");
+        assert!(s.len() >= 20, "{} seeds", s.len());
+        for (i, input) in s.iter().enumerate() {
+            let out = rust_out("c_vblock", input);
+            assert!(out.out.ends_with("validate=ok\n"), "seed {i}: {}", out.out);
+        }
+    }
+
+    /// Go's `ParseInt` reads the digits as a `uint64` first.
+    #[test]
+    fn go_parse_int_like_go() {
+        assert_eq!(go_parse_int(b"17919554980000000003\x08"), 0);
+        assert_eq!(go_parse_int(b"17919554980000000003"), i64::MAX);
+        assert_eq!(go_parse_int(b"-9223372036854775808"), i64::MIN);
+        assert_eq!(go_parse_int(b"-9223372036854775809"), i64::MIN);
+        assert_eq!(go_parse_int(b"+12"), 12);
+        assert_eq!(go_parse_int(b"-"), 0);
+        assert_eq!(go_parse_int(b"99999999999999999999x"), i64::MAX);
     }
 }

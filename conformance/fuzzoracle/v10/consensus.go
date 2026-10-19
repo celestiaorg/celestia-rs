@@ -26,17 +26,22 @@ package main
 //	            4.. path segments
 //	c_groth16   1 SP1 Groth16 verifying key, 2 proof, 3 program vkey,
 //	            4 public values (x/zkism)
+//	c_vblock    1 state.State, 2 Block, 3 wall clock (unix ns, decimal)
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	zkismtypes "github.com/celestiaorg/celestia-app/v10/x/zkism/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/crypto/secp256k1"
@@ -44,7 +49,9 @@ import (
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 	gnarklogger "github.com/consensys/gnark/logger"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256r1"
@@ -373,6 +380,27 @@ func consensusOp(op string, in []byte) (o out) {
 			break
 		}
 		c.data("ok", func() string { return strconv.FormatBool(pk.VerifySignature(first(m, 2), first(m, 3))) })
+	case "c_vblock":
+		var ps cmtstate.State
+		var pb cmtproto.Block
+		if !c.run("unmarshal", func() error {
+			if err := ps.Unmarshal(first(m, 1)); err != nil {
+				return err
+			}
+			return pb.Unmarshal(first(m, 2))
+		}) {
+			break
+		}
+		var st *sm.State
+		if !c.run("state", func() (e error) { st, e = sm.FromProto(&ps); return }) {
+			break
+		}
+		var b *types.Block
+		if !c.run("block", func() (e error) { b, e = types.BlockFromProto(&pb); return }) {
+			break
+		}
+		now, _ := strconv.ParseInt(string(first(m, 3)), 10, 64)
+		c.run("validate", func() error { return validateBlockAt(*st, b, time.Unix(0, now).UTC()) })
 	case "c_groth16":
 		var v *zkismtypes.SP1Groth16Verifier
 		// As stored keys are: ValidateGroth16Vkey (ValidateBasic and
@@ -508,6 +536,133 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate, params types.V
 			return fmt.Errorf("validator %v is using pubkey %s, which is unsupported for consensus",
 				valUpdate, pk.Type())
 		}
+	}
+	return nil
+}
+
+// validateBlockAt: a copy of celestia-core v0.42.3 state/validation.go's
+// unexported validateBlock, with the wall clock passed in.
+func validateBlockAt(state sm.State, block *types.Block, now time.Time) error {
+	if err := block.ValidateBasic(); err != nil {
+		return err
+	}
+	if block.Version.App != state.Version.Consensus.App ||
+		block.Version.Block != state.Version.Consensus.Block {
+		return fmt.Errorf("wrong Block.Header.Version. Expected %v, got %v",
+			state.Version.Consensus,
+			block.Version,
+		)
+	}
+	if block.ChainID != state.ChainID {
+		return fmt.Errorf("wrong Block.Header.ChainID. Expected %v, got %v",
+			state.ChainID,
+			block.ChainID,
+		)
+	}
+	if state.LastBlockHeight == 0 && block.Height != state.InitialHeight {
+		return fmt.Errorf("wrong Block.Header.Height. Expected %v for initial block, got %v",
+			block.Height, state.InitialHeight)
+	}
+	if state.LastBlockHeight > 0 && block.Height != state.LastBlockHeight+1 {
+		return fmt.Errorf("wrong Block.Header.Height. Expected %v, got %v",
+			state.LastBlockHeight+1,
+			block.Height,
+		)
+	}
+	if !block.LastBlockID.Equals(state.LastBlockID) {
+		return fmt.Errorf("wrong Block.Header.LastBlockID.  Expected %v, got %v",
+			state.LastBlockID,
+			block.LastBlockID,
+		)
+	}
+	if !bytes.Equal(block.AppHash, state.AppHash) {
+		return sm.ErrAppHashMismatch{
+			Expected: state.AppHash,
+			Got:      block.AppHash,
+			Height:   block.Height,
+		}
+	}
+	if !bytes.Equal(block.ConsensusHash, state.ConsensusParams.Hash()) {
+		return fmt.Errorf("wrong Block.Header.ConsensusHash.  Expected %X, got %v",
+			state.ConsensusParams.Hash(),
+			block.ConsensusHash,
+		)
+	}
+	if !bytes.Equal(block.LastResultsHash, state.LastResultsHash) {
+		return fmt.Errorf("wrong Block.Header.LastResultsHash.  Expected %X, got %v",
+			state.LastResultsHash,
+			block.LastResultsHash,
+		)
+	}
+	if !bytes.Equal(block.ValidatorsHash, state.Validators.Hash()) {
+		return fmt.Errorf("wrong Block.Header.ValidatorsHash.  Expected %X, got %v",
+			state.Validators.Hash(),
+			block.ValidatorsHash,
+		)
+	}
+	if !bytes.Equal(block.NextValidatorsHash, state.NextValidators.Hash()) {
+		return fmt.Errorf("wrong Block.Header.NextValidatorsHash.  Expected %X, got %v",
+			state.NextValidators.Hash(),
+			block.NextValidatorsHash,
+		)
+	}
+	if block.Height == state.InitialHeight {
+		if len(block.LastCommit.Signatures) != 0 {
+			return errors.New("initial block can't have LastCommit signatures")
+		}
+	} else if err := state.LastValidators.VerifyCommit(
+		state.ChainID, state.LastBlockID, block.Height-1, block.LastCommit); err != nil {
+		return err
+	}
+	if len(block.ProposerAddress) != crypto.AddressSize {
+		return fmt.Errorf("expected ProposerAddress size %d, got %d",
+			crypto.AddressSize,
+			len(block.ProposerAddress),
+		)
+	}
+	if !state.Validators.HasAddress(block.ProposerAddress) {
+		return fmt.Errorf("block.Header.ProposerAddress %X is not a validator",
+			block.ProposerAddress,
+		)
+	}
+	if !block.Time.Before(now.Add(60 * time.Second)) {
+		return fmt.Errorf(
+			"block time %v is too far in the future (wall clock %v + tolerance %v)",
+			block.Time, now, 60*time.Second,
+		)
+	}
+	switch {
+	case block.Height > state.InitialHeight:
+		if !block.Time.After(state.LastBlockTime) {
+			return fmt.Errorf("block time %v not greater than last block time %v",
+				block.Time,
+				state.LastBlockTime,
+			)
+		}
+		medianTime, err := sm.MedianTime(block.LastCommit, state.LastValidators)
+		if err != nil {
+			return fmt.Errorf("error validating block while calculating median time: %w", err)
+		}
+		if !block.Time.Equal(medianTime) {
+			return fmt.Errorf("invalid block time. Expected %v, got %v",
+				medianTime,
+				block.Time,
+			)
+		}
+	case block.Height == state.InitialHeight:
+		genesisTime := state.LastBlockTime
+		if !block.Time.Equal(genesisTime) {
+			return fmt.Errorf("block time %v is not equal to genesis time %v",
+				block.Time,
+				genesisTime,
+			)
+		}
+	default:
+		return fmt.Errorf("block height %v lower than initial height %v",
+			block.Height, state.InitialHeight)
+	}
+	if max, got := state.ConsensusParams.Evidence.MaxBytes, block.Evidence.ByteSize(); got > max {
+		return types.NewErrEvidenceOverflow(max, got)
 	}
 	return nil
 }

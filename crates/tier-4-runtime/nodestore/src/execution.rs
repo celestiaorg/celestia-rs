@@ -331,10 +331,11 @@ fn validate_block_opts(
             h.height, state.initial_height
         )));
     }
-    if state.last_block_height > 0 && h.height != state.last_block_height + 1 {
+    // Go's int64 arithmetic wraps.
+    if state.last_block_height > 0 && h.height != state.last_block_height.wrapping_add(1) {
         return Err(Error::new(format!(
             "wrong Block.Header.Height. Expected {}, got {}",
-            state.last_block_height + 1,
+            state.last_block_height.wrapping_add(1),
             h.height
         )));
     }
@@ -390,7 +391,7 @@ fn validate_block_opts(
             &state.chain_id,
             &state.last_validators,
             &state.last_block_id,
-            block.header.height - 1,
+            block.header.height.wrapping_sub(1),
             &lc,
         )
         .map_err(ctypes_err)?;
