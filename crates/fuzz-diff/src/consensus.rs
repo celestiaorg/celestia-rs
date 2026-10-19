@@ -733,7 +733,11 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
         // `duplicate entry ... in [changes]`: Go sorts the changes with an
         // unstable sort, so entries sharing an address print in an order
         // of its own (the text is not stored anywhere).
-        let class_only = class_only || val.starts_with("err:duplicate entry");
+        let class_only = class_only
+            || val.starts_with("err:duplicate entry")
+            // Which of several invalid changes is reported first depends
+            // on the same unstable sort (an update error is not stored).
+            || (op == "c_valset" && k == "update");
         let val = if class_only && val.starts_with("err:") {
             "err".to_owned()
         } else {
