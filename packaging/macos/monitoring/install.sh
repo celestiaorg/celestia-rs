@@ -5,8 +5,9 @@
 #   packaging/macos/monitoring/install.sh            # cron supervisor, no sudo
 #   packaging/macos/monitoring/install.sh --system   # LaunchDaemons (sudo)
 #
-# Set ALERT_EMAIL=you@gmail.com on the first run to get alert emails
-# (saved in ~/.celestia-rs/monitoring/alert-email; README.md, "Email alerts").
+# Alert emails (README.md, "Email alerts"): set ALERT_EMAIL, and optionally
+# SMTP_HOST, SMTP_USER and SMTP_FROM (default: Gmail as ALERT_EMAIL), on
+# any run. They are saved in ~/.celestia-rs/monitoring/alerting.env.
 #
 # Both modes start at boot without a login session. Without sudo, the
 # launchd user domain is not reachable over SSH, so a crontab entry
@@ -39,12 +40,25 @@ root_url=${dns:+https://$dns/}
 root_url=${root_url:-http://127.0.0.1:3000/}
 
 mkdir -p "$MON"
-if [[ -n ${ALERT_EMAIL:-} ]]; then printf '%s\n' "$ALERT_EMAIL" >"$MON/alert-email"; fi
-alert_email=$(cat "$MON/alert-email" 2>/dev/null || true)
+# Settings given in the environment override the saved ones.
+saved=$MON/alerting.env
+for k in ALERT_EMAIL SMTP_HOST SMTP_USER SMTP_FROM; do
+  v=${!k:-}
+  [[ -z $v && -f $saved ]] && v=$(sed -n "s/^$k=//p" "$saved")
+  printf -v "$k" '%s' "$v"
+done
+SMTP_HOST=${SMTP_HOST:-smtp.gmail.com:587}
+SMTP_USER=${SMTP_USER:-$ALERT_EMAIL}
+SMTP_FROM=${SMTP_FROM:-$ALERT_EMAIL}
+if [[ -n $ALERT_EMAIL ]]; then
+  printf '%s\n' "ALERT_EMAIL=$ALERT_EMAIL" "SMTP_HOST=$SMTP_HOST" "SMTP_USER=$SMTP_USER" "SMTP_FROM=$SMTP_FROM" >"$saved"
+fi
+alert_email=$ALERT_EMAIL
 
 render() {
   sed -e "s|__MON__|$MON|g" -e "s|__HOME__|$HOME|g" -e "s|__ROOT_URL__|$root_url|g" \
-    -e "s|__ALERT_EMAIL__|$alert_email|g" "$1" >"$2"
+    -e "s|__ALERT_EMAIL__|$alert_email|g" -e "s|__SMTP_HOST__|$SMTP_HOST|g" \
+    -e "s|__SMTP_USER__|$SMTP_USER|g" -e "s|__SMTP_FROM__|$SMTP_FROM|g" "$1" >"$2"
 }
 
 # --- files -------------------------------------------------------------------
@@ -66,7 +80,8 @@ fi
 if [[ ! -s $MON/grafana/admin-password ]]; then
   (umask 077; openssl rand -base64 18 | tr -d '\n' >"$MON/grafana/admin-password")
 fi
-# Grafana reads the Gmail app password from here; the operator writes it.
+# Grafana reads the SMTP password (Gmail app password or relay API key)
+# from here; the operator writes it.
 [[ -f $MON/grafana/smtp-password ]] || (umask 077; : >"$MON/grafana/smtp-password")
 "$BREW/opt/prometheus/bin/promtool" check config "$MON/prometheus/prometheus.yml" >/dev/null
 
@@ -206,7 +221,7 @@ fi
 [[ -n $dns ]] && tailscale serve --bg --https=443 http://127.0.0.1:3000 >/dev/null
 
 [[ -n $alert_email && ! -s $MON/grafana/smtp-password ]] &&
-  echo "note: alert emails to $alert_email need a Gmail app password in $MON/grafana/smtp-password (README.md)" >&2
+  echo "note: alert emails to $alert_email need the SMTP password for $SMTP_HOST in $MON/grafana/smtp-password (README.md)" >&2
 cat <<EOF
 Monitoring installed in $MON, supervised by $mode.
   Grafana:    $root_url  (anyone on the tailnet can view; admin password in $MON/grafana/admin-password)

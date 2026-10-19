@@ -81,18 +81,31 @@ network, a reminder every 4 h while it lasts, and a resolved email. If
 Grafana cannot query Prometheus, you get an email about that too. If the
 Mac or Grafana is down, no email is sent.
 
-Grafana sends through Gmail and needs an app password. The Google
-account needs 2-Step Verification.
+Grafana sends through an SMTP server, configured with environment
+variables on any `install.sh` run. They are saved in
+`~/.celestia-rs/monitoring/alerting.env`, so later runs need none.
 
-1. Create an app password at https://myaccount.google.com/apppasswords.
-2. Save it on the Mac. It is not echoed or stored in the shell history:
+- **Gmail (default):** set `ALERT_EMAIL=you@gmail.com`. The password is a
+  Google app password (https://myaccount.google.com/apppasswords). This
+  needs 2-Step Verification. Accounts in Advanced Protection cannot
+  create app passwords.
+- **Resend relay:** for accounts that cannot use Gmail. Sign up at
+  https://resend.com with the address that gets the alerts, and create an
+  API key with "Sending access". The free tier allows 100 emails a day.
+  Without a verified domain, Resend sends from `onboarding@resend.dev`,
+  and only to the account's own address. The password is the API key.
 
-   ```sh
-   read -rs 'p?Gmail app password: ' && printf %s "${p// /}" > ~/.celestia-rs/monitoring/grafana/smtp-password; unset p
-   ```
+  ```sh
+  ALERT_EMAIL=you@gmail.com SMTP_HOST=smtp.resend.com:587 SMTP_USER=resend \
+    SMTP_FROM=onboarding@resend.dev packaging/macos/monitoring/install.sh
+  ```
 
-3. Re-run `ALERT_EMAIL=you@gmail.com packaging/macos/monitoring/install.sh`.
-   The address is saved, so later runs need no `ALERT_EMAIL`.
+Save the password on the Mac. It is not echoed or stored in the shell
+history. Then re-run `install.sh` so that Grafana reads it:
+
+```sh
+read -rs 'p?SMTP password: ' && printf %s "${p// /}" > ~/.celestia-rs/monitoring/grafana/smtp-password; unset p
+```
 
 To send a test email: Grafana > Alerting > Contact points >
 operator-email > Test.
