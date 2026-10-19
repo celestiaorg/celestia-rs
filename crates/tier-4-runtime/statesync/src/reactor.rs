@@ -68,6 +68,7 @@ pub struct Reactor {
     switch: Mutex<WeakSwitch>,
     rt: Mutex<Option<tokio::runtime::Handle>>,
     running: AtomicBool,
+    stopped: AtomicBool,
 }
 
 impl std::fmt::Debug for Reactor {
@@ -87,6 +88,7 @@ impl Reactor {
             switch: Mutex::new(WeakSwitch::default()),
             rt: Mutex::new(tokio::runtime::Handle::try_current().ok()),
             running: AtomicBool::new(true),
+            stopped: AtomicBool::new(false),
         }
     }
 
@@ -158,6 +160,10 @@ impl Reactor {
             *g = Some(Arc::clone(&s));
             s
         };
+        // A `stop_sync` that raced the setup above saw no syncer.
+        if self.stopped.load(Ordering::SeqCst) {
+            syncer.stop();
+        }
         let sw = self.switch.lock().map(|g| g.clone()).unwrap_or_default();
         let hook = move || {
             tracing::debug!("Requesting snapshots from known peers");
@@ -171,6 +177,15 @@ impl Reactor {
             *g = None;
         }
         res
+    }
+
+    /// Stops the running [`Reactor::sync`] (and any later one) for node
+    /// shutdown: it returns [`SyncError::Stopped`].
+    pub fn stop_sync(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        if let Some(s) = self.current_syncer() {
+            s.stop();
+        }
     }
 
     fn handle(&self, env: &Envelope, msg: Msg) {

@@ -141,16 +141,28 @@ pub fn add_sync_reactors(
     })
 }
 
+/// Stops `reactor`'s state sync when `shutdown` triggers (SIGTERM /
+/// SIGINT), so snapshot discovery does not outlive the signal.
+pub fn stop_state_sync_on_shutdown(
+    reactor: &Arc<statesync::Reactor>,
+    shutdown: &crate::ops::Shutdown,
+) {
+    let r = Arc::clone(reactor);
+    shutdown.on_trigger(move || r.stop_sync());
+}
+
 /// `startStateSync`: restores a snapshot from peers (verified with the
 /// light client against `opts.rpc_servers`), bootstraps the state and
-/// block stores and returns the state to block sync from.
+/// block stores and returns the state to block sync from (`None` when
+/// shutdown stopped it).
 pub fn state_sync(
-    reactor: &statesync::Reactor,
+    reactor: &Arc<statesync::Reactor>,
     opts: &StateSyncOptions,
     genesis_state: &State,
     ss: &StateStore,
     bs: &BlockStore,
-) -> anyhow::Result<State> {
+    shutdown: &crate::ops::Shutdown,
+) -> anyhow::Result<Option<State>> {
     let trust = light::TrustOptions {
         period: opts.trust_period,
         height: opts.trust_height,
@@ -169,9 +181,15 @@ pub fn state_sync(
         servers = ?opts.rpc_servers,
         "starting state sync"
     );
-    let (state, commit) = reactor
-        .sync(Arc::new(sp), opts.discovery_time)
-        .map_err(|e| anyhow!("State sync failed: {e}"))?;
+    stop_state_sync_on_shutdown(reactor, shutdown);
+    let (state, commit) = match reactor.sync(Arc::new(sp), opts.discovery_time) {
+        Ok(r) => r,
+        Err(statesync::SyncError::Stopped) => {
+            tracing::info!("state sync stopped");
+            return Ok(None);
+        }
+        Err(e) => return Err(anyhow!("State sync failed: {e}")),
+    };
     statesync::NodeStores {
         state_store: ss.clone(),
         block_store: bs.clone(),
@@ -183,7 +201,7 @@ pub fn state_sync(
         app_hash = %hex::encode_upper(&state.app_hash),
         "state sync complete; switching to block sync"
     );
-    Ok(state)
+    Ok(Some(state))
 }
 
 /// `poolRoutine`: block sync until caught up (`switch_to_consensus`) or,
@@ -215,4 +233,79 @@ pub fn block_sync(
     reactor
         .run_sync(state, exec, state_synced, switch_to_consensus, &mut stop)
         .map_err(|e| anyhow!("block sync: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoApp;
+
+    impl statesync::AppConn for NoApp {
+        fn list_snapshots(&self) -> Result<abci::ResponseListSnapshots, String> {
+            Ok(abci::ResponseListSnapshots::default())
+        }
+        fn load_snapshot_chunk(
+            &self,
+            _: abci::RequestLoadSnapshotChunk,
+        ) -> Result<abci::ResponseLoadSnapshotChunk, String> {
+            Err("unused".into())
+        }
+        fn offer_snapshot(
+            &self,
+            _: abci::RequestOfferSnapshot,
+        ) -> Result<abci::ResponseOfferSnapshot, String> {
+            Err("unused".into())
+        }
+        fn apply_snapshot_chunk(
+            &self,
+            _: abci::RequestApplySnapshotChunk,
+        ) -> Result<abci::ResponseApplySnapshotChunk, String> {
+            Err("unused".into())
+        }
+        fn info(&self, _: abci::RequestInfo) -> Result<abci::ResponseInfo, String> {
+            Err("unused".into())
+        }
+    }
+
+    struct NoLight;
+
+    impl statesync::StateProvider for NoLight {
+        fn app_hash(&self, _: u64) -> light::Result<Vec<u8>> {
+            Err(light::Error::NoWitnesses)
+        }
+        fn commit(&self, _: u64) -> light::Result<ctypes::Commit> {
+            Err(light::Error::NoWitnesses)
+        }
+        fn state(&self, _: u64) -> light::Result<statesync::State> {
+            Err(light::Error::NoWitnesses)
+        }
+    }
+
+    /// SIGTERM / SIGINT (a triggered [`crate::ops::Shutdown`]) ends a state
+    /// sync that is still discovering snapshots.
+    #[test]
+    fn shutdown_stops_state_sync_discovery() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reactor = Arc::new(statesync::Reactor::new(
+            statesync::Config {
+                temp_dir: tmp.path().to_path_buf(),
+                ..statesync::Config::default()
+            },
+            Arc::new(NoApp),
+        ));
+        let shutdown = crate::ops::Shutdown::new();
+        stop_state_sync_on_shutdown(&reactor, &shutdown);
+        let r = Arc::clone(&reactor);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(r.sync(Arc::new(NoLight), Duration::from_secs(60)));
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        shutdown.trigger();
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("state sync ignored shutdown");
+        assert_eq!(got.err(), Some(statesync::SyncError::Stopped));
+    }
 }
