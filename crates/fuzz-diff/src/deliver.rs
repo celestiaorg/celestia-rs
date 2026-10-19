@@ -227,11 +227,7 @@ fn ms_pubkey(singles: &[Acct], k: &MsKey) -> x_ante::pubkey::PubKey {
         MsKey::Single(i) => PubKey::Secp256k1(singles[*i].key.pub_key.to_vec()),
         MsKey::Multi { threshold, members } => {
             let keys: Vec<PubKey> = members.iter().map(|m| ms_pubkey(singles, m)).collect();
-            PubKey::Multisig {
-                threshold: *threshold,
-                anys: keys.iter().map(PubKey::to_any).collect(),
-                keys,
-            }
+            PubKey::new_multisig(*threshold, keys)
         }
     }
 }

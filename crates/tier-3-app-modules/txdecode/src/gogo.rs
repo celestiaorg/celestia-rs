@@ -736,13 +736,15 @@ fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
 /// Messages whose `Any` fields [`Mode::Struct`] keeps as received even
 /// when prost cannot decode them: their consumers decode the inner value
 /// the gogoproto way themselves (the router's `txdecode::prost_compatible`
-/// for messages, the fee-grant module for allowances), and Go keeps the
-/// bytes as received where it stores them (an `AllowedMsgAllowance`'s
-/// inner allowance, the messages nested in a proposal's messages).
+/// for messages, the fee-grant module for allowances, the ante handler for
+/// multisig sub-keys), and Go keeps the bytes as received where it stores
+/// them (an `AllowedMsgAllowance`'s inner allowance, the messages nested in
+/// a proposal's messages, the sub-keys of an account's multisig key).
 fn keeps_raw_anys(name: &str) -> bool {
     matches!(
         name,
-        "cosmos.feegrant.v1beta1.AllowedMsgAllowance"
+        "cosmos.crypto.multisig.LegacyAminoPubKey"
+            | "cosmos.feegrant.v1beta1.AllowedMsgAllowance"
             | "cosmos.feegrant.v1beta1.MsgGrantAllowance"
             | "cosmos.authz.v1beta1.MsgExec"
             | "cosmos.gov.v1.MsgSubmitProposal"

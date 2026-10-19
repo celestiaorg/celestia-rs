@@ -49,6 +49,9 @@ pub enum PubKey {
         anys: Vec<Any>,
         /// Decoded sub-keys.
         keys: Vec<PubKey>,
+        /// gogoproto `Marshal` of the key (`NewAnyWithValue`): sub-key `Any`s
+        /// keep their unknown fields (`XXX_unrecognized`).
+        value: Vec<u8>,
     },
 }
 
@@ -63,30 +66,46 @@ impl PubKey {
         Self::Secp256k1(SIM_SECP256K1_PUBKEY.to_vec())
     }
 
+    /// `multisig.NewLegacyAminoPubKey(threshold, keys)`.
+    #[must_use]
+    pub fn new_multisig(threshold: u32, keys: Vec<PubKey>) -> Self {
+        let anys: Vec<Any> = keys.iter().map(PubKey::to_any).collect();
+        let value = LegacyAminoPubKey {
+            threshold,
+            public_keys: anys.clone(),
+        }
+        .encode_to_vec();
+        Self::Multisig {
+            threshold,
+            anys,
+            keys,
+            value,
+        }
+    }
+
     /// Unpacks an `Any` holding a registered public key.
+    ///
+    /// The value is read as gogoproto decodes it (`txdecode::prost_compatible`):
+    /// prost rejects some encodings Go accepts, e.g. keys past `u32::MAX`.
     pub fn from_any(any: &Any) -> Result<Self, SdkError> {
+        let go = txdecode::prost_compatible(any);
+        let value = go.as_ref().unwrap_or(any).value.as_slice();
         match any.type_url.as_str() {
             SECP256K1_TYPE_URL => Ok(Self::Secp256k1(
-                KeyBytes::decode(any.value.as_slice())
-                    .map_err(decode_err)?
-                    .key,
+                KeyBytes::decode(value).map_err(decode_err)?.key,
             )),
             ED25519_TYPE_URL => Ok(Self::Ed25519(
-                KeyBytes::decode(any.value.as_slice())
-                    .map_err(decode_err)?
-                    .key,
+                KeyBytes::decode(value).map_err(decode_err)?.key,
             )),
             SECP256R1_TYPE_URL => {
-                let key = KeyBytes::decode(any.value.as_slice())
-                    .map_err(decode_err)?
-                    .key;
+                let key = KeyBytes::decode(value).map_err(decode_err)?.key;
                 if !crate::signing::p256_point_valid(&key) {
                     return Err(errs::tx_decode("invalid secp256r1 public key"));
                 }
                 Ok(Self::Secp256r1(key))
             }
             MULTISIG_TYPE_URL => {
-                let m = LegacyAminoPubKey::decode(any.value.as_slice()).map_err(decode_err)?;
+                let m = LegacyAminoPubKey::decode(value).map_err(decode_err)?;
                 let keys = m
                     .public_keys
                     .iter()
@@ -96,6 +115,7 @@ impl PubKey {
                     threshold: m.threshold,
                     anys: m.public_keys,
                     keys,
+                    value: txdecode::gogo_repack(any).value,
                 })
             }
             other => Err(errs::tx_decode(format!(
@@ -121,15 +141,9 @@ impl PubKey {
                 type_url: ED25519_TYPE_URL.into(),
                 value: KeyBytes { key: k.clone() }.encode_to_vec(),
             },
-            Self::Multisig {
-                threshold, anys, ..
-            } => Any {
+            Self::Multisig { value, .. } => Any {
                 type_url: MULTISIG_TYPE_URL.into(),
-                value: LegacyAminoPubKey {
-                    threshold: *threshold,
-                    public_keys: anys.clone(),
-                }
-                .encode_to_vec(),
+                value: value.clone(),
             },
         }
     }
@@ -254,4 +268,62 @@ pub fn uvarint(v: u64) -> Vec<u8> {
     let mut out = Vec::new();
     put_uvarint(&mut out, v);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Key 17179869176: gogoproto's field `int32(key >> 3)` is 2^31 - 1, an
+    /// unknown field it skips; prost rejects keys past `u32::MAX`.
+    const WIDE_KEY_VARINT: [u8; 6] = [0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00];
+
+    fn secp(key: &[u8], extra: &[u8]) -> Any {
+        let mut value = KeyBytes { key: key.to_vec() }.encode_to_vec();
+        value.extend_from_slice(extra);
+        Any {
+            type_url: SECP256K1_TYPE_URL.into(),
+            value,
+        }
+    }
+
+    #[test]
+    fn keys_are_read_as_gogoproto_decodes_them() {
+        let k = vec![2; 33];
+        let any = secp(&k, &WIDE_KEY_VARINT);
+        assert!(KeyBytes::decode(any.value.as_slice()).is_err());
+        assert_eq!(PubKey::from_any(&any).unwrap(), PubKey::Secp256k1(k));
+    }
+
+    #[test]
+    fn multisig_keeps_sub_keys_as_packed() {
+        let sub = secp(&[2; 33], &[]);
+        // A sub-key `Any` with an unknown field (kept by gogoproto's `Any`).
+        let mut sub_any = sub.encode_to_vec();
+        sub_any.extend_from_slice(&[0x18, 0x07]);
+        let mut value = vec![0x08, 0x01, 0x12, sub_any.len() as u8];
+        value.extend_from_slice(&sub_any);
+        value.extend_from_slice(&WIDE_KEY_VARINT);
+        let any = Any {
+            type_url: MULTISIG_TYPE_URL.into(),
+            value: value.clone(),
+        };
+        assert!(LegacyAminoPubKey::decode(any.value.as_slice()).is_err());
+        let pk = PubKey::from_any(&any).unwrap();
+        let PubKey::Multisig {
+            threshold,
+            anys,
+            keys,
+            ..
+        } = &pk
+        else {
+            unreachable!()
+        };
+        assert_eq!(*threshold, 1);
+        assert_eq!(anys, &vec![sub]);
+        assert_eq!(keys, &vec![PubKey::Secp256k1(vec![2; 33])]);
+        // `NewAnyWithValue`: the multisig's own unknown field is dropped, the
+        // sub-key `Any`'s is kept.
+        assert_eq!(pk.to_any().value, value[..value.len() - 6].to_vec());
+    }
 }

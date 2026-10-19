@@ -101,8 +101,10 @@ fn skip_group(b: &mut &[u8], num: u32, depth: usize) -> Option<()> {
     }
     loop {
         let tag = strict_varint(b)?;
+        // protowire `ConsumeTag` (inside a group): field numbers up to
+        // `math.MaxInt32`, unlike the 2^29 - 1 of a message's own fields.
         let n = u32::try_from(tag >> 3).ok()?;
-        if n == 0 || n > (1 << 29) - 1 {
+        if n == 0 || n > i32::MAX as u32 {
             return None;
         }
         match tag & 7 {
@@ -322,5 +324,22 @@ mod tests {
             .unwrap();
         assert_eq!(s, vec![Signer::Str("x".into())]);
         assert!(get_signers("/cosmos.bank.v1beta1.Params", &[]).is_none());
+    }
+
+    /// protobuf-go's `ConsumeFieldValue` reads a group's inner tags with
+    /// `ConsumeTag` (field numbers up to 2^31 - 1), not the 2^29 - 1 limit
+    /// of a message's own fields.
+    #[test]
+    fn group_inner_fields_up_to_max_int32() {
+        let url = "/celestia.blob.v1.MsgPayForBlobs";
+        // signer, then non-critical field 1024 as a group holding `inner`.
+        let msg =
+            |inner: &[u8]| [&[0x0a, 0x01, b's', 0x83, 0x40][..], inner, &[0x84, 0x40]].concat();
+        // Field 2^29, varint 0.
+        assert!(unpack_check(url, &msg(&[0x80, 0x80, 0x80, 0x80, 0x10, 0x00])).is_ok());
+        // Field 2^31 - 1 is the largest.
+        assert!(unpack_check(url, &msg(&[0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00])).is_ok());
+        // Field 2^31 overflows int32.
+        assert!(unpack_check(url, &msg(&[0x80, 0x80, 0x80, 0x80, 0x40, 0x00])).is_err());
     }
 }
