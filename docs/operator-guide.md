@@ -100,7 +100,7 @@ celestia-rs start --network mocha --home ~/.celestia-rs/mocha
 
 | network | chain ID | genesis SHA-256 | seeds / peers |
 |---|---|---|---|
-| `mainnet` | `celestia` | `9727aac9…7793` | 13 seeds (celestia-app `scripts/mainnet.sh`) |
+| `mainnet` | `celestia` | `9727aac9…7793` | 2 seeds + 2 peers (checked live 2026-10-18; see §12) |
 | `mocha` | `mocha-5` | `82db3ac5…5d33` | 2 seeds + 1 peer (`scripts/mocha.sh`) |
 | `arabica` | `arabica-11` | not pinned upstream (chain ID checked) | none built in: pass `--p2p.seeds` |
 | `local` | `celestia-rs-local` | generated | — |
@@ -1001,8 +1001,8 @@ operator key like everyone else and keep the node running.
 
 The procedure is section 11 with:
 
-- `export NODE_HOME=$HOME/.celestia-rs/mainnet`, `--network mainnet` (13
-  built-in seeds), `--chain-id celestia`, RPCs
+- `export NODE_HOME=$HOME/.celestia-rs/mainnet`, `--network mainnet` (2
+  built-in seeds and 2 persistent peers), `--chain-id celestia`, RPCs
   `https://rpc.celestia.pops.one` and `https://celestia-rpc.polkachu.com`.
 - Real TIA (no faucet). Parameters (2026-10-15): `min_commission_rate`
   0.20, `max_validators` 100 with 96 bonded — the active set is nearly
@@ -1010,6 +1010,13 @@ The procedure is section 11 with:
   has at that time:
   `curl -s "https://celestia-rest.publicnode.com/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED&pagination.limit=200" | jq '[.validators[].tokens | tonumber] | sort | .[0]'`
   (utia; `query staking validators` returns too much for public RPCs).
+- Public mainnet seeds die often: on 2026-10-18 all 13 seeds in
+  celestia-app's `scripts/mainnet.sh` were dead or unusable. If the log
+  shows `Couldn't connect to any seeds` or state sync finds no snapshots,
+  take live peers from a public RPC's `/net_info` and set them as
+  `persistent_peers` in `$NODE_HOME/config/config.toml`, then restart:
+  `curl -s https://rpc.celestia.pops.one/net_info | jq -r '.result.peers[] | "\(.node_info.id)@\(.remote_ip):\(.node_info.listen_addr | split(":") | last)"' | head -12 | paste -sd, -`
+  (12 such peers were enough for state sync from height 15,086,000).
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
 - A separate machine or home from Mocha, its own consensus key and
