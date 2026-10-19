@@ -120,7 +120,9 @@ Every item must pass on the commit the canary runs.
   `CELESTIA_RS_SQUARE_THREADS=1` (the code has no rayon; this is its thread
   knob), `CELESTIA_RS_SIG_CACHE=off`, `release` vs `dist` and across the two
   targets; `pp` clean with `dist` on both. Done when that job is green on
-  the release commit.
+  the release commit. *First green run:* 2026-10-19 on `0a1cb01` (both
+  targets, every case and configuration, traces identical across release /
+  dist and x86_64 / aarch64).
 
 - [ ] **C1.4 Fresh `deliver` campaign on the release commit.** At least
   one run of every devnet scenario at both app versions, plus
