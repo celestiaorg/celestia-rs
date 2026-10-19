@@ -3779,7 +3779,7 @@ pub fn run(
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
                 if !gn.gov_msgs.is_empty() {
-                    let msg = gn.gov_msgs[(b as usize / 4) % gn.gov_msgs.len()].clone();
+                    let msg = gn.gov_msgs[(b / 4) % gn.gov_msgs.len()].clone();
                     let submit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
                         messages: vec![msg],
                         initial_deposit: vec![Coin {
