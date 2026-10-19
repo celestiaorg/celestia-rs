@@ -1015,5 +1015,12 @@ The procedure is section 11 with:
 - A separate machine or home from Mocha, its own consensus key and
   operator key (a hardware-backed or offline-signing setup for the
   operator key is advisable; `--generate-only` + offline signing works).
-- M14 starts only after the M13 soak (no misses or double-sign refusals
-  on Mocha for the agreed period) and the mainnet full-node run of M13.
+- Slashing (queried 2026-10-19): `signed_blocks_window` 10,000,
+  `min_signed_per_window` 0.001, `downtime_jail_duration` 60 s, no
+  downtime slash, 2% double-sign slash plus tombstoning.
+- The v9 → v10 upgrade (celestia-app v10.4.0) is scheduled at height
+  **15,116,658** (`curl -s https://celestia-rest.publicnode.com/signal/v1/upgrade`;
+  ~2026-10-20 03:40 UTC). Bring the M13 full node to the tip before it.
+- M14 is a small-stake canary (stake near the active-set minimum). It
+  starts only after the M13 soak and mainnet full-node run and the C1
+  canary gate (`MILESTONES.md`); more stake waits for F1.
