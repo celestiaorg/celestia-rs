@@ -1,0 +1,65 @@
+# Emails the operator about serious node problems
+# (packaging/macos/monitoring/README.md, "Email alerts").
+#
+# Prometheus evaluates rules.yml. This one Grafana rule watches its
+# firing severity=critical alerts (ALERTS), except LowPeers, and emails
+# them through the SMTP server in grafana.ini, one email per network.
+# If Prometheus cannot be queried, the rule errors, and the error is
+# emailed too (execErrState). install.sh renders __ALERT_EMAIL__.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: operator-email
+    receivers:
+      - uid: operator-email
+        type: email
+        settings:
+          addresses: __ALERT_EMAIL__
+          singleEmail: true
+
+policies:
+  - orgId: 1
+    receiver: operator-email
+    group_by: [network]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: critical
+    folder: celestia-rs
+    interval: 30s
+    rules:
+      - uid: celestia-rs-critical
+        title: celestia-rs critical
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Copy alertname to `problem`: Grafana sets its own alertname.
+              expr: >
+                max by (problem, network, mountpoint) (label_replace(
+                  ALERTS{alertstate="firing", severity="critical", alertname!="LowPeers"},
+                  "problem", "$1", "alertname", "(.*)"))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels: {severity: critical}
+        annotations:
+          summary: >-
+            {{ if $labels.problem }}{{ $labels.problem }}{{ if $labels.network }} on {{ $labels.network }}{{ end }}{{ else }}Grafana cannot query Prometheus{{ end }}
+          description: "Details: Grafana > Alerting > Alert rules, and http://127.0.0.1:9090/alerts on the Mac."

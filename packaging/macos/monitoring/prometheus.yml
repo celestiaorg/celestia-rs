@@ -1,0 +1,31 @@
+# Prometheus for the celestia-rs nodes on one Mac (packaging/macos/monitoring/README.md).
+# install.sh copies this to ~/.celestia-rs/monitoring/prometheus/.
+# Every target listens on 127.0.0.1 only.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - rules.yml
+
+scrape_configs:
+  # [instrumentation] prometheus_listen_addr of each node. Keep `network`
+  # equal to the first column of nodes.conf so the dashboards can join
+  # the node's metrics with node-metrics.sh's.
+  - job_name: celestia-rs
+    static_configs:
+      - targets: ["127.0.0.1:26660"]
+        labels: {network: mocha}
+      - targets: ["127.0.0.1:26760"]
+        labels: {network: mainnet}
+
+  # Host metrics, plus node-metrics.sh's text files (they carry their own
+  # `network` label; honor_labels keeps it).
+  - job_name: node
+    honor_labels: true
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]

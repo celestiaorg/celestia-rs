@@ -1,0 +1,55 @@
+# promtool test rules packaging/macos/monitoring/rules_test.yml
+# Pins which alerts are critical: Grafana emails only severity=critical
+# (grafana/provisioning/alerting/celestia-rs.yml).
+rule_files:
+  - rules.yml
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'cometbft_p2p_peers{network="mainnet"}'
+        values: '1x40'
+      - series: 'celestia_rs_process_up{network="mocha"}'
+        values: '0x40'
+      - series: 'celestia_rs_apphash_match{network="mocha"}'
+        values: '0x40'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"}'
+        values: '4x40'
+      - series: 'node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"}'
+        values: '100x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LowPeers
+        exp_alerts:
+          - exp_labels: {severity: warning, network: mainnet}
+            exp_annotations: {summary: "mainnet: only 1 peers"}
+      - eval_time: 10m
+        alertname: NodeDown
+        exp_alerts:
+          - exp_labels: {severity: critical, network: mocha}
+            exp_annotations: {summary: "mocha: node process or metrics endpoint is down"}
+      - eval_time: 10m
+        alertname: AppHashMismatch
+        exp_alerts:
+          - exp_labels: {severity: critical, network: mocha}
+            exp_annotations: {summary: "mocha: APP HASH MISMATCH with the reference RPC; stop the validator and keep the log (operator guide §11.7)"}
+      - eval_time: 10m
+        alertname: DiskSpaceCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, mountpoint: /System/Volumes/Data}
+            exp_annotations: {summary: "Less than 5% disk space left on the data volume; the nodes stop when it is full"}
+    # The query of Grafana's email rule (grafana/provisioning/alerting/
+    # celestia-rs.yml; keep the two in sync): critical alerts only, no LowPeers.
+    promql_expr_test:
+      - eval_time: 10m
+        expr: >
+          max by (problem, network, mountpoint) (label_replace(
+            ALERTS{alertstate="firing", severity="critical", alertname!="LowPeers"},
+            "problem", "$1", "alertname", "(.*)"))
+        exp_samples:
+          - labels: '{problem="NodeDown", network="mocha"}'
+            value: 1
+          - labels: '{problem="AppHashMismatch", network="mocha"}'
+            value: 1
+          - labels: '{problem="DiskSpaceCritical", mountpoint="/System/Volumes/Data"}'
+            value: 1

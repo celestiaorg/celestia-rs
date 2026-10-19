@@ -1,0 +1,111 @@
+# Alert rules for celestia-rs nodes (docs/operator-guide.md §11.9).
+# severity=critical alerts are emailed by Grafana
+# (grafana/provisioning/alerting/celestia-rs.yml), except LowPeers; warnings
+# only show on the dashboard. Test: promtool test rules rules_test.yml
+# Firing alerts show in Grafana (Alerting > Alert rules, and the
+# dashboard's "Firing alerts" panel) and at http://127.0.0.1:9090/alerts.
+groups:
+  - name: celestia-rs-node
+    rules:
+      - alert: NodeDown
+        expr: up{job="celestia-rs"} == 0 or celestia_rs_process_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: node process or metrics endpoint is down"
+
+      - alert: HeightStalled
+        expr: changes(cometbft_consensus_latest_block_height[2m]) == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: no new block for 3 minutes"
+
+      - alert: LastBlockOld
+        expr: time() - celestia_rs_latest_block_time_seconds > 120
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: latest block is {{ $value | humanizeDuration }} old"
+
+      - alert: CatchingUp
+        expr: celestia_rs_catching_up == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.network }}: node is catching up"
+
+      - alert: LowPeers
+        expr: cometbft_p2p_peers < 3
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.network }}: only {{ $value }} peers"
+
+      - alert: AppHashMismatch
+        expr: celestia_rs_apphash_match == 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: APP HASH MISMATCH with the reference RPC; stop the validator and keep the log (operator guide §11.7)"
+
+      - alert: AppHashCheckFailing
+        expr: celestia_rs_apphash_match == -1
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.network }}: app hash check has not run for 30 minutes (reference RPC unreachable?)"
+
+      - alert: MonitoringCollectorStale
+        expr: time() - celestia_rs_collector_timestamp_seconds > 120 or absent(celestia_rs_collector_timestamp_seconds)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "node-metrics.sh has not written its text file for 2 minutes"
+
+  - name: celestia-rs-validator
+    rules:
+      - alert: ValidatorNotSigning
+        expr: >
+          max by (network) (cometbft_consensus_latest_block_height)
+          - max by (network) (cometbft_consensus_validator_last_signed_height) > 5
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: validator's last signature is {{ $value }} blocks behind"
+
+      - alert: ValidatorMissingBlocks
+        expr: sum by (network) (increase(cometbft_consensus_validator_missed_blocks[10m])) > 5
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.network }}: {{ $value | humanize }} blocks missed in 10 minutes"
+
+      - alert: ValidatorJailRisk
+        # Jailing happens when missed > window * (1 - min_signed_per_window).
+        expr: >
+          celestia_rs_validator_missed_blocks_window
+          / (celestia_rs_validator_signed_blocks_window * (1 - celestia_rs_validator_min_signed_per_window)) > 0.5
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: {{ $value | humanizePercentage }} of the downtime-jail budget used"
+
+      - alert: ValidatorJailed
+        expr: celestia_rs_validator_jailed == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: validator is jailed or tombstoned (operator guide §11.9, Jailed)"
+
+  - name: host
+    rules:
+      - alert: DiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"} / node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"} < 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Less than 10% disk space left on the data volume"
+
+      - alert: DiskSpaceCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"} / node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"} < 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Less than 5% disk space left on the data volume; the nodes stop when it is full"

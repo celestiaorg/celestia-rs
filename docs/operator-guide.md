@@ -845,6 +845,11 @@ curl -s localhost:26657/block | jq --arg a "$CONS" \
 
 ### 11.9 Monitoring
 
+- **Grafana dashboards and alerts:** `packaging/macos/monitoring/install.sh`
+  sets up Prometheus, Grafana and node_exporter for the Mocha and mainnet
+  nodes on the Mac. It adds a dashboard and alert rules for every check
+  below, and serves Grafana on the tailnet with `tailscale serve`
+  ([`packaging/macos/monitoring/README.md`](../packaging/macos/monitoring/README.md)).
 - **Prometheus** (`instrumentation.prometheus = true`, port 26660):
   `curl -s localhost:26660/metrics | grep -E 'consensus_height|missed_blocks|p2p_peers'`.
   Alert on: `cometbft_consensus_height` not increasing for 1 minute;
