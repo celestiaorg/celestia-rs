@@ -81,18 +81,15 @@ pub fn increment_validator_period(ctx: &mut Context<'_>, v: &Validator) -> Resul
     };
     let prev = rewards.period.wrapping_sub(1);
     let historical = store::get_historical(ctx, &val, prev)?;
-    let new_ratio = historical
-        .cumulative_reward_ratio
-        .add(&current)
-        .map_err(|e| {
-            // cosmos-sdk v0.52.8 (app version 9) adds without `recover`:
-            // the overflow stays a panic (a halt in BeginBlock).
-            if sdk::version::is_v9(sdk::version::app_version()) {
-                e
-            } else {
-                sdk::error::internal(format!("reward ratio overflow: {}", e.log))
-            }
-        })?;
+    // cosmos-sdk v0.52.8 (app version 9) adds without `recover`: the
+    // overflow stays a panic (a halt in BeginBlock); v0.52.12's
+    // `addDecCoins` recovers it into an error.
+    let new_ratio = if sdk::version::is_v9(sdk::version::app_version()) {
+        historical.cumulative_reward_ratio.add(&current)?
+    } else {
+        sdk::error::recover(|| historical.cumulative_reward_ratio.add(&current))
+            .map_err(|e| sdk::error::internal(format!("reward ratio overflow: {}", e.log)))?
+    };
     decrement_reference_count(ctx, &val, prev)?;
     store::set_historical(
         ctx,

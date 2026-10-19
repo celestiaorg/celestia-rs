@@ -119,20 +119,19 @@ fn max_effective_square_size(ctx: &mut Context<'_>) -> Result<usize, Abort> {
 fn execute_tx_msgs(ctx: &mut Context<'_>, tx: &Tx) -> sdk::Result<()> {
     let outer_events = std::mem::take(&mut ctx.events);
     let cp = ctx.branch();
-    let mut res = Ok(());
-    for msg in tx.msgs() {
-        if !router::has_handler(&msg.type_url) {
-            res = Err(sdk::error::sdk::unknown_request(format!(
-                "no message handler found for {}",
-                msg.type_url
-            )));
-            break;
+    // `defer recover()`: a handler panic (out of gas included) fails the tx.
+    let res = sdk::error::recover(|| {
+        for msg in tx.msgs() {
+            if !router::has_handler(&msg.type_url) {
+                return Err(sdk::error::sdk::unknown_request(format!(
+                    "no message handler found for {}",
+                    msg.type_url
+                )));
+            }
+            router::route(ctx, msg)?;
         }
-        if let Err(e) = router::route(ctx, msg) {
-            res = Err(e);
-            break;
-        }
-    }
+        Ok(())
+    });
     if res.is_ok() {
         ctx.write(cp);
     } else {

@@ -221,7 +221,16 @@ fn run_ante(
 ) -> Result<AnteOutcome, AnteError> {
     let original_meter = ctx.gas.clone();
     let cp = ctx.branch();
-    let res = run_chain(ctx, tx, simulate, deps);
+    // runTx recovers a panic of any decorator (HandlePanicDecorator
+    // re-panics it with the tx appended), also one raised in code the
+    // decorators call (the IBC handlers of the redundant relay check) that
+    // Rust turned into another error or ignored.
+    let res = match kvstore::unwind::scope(|| run_chain(ctx, tx, simulate, deps)) {
+        (Err(Fail::Panic(m)), _) => Err(Fail::Panic(m)),
+        (_, Some(kvstore::unwind::Unwind::Panic(log))) => Err(Fail::Panic(log)),
+        (Err(Fail::Err(e) | Fail::ZeroCtx(e)), _) if e.is_panic() => Err(Fail::Panic(e.log)),
+        (r, _) => r,
+    };
     match res {
         Ok(priority) => {
             ctx.write(cp);

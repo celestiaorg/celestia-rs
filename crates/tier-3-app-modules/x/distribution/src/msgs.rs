@@ -182,14 +182,14 @@ pub fn handle_deposit_validator_rewards_pool(
         let cur = store::get_current(ctx, &val)?;
         let hist = store::get_historical(ctx, &val, cur.period.wrapping_sub(1))?;
         if !hist.cumulative_reward_ratio.is_zero() {
-            hist.cumulative_reward_ratio
-                .add(&cur.rewards)
-                .map_err(|e| {
+            sdk::error::recover(|| hist.cumulative_reward_ratio.add(&cur.rewards)).map_err(
+                |e| {
                     sdk::error::internal(format!(
                         "unable to deposit coins: deposit is too large: {}",
                         e.log
                     ))
-                })?;
+                },
+            )?;
         }
     }
     Ok(pb::MsgDepositValidatorRewardsPoolResponse {})

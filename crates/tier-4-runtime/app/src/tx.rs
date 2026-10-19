@@ -163,37 +163,40 @@ pub fn run_msgs_gated(
     let cp = ctx.branch();
     let mut events: Vec<Event> = Vec::new();
     let mut responses: Vec<Any> = Vec::new();
-    let mut result = Ok(());
-    for (i, msg) in tx.msgs().iter().enumerate() {
-        let before = ctx.events.len();
-        match router::route(ctx, msg) {
-            Ok(resp) => {
-                let handler_events = ctx.events.events()[before..].to_vec();
-                let mut msg_event = Event {
-                    r#type: "message".into(),
-                    attributes: vec![attr("action", &msg.type_url)],
-                };
-                if let Some(s) = sender_of(msg) {
-                    msg_event.attributes.push(attr("sender", &s));
+    // runTx's `defer recover()`: a Go panic in a handler fails the tx
+    // there, even where Rust handled it as a value afterwards.
+    let mut result = sdk::error::recover(|| {
+        for (i, msg) in tx.msgs().iter().enumerate() {
+            let before = ctx.events.len();
+            match router::route(ctx, msg) {
+                Ok(resp) => {
+                    let handler_events = ctx.events.events()[before..].to_vec();
+                    let mut msg_event = Event {
+                        r#type: "message".into(),
+                        attributes: vec![attr("action", &msg.type_url)],
+                    };
+                    if let Some(s) = sender_of(msg) {
+                        msg_event.attributes.push(attr("sender", &s));
+                    }
+                    let has_module = handler_events
+                        .iter()
+                        .any(|e| e.attributes.iter().any(|a| a.key == "module"));
+                    if !has_module && let Some(m) = module_from_type_url(&msg.type_url) {
+                        msg_event.attributes.push(attr("module", m));
+                    }
+                    for mut e in std::iter::once(msg_event).chain(handler_events) {
+                        e.attributes.push(attr("msg_index", &i.to_string()));
+                        events.push(e);
+                    }
+                    responses.push(resp);
                 }
-                let has_module = handler_events
-                    .iter()
-                    .any(|e| e.attributes.iter().any(|a| a.key == "module"));
-                if !has_module && let Some(m) = module_from_type_url(&msg.type_url) {
-                    msg_event.attributes.push(attr("module", m));
+                Err(e) => {
+                    return Err(e.wrap(format!("failed to execute message; message index: {i}")));
                 }
-                for mut e in std::iter::once(msg_event).chain(handler_events) {
-                    e.attributes.push(attr("msg_index", &i.to_string()));
-                    events.push(e);
-                }
-                responses.push(resp);
-            }
-            Err(e) => {
-                result = Err(e.wrap(format!("failed to execute message; message index: {i}")));
-                break;
             }
         }
-    }
+        Ok(())
+    });
     // Go's `ConsumeGas` panics at the first consumption past the limit and
     // `runTx` recovers it: the tx fails right there, with this log and gas
     // used, even where Rust handled the error as a value afterwards (e.g.

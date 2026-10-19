@@ -10,6 +10,8 @@ use std::collections::BTreeMap;
 
 pub use iavl::{CommitInfo, Hash, Version};
 
+pub mod unwind;
+
 /// Gas measured by the Cosmos SDK.
 pub type Gas = u64;
 
@@ -664,6 +666,10 @@ impl GasMeter {
 
     /// Consume gas, returning an error if the finite limit is exceeded.
     pub fn consume(&mut self, amount: Gas, descriptor: &'static str) -> Result<()> {
+        // Go stopped at the panic: nothing after it consumes gas.
+        if unwind::panicking() {
+            return Ok(());
+        }
         let Some(next) = self.consumed.checked_add(amount) else {
             self.consumed = Gas::MAX;
             return Err(Error::GasOverflow);
@@ -674,6 +680,7 @@ impl GasMeter {
         {
             if self.first_out_of_gas.is_none() {
                 self.first_out_of_gas = Some((descriptor, self.consumed));
+                unwind::raise_out_of_gas();
             }
             return Err(Error::OutOfGas {
                 descriptor,

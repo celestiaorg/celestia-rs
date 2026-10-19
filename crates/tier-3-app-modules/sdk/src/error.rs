@@ -47,9 +47,33 @@ impl SdkError {
 pub type Result<T> = core::result::Result<T, SdkError>;
 
 /// A recovered Go panic inside a transaction (`sdkerrors.ErrPanic`:
-/// codespace `undefined`, code 111222).
+/// codespace `undefined`, code 111222). Inside a [`recover`] scope the
+/// first one raised is the scope's outcome, even if a caller turns it into
+/// another error or ignores it (Go unwinds past every caller).
 pub fn go_panic(log: impl Into<String>) -> SdkError {
+    let log = log.into();
+    kvstore::unwind::raise_panic(&log);
     SdkError::new("undefined", 111_222, log)
+}
+
+/// Go's `defer func() { if r := recover(); r != nil { ... } }()` around
+/// `f`: when `f` raised a Go panic ([`go_panic`]) the result is that
+/// panic (the first one, as Go stops there), whatever `f` returned; the
+/// panic error `f` propagated is kept when it is that panic (with the
+/// decorations of the code it unwound through). Writes `f` made after the panic must be
+/// discarded by the caller on `Err`, as for any failure.
+pub fn recover<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
+    match kvstore::unwind::scope(f) {
+        (Err(e), Some(kvstore::unwind::Unwind::Panic(log)))
+            if e.is_panic() && e.log.contains(&log) =>
+        {
+            Err(e)
+        }
+        (_, Some(kvstore::unwind::Unwind::Panic(log))) => {
+            Err(SdkError::new("undefined", 111_222, log))
+        }
+        (r, _) => r,
+    }
 }
 
 /// An error that is not registered with a codespace (plain `fmt.Errorf` /
@@ -128,5 +152,58 @@ mod tests {
         assert_eq!(e.log, "1utia is smaller than 2utia: insufficient funds");
         assert_eq!(sdk::out_of_gas("").log, "out of gas");
         assert!(e.wrap("send").log.starts_with("send: "));
+    }
+
+    /// PFM's refund mint (`MintCoins` -> `Coin.Add` overflow) panics in
+    /// Go and unwinds to runTx (code 111222); Rust rebuilt it into a plain
+    /// error (code 1): a `LastResultsHash` split (nightly fuzz-exec,
+    /// `ibc-edge` seed 3000).
+    #[test]
+    fn recover_yields_a_panic_a_caller_rewrapped() {
+        let r: Result<()> = recover(|| {
+            let e = go_panic("integer overflow");
+            Err(internal(format!("cannot mint coins: {}", e.log)))
+        });
+        let e = r.unwrap_err();
+        assert!(e.is_panic());
+        assert_eq!(e.log, "integer overflow");
+    }
+
+    #[test]
+    fn recover_yields_a_panic_a_caller_ignored() {
+        let r: Result<u8> = recover(|| {
+            let _ = go_panic("first");
+            let _ = go_panic("second");
+            Ok(1)
+        });
+        assert_eq!(r.unwrap_err().log, "first");
+    }
+
+    #[test]
+    fn recover_keeps_the_propagated_panic_and_plain_results() {
+        let r: Result<()> = recover(|| Err(go_panic("boom").wrap("ignored by wrap")));
+        assert_eq!(r.unwrap_err().log, "boom");
+        assert_eq!(recover(|| Ok::<_, SdkError>(7)).unwrap(), 7);
+        let e = recover(|| Err::<(), _>(internal("plain"))).unwrap_err();
+        assert_eq!((e.code, e.log.as_str()), (1, "plain"));
+        // Outside any scope a panic value is just a value.
+        assert!(go_panic("x").is_panic());
+        assert!(recover(|| Ok::<_, SdkError>(())).is_ok());
+    }
+
+    #[test]
+    fn gas_stops_at_the_panic() {
+        let mut meter = kvstore::GasMeter::new(100);
+        let r: Result<()> = recover(|| {
+            meter.consume(10, "before").map_err(|_| internal("oog"))?;
+            let _ = go_panic("p");
+            meter.consume(1_000, "after").map_err(|_| internal("oog"))?;
+            Ok(())
+        });
+        assert!(r.unwrap_err().is_panic());
+        assert_eq!(meter.consumed(), 10);
+        // After the scope the meter counts again.
+        meter.consume(5, "later").unwrap();
+        assert_eq!(meter.consumed(), 15);
     }
 }
