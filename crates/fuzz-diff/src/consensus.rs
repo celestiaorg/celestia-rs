@@ -38,6 +38,7 @@ pub const OPS: &[&str] = &[
     "c_secp256k1",
     "c_prop",
     "c_secp256r1",
+    "c_ics23",
 ];
 
 /// Splits the input into its length-delimited fields.
@@ -445,6 +446,32 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 );
             }
         }
+        "c_ics23" => {
+            use x_ibc::commitment as cm;
+            let mp = match cm::decode_proof(first(m, 1).unwrap_or_default()) {
+                Ok(v) => v,
+                Err(e) => return c.put("unmarshal", &format!("err:{e}")),
+            };
+            c.put("unmarshal", "ok");
+            let path = celestia_proto::ibc::core::commitment::v1::MerklePath {
+                key_path: m
+                    .get(&4)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|b| gostr::from_go_vec(b.clone()))
+                    .collect(),
+            };
+            let root = first(m, 2).unwrap_or_default();
+            let specs = cm::sdk_specs();
+            match first(m, 3) {
+                Some(v) => c.run("verify", cm::verify_membership(&mp, &specs, root, &path, v)),
+                None => c.run(
+                    "verify_absence",
+                    cm::verify_non_membership(&mp, &specs, root, &path),
+                ),
+            };
+        }
         "c_secp256r1" => {
             let key = first(m, 1).unwrap_or_default();
             // Go: `secp256r1.PubKey.Unmarshal` (33 bytes, a compressed
@@ -699,8 +726,10 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
         }
         // Part proofs: Go tells a present empty root (`wanted  got ...`)
         // from an absent one (`cannot be nil`), which prost cannot.
-        let class_only = matches!(op, "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd")
-            || k.ends_with("_add");
+        let class_only = matches!(
+            op,
+            "c_ed25519" | "c_secp256k1" | "c_secp256r1" | "c_valupd" | "c_ics23"
+        ) || k.ends_with("_add");
         // `duplicate entry ... in [changes]`: Go sorts the changes with an
         // unstable sort, so entries sharing an address print in an order
         // of its own (the text is not stored anywhere).
@@ -944,6 +973,29 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .map(|c| hx(&c["vals"]))
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
+            }
+        }
+        "c_ics23" => {
+            let mut cp = crate::ibcmock::Cp::new();
+            let keys: Vec<String> = (0..40).map(|i| format!("k/{i:03}")).collect();
+            for (i, k) in keys.iter().enumerate() {
+                if i % 3 != 1 {
+                    cp.put(k, Some(format!("value {i}").into_bytes()));
+                }
+            }
+            cp.put_in("upgrade", "u", Some(b"x".to_vec()));
+            let h = cp.commit(1);
+            let root = cp.app_hash(h);
+            for (i, k) in keys.iter().enumerate() {
+                let proof = cp.proof(k);
+                let path: [(u64, &[u8]); 2] = [(4, b"ibc"), (4, k.as_bytes())];
+                let value = format!("value {i}").into_bytes();
+                let mut f: Vec<(u64, &[u8])> = vec![(1, &proof), (2, &root)];
+                if i % 3 != 1 {
+                    f.push((3, &value));
+                }
+                f.extend(path);
+                out.push(input(&f));
             }
         }
         "c_secp256r1" => {

@@ -232,7 +232,7 @@ fn signature_data_from_proto(d: &Data) -> Result<SigData> {
 
 /// `UnmarshalSignatureData`.
 fn unmarshal_signature_data(bz: &[u8]) -> Result<SigData> {
-    let d = Data::decode(bz).map_err(|e| {
+    let d = crate::gogo_decode::<Data>(bz).map_err(|e| {
         crate::errors::unregistered(format!(
             "failed to unmarshal proof into type *signing.SignatureDescriptor_Data: {e}"
         ))
@@ -325,8 +325,7 @@ fn verify_signature_and_data(
     sd: Option<&sm::SignatureAndData>,
 ) -> Result<()> {
     let sd = sd.ok_or_else(nil_deref)?;
-    MerklePath::decode(sd.path.as_slice())
-        .map_err(|e| crate::errors::unregistered(e.to_string()))?;
+    crate::gogo_decode::<MerklePath>(sd.path.as_slice()).map_err(crate::errors::unregistered)?;
     let cons = consensus(cs)?;
     let sign_bytes = sm::SignBytes {
         sequence: m.sequence,
@@ -376,7 +375,7 @@ pub fn verify_membership(
     value: Option<&[u8]>,
 ) -> Result<sm::ClientState> {
     // produceVerificationArgs (the `proof == nil` check is the caller's).
-    let ts = sm::TimestampedSignatureData::decode(proof).map_err(|e| {
+    let ts = crate::gogo_decode::<sm::TimestampedSignatureData>(proof).map_err(|e| {
         crate::errors::unregistered(format!(
             "failed to unmarshal proof into type solomachine.TimestampedSignatureData: {e}"
         ))

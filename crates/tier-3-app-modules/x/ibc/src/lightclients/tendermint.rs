@@ -1125,7 +1125,7 @@ fn ics23_proof(
     bz: &[u8],
     what: &str,
 ) -> Result<celestia_proto::ibc::core::commitment::v1::MerkleProof> {
-    celestia_proto::ibc::core::commitment::v1::MerkleProof::decode(bz).map_err(|e| {
+    crate::gogo_decode::<celestia_proto::ibc::core::commitment::v1::MerkleProof>(bz).map_err(|e| {
         commerr::invalid_proof(format!("could not unmarshal {what} merkle proof: {e}"))
     })
 }

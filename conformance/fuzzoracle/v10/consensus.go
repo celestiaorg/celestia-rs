@@ -22,6 +22,8 @@ package main
 //	c_secp256k1 1 public key (33 bytes), 2 message, 3 signature
 //	c_prop      1 propagation.Message
 //	c_secp256r1 1 public key (33 bytes, cosmos-sdk), 2 message, 3 signature
+//	c_ics23     1 ibc-go MerkleProof, 2 root, 3 value (absent: non-membership),
+//	            4.. path segments
 
 import (
 	"crypto/sha256"
@@ -42,6 +44,7 @@ import (
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256r1"
+	commitmenttypes "github.com/cosmos/ibc-go/v8/modules/core/23-commitment/types"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -363,6 +366,29 @@ func consensusOp(op string, in []byte) (o out) {
 			break
 		}
 		c.data("ok", func() string { return strconv.FormatBool(pk.VerifySignature(first(m, 2), first(m, 3))) })
+	case "c_ics23":
+		// What the IBC keepers do with a counterparty proof:
+		// cdc.Unmarshal, then MerkleProof.Verify(Non)Membership with the
+		// SDK specs (IAVL, Tendermint).
+		var mp commitmenttypes.MerkleProof
+		if !c.run("unmarshal", func() error { return mp.Unmarshal(first(m, 1)) }) {
+			break
+		}
+		var segs []string
+		for _, b := range m[4] {
+			segs = append(segs, string(b))
+		}
+		path := commitmenttypes.NewMerklePath(segs...)
+		root := commitmenttypes.NewMerkleRoot(first(m, 2))
+		if v, ok := m[3]; ok {
+			c.run("verify", func() error {
+				return mp.VerifyMembership(commitmenttypes.GetSDKSpecs(), root, path, v[0])
+			})
+		} else {
+			c.run("verify_absence", func() error {
+				return mp.VerifyNonMembership(commitmenttypes.GetSDKSpecs(), root, path)
+			})
+		}
 	case "c_prop":
 		var pm protoprop.Message
 		if !c.run("unmarshal", func() error { return pm.Unmarshal(first(m, 1)) }) {

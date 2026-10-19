@@ -4,7 +4,6 @@
 use celestia_proto::ibc::core::commitment::v1::{MerklePath, MerklePrefix, MerkleProof};
 use ics23::HostFunctionsManager;
 use ics23::commitment_proof::Proof;
-use prost::Message;
 use sdk::{Result, SdkError};
 
 use crate::errors::commitment as errs;
@@ -29,7 +28,7 @@ pub fn apply_prefix(prefix: Option<&MerklePrefix>, path: &[String]) -> Result<Me
 
 /// Decodes a proof (`cdc.Unmarshal(proof, &merkleProof)`).
 pub fn decode_proof(proof: &[u8]) -> Result<MerkleProof> {
-    MerkleProof::decode(proof).map_err(|_| {
+    crate::gogo_decode::<MerkleProof>(proof).map_err(|_| {
         errs::invalid_proof("failed to unmarshal proof into ICS 23 commitment merkle proof")
     })
 }

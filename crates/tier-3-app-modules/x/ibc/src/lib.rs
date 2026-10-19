@@ -17,6 +17,17 @@
 pub mod ante;
 pub mod channel;
 pub mod client;
+/// gogoproto `Unmarshal` of bytes a relayer or counterparty supplies
+/// (proofs inside a message's `bytes` fields, which the tx decoder does not
+/// look into), as Go's keepers decode them: oneof occurrences replace,
+/// `stdtime` fields are replaced and validated, varints and keys as gogo.
+pub(crate) fn gogo_decode<M: prost::Message + prost::Name + Default>(
+    bz: &[u8],
+) -> core::result::Result<M, String> {
+    let canon = txdecode::gogo_unmarshal(&M::full_name(), bz)?;
+    M::decode(canon.as_slice()).map_err(|e| e.to_string())
+}
+
 pub mod commitment;
 pub mod connection;
 pub mod errors;

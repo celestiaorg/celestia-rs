@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+txdecode = { path = "../../txdecode" }
 gostr = { path = "../../../tier-0-primitives/gostr" }
 gojson = { path = "../../../tier-0-primitives/gojson" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }

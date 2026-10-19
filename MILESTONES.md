@@ -275,22 +275,24 @@ test), then start that harness's count again.
   each op clean for at least 10⁸ inputs after its last fix.
 
   *Progress (2026-10-19):* `conformance/fuzzoracle/v10/consensus.go` and
-  `crates/fuzz-diff/src/consensus.rs` add fourteen ops (`c_vote`,
+  `crates/fuzz-diff/src/consensus.rs` add fifteen ops (`c_vote`,
   `c_proposal`, `c_header`, `c_block`, `c_commit` with full / light /
   light-all-signatures / trusting verification, `c_valset` with updates
   and proposer priorities, `c_valupd`, `c_params` with `ValidateUpdate`,
   `c_evidence` with duplicate-vote verification, `c_partset`, `c_ed25519`,
   `c_secp256k1`, and `c_prop` for the propagation messages: compact
   block sign bytes, proofs and re-encoding, have / want parts, and
-  `c_secp256r1` against cosmos-sdk's account keys), seeded
+  `c_secp256r1` against cosmos-sdk's account keys, and `c_ics23`:
+  ibc-go `MerkleProof` decoding and (non-)membership verification),
+  seeded
   from the ctypes and propagation fixtures; the nightly
   `fuzz-exec` runs them as the `consensus` job (2 h per night). They found
-  security.md findings 79-86 and 88 (protobuf decoding: stdtime / stdduration,
+  security.md findings 79-86, 88 and 89 (protobuf decoding: stdtime / stdduration,
   unknown groups, varints and keys, repeated fields, oneofs, the
   `Data.hash` scan; the header's chain id), all fixed; the 5 031 inputs
   that differed before the fixes agree, 215 of them pinned in
   `tests/regressions.jsonl`. Open: `ValidateBlock` against a state, the
-  ICS-23 / NMT / SP1 proof differentials, and the 10⁸ inputs per op.
+  NMT / SP1 proof differentials, and the 10⁸ inputs per op.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.

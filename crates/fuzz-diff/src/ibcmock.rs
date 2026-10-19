@@ -103,6 +103,15 @@ impl Cp {
         }
     }
 
+    /// The app hash committed at `h` (empty if unknown).
+    #[must_use]
+    pub fn app_hash(&self, h: i64) -> Vec<u8> {
+        self.headers
+            .get(&h)
+            .map(|x| x.0.clone())
+            .unwrap_or_default()
+    }
+
     /// Latest committed height.
     #[must_use]
     pub fn height(&self) -> i64 {
