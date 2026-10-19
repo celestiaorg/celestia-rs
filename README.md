@@ -8,21 +8,33 @@ mempool, RPC and gRPC.
 
 ## Status
 
-**celestia-rs is validating on the Mocha testnet.** Validator
-[`celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd`](https://www.mintscan.io/celestia-testnet/validators/celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd)
-runs this code on a Mac Mini M4. It state-synced from Mocha's Go peers over
-P2P, is at the tip of the chain, and is signing blocks alongside the Go
-validators with no app-hash mismatch.
+**celestia-rs is an early, experimental project under rapid development.**
+Expect breaking changes and rough edges, and don't rely on it for production
+yet. Feedback, bug reports and questions are very welcome: please open an
+issue.
 
-| | |
+celestia-rs runs a validator on both Mocha and Mainnet, signing blocks
+alongside the Go validators:
+
+| Network | Validator |
 |---|---|
-| Go parity target | celestia-app v10.4.0 / celestia-core v0.42.x, plus app version 9 (v9.0.8, mainnet today) and the v9 → v10 upgrade |
-| Mocha | Validating (M13: 24 h signing soak) |
-| Mainnet | Follows the tip with matching app hashes; full node next (through the v10 upgrade at 15,116,658), then the canary gate (C1) before a small-stake mainnet validator (M14); the consensus-split assurance gate (F1) before more stake |
-| Not yet | Production use on mainnet. Treat it as experimental. |
+| Mocha | [Mocha validator](https://www.mintscan.io/celestia-testnet/validators/celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd) |
+| Mainnet | [Mainnet validator](https://www.mintscan.io/celestia/validators/celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec) |
 
 Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:
 [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
+
+## Goals
+
+- **Compatible with Celestia Mainnet:** run alongside Go
+  [celestia-app](https://github.com/celestiaorg/celestia-app) and
+  [celestia-core](https://github.com/celestiaorg/celestia-core) nodes on the
+  existing network, with matching app hashes and wire formats.
+- **Faster than the Go consensus node:** see
+  [Performance vs Go](#performance-vs-go).
+- **Minimal dependencies:** every external crate is a potential supply chain
+  attack vector, so we keep the dependency tree small. Long term, the goal is
+  to keep reducing the number of external dependencies this repo relies on.
 
 ## Features
 
