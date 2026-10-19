@@ -204,6 +204,16 @@ impl MultiStore {
         self.stacks[Stack::Check as usize] = vec![BTreeMap::new()];
     }
 
+    /// Empties every memory store, as in a freshly started process (memory
+    /// stores are never persisted).
+    pub fn clear_memory_stores(&mut self) {
+        for (name, kind) in &self.kinds {
+            if *kind == Kind::Memory {
+                self.volatile.remove(name);
+            }
+        }
+    }
+
     /// Current branch depth (1 = only the block layer).
     #[must_use]
     pub fn depth(&self) -> usize {

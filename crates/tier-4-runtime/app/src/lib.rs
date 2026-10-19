@@ -670,6 +670,11 @@ impl App {
             // queries) to `Header{ChainID}`, height 0 and zero time, until
             // the next commit (ADR 0004; security.md 70).
             self.check_header = self.init_check_header();
+            // The next binary also starts with empty memory stores: until
+            // its first BeginBlock (`x/capability` `InitMemStore`) CheckTx
+            // finds no capability (IBC packet txs fail with `capability
+            // not found`), so comet's recheck drops them.
+            self.ms.clear_memory_stores();
         }
         self.mount_upgrade_stores()?;
         self.snapshot_if_applicable();
