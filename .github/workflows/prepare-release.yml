@@ -1,0 +1,76 @@
+name: prepare release
+
+# Run from the Actions tab with a version (e.g. 0.1.0-rc.2). Opens a PR,
+# "release: v<version>", that sets the celestia-rs binary's version and cuts
+# the CHANGELOG's Unreleased section (`cargo xtask bump-version`). Merging
+# it releases: release.yml tags the merge commit v<version>, builds the
+# archives and publishes them. See docs/releasing.md.
+#
+# A PR opened with GITHUB_TOKEN starts no CI on itself. With a RELEASE_TOKEN
+# secret (a fine-grained token or GitHub App token with contents and pull
+# requests write), the PR is opened with that and CI runs as usual.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.1.0 or 0.1.0-rc.2"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+      - name: Bump the version
+        id: bump
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${INPUT#v}
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released"
+            exit 1
+          fi
+          cargo xtask bump-version "$version"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+      - name: Open the release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          HAS_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          branch="release/v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -qam "release: v$VERSION"
+          git push -f origin "$branch"
+          ci_note=""
+          if [ "$HAS_TOKEN" != true ]; then
+            ci_note="
+
+          CI doesn't start on a PR opened with GITHUB_TOKEN. The release build still compiles and smoke-tests every target after merge; to run CI here first, push any commit to this branch, or add a RELEASE_TOKEN secret (docs/releasing.md)."
+          fi
+          gh pr create --base main --head "$branch" --title "release: v$VERSION" --body "Sets the \`celestia-rs\` binary's version to \`$VERSION\` and moves the CHANGELOG's Unreleased entries under \`v$VERSION\` (\`cargo xtask bump-version $VERSION\`).
+
+          **Merging this releases v$VERSION:** release.yml tags the merge commit \`v$VERSION\`, builds the macOS and Linux archives, checks each binary reports \`$VERSION\`, and publishes the release$( [[ "$VERSION" == *-* ]] && echo ' (as a pre-release)'). The installer picks it up from there.$ci_note
+
+          See docs/releasing.md."
