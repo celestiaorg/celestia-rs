@@ -37,6 +37,16 @@ mod rocks;
 #[cfg(feature = "rocksdb")]
 pub use rocks::{RocksBackend, RocksOptions};
 
+/// Closes every RocksDB still open before the process exits (see
+/// `rocks::close_all`); 0 without the `rocksdb` feature.
+#[must_use]
+pub fn close_all_rocksdb() -> usize {
+    #[cfg(feature = "rocksdb")]
+    return rocks::close_all();
+    #[cfg(not(feature = "rocksdb"))]
+    0
+}
+
 /// Result alias for backend operations.
 pub type Result<T> = core::result::Result<T, Error>;
 

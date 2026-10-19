@@ -848,6 +848,10 @@ fn main() -> anyhow::Result<()> {
         .build()?;
     let res = rt.block_on(async move { dispatch(cli, home).await });
     rt.shutdown_timeout(std::time::Duration::from_secs(2));
+    let open = kvdb::close_all_rocksdb();
+    if open > 0 {
+        tracing::debug!(databases = open, "databases still open at exit (closed)");
+    }
     res
 }
 

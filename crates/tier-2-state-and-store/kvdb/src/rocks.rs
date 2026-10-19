@@ -105,9 +105,13 @@ impl RocksBackend {
         opts.add_compact_on_deletion_collector_factory(DELETION_WINDOW, DELETION_WINDOW / 2, 0.5);
         opts.set_keep_log_file_num(4);
         opts.set_max_log_file_size(16 << 20);
-        let db = DB::open(&opts, &path).map_err(Error::new)?;
+        let db = Arc::new(DB::open(&opts, &path).map_err(Error::new)?);
+        if let Ok(mut open) = OPEN.lock() {
+            open.retain(|d| d.strong_count() > 0);
+            open.push(Arc::downgrade(&db));
+        }
         Ok(Self {
-            db: Arc::new(db),
+            db,
             path,
             options,
             writes: AtomicU64::new(0),
@@ -138,6 +142,38 @@ impl RocksBackend {
         self.db.compact_range::<&[u8], &[u8]>(None, None);
         Ok(())
     }
+}
+
+/// Every RocksDB opened by this process (weak: closing one is fine).
+static OPEN: std::sync::Mutex<Vec<std::sync::Weak<DB>>> = std::sync::Mutex::new(Vec::new());
+
+/// Before the process exits: writes out the memtables of every database
+/// still open and stops its background work (flushes, compactions),
+/// waiting for running jobs. A database still open when `main` returns
+/// (held by a thread that has not finished) otherwise has background
+/// threads running while the C++ runtime destroys RocksDB's static
+/// objects; on macOS that aborts the process (`pthread lock: Invalid
+/// argument`) after a clean stop. Returns how many were open.
+pub fn close_all() -> usize {
+    let dbs: Vec<Arc<DB>> = OPEN
+        .lock()
+        .map(|o| o.iter().filter_map(std::sync::Weak::upgrade).collect())
+        .unwrap_or_default();
+    for db in &dbs {
+        let _ = db.flush();
+        db.cancel_all_background_work(true);
+    }
+    // The default Env's thread pools are static too: their threads ran
+    // flushes and compactions (thread-local state), and when the Env's
+    // destructor joins them at exit their thread-exit hooks lock RocksDB
+    // statics that may already be destroyed. Retire them now.
+    if let Ok(mut env) = rocksdb::Env::new() {
+        env.set_low_priority_background_threads(0);
+        env.set_high_priority_background_threads(0);
+        env.set_bottom_priority_background_threads(0);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    dbs.len()
 }
 
 impl Drop for RocksBackend {
