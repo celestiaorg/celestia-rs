@@ -51,7 +51,8 @@ WATCHDOG_COOLDOWN=${WATCHDOG_COOLDOWN:-1800}
 WATCHDOG_LOCK_STALE=${WATCHDOG_LOCK_STALE:-10800}
 # watchdog: unjail the validator of a node in sync with its reference RPC
 # when $UNJAIL_DIR/<name> exists. That file (mode 600) holds the keyring
-# passphrase of UNJAIL_KEY, or nothing for a `test` keyring. At most one
+# passphrase of UNJAIL_KEY; it is empty for an empty passphrase or a `test`
+# keyring. At most one
 # unjail tx per node per UNJAIL_COOLDOWN seconds.
 UNJAIL_DIR=${UNJAIL_DIR:-$CELESTIA_RS_DIR/unjail}
 UNJAIL_KEY=${UNJAIL_KEY:-operator}
@@ -121,16 +122,14 @@ restart() { sudo -n /bin/launchctl kickstart -k "system/$1"; }
 # Swap a binary atomically (a running process keeps its old inode).
 swap_in() { cp "$1" "$2.new" && mv -f "$2.new" "$2"; }
 
-# Runs a command with the keyring passphrase $1, if any: an empty
-# passphrase would lock a `test` keyring.
+# Runs a command with the keyring passphrase $1 on stdin, as typed at the
+# prompt: a `file` keyring reads it (it may be empty), a `test` keyring
+# never asks. (A set but empty CELESTIA_RS_KEYRING_PASSPHRASE would lock a
+# `test` keyring.)
 with_passphrase() {
   local pass=$1
   shift
-  if [[ -n $pass ]]; then
-    CELESTIA_RS_KEYRING_PASSPHRASE=$pass "$@"
-  else
-    env -u CELESTIA_RS_KEYRING_PASSPHRASE "$@"
-  fi
+  printf '%s\n' "$pass" | env -u CELESTIA_RS_KEYRING_PASSPHRASE "$@"
 }
 
 # Unjails the validator of node <name> (binary <bin>, home
@@ -143,7 +142,7 @@ unjail() {
   pass=$(cat "$UNJAIL_DIR/$name")
   if [[ ! -s $sf.valoper ]]; then
     with_passphrase "$pass" "$bin" keys show "$UNJAIL_KEY" --bech val -a --home "$home" \
-      </dev/null >"$sf.valoper" 2>/dev/null || { rm -f "$sf.valoper"; log "$name: cannot read key $UNJAIL_KEY"; return 0; }
+      >"$sf.valoper" 2>/dev/null || { rm -f "$sf.valoper"; log "$name: cannot read key $UNJAIL_KEY"; return 0; }
   fi
   valoper=$(cat "$sf.valoper")
   [[ $("$bin" query staking validator "$valoper" --home "$home" 2>/dev/null | jq -r '.validator.jailed') == true ]] ||
@@ -163,7 +162,7 @@ unjail() {
   echo "$now" >"$sf.last-unjail"
   log "$name: $valoper is jailed; sending unjail"
   if with_passphrase "$pass" "$bin" tx slashing unjail --from "$UNJAIL_KEY" --home "$home" \
-    --wait --yes </dev/null >>"$sf.unjail.log" 2>&1; then
+    --wait --yes >>"$sf.unjail.log" 2>&1; then
     log "$name: unjailed"
   else
     log "$name: unjail failed (see $sf.unjail.log); next try after ${UNJAIL_COOLDOWN}s"

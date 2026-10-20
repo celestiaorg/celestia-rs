@@ -30,19 +30,31 @@ echo "\$*" >>$t/restarts
 EOF
 # The node binaries answer from $t/val/<home name>.{jailed,until,tombstoned}
 # and record each unjail tx, with the passphrase they were given, in
-# $t/unjails.
+# $t/unjails. Like the real keyrings, mocha's is `test` (no passphrase; a
+# set CELESTIA_RS_KEYRING_PASSPHRASE locks it) and mainnet's is `file`
+# (CELESTIA_RS_KEYRING_PASSPHRASE, else a line on stdin; EOF fails).
 cat >"$t/bin/celestia-rs" <<EOF
 #!/usr/bin/env bash
 home=; prev=
 for a in "\$@"; do [[ \$prev == --home ]] && home=\$a; prev=\$a; done
 n=\$(basename "\$home")
+pass=none
+if [[ "\$1 \$2" != "keys show" && \$1 != tx ]]; then
+  : # queries never open the keyring
+elif [[ \$n == mocha ]]; then
+  [[ -z \${CELESTIA_RS_KEYRING_PASSPHRASE+x} ]] || exit 1
+elif [[ -n \${CELESTIA_RS_KEYRING_PASSPHRASE+x} ]]; then
+  pass=\$CELESTIA_RS_KEYRING_PASSPHRASE
+else
+  IFS= read -r pass || exit 1
+fi
 case "\$1 \$2" in
 "keys show") echo "celestiavaloper1\$n" ;;
 "comet show-address") echo "celestiavalcons1\$n" ;;
 "query staking") echo "{\"validator\":{\"jailed\":\$(cat $t/val/\$n.jailed 2>/dev/null || echo false)}}" ;;
 "query slashing") echo "{\"val_signing_info\":{\"jailed_until\":\"\$(cat $t/val/\$n.until 2>/dev/null || echo 1970-01-01T00:00:00Z)\",\"tombstoned\":\$(cat $t/val/\$n.tombstoned 2>/dev/null || echo false)}}" ;;
 "tx slashing")
-  echo "\$n \$* pass=\${CELESTIA_RS_KEYRING_PASSPHRASE-unset}" >>$t/unjails
+  echo "\$n \$* pass=\$pass" >>$t/unjails
   [[ -f $t/val/\$n.txfail ]] && exit 1
   echo false >$t/val/\$n.jailed ;;
 *) exit 1 ;;
@@ -147,13 +159,22 @@ check "unjail not opted in: no tx" 0 "$(unjails)"
 mkdir -p "$t/unjail"; : >"$t/unjail/mocha"; printf 's3cret\n' >"$t/unjail/mainnet"
 run
 check "unjail: one tx per jailed node" 2 "$(unjails)"
-grep -q "^mocha tx slashing unjail --from operator --home $t/mocha .*pass=unset$" "$t/unjails" ||
+grep -q "^mocha tx slashing unjail --from operator --home $t/mocha .*pass=none$" "$t/unjails" ||
   { echo "FAIL: mocha unjail command: $(cat "$t/unjails")"; fails=$((fails + 1)); }
 grep -q "^mainnet tx slashing unjail --from operator --home $t/mainnet .*pass=s3cret$" "$t/unjails" ||
   { echo "FAIL: mainnet unjail passphrase: $(cat "$t/unjails")"; fails=$((fails + 1)); }
 grep -q "mainnet: unjailed" "$t/log" || { echo "FAIL: unjail not logged"; fails=$((fails + 1)); }
 run
 check "unjailed: no further tx" 2 "$(unjails)"
+
+# --- an empty file passes an empty passphrase to a `file` keyring --------------
+reset
+mocha 1000; mocha_ref 1000; mainnet 5000; mainnet_ref 5000
+echo true >"$t/val/mainnet.jailed"
+mkdir -p "$t/unjail"; : >"$t/unjail/mainnet"
+run
+grep -q "^mainnet tx slashing unjail .*pass=$" "$t/unjails" ||
+  { echo "FAIL: mainnet empty passphrase: $(cat "$t/unjails" 2>/dev/null) $(cat "$t/log")"; fails=$((fails + 1)); }
 
 # --- unjail waits until the node is in sync -------------------------------------
 reset

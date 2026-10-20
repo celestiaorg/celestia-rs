@@ -381,20 +381,21 @@ jailed.
 
 The watchdog also unjails a validator, but only for a node that has a
 file `~/.celestia-rs/unjail/<name>` (`mocha`, `mainnet`). The file holds
-the keyring passphrase of the `operator` key, or nothing for a `test`
-keyring. When the node is in sync with its reference RPC, its validator is
-jailed, the jail period is over and it is not tombstoned, the watchdog
-sends `tx slashing unjail --from operator --wait`. It sends at most one tx
-per node every 10 minutes (`UNJAIL_COOLDOWN`), and it writes the tx output
-to `~/.celestia-rs/auto-update/watchdog/<name>.unjail.log`. The
-passphrase file lets anyone who can read it move the operator's funds, so
-keep it mode 600 and leave it out of backups:
+the keyring passphrase of the `operator` key, and the watchdog types it at
+the passphrase prompt. Leave the file empty for an empty passphrase or a
+`test` keyring. When the node is in sync with its reference RPC, its
+validator is jailed, the jail period is over and it is not tombstoned, the
+watchdog sends `tx slashing unjail --from operator --wait`. It sends at
+most one tx per node every 10 minutes (`UNJAIL_COOLDOWN`), and it writes
+the tx output to `~/.celestia-rs/auto-update/watchdog/<name>.unjail.log`.
+A passphrase in the file lets anyone who can read it move the operator's
+funds, so keep it mode 600 and leave it out of backups:
 
 ```sh
 mkdir -m 700 -p ~/.celestia-rs/unjail
-: > ~/.celestia-rs/unjail/mocha                     # keyring-backend test
-# keyring-backend file; run in a terminal (without one, read gets nothing):
-(umask 077; read -rsp 'passphrase: ' p && [ -n "$p" ] && printf '%s' "$p" > ~/.celestia-rs/unjail/mainnet)
+(umask 077; : > ~/.celestia-rs/unjail/mocha)   # empty passphrase or test keyring
+# a passphrase; run in a terminal (without one, read gets nothing):
+(umask 077; read -rsp 'passphrase: ' p && printf '%s' "$p" > ~/.celestia-rs/unjail/mainnet)
 celestia-rs-auto-update.sh watchdog   # no "cannot read key" line: the passphrase works
 ```
 
