@@ -68,6 +68,13 @@ Remaining:
   catching up: check app hashes at every height from `H-2` to `H+3`
   (or run an HTTPS `follow` across the height) to cover F1.5's
   real-world half.
+  *HTTPS follow across the upgrade (2026-10-20, cloud x86_64, release
+  build):* `celestia-rs follow` from the Go SDK snapshot at 15,105,000
+  inside Polkachu's `celestia_15123013` tarball (restored app hash equal
+  to mainnet's) executed 15,105,001 → 15,137,961 (32,961 heights,
+  151,765 txs) with every app hash, tx result and validator set matching
+  mainnet, through the v9 → v10 switch at 15,116,658 (the `fibre` and
+  `valaddr` stores added at 15,116,659) and ~21,300 heights at v10.
 
 ## C1 — Canary gate (M14 entry)
 
@@ -98,6 +105,9 @@ Every item must pass on the commit the canary runs.
   *2026-10-20:* the Mac was offline across the upgrade height (M14), so
   this is the catch-up through it, not a live crossing; the 7 days at v10
   count from when it is back at the tip.
+  The upgrade height itself is covered by the HTTPS follow in M13
+  (15,105,001 → 15,137,961, every height matching); C1.1 still needs the
+  Mac's P2P node at the tip for 7 days.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
@@ -263,6 +273,8 @@ test), then start that harness's count again.
   channels, hyperlane routes) and fuzzed txs after it, clean over at least
   50 upgrade runs with different seeds; and F1.6's mainnet-state rehearsal
   of the same upgrade.
+  *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
+  executed by `follow` with every app hash and tx result matching (M13).
 
 - [ ] **F1.6 Mainnet-shaped state.** The harnesses start from devnet
   genesis (a handful of validators, 12 fuzz accounts). Mainnet has 100
@@ -322,6 +334,8 @@ test), then start that harness's count again.
   and its v9 → v10 upgrade at 1,082,620 (carried over from V9); (c) the
   mainnet full node of M13 at the tip, release build, continuously from
   M13 until M14 starts.
+  *2026-10-20:* `follow` matched mainnet 15,105,001 → 15,137,961 (32,961
+  heights, the last ~11,600 of the v9 era and ~21,300 at v10).
 
 - [ ] **F1.9 Determinism of the Rust binary.** The differentials run on
   x86_64 Linux; the validator runs the `dist` build on aarch64 macOS, with
