@@ -291,12 +291,15 @@ pub fn deposit(ctx: &mut Context<'_>, msg: &v1::MsgDeposit) -> Result<v1::MsgDep
     Ok(v1::MsgDepositResponse {})
 }
 
-/// `Params.ValidateBasic` (plain errors).
+/// `Params.ValidateBasic` (plain errors, Go's texts: a passed proposal that
+/// fails stores the text as its `failed_reason`).
+#[allow(clippy::too_many_lines)]
 pub fn validate_params(p: &v1::Params) -> Result<()> {
     use math::LegacyDec;
+    use sdk::time::{duration_nanos, go_duration_string};
     let one = LegacyDec::one();
-    let dec = |s: &str, what: &str| {
-        LegacyDec::from_str_go(s).map_err(|e| undefined(format!("invalid {what} string: {e}")))
+    let dec = |s: &str, prefix: &str| {
+        LegacyDec::from_str_go(s).map_err(|e| undefined(format!("{prefix}: {e}")))
     };
     let min = Coins::from_proto(&p.min_deposit)?;
     if min.is_empty() || !min.is_valid() {
@@ -314,52 +317,111 @@ pub fn validate_params(p: &v1::Params) -> Result<()> {
             "expedited minimum deposit must be greater than minimum deposit: {exp}"
         )));
     }
+    // `%d` of a nil `*time.Duration` is `0`. Of a non-nil one it is the
+    // pointer's address (nondeterministic in Go, docs/security.md); Rust
+    // prints the nanoseconds.
+    let Some(mdp) = &p.max_deposit_period else {
+        return Err(undefined("maximum deposit period must not be nil: 0"));
+    };
+    let n = duration_nanos(mdp);
+    if n <= 0 {
+        return Err(undefined(format!(
+            "maximum deposit period must be positive: {n}"
+        )));
+    }
+    let quorum = dec(&p.quorum, "invalid quorum string")?;
+    if quorum.is_negative() {
+        return Err(undefined(format!("quorom cannot be negative: {quorum}")));
+    }
+    if quorum > one {
+        return Err(undefined(format!("quorom too large: {}", p.quorum)));
+    }
+    let threshold = dec(&p.threshold, "invalid threshold string")?;
+    if !threshold.is_positive() {
+        return Err(undefined(format!(
+            "vote threshold must be positive: {threshold}"
+        )));
+    }
+    if threshold > one {
+        return Err(undefined(format!("vote threshold too large: {threshold}")));
+    }
+    let et = dec(&p.expedited_threshold, "invalid expedited threshold string")?;
+    if !et.is_positive() {
+        return Err(undefined(format!(
+            "expedited vote threshold must be positive: {et}"
+        )));
+    }
+    if et > one {
+        return Err(undefined(format!(
+            "expedited vote threshold too large: {et}"
+        )));
+    }
+    if et <= threshold {
+        return Err(undefined(format!(
+            "expedited vote threshold {et}, must be greater than the regular threshold {threshold}"
+        )));
+    }
+    let veto = dec(&p.veto_threshold, "invalid vetoThreshold string")?;
+    if !veto.is_positive() {
+        return Err(undefined(format!(
+            "veto threshold must be positive: {veto}"
+        )));
+    }
+    if veto > one {
+        return Err(undefined(format!("veto threshold too large: {veto}")));
+    }
+    // `%s` of a `*time.Duration` is its `String()`.
     let positive = |d: &Option<pbjson_types::Duration>, what: &str| -> Result<i128> {
         let d = d
             .as_ref()
-            .ok_or_else(|| undefined(format!("{what} must not be nil")))?;
-        let n = sdk::time::duration_nanos(d);
+            .ok_or_else(|| undefined(format!("{what} must not be nil: 0")))?;
+        let n = duration_nanos(d);
         if n <= 0 {
-            return Err(undefined(format!("{what} must be positive")));
+            return Err(undefined(format!(
+                "{what} must be positive: {}",
+                go_duration_string(n)
+            )));
         }
         Ok(n)
     };
-    positive(&p.max_deposit_period, "maximum deposit period")?;
-    let quorum = dec(&p.quorum, "quorum")?;
-    if quorum.is_negative() || quorum > one {
-        return Err(undefined("invalid quorum"));
-    }
-    let threshold = dec(&p.threshold, "threshold")?;
-    if !threshold.is_positive() || threshold > one {
-        return Err(undefined("invalid vote threshold"));
-    }
-    let et = dec(&p.expedited_threshold, "expedited threshold")?;
-    if !et.is_positive() || et > one || et <= threshold {
-        return Err(undefined("invalid expedited vote threshold"));
-    }
-    let veto = dec(&p.veto_threshold, "vetoThreshold")?;
-    if !veto.is_positive() || veto > one {
-        return Err(undefined("invalid veto threshold"));
-    }
     let vp = positive(&p.voting_period, "voting period")?;
     let evp = positive(&p.expedited_voting_period, "expedited voting period")?;
     // Go compares Duration.Seconds() as float64.
     #[allow(clippy::cast_precision_loss)]
     if (evp as f64) / 1e9 >= (vp as f64) / 1e9 {
-        return Err(undefined(
-            "expedited voting period must be strictly less that the regular voting period",
-        ));
+        return Err(undefined(format!(
+            "expedited voting period {} must be strictly less that the regular voting period {}",
+            go_duration_string(evp),
+            go_duration_string(vp)
+        )));
     }
     let midr = dec(
         &p.min_initial_deposit_ratio,
-        "mininum initial deposit ratio",
+        "invalid mininum initial deposit ratio of proposal",
     )?;
-    if midr.is_negative() || midr > one {
-        return Err(undefined("invalid mininum initial deposit ratio"));
+    if midr.is_negative() {
+        return Err(undefined(format!(
+            "mininum initial deposit ratio of proposal must be positive: {midr}"
+        )));
     }
-    let pcr = dec(&p.proposal_cancel_ratio, "burn rate of cancel proposal")?;
-    if pcr.is_negative() || pcr > one {
-        return Err(undefined("invalid burn rate of cancel proposal"));
+    if midr > one {
+        return Err(undefined(format!(
+            "mininum initial deposit ratio of proposal is too large: {midr}"
+        )));
+    }
+    let pcr = dec(
+        &p.proposal_cancel_ratio,
+        "invalid burn rate of cancel proposal",
+    )?;
+    if pcr.is_negative() {
+        return Err(undefined(format!(
+            "burn rate of cancel proposal must be positive: {pcr}"
+        )));
+    }
+    if pcr > one {
+        return Err(undefined(format!(
+            "burn rate of cancel proposal is too large: {pcr}"
+        )));
     }
     if !p.proposal_cancel_dest.is_empty() && acc_from_bech32(&p.proposal_cancel_dest).is_err() {
         return Err(undefined(format!(
@@ -568,5 +630,109 @@ mod tests {
         assert_eq!(meta(br#"{"title":"T","authors":[1]}"#), None);
         assert_eq!(meta(b"null"), ts("", ""));
         assert_eq!(meta(b"[]"), None);
+    }
+
+    /// cosmos-sdk v0.52.8 / v0.52.12 `Params.ValidateBasic` texts: a passed
+    /// `MsgUpdateParams` proposal that fails stores them as `failed_reason`
+    /// (deliver-diff `v9-gov` seed 4018 split the app hash on
+    /// `voting period must be positive: 0s`).
+    #[test]
+    fn validate_params_errors_are_go_s() {
+        use celestia_proto::cosmos::base::v1beta1::Coin;
+        use celestia_proto::cosmos::gov::v1::Params;
+        use pbjson_types::Duration;
+        let secs = |s: i64| {
+            Some(Duration {
+                seconds: s,
+                nanos: 0,
+            })
+        };
+        let coin = |a: &str| {
+            vec![Coin {
+                denom: "utia".into(),
+                amount: a.into(),
+            }]
+        };
+        let ok = Params {
+            min_deposit: coin("10"),
+            expedited_min_deposit: coin("50"),
+            max_deposit_period: secs(172_800),
+            voting_period: secs(172_800),
+            expedited_voting_period: secs(86_400),
+            quorum: "0.334".into(),
+            threshold: "0.5".into(),
+            expedited_threshold: "0.667".into(),
+            veto_threshold: "0.334".into(),
+            min_initial_deposit_ratio: "0".into(),
+            proposal_cancel_ratio: "0.5".into(),
+            ..Default::default()
+        };
+        assert!(super::validate_params(&ok).is_ok());
+        let err = |f: &dyn Fn(&mut Params)| {
+            let mut p = ok.clone();
+            f(&mut p);
+            super::validate_params(&p).unwrap_err().log
+        };
+        let d18 = |s: &str| format!("{s}000000000000000");
+        for (f, want) in [
+            (
+                &(|p: &mut Params| p.voting_period = secs(0)) as &dyn Fn(&mut Params),
+                "voting period must be positive: 0s".to_owned(),
+            ),
+            (
+                &|p: &mut Params| p.voting_period = None,
+                "voting period must not be nil: 0".into(),
+            ),
+            (
+                &|p: &mut Params| p.expedited_voting_period = secs(-3_600),
+                "expedited voting period must be positive: -1h0m0s".into(),
+            ),
+            (
+                &|p: &mut Params| p.expedited_voting_period = secs(172_800),
+                "expedited voting period 48h0m0s must be strictly less that the regular voting period 48h0m0s".into(),
+            ),
+            (
+                &|p: &mut Params| p.max_deposit_period = None,
+                "maximum deposit period must not be nil: 0".into(),
+            ),
+            (
+                &|p: &mut Params| p.quorum = "-0.1".into(),
+                format!("quorom cannot be negative: -{}", d18("0.100")),
+            ),
+            (
+                &|p: &mut Params| p.quorum = "1.5".into(),
+                "quorom too large: 1.5".into(),
+            ),
+            (
+                &|p: &mut Params| p.quorum = String::new(),
+                "invalid quorum string: decimal string cannot be empty".into(),
+            ),
+            (
+                &|p: &mut Params| p.threshold = "0".into(),
+                format!("vote threshold must be positive: {}", d18("0.000")),
+            ),
+            (
+                &|p: &mut Params| p.expedited_threshold = "0.5".into(),
+                format!(
+                    "expedited vote threshold {}, must be greater than the regular threshold {}",
+                    d18("0.500"),
+                    d18("0.500")
+                ),
+            ),
+            (
+                &|p: &mut Params| p.veto_threshold = "2".into(),
+                format!("veto threshold too large: {}", d18("2.000")),
+            ),
+            (
+                &|p: &mut Params| p.min_initial_deposit_ratio = "x".into(),
+                "invalid mininum initial deposit ratio of proposal: failed to set decimal string with base 10: x000000000000000000".into(),
+            ),
+            (
+                &|p: &mut Params| p.proposal_cancel_ratio = "-1".into(),
+                format!("burn rate of cancel proposal must be positive: -{}", d18("1.000")),
+            ),
+        ] {
+            assert_eq!(err(f), want);
+        }
     }
 }
