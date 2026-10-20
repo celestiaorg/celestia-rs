@@ -301,7 +301,7 @@ mod tests {
         // A sub-key `Any` with an unknown field (kept by gogoproto's `Any`).
         let mut sub_any = sub.encode_to_vec();
         sub_any.extend_from_slice(&[0x18, 0x07]);
-        let mut value = vec![0x08, 0x01, 0x12, sub_any.len() as u8];
+        let mut value = vec![0x08, 0x01, 0x12, u8::try_from(sub_any.len()).unwrap()];
         value.extend_from_slice(&sub_any);
         value.extend_from_slice(&WIDE_KEY_VARINT);
         let any = Any {

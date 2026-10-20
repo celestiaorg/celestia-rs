@@ -233,6 +233,7 @@ pub fn decode_multisignatures(bz: &[u8]) -> Result<Vec<Vec<u8>>, SdkError> {
         buf = &buf[n..];
         // gogoproto: `int32(wire >> 3)`, so keys past `u32::MAX` truncate
         // (a field number of 1 in the low 32 bits is a signature).
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let field = (key >> 3) as u32 as i32;
         let wire = key & 7;
         if wire == 4 {
