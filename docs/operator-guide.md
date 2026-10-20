@@ -346,7 +346,8 @@ Verified on the Mocha validator 2026-10-16.
 `~/.celestia-rs/src` and swaps the binary in for the Mocha node first. It
 restarts the node and waits until the node is caught up and advancing,
 matches the network's app hash, and (if bonded) signs at least 15 of the
-last 20 commits. It then soaks Mocha for 15 minutes and does the same for
+20 commits after it is back in consensus (the heights it missed while
+restarting and block-syncing do not count). It then soaks Mocha for 15 minutes and does the same for
 the mainnet node (`org.celestia.celestia-rs-mainnet`, binary
 `~/.celestia-rs/bin/celestia-rs-mainnet`). On any failure it restores
 `<binary>.prev`, restarts, records the commit in

@@ -17,8 +17,8 @@
 #      as <bin>.prev, swap the new one in atomically, restart the
 #      LaunchDaemon, and wait until the node is caught up, has advanced
 #      MIN_BLOCKS heights, matches the network's app hash and (for a
-#      bonded validator) signs at least MIN_SIGNED of the last
-#      SIGN_WINDOW commits. On any failure: restore <bin>.prev, restart,
+#      bonded validator) signs at least MIN_SIGNED of the SIGN_WINDOW
+#      commits after it is back in consensus. On any failure: restore <bin>.prev, restart,
 #      record the commit in $STATE/bad-commits and stop, so later nodes
 #      never get it.
 #   4. Between nodes, keep checking the canary for SOAK_SECS.
@@ -39,6 +39,7 @@ MIN_BLOCKS=${MIN_BLOCKS:-20}
 SIGN_WINDOW=${SIGN_WINDOW:-20}
 MIN_SIGNED=${MIN_SIGNED:-15}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-900}
+HEALTH_POLL=${HEALTH_POLL:-5}
 BUILD_JOBS=${BUILD_JOBS:-5}
 DRY_RUN=${DRY_RUN:-0}
 # watchdog: restart a node more than WATCHDOG_MAX_LAG blocks behind its
@@ -91,14 +92,14 @@ height() { rpc "$1" /status | jq -r '.result.sync_info.latest_block_height'; }
 # Healthy: caught up, advancing, same app hash as the network and, if
 # bonded, signing.
 healthy() {
-  local local_rpc=$1 ref=$2 start=$3 deadline=$((SECONDS + HEALTH_TIMEOUT)) st h addr power signed
+  local local_rpc=$1 ref=$2 start=$3 deadline=$((SECONDS + HEALTH_TIMEOUT)) st h from addr power signed
   while ((SECONDS < deadline)); do
     if st=$(rpc "$local_rpc" /status 2>/dev/null) &&
       [[ $(jq -r '.result.sync_info.catching_up' <<<"$st") == false ]] &&
       (($(jq -r '.result.sync_info.latest_block_height' <<<"$st") >= start + MIN_BLOCKS)); then
       break
     fi
-    sleep 5
+    sleep "$HEALTH_POLL"
   done
   ((SECONDS < deadline)) || { log "not caught up and advancing after ${HEALTH_TIMEOUT}s"; return 1; }
   "$CHECK_APPHASH" "$local_rpc" "$ref" || return 1
@@ -106,14 +107,24 @@ healthy() {
   addr=$(jq -r '.result.validator_info.address' <<<"$st")
   power=$(jq -r '.result.validator_info.voting_power' <<<"$st")
   ((power > 0)) || return 0
-  h=$(jq -r '.result.sync_info.latest_block_height' <<<"$st")
+  # Count only commits made after the node is back in consensus. A restart
+  # misses the heights the node was down for and then block-synced (with
+  # Mocha's ~3 s blocks and launchd's 30 s ThrottleInterval, ~12), which
+  # says nothing about the new binary.
+  from=$(jq -r '.result.sync_info.latest_block_height' <<<"$st")
+  deadline=$((SECONDS + HEALTH_TIMEOUT))
+  while h=$(height "$local_rpc" 2>/dev/null) || h=0; ((h < from + SIGN_WINDOW)); do
+    ((SECONDS < deadline)) || { log "not advancing $SIGN_WINDOW heights after ${HEALTH_TIMEOUT}s"; return 1; }
+    sleep "$HEALTH_POLL"
+  done
+  h=$((from + SIGN_WINDOW))
   signed=0
   for ((i = h - SIGN_WINDOW + 1; i <= h; i++)); do
     rpc "$local_rpc" "/commit?height=$i" |
       jq -e --arg a "$addr" 'any(.result.signed_header.commit.signatures[]; .validator_address == $a)' \
         >/dev/null && signed=$((signed + 1))
   done
-  log "signed $signed of the last $SIGN_WINDOW commits"
+  log "signed $signed of $SIGN_WINDOW commits from height $((from + 1))"
   ((signed >= MIN_SIGNED))
 }
 
