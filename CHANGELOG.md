@@ -15,6 +15,11 @@
   (`coin -1utia amount is not positive`) like Go, so a failed gov
   proposal stores Go's `failed_reason` (app-hash split,
   `docs/security.md` 101). #79
+- A `StakeAuthorization` of an unknown type panics with Go's text and its
+  `cosmossdk.io/errors` frame (`... with types.AuthorizationType: unknown
+  authorization type [celestiaorg/cosmos-sdk@v0.52.12/x/staking/types/authz.go:193]`),
+  so a failed gov proposal stores Go's `failed_reason` (app-hash split,
+  `docs/security.md` 102). #80
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same

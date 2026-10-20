@@ -30,3 +30,16 @@ pub fn app_version() -> u64 {
 pub const fn is_v9(v: u64) -> bool {
     v != 0 && v < 10
 }
+
+/// The `%v` frame `cosmossdk.io/errors` appends to an error wrapped at
+/// `file_line` (`x/staking/types/authz.go:193`) of the executing
+/// celestia-app's cosmos-sdk: ` [celestiaorg/cosmos-sdk@v0.52.12/...]`.
+#[must_use]
+pub fn cosmos_sdk_frame(file_line: &str) -> String {
+    let v = if is_v9(app_version()) {
+        "v0.52.8"
+    } else {
+        "v0.52.12"
+    };
+    format!(" [celestiaorg/cosmos-sdk@{v}/{file_line}]")
+}

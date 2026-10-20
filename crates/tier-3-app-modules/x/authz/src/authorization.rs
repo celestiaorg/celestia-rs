@@ -402,9 +402,13 @@ fn stake_msg_type(t: i32) -> Result<String> {
         3 => staking::MsgBeginRedelegate::type_url(),
         4 => staking::MsgCancelUnbondingDelegation::type_url(),
         _ => {
-            return Err(sdk::error::go_panic(
-                "cannot normalize authz type: unknown authorization type",
-            ));
+            // `MsgTypeURL` panics with `normalizeAuthzType`'s
+            // `errorsmod.Wrapf` error; `%v` of it (gov's `PANICKED: %v`,
+            // a proposal's `failed_reason`) carries the wrap's frame.
+            return Err(sdk::error::go_panic(format!(
+                "cannot normalize authz type with types.AuthorizationType: unknown authorization type{}",
+                sdk::version::cosmos_sdk_frame("x/staking/types/authz.go:193")
+            )));
         }
     })
 }
@@ -560,5 +564,28 @@ mod tests {
             allocations: vec![alloc(vec![c("utia", "")])],
         });
         assert!(a.validate_basic().unwrap_err().is_panic());
+    }
+
+    /// `StakeAuthorization.MsgTypeURL` panics with `normalizeAuthzType`'s
+    /// wrapped error; gov's `PANICKED: %v` prints its frame in the
+    /// executing release's cosmos-sdk (deliver-diff `v9-upgrade` seed 8513).
+    #[test]
+    fn unknown_stake_type_panics_with_go_s_frame() {
+        let a = Authorization::Stake(staking::StakeAuthorization {
+            authorization_type: 5,
+            ..Default::default()
+        });
+        for (v, sdk) in [(9, "v0.52.8"), (10, "v0.52.12")] {
+            sdk::version::set_app_version(v);
+            let e = a.msg_type_url().unwrap_err();
+            assert!(e.is_panic());
+            assert_eq!(
+                e.log,
+                format!(
+                    "cannot normalize authz type with types.AuthorizationType: unknown authorization type [celestiaorg/cosmos-sdk@{sdk}/x/staking/types/authz.go:193]"
+                )
+            );
+        }
+        sdk::version::set_app_version(0);
     }
 }

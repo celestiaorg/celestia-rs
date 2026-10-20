@@ -43,3 +43,10 @@ ibc-edge 300 8 6091 DELIVER_IBC=1 DELIVER_GOVPASS=1
 # A failed gov proposal's MsgPayForGas of -1utia: hyperlane's NewCoins panic
 # prints the first coin whole (#79, security.md 101).
 v9-upgrade 100 6 7431 GO_APPD_NEXT=v10 DELIVER_UPGRADE=31 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# A failed gov proposal's MsgGrant of an unknown StakeAuthorization type:
+# Go's panic text carries %T and the errorsmod frame (#80, security.md 102).
+v9-upgrade 100 6 8513 GO_APPD_NEXT=v10 DELIVER_UPGRADE=33 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# A synthesized proposal's gov MsgUpdateParams with a non-positive
+# max_deposit_period: Go prints a pointer (security.md Open), so the
+# generator keeps the period positive.
+ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1
