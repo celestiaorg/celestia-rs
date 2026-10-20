@@ -88,6 +88,12 @@ jobs:
         with:
           name: fuzz-exec-bins
           path: bins
+      - name: Reserve the diff scripts' ports
+        # The Go apps listen on fixed ports inside the ephemeral range
+        # (32768-60999): a long-lived outgoing connection on the runner
+        # that is handed one of them makes every later run of the shard
+        # fail with `address already in use`.
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=37658,37758,37858,39590,39690
       - name: Install binaries
         run: |
           mkdir -p target/release
