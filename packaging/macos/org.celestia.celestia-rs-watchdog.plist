@@ -4,7 +4,9 @@
   minute (docs/operator-guide.md §8, "Restarting a node that fell
   behind"). It restarts a node that stays more than 50 blocks behind its
   reference RPC, so that it block-syncs instead of crawling back through
-  consensus. Needs packaging/macos/celestia-rs.sudoers. Install:
+  consensus. With ~/.celestia-rs/unjail/<name>, it also unjails that
+  node's validator once the node is in sync. Needs
+  packaging/macos/celestia-rs.sudoers. Install:
 
     install -m 755 packaging/macos/celestia-rs-auto-update.sh packaging/check-apphash.sh ~/.celestia-rs/bin/
     sed -e "s|__USER__|$(id -un)|g" -e "s|__HOME__|$HOME|g" \

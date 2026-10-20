@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tests for `celestia-rs-auto-update.sh watchdog` with curl and sudo
-# stubbed on PATH. Run: packaging/macos/test-watchdog.sh
+# Tests for `celestia-rs-auto-update.sh watchdog` with curl, sudo and the
+# node binaries stubbed. Run: packaging/macos/test-watchdog.sh
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
-mkdir -p "$t/bin" "$t/rpc" "$t/state"
+mkdir -p "$t/bin" "$t/rpc" "$t/state" "$t/val"
 fails=0
 
 # --- stubs -------------------------------------------------------------------
@@ -28,6 +28,27 @@ cat >"$t/bin/sudo" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >>$t/restarts
 EOF
+# The node binaries answer from $t/val/<home name>.{jailed,until,tombstoned}
+# and record each unjail tx, with the passphrase they were given, in
+# $t/unjails.
+cat >"$t/bin/celestia-rs" <<EOF
+#!/usr/bin/env bash
+home=; prev=
+for a in "\$@"; do [[ \$prev == --home ]] && home=\$a; prev=\$a; done
+n=\$(basename "\$home")
+case "\$1 \$2" in
+"keys show") echo "celestiavaloper1\$n" ;;
+"comet show-address") echo "celestiavalcons1\$n" ;;
+"query staking") echo "{\"validator\":{\"jailed\":\$(cat $t/val/\$n.jailed 2>/dev/null || echo false)}}" ;;
+"query slashing") echo "{\"val_signing_info\":{\"jailed_until\":\"\$(cat $t/val/\$n.until 2>/dev/null || echo 1970-01-01T00:00:00Z)\",\"tombstoned\":\$(cat $t/val/\$n.tombstoned 2>/dev/null || echo false)}}" ;;
+"tx slashing")
+  echo "\$n \$* pass=\${CELESTIA_RS_KEYRING_PASSPHRASE-unset}" >>$t/unjails
+  [[ -f $t/val/\$n.txfail ]] && exit 1
+  echo false >$t/val/\$n.jailed ;;
+*) exit 1 ;;
+esac
+EOF
+cp "$t/bin/celestia-rs" "$t/bin/celestia-rs-mainnet"
 chmod +x "$t/bin/"*
 
 mocha() { echo "$1 ${2:-false}" >"$t/rpc/127.0.0.1:26657"; }
@@ -37,16 +58,20 @@ mainnet_ref() { echo "$1 false" >"$t/rpc/rpc.celestia.pops.one"; }
 
 run() { # run [VAR=value...]: one watchdog pass
   local rc=0
-  env PATH="$t/bin:$PATH" CELESTIA_RS_DIR="$t" STATE="$t/state" WATCHDOG_MAX_LAG=50 \
-    WATCHDOG_STRIKES=3 WATCHDOG_COOLDOWN=1800 "$@" \
+  env PATH="$t/bin:$PATH" CELESTIA_RS_DIR="$t" BIN="$t/bin" STATE="$t/state" \
+    WATCHDOG_MAX_LAG=50 WATCHDOG_STRIKES=3 WATCHDOG_COOLDOWN=1800 UNJAIL_COOLDOWN=600 "$@" \
     "$here/celestia-rs-auto-update.sh" watchdog >>"$t/log" 2>&1 || rc=$?
   if ((rc)); then echo "FAIL: watchdog pass exited $rc"; fails=$((fails + 1)); fi
 }
 restarts() { if [[ -f $t/restarts ]]; then wc -l <"$t/restarts" | tr -d ' '; else echo 0; fi; }
+unjails() { if [[ -f $t/unjails ]]; then wc -l <"$t/unjails" | tr -d ' '; else echo 0; fi; }
 check() { # check <description> <expected> <actual>
   if [[ $2 != "$3" ]]; then echo "FAIL: $1: expected '$2', got '$3'"; fails=$((fails + 1)); fi
 }
-reset() { rm -rf "$t/state" "$t/restarts" "$t/log"; mkdir -p "$t/state"; }
+reset() {
+  rm -rf "$t/state" "$t/restarts" "$t/log" "$t/unjails" "$t/val" "$t/unjail"
+  mkdir -p "$t/state" "$t/val"
+}
 
 # --- in sync: nothing happens ---------------------------------------------------
 reset
@@ -112,6 +137,63 @@ reset
 mocha 1000; mocha_ref 1000; mainnet 5000; mainnet_ref 9000
 run; run; run
 check "mainnet restart" "-n /bin/launchctl kickstart -k system/org.celestia.celestia-rs-mainnet" "$(cat "$t/restarts")"
+
+# --- unjail: only nodes with $CELESTIA_RS_DIR/unjail/<name> ------------------
+reset
+mocha 1000; mocha_ref 1000; mainnet 5000; mainnet_ref 5000
+echo true >"$t/val/mocha.jailed"; echo true >"$t/val/mainnet.jailed"
+run
+check "unjail not opted in: no tx" 0 "$(unjails)"
+mkdir -p "$t/unjail"; : >"$t/unjail/mocha"; printf 's3cret\n' >"$t/unjail/mainnet"
+run
+check "unjail: one tx per jailed node" 2 "$(unjails)"
+grep -q "^mocha tx slashing unjail --from operator --home $t/mocha .*pass=unset$" "$t/unjails" ||
+  { echo "FAIL: mocha unjail command: $(cat "$t/unjails")"; fails=$((fails + 1)); }
+grep -q "^mainnet tx slashing unjail --from operator --home $t/mainnet .*pass=s3cret$" "$t/unjails" ||
+  { echo "FAIL: mainnet unjail passphrase: $(cat "$t/unjails")"; fails=$((fails + 1)); }
+grep -q "mainnet: unjailed" "$t/log" || { echo "FAIL: unjail not logged"; fails=$((fails + 1)); }
+run
+check "unjailed: no further tx" 2 "$(unjails)"
+
+# --- unjail waits until the node is in sync -------------------------------------
+reset
+mkdir -p "$t/unjail"; : >"$t/unjail/mocha"
+echo true >"$t/val/mocha.jailed"
+mocha 1000; mocha_ref 1100
+run
+check "behind: no unjail" 0 "$(unjails)"
+mocha 1000 true
+run
+check "catching up: no unjail" 0 "$(unjails)"
+mocha 1000; rm -f "$t/rpc/rpc.celestia-mocha.com"
+run
+check "reference RPC down: no unjail" 0 "$(unjails)"
+mocha_ref 1000
+run
+check "in sync: unjail" 1 "$(unjails)"
+
+# --- jail period not over, tombstoned: no tx ------------------------------------
+reset
+mkdir -p "$t/unjail"; : >"$t/unjail/mocha"
+mocha 1000; mocha_ref 1000
+echo true >"$t/val/mocha.jailed"; echo "2999-01-01T00:00:00.5Z" >"$t/val/mocha.until"
+run
+check "jailed_until in the future: no unjail" 0 "$(unjails)"
+echo "1970-01-01T00:00:00Z" >"$t/val/mocha.until"; echo true >"$t/val/mocha.tombstoned"
+run
+check "tombstoned: no unjail" 0 "$(unjails)"
+grep -q "mocha: tombstoned" "$t/log" || { echo "FAIL: tombstone not logged"; fails=$((fails + 1)); }
+
+# --- a failed unjail is retried after UNJAIL_COOLDOWN ---------------------------
+reset
+mkdir -p "$t/unjail"; : >"$t/unjail/mocha"
+mocha 1000; mocha_ref 1000
+echo true >"$t/val/mocha.jailed"; touch "$t/val/mocha.txfail"
+run; run
+check "failed unjail: no retry within cooldown" 1 "$(unjails)"
+grep -q "mocha: unjail failed" "$t/log" || { echo "FAIL: unjail failure not logged"; fails=$((fails + 1)); }
+run UNJAIL_COOLDOWN=0
+check "failed unjail: retry after cooldown" 2 "$(unjails)"
 
 if ((fails)); then echo "$fails failure(s)"; exit 1; fi
 echo "all watchdog tests passed"

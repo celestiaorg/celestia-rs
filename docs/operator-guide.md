@@ -304,6 +304,10 @@ sudo pmset -a sleep 0 disksleep 0 powernap 0 autorestart 1 womp 1
 pmset -g | grep -E ' sleep|autorestart'
 ```
 
+With this setting, FileVault off (`fdesetup status`; with FileVault on, the
+Mac waits at the unlock screen after a power cut) and the LaunchDaemons
+installed, the nodes and the watchdog start at boot without a login.
+
 Turn off automatic installation of macOS updates (System Settings ->
 General -> Software Update -> Automatic Updates) so the machine never
 reboots unannounced; reboot deliberately with the node stopped. Keep "Set
@@ -372,9 +376,27 @@ block-syncing, or is being deployed (auto-update lock). It also does
 nothing while the reference RPC cannot be reached.
 `packaging/macos/org.celestia.celestia-rs-watchdog.plist` runs it every
 minute, and its header has the install steps. It logs to
-`~/Library/Logs/celestia-rs-watchdog.log` only when a node is behind.
-Restarting does not unjail a validator: if it was already jailed, unjail
-it after the restart (§11.9).
+`~/Library/Logs/celestia-rs-watchdog.log` only when a node is behind or
+jailed.
+
+The watchdog also unjails a validator, but only for a node that has a
+file `~/.celestia-rs/unjail/<name>` (`mocha`, `mainnet`). The file holds
+the keyring passphrase of the `operator` key, or nothing for a `test`
+keyring. When the node is in sync with its reference RPC, its validator is
+jailed, the jail period is over and it is not tombstoned, the watchdog
+sends `tx slashing unjail --from operator --wait`. It sends at most one tx
+per node every 10 minutes (`UNJAIL_COOLDOWN`), and it writes the tx output
+to `~/.celestia-rs/auto-update/watchdog/<name>.unjail.log`. The
+passphrase file lets anyone who can read it move the operator's funds, so
+keep it mode 600 and leave it out of backups:
+
+```sh
+mkdir -m 700 -p ~/.celestia-rs/unjail
+: > ~/.celestia-rs/unjail/mocha                     # keyring-backend test
+(umask 077; read -rs p && printf '%s' "$p" > ~/.celestia-rs/unjail/mainnet)  # keyring-backend file
+```
+
+Without the file, unjail by hand after the restart (§11.9).
 
 ### Linux: systemd
 
