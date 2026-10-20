@@ -66,7 +66,8 @@ show in the dashboard's "Firing alerts" panel, in Grafana under Alerting
 
 - **Critical (emailed):** NodeDown, HeightStalled, LastBlockOld,
   AppHashMismatch, ValidatorNotSigning, ValidatorJailRisk,
-  ValidatorJailed, DiskSpaceCritical (< 5%).
+  ValidatorJailed, DoubleSignGuardRefused (a refusal line in the node's
+  log, operator guide §11.11), DiskSpaceCritical (< 5%).
 - **Warning (dashboard only):** LowPeers, CatchingUp,
   ValidatorMissingBlocks, AppHashCheckFailing, MonitoringCollectorStale,
   DiskSpaceLow (< 10%).
@@ -115,7 +116,7 @@ operator-email > Test.
 | File | Installed to (`~/.celestia-rs/monitoring/`) |
 |---|---|
 | `node-metrics.sh` | `bin/`; `collect` every 30 s, `apphash` every 5 min |
-| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC |
+| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC, node log |
 | `prometheus.yml`, `rules.yml` | `prometheus/` |
 | `grafana/` | `grafana/`: config, datasource, dashboard |
 

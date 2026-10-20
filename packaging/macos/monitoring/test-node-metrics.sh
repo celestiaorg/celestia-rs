@@ -6,6 +6,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
+: >"$t/val.log"
 mkdir -p "$t/bin" "$t/out" "$t/val/config" "$t/val/data" "$t/full/config" "$t/full/data"
 fails=0
 
@@ -57,7 +58,7 @@ chmod +x "$t/bin/"*
 
 cat >"$t/nodes.conf" <<EOF
 # network home rpc reference-rpc
-mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid
+mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log
 mainnet $t/full http://127.0.0.1:2222 https://ref.invalid
 down    $t/none http://127.0.0.1:3333 https://ref.invalid
 EOF
@@ -96,6 +97,34 @@ expect "$f" 'celestia_rs_process_up{network="down"} 0'
 if grep -q 'validator_missed_blocks_window{network="mainnet"}' "$f"; then
   echo "FAIL: full node must not report missed blocks"; fails=$((fails + 1))
 fi
+
+# --- double-sign-guard refusals ------------------------------------------------
+# Counted from the node's log, incrementally (a byte offset kept between
+# runs), whole lines only, and from the start again after a rotation.
+refusal='ERROR consensus::state: failed signing vote height=7 round=0 err=error signing vote: conflicting data'
+collect() { PATH="$t/bin:$PATH" CELESTIA_RS_BIN="$t/bin/celestia-rs" "$here/node-metrics.sh" collect "$t/nodes.conf" "$t/out"; }
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 0'
+if grep -q 'sign_refusals_total{network="mainnet"}' "$f"; then
+  echo "FAIL: a node without a log column must not report refusals"; fails=$((fails + 1))
+fi
+printf '%s\nINFO other\n%s\n' "$refusal" "$refusal" >>"$t/val.log"
+collect
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 2'
+# A line still being written is counted once it is complete.
+printf 'INFO x\n%s' "${refusal:0:30}" >>"$t/val.log"
+collect
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 2'
+printf '%s\n' "${refusal:30}" >>"$t/val.log"
+collect
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 3'
+printf '%s\n' 'ERROR consensus::state: propose step; failed signing proposal' >>"$t/val.log"
+collect
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 4'
+# Rotated: a new file (new inode) is read from the start.
+rm "$t/val.log"
+printf '%s\n' 'Error: consensus start: found signature from the same key' >"$t/val.log"
+collect
+expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 5'
 
 # --- apphash -----------------------------------------------------------------
 cat >"$t/check-apphash.sh" <<'EOF'

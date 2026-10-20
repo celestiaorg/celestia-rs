@@ -13,6 +13,11 @@ tests:
         values: '0x40'
       - series: 'celestia_rs_apphash_match{network="mocha"}'
         values: '0x40'
+      # One refusal at 5m on mocha; mainnet's two are from before the window.
+      - series: 'celestia_rs_sign_refusals_total{network="mocha"}'
+        values: '2x20 3x20'
+      - series: 'celestia_rs_sign_refusals_total{network="mainnet"}'
+        values: '2x40'
       - series: 'node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"}'
         values: '4x40'
       - series: 'node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"}'
@@ -34,6 +39,11 @@ tests:
           - exp_labels: {severity: critical, network: mocha}
             exp_annotations: {summary: "mocha: APP HASH MISMATCH with the reference RPC; stop the validator and keep the log (operator guide §11.7)"}
       - eval_time: 10m
+        alertname: DoubleSignGuardRefused
+        exp_alerts:
+          - exp_labels: {severity: critical, network: mocha}
+            exp_annotations: {summary: "mocha: the double-sign guard refused to sign; check for a second signer (operator guide §11.11)"}
+      - eval_time: 10m
         alertname: DiskSpaceCritical
         exp_alerts:
           - exp_labels: {severity: critical, mountpoint: /System/Volumes/Data}
@@ -50,6 +60,8 @@ tests:
           - labels: '{problem="NodeDown", network="mocha"}'
             value: 1
           - labels: '{problem="AppHashMismatch", network="mocha"}'
+            value: 1
+          - labels: '{problem="DoubleSignGuardRefused", network="mocha"}'
             value: 1
           - labels: '{problem="DiskSpaceCritical", mountpoint="/System/Volumes/Data"}'
             value: 1
