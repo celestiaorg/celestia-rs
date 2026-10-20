@@ -402,15 +402,13 @@ Validator `celestia-rs`
 (`celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec`), 1 TIA
 self-bond (the smallest in the active set, 98 of 100 slots bonded),
 signing from height 15,104,013. It signed to 15,115,857 without being
-jailed. Then a power outage took the Mac (and the Mocha validator) offline
-from 2026-10-20 03:07 UTC, before the v10 upgrade; power is expected back
-by 5 AM on 2026-10-21 (local time). Downtime jailing (9,990 of 10,000
-blocks missed, no slash, 60 s jail) will hit both validators before then:
-mainnet around 2026-10-20 11:00 UTC. When the Mac is back: start both
-nodes, let them catch up through the upgrade height, check app hashes
-(M13), then `tx slashing unjail` from each operator key. Jailing also
-unbonds the validator; with 98 of 100 slots bonded it re-enters the set
-after unjailing. Every C1 item still has to pass on the commit the canary
+jailed. Then a power outage cut the Mac's network (the Mac itself stayed
+up) from 2026-10-20 ~03:08 to 06:18 UTC, before the v10 upgrade. Both
+nodes then caught up through consensus gossip, barely faster than the
+chain, and both validators were jailed around 11:05 UTC; they were
+restarted and unjailed by hand. Since then the watchdog (operator guide
+§8) restarts a node that falls behind and unjails its validator.
+Every C1 item still has to pass on the commit the canary
 runs.
 Runbook: `docs/operator-guide.md` §12
 (real TIA above the 100th bonded validator's stake, a separate home and

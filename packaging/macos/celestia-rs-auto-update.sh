@@ -5,7 +5,8 @@
 #   celestia-rs-auto-update.sh            # one pass; run hourly by launchd
 #   DRY_RUN=1 celestia-rs-auto-update.sh  # build, but deploy nothing
 #   celestia-rs-auto-update.sh check      # health-check every node, change nothing
-#   celestia-rs-auto-update.sh watchdog   # restart a node stuck behind; run every minute
+#   celestia-rs-auto-update.sh watchdog   # restart a node stuck behind, unjail
+#                                         # a jailed validator; run every minute
 #
 # One pass:
 #   1. Fetch origin/main into $SRC. Stop if every node already runs it, if
@@ -48,6 +49,14 @@ WATCHDOG_MAX_LAG=${WATCHDOG_MAX_LAG:-50}
 WATCHDOG_STRIKES=${WATCHDOG_STRIKES:-3}
 WATCHDOG_COOLDOWN=${WATCHDOG_COOLDOWN:-1800}
 WATCHDOG_LOCK_STALE=${WATCHDOG_LOCK_STALE:-10800}
+# watchdog: unjail the validator of a node in sync with its reference RPC
+# when $UNJAIL_DIR/<name> exists. That file (mode 600) holds the keyring
+# passphrase of UNJAIL_KEY; it is empty for an empty passphrase or a `test`
+# keyring. At most one
+# unjail tx per node per UNJAIL_COOLDOWN seconds.
+UNJAIL_DIR=${UNJAIL_DIR:-$CELESTIA_RS_DIR/unjail}
+UNJAIL_KEY=${UNJAIL_KEY:-operator}
+UNJAIL_COOLDOWN=${UNJAIL_COOLDOWN:-600}
 
 # name|launchd label|binary|local RPC|reference RPC
 NODES=(
@@ -113,18 +122,65 @@ restart() { sudo -n /bin/launchctl kickstart -k "system/$1"; }
 # Swap a binary atomically (a running process keeps its old inode).
 swap_in() { cp "$1" "$2.new" && mv -f "$2.new" "$2"; }
 
+# Runs a command with the keyring passphrase $1 on stdin, as typed at the
+# prompt: a `file` keyring reads it (it may be empty), a `test` keyring
+# never asks. (A set but empty CELESTIA_RS_KEYRING_PASSPHRASE would lock a
+# `test` keyring.)
+with_passphrase() {
+  local pass=$1
+  shift
+  printf '%s\n' "$pass" | env -u CELESTIA_RS_KEYRING_PASSPHRASE "$@"
+}
+
+# Unjails the validator of node <name> (binary <bin>, home
+# $CELESTIA_RS_DIR/<name>) if it is jailed and its jail period is over.
+# The caller has checked that the node is in sync, so it signs again at
+# once.
+unjail() {
+  local name=$1 bin=$2 home=$CELESTIA_RS_DIR/$1 sf=$STATE/watchdog/$1 pass valoper valcons info until now last
+  [[ -f $UNJAIL_DIR/$name ]] || return 0
+  pass=$(cat "$UNJAIL_DIR/$name")
+  if [[ ! -s $sf.valoper ]]; then
+    with_passphrase "$pass" "$bin" keys show "$UNJAIL_KEY" --bech val -a --home "$home" \
+      >"$sf.valoper" 2>/dev/null || { rm -f "$sf.valoper"; log "$name: cannot read key $UNJAIL_KEY"; return 0; }
+  fi
+  valoper=$(cat "$sf.valoper")
+  [[ $("$bin" query staking validator "$valoper" --home "$home" 2>/dev/null | jq -r '.validator.jailed') == true ]] ||
+    return 0
+  valcons=$("$bin" comet show-address --home "$home" 2>/dev/null) || return 0
+  info=$("$bin" query slashing signing-info "$valcons" --home "$home" 2>/dev/null) || return 0
+  if [[ $(jq -r '.val_signing_info.tombstoned' <<<"$info") == true ]]; then
+    log "$name: tombstoned; it can never be unjailed"
+    return 0
+  fi
+  # ISO 8601 UTC times compare as strings, to the second.
+  until=$(jq -r '.val_signing_info.jailed_until' <<<"$info")
+  [[ ${until:0:19} > $(date -u +%FT%T) ]] && return 0
+  now=$(date +%s)
+  last=$(cat "$sf.last-unjail" 2>/dev/null || echo 0)
+  ((now - last >= UNJAIL_COOLDOWN)) || return 0
+  echo "$now" >"$sf.last-unjail"
+  log "$name: $valoper is jailed; sending unjail"
+  if with_passphrase "$pass" "$bin" tx slashing unjail --from "$UNJAIL_KEY" --home "$home" \
+    --wait --yes >>"$sf.unjail.log" 2>&1; then
+    log "$name: unjailed"
+  else
+    log "$name: unjail failed (see $sf.unjail.log); next try after ${UNJAIL_COOLDOWN}s"
+  fi
+}
+
 # After a network outage a running node catches up through consensus
 # gossip, barely faster than the chain, so a few hours offline leave it
 # hours behind and a validator jailed. A restart begins with block sync,
 # which catches up in about a minute.
 watchdog() {
-  local n name label local_rpc ref sf st h rh lag strikes now last
+  local n name label bin local_rpc ref sf st h rh lag strikes now last
   if [[ -d $LOCK ]] && (($(date +%s) - $(stat -f %m "$LOCK") < WATCHDOG_LOCK_STALE)); then
     return 0 # a deploy is restarting the nodes itself
   fi
   mkdir -p "$STATE/watchdog"
   for n in "${NODES[@]}"; do
-    IFS='|' read -r name label _ local_rpc ref <<<"$n"
+    IFS='|' read -r name label bin local_rpc ref <<<"$n"
     sf=$STATE/watchdog/$name
     # A node that is down, or block-syncing already, is not ours to restart.
     st=$(rpc "$local_rpc" /status 2>/dev/null) || { rm -f "$sf.strikes"; continue; }
@@ -138,6 +194,7 @@ watchdog() {
     lag=$((rh - h))
     if ((lag <= WATCHDOG_MAX_LAG)); then
       rm -f "$sf.strikes"
+      unjail "$name" "$bin"
       continue
     fi
     strikes=$(($(cat "$sf.strikes" 2>/dev/null || echo 0) + 1))
