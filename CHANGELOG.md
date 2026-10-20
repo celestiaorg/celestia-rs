@@ -2,7 +2,16 @@
 
 ## Unreleased
 
+## v0.1.0-rc.2 (2026-10-19)
+
 ### Added
+
+- Release process without manual tags (`docs/releasing.md`): the `prepare
+  release` workflow opens a PR made by `cargo xtask bump-version <version>`
+  (the binary crate's version, Cargo.lock and the CHANGELOG section);
+  merging it makes `release.yml` tag the commit, build, check that each
+  binary reports the version, and publish with the CHANGELOG section as
+  notes. A hand-pushed tag that doesn't match the crate version fails.
 
 - One-line installer, `scripts/install.sh` (README "Install"): installs or
   updates the latest release to `~/.celestia-rs/bin` and adds it to `PATH`
@@ -376,6 +385,10 @@
 
 ### Fixed
 
+- The 07-tendermint `client state height < proof height` error prints the
+  heights as Go's `%d` does (`{1 20}`), so a failed gov proposal stores
+  the same `failed_reason` as Go (app-hash split on the v9 -> v10 upgrade
+  path, `docs/security.md` 91). #59
 - `version --long` prints the git `commit:` (`-dirty` for a modified
   work tree; `CELESTIA_RS_GIT_COMMIT` for builds outside a checkout,
   else `unknown`) and the `build_profile:`, and no longer prints the bare

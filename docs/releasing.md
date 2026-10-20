@@ -1,0 +1,74 @@
+# Releasing celestia-rs
+
+A release is a version of the `celestia-rs` binary crate
+(`crates/tier-5-node/celestia-rs/Cargo.toml`), a `v<version>` tag on the
+commit that carries it, and a GitHub release with the archives that
+`scripts/install.sh` installs. `celestia-rs version` prints the crate
+version, so all three always agree. No one pushes tags or edits versions by
+hand.
+
+The other workspace crates are `publish = false` and stay at 0.0.1; only
+the binary is versioned.
+
+## Cutting a release
+
+1. **Actions → prepare release → Run workflow**, with the version, e.g.
+   `0.1.0-rc.2` or `0.1.0`. A version with a `-` suffix is published as a
+   pre-release.
+
+   This opens a PR, `release: v<version>`, made by
+   `cargo xtask bump-version <version>`: the crate's version in `Cargo.toml`
+   and `Cargo.lock`, and the CHANGELOG's `## Unreleased` entries moved under
+   `## v<version> (<date>)`.
+
+2. Review the PR (edit the CHANGELOG section there if you like) and merge
+   it.
+
+3. That's the release. On the merge, `release.yml` sees the version change,
+   tags the merge commit `v<version>`, builds the macOS and Linux archives,
+   fails if a binary doesn't report `<version>`, and publishes the release
+   with the CHANGELOG section as its notes. Then `install.yml` installs it
+   with the README's command on macOS and Linux.
+
+The same steps work from a checkout: `cargo xtask bump-version 0.1.0-rc.2`,
+then open a PR with the result.
+
+## Guards
+
+- A merge to main that touches the crate's `Cargo.toml` without changing
+  its version releases nothing; nor does a version that is already tagged
+  on another commit.
+- A `v*` tag pushed by hand still releases, but only if it matches the
+  crate version at that commit; otherwise the run fails and says so.
+- Re-running a failed release run (same commit, tag already made by it)
+  retries the build and publish.
+
+## Repository settings
+
+- **Settings → Actions → General → Workflow permissions:** allow GitHub
+  Actions to create pull requests (for `prepare release`).
+- Optional **`RELEASE_TOKEN`** secret, a fine-grained token or GitHub App
+  token with contents and pull requests write. A PR opened with the default
+  `GITHUB_TOKEN` starts no CI on itself (GitHub's rule against workflows
+  triggering workflows); with `RELEASE_TOKEN` the release PR gets the usual
+  checks. Without it, push any commit to the release branch to run CI, or
+  rely on the release build, which compiles and smoke-tests every target
+  after the merge.
+
+## Why this way
+
+Rust projects mostly do one of:
+
+- **Bump and tag by hand** (ripgrep's release checklist): edit
+  `Cargo.toml`, `cargo update`, commit, push the tag. Easy to get wrong,
+  as `v0.1.0-rc.1` was: tagged while the crate still said 0.0.1.
+- **A release PR** ([release-plz](https://release-plz.dev), or a
+  workflow): a bot opens a PR with the bump and changelog; merging it tags
+  and releases. release-plz infers the bump from conventional commits and
+  versions and publishes each crate to crates.io. Here only one unpublished
+  binary is versioned and commits aren't conventional, so the same flow is a
+  workflow plus `cargo xtask bump-version`, with no third-party release
+  tool.
+- **Version from the tag at build time** (a `build.rs` reading the tag):
+  no bump at all, but `Cargo.toml` then lies, and source builds report
+  something else.

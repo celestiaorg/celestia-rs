@@ -1,24 +1,105 @@
 name: release
 
-# On a `v*` tag: build celestia-rs with the `dist` profile for the
-# validator platforms and attach the archives and their SHA-256 checksums
-# to a GitHub release for the tag. `workflow_dispatch` builds the same
-# archives as workflow artifacts only (no release), to check the pipeline.
+# Builds celestia-rs with the `dist` profile for the validator platforms and
+# publishes the archives and their SHA-256 checksums as a GitHub release.
+# The version is the binary crate's (crates/tier-5-node/celestia-rs), so
+# `celestia-rs version` always reports the release it came from. See
+# docs/releasing.md.
+#
+# - Push to main that changes that version (the merged release PR from
+#   prepare-release.yml): tag the commit v<version>, then build and publish.
+#   The tag is pushed with GITHUB_TOKEN, which starts no workflows, so the
+#   build runs here rather than on the tag push.
+# - Push of a v* tag by hand: build and publish it, if the tag matches the
+#   crate version.
+# - workflow_dispatch: build the archives as workflow artifacts only.
 
 on:
   push:
+    branches: [main]
+    # Not applied to tag pushes.
+    paths: [crates/tier-5-node/celestia-rs/Cargo.toml]
     tags: ["v*"]
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  MANIFEST: crates/tier-5-node/celestia-rs/Cargo.toml
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      release: ${{ steps.plan.outputs.release }}
+      label: ${{ steps.plan.outputs.label }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          crate_version() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1; }
+          version=$(crate_version <"$MANIFEST")
+          tag="v$version"
+          release=false
+          label="$tag"
+          case "$GITHUB_EVENT_NAME/$GITHUB_REF_TYPE" in
+            push/tag)
+              if [ "$GITHUB_REF_NAME" != "$tag" ]; then
+                echo "::error::tag $GITHUB_REF_NAME, but $MANIFEST is at $version. Release with the 'prepare release' workflow (docs/releasing.md), or tag the commit that carries the version."
+                exit 1
+              fi
+              release=true
+              ;;
+            push/branch)
+              previous=""
+              if git fetch -q --depth=1 origin "$BEFORE" 2>/dev/null; then
+                previous=$(git show "$BEFORE:$MANIFEST" | crate_version)
+              fi
+              if [ "$previous" = "$version" ]; then
+                echo "::notice::$MANIFEST changed, but not its version ($version): nothing to release"
+              elif tagged=$(git ls-remote --exit-code --tags origin "refs/tags/$tag^{}" "refs/tags/$tag"); then
+                if printf '%s\n' "$tagged" | grep -q "^$GITHUB_SHA"; then
+                  # A re-run of this release (say, after a failed build).
+                  release=true
+                else
+                  echo "::notice::$tag already exists on another commit: nothing to release"
+                fi
+              else
+                git config user.name "github-actions[bot]"
+                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                git tag -a "$tag" -m "celestia-rs $tag" "$GITHUB_SHA"
+                git push origin "refs/tags/$tag"
+                echo "::notice::tagged $GITHUB_SHA as $tag"
+                release=true
+              fi
+              ;;
+            *) label=$(git rev-parse --short HEAD) ;;
+          esac
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "release=$release"
+            echo "label=$label"
+          } >>"$GITHUB_OUTPUT"
+
   build:
+    needs: plan
+    # A push to main that releases nothing builds nothing.
+    if: needs.plan.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
@@ -59,14 +140,21 @@ jobs:
         run: cargo build --profile dist --locked -p celestia-rs --target ${{ matrix.target }}
       - name: Smoke test
         if: ${{ !matrix.cross }}
-        run: target/${{ matrix.target }}/dist/celestia-rs version --long
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -eu
+          bin=target/${{ matrix.target }}/dist/celestia-rs
+          $bin version --long
+          # The binary must report the version it's released as.
+          [ "$($bin version)" = "$VERSION" ] || { echo "::error::celestia-rs version reports $($bin version), not $VERSION"; exit 1; }
       - name: Package
         shell: bash
+        env:
+          LABEL: ${{ needs.plan.outputs.label }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME}"
-          [[ "$GITHUB_REF_TYPE" == tag ]] || version="$(git rev-parse --short HEAD)"
-          name="celestia-rs-${version}-${{ matrix.target }}"
+          name="celestia-rs-${LABEL}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/dist/celestia-rs" "dist/$name/"
           cp -R LICENSE-APACHE LICENSE-MIT README.md packaging "dist/$name/"
@@ -82,12 +170,16 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.ref_type == 'tag'
-    needs: build
+    needs: [plan, build]
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -101,12 +193,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           set -euo pipefail
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
+          # The release's CHANGELOG section (bump-version cut it), then
+          # GitHub's generated notes.
+          awk -v h="## $TAG " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md >notes.md
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --title "celestia-rs $TAG" --generate-notes $prerelease
+            gh release create "$TAG" --verify-tag --title "celestia-rs $TAG" --notes-file notes.md --generate-notes $prerelease
           fi
           gh release upload "$TAG" --clobber dist/*.tar.gz dist/*.tar.gz.sha256 dist/SHA256SUMS
