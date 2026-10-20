@@ -46,6 +46,8 @@ v9-upgrade 100 6 7431 GO_APPD_NEXT=v10 DELIVER_UPGRADE=31 DELIVER_IBC=1 DELIVER_
 # A failed gov proposal's MsgGrant of an unknown StakeAuthorization type:
 # Go's panic text carries %T and the errorsmod frame (#80, security.md 102).
 v9-upgrade 100 6 8513 GO_APPD_NEXT=v10 DELIVER_UPGRADE=33 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# The same after the switch (the v0.52.12 frame).
+v9-upgrade 100 6 8142 GO_APPD_NEXT=v10 DELIVER_UPGRADE=22 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
 # A synthesized proposal's gov MsgUpdateParams with a non-positive
 # max_deposit_period: Go prints a pointer (security.md Open), so the
 # generator keeps the period positive.
