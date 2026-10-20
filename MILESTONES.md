@@ -15,29 +15,31 @@ app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004).
 
 ## Remaining milestones
 
-In order. M14 is a **small-stake canary**: it starts when M13 **and** C1
-have passed (owner, 2026-10-19). F1 stays the gate for any Rust
+In order. M14 is a **small-stake canary**: it was to start when M13
+**and** C1 had passed (owner, 2026-10-19); the canary was bonded early,
+on 2026-10-19, with C1 still open (see M14). F1 stays the gate for any Rust
 validator with more than canary stake (owner, 2026-10-16: local-file key
 signing is accepted; the consensus-split risk at meaningful stake is not,
 until F1's exit criteria are met).
 
 | #   | Status      | Milestone | Acceptance test |
 |-----|-------------|-----------|-----------------|
-| M13 | in progress | Mocha validator soak, then a mainnet full node on the Mac | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes, through mainnet's v9 → v10 upgrade |
+| M13 | in progress | Mocha validator soak (passed), then a mainnet full node on the Mac (running as M14's node) | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes, through mainnet's v9 → v10 upgrade |
 | C1  | pending     | **Canary gate** for M14 | Every item of C1.1–C1.5 below met on the release commit |
-| M14 | pending     | Mainnet validator (small-stake canary) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
+| M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 | B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
-Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target) is
-scheduled at height **15,116,658** (`/signal/v1/upgrade`, queried
-2026-10-19 at height ~15,085,950; ~2.87 s blocks put it near
-2026-10-20 03:40 UTC).
+Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target)
+ran at height **15,116,658** on 2026-10-20 (~03:40 UTC); mainnet reports
+app version 10 (`abci_info`, height 15,117,413). The Mac was offline at
+the time (power outage, see M14), so it did not execute the upgrade live.
 
 ## M13 — Mocha validator soak, mainnet full node
 
-The Mocha validator soak passed on 2026-10-17; the mainnet full node
-remains. On the Mac Mini M4, route A (P2P state sync from Mocha's Go
+The Mocha validator soak passed on 2026-10-17. The mainnet node on the
+Mac now runs as the M14 validator; what remains is its full-node record
+through the v10 upgrade (C1.1). On the Mac Mini M4, route A (P2P state sync from Mocha's Go
 peers) restored snapshot 1,716,000 and reached consensus 47 s after
 start, outbound-only with 13 peers. Validator `celestia-rs validator`
 bonded at 1,720,896, signing from 1,720,898, under launchd since
@@ -58,13 +60,14 @@ now on a background thread, OPEN_QUESTIONS #7).
 
 Remaining:
 
-- [ ] Mainnet full node on the Mac over P2P (§12: route B, Polkachu
-  snapshot, then `start --network mainnet`), at the tip with
-  `check-apphash.sh` OK, running until M14. This is also F1.8's live
-  replay. Bootstrap it before the v10 upgrade height (15,116,658) so it
-  executes the binary switch live (F1.5's real-world half); check app
-  hashes at every height from `H-2` to `H+3`. If the Mac is not at the
-  tip in time, an HTTPS `follow` across the height covers execution.
+- [ ] Mainnet full node on the Mac over P2P, at the tip with
+  `check-apphash.sh` OK. It is the M14 validator's node, and also
+  F1.8's live replay. It was at the tip from 15,104,013 (signing) to
+  15,115,857, then went offline before the v10 upgrade height
+  (15,116,658). When it is back, it executes the upgrade height while
+  catching up: check app hashes at every height from `H-2` to `H+3`
+  (or run an HTTPS `follow` across the height) to cover F1.5's
+  real-world half.
 
 ## C1 — Canary gate (M14 entry)
 
@@ -92,6 +95,9 @@ Every item must pass on the commit the canary runs.
   full node (release build) at the tip across height 15,116,658 and then
   at least **7 days** at v10, with every `check-apphash.sh` check and every
   tx result matching. Partial F1.8 (c) and F1.5.
+  *2026-10-20:* the Mac was offline across the upgrade height (M14), so
+  this is the catch-up through it, not a live crossing; the 7 days at v10
+  count from when it is back at the tip.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
@@ -366,7 +372,23 @@ Not consensus-relevant unless noted; tracked so nothing is lost.
 
 ## M14 — Mainnet validator (small-stake canary)
 
-Starts when M13 and C1 have passed; more than canary stake waits for F1.
+Was to start when M13 and C1 had passed; more than canary stake waits for F1.
+
+*Status (2026-10-20):* bonded early, on 2026-10-19, before C1 passed.
+Validator `celestia-rs`
+(`celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec`), 1 TIA
+self-bond (the smallest in the active set, 98 of 100 slots bonded),
+signing from height 15,104,013. It signed to 15,115,857 without being
+jailed. Then a power outage took the Mac (and the Mocha validator) offline
+from 2026-10-20 03:07 UTC, before the v10 upgrade; power is expected back
+by 5 AM on 2026-10-21 (local time). Downtime jailing (9,990 of 10,000
+blocks missed, no slash, 60 s jail) will hit both validators before then:
+mainnet around 2026-10-20 11:00 UTC. When the Mac is back: start both
+nodes, let them catch up through the upgrade height, check app hashes
+(M13), then `tx slashing unjail` from each operator key. Jailing also
+unbonds the validator; with 98 of 100 slots bonded it re-enters the set
+after unjailing. Every C1 item still has to pass on the commit the canary
+runs.
 Runbook: `docs/operator-guide.md` §12
 (real TIA above the 100th bonded validator's stake, a separate home and
 consensus key, route B bootstrap, the same binary through the v9 → v10
