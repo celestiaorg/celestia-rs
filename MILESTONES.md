@@ -344,6 +344,13 @@ test), then start that harness's count again.
   module proxy are celestia-app v10.4.0 and v9.0.8 and celestia-core
   v0.42.3, the versions pinned here. Recheck before the upgrade height
   and before M14.
+  *Rechecked 2026-10-20 after the upgrade (mainnet at 15,137,125):*
+  public RPCs report celestia-app 10.4.0 (one `10.4.0-mocha`), app
+  version 10; no later v10 or v9 release. celestia-core v0.42.4 was
+  tagged today: it only adds `rollback --height` / `--force` (multi-height
+  rollback with a 100-height depth guard; no consensus change) and no
+  celestia-app release uses it yet, so the pin stays v0.42.3. Port the
+  command when a celestia-app release picks it up.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the
