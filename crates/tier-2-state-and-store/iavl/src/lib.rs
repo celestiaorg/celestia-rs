@@ -1,6 +1,6 @@
 //! Cosmos IAVL+ state tree primitives.
 //!
-//! See `docs/superpowers/specs/m2/iavl.md` for the API contract and
+//! See `docs/specs/m2/iavl.md` for the API contract and
 //! `docs/adr/0002-persistent-state-storage.md` for the storage design.
 //!
 //! A [`Tree`] is either purely in memory ([`Tree::new`]) or backed by a

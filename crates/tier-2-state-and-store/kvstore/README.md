@@ -19,7 +19,7 @@ multi-store and module crates.
 
 ## Conformance
 
-The implementation spec is `docs/superpowers/specs/m2/kvstore.md`.
+The implementation spec is `docs/specs/m2/kvstore.md`.
 Go-generated conformance fixtures live under `conformance/fixtures/kvstore/`
 and are regenerated with:
 

@@ -1,6 +1,6 @@
 //! Cosmos SDK key/value store primitives.
 //!
-//! See `docs/superpowers/specs/m2/kvstore.md` for the API contract.
+//! See `docs/specs/m2/kvstore.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

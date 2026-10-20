@@ -29,7 +29,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Celestia namespaced Merkle tree primitives.
 //!
-//! See `docs/superpowers/specs/m1/nmt.md` for the API contract.
+//! See `docs/specs/m1/nmt.md` for the API contract.
 
 pub mod error;
 pub mod namespace;

@@ -1,7 +1,7 @@
 // Package replay constructs an in-memory celestia-app v6 instance and runs its
 // app-v6 ante handler against fixture-provided account and balance snapshots,
 // producing the expected Go ante outcome for the M3 mainnet transaction corpus
-// (see docs/superpowers/specs/m3/mainnet-tx-corpus.md).
+// (see docs/specs/m3/mainnet-tx-corpus.md).
 //
 // It lives in a Go module separate from conformance/fixturegen because
 // celestia-app pins a celestia-specific cosmos-sdk fork (and celestia-core)

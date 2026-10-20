@@ -1,6 +1,6 @@
 //! CometBFT protocol types for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/tendermint-types.md` for the API contract.
+//! See `docs/specs/m1/tendermint-types.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

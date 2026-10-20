@@ -28,7 +28,7 @@ The crate exports exactly these items from its root module:
 ```rust
 //! Cosmos SDK key/value store primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m2/kvstore.md` for the API contract.
+//! See `docs/specs/m2/kvstore.md` for the API contract.
 
 pub use iavl::{CommitInfo, Hash, Version};
 

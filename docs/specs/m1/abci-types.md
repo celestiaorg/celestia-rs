@@ -29,7 +29,7 @@ The crate exports exactly these root modules:
 ```rust
 //! CometBFT ABCI++ protocol types for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/abci-types.md` for the API contract.
+//! See `docs/specs/m1/abci-types.md` for the API contract.
 
 pub mod error;
 pub mod event;

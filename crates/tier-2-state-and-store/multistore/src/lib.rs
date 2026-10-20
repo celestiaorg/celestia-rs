@@ -1,6 +1,6 @@
 //! Cosmos SDK commit multi-store primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m2/multistore.md` for the API contract.
+//! See `docs/specs/m2/multistore.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

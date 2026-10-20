@@ -49,7 +49,7 @@ pub use subroot::{SubrootPath, subroot_paths};
 pub use tree::{NamespacedMerkleTree, TreeOptions};
 ```
 
-See [`docs/superpowers/specs/m1/nmt.md`](../../../docs/superpowers/specs/m1/nmt.md)
+See [`docs/specs/m1/nmt.md`](../../../docs/specs/m1/nmt.md)
 for the locked API contract.
 
 ## Conformance

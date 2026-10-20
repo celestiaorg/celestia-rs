@@ -32,7 +32,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Celestia data-square layout and data-availability header primitives.
 //!
-//! See `docs/superpowers/specs/m1/square.md` for the API contract.
+//! See `docs/specs/m1/square.md` for the API contract.
 
 pub mod blob_tx;
 pub mod builder;

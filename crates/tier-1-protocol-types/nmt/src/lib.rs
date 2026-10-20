@@ -1,6 +1,6 @@
 //! Celestia namespaced Merkle tree primitives.
 //!
-//! See `docs/superpowers/specs/m1/nmt.md` for the API contract.
+//! See `docs/specs/m1/nmt.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
