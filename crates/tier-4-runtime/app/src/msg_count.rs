@@ -150,7 +150,8 @@ fn count_proto_msgs(mut bz: &[u8]) -> Option<usize> {
         let (tag, n) = uvarint(bz)?;
         bz = &bz[n..];
         let num = tag >> 3;
-        if num == 0 || num > (1 << 29) - 1 {
+        // protowire `ConsumeTag`: field numbers up to `math.MaxInt32`.
+        if num == 0 || num > i32::MAX as u64 {
             return None;
         }
         let n = match tag & 7 {
@@ -259,6 +260,19 @@ mod tests {
     fn proto_and_json_counts() {
         assert_eq!(count_proto_msgs(&[0x0a, 0x00, 0x0a, 0x01, 0x05]), Some(2));
         assert_eq!(count_proto_msgs(&[0x0b]), None);
+        // protowire `ConsumeTag`: field numbers up to 2^31 - 1 (2^29 is fine).
+        assert_eq!(
+            count_proto_msgs(&[0x0a, 0x00, 0x80, 0x80, 0x80, 0x80, 0x10, 0x00]),
+            Some(1)
+        );
+        assert_eq!(
+            count_proto_msgs(&[0x0a, 0x00, 0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00]),
+            Some(1)
+        );
+        assert_eq!(
+            count_proto_msgs(&[0x0a, 0x00, 0x80, 0x80, 0x80, 0x80, 0x40, 0x00]),
+            None
+        );
         assert_eq!(count_json_msgs(br#"{"messages":[{},{}]}"#), Some(2));
         assert_eq!(count_json_msgs(br#"{"Messages":[{}]}"#), Some(1));
         assert_eq!(count_json_msgs(b"[1]"), None);

@@ -231,10 +231,20 @@ pub fn decode_multisignatures(bz: &[u8]) -> Result<Vec<Vec<u8>>, SdkError> {
     while !buf.is_empty() {
         let (key, n) = varint(buf).ok_or_else(|| internal("unexpected EOF"))?;
         buf = &buf[n..];
-        let field = key >> 3;
+        // gogoproto: `int32(wire >> 3)`, so keys past `u32::MAX` truncate
+        // (a field number of 1 in the low 32 bits is a signature).
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let field = (key >> 3) as u32 as i32;
         let wire = key & 7;
-        if field == 0 {
-            return Err(internal("proto: MultiSignature: illegal tag 0"));
+        if wire == 4 {
+            return Err(internal(
+                "proto: MultiSignature: wiretype end group for non-group",
+            ));
+        }
+        if field <= 0 {
+            return Err(internal(format!(
+                "proto: MultiSignature: illegal tag {field} (wire type {key})"
+            )));
         }
         if field == 1 {
             if wire != 2 {
@@ -394,10 +404,23 @@ pub fn bit_num_true_before(ba: Option<&CompactBitArray>, index: i64) -> R<i64> {
     Ok(ones)
 }
 
+/// `any.unpack::<M>()` as Go holds the message (gogoproto's decoding, see
+/// `txdecode::prost_compatible`): e.g. a key past `u32::MAX` is an unknown
+/// field to Go, where prost fails.
+fn unpack_go<M: prost::Message + prost::Name + Default>(
+    any: &Any,
+) -> Option<Result<M, prost::DecodeError>> {
+    if any.type_url != M::type_url() {
+        return None;
+    }
+    let fixed = txdecode::prost_compatible(any);
+    fixed.as_ref().unwrap_or(any).unpack::<M>()
+}
+
 /// Unpacks `authz.MsgExec.Msgs`.
 pub fn msg_exec_msgs(any: &Any) -> R<Option<Vec<Any>>> {
     use celestia_proto::cosmos::authz::v1beta1::MsgExec;
-    match any.unpack::<MsgExec>() {
+    match unpack_go::<MsgExec>(any) {
         Some(Ok(m)) => Ok(Some(m.msgs)),
         Some(Err(e)) => Err(Fail::Err(errs::tx_decode(e.to_string()))),
         None => Ok(None),
@@ -407,7 +430,7 @@ pub fn msg_exec_msgs(any: &Any) -> R<Option<Vec<Any>>> {
 /// Unpacks `govv1.MsgSubmitProposal.Messages`.
 pub fn submit_proposal_msgs(any: &Any) -> R<Option<Vec<Any>>> {
     use celestia_proto::cosmos::gov::v1::MsgSubmitProposal;
-    match any.unpack::<MsgSubmitProposal>() {
+    match unpack_go::<MsgSubmitProposal>(any) {
         Some(Ok(m)) => Ok(Some(m.messages)),
         Some(Err(e)) => Err(Fail::Err(errs::tx_decode(e.to_string()))),
         None => Ok(None),
@@ -452,5 +475,91 @@ mod tests {
         // More mode infos than signatures: index out of range.
         let r = mode_info_to_sig_data(&multi(vec![single(), single(), single()]), &sig);
         assert!(matches!(r, Err(Fail::Panic(_))));
+    }
+
+    /// Key 17179869176: gogoproto's field `int32(key >> 3)` is 2^31 - 1, an
+    /// unknown field it skips; prost rejects keys past `u32::MAX`.
+    const WIDE_KEY_VARINT: [u8; 6] = [0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00];
+
+    #[test]
+    fn nested_msgs_are_read_as_gogoproto_decodes_them() {
+        use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+        use celestia_proto::cosmos::gov::v1::MsgSubmitProposal;
+        let inner = Any {
+            type_url: "/cosmos.staking.v1beta1.MsgUndelegate".into(),
+            value: Vec::new(),
+        };
+        let mut v = MsgSubmitProposal {
+            messages: vec![inner.clone()],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        v.extend_from_slice(&WIDE_KEY_VARINT);
+        let prop = Any {
+            type_url: "/cosmos.gov.v1.MsgSubmitProposal".into(),
+            value: v,
+        };
+        assert!(MsgSubmitProposal::decode(prop.value.as_slice()).is_err());
+        assert_eq!(
+            submit_proposal_msgs(&prop).unwrap(),
+            Some(vec![inner.clone()])
+        );
+        let mut v = MsgExec {
+            grantee: "g".into(),
+            msgs: vec![inner.clone()],
+        }
+        .encode_to_vec();
+        v.extend_from_slice(&WIDE_KEY_VARINT);
+        let exec = Any {
+            type_url: "/cosmos.authz.v1beta1.MsgExec".into(),
+            value: v,
+        };
+        assert_eq!(msg_exec_msgs(&exec).unwrap(), Some(vec![inner]));
+    }
+
+    #[test]
+    fn multisignature_keys_truncate_to_int32() {
+        // Key (1 << 35) | (1 << 3) | 2: field `int32(key >> 3)` = 1.
+        let mut sig = vec![0x8a, 0x80, 0x80, 0x80, 0x80, 0x01];
+        sig.extend_from_slice(&[0x02, 0xaa, 0xbb]);
+        assert_eq!(
+            decode_multisignatures(&sig).unwrap(),
+            vec![vec![0xaa, 0xbb]]
+        );
+        // Field 2^31 - 1: unknown, rejected.
+        let r = decode_multisignatures(&WIDE_KEY_VARINT);
+        assert_eq!(
+            r.unwrap_err().log,
+            "rejecting unrecognized fields found in MultiSignature"
+        );
+        // `int32(key >> 3)` negative: illegal tag.
+        let r = decode_multisignatures(&[0x80, 0x80, 0x80, 0x80, 0x40, 0x00]);
+        assert_eq!(
+            r.unwrap_err().log,
+            "proto: MultiSignature: illegal tag -2147483648 (wire type 17179869184)"
+        );
+        // End group.
+        let r = decode_multisignatures(&[0x0c]);
+        assert_eq!(
+            r.unwrap_err().log,
+            "proto: MultiSignature: wiretype end group for non-group"
+        );
+    }
+
+    /// The `MsgExec` of issue #60 (deliver-diff `ibc`, seed 3022, h=352):
+    /// `grantee` after a key past `u32::MAX` and no `msgs`. Go holds an empty
+    /// `MsgExec` (`ParamFilterDecorator`: `must include at least one
+    /// message`, code 18); prost failed (code 2).
+    #[test]
+    fn issue_60_msg_exec() {
+        let value = hex::decode(
+            "f8ffffff3f010a2f63656c6573746961317474307936336d677a336768613233653976676a386a76673836616338617575306e73776a64",
+        )
+        .unwrap();
+        let exec = Any {
+            type_url: "/cosmos.authz.v1beta1.MsgExec".into(),
+            value,
+        };
+        assert_eq!(msg_exec_msgs(&exec).unwrap(), Some(Vec::new()));
     }
 }
