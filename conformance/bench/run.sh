@@ -13,7 +13,7 @@
 #   D. state sync: a fresh full node restores the validator's latest
 #      snapshot (light client over the validator's RPC); time to restored
 #      state and to the first committed height after it.
-#   RSS (/proc VmRSS, VmHWM) and disk (`du` of data/) of every node at the
+#   RSS (/proc VmRSS, VmHWM; sampled with ps on macOS) and disk (`du` of data/) of every node at the
 #   end of each phase.
 #
 # Writes $BENCH_DIR/results/*.json and results.md.
@@ -53,10 +53,28 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done; wait 2>/dev/null || true; }
 trap cleanup EXIT
 plain() { sed 's/\x1b\[[0-9;]*m//g' "$1"; }
-rss() { awk '/^VmRSS:/{r=$2} /^VmHWM:/{h=$2} END{printf "{\"rss_mb\": %.0f, \"hwm_mb\": %.0f}", r/1024, h/1024}' "/proc/$1/status"; }
+# RSS and peak RSS of a process. Linux: /proc VmRSS / VmHWM. macOS has no
+# peak RSS for another process, so watch_hwm samples `ps` every 0.2 s
+# from the process's start into $W/hwm.<pid>.
+rss() {
+  if [ -r "/proc/$1/status" ]; then
+    awk '/^VmRSS:/{r=$2} /^VmHWM:/{h=$2} END{printf "{\"rss_mb\": %.0f, \"hwm_mb\": %.0f}", r/1024, h/1024}' "/proc/$1/status"
+  else
+    local r h; r=$(ps -o rss= -p "$1" | tr -d ' '); h=$(cat "$W/hwm.$1" 2>/dev/null || echo 0)
+    [ "$h" -ge "$r" ] || h=$r
+    awk -v r="$r" -v h="$h" 'BEGIN{printf "{\"rss_mb\": %.0f, \"hwm_mb\": %.0f}", r/1024, h/1024}'
+  fi
+}
+watch_hwm() {
+  [ -r "/proc/$1/status" ] && return 0
+  ( m=0; while r=$(ps -o rss= -p "$1" 2>/dev/null | tr -d ' ') && [ -n "$r" ]; do
+      [ "$r" -gt "$m" ] && { m=$r; echo "$m" > "$W/hwm.$1"; }; sleep 0.2; done ) &
+  PIDS+=($!)
+}
+loadavg() { if [ -r /proc/loadavg ]; then cut -d" " -f1-3 /proc/loadavg; else sysctl -n vm.loadavg | tr -d '{}' | xargs; fi; }
 dumb() { du -sm "$1" | cut -f1; }
 height() { curl -s "localhost:$1/status" | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }
-now() { date +%s.%N; }
+now() { python3 -c 'import time; print(time.time())'; }  # BSD date has no %N
 since() { python3 -c "print(round($(now) - $1, 2))"; }
 shift_ports() { # file delta
   python3 - "$1" "$2" <<'PY'
@@ -100,9 +118,9 @@ phase_a() {
     RUST_LOG=warn "$bin" abci --home "$h" --addr "127.0.0.1:$APP_PORT" --pruning-keep-recent 100 --pruning-interval 10 \
       --grpc-address "" --api-address "" > "$W/replay-$kind.log" 2>&1 &
   fi
-  pid=$!; PIDS+=($pid)
+  pid=$!; PIDS+=($pid); watch_hwm $pid
   wait_port $APP_PORT || { tail "$W/replay-$kind.log"; return 1; }
-  echo "A/$kind: replaying $(du -sh "$C/abci.rec" | cut -f1) recording (loadavg $(cut -d" " -f1-3 /proc/loadavg))"
+  echo "A/$kind: replaying $(du -sh "$C/abci.rec" | cut -f1) recording (loadavg $(loadavg))"
   "$AB" "$C/abci.rec" "127.0.0.1:$APP_PORT" "$OUTD/replay-$kind.json" \
     --reps "${BENCH_REPS:-3}" --heavy-reps "${BENCH_HEAVY_REPS:-10}" > "$W/replay-$kind.out"
   local mem; mem=$(rss $pid)
@@ -155,7 +173,7 @@ start_full() { # kind home log [extra...]
     RUST_LOG=${RUST_LOG:-info} "$RS" start --home "$home" --p2p-laddr "$p2p" --persistent-peers "$SRC_ID@127.0.0.1:$V_P2P" \
       --allow-duplicate-ip --moniker full "$@" >> "$log" 2>&1 &
   fi
-  FULL_PID=$!; PIDS+=($FULL_PID)
+  FULL_PID=$!; PIDS+=($FULL_PID); watch_hwm $FULL_PID
 }
 rpc_of() { sed -n 's#^laddr = "tcp://127.0.0.1:\([0-9]*\)".*#\1#p' "$1/config/config.toml" | head -1; }
 

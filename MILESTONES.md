@@ -1,7 +1,7 @@
 # celestia-rs Milestones
 
 Authoritative source for "what is next." Only **remaining** work is listed
-here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12) and their
+here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12, B1) and their
 progress notes are archived in
 [`docs/milestones-completed.md`](docs/milestones-completed.md). Direction
 and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
@@ -28,7 +28,6 @@ until F1's exit criteria are met).
 | C1  | pending     | **Canary gate** for M14 | Every item of C1.1–C1.5 below met on the release commit |
 | M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
-| B1  | later       | Benchmarks vs Go on the Mac Mini M4 | Report committed under `docs/benchmarks/` |
 
 Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target)
 ran at height **15,116,658** on 2026-10-20 (~03:40 UTC); mainnet reports
@@ -439,9 +438,3 @@ Runbook: `docs/operator-guide.md` §12
 consensus key, route B bootstrap, the same binary through the v9 → v10
 upgrade). Local `priv_validator_key.json` signing with the double-sign
 guard is accepted (owner, 2026-10-16); remote signers stay out of scope.
-
-## B1 — Benchmarks on the Mac Mini
-
-Go vs Rust reference run of `conformance/bench/` on the Mac Mini M4 after
-the M13 soak (the Linux VM run is in `docs/benchmarks/`). Report committed
-under `docs/benchmarks/`.

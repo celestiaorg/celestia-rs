@@ -1,12 +1,11 @@
 # B1 benchmarks: Go celestia-appd vs celestia-rs
 
-> **Status (2026-10-15): Linux numbers only. The reference numbers for B1
-> are pending a run on the target Mac Mini M4 (16 GB / 512 GB,
-> `docs/hardware.md`); the commands below reproduce everything there.**
-> The Linux run below was taken on a shared, oversubscribed 4-vCPU cloud
-> VM (load average 10-15 from other jobs during the run): absolute
-> latencies are inflated and noisy, and only the Go/Rust ratios of
-> measurements taken back to back are meaningful.
+> **Status (2026-10-20): B1 reference run done on the target Mac Mini M4**
+> ("Results: Mac Mini M4" below). The older Linux runs further down were
+> taken on a shared, oversubscribed 4-vCPU cloud VM (load average 10-15
+> from other jobs): their absolute latencies are inflated and noisy, and
+> only their Go/Rust ratios of measurements taken back to back are
+> meaningful.
 
 Both nodes are release builds on the same machine and see the same
 inputs: Go celestia-appd v10.4.0 / celestia-core v0.42.3 (go1.26.6,
@@ -75,6 +74,64 @@ phase A (e.g. `--no-default-features --features rocksdb`, the system
 allocator). Record `sysctl -n machdep.cpu.brand_string`, `sysctl hw.ncpu
 hw.memsize` and keep the machine otherwise idle.
 
+## Results: Mac Mini M4 (2026-10-20, B1 reference)
+
+Machine: Mac Mini M4 (4 performance + 6 efficiency cores), 16 GB, 256 GB
+SSD (245 GB volume), macOS 26.2, rustc 1.99.1, go1.26.3; celestia-rs
+`fb42fd2`, Go celestia-appd v10.4.0 / celestia-core v0.42.3. The Mac's
+Mocha node was stopped for the run; its mainnet validator kept running
+(~10% of one core), and every benchmark process ran under `nice -n 10`.
+`run.sh` samples RSS with `ps` every 0.2 s on macOS (no `VmHWM`), so peaks
+shorter than that can be missed. Chain: 511 heights, 386,980 txs, 25
+blocks over 2 MiB (up to 28.2 MiB), a 3.7 GB recording; `gen-chain.sh`
+and `run.sh` took 48 minutes together.
+
+### A. App-only replay
+
+| metric | Go celestia-appd | celestia-rs | Rust/Go |
+|---|---|---|---|
+| FinalizeBlock+Commit p50 / p99 | 336.8 / 5337.0 ms | 152.2 / 443.3 ms | 0.45x / 0.08x |
+| FinalizeBlock+Commit, max-size squares p50 / p99 | 347.7 / 458.2 ms | 160.2 / 181.2 ms | 0.46x / 0.40x |
+| FinalizeBlock p50 / p99 | 280.5 / 409.7 ms | 115.3 / 137.9 ms | 0.41x / 0.34x |
+| Commit p50 / p99 | 47.4 / 5025.7 ms | 34.8 / 328.3 ms | 0.73x / 0.07x |
+| **PrepareProposal, max-size squares p50** / p99 | 205.6 / 290.5 ms | **211.6** / 246.8 ms | **1.03x** / 0.85x |
+| ProcessProposal, max-size squares p50 / p99 | 211.9 / 294.5 ms | 58.1 / 112.9 ms | 0.27x / 0.38x |
+| PrepareProposal, light blocks p50 / p99 | 96.0 / 134.9 ms | 35.6 / 40.2 ms | 0.37x / 0.30x |
+| ProcessProposal, light blocks p50 / p99 | 93.2 / 137.6 ms | 31.9 / 37.1 ms | 0.34x / 0.27x |
+| execution throughput | 1.57 blocks/s, 1189 tx/s | 6.29 blocks/s, 4765 tx/s | 4.0x faster |
+| CheckTx (new txs) | 6391 tx/s | 13178 tx/s | 2.1x faster |
+| CheckTx (recheck) | 17257 tx/s | 17224 tx/s | 1.00x |
+| app RSS at end (peak) | 2896 MB (2897) | 1338 MB (1702) | 0.46x |
+| app state on disk at end | 456 MB | 487 MB | 1.07x |
+| app hash mismatches vs the recording | 0 / 511 | 0 / 511 | |
+
+Go's p99 is again IAVL pruning in Commit (keep 100, every 10 heights).
+
+### B-D. Full nodes
+
+| metric | Go | Rust | Rust/Go |
+|---|---|---|---|
+| B. block sync of 511 heights from the Go validator | 186.6 s (2.7 blocks/s) | 134.4 s (3.8 blocks/s) | 0.72x |
+| B. RSS after block sync (peak) | 2373 MB (2373) | 1381 MB (1707) | 0.58x |
+| B. data/ after block sync | 1824 MB | 1405 MB | 0.77x |
+| C. restart: RPC answering | 0.38 s | 0.09 s | 0.24x |
+| C. restart: first new height committed | 7.15 s | 6.84 s | 0.96x |
+| D. state sync of snapshot 600: restored | 37.6 s | 8.6 s | 0.23x |
+| D. state sync: first block after the snapshot | 40.8 s | 11.6 s | 0.28x |
+| D. RSS / data/ after state sync | 1198 MB / 230 MB | 490 MB / 156 MB | 0.41x / 0.68x |
+
+Against the budgets in `docs/hardware.md`: the Rust app peaked at 1.7 GB
+(budget 8 GB steady, 12 GB peak), and FinalizeBlock+Commit of the largest
+blocks stayed under 0.5 s at p99 (mainnet block time ~6 s). The one row
+where Rust is still slower is PrepareProposal on max-size squares (1.03x
+at p50; 1.09x in the first Linux run). App state on disk is 1.07x Go
+(1.67x in the first Linux run, before the RocksDB tuning below), and
+restart is no longer slower than Go (RPC up after 0.09 s vs 0.38 s).
+
+The Mac's SSD is 256 GB, not the 512 GB of `docs/hardware.md`; the disk
+budget there (<= 350 GB after one year) does not fit it. The two nodes use
+4.0 GB (mainnet) and 3.2 GB (Mocha) of data today.
+
 ## Machine (Linux run)
 
 `nproc` 4, Intel(R) Xeon(R) Processor @ 2.10GHz (cloud VM), 15.7 GiB RAM
@@ -82,7 +139,7 @@ hw.memsize` and keep the machine otherwise idle.
 go1.26.6. Load average during phase A: 11-15 (another agent compiling and a
 memory soak running).
 
-## Results (Linux, shared VM; Mac Mini numbers pending)
+## Results (Linux, shared VM)
 
 Rust/Go < 1 means Rust is faster or smaller. "Max-size squares" are the 21
 blocks over 2 MiB (128x128 and 256x256 squares, up to 27.9 MiB); "light"
