@@ -545,4 +545,21 @@ mod tests {
             "proto: MultiSignature: wiretype end group for non-group"
         );
     }
+
+    /// The `MsgExec` of issue #60 (deliver-diff `ibc`, seed 3022, h=352):
+    /// `grantee` after a key past `u32::MAX` and no `msgs`. Go holds an empty
+    /// `MsgExec` (`ParamFilterDecorator`: `must include at least one
+    /// message`, code 18); prost failed (code 2).
+    #[test]
+    fn issue_60_msg_exec() {
+        let value = hex::decode(
+            "f8ffffff3f010a2f63656c6573746961317474307936336d677a336768613233653976676a386a76673836616338617575306e73776a64",
+        )
+        .unwrap();
+        let exec = Any {
+            type_url: "/cosmos.authz.v1beta1.MsgExec".into(),
+            value,
+        };
+        assert_eq!(msg_exec_msgs(&exec).unwrap(), Some(Vec::new()));
+    }
 }
