@@ -5,6 +5,7 @@
 #   celestia-rs-auto-update.sh            # one pass; run hourly by launchd
 #   DRY_RUN=1 celestia-rs-auto-update.sh  # build, but deploy nothing
 #   celestia-rs-auto-update.sh check      # health-check every node, change nothing
+#   celestia-rs-auto-update.sh watchdog   # restart a node stuck behind; run every minute
 #
 # One pass:
 #   1. Fetch origin/main into $SRC. Stop if every node already runs it, if
@@ -39,6 +40,14 @@ MIN_SIGNED=${MIN_SIGNED:-15}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-900}
 BUILD_JOBS=${BUILD_JOBS:-5}
 DRY_RUN=${DRY_RUN:-0}
+# watchdog: restart a node more than WATCHDOG_MAX_LAG blocks behind its
+# reference RPC on WATCHDOG_STRIKES passes in a row, at most once per
+# WATCHDOG_COOLDOWN seconds. A deploy lock older than WATCHDOG_LOCK_STALE
+# seconds is from a killed pass and is ignored.
+WATCHDOG_MAX_LAG=${WATCHDOG_MAX_LAG:-50}
+WATCHDOG_STRIKES=${WATCHDOG_STRIKES:-3}
+WATCHDOG_COOLDOWN=${WATCHDOG_COOLDOWN:-1800}
+WATCHDOG_LOCK_STALE=${WATCHDOG_LOCK_STALE:-10800}
 
 # name|launchd label|binary|local RPC|reference RPC
 NODES=(
@@ -59,8 +68,11 @@ die() { log "ERROR: $*"; exit 2; }
 mkdir -p "$STATE"
 touch "$STATE/bad-commits"
 LOCK=$STATE/lock
-mkdir "$LOCK" 2>/dev/null || die "another pass holds $LOCK"
-trap 'rmdir "$LOCK"' EXIT
+# The watchdog only reads the lock, so a deploy never finds it held.
+if [[ ${1:-} != watchdog ]]; then
+  mkdir "$LOCK" 2>/dev/null || die "another pass holds $LOCK"
+  trap 'rmdir "$LOCK"' EXIT
+fi
 
 binary_commit() { "$1" version --long 2>/dev/null | awk '/^commit:/ {print $2}'; }
 
@@ -100,6 +112,55 @@ restart() { sudo -n /bin/launchctl kickstart -k "system/$1"; }
 
 # Swap a binary atomically (a running process keeps its old inode).
 swap_in() { cp "$1" "$2.new" && mv -f "$2.new" "$2"; }
+
+# After a network outage a running node catches up through consensus
+# gossip, barely faster than the chain, so a few hours offline leave it
+# hours behind and a validator jailed. A restart begins with block sync,
+# which catches up in about a minute.
+watchdog() {
+  local n name label local_rpc ref sf st h rh lag strikes now last
+  if [[ -d $LOCK ]] && (($(date +%s) - $(stat -f %m "$LOCK") < WATCHDOG_LOCK_STALE)); then
+    return 0 # a deploy is restarting the nodes itself
+  fi
+  mkdir -p "$STATE/watchdog"
+  for n in "${NODES[@]}"; do
+    IFS='|' read -r name label _ local_rpc ref <<<"$n"
+    sf=$STATE/watchdog/$name
+    # A node that is down, or block-syncing already, is not ours to restart.
+    st=$(rpc "$local_rpc" /status 2>/dev/null) || { rm -f "$sf.strikes"; continue; }
+    h=$(jq -r '.result.sync_info.latest_block_height' <<<"$st")
+    if [[ ! $h =~ ^[0-9]+$ || $(jq -r '.result.sync_info.catching_up' <<<"$st") == true ]]; then
+      rm -f "$sf.strikes"
+      continue
+    fi
+    rh=$(height "$ref" 2>/dev/null) || continue
+    [[ $rh =~ ^[0-9]+$ ]] || continue
+    lag=$((rh - h))
+    if ((lag <= WATCHDOG_MAX_LAG)); then
+      rm -f "$sf.strikes"
+      continue
+    fi
+    strikes=$(($(cat "$sf.strikes" 2>/dev/null || echo 0) + 1))
+    echo "$strikes" >"$sf.strikes"
+    log "$name: $lag blocks behind $ref at height $h (strike $strikes of $WATCHDOG_STRIKES)"
+    ((strikes >= WATCHDOG_STRIKES)) || continue
+    now=$(date +%s)
+    last=$(cat "$sf.last-restart" 2>/dev/null || echo 0)
+    if ((now - last < WATCHDOG_COOLDOWN)); then
+      log "$name: restarted $((now - last))s ago; next restart after ${WATCHDOG_COOLDOWN}s"
+      continue
+    fi
+    log "$name: restarting $label to block-sync"
+    restart "$label" || log "$name: restart of $label failed"
+    echo "$now" >"$sf.last-restart"
+    rm -f "$sf.strikes"
+  done
+}
+
+if [[ ${1:-} == watchdog ]]; then
+  watchdog
+  exit 0
+fi
 
 if [[ ${1:-} == check ]]; then
   rc=0

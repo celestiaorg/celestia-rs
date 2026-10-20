@@ -356,6 +356,26 @@ on a validator), and a validator then runs code no one reviewed on that
 machine before it signed with it: weigh that before enabling it on a
 mainnet validator.
 
+#### Restarting a node that fell behind (optional)
+
+After a network outage, a node that kept running catches up through
+consensus gossip. This is only a little faster than the chain, so a
+3-hour outage can leave it hours behind for most of a day, and a
+validator gets jailed. A restart starts with block sync, which catches
+up in about a minute (verified on both nodes 2026-10-20).
+`celestia-rs-auto-update.sh watchdog` does this restart for you. It
+restarts a node with `kickstart -k` when the node is more than 50 blocks
+behind its reference RPC on 3 passes in a row, and it restarts each node
+at most once every 30 minutes (`WATCHDOG_MAX_LAG`, `WATCHDOG_STRIKES`,
+`WATCHDOG_COOLDOWN`). It leaves alone a node that is down, is already
+block-syncing, or is being deployed (auto-update lock). It also does
+nothing while the reference RPC cannot be reached.
+`packaging/macos/org.celestia.celestia-rs-watchdog.plist` runs it every
+minute, and its header has the install steps. It logs to
+`~/Library/Logs/celestia-rs-watchdog.log` only when a node is behind.
+Restarting does not unjail a validator: if it was already jailed, unjail
+it after the restart (§11.9).
+
 ### Linux: systemd
 
 `packaging/linux/celestia-rs.service`: user `celestia`, home
