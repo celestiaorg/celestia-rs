@@ -401,14 +401,29 @@ proposal (`GOV proposal_passed`), not per type.
   blocks of `gov`, clean against Go at both versions); the per-type count
   of executions needs the proposal outcome attributed to its messages
   (open).
+* **Disabled in Celestia's Go code** (every such tx fails in Go at both
+  app versions, so no harness can execute it successfully):
+  `cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount` (and
+  `MsgCreatePeriodicVestingAccount`): celestiaorg/cosmos-sdk v0.52.8 and
+  v0.52.12 return `ErrInvalidRequest` ("... accounts are not supported",
+  sdk/18) from `x/auth/vesting/msg_server.go`.
+  `cosmos.gov.v1beta1.MsgSubmitProposal` and
+  `cosmos.gov.v1.MsgExecLegacyContent`: celestia-app v9.0.8 and v10.4.0
+  call `SetLegacyRouter(govv1beta1.NewRouter())` with no routes, so the
+  submission fails `ErrNoProposalHandlerExists` (gov/9) for any content.
 * **Harness gaps** (reachable on mainnet, to add):
-  `cosmos.gov.v1beta1.MsgSubmitProposal` / `MsgDeposit` (the legacy gov
-  messages; GOVPASS uses v1), `cosmos.gov.v1.MsgExecLegacyContent` with a
-  successful outcome, `cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount`,
-  `hyperlane.warp.v1.MsgUnrollRemoteRouter`, and the IBC channel messages
-  that need a counterparty step the mock does not take
-  (`MsgChannelCloseInit` is refused by the transfer app, so only an ICA
-  channel can close; `MsgChannelUpgradeAck`, `MsgPruneAcknowledgements`).
+  the IBC channel messages that need a counterparty step the mock does
+  not take (`MsgChannelCloseInit` is refused by the transfer app, so only
+  an ICA channel can close; `MsgChannelUpgradeAck`,
+  `MsgPruneAcknowledgements`).
+  `hyperlane.warp.v1.MsgUnrollRemoteRouter` now mostly targets a router
+  enrolled on a token the signer owns (first Go success in a local
+  `hyperlane` run, seed 4243, after this report).
+  `cosmos.gov.v1beta1.MsgDeposit` now mostly makes a small deposit on one
+  of the three newest proposals; three local `gov` runs (seeds 4244 and,
+  with `DELIVER_GOVPASS`, 4245) still had no success: the newest proposals
+  had mostly ended (`gov/3`), so it needs a proposal kept in its deposit
+  period (open).
 
 ## Status against the F1.3 exit
 

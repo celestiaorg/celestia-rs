@@ -2365,11 +2365,33 @@ impl Gen {
                     }),
                 })
             }
-            10 => Any::pack(&warp::MsgUnrollRemoteRouter {
-                owner: me,
-                token_id: self.hl_object(HL_TOKEN, i),
-                receiver_domain: domain,
-            }),
+            10 => {
+                // A router enrolled on a token the signer owns when there is
+                // one (the success path), picked by `domain` so the
+                // generator's draws stay as before.
+                let token_id = self.hl_object(HL_TOKEN, i);
+                let enrolled: Vec<(String, u32)> = self
+                    .hl
+                    .routers
+                    .iter()
+                    .filter(|r| {
+                        self.hl_objects
+                            .iter()
+                            .any(|o| o.0 == HL_TOKEN && o.1 == r.0 && o.2 == i)
+                    })
+                    .map(|r| (r.0.clone(), r.1))
+                    .collect();
+                let (token_id, receiver_domain) = if enrolled.is_empty() || domain == 5 {
+                    (token_id, domain)
+                } else {
+                    enrolled[domain as usize % enrolled.len()].clone()
+                };
+                Any::pack(&warp::MsgUnrollRemoteRouter {
+                    owner: me,
+                    token_id,
+                    receiver_domain,
+                })
+            }
             _ => {
                 let k = 1 + self.m.rng.below(5);
                 let mut vals: Vec<String> = (0..k)
@@ -2608,11 +2630,22 @@ impl Gen {
                     },
                 ],
             }),
-            2 => Any::pack(&gov1b::MsgDeposit {
-                proposal_id: id,
-                depositor: me,
-                amount: vec![utia(1_000_000_000)],
-            }),
+            2 => {
+                // Mostly a small deposit on one of the newest proposals (in
+                // its deposit or voting period: the success path). Derived
+                // from `id`, so the generator's draws stay as before.
+                let recent: Vec<u64> = p.iter().rev().take(3).copied().collect();
+                let (proposal_id, amount) = if recent.is_empty() || id.is_multiple_of(4) {
+                    (id, 1_000_000_000)
+                } else {
+                    (recent[id as usize % recent.len()], 1_000_000)
+                };
+                Any::pack(&gov1b::MsgDeposit {
+                    proposal_id,
+                    depositor: me,
+                    amount: vec![utia(amount)],
+                })
+            }
             3 => Any::pack(&gov1b::MsgSubmitProposal {
                 content: Some(Any::pack(&gov1b::TextProposal {
                     title: "fuzz".into(),
@@ -5353,6 +5386,13 @@ fn learn_hyperlane(gn: &mut Gen, msgs: &[Any], data: &[u8]) {
                         &mut gn.hl.routers,
                         (x.token_id, r.receiver_domain, r.receiver_contract),
                     );
+                }
+            }
+            ("/hyperlane.warp.v1.MsgUnrollRemoteRouter", _) => {
+                if let Ok(x) = warp::MsgUnrollRemoteRouter::decode(v) {
+                    gn.hl
+                        .routers
+                        .retain(|r| r.0 != x.token_id || r.1 != x.receiver_domain);
                 }
             }
             ("/hyperlane.core.v1.MsgSetMailbox", _) => {
