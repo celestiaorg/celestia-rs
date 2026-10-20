@@ -19,6 +19,7 @@ bech32 = "0.9"
 bytes = "1"
 hex = "0.4"
 prost = "0.13"
+thiserror = "2"
 
 [dev-dependencies]
 proptest = "1"

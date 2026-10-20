@@ -37,71 +37,55 @@ pub fn parse_big_int_text(text: &[u8]) -> Option<num_bigint::BigInt> {
     parse::parse_go_big_int(text, parse::Base::Auto)
 }
 
-use std::fmt;
-
 /// Errors returned by the math types. Each variant corresponds to an error or
 /// panic in the Go implementation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum MathError {
     /// Go `ErrIntOverflow` / `"Int overflow"` panics: a result exceeds the
     /// type's range.
+    #[error("integer overflow")]
     IntOverflow,
     /// Go `ErrDivideByZero` / big.Int division-by-zero panic.
+    #[error("divide by zero")]
     DivideByZero,
     /// The string is not a valid Go integer literal (`SetString(s, 0)` failed).
+    #[error("cannot convert {0:?} to big.Int")]
     InvalidInt(String),
     /// The integer has more than [`MAX_BIT_LEN`] bits.
+    #[error("integer out of range; max: {MAX_BIT_LEN} bits")]
     IntOutOfRange,
     /// A [`Uint`] was constructed from a negative value.
+    #[error("non-positive integer")]
     NegativeUint,
     /// Go `ErrLegacyEmptyDecimalStr`.
+    #[error("decimal string cannot be empty")]
     EmptyDecimalStr,
     /// Go `ErrLegacyInvalidDecimalLength`.
+    #[error("invalid decimal length")]
     InvalidDecimalLength,
     /// Go `ErrLegacyInvalidDecimalStr` (including Go's "out of range" wrap).
+    #[error("invalid decimal string")]
     InvalidDecimalStr,
     /// The decimal string has more than [`LEGACY_PRECISION`] fractional digits.
+    #[error("value has {0} decimal places: max precision {LEGACY_PRECISION}")]
     ExcessPrecision(usize),
     /// The digits of a decimal string could not be parsed in base 10.
+    #[error("failed to set decimal string with base 10: {0}")]
     InvalidDecimalDigits(String),
     /// A decimal value is outside `±(2^256 * 10^18 - 1)` (scaled).
+    #[error("decimal out of range")]
     DecOutOfRange,
     /// A precision argument outside `0..=18`.
+    #[error("invalid precision {0}")]
     InvalidPrecision(i64),
     /// A conversion to `i64` / `u64` is out of bounds.
+    #[error("value out of bound")]
     ConversionOutOfRange,
     /// A JSON value was not a string.
+    #[error("invalid JSON: {0}")]
     Json(String),
 }
-
-impl fmt::Display for MathError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::IntOverflow => f.write_str("integer overflow"),
-            Self::DivideByZero => f.write_str("divide by zero"),
-            Self::InvalidInt(s) => write!(f, "cannot convert {s:?} to big.Int"),
-            Self::IntOutOfRange => write!(f, "integer out of range; max: {MAX_BIT_LEN} bits"),
-            Self::NegativeUint => f.write_str("non-positive integer"),
-            Self::EmptyDecimalStr => f.write_str("decimal string cannot be empty"),
-            Self::InvalidDecimalLength => f.write_str("invalid decimal length"),
-            Self::InvalidDecimalStr => f.write_str("invalid decimal string"),
-            Self::ExcessPrecision(n) => write!(
-                f,
-                "value has {n} decimal places: max precision {LEGACY_PRECISION}"
-            ),
-            Self::InvalidDecimalDigits(s) => {
-                write!(f, "failed to set decimal string with base 10: {s}")
-            }
-            Self::DecOutOfRange => f.write_str("decimal out of range"),
-            Self::InvalidPrecision(p) => write!(f, "invalid precision {p}"),
-            Self::ConversionOutOfRange => f.write_str("value out of bound"),
-            Self::Json(s) => write!(f, "invalid JSON: {s}"),
-        }
-    }
-}
-
-impl std::error::Error for MathError {}
 
 /// Result alias for this crate.
 pub type Result<T> = std::result::Result<T, MathError>;

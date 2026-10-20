@@ -20,14 +20,17 @@ pub const MAX_AUNTS: usize = 100;
 pub type Hash = [u8; HASH_LENGTH];
 
 /// Errors returned by simple Merkle proof helpers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The proof has `total == 0`, or an operation requiring leaves was called
     /// for an empty tree.
+    #[error("invalid Merkle proof total")]
     InvalidTotal,
     /// The proof index is outside `0..total`.
+    #[error("invalid Merkle proof index")]
     InvalidIndex,
     /// The proof contains more than [`MAX_AUNTS`] aunt hashes.
+    #[error("too many Merkle proof aunts: max {max}, actual {actual}")]
     TooManyAunts {
         /// Maximum accepted aunt count.
         max: usize,
@@ -35,29 +38,15 @@ pub enum Error {
         actual: usize,
     },
     /// The proof has fewer or more aunt hashes than the tree shape requires.
+    #[error("unexpected Merkle proof aunt count")]
     UnexpectedAuntCount,
     /// The proof leaf hash does not match the provided leaf bytes.
+    #[error("Merkle proof leaf hash mismatch")]
     LeafHashMismatch,
     /// The computed root does not match the expected root.
+    #[error("Merkle proof root mismatch")]
     RootMismatch,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::InvalidTotal => f.write_str("invalid Merkle proof total"),
-            Self::InvalidIndex => f.write_str("invalid Merkle proof index"),
-            Self::TooManyAunts { max, actual } => {
-                write!(f, "too many Merkle proof aunts: max {max}, actual {actual}")
-            }
-            Self::UnexpectedAuntCount => f.write_str("unexpected Merkle proof aunt count"),
-            Self::LeafHashMismatch => f.write_str("Merkle proof leaf hash mismatch"),
-            Self::RootMismatch => f.write_str("Merkle proof root mismatch"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// An inclusion proof for one leaf in a `CometBFT` simple Merkle tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
