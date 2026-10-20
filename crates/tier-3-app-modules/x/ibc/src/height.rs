@@ -9,6 +9,13 @@ pub fn to_string(h: &Height) -> String {
     format!("{}-{}", h.revision_number, h.revision_height)
 }
 
+/// `fmt`'s `%d` of a `Height`: `String()` is not used for `%d`, so the
+/// struct's fields print as `{1 20}`.
+#[must_use]
+pub fn go_fmt_d(h: &Height) -> String {
+    format!("{{{} {}}}", h.revision_number, h.revision_height)
+}
+
 /// `Height.Compare` (revision number first).
 #[must_use]
 pub fn cmp(a: &Height, b: &Height) -> std::cmp::Ordering {
@@ -107,6 +114,7 @@ mod tests {
         assert!(parse("2").is_err());
         assert!(parse("+1-2").is_err());
         assert_eq!(to_string(&h(1, 5)), "1-5");
+        assert_eq!(go_fmt_d(&h(720, 1)), "{720 1}");
         assert!(timeout_elapsed(&h(1, 5), 0, &h(1, 5), 0));
         assert!(!timeout_elapsed(&h(0, 0), 0, &h(1, 5), 99));
         assert!(timeout_elapsed(&h(0, 0), 10, &h(1, 5), 10));

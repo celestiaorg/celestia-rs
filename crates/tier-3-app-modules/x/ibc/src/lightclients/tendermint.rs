@@ -559,13 +559,10 @@ pub fn validate_header_basic(h: &Header) -> Result<()> {
     let hh = header_height(h)?;
     let trusted = h.trusted_height.unwrap_or_default();
     if height::gte(&trusted, &hh) {
-        // `%d` of the `Height` structs.
         return Err(tmerr::invalid_header_height(format!(
-            "TrustedHeight {{{} {}}} must be less than header height {{{} {}}}",
-            trusted.revision_number,
-            trusted.revision_height,
-            hh.revision_number,
-            hh.revision_height
+            "TrustedHeight {} must be less than header height {}",
+            height::go_fmt_d(&trusted),
+            height::go_fmt_d(&hh)
         )));
     }
     if h.validator_set.is_none() {
@@ -1002,10 +999,11 @@ pub fn verify_membership(
     value: Option<&[u8]>,
 ) -> Result<()> {
     if height::lt(&latest(cs), h) {
+        // Go formats both heights with `%d`.
         return Err(ierr::invalid_height(format!(
             "client state height < proof height ({} < {}), please ensure the client has been updated",
-            height::to_string(&latest(cs)),
-            height::to_string(h)
+            height::go_fmt_d(&latest(cs)),
+            height::go_fmt_d(h)
         )));
     }
     verify_delay_period_passed(ctx, client_id, h, delay_time, delay_block)?;
