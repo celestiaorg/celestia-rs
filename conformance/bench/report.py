@@ -34,6 +34,11 @@ def ram_gb():
             if line.startswith("MemTotal"):
                 return round(int(line.split()[1]) / 2**20, 1)
     except OSError:
+        pass
+    try:
+        out = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout
+        return round(int(out) / 2**30, 1)
+    except (OSError, ValueError):
         return "?"
 
 
