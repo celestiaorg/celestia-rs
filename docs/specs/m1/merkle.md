@@ -26,7 +26,7 @@ The crate exports exactly these root items:
 ```rust
 //! CometBFT simple Merkle tree primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/merkle.md` for the API contract.
+//! See `docs/specs/m1/merkle.md` for the API contract.
 
 /// Size in bytes of a simple Merkle hash.
 pub const HASH_LENGTH: usize = 32;

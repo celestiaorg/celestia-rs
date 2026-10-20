@@ -24,7 +24,7 @@ keepers, ABCI query proof surfaces, and app-hash replay.
 ## Conformance
 
 The crate contract is specified in
-`docs/superpowers/specs/m2/multistore.md`. Go conformance fixtures live under
+`docs/specs/m2/multistore.md`. Go conformance fixtures live under
 `conformance/fixtures/multistore/` and are regenerated with:
 
 ```bash

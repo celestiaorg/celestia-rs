@@ -22,7 +22,7 @@ fixtures, including malformed proof verification coverage.
 
 ## Conformance
 
-The implementation spec is `docs/superpowers/specs/m2/iavl.md`. Go-generated
+The implementation spec is `docs/specs/m2/iavl.md`. Go-generated
 conformance fixtures live under `conformance/fixtures/iavl/` and are
 regenerated with:
 

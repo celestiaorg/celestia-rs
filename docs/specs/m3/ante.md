@@ -29,7 +29,7 @@ The crate exports exactly these items from its root module:
 ```rust
 //! Cosmos SDK transaction ante machinery for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m3/ante.md` for the API contract.
+//! See `docs/specs/m3/ante.md` for the API contract.
 
 pub use cosmos_types::tx::{AuthInfo, Fee, ModeInfo, SignDoc, SignMode, SignerInfo, Tx, TxRaw};
 

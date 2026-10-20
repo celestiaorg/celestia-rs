@@ -31,7 +31,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Celestia share encoding and decoding primitives.
 //!
-//! See `docs/superpowers/specs/m1/shares.md` for the API contract.
+//! See `docs/specs/m1/shares.md` for the API contract.
 
 pub mod blob;
 pub mod builder;

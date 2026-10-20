@@ -22,7 +22,7 @@ The crate exports exactly these items from its root module:
 ```rust
 //! Cryptographic hash primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/hash.md` for the API contract.
+//! See `docs/specs/m1/hash.md` for the API contract.
 
 /// A 32-byte SHA-256 digest.
 pub type Sha256Digest = [u8; 32];

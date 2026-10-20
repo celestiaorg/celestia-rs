@@ -47,7 +47,7 @@ pub mod share;
 pub mod sparse;
 ```
 
-See [`docs/superpowers/specs/m1/shares.md`](../../../docs/superpowers/specs/m1/shares.md)
+See [`docs/specs/m1/shares.md`](../../../docs/specs/m1/shares.md)
 for the locked API contract.
 
 ## Conformance

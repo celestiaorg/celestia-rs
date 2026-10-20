@@ -30,7 +30,7 @@ The crate exports exactly these root modules:
 ```rust
 //! CometBFT protocol types for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/tendermint-types.md` for the API contract.
+//! See `docs/specs/m1/tendermint-types.md` for the API contract.
 
 pub mod block;
 pub mod canonical;

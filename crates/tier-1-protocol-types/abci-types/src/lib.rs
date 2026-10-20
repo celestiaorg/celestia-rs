@@ -1,6 +1,6 @@
 //! CometBFT ABCI++ protocol types for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/abci-types.md` for the API contract.
+//! See `docs/specs/m1/abci-types.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

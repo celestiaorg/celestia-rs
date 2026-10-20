@@ -30,7 +30,7 @@ The crate exports exactly these items from its root module:
 ```rust
 //! Cosmos SDK ICS-23 proof operation primitives.
 //!
-//! See `docs/superpowers/specs/m2/ics23-proofs.md` for the API contract.
+//! See `docs/specs/m2/ics23-proofs.md` for the API contract.
 
 pub use iavl::Hash;
 

@@ -59,7 +59,7 @@ pub fn root_from_byte_slices<T: AsRef<[u8]>>(items: &[T]) -> Hash;
 pub fn proofs_from_byte_slices<T: AsRef<[u8]>>(items: &[T]) -> (Hash, Vec<Proof>);
 ```
 
-See [`docs/superpowers/specs/m1/merkle.md`](../../../docs/superpowers/specs/m1/merkle.md)
+See [`docs/specs/m1/merkle.md`](../../../docs/specs/m1/merkle.md)
 for the locked API contract.
 
 ## Conformance

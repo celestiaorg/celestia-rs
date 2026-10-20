@@ -42,7 +42,7 @@ pub mod vote;
 ```
 
 See
-[`docs/superpowers/specs/m1/tendermint-types.md`](../../../docs/superpowers/specs/m1/tendermint-types.md)
+[`docs/specs/m1/tendermint-types.md`](../../../docs/specs/m1/tendermint-types.md)
 for the full API contract.
 
 ## Conformance

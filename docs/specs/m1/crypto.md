@@ -31,7 +31,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Public-key cryptography primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/crypto.md` for the API contract.
+//! See `docs/specs/m1/crypto.md` for the API contract.
 
 pub mod bls12381;
 pub mod ed25519;

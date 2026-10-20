@@ -30,7 +30,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Cosmos SDK protocol types for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/cosmos-types.md` for the API contract.
+//! See `docs/specs/m1/cosmos-types.md` for the API contract.
 
 pub mod address;
 pub mod any;

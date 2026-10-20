@@ -26,7 +26,7 @@ mainnet DAH validation.
 ## Conformance
 
 The implementation spec is
-`docs/superpowers/specs/m1/square.md`. Go-generated conformance fixtures will
+`docs/specs/m1/square.md`. Go-generated conformance fixtures will
 be committed under `conformance/fixtures/square/` and regenerated with:
 
 ```bash

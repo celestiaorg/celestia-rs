@@ -52,7 +52,7 @@ celestia-rs/
 │   ├── fixtures/               # committed golden vectors (JSON / zstd / LFS)
 │   └── fixturegen/             # Go tool: uses celestia-app to emit fixtures
 ├── docs/
-│   ├── superpowers/specs/      # design docs + per-milestone specs
+│   ├── specs/                  # design docs + per-milestone specs
 │   └── adr/                    # architecture decision records
 ├── .github/workflows/          # CI: build, test, clippy, fmt, deny, coverage
 └── xtask/                      # cargo-xtask: regen fixtures, vendor bump
@@ -237,7 +237,7 @@ The unit of agent work is **one crate, one PR**.
 
 ### Per-crate spec format (contract the agent works against)
 
-Each crate has a spec at `docs/superpowers/specs/<milestone>/<crate>.md`:
+Each crate has a spec at `docs/specs/<milestone>/<crate>.md`:
 
 ```markdown
 # Crate: <name>
@@ -275,7 +275,7 @@ The spec is a contract: an agent satisfying all numbered requirements and shippi
 A meta-process (you, `/loop`, or a scheduled agent) runs:
 
 1. Read `MILESTONES.md` → current milestone.
-2. Read `docs/superpowers/specs/<milestone>/_index.md` → crate dependency DAG.
+2. Read `docs/specs/<milestone>/_index.md` → crate dependency DAG.
 3. Compute "ready" crates: unmerged, all deps merged.
 4. For each ready crate without an open PR: dispatch a sub-agent ("implement crate X per its spec, open a PR").
 5. For each open `agent-built` PR: if CI green & approved, auto-merge handles it; if CI red, dispatch a "fix CI" sub-agent.

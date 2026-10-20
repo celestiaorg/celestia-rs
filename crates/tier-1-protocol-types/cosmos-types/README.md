@@ -44,7 +44,7 @@ pub mod tx;
 ```
 
 See
-[`docs/superpowers/specs/m1/cosmos-types.md`](../../../docs/superpowers/specs/m1/cosmos-types.md)
+[`docs/specs/m1/cosmos-types.md`](../../../docs/specs/m1/cosmos-types.md)
 for the full API contract.
 
 ## Conformance

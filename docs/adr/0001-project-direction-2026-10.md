@@ -1,7 +1,7 @@
 # ADR 0001 — Project direction (2026-10-14)
 
 **Status:** Accepted. Supersedes the conflicting parts of
-[`../superpowers/specs/2026-05-14-celestia-rs-design.md`](../superpowers/specs/2026-05-14-celestia-rs-design.md).
+[`../specs/2026-05-14-celestia-rs-design.md`](../specs/2026-05-14-celestia-rs-design.md).
 
 ## Context
 

@@ -45,7 +45,7 @@ pub mod vote_extension;
 ```
 
 See
-[`docs/superpowers/specs/m1/abci-types.md`](../../../docs/superpowers/specs/m1/abci-types.md)
+[`docs/specs/m1/abci-types.md`](../../../docs/specs/m1/abci-types.md)
 for the full API contract.
 
 ## Conformance

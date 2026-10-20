@@ -21,7 +21,7 @@ verifies membership and non-membership proofs, and exposes CometBFT
 
 ## Conformance
 
-The crate is specified by `docs/superpowers/specs/m2/ics23-proofs.md`.
+The crate is specified by `docs/specs/m2/ics23-proofs.md`.
 Go-generated fixtures live under `conformance/fixtures/ics23-proofs/` and are
 regenerated with:
 

@@ -34,7 +34,7 @@ pub mod ed25519;
 pub mod secp256k1;
 ```
 
-See [`docs/superpowers/specs/m1/crypto.md`](../../../docs/superpowers/specs/m1/crypto.md)
+See [`docs/specs/m1/crypto.md`](../../../docs/specs/m1/crypto.md)
 for the locked API contract.
 
 ## Conformance

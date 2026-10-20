@@ -1,6 +1,6 @@
 //! Celestia share encoding and decoding primitives.
 //!
-//! See `docs/superpowers/specs/m1/shares.md` for the API contract.
+//! See `docs/specs/m1/shares.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

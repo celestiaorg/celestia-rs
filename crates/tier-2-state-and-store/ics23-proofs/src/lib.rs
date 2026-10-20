@@ -1,6 +1,6 @@
 //! Cosmos SDK ICS-23 proof operation primitives.
 //!
-//! See `docs/superpowers/specs/m2/ics23-proofs.md` for the API contract.
+//! See `docs/specs/m2/ics23-proofs.md` for the API contract.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

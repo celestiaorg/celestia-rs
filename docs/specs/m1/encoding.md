@@ -24,7 +24,7 @@ The crate exports exactly these root modules:
 ```rust
 //! Encoding primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m1/encoding.md` for the API contract.
+//! See `docs/specs/m1/encoding.md` for the API contract.
 
 pub mod protobuf;
 pub mod varint;

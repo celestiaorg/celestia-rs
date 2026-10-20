@@ -43,7 +43,7 @@ pub mod base64;
 pub mod bech32;
 ```
 
-See [`docs/superpowers/specs/m1/encoding.md`](../../../docs/superpowers/specs/m1/encoding.md)
+See [`docs/specs/m1/encoding.md`](../../../docs/specs/m1/encoding.md)
 for the locked API contract.
 
 ## Conformance

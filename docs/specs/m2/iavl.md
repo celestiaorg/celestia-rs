@@ -25,7 +25,7 @@ The crate exports exactly these items from its root module:
 ```rust
 //! Cosmos IAVL+ state tree primitives for celestia-rs.
 //!
-//! See `docs/superpowers/specs/m2/iavl.md` for the API contract.
+//! See `docs/specs/m2/iavl.md` for the API contract.
 
 pub const HASH_SIZE: usize = 32;
 
