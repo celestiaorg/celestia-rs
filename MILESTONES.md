@@ -138,6 +138,13 @@ Every item must pass on the commit the canary runs.
   the release commit. *First green run:* 2026-10-19 on `0a1cb01` (both
   targets, every case and configuration, traces identical across release /
   dist and x86_64 / aarch64).
+  *On the Mac Mini M4 itself (2026-10-20, `fb42fd2`):* `determinism.sh`
+  with `release` and `dist` (36 `deliver` runs, 0 mismatches, every
+  configuration byte-identical), release and dist traces identical, and
+  identical to CI's Linux x86_64 and `macos-14` traces of the same commit
+  (determinism run 39504225928, green); `pp-diff.sh` with `dist` on
+  `blob`, `ibc`, `v9-blob` clean (4,220 mutated proposals). The whole suite
+  took under 3 minutes on the M4. Rerun on the commit the canary runs.
 
 - [ ] **C1.4 Fresh `deliver` campaign on the release commit.** At least
   one run of every devnet scenario at both app versions, plus
