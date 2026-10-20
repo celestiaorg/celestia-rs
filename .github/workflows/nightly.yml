@@ -31,7 +31,8 @@ jobs:
           arguments: --all-features
 
   # Go binaries for the devnet scripts (celestia-app v10.4.0 / celestia-core
-  # v0.42.3), built from module-proxy sources and cached by version.
+  # v0.42.3, and celestia-app v9.0.8 in v9/), built from module-proxy
+  # sources and cached by version.
   devnet-bins:
     runs-on: ubuntu-latest
     steps:
@@ -44,9 +45,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: devnet-bin-app-v10.4.0-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: devnet-bin-app-v10.4.0-v9.0.8-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        run: conformance/devnet/build-bins.sh
+        run: |
+          conformance/devnet/build-bins.sh
+          APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
       - uses: actions/upload-artifact@v7
         with:
           name: devnet-bin
@@ -68,6 +71,7 @@ jobs:
           - p2p-interop.sh
           - mempool-interop.sh
           - statesync-rust.sh conformance/devnet/workloads/staking.sh
+          - APP_V9=1 statesync-rust.sh conformance/devnet/workloads/staking.sh
           - blocksync-interop.sh
           - mixed-validators.sh 60 20
           - double-sign-evidence.sh
@@ -80,7 +84,7 @@ jobs:
         with:
           name: devnet-bin
           path: target/devnet-bin
-      - run: chmod +x target/devnet-bin/*
+      - run: chmod -R +x target/devnet-bin
       - name: Run ${{ matrix.script }}
         env:
           DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
@@ -89,7 +93,11 @@ jobs:
           TMPDIR: ${{ runner.temp }}/devnet
         run: |
           mkdir -p "$TMPDIR"
-          bash conformance/devnet/${{ matrix.script }}
+          # leading NAME=value words are the script's environment
+          set -- ${{ matrix.script }}
+          envs=()
+          while [[ "$1" == *=* ]]; do envs+=("$1"); shift; done
+          env "${envs[@]}" bash "conformance/devnet/$1" "${@:2}"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -111,7 +119,7 @@ jobs:
         with:
           name: devnet-bin
           path: target/devnet-bin
-      - run: chmod +x target/devnet-bin/*
+      - run: chmod -R +x target/devnet-bin
       - name: soak
         env:
           DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin

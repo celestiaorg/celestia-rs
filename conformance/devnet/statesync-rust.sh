@@ -15,7 +15,11 @@
 #     peer is the Rust node state-syncs from it (Go verifies the app hash
 #     against its own light client).
 #
-# usage: [DEVNET_PORT_OFFSET=n] [DEVNET_BIN=dir] conformance/devnet/statesync-rust.sh [workload.sh]
+# APP_V9=1 runs both Go nodes on celestia-app v9.0.8 ($DEVNET_BIN/v9, as
+# devnet.sh builds it): a chain at app version 9, snapshotted by Go and by
+# Rust.
+#
+# usage: [DEVNET_PORT_OFFSET=n] [DEVNET_BIN=dir] [APP_V9=1] conformance/devnet/statesync-rust.sh [workload.sh]
 # Exit 0 iff both phases succeed.
 set -euo pipefail
 [ -n "${DEBUG:-}" ] && set -x
@@ -23,6 +27,7 @@ WORKLOAD=${1:-}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 export PATH=$BIN:$PATH
+[ -n "${APP_V9:-}" ] && export PATH=$BIN/v9:$PATH
 OFF=${DEVNET_PORT_OFFSET:-7000}
 CHAIN_ID=rs-statesync-rust-1
 INTERVAL=10
@@ -95,6 +100,9 @@ header_app_hash() { # height -> app_hash of that header
 
 celestia-appd start --force-no-bbr --home "$V" > "$W/val.log" 2>&1 & PIDS+=($!)
 wait_height "$(port 26657 0)" 2 "$W/val.log" || fail "validator did not start"
+APPV=$(curl -s "$VAL_RPC/abci_info" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["response"].get("app_version", "0"))')
+echo "validator at app version $APPV"
+[ -z "${APP_V9:-}" ] || [ "$APPV" = 9 ] || fail "APP_V9=1 but the validator runs app version $APPV"
 if [ -n "$WORKLOAD" ]; then
   HOME_DIR=$V CHAIN_ID=$CHAIN_ID NODE=tcp://127.0.0.1:$(port 26657 0) bash "$WORKLOAD" > "$W/workload.log" 2>&1 || true
   echo "workload $(basename "$WORKLOAD") done at height $(h "$(port 26657 0)")"
