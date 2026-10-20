@@ -11,6 +11,10 @@
 - ICS-20 `MsgTransfer` receiver and memo limits count Go bytes (an invalid
   UTF-8 byte is one), so `CheckTx` fails the same way as Go
   (`docs/security.md` 100). #78
+- Hyperlane's `Coins.Validate` prints a non-positive first coin whole
+  (`coin -1utia amount is not positive`) like Go, so a failed gov
+  proposal stores Go's `failed_reason` (app-hash split,
+  `docs/security.md` 101). #79
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same

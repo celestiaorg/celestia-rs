@@ -40,3 +40,6 @@ staking-lifecycle 300 8 5017 DELIVER_IBC=1 DELIVER_RECHECK=1 DELIVER_SIM=1 DELIV
 # MsgTransfer receiver of invalid UTF-8 bytes under 2048 Go bytes: Go fails
 # GetSigners (code 1), Rust failed the length check (#78, security.md 100).
 ibc-edge 300 8 6091 DELIVER_IBC=1 DELIVER_GOVPASS=1
+# A failed gov proposal's MsgPayForGas of -1utia: hyperlane's NewCoins panic
+# prints the first coin whole (#79, security.md 101).
+v9-upgrade 100 6 7431 GO_APPD_NEXT=v10 DELIVER_UPGRADE=31 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
