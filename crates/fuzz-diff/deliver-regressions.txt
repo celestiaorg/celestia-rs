@@ -34,3 +34,6 @@ v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_GOVPASS=1
 # version lists (`%v` of `[]*Version`) in its failed_reason: app-hash split
 # (#72, security.md 98).
 zkism-forwarding 300 8 5083 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_GOVPASS=1
+# Redelegating the last shares of an unbonded validator: Go's getBeginInfo
+# fails `validator does not exist` once Unbond removed it (#74, security.md 99).
+staking-lifecycle 300 8 5017 DELIVER_IBC=1 DELIVER_RECHECK=1 DELIVER_SIM=1 DELIVER_GOVPASS=1

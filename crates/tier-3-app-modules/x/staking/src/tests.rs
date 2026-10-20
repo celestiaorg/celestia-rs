@@ -333,6 +333,34 @@ fn redelegation_from_unbonded_validator_completes_at_go_zero_time() {
     assert_eq!(ev.attributes[3].value, "0001-01-01T00:00:00Z");
 }
 
+/// Redelegating the last shares away from an unbonded validator: `Unbond`
+/// removes the validator, and Go's `getBeginInfo` then returns
+/// `ErrNoValidatorFound` (its named `err`), failing the redelegation.
+/// Rust succeeded (deliver-diff `staking-lifecycle` seed 5017, #74).
+#[test]
+fn redelegating_last_shares_of_unbonded_validator_fails() {
+    let mut m = ms();
+    let mut ctx = Context::new(&mut m, header(1, 1_000_000), ExecMode::Finalize);
+    setup(&mut ctx);
+    fund(&mut ctx, &acc(1), 10_000_000);
+    fund(&mut ctx, &acc(2), 10_000_000);
+    // No EndBlock: both validators stay unbonded.
+    create(&mut ctx, 1, 5_000_000);
+    create(&mut ctx, 2, 5_000_000);
+    let msg = |amount: u64| pb::MsgBeginRedelegate {
+        delegator_address: x_auth::bech32(&acc(1)).unwrap(),
+        validator_src_address: crate::addr::val_to_string(&acc(1)).unwrap(),
+        validator_dst_address: crate::addr::val_to_string(&acc(2)).unwrap(),
+        amount: coin(amount),
+    };
+    // Part of the self-delegation: the validator keeps shares.
+    crate::handle_begin_redelegate(&mut ctx, &msg(1_000_000)).unwrap();
+    // The rest: the validator is removed, then the lookup fails.
+    let e = crate::handle_begin_redelegate(&mut ctx, &msg(4_000_000)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("staking", 3));
+    assert_eq!(e.log, "validator does not exist");
+}
+
 #[test]
 fn edit_validator_checks_min_self_before_nil_rate() {
     // Go: a non-positive `min_self_delegation` fails before the nil

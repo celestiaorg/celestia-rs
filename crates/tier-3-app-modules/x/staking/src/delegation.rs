@@ -219,26 +219,22 @@ pub fn complete_unbonding(ctx: &mut Context<'_>, del: &[u8], val: &[u8]) -> Resu
 
 /// `getBeginInfo`: `(completion time, height, complete now)`.
 fn get_begin_info(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, bool)> {
-    let v = store::get_validator(ctx, src)?;
+    // Go returns its named `err` here: `ErrNoValidatorFound` when `Unbond`
+    // has just removed the source validator (unbonded, no shares left), so
+    // the redelegation fails.
+    let v = store::get_validator(ctx, src)?.ok_or_else(errors::no_validator_found)?;
     let unbonding_time = get_params(ctx)?.unbonding_time;
-    match v {
-        None => Ok((
+    match v.status {
+        BondStatus::Bonded => Ok((
             sdk::time::add_duration(&ctx.header.time, &unbonding_time),
             ctx.header.height,
             false,
         )),
-        Some(v) => match v.status {
-            BondStatus::Bonded => Ok((
-                sdk::time::add_duration(&ctx.header.time, &unbonding_time),
-                ctx.header.height,
-                false,
-            )),
-            // Go returns its zero `time.Time` (0001-01-01), which the
-            // msg response and the `redelegate` event carry.
-            BondStatus::Unbonded => Ok((sdk::time::go_zero(), 0, true)),
-            BondStatus::Unbonding => Ok((v.unbonding_time, v.unbonding_height, false)),
-            BondStatus::Unspecified => Err(sdk::error::go_panic("unknown validator status")),
-        },
+        // Go returns its zero `time.Time` (0001-01-01), which the msg
+        // response and the `redelegate` event carry.
+        BondStatus::Unbonded => Ok((sdk::time::go_zero(), 0, true)),
+        BondStatus::Unbonding => Ok((v.unbonding_time, v.unbonding_height, false)),
+        BondStatus::Unspecified => Err(sdk::error::go_panic("unknown validator status")),
     }
 }
 

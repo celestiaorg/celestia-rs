@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Redelegating the last shares away from an unbonded validator fails
+  with `validator does not exist` like Go (`Unbond` removes the validator
+  and `getBeginInfo` returns its lookup error); Rust completed it
+  (app-hash split, `docs/security.md` 99). #74
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same
