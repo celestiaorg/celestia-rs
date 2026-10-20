@@ -162,6 +162,16 @@ Every item must pass on the commit the canary runs.
   (`check-apphash.sh`); a written response for an app-hash halt (stop,
   keep `data/` and the WAL for the finding, do not reset the sign state,
   unjail only on a fixed build).
+  *Status (2026-10-20, on the Mac):* separate homes, ports and keys for
+  Mocha and mainnet (RSS 0.6 GB and 1.3 GB, so Mocha keeps running); 1 TIA
+  self-bond; alerts by email (Grafana, `packaging/macos/monitoring`) on
+  node down, stalled height, catching up, missed blocks, jail risk, jailed,
+  app-hash mismatch and, since 2026-10-20, double-sign-guard refusals
+  (`DoubleSignGuardRefused`, counted from the node's log); the app-hash
+  halt response is `docs/operator-guide.md` §12.1. Operator key: the owner
+  accepted (2026-10-20) a hot `file` keyring on the Mac, its passphrase on
+  disk for the watchdog's unjail, for canary stake only
+  (OPEN_QUESTIONS #9). Open: confirm the consensus key was never copied.
 
 ## F1 — Consensus-split assurance (gate for more than canary stake)
 

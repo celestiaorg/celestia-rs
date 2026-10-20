@@ -10,7 +10,9 @@
 # of our validator (missed blocks in the window, jailed, tombstoned).
 # `apphash` runs check-apphash.sh against each node's reference RPC.
 #
-# nodes.conf has one node per line: <network> <home> <local-rpc> <reference-rpc>.
+# nodes.conf has one node per line: <network> <home> <local-rpc>
+# <reference-rpc> [<log file>]. With a log file, `collect` also counts the
+# double-sign guard's refusals in it.
 # Needs curl and jq. Runs under macOS's bash 3.2.
 set -uo pipefail
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
@@ -47,6 +49,35 @@ publish() { # atomic replace, so node_exporter never reads a partial file
 
 nodes() { grep -vE '^[[:space:]]*(#|$)' "$conf"; }
 
+# Log lines of a refusal by the double-sign guard (operator guide §11.11).
+REFUSAL='failed signing vote|failed signing proposal|found signature from the same key'
+
+# sign_refusals <network> <log>: the number of refusal lines the log has
+# had, counted from where the last run stopped ($dir/.sign-refusals-<net>
+# keeps "<inode> <offset> <count>"). Only complete lines are read; a new
+# inode or a shorter file (rotated, truncated) is read from the start.
+sign_refusals() {
+  local f=$dir/.sign-refusals-$1 log=$2 ino off=0 n=0 size sino chunk len part
+  read -r sino off n 2>/dev/null <"$f" || { sino=; off=0; n=0; }
+  ino=$(stat -f %i "$log") || return 1
+  size=$(stat -f %z "$log") || return 1
+  [[ $ino == "$sino" ]] && ((size >= off)) || off=0
+  if ((size > off)); then
+    chunk=$(mktemp "$dir/.chunk.XXXXXX")
+    tail -c +$((off + 1)) "$log" | head -c $((size - off)) >"$chunk"
+    len=$((size - off))
+    # Leave a trailing partial line for the next run.
+    part=0
+    [[ $(tail -c 1 "$chunk" | od -An -c | tr -d ' ') == '\n' ]] || part=$(tail -n 1 "$chunk" | wc -c)
+    len=$((len - part))
+    n=$((n + $(head -c "$len" "$chunk" | grep -cE "$REFUSAL")))
+    off=$((off + len))
+    rm -f "$chunk"
+  fi
+  echo "$ino $off $n" >"$f"
+  echo "$n"
+}
+
 collect() {
   local procs now
   procs=$(ps -axo pid=,rss=,time=,args=)
@@ -66,10 +97,12 @@ collect() {
   help celestia_rs_validator_jailed gauge "1 if jailed_until is in the future or the validator is tombstoned."
   help celestia_rs_validator_jailed_until_seconds gauge "jailed_until, unix seconds."
   help celestia_rs_validator_tombstoned gauge "1 if tombstoned."
+  help celestia_rs_sign_refusals_total counter "Double-sign guard refusals in the node's log (nodes.conf log column)."
   help celestia_rs_collector_timestamp_seconds gauge "When this file was written."
 
-  local net home rpc ref
-  while read -r net home rpc ref; do
+  local net home rpc ref log
+  mkdir -p "$dir"
+  while read -r net home rpc ref log; do
     local st h bt cu line bin valcons si params
     st=$(curl -fsS -m 5 "$rpc/status" 2>/dev/null)
     h=$(jq -r '.result.sync_info.latest_block_height // empty' <<<"$st" 2>/dev/null)
@@ -99,6 +132,10 @@ collect() {
     fi
 
     [[ -d $home/data ]] && emit celestia_rs_data_dir_bytes "$net" $(($(du -sk "$home/data" | cut -f1) * 1024))
+    if [[ -n $log && -f $log ]]; then
+      local refusals
+      refusals=$(sign_refusals "$net" "$log") && emit celestia_rs_sign_refusals_total "$net" "$refusals"
+    fi
 
     # Signing info exists once the node's key is in a validator; a full
     # node gets NotFound and reports signing_info_found 0 only.

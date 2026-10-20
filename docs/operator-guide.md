@@ -1105,8 +1105,12 @@ The procedure is section 11 with:
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
 - A separate machine or home from Mocha, its own consensus key and
-  operator key (a hardware-backed or offline-signing setup for the
-  operator key is advisable; `--generate-only` + offline signing works).
+  operator key. A hardware-backed or offline operator key
+  (`--generate-only` + offline signing works) is the safer choice. For
+  the canary the owner accepted (2026-10-20) a `file` keyring on the Mac
+  with its passphrase in `~/.celestia-rs/unjail/mainnet`, so that the
+  watchdog can unjail (§8); revisit before the stake grows past canary
+  size.
 - Slashing (queried 2026-10-19): `signed_blocks_window` 10,000,
   `min_signed_per_window` 0.001, `downtime_jail_duration` 60 s, no
   downtime slash, 2% double-sign slash plus tombstoning.
@@ -1116,3 +1120,56 @@ The procedure is section 11 with:
 - M14 is a small-stake canary (stake near the active-set minimum). It
   starts only after the M13 soak and mainnet full-node run and the C1
   canary gate (`MILESTONES.md`); more stake waits for F1.
+
+### 12.1 App-hash halt response
+
+An `AppHashMismatch` alert (`check-apphash.sh` prints `MISMATCH`), or a
+node that stops at one height while the network moves on, means the Rust
+execution of some block differs from Go's. The node rejects every block
+after it (its app hash is in the next header), so it is not at risk of
+signing a fork. It cannot sign either, and it is jailed for downtime
+after missing 9,990 of 10,000 blocks (about 16 hours on mainnet, with no
+slash). This is a consensus finding to fix, not an outage to clear. Do
+this, in order:
+
+1. **Pause the automation.** The watchdog restarts a node that is
+   behind, and the auto-updater deploys new commits. Neither must touch
+   the node until the finding is understood:
+
+   ```sh
+   sudo launchctl bootout system/org.celestia.celestia-rs-watchdog
+   sudo launchctl bootout system/org.celestia.celestia-rs-auto-update
+   ```
+
+2. **Stop the node** (SIGTERM, a clean shutdown):
+   `sudo launchctl bootout system/org.celestia.celestia-rs-mainnet`.
+3. **Keep the evidence.** Copy, do not move, the state that produced the
+   mismatch, before the WAL rotates and before pruning removes the
+   height:
+
+   ```sh
+   H=<mismatched height>; D=~/apphash-incident-$H; mkdir -p $D
+   cp -a $NODE_HOME/data $NODE_HOME/config $D/
+   cp ~/Library/Logs/celestia-rs-mainnet.log $D/
+   ~/.celestia-rs/bin/celestia-rs-mainnet version --long >$D/version.txt
+   packaging/check-apphash.sh http://127.0.0.1:26757 https://rpc.celestia.pops.one >$D/check-apphash.txt 2>&1
+   ```
+
+   The copy holds a consensus key: keep it on the Mac, mode 700, and
+   never start a node from it.
+4. **Do not reset anything.** Never delete or edit
+   `data/priv_validator_state.json`, never run a rollback or an
+   `unsafe-reset-all`-style reset, and never restore `data/` from the
+   copy into the home (§11.11). The sign state must stay where the node
+   left it.
+5. **Find the split.** Reproduce the height with `celestia-rs follow`
+   (§10) from a snapshot before it, compare every tx result and store root
+   with Go, then fix the code and pin the input as a regression test
+   (`crates/fuzz-diff/tests/regressions.jsonl` or a unit test). Record the
+   finding in `docs/security.md`.
+6. **Restart on the fixed build only.** Install the fixed binary
+   (§11.10), bootstrap the node, and wait until `check-apphash.sh` is OK
+   at the tip. Only then unjail and bootstrap the watchdog and
+   auto-updater again (the watchdog unjails by itself while
+   `~/.celestia-rs/unjail/mainnet` exists). The old build, if started
+   instead, stops at the same height again.

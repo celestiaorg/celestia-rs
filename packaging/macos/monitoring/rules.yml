@@ -88,6 +88,13 @@ groups:
         annotations:
           summary: "{{ $labels.network }}: {{ $value | humanizePercentage }} of the downtime-jail budget used"
 
+      - alert: DoubleSignGuardRefused
+        # node-metrics.sh counts the refusals in the node's log.
+        expr: increase(celestia_rs_sign_refusals_total[15m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.network }}: the double-sign guard refused to sign; check for a second signer (operator guide §11.11)"
+
       - alert: ValidatorJailed
         expr: celestia_rs_validator_jailed == 1
         labels: {severity: critical}
