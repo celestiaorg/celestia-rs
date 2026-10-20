@@ -24,6 +24,10 @@
   as Go 1.22+'s `encoding/json` does, not `\u0008` / `\u000c`: a
   transfer whose strings contain either byte stores the packet commitment
   Go stores (app-hash split, `docs/security.md` 103). #81
+- authz spend limits are subtracted as Go's `Coins.safeAdd` does: an
+  unsorted stored limit panics (`Coins (self) must be sorted`) and equal
+  denoms are summed, so a `MsgExec` through such a grant fails like Go
+  (app-hash split, `docs/security.md` 104). #85
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same

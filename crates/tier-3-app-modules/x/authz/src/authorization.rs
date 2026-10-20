@@ -61,13 +61,37 @@ fn new_coins(cs: &[PbCoin]) -> Result<Coins> {
 
 /// `Coins.SafeSub`: `(a - b, any negative)`.
 fn safe_sub(a: &Coins, b: &Coins) -> Result<(Coins, bool)> {
-    let mut neg = Vec::new();
-    for c in b {
-        neg.push(Coin::with_amount(c.denom.clone(), c.amount.neg()));
-    }
-    let diff = a.add(&Coins(neg))?;
+    let neg: Vec<Coin> = b
+        .iter()
+        .map(|c| Coin::with_amount(c.denom.clone(), c.amount.neg()))
+        .collect();
+    let diff = safe_add(a, &neg)?;
     let negative = diff.iter().any(|c| c.amount.is_negative());
     Ok((diff, negative))
+}
+
+/// `Coins.safeAdd`: panics unless both sides are sorted (equal denoms
+/// allowed: a stored spend limit is not re-validated), sums every coin of
+/// a denom, drops zeros and sorts.
+fn safe_add(a: &Coins, b: &[Coin]) -> Result<Coins> {
+    let sorted = |v: &[Coin]| v.windows(2).all(|w| w[0].denom <= w[1].denom);
+    if !sorted(&a.0) {
+        return Err(sdk::error::go_panic("Coins (self) must be sorted"));
+    }
+    if !sorted(b) {
+        return Err(sdk::error::go_panic("Wrong argument: coins must be sorted"));
+    }
+    let mut sums: std::collections::BTreeMap<&str, math::Int> = std::collections::BTreeMap::new();
+    for c in a.iter().chain(b) {
+        let sum = sums.entry(&c.denom).or_insert_with(math::Int::zero);
+        *sum = sum.checked_add(&c.amount).map_err(sdk::coins::add_panic)?;
+    }
+    Ok(Coins(
+        sums.into_iter()
+            .filter(|(_, amount)| !amount.is_zero())
+            .map(|(denom, amount)| Coin::with_amount(denom, amount))
+            .collect(),
+    ))
 }
 
 impl Authorization {
@@ -564,6 +588,32 @@ mod tests {
             allocations: vec![alloc(vec![c("utia", "")])],
         });
         assert!(a.validate_basic().unwrap_err().is_panic());
+    }
+
+    /// `SpendLimit.SafeSub` (`safeAdd`) of a stored spend limit, which
+    /// `ValidateBasic` does not check for order: an unsorted one panics
+    /// before the allow list is read; equal denoms are summed (deliver-diff
+    /// `v9-upgrade` seed 10498).
+    #[test]
+    fn spend_limit_safe_sub_like_go() {
+        let coins = |v: &[(&str, i64)]| {
+            Coins(
+                v.iter()
+                    .map(|(d, a)| Coin::with_amount(*d, math::Int::from(*a)))
+                    .collect(),
+            )
+        };
+        let e = safe_sub(&coins(&[("utib", 5), ("utia", 5)]), &coins(&[("utia", 1)])).unwrap_err();
+        assert!(e.is_panic());
+        assert_eq!(e.log, "Coins (self) must be sorted");
+        let (left, neg) =
+            safe_sub(&coins(&[("utia", 5), ("utia", 3)]), &coins(&[("utia", 1)])).unwrap();
+        assert!(!neg);
+        assert_eq!(left, coins(&[("utia", 7)]));
+        let (left, neg) =
+            safe_sub(&coins(&[("utia", 1)]), &coins(&[("utia", 1), ("utib", 2)])).unwrap();
+        assert!(neg);
+        assert_eq!(left, coins(&[("utib", -2)]));
     }
 
     /// `StakeAuthorization.MsgTypeURL` panics with `normalizeAuthzType`'s
