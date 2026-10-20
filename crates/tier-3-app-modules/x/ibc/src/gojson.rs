@@ -5,9 +5,8 @@
 
 use serde_json::Value;
 
-/// Go `encoding/json` string encoding (with `SetEscapeHTML(true)`, the
-/// `json.Marshal` default), including the surrounding quotes, of the Go
-/// string `s` (Go form, `gostr`): each invalid UTF-8 byte is written as
+/// Go `encoding/json` string encoding (Go 1.26, HTML-safe: `json.Marshal`'s
+/// default), including the surrounding quotes, of the Go string `s` (Go form, `gostr`): each invalid UTF-8 byte is written as
 /// `\ufffd`. Returns a Go form (bytes via `gostr::to_go_bytes`).
 #[must_use]
 pub fn escape_string(s: &str) -> String {
@@ -24,6 +23,9 @@ pub fn escape_string(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            // Short escapes since Go 1.22.
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
             '<' => out.push_str("\\u003c"),
             '>' => out.push_str("\\u003e"),
             '&' => out.push_str("\\u0026"),
@@ -184,6 +186,11 @@ mod tests {
         assert_eq!(
             escape_string("a<b>&\"\n\u{1}"),
             "\"a\\u003cb\\u003e\\u0026\\\"\\n\\u0001\""
+        );
+        // Go 1.26 `json.Marshal("\b\f\x01<\u2028")`.
+        assert_eq!(
+            escape_string("\u{8}\u{c}\u{1}<\u{2028}"),
+            r#""\b\f\u0001\u003c\u2028""#
         );
         assert_eq!(format_float(1.0), "1");
         assert_eq!(format_float(1e21), "1e+21");

@@ -20,6 +20,10 @@
   authorization type [celestiaorg/cosmos-sdk@v0.52.12/x/staking/types/authz.go:193]`),
   so a failed gov proposal stores Go's `failed_reason` (app-hash split,
   `docs/security.md` 102). #80
+- IBC JSON (ICS-20 packet data, acknowledgements) writes `\b` and `\f`
+  as Go 1.22+'s `encoding/json` does, not `\u0008` / `\u000c`: a
+  transfer whose strings contain either byte stores the packet commitment
+  Go stores (app-hash split, `docs/security.md` 103). #81
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same

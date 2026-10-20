@@ -455,6 +455,24 @@ mod tests {
         assert_eq!(escrow_address("transfer", "channel-0").len(), 20);
     }
 
+    /// `FungibleTokenPacketData.GetBytes` (the packet commitment's data):
+    /// Go 1.26 `encoding/json` writes `\b` and `\f` short (ibc-go v8.7.2
+    /// output; exec-diff `strings` seed 9016).
+    #[test]
+    fn packet_data_bytes_use_go_s_short_escapes() {
+        let d = relay::PacketData {
+            denom: "utia".into(),
+            amount: "1000".into(),
+            sender: "s".into(),
+            receiver: "\u{8}\u{2}\u{10}a\u{c}".into(),
+            memo: "hello".into(),
+        };
+        assert_eq!(
+            String::from_utf8(d.get_bytes()).unwrap(),
+            r#"{"amount":"1000","denom":"utia","memo":"hello","receiver":"\b\u0002\u0010a\f","sender":"s"}"#
+        );
+    }
+
     /// `len(msg.Receiver)` / `len(msg.Memo)` count Go bytes: an invalid
     /// UTF-8 byte is one, not its multi-byte Go form (deliver-diff
     /// `ibc-edge` seed 6091 rejected a receiver Go accepts).
