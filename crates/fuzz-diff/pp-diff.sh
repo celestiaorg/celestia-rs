@@ -37,7 +37,18 @@ else
 fi
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
 APP=$!
-trap 'kill $APP 2>/dev/null || true; rm -rf "$WORK"' EXIT
+# The Go app must be gone before the next run binds the same ports: its
+# shutdown can stall, so SIGKILL it after 10 s.
+stop_app() {
+  kill "$APP" 2>/dev/null || return 0
+  for _ in $(seq 1 100); do
+    kill -0 "$APP" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  kill -9 "$APP" 2>/dev/null || true
+  while kill -0 "$APP" 2>/dev/null; do sleep 0.1; done
+}
+trap 'stop_app; rm -rf "$WORK"' EXIT
 UP=
 for _ in $(seq 1 300); do
   (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && UP=1 && break

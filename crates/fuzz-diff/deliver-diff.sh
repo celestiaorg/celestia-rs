@@ -78,7 +78,20 @@ SH
   export DELIVER_SWITCH_CMD="bash $WORK/switch.sh"
 fi
 # GO_LOG=<file> keeps the Go app's log.
-trap 'kill "$(cat "$WORK/app.pid")" 2>/dev/null || true; if [ -n "${GO_LOG:-}" ]; then cp "$WORK/app.log" "$GO_LOG"; fi; rm -rf "$WORK"' EXIT
+# The Go app must be gone before the next run binds the same ports: its
+# shutdown can stall, so SIGKILL it after 10 s.
+stop_app() {
+  local pid
+  pid=$(cat "$WORK/app.pid" 2>/dev/null) || return 0
+  kill "$pid" 2>/dev/null || return 0
+  for _ in $(seq 1 100); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
+}
+trap 'stop_app; if [ -n "${GO_LOG:-}" ]; then cp "$WORK/app.log" "$GO_LOG"; fi; rm -rf "$WORK"' EXIT
 UP=
 for _ in $(seq 1 300); do
   (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && UP=1 && break
