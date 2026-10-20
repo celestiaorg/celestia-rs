@@ -42,6 +42,9 @@ for p in files:
     s = re.sub(r'((?:127\.0\.0\.1|0\.0\.0\.0|localhost):)(\d{4,5})', lambda m: m.group(1) + str(int(m.group(2)) + int(d)), s)
     open(p, "w").write(s)
 PY
+# the gRPC server (GetNodeInfo below; `celestia-appd init` disables it)
+sed -i.bak '/^\[grpc\]/,/^\[/ s#^enable = false#enable = true#' "$H/config/app.toml"
+rm -f "$H/config/app.toml.bak"
 # tx/block indexing (`celestia-appd init` writes indexer = "null")
 sed -i.bak 's#^indexer = "null"#indexer = "kv"#' "$H/config/config.toml"
 rm -f "$H/config/config.toml.bak"
@@ -85,6 +88,12 @@ check 'any(c["denom"]=="utia" for c in d["balances"])' "query bank balances" "$(
 check 'd["account"]["value"]["address"]=="'$USER0'"' "query auth account" "$(q auth account "$USER0")"
 check 'd["validator"]["operator_address"]=="'$VALOPER'"' "query staking validator" "$(q staking validator "$VALOPER")"
 check '"params" in d' "query blob params" "$(q blob params)"
+# GetNodeInfo (gRPC, as curl frames it) reports the binary's build.
+COMMIT=$("$RS" version --long | sed -n 's/^commit: //p')
+NODE_INFO=$(printf '\0\0\0\0\0' | curl -s --http2-prior-knowledge -H 'content-type: application/grpc' \
+  -H 'te: trailers' --data-binary @- "http://127.0.0.1:$((9090 + OFF))/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo" | base64 | tr -d "\n")
+check 'all(x.encode() in __import__("base64").b64decode(d) for x in ["'"$("$RS" version)"'", "'"$COMMIT"'", "rustc"])' \
+  "GetNodeInfo build info" "\"$NODE_INFO\""
 
 send() { # <mode>
   celestia-appd tx bank send user0 "$VAL0" 1000utia "${K[@]}" --chain-id $CHAIN_ID --node "$NODE" \

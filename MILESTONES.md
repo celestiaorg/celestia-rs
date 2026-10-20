@@ -138,6 +138,10 @@ Every item must pass on the commit the canary runs.
   *Tooling ready:* run `fuzz-exec` by hand with `campaign: true` on the
   release commit (8 jobs: every scenario with all those flags, again with
   `DELIVER_GOVPASS`, and the upgrade over 12 seeds).
+  *First clean campaign 2026-10-20* on `e161b8c` (main, not a release;
+  fuzz-exec run 39477569911): 68 runs (every scenario at 300 blocks, seeds
+  12 / 13, and the upgrade over seeds 1202-1212), 0 mismatches. Rerun on
+  the commit the canary runs.
 
 - [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
   copied (no second process may ever hold it); operator key offline or
@@ -364,8 +368,12 @@ test), then start that harness's count again.
 Not consensus-relevant unless noted; tracked so nothing is lost.
 
 - [ ] ProcessProposal blob-tx cache (S2; behavior-neutral, performance).
-- [ ] Validator-local fibre promise cache and Go build info in
-  `GetNodeInfo` (M11; query surface only).
+- [ ] Validator-local fibre promise cache (M11; query surface only).
+  *Go build info in `GetNodeInfo` done 2026-10-20:* the node's version,
+  commit, build profile and toolchain, checked over gRPC by
+  `conformance/devnet/rpc-cli.sh` (now in the nightly `devnet-interop`
+  matrix), which also covers the fix that gives `start`'s RPC-backed app
+  gRPC services their RPC client.
 - [ ] State-sync snapshots of a v9 chain produced by Rust (V9; Go peers
   restoring from a Rust snapshot at app version 9).
 - [ ] Following Mocha from genesis over HTTPS (V9; part of F1.8 (b)).

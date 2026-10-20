@@ -828,6 +828,12 @@ enum CometCmd {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    app::node_services::set_build_info(
+        env!("CARGO_PKG_VERSION"),
+        env!("CELESTIA_RS_GIT_COMMIT"),
+        env!("CELESTIA_RS_BUILD_PROFILE"),
+        env!("CELESTIA_RS_TOOLCHAIN"),
+    );
     let home = cli.home.clone().unwrap_or_else(util::default_home);
     let files = ConfigFiles::load(&home).ok();
     let level = cli.log_level.clone().unwrap_or_else(|| {

@@ -36,6 +36,13 @@
   `ConnOpenAck`'s unsupported selected version) print the versions in
   gogoproto's text form like Go, so a failed gov proposal stores Go's
   `failed_reason` (app-hash split, `docs/security.md` 98). #72
+- `celestia-rs start` points the app's RPC-backed gRPC services
+  (`cosmos.base.tendermint.v1beta1.Service`, `GetTx`, `GetTxsEvent`,
+  `BroadcastTx`, `TxStatus`, gas estimation) at its own RPC listener, like
+  Go's in-process client; they failed with `no RPC client is defined in
+  offline mode`.
+- `GetNodeInfo` reports the node binary's version (it reported the `app`
+  crate's `0.0.1`), git commit, build profile and Rust toolchain.
 
 ## v0.1.0-rc.2 (2026-10-19)
 

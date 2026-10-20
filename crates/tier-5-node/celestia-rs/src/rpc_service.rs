@@ -899,6 +899,21 @@ impl Rpc {
             let Some(listener) = bind("RPC server", laddr) else {
                 continue;
             };
+            // The app's RPC-backed query services (cmtservice, GetTx,
+            // BroadcastTx, TxStatus) call this node, like Go's in-process
+            // `local.New(node)` client.
+            if app::comet::rpc_address().is_none()
+                && let Ok(mut a) = listener.local_addr()
+            {
+                if a.ip().is_unspecified() {
+                    a.set_ip(if a.is_ipv4() {
+                        std::net::Ipv4Addr::LOCALHOST.into()
+                    } else {
+                        std::net::Ipv6Addr::LOCALHOST.into()
+                    });
+                }
+                app::comet::set_rpc_address(Some(format!("tcp://{a}")));
+            }
             let env = self.env.clone();
             rt.spawn(async move {
                 if let Err(e) = rpc::server::serve(listener, env).await {

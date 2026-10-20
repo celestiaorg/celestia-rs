@@ -55,7 +55,8 @@ jobs:
 
   # The cheap live interop scripts (each a few minutes): Rust P2P, CAT
   # mempool, state sync and block sync against Go nodes, the mixed
-  # validator set (M9) and live double-sign evidence.
+  # validator set (M9), live double-sign evidence and Go's CLI against the
+  # Rust node's RPC and gRPC.
   devnet-interop:
     needs: devnet-bins
     runs-on: ubuntu-latest
@@ -70,6 +71,7 @@ jobs:
           - blocksync-interop.sh
           - mixed-validators.sh 60 20
           - double-sign-evidence.sh
+          - rpc-cli.sh
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

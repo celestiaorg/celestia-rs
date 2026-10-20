@@ -1,4 +1,5 @@
-//! Embeds the git commit and build profile for `celestia-rs version --long`.
+//! Embeds the git commit, build profile and toolchain for `celestia-rs
+//! version --long` and `GetNodeInfo`.
 //!
 //! The commit comes from `git rev-parse HEAD` (suffixed `-dirty` when the
 //! work tree has uncommitted changes). Builds outside a git checkout (source
@@ -53,4 +54,15 @@ fn main() {
         })
         .unwrap_or_else(|| std::env::var("PROFILE").unwrap_or_default());
     println!("cargo:rustc-env=CELESTIA_RS_BUILD_PROFILE={profile}");
+
+    // The toolchain, like Go's `go version` line (`GetNodeInfo`).
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned());
+    let toolchain = Command::new(rustc)
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map_or_else(|| "rustc".to_owned(), |v| v.trim().to_owned());
+    let target = std::env::var("TARGET").unwrap_or_default();
+    println!("cargo:rustc-env=CELESTIA_RS_TOOLCHAIN={toolchain} {target}");
 }

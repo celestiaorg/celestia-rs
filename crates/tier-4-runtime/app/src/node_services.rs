@@ -290,13 +290,35 @@ fn get_node_info() -> QResult<cmt::GetNodeInfoResponse> {
         }),
         // Go reports its own build (`version.NewInfo()`: Go toolchain and
         // module list); this is the Rust node's.
-        application_version: Some(cmt::VersionInfo {
-            name: "celestia-app".into(),
-            app_name: "celestia-rs".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
-            ..cmt::VersionInfo::default()
-        }),
+        application_version: Some(
+            BUILD_INFO
+                .get()
+                .cloned()
+                .unwrap_or_else(|| cmt::VersionInfo {
+                    name: "celestia-app".into(),
+                    app_name: "celestia-rs".into(),
+                    version: env!("CARGO_PKG_VERSION").into(),
+                    ..cmt::VersionInfo::default()
+                }),
+        ),
     })
+}
+
+/// The node binary's build, reported by `GetNodeInfo` (set once at startup).
+static BUILD_INFO: std::sync::OnceLock<cmt::VersionInfo> = std::sync::OnceLock::new();
+
+/// Records the node binary's version, git commit, build profile and Rust
+/// toolchain for `GetNodeInfo` (Go's `version.NewInfo()` fields).
+pub fn set_build_info(version: &str, git_commit: &str, build_tags: &str, toolchain: &str) {
+    let _ = BUILD_INFO.set(cmt::VersionInfo {
+        name: "celestia-app".into(),
+        app_name: "celestia-rs".into(),
+        version: version.into(),
+        git_commit: git_commit.into(),
+        build_tags: build_tags.into(),
+        go_version: toolchain.into(),
+        ..cmt::VersionInfo::default()
+    });
 }
 
 fn get_latest_block() -> QResult<cmt::GetLatestBlockResponse> {
