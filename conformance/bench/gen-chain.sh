@@ -90,7 +90,7 @@ echo '{"height":"0","round":0,"step":0}' > "$H/core/data/priv_validator_state.js
 PIDS=()
 cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; wait 2>/dev/null || true; }
 trap cleanup EXIT
-celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$OUT/app.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$OUT/app.log" 2>&1 &
 PIDS+=($!); sleep 4
 abci-recorder 127.0.0.1:$P_PROXY 127.0.0.1:$P_APP "$OUT/abci.rec" > "$OUT/rec.log" 2>&1 &
 PIDS+=($!); sleep 1

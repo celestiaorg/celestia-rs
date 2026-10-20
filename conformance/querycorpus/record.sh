@@ -54,7 +54,7 @@ open(p, "w").write(s)
 PY
   sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" "$H/config/config.toml"
   rm -f "$H/config/config.toml.bak"
-  "$APPD" start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >"$WORK/app.log" 2>&1 &
+  "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >"$WORK/app.log" 2>&1 &
   APP=$!
   trap 'kill $APP 2>/dev/null || true' EXIT
   for _ in $(seq 1 60); do

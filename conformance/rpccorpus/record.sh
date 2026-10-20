@@ -95,7 +95,7 @@ cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
 LOGS=$ROOT/target/rpccorpus-logs/$SCENARIO
 trap 'cleanup; mkdir -p "$LOGS"; cp "$WORK"/*.log "$LOGS/" 2>/dev/null; rm -rf "$WORK"' EXIT
 start_node() {
-  celestia-appd start --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >> "$WORK/app.log" 2>&1 &
+  celestia-appd start --force-no-bbr --home "$H" --with-comet=false --address tcp://127.0.0.1:$P_APP >> "$WORK/app.log" 2>&1 &
   APP=$!; PIDS+=($APP); sleep 4
   cometbft start --home "$H/core" --proxy_app tcp://127.0.0.1:$P_APP >> "$WORK/core.log" 2>&1 &
   CORE=$!; PIDS+=($CORE)
@@ -153,7 +153,7 @@ cp "$H/core/config/config.toml" "$H/config/config.toml"
 cp "$WORK/frozen/config/priv_validator_key.json" "$H/config/priv_validator_key.json"
 sed -i.bak -e 's#^block_sync = true#block_sync = false#' "$H/config/config.toml"
 rm -f "$H/config/config.toml.bak"
-celestia-appd start --home "$H" >> "$WORK/frozen.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$H" >> "$WORK/frozen.log" 2>&1 &
 APP=$!; CORE=$APP; PIDS+=($APP)
 for _ in $(seq 1 60); do curl -s localhost:$P_RPC/health >/dev/null && break; sleep 1; done
 sleep 3

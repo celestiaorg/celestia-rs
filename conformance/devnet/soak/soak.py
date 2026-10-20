@@ -100,7 +100,7 @@ class Node:
             log = open(f"{self.home}/node.log", "ab")
             env = dict(os.environ)
             if self.kind == "go":
-                cmd = ["celestia-appd", "start", "--home", self.home]
+                cmd = ["celestia-appd", "start", "--force-no-bbr", "--home", self.home]
                 if os.environ.get("SOAK_GOMEMLIMIT"):
                     env["GOMEMLIMIT"] = os.environ["SOAK_GOMEMLIMIT"]
             else:

@@ -190,6 +190,8 @@ START_B=$(gh)
 burst rust0 "$R_RPC" 4 "$W/phaseB.keys" rust-burst
 # PFBs through the CLI with --node pointing at the Rust node.
 WORK=$W/blobs; mkdir -p "$WORK"
+RUST1=$($A keys show rust1 -a --keyring-backend test)
+read -r _ SEQ0 < <(acct "$RUST1")
 for spec in "0b:2000" "0c:60000"; do
   ns=${spec%%:*}; size=${spec##*:}
   python3 - "$WORK/$ns.json" "$ns" "$size" <<'PY'
@@ -207,7 +209,14 @@ PY
   CODE=$(echo "$OUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("code", -1))' 2>/dev/null || echo err)
   [ "$CODE" = 0 ] || FAIL+=("phase B: rust rejected pfb $spec: ${OUT:0:200}")
   echo "$OUT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["txhash"])' >> "$W/phaseB.keys" 2>/dev/null || true
-  sleep 3
+  # The CLI reads the signer's sequence from committed state (proxied to V):
+  # wait for this PFB to land before signing the next one.
+  for _ in $(seq 1 60); do
+    read -r _ RSEQ < <(acct "$RUST1")
+    [ "$RSEQ" -gt "$SEQ0" ] && break
+    sleep 1
+  done
+  SEQ0=$RSEQ
 done
 
 python3 - "$GO_RPC" "$R_RPC" "$START_B" "$W/phaseB.keys" > "$W/phaseB.txt" <<'PY' || FAIL+=("phase B: Rust-submitted txs not included by Go")

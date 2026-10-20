@@ -54,7 +54,7 @@ rm -f "$PEER/config/app.toml.bak"
 sed -i.bak -e 's#^indexer = "null"#indexer = "kv"#' -e 's#^discard_abci_responses = true#discard_abci_responses = false#' \
   "$PEER/config/config.toml"
 rm -f "$PEER/config/config.toml.bak"
-celestia-appd start --home "$PEER" > "$PEER.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$PEER" > "$PEER.log" 2>&1 &
 PEER_PID=$!
 trap 'kill $PEER_PID 2>/dev/null || true' EXIT
 peer_height() { curl -s "$PEER_RPC/status" | sed -n 's/.*"latest_block_height":"\([0-9]*\)".*/\1/p'; }

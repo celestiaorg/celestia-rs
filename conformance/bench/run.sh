@@ -93,7 +93,7 @@ phase_a() {
       -e "s#localhost:9090#localhost:$((9190 + OFF))#" -e "s#0.0.0.0:9090#0.0.0.0:$((9190 + OFF))#" \
       -e "s#tcp://localhost:1317#tcp://localhost:$((1417 + OFF))#" "$h/config/app.toml"
     rm -f "$h/config/app.toml.bak"
-    celestia-appd start --home "$h" --with-comet=false --address "tcp://127.0.0.1:$APP_PORT" > "$W/replay-$kind.log" 2>&1 &
+    celestia-appd start --force-no-bbr --home "$h" --with-comet=false --address "tcp://127.0.0.1:$APP_PORT" > "$W/replay-$kind.log" 2>&1 &
   else
     mkdir -p "$h"
     local bin=$RS; [ "$kind" = rs-alt ] && bin=$RS_ALT
@@ -123,7 +123,7 @@ PY
 # ------------------------------------------------------------- source node
 start_source() {
   local H=$C/home
-  celestia-appd start --home "$H" --with-comet=false --address "tcp://127.0.0.1:$V_APP" >> "$W/src-app.log" 2>&1 &
+  celestia-appd start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$V_APP" >> "$W/src-app.log" 2>&1 &
   SRC_APP=$!; PIDS+=($SRC_APP); wait_port $V_APP
   cometbft start --home "$H/core" --proxy_app "tcp://127.0.0.1:$V_APP" >> "$W/src-core.log" 2>&1 &
   SRC_CORE=$!; PIDS+=($SRC_CORE)
@@ -148,7 +148,7 @@ full_home() {
 start_full() { # kind home log [extra...]
   local kind=$1 home=$2 log=$3; shift 3
   if [ "$kind" = go ]; then
-    celestia-appd start --home "$home" "$@" >> "$log" 2>&1 &
+    celestia-appd start --force-no-bbr --home "$home" "$@" >> "$log" 2>&1 &
   else
     # [p2p] laddr (`tcp://0.0.0.0:<port>`; [rpc] laddr is on 127.0.0.1).
     local p2p; p2p=127.0.0.1:$(sed -n 's#^laddr = "tcp://0.0.0.0:\([0-9]*\)".*#\1#p' "$home/config/config.toml" | head -1)

@@ -99,17 +99,22 @@ wait_rust() { # log height pid [secs]
   done
   return 1
 }
-# compare the app hash a rust node logged after each height with V's next header
+# compare the app hash a rust node logged after each height (block sync or
+# consensus) with V's next header
 check_app_hashes() { # log from to
-  plain "$1" | grep 'synced block' > "$W/synced.txt" || true
+  plain "$1" | grep -E 'synced block|committed block' > "$W/synced.txt" || true
   python3 - "$VAL_RPC" "$W/synced.txt" "$2" "$3" <<'PY'
-import json, re, sys, urllib.request
+import json, re, sys, time, urllib.request
 rpc, f, lo, hi = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
 got = {}
 for line in open(f):
     h = re.search(r' height=(\d+)', line); a = re.search(r'app_hash=([0-9A-F]+)', line); b = re.search(r' hash=([0-9A-F]+)', line)
     if h and a: got[int(h.group(1))] = (a.group(1), b.group(1) if b else "")
 get = lambda p: json.load(urllib.request.urlopen(f"http://{rpc}{p}"))["result"]
+# height h's app hash is in V's header h + 1
+for _ in range(60):
+    if int(get("/status")["sync_info"]["latest_block_height"]) > hi: break
+    time.sleep(1)
 bad, checked = [], 0
 for h in range(lo, hi + 1):
     if h not in got:

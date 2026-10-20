@@ -70,7 +70,7 @@ $RS export-blocks --home "$H" --out "$WORK/blocks.json" > /dev/null 2>&1
 sed -i.bak -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" \
   -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" "$G/config/app.toml"
 rm -f "$G/config/app.toml.bak"
-celestia-appd start --home "$G" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
+celestia-appd start --force-no-bbr --home "$G" --with-comet=false --address tcp://127.0.0.1:$P_APP > "$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP 2>/dev/null || true' EXIT
 for _ in $(seq 1 60); do
