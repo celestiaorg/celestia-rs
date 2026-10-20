@@ -739,7 +739,9 @@ fn marshal_into(d: &Dyn, mode: Mode, out: &mut Vec<u8>) {
 /// for messages, the fee-grant module for allowances, the ante handler for
 /// multisig sub-keys), and Go keeps the bytes as received where it stores
 /// them (an `AllowedMsgAllowance`'s inner allowance, the messages nested in
-/// a proposal's messages, the sub-keys of an account's multisig key).
+/// a proposal's messages, the sub-keys of an account's multisig key, a solo
+/// machine's public key, which `Initialize` also compares with
+/// `reflect.DeepEqual`).
 fn keeps_raw_anys(name: &str) -> bool {
     matches!(
         name,
@@ -749,6 +751,8 @@ fn keeps_raw_anys(name: &str) -> bool {
             | "cosmos.authz.v1beta1.MsgExec"
             | "cosmos.gov.v1.MsgSubmitProposal"
             | "ibc.applications.interchain_accounts.v1.CosmosTx"
+            | "ibc.lightclients.solomachine.v3.ConsensusState"
+            | "ibc.lightclients.solomachine.v3.Header"
     )
 }
 

@@ -83,7 +83,7 @@ impl App {
         }
         let header = self.check_header.clone();
         let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
-        let count = count_executable_msgs(Some(&mut ctx), sdk_tx.msgs()).unwrap_or_default();
+        let count = count_executable_msgs(Some(&mut ctx), sdk_tx.gogo_msgs()).unwrap_or_default();
         drop(ctx);
         if count > MAX_SDK_MESSAGES {
             let e = SdkError::new(
