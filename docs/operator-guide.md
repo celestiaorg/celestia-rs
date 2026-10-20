@@ -393,7 +393,9 @@ keep it mode 600 and leave it out of backups:
 ```sh
 mkdir -m 700 -p ~/.celestia-rs/unjail
 : > ~/.celestia-rs/unjail/mocha                     # keyring-backend test
-(umask 077; read -rs p && printf '%s' "$p" > ~/.celestia-rs/unjail/mainnet)  # keyring-backend file
+# keyring-backend file; run in a terminal (without one, read gets nothing):
+(umask 077; read -rsp 'passphrase: ' p && [ -n "$p" ] && printf '%s' "$p" > ~/.celestia-rs/unjail/mainnet)
+celestia-rs-auto-update.sh watchdog   # no "cannot read key" line: the passphrase works
 ```
 
 Without the file, unjail by hand after the restart (§11.9).
