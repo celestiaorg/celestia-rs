@@ -16,3 +16,13 @@ v9-upgrade 100 6 3007 GO_APPD_NEXT=v10 DELIVER_UPGRADE=17 DELIVER_IBC=1 DELIVER_
 # heights with `%d` (`{1 20}`, not `1-20`); a passed proposal whose channel
 # handshake message fails stores it as `failed_reason`: app-hash split (#59).
 v9-upgrade 100 6 3334 GO_APPD_NEXT=v10 DELIVER_UPGRADE=14 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
+# A solo machine ClientState without a consensus state panics Go's tx decoder:
+# PrepareProposal aborts (security.md 92).
+ibc-upgrades 300 8 3059 DELIVER_IBC=1
+# Solo machine MsgCreateClient whose consensus-state copies differ in a nested
+# Any's bytes: app-hash split (security.md 93).
+ibc-upgrades 300 8 3080 DELIVER_IBC=1 DELIVER_WIRE=1
+# An ICA MsgRecvPacket with a key past u32 in the SDK message count (security.md 94).
+ibc-edge 300 8 3020 DELIVER_IBC=1 DELIVER_WIRE=1
+# Simulate of a tx signed by an interchain account (security.md 95).
+v9-empty 300 8 3047 DELIVER_IBC=1 DELIVER_SIM=1

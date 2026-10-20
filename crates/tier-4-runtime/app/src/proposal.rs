@@ -52,6 +52,17 @@ impl From<SdkError> for Abort {
     }
 }
 
+/// A tx decoding in `Fill`: `None` when the decoder returns an error (the
+/// tx is skipped); a Go panic in the decoder (`UnpackInterfaces` through a
+/// nil pointer) is not recovered there and aborts the handler.
+fn fill_decode(r: sdk::Result<Tx>) -> Result<Option<Tx>, Abort> {
+    match r {
+        Ok(tx) => Ok(Some(tx)),
+        Err(e) if e.is_panic() => Err(Abort(e.log)),
+        Err(_) => Ok(None),
+    }
+}
+
 impl From<square::Error> for Abort {
     fn from(e: square::Error) -> Self {
         Self(e.to_string())
@@ -384,7 +395,7 @@ struct Separated<'a> {
 }
 
 /// `separateTxs`.
-fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
+fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Result<Separated<'a>, Abort> {
     let mut s = Separated::default();
     for raw in txs {
         if raw.len() > MAX_TX_SIZE {
@@ -394,7 +405,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
             Some(Ok(u)) => s.blob.push((raw, u)),
             Some(Err(_)) => {}
             None => {
-                let Ok(tx) = txdecode::decode(raw) else {
+                let Some(tx) = fill_decode(txdecode::decode(raw))? else {
                     continue;
                 };
                 if fibre_tx::count_pff(tx.msgs()) > 0 {
@@ -407,7 +418,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
             }
         }
     }
-    s
+    Ok(s)
 }
 
 /// `PrepareProposalHandler`.
@@ -455,7 +466,7 @@ fn fill(
         }
         within_bytes.push(tx);
     }
-    let sep = separate(within_bytes.into_iter());
+    let sep = separate(within_bytes.into_iter())?;
 
     // Set once an ante decorator returned `sdk.Context{}`: Go keeps using
     // that store-less context, so every later ante run fails and any state
@@ -466,7 +477,7 @@ fn fill(
     let mut sdk_count = 0usize;
     for (raw, tx) in &sep.normal {
         ctx.tx_bytes = raw.to_vec();
-        let exec = count_executable_msgs((!zeroed).then_some(&mut *ctx), tx.msgs())
+        let exec = count_executable_msgs((!zeroed).then_some(&mut *ctx), tx.gogo_msgs())
             .map_err(|_| Abort("nil multistore".into()))?;
         if sdk_count + exec > MAX_SDK_MESSAGES {
             continue;
@@ -492,7 +503,7 @@ fn fill(
 
     let mut blob_msgs = 0usize;
     for (raw, u) in &sep.blob {
-        let Ok(tx) = txdecode::decode(&u.tx) else {
+        let Some(tx) = fill_decode(txdecode::decode(&u.tx))? else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -564,7 +575,7 @@ fn fill_v9(
             Some(Ok(u)) => blobs.push(u),
             Some(Err(_)) => {}
             None => {
-                if txdecode::decode_v9(raw).is_ok() {
+                if fill_decode(txdecode::decode_v9(raw))?.is_some() {
                     normal.push(raw);
                 }
             }
@@ -575,7 +586,7 @@ fn fill_v9(
     let mut kept = Vec::new();
     let mut sdk_count = 0usize;
     for raw in &normal {
-        let Ok(tx) = txdecode::decode_v9(raw) else {
+        let Some(tx) = fill_decode(txdecode::decode_v9(raw))? else {
             continue;
         };
         ctx.tx_bytes = raw.to_vec();
@@ -601,7 +612,7 @@ fn fill_v9(
 
     let mut blob_msgs = 0usize;
     for u in &blobs {
-        let Ok(tx) = txdecode::decode_v9(&u.tx) else {
+        let Some(tx) = fill_decode(txdecode::decode_v9(&u.tx))? else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -790,7 +801,7 @@ fn process(
                     return Ok(false);
                 }
             } else {
-                sdk_msgs += count_executable_msgs(Some(&mut *ctx), tx.msgs())
+                sdk_msgs += count_executable_msgs(Some(&mut *ctx), tx.gogo_msgs())
                     .map_err(|_| Abort("nil multistore".into()))?;
                 if sdk_msgs > MAX_SDK_MESSAGES {
                     return Ok(false);
@@ -907,6 +918,42 @@ mod tests {
             }],
         };
         validate_blob_tx(&tx, &u).unwrap();
+    }
+
+    /// A `MsgCreateClient` whose solo machine `ClientState` has no
+    /// consensus state: Go's tx decoder panics in `UnpackInterfaces`, and
+    /// `separateTxs` does not recover, so the whole PrepareProposal aborts
+    /// (`BaseApp` then returns the request's txs unchanged).
+    #[test]
+    fn decoder_panic_aborts_fill() {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+        use prost::Message as _;
+        let client_state = Any {
+            type_url: "/ibc.lightclients.solomachine.v3.ClientState".into(),
+            value: Vec::new(),
+        };
+        let msg = Any {
+            type_url: "/ibc.core.client.v1.MsgCreateClient".into(),
+            value: [
+                vec![0x0a, u8::try_from(client_state.encoded_len()).unwrap()],
+                client_state.encode_to_vec(),
+            ]
+            .concat(),
+        };
+        let raw = TxRaw {
+            body_bytes: TxBody {
+                messages: vec![msg],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            auth_info_bytes: Vec::new(),
+            signatures: Vec::new(),
+        }
+        .encode_to_vec();
+        assert!(txdecode::decode(&raw).is_err_and(|e| e.is_panic()));
+        assert!(separate(std::iter::once(raw.as_slice())).is_err());
+        assert!(fill_decode(txdecode::decode(b"\x01")).is_ok_and(|t| t.is_none()));
     }
 
     #[test]
