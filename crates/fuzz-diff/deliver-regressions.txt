@@ -37,3 +37,6 @@ zkism-forwarding 300 8 5083 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_GOVPASS=1
 # Redelegating the last shares of an unbonded validator: Go's getBeginInfo
 # fails `validator does not exist` once Unbond removed it (#74, security.md 99).
 staking-lifecycle 300 8 5017 DELIVER_IBC=1 DELIVER_RECHECK=1 DELIVER_SIM=1 DELIVER_GOVPASS=1
+# MsgTransfer receiver of invalid UTF-8 bytes under 2048 Go bytes: Go fails
+# GetSigners (code 1), Rust failed the length check (#78, security.md 100).
+ibc-edge 300 8 6091 DELIVER_IBC=1 DELIVER_GOVPASS=1

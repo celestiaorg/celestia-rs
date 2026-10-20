@@ -8,6 +8,9 @@
   with `validator does not exist` like Go (`Unbond` removes the validator
   and `getBeginInfo` returns its lookup error); Rust completed it
   (app-hash split, `docs/security.md` 99). #74
+- ICS-20 `MsgTransfer` receiver and memo limits count Go bytes (an invalid
+  UTF-8 byte is one), so `CheckTx` fails the same way as Go
+  (`docs/security.md` 100). #78
 - Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
   (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
   so a passed proposal whose params are invalid stores the same

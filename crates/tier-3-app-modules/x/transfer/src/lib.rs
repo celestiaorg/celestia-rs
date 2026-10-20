@@ -454,4 +454,35 @@ mod tests {
         );
         assert_eq!(escrow_address("transfer", "channel-0").len(), 20);
     }
+
+    /// `len(msg.Receiver)` / `len(msg.Memo)` count Go bytes: an invalid
+    /// UTF-8 byte is one, not its multi-byte Go form (deliver-diff
+    /// `ibc-edge` seed 6091 rejected a receiver Go accepts).
+    #[test]
+    fn transfer_length_limits_count_go_bytes() {
+        use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+        use celestia_proto::ibc::applications::transfer::v1::MsgTransfer;
+        let msg = |receiver: &[u8], memo: &[u8]| MsgTransfer {
+            source_port: "transfer".into(),
+            source_channel: "channel-0".into(),
+            token: Some(PbCoin {
+                denom: "utia".into(),
+                amount: "50".into(),
+            }),
+            sender: "celestia1lhzywt3sxla3x7mfm3kep5aycfakqcc90qt5nv".into(),
+            receiver: gostr::from_go_bytes(receiver).into_owned(),
+            memo: gostr::from_go_bytes(memo).into_owned(),
+            ..Default::default()
+        };
+        let ok = |m: &MsgTransfer| relay::validate_msg_transfer(m).map_err(|e| e.log);
+        assert_eq!(ok(&msg(&[0xff; 2048], &vec![0xff; 32768])), Ok(()));
+        assert_eq!(
+            ok(&msg(&[0xff; 2049], b"")),
+            Err("recipient address must not exceed 2048 bytes: invalid address".into())
+        );
+        assert_eq!(
+            ok(&msg(b"r", &vec![0xff; 32769])),
+            Err("memo must not exceed 32768 bytes: invalid memo".into())
+        );
+    }
 }
