@@ -50,27 +50,18 @@ const HALF_ORDER: [u8; 32] = [
 ];
 
 /// Errors returned by secp256k1 helpers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The secret key is zero or outside the secp256k1 scalar field.
+    #[error("invalid secp256k1 secret key")]
     InvalidSecretKey,
     /// The compressed public key is malformed or not on curve.
+    #[error("invalid secp256k1 public key")]
     InvalidPublicKey,
     /// The signature scalar pair is malformed or not in lower-S form.
+    #[error("invalid secp256k1 signature")]
     InvalidSignature,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::InvalidSecretKey => f.write_str("invalid secp256k1 secret key"),
-            Self::InvalidPublicKey => f.write_str("invalid secp256k1 public key"),
-            Self::InvalidSignature => f.write_str("invalid secp256k1 signature"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// Derive the Cosmos SDK secp256k1 secret key from an arbitrary secret.
 #[must_use]

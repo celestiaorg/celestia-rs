@@ -34,27 +34,18 @@ pub type SignatureBytes = [u8; SIGNATURE_LENGTH];
 pub type AddressBytes = [u8; ADDRESS_LENGTH];
 
 /// Errors returned by Ed25519 helpers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The private key was not encoded as `seed || public_key`.
+    #[error("malformed Ed25519 private key")]
     MalformedPrivateKey,
     /// The public key could not be parsed by the ZIP-215 verifier.
+    #[error("malformed Ed25519 public key")]
     MalformedPublicKey,
     /// The signature could not be parsed.
+    #[error("malformed Ed25519 signature")]
     MalformedSignature,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::MalformedPrivateKey => f.write_str("malformed Ed25519 private key"),
-            Self::MalformedPublicKey => f.write_str("malformed Ed25519 public key"),
-            Self::MalformedSignature => f.write_str("malformed Ed25519 signature"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// Derive the `CometBFT` Ed25519 private key from a 32-byte seed.
 #[must_use]

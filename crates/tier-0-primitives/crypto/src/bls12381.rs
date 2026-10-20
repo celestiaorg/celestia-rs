@@ -25,30 +25,21 @@ pub type PublicKeyBytes = [u8; PUBLIC_KEY_LENGTH];
 pub type SignatureBytes = [u8; SIGNATURE_LENGTH];
 
 /// Errors returned by BLS12-381 helpers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The secret key is zero or outside the BLS12-381 scalar field.
+    #[error("invalid BLS12-381 secret key")]
     InvalidSecretKey,
     /// The public key is not a valid compressed G1 point in the prime-order subgroup.
+    #[error("invalid BLS12-381 public key")]
     InvalidPublicKey,
     /// The signature is not a valid compressed G2 point in the prime-order subgroup.
+    #[error("invalid BLS12-381 signature")]
     InvalidSignature,
     /// Aggregation was requested for an empty input list.
+    #[error("empty BLS12-381 aggregate")]
     EmptyAggregate,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::InvalidSecretKey => f.write_str("invalid BLS12-381 secret key"),
-            Self::InvalidPublicKey => f.write_str("invalid BLS12-381 public key"),
-            Self::InvalidSignature => f.write_str("invalid BLS12-381 signature"),
-            Self::EmptyAggregate => f.write_str("empty BLS12-381 aggregate"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// Derive a BLS12-381 secret key from input key material.
 pub fn secret_key_from_ikm(ikm: &[u8]) -> Result<SecretKeyBytes, Error> {

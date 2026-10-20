@@ -1,7 +1,6 @@
 //! Bech32 helpers for Celestia addresses.
 
 use ::bech32::{FromBase32, ToBase32, Variant};
-use core::fmt;
 
 /// Celestia account address human-readable prefix.
 pub const ACCOUNT_PREFIX: &str = "celestia";
@@ -19,11 +18,13 @@ pub const ADDRESS_LENGTH: usize = 20;
 pub type AddressBytes = [u8; ADDRESS_LENGTH];
 
 /// Errors returned by bech32 helpers.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The bech32 string failed checksum, character-set, or variant validation.
+    #[error("invalid bech32 string: {0}")]
     Invalid(::bech32::Error),
     /// The decoded human-readable prefix did not match the expected prefix.
+    #[error("wrong bech32 prefix: expected {expected}, got {actual}")]
     WrongPrefix {
         /// Expected human-readable prefix.
         expected: &'static str,
@@ -31,6 +32,7 @@ pub enum Error {
         actual: String,
     },
     /// The decoded data length did not match the expected address length.
+    #[error("wrong address length: expected {expected}, got {actual}")]
     WrongLength {
         /// Expected byte length.
         expected: usize,
@@ -38,22 +40,6 @@ pub enum Error {
         actual: usize,
     },
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Invalid(err) => write!(f, "invalid bech32 string: {err}"),
-            Self::WrongPrefix { expected, actual } => {
-                write!(f, "wrong bech32 prefix: expected {expected}, got {actual}")
-            }
-            Self::WrongLength { expected, actual } => {
-                write!(f, "wrong address length: expected {expected}, got {actual}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 impl From<::bech32::Error> for Error {
     fn from(value: ::bech32::Error) -> Self {

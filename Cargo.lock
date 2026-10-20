@@ -1111,6 +1111,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1377,6 +1378,7 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2347,6 +2349,7 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2385,6 +2388,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

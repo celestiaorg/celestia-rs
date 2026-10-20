@@ -1,14 +1,13 @@
 //! Tendermint-compatible varint helpers.
 
-use core::fmt;
-
 /// Maximum number of bytes in a Go-compatible 64-bit varint.
 pub const MAX_VARINT_LEN64: usize = 10;
 
 /// Errors returned by canonical varint decoding and bounded-buffer writes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The caller-provided output buffer is too small.
+    #[error("buffer too small for varint: required {required} bytes, available {available}")]
     BufferTooSmall {
         /// Number of bytes required to encode the value.
         required: usize,
@@ -16,31 +15,15 @@ pub enum Error {
         available: usize,
     },
     /// The byte slice ended before a terminating byte was found.
+    #[error("incomplete varint")]
     Incomplete,
     /// The encoded integer exceeds the 64-bit varint range.
+    #[error("varint overflows 64-bit range")]
     Overflow,
     /// The byte sequence is valid LEB128 but not the shortest canonical form.
+    #[error("non-canonical varint encoding")]
     NonCanonical,
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BufferTooSmall {
-                required,
-                available,
-            } => write!(
-                f,
-                "buffer too small for varint: required {required} bytes, available {available}"
-            ),
-            Self::Incomplete => f.write_str("incomplete varint"),
-            Self::Overflow => f.write_str("varint overflows 64-bit range"),
-            Self::NonCanonical => f.write_str("non-canonical varint encoding"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// Return the canonical byte length of `value` when encoded as a uvarint.
 #[must_use]
