@@ -250,9 +250,32 @@ pub fn pick_version(supported: &[Version], counterparty: &[Version]) -> Result<V
             });
         }
     }
-    Err(cerr::version_negotiation_failed(
-        "failed to find a matching counterparty version from the supported version list",
-    ))
+    Err(cerr::version_negotiation_failed(format!(
+        "failed to find a matching counterparty version ({}) from the supported version list ({})",
+        go_versions_string(counterparty),
+        go_versions_string(supported)
+    )))
+}
+
+/// gogoproto `CompactTextString` of a `Version` (`%s` / `%v` of a
+/// `*Version`): `identifier:"1" features:"ORDER_ORDERED" `.
+fn go_version_string(v: &Version) -> String {
+    use std::fmt::Write as _;
+    let quote = x_ante::gogotext::quote;
+    let mut s = String::new();
+    if !v.identifier.is_empty() {
+        let _ = write!(s, "identifier:{} ", quote(&v.identifier));
+    }
+    for f in &v.features {
+        let _ = write!(s, "features:{} ", quote(f));
+    }
+    s
+}
+
+/// `%v` of a `[]*Version`: the elements' text forms, space-separated in `[]`.
+fn go_versions_string(vs: &[Version]) -> String {
+    let items: Vec<String> = vs.iter().map(go_version_string).collect();
+    format!("[{}]", items.join(" "))
 }
 
 // ---------------------------------------------------------------------------
@@ -482,9 +505,10 @@ pub fn conn_open_ack(
         )));
     }
     if !is_supported_version(&conn.versions, version) {
-        return Err(cerr::invalid_connection_state(
-            "the counterparty selected version is not supported by versions selected on INIT",
-        ));
+        return Err(cerr::invalid_connection_state(format!(
+            "the counterparty selected version {} is not supported by versions selected on INIT",
+            go_version_string(version)
+        )));
     }
     let cp = conn.counterparty.clone().unwrap_or_default();
     let expected = ConnectionEnd {
@@ -695,4 +719,47 @@ pub fn normalize_counterparty(mut c: Counterparty) -> Counterparty {
         c.prefix = Some(MerklePrefix::default());
     }
     c
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ibc-go v8.7.2 `PickVersion` prints both lists with `%v` (Go's text
+    /// from deliver-diff `zkism-forwarding` seed 5083, a failed proposal's
+    /// `failed_reason`).
+    #[test]
+    fn pick_version_error_is_go_s() {
+        let cp = |id: &str, f: &[&str]| Version {
+            identifier: id.into(),
+            features: f.iter().map(|s| (*s).to_owned()).collect(),
+        };
+        let err = pick_version(
+            &get_compatible_versions(),
+            &[cp(
+                "celestia1esdcnqdhef5kl6t52cns557lk453nxk7jmy8gn",
+                &["a"],
+            )],
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.log,
+            "failed to find a matching counterparty version \
+             ([identifier:\"celestia1esdcnqdhef5kl6t52cns557lk453nxk7jmy8gn\" features:\"a\" ]) \
+             from the supported version list \
+             ([identifier:\"1\" features:\"ORDER_ORDERED\" features:\"ORDER_UNORDERED\" ]): \
+             connection version negotiation failed"
+        );
+        let err =
+            pick_version(&get_compatible_versions(), &[cp("", &[]), cp("1", &[])]).unwrap_err();
+        // `ConnOpenAck`'s `%s` of the selected `*Version`.
+        assert_eq!(
+            go_version_string(&cp("1", &["ORDER_ORDERED", "x\"y"])),
+            "identifier:\"1\" features:\"ORDER_ORDERED\" features:\"x\\\"y\" "
+        );
+        // An empty `Version` prints as an empty string.
+        assert!(err.log.starts_with(
+            "failed to find a matching counterparty version ([ identifier:\"1\" ]) from"
+        ));
+    }
 }
