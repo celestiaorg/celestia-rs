@@ -18,7 +18,7 @@
 # This happens with Go and with Rust snapshots alike (they are byte-for-byte
 # the same stream). The Rust node has no such cache and must be unaffected.
 #
-# usage: [DEVNET_PORT_OFFSET=19000] [DEVNET_BIN=dir] [CELESTIA_RS=path]
+# usage: [DEVNET_PORT_OFFSET=19000] [DEVNET_BIN=dir] [CELESTIA_RS=path] [APP_V9=1]
 #        conformance/devnet/statesync-traffic.sh
 # Exit 0 iff the Rust node synced and followed the chain; the Go nodes'
 # outcome is reported.
@@ -27,6 +27,9 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 export PATH=$BIN:$PATH
+# APP_V9=1: the Go nodes run celestia-app v9.0.8 ($DEVNET_BIN/v9), so the
+# chain and every snapshot are at app version 9.
+[ -n "${APP_V9:-}" ] && export PATH=$BIN/v9:$PATH
 OFF=${DEVNET_PORT_OFFSET:-19000}
 if [ -z "${CELESTIA_RS:-}" ]; then
   (cd "$ROOT" && cargo build -q --release -p celestia-rs)

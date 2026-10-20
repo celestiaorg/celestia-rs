@@ -374,14 +374,16 @@ Not consensus-relevant unless noted; tracked so nothing is lost.
   `conformance/devnet/rpc-cli.sh` (now in the nightly `devnet-interop`
   matrix), which also covers the fix that gives `start`'s RPC-backed app
   gRPC services their RPC client.
-- [ ] State-sync snapshots of a v9 chain produced by Rust (V9; Go peers
-  restoring from a Rust snapshot at app version 9).
-  *2026-10-20:* `APP_V9=1 conformance/devnet/statesync-rust.sh` (nightly
+- [x] State-sync snapshots of a v9 chain produced by Rust (V9; Go peers
+  restoring from a Rust snapshot at app version 9). *Done 2026-10-20:*
+  `APP_V9=1 conformance/devnet/statesync-rust.sh` (nightly
   `devnet-interop`): on a v9.0.8 chain the Rust node restores Go's
   snapshot, snapshots the restored state and a Go v9.0.8 node whose only
-  peer is the Rust node restores it. Open: a snapshot taken by
-  `celestia-rs start`'s background snapshotter at app version 9 (the
-  `statesync_node` example snapshots in-process).
+  peer is the Rust node restores it. `APP_V9=1
+  conformance/devnet/statesync-traffic.sh`: Go v9.0.8 restores a snapshot
+  from `celestia-rs start`'s background snapshotter, then hits the same
+  inter-block-cache panic as with Go's own snapshot (the Go bug in that
+  script's header; Go v10.4.0 behaves the same).
 - [ ] Following Mocha from genesis over HTTPS (V9; part of F1.8 (b)).
 
 ## M14 — Mainnet validator (small-stake canary)
