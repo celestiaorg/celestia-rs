@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- Gov `MsgUpdateParams` fails with Go's `Params.ValidateBasic` texts
+  (`voting period must be positive: 0s`, `quorom cannot be negative: ...`),
+  so a passed proposal whose params are invalid stores the same
+  `failed_reason` as Go (app-hash split, `docs/security.md` 97). #71
+- IBC connection version negotiation errors (`ConnOpenTry`'s `PickVersion`,
+  `ConnOpenAck`'s unsupported selected version) print the versions in
+  gogoproto's text form like Go, so a failed gov proposal stores Go's
+  `failed_reason` (app-hash split, `docs/security.md` 98). #72
+
 ## v0.1.0-rc.2 (2026-10-19)
 
 ### Added
