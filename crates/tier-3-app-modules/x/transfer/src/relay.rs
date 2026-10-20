@@ -601,12 +601,13 @@ pub fn validate_msg_transfer(msg: &MsgTransfer) -> Result<()> {
     if msg.receiver.trim().is_empty() {
         return Err(ierr::invalid_address("missing recipient address"));
     }
-    if msg.receiver.len() > MAXIMUM_RECEIVER_LENGTH {
+    // Go's `len`: bytes of the Go string (an invalid UTF-8 byte is one).
+    if gostr::go_len(&msg.receiver) > MAXIMUM_RECEIVER_LENGTH {
         return Err(ierr::invalid_address(format!(
             "recipient address must not exceed {MAXIMUM_RECEIVER_LENGTH} bytes"
         )));
     }
-    if msg.memo.len() > MAXIMUM_MEMO_LENGTH {
+    if gostr::go_len(&msg.memo) > MAXIMUM_MEMO_LENGTH {
         return Err(errors::invalid_memo(&format!(
             "memo must not exceed {MAXIMUM_MEMO_LENGTH} bytes"
         )));

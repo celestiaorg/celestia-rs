@@ -85,12 +85,8 @@ pub fn acc_from_bech32_go(s: &str) -> Result<Vec<u8>, String> {
 pub fn acc_from_bech32_go_v(s: &str) -> Result<Vec<u8>, String> {
     acc_from_bech32_frames(s).map_err(|(e, line)| match line {
         Some(line) => format!(
-            "{e} [celestiaorg/cosmos-sdk@{}/types/address.go:{line}]",
-            if crate::version::is_v9(crate::version::app_version()) {
-                "v0.52.8"
-            } else {
-                "v0.52.12"
-            }
+            "{e}{}",
+            crate::version::cosmos_sdk_frame(&format!("types/address.go:{line}"))
         ),
         None => e,
     })

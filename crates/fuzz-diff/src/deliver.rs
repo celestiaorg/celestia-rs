@@ -1991,10 +1991,10 @@ impl Gen {
                         break;
                     }
                     let md = t[self.m.rng.below(t.len())].clone();
-                    msgs.push(Any {
+                    msgs.push(go_deterministic(Any {
                         type_url: format!("/{}", md.full_name()),
                         value: self.synth(&md, &gw, 1),
-                    });
+                    }));
                 }
                 Any::pack(&gov::MsgSubmitProposal {
                     messages: msgs,
@@ -4567,6 +4567,35 @@ fn query_app<R: prost::Message + Default>(
     (r.code == 0)
         .then(|| R::decode(r.value.as_slice()).ok())
         .flatten()
+}
+
+/// A proposal message whose failure text is deterministic in Go: gov
+/// `Params.ValidateBasic` prints a non-positive `max_deposit_period` with
+/// `%d` of its pointer (an address, different on every Go node;
+/// `docs/security.md` Open), which the proposal stores as `failed_reason`.
+/// Such a period becomes 1 s; any other message is kept as is.
+fn go_deterministic(msg: Any) -> Any {
+    use celestia_proto::cosmos::gov::v1 as gov;
+    use prost::Name as _;
+    if msg.type_url != gov::MsgUpdateParams::type_url() {
+        return msg;
+    }
+    let Ok(mut m) = gov::MsgUpdateParams::decode(msg.value.as_slice()) else {
+        return msg;
+    };
+    let Some(p) = m.params.as_mut() else {
+        return msg;
+    };
+    match &p.max_deposit_period {
+        Some(d) if sdk::time::duration_nanos(d) <= 0 => {
+            p.max_deposit_period = Some(pbjson_types::Duration {
+                seconds: 1,
+                nanos: 0,
+            });
+            Any::pack(&m)
+        }
+        _ => msg,
+    }
 }
 
 /// `DELIVER_GOVPASS`: gov-authority messages that set each module's

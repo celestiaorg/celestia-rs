@@ -34,3 +34,21 @@ v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_GOVPASS=1
 # version lists (`%v` of `[]*Version`) in its failed_reason: app-hash split
 # (#72, security.md 98).
 zkism-forwarding 300 8 5083 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_GOVPASS=1
+# Redelegating the last shares of an unbonded validator: Go's getBeginInfo
+# fails `validator does not exist` once Unbond removed it (#74, security.md 99).
+staking-lifecycle 300 8 5017 DELIVER_IBC=1 DELIVER_RECHECK=1 DELIVER_SIM=1 DELIVER_GOVPASS=1
+# MsgTransfer receiver of invalid UTF-8 bytes under 2048 Go bytes: Go fails
+# GetSigners (code 1), Rust failed the length check (#78, security.md 100).
+ibc-edge 300 8 6091 DELIVER_IBC=1 DELIVER_GOVPASS=1
+# A failed gov proposal's MsgPayForGas of -1utia: hyperlane's NewCoins panic
+# prints the first coin whole (#79, security.md 101).
+v9-upgrade 100 6 7431 GO_APPD_NEXT=v10 DELIVER_UPGRADE=31 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# A failed gov proposal's MsgGrant of an unknown StakeAuthorization type:
+# Go's panic text carries %T and the errorsmod frame (#80, security.md 102).
+v9-upgrade 100 6 8513 GO_APPD_NEXT=v10 DELIVER_UPGRADE=33 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# The same after the switch (the v0.52.12 frame).
+v9-upgrade 100 6 8142 GO_APPD_NEXT=v10 DELIVER_UPGRADE=22 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# A synthesized proposal's gov MsgUpdateParams with a non-positive
+# max_deposit_period: Go prints a pointer (security.md Open), so the
+# generator keeps the period positive.
+ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1

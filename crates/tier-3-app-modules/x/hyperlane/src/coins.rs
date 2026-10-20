@@ -108,7 +108,13 @@ impl Coins {
                 }
             }
             if !c.amount.is_positive() {
-                return Err(format!("coin {} amount is not positive", c.denom));
+                // Go's single-coin case prints the coin (`%s` of
+                // `coins[0]`), later coins only their denom.
+                return Err(if prev.is_none() {
+                    format!("coin {c} amount is not positive")
+                } else {
+                    format!("coin {} amount is not positive", c.denom)
+                });
             }
             prev = Some(&c.denom);
         }
@@ -271,6 +277,25 @@ mod tests {
         assert_eq!(cs.to_string(), "1utia,2utib");
         assert!(Coins::new([c("utia", 1), c("utia", 2)]).is_err());
         assert!(Coins::new([c("u", 1)]).is_err());
+    }
+
+    /// `Coins.Validate`: the first coin prints whole, later ones by denom
+    /// (a failed gov proposal stores the panic text, deliver-diff
+    /// `v9-upgrade` seed 7431).
+    #[test]
+    fn validate_texts_are_go_s() {
+        assert_eq!(
+            Coins(vec![c("utia", -1)]).validate(),
+            Err("coin -1utia amount is not positive".into())
+        );
+        assert_eq!(
+            Coins(vec![c("utia", 1), c("utib", -1)]).validate(),
+            Err("coin utib amount is not positive".into())
+        );
+        assert_eq!(
+            Coins::new([c("utia", -1)]).unwrap_err().log,
+            "invalid coin set -1utia: coin -1utia amount is not positive"
+        );
     }
 
     #[test]
