@@ -282,6 +282,15 @@ test), then start that harness's count again.
   `docs/fuzz-coverage.md`: 76.6% of tier-3 module lines, 83% of `x-ante`,
   80% of the tx decoder, 89% of `proposal.rs`; the per-message table, the
   types never executed with reasons, and what is open.
+  *Fresh run (2026-10-21, `033bc74`):* all 179 scheduled coverage cases
+  executed with zero differential mismatches. Five starts first collided
+  with an ephemeral local port and were rerun clean below that range; the
+  merged profile reports 76.8% of tier-3 module lines, 82.8% of `x-ante`,
+  80.4% of the tx decoder and 89.4% of `proposal.rs`. The regenerated
+  message report contains 267 entries, 274 passed-proposal payload
+  executions across 17 types and 28 message types never executed
+  successfully. Stable Rust still reports no branch data, so the branch
+  and per-error coverage exit criteria remain open.
   *Attribution (2026-10-21):* successful `MsgSubmitProposal` no longer
   counts its payload as successfully executed. `GOV_EXECUTED` attributes
   Go's `proposal_passed` events to the submitted message types; the
