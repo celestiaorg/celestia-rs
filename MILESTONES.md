@@ -279,7 +279,10 @@ test), then start that harness's count again.
   signature discrepancies, also with the signature cache off: a direct
   JSON probe confirms it emits literal U+FFFD where Go 1.26.9 and Rust
   emit `\ufffd` for invalid UTF-8. This is not evidence against the
-  pinned Go oracle; the campaign must be rerun with Go 1.26.9. The
+  pinned Go oracle. Rerunning the affected v9 `gov` seed with Go 1.26.9
+  matched every compared field (150 blocks, 2,614 finalized txs); two
+  isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
+  The full campaign is being rerun with the pinned compiler. The
   coverage baseline still needs a full rerun with the new accounting.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
