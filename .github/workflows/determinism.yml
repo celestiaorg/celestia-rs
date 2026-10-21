@@ -41,6 +41,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: determinism
+      - name: Reserve the diff scripts' ports (Linux)
+        if: runner.os == 'Linux'
+        # Keep outbound connections from taking the fixed ABCI and gRPC
+        # ports before deliver / pp bind them (as in fuzz-exec.yml).
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=37658,37758,37858,39590,39690
       - id: cache
         uses: actions/cache@v6
         with:
