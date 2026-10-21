@@ -11,7 +11,15 @@ of the separate 14-night or scenario-coverage gates.
 import collections
 import json
 from pathlib import Path
+import re
 import sys
+
+PINNED_GO = next(
+    line.split()[1]
+    for line in (Path(__file__).resolve().parents[2] / "conformance/devnet-oracle/go.mod")
+    .read_text().splitlines()
+    if line.startswith("toolchain ")
+)
 
 
 def collect(roots):
@@ -30,6 +38,11 @@ def collect(roots):
                 revision = (err.parent / "revision.txt").read_text().strip()
                 status = (err.parent / "worktree.status").read_text().strip()
                 patch = (err.parent / "worktree.patch").read_text().strip()
+                build_info = (err.parent / "go-build-info.txt").read_text()
+                toolchains = re.findall(r": (go\d+\.\d+\.\d+)\s*$", build_info, re.MULTILINE)
+                if toolchains != [PINNED_GO, PINNED_GO]:
+                    excluded["unpinned Go toolchain"] += 1
+                    continue
                 rc = int(err.with_suffix(".exit").read_text())
                 flags = tuple(sorted(err.with_suffix(".env").read_text().splitlines()))
                 if not revision or status or patch:
@@ -79,6 +92,7 @@ def report(roots):
           f"{sum(st['delivered'] for st in runs.values())} finalized txs across all revisions.")
     print("Assess the F1.2 volume gate per revision, after the last fix; "
           "this report does not establish 14 clean nights or complete scenario coverage.")
+    print(f"Both Go oracles must have been built with {PINNED_GO}.")
     if excluded:
         print("Excluded: " + ", ".join(f"{n} {why}" for why, n in sorted(excluded.items())) + ".")
 

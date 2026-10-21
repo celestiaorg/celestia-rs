@@ -20,6 +20,10 @@ class EvidenceTest(unittest.TestCase):
         (folder / "revision.txt").write_text(revision + "\n")
         (folder / "worktree.status").write_text(" M file\n" if dirty else "")
         (folder / "worktree.patch").write_text("")
+        (folder / "go-build-info.txt").write_text(
+            f"v10/celestia-appd: {REPORT.PINNED_GO}\n"
+            f"v9/celestia-appd: {REPORT.PINNED_GO}\n"
+        )
         result = dict(scenario="gov", seed=1, requested_blocks=10,
                       txs_per_block=8, blocks=10, delivered=17,
                       delivered_ok=5, mismatches=0, split=False)
@@ -66,6 +70,15 @@ class EvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid success count"):
                 REPORT.collect([root])
 
+    def test_unpinned_go_builds_do_not_count(self):
+        with tempfile.TemporaryDirectory() as root:
+            folder = self.run_evidence(root, "newer-go")
+            (folder / "go-build-info.txt").write_text(
+                "v10/celestia-appd: go1.27.0\nv9/celestia-appd: go1.27.0\n"
+            )
+            runs, excluded = REPORT.collect([root])
+            self.assertFalse(runs)
+            self.assertEqual(excluded, {"unpinned Go toolchain": 1})
 
 if __name__ == "__main__":
     unittest.main()

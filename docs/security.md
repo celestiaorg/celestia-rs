@@ -725,7 +725,8 @@ GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd DELI
 `fuzz-exec` uploads `findings-<job>` artifacts on success as well as
 failure. Clean runs retain stdout (including `TYPE` and `GOV_EXECUTED`),
 stderr, exit status, explicit run flags, source revision and worktree
-status / patch; successful Go app logs are discarded. `DELIVER_STATS`
+status / patch and Go binary build information; successful Go app logs
+are discarded. `DELIVER_STATS`
 in stderr counts generated blocks and finalized **transactions**, not
 CheckTx attempts or messages within a transaction.
 
@@ -738,6 +739,13 @@ python3 crates/fuzz-diff/saturation-report.py <artifact-dir> [<artifact-dir> ...
 The report groups volume by source revision, counts identical
 scenario / seed / block count / txs-per-block / flags only once, and
 excludes failed, mismatched, incomplete and uncommitted-source runs.
+Both Go binaries must match the toolchain pinned in
+`conformance/devnet-oracle/go.mod`. A newer compiler is not interchangeable:
+a local Go 1.27.0 build emits literal U+FFFD for invalid UTF-8 JSON
+strings, where Go 1.26.9 emits `\ufffd`. That changes amino sign bytes
+and creates false CheckTx / PrepareProposal discrepancies against Rust.
+`build-bins.sh` defaults to the pinned toolchain even when a newer Go is
+installed; the report excludes other compiler versions.
 Different finalized counts for an identical run are an error. Do not
 sum revisions to claim F1.2: its volume starts after the last fix and
 still needs every scenario, both app versions and 14 clean nights.
