@@ -158,6 +158,15 @@ Every item must pass on the commit the canary runs.
   fuzz-exec run 39477569911): 68 runs (every scenario at 300 blocks, seeds
   12 / 13, and the upgrade over seeds 1202-1212), 0 mismatches. Rerun on
   the commit the canary runs.
+  *Pinned-oracle local rerun 2026-10-21* on `62c98f6` (also not a release):
+  all 68 scheduled cases completed with individual exit code 0 and no
+  consensus mismatches (every v10 / v9 scenario in both flag sets, plus
+  12 v9 -> v10 upgrade seeds). The run produced 19,819 generated blocks
+  and 42,848 finalized txs. Its final wrapper footer was not written
+  because `nightly.sh` was edited after the process started; the retained
+  manifest was checked independently (68 `RUN` entries, 68 matching exit
+  files, no missing case). This is useful parity evidence but does not
+  replace the required rerun on the canary release commit.
 
 - [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
   copied (no second process may ever hold it); operator key offline or
@@ -252,6 +261,10 @@ test), then start that harness's count again.
   counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
   groups them by revision, excludes failed / incomplete / dirty-source
   runs and deduplicates repeated seed / scenario / configuration runs.
+  The pinned-oracle `62c98f6` campaign contributes 42,681 finalized txs
+  across 66 complete 300-block runs. Two additional recorded-upgrade
+  scenarios intentionally stopped at the upgrade signal (167 finalized
+  txs) and are excluded from the volume count as incomplete block runs.
   The volume and 14-night requirements remain open.
 
 - [ ] **F1.3 Measure coverage of consensus code.** Today
