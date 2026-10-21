@@ -44,6 +44,7 @@ if command -v go >/dev/null 2>&1; then
 fi
 FAILED=0
 RUNS=0
+SKIPPED=0
 SUMMARY=$FINDINGS/summary.txt
 
 # Scenarios `deliver` and `pp` drive, per app version. `cli` and
@@ -66,6 +67,7 @@ run() {
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
   if [ $(($(elapsed) + est)) -gt "$BUDGET" ] && [ "$RUNS" -gt 0 ]; then
+    SKIPPED=$((SKIPPED + 1))
     echo "SKIP $name (budget: $(elapsed)s used of ${BUDGET}s)" | tee -a "$SUMMARY"
     return
   fi
@@ -289,5 +291,14 @@ campaign-*of*)
   ;;
 esac
 
-echo "$JOB seed $SEED: $RUNS runs in $(elapsed)s, failed=$FAILED" | tee -a "$SUMMARY"
+case $JOB in
+campaign-*of*)
+  if [ "$SKIPPED" -ne 0 ]; then
+    FAILED=1
+    echo "INCOMPLETE campaign: $SKIPPED required runs skipped" | tee -a "$SUMMARY"
+  fi
+  ;;
+esac
+
+echo "$JOB seed $SEED: $RUNS runs, $SKIPPED skipped in $(elapsed)s, failed=$FAILED" | tee -a "$SUMMARY"
 exit $FAILED
