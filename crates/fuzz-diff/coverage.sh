@@ -16,6 +16,10 @@ BLOCKS=${2:-150}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
 cd "$ROOT"
+# Keep the local ABCI / oracle listeners below Linux's default ephemeral
+# range. Otherwise an unrelated outgoing connection can intermittently
+# occupy a fixed harness port between sequential cases.
+export DEVNET_PORT_OFFSET=${DEVNET_PORT_OFFSET:--10000}
 # Its own target directory: a build in target/ while this runs would
 # replace instrumented libraries.
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/cov}
