@@ -34,6 +34,14 @@ V10=$BIN/celestia-appd
 V9=$BIN/v9/celestia-appd
 LOG=$OUT/runs.txt
 : >"$LOG"
+git rev-parse HEAD >"$OUT/revision.txt"
+git diff --binary HEAD >"$OUT/worktree.patch"
+git status --porcelain >"$OUT/worktree.status"
+if command -v go >/dev/null 2>&1; then
+  go version -m "$V10" "$V9" >"$OUT/go-build-info.txt" 2>&1
+else
+  echo "go command unavailable; compiler provenance not captured" >"$OUT/go-build-info.txt"
+fi
 FAILED=0
 run() { # <name> <env...> -- <cmd...>
   local name=$1
