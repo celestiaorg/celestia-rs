@@ -292,10 +292,12 @@ test), then start that harness's count again.
   successfully. Stable Rust still reports no branch data, so the branch
   and per-error coverage exit criteria remain open.
   *Harness follow-up (2026-10-21):* `DELIVER_GOVPASS` now submits a valid
-  `MsgSetSendEnabled` that keeps `utia` enabled. Targeted 150-block v10
-  and v9 runs executed it in passed proposals (three and one executions,
-  respectively), finalized 4,419 txs and had zero mismatches. This closes
-  one successful-handler gap in the next full profile.
+  `MsgSetSendEnabled` that keeps `utia` enabled and grants a fuzz account
+  circuit permission for an unused message URL (so it cannot interrupt
+  later traffic). Targeted 150-block v10 and v9 runs executed the bank
+  handler three times each and the circuit handler one / two times,
+  finalized 5,010 txs and had zero mismatches. This closes two
+  successful-handler gaps in the next full profile.
   *Attribution (2026-10-21):* successful `MsgSubmitProposal` no longer
   counts its payload as successfully executed. `GOV_EXECUTED` attributes
   Go's `proposal_passed` events to the submitted message types; the

@@ -4659,8 +4659,9 @@ fn go_deterministic(msg: Any) -> Any {
 fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
     use celestia_proto::celestia::{blob::v1 as blob, minfee::v1 as minfee};
     use celestia_proto::cosmos::{
-        auth::v1beta1 as auth, bank::v1beta1 as bank, consensus::v1 as cons,
-        distribution::v1beta1 as distr, gov::v1 as gov, slashing::v1beta1 as slashing,
+        auth::v1beta1 as auth, bank::v1beta1 as bank, circuit::v1 as circuit,
+        consensus::v1 as cons, distribution::v1beta1 as distr, gov::v1 as gov,
+        slashing::v1beta1 as slashing,
     };
     use celestia_proto::ibc::applications::transfer::v1 as transfer;
     use celestia_proto::ibc::core::{
@@ -4699,6 +4700,17 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
             enabled: true,
         }],
         use_default_for: Vec::new(),
+    }));
+    // Grant a fuzz account a permission for a message URL no scenario
+    // sends. This reaches the circuit authorization handler without
+    // allowing the grantee to interrupt subsequent generated traffic.
+    out.push(Any::pack(&circuit::MsgAuthorizeCircuitBreaker {
+        granter: a(),
+        grantee: recipient.to_owned(),
+        permissions: Some(circuit::Permissions {
+            level: circuit::permissions::Level::SomeMsgs as i32,
+            limit_type_urls: vec!["/coverage.unused.Msg".into()],
+        }),
     }));
     params!(
         distr,

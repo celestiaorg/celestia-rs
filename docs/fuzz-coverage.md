@@ -36,10 +36,11 @@ executed successfully, and 274 passed-proposal payload executions across
 not yet all covered, so F1.3 remains open.
 
 After this profile, the governance driver gained a valid
-`MsgSetSendEnabled` case that leaves `utia` enabled. Targeted 150-block
-v10 and v9 runs executed that handler three and one times, respectively,
-with zero mismatches. The next full profile should therefore remove it
-from the never-successful list.
+`MsgSetSendEnabled` case that leaves `utia` enabled and a circuit
+authorization for an unused message URL. Targeted 150-block v10 and v9
+runs executed the bank handler three times each and the circuit handler
+one and two times, respectively, with zero mismatches. The next full
+profile should therefore remove both from the never-successful list.
 
 ## Line coverage by scope
 
