@@ -80,16 +80,28 @@ fi
 # GO_LOG=<file> keeps the Go app's log.
 # The Go app must be gone before the next run binds the same ports: its
 # shutdown can stall, so SIGKILL it after 10 s.
+app_running() {
+  kill -0 "$1" 2>/dev/null || return 1
+  # After an upgrade, the new Go app is a child of switch.sh. A minimal
+  # container init may leave it as a zombie after exit; kill -0 still
+  # succeeds then, even though it has released its ports and files.
+  case "$(ps -o stat= -p "$1" 2>/dev/null)" in
+    "" | *Z*) return 1 ;;
+  esac
+}
 stop_app() {
   local pid
   pid=$(cat "$WORK/app.pid" 2>/dev/null) || return 0
   kill "$pid" 2>/dev/null || return 0
   for _ in $(seq 1 100); do
-    kill -0 "$pid" 2>/dev/null || return 0
+    app_running "$pid" || return 0
     sleep 0.1
   done
   kill -9 "$pid" 2>/dev/null || true
-  while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
+  for _ in $(seq 1 100); do
+    app_running "$pid" || return 0
+    sleep 0.1
+  done
 }
 trap 'stop_app; if [ -n "${GO_LOG:-}" ]; then cp "$WORK/app.log" "$GO_LOG"; fi; rm -rf "$WORK"' EXIT
 UP=

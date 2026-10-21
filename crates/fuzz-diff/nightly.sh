@@ -39,6 +39,9 @@ git -C "$ROOT" rev-parse HEAD >"$FINDINGS/revision.txt"
 git -C "$ROOT" diff --binary HEAD >"$FINDINGS/worktree.patch"
 git -C "$ROOT" status --porcelain >"$FINDINGS/worktree.status"
 printf '%s\n' "$JOB seed=$SEED budget=$BUDGET blocks=$BLOCKS" >"$FINDINGS/job.txt"
+if command -v go >/dev/null 2>&1; then
+  go version -m "$V10" "$V9" >"$FINDINGS/go-build-info.txt" 2>&1
+fi
 FAILED=0
 RUNS=0
 SUMMARY=$FINDINGS/summary.txt

@@ -275,8 +275,11 @@ test), then start that harness's count again.
   recorded corpus has the same accounting (`proposal_executed`). A fresh
   v10 `gov` run (seed 20261021, `GOVPASS`, `IBC`, 150 generated blocks,
   2,718 finalized txs) matched Go, including the new execution counts.
-  A v9 run found a CheckTx / PrepareProposal signature discrepancy
-  (also with the signature cache off); investigation is ongoing. The
+  A local Go 1.27 build produced CheckTx / PrepareProposal amino
+  signature discrepancies, also with the signature cache off: a direct
+  JSON probe confirms it emits literal U+FFFD where Go 1.26.9 and Rust
+  emit `\ufffd` for invalid UTF-8. This is not evidence against the
+  pinned Go oracle; the campaign must be rerun with Go 1.26.9. The
   coverage baseline still needs a full rerun with the new accounting.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
