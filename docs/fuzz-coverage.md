@@ -35,6 +35,12 @@ executed successfully, and 274 passed-proposal payload executions across
 17 types. It is retained with the merged profile; the remaining types are
 not yet all covered, so F1.3 remains open.
 
+After this profile, the governance driver gained a valid
+`MsgSetSendEnabled` case that leaves `utia` enabled. Targeted 150-block
+v10 and v9 runs executed that handler three and one times, respectively,
+with zero mismatches. The next full profile should therefore remove it
+from the never-successful list.
+
 ## Line coverage by scope
 
 | scope | lines | line cover | branches | branch cover |

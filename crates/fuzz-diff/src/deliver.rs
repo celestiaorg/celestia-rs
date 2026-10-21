@@ -4690,6 +4690,16 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
         "/cosmos.bank.v1beta1.Query/Params",
         MsgUpdateParams { authority }
     );
+    // Exercise the separate gov-authority handler with a valid setting.
+    // Enabling the native fee denom preserves the scenario's bank behavior.
+    out.push(Any::pack(&bank::MsgSetSendEnabled {
+        authority: a(),
+        send_enabled: vec![bank::SendEnabled {
+            denom: "utia".into(),
+            enabled: true,
+        }],
+        use_default_for: Vec::new(),
+    }));
     params!(
         distr,
         "/cosmos.distribution.v1beta1.Query/Params",
