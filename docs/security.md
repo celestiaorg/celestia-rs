@@ -720,6 +720,48 @@ GO_APPD=$DEVNET_BIN/v9/celestia-appd GO_APPD_NEXT=$DEVNET_BIN/celestia-appd DELI
   DELIVER_RECHECK=1 DELIVER_IBC=1 crates/fuzz-diff/deliver-diff.sh v9-upgrade 80 6 21
 ```
 
+### Retained execution evidence (F1.2 / F1.3)
+
+`fuzz-exec` uploads `findings-<job>` artifacts on success as well as
+failure. Clean runs retain stdout (including `TYPE` and `GOV_EXECUTED`),
+stderr, exit status, explicit run flags, source revision and worktree
+status / patch; successful Go app logs are discarded. `DELIVER_STATS`
+in stderr counts generated blocks and finalized **transactions**, not
+CheckTx attempts or messages within a transaction.
+
+After downloading artifacts into separate directories, summarize them:
+
+```sh
+python3 crates/fuzz-diff/saturation-report.py <artifact-dir> [<artifact-dir> ...]
+```
+
+The report groups volume by source revision, counts identical
+scenario / seed / block count / txs-per-block / flags only once, and
+excludes failed, mismatched, incomplete and uncommitted-source runs.
+Different finalized counts for an identical run are an error. Do not
+sum revisions to claim F1.2: its volume starts after the last fix and
+still needs every scenario, both app versions and 14 clean nights.
+Artifacts from before `DELIVER_STATS` are not counted by this report.
+
+The `exec` client allows HTTP/2 header lists up to 1 MiB on both
+connections: invalid-denom errors can carry large percent-encoded
+`grpc-message` headers. Nightly seed 13 (`fibre`, strings mode, seed
+13008) hit the old client limit on Rust's response and compared a
+transport reset (code 13) with Go's SDK error (code 2). With the larger
+allowance, all 2,996 inputs agree on code / gas; the case is pinned in
+the nightly regression job. This was a harness transport failure, not
+a consensus finding.
+
+For handler coverage, `TYPE ... go_ok` counts successful transactions
+and successful authz executions, excluding proposal payloads at
+submission. `GOV_EXECUTED <type> <count>` counts a proposal's messages
+only after Go emits `proposal_passed` for that proposal id. Failed,
+rejected and expired proposals contribute no successful executions.
+`fuzz-diff coverage` attributes recorded proposals the same way
+(`proposal_executed` column). `coverage-table.py` reports generated and
+recorded proposal executions separately; a successful submission alone
+does not satisfy the per-message success requirement of F1.3.
+
 ### Crash-only fuzzing (`fuzz/`, cargo-fuzz)
 
 libFuzzer targets for untrusted input; a panic, stack overflow, allocation

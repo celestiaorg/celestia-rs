@@ -35,6 +35,10 @@ V10=$BIN/celestia-appd
 V9=$BIN/v9/celestia-appd
 START=$(date +%s)
 mkdir -p "$FINDINGS"
+git -C "$ROOT" rev-parse HEAD >"$FINDINGS/revision.txt"
+git -C "$ROOT" diff --binary HEAD >"$FINDINGS/worktree.patch"
+git -C "$ROOT" status --porcelain >"$FINDINGS/worktree.status"
+printf '%s\n' "$JOB seed=$SEED budget=$BUDGET blocks=$BLOCKS" >"$FINDINGS/job.txt"
 FAILED=0
 RUNS=0
 SUMMARY=$FINDINGS/summary.txt
@@ -70,6 +74,8 @@ run() {
   t0=$(date +%s)
   env "${envs[@]}" GO_LOG="$out.go.log" "$@" >"$out.out" 2>"$out.err"
   local rc=$?
+  printf '%s\n' "$rc" >"$out.exit"
+  printf '%s\n' "${envs[@]}" >"$out.env"
   local line
   line=$(tail -n 1 "$out.err")
   echo "  rc=$rc $(($(date +%s) - t0))s: $line" | tee -a "$SUMMARY"
@@ -79,7 +85,9 @@ run() {
     grep -m 20 '^MISMATCH' "$out.out" | sed 's/^/  /' | cut -c1-400 | tee -a "$SUMMARY"
     { echo "seed=$SEED"; echo "env: ${envs[*]}"; echo "cmd: $*"; } >"$out.repro"
   else
-    rm -f "$out.go.log" "$out.out"
+    # Keep TYPE / GOV_EXECUTED and finalized-tx counts even on success:
+    # F1.2 and F1.3 need evidence from clean campaigns too.
+    rm -f "$out.go.log"
   fi
 }
 
@@ -160,6 +168,10 @@ regressions)
     run "regression-$n-$scen-s$seed" 0 GO_APPD="$appd" $envs -- \
       "$ROOT/crates/fuzz-diff/deliver-diff.sh" "$scen" "$blocks" "$per" "$seed"
   done < <(grep -v '^#' "$ROOT/crates/fuzz-diff/deliver-regressions.txt")
+  # A large invalid-denom error used to exceed the exec client's HTTP/2
+  # header limit and masquerade as a consensus mismatch (nightly seed 13).
+  run "regression-exec-fibre-s13008" 0 GO_APPD="$V10" EXEC_MODE=strings -- \
+    "$ROOT/crates/fuzz-diff/exec-diff.sh" fibre 20 13008
   ;;
 json)
   OPS=json_count,json_gov,json_pfm,json_pfm_next,json_ica_tx,json_ica_vb,json_ica_pd,json_ica_md,json_ics20,json_ack,json_ack_check,json_ica_pb

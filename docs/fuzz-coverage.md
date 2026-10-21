@@ -17,6 +17,15 @@ the recorded upgrade. All 176 runs were clean (no mismatch with Go).
 Branch coverage needs llvm-cov's `-Z coverage-options=branch` (nightly
 only); the figures below are line coverage on stable.
 
+The per-message figures below are the original 2026-10-19 baseline.
+Its nested `go_ok` / `nested_ok` counts for **proposal payloads** reflect
+successful submission, not execution. They must not establish handler
+coverage. The harness now excludes those payloads from transaction
+success counts and reports `GOV_EXECUTED` only after Go's
+`proposal_passed` event; `fuzz-diff coverage` adds the corresponding
+`proposal_executed` column for recorded traffic. Regenerate both inputs
+before comparing the new `coverage-table.py` output with this baseline.
+
 ## Line coverage by scope
 
 | scope | lines | line cover | branches | branch cover |
@@ -398,9 +407,9 @@ proposal (`GOV proposal_passed`), not per type.
   `MsgUpdateParams` of minfee, distribution, slashing, ICA host, IBC
   client / connection / channel. `ab21011` makes GOVPASS propose each one
   with the current parameters every 4 blocks (25 proposals pass in 150
-  blocks of `gov`, clean against Go at both versions); the per-type count
-  of executions needs the proposal outcome attributed to its messages
-  (open).
+  blocks of `gov`, clean against Go at both versions). Per-type
+  attribution is now implemented by `GOV_EXECUTED` / `proposal_executed`;
+  this baseline predates it and needs a full rerun.
 * **Disabled in Celestia's Go code** (every such tx fails in Go at both
   app versions, so no harness can execute it successfully):
   `cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount` (and
@@ -429,6 +438,6 @@ proposal (`GOV proposal_passed`), not per type.
 
 Not met yet: the per-type outcome table exists and every handler module
 runs, but (1) the harness gaps above, (2) per-type attribution of
-proposal executions, and (3) the list of uncovered branches of each
+  proposal executions in a regenerated full report, and (3) the list of uncovered branches of each
 message handler and ante decorator with a reason (needs the nightly
 branch instrumentation) remain.

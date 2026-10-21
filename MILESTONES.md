@@ -247,6 +247,12 @@ test), then start that harness's count again.
   any harness for **14 consecutive nightly runs**. Proposed numbers; the
   owner may change them, but the second condition (finding rate has gone
   to zero) is the one that matters.
+  *Evidence tooling (2026-10-21):* nightly artifacts now retain clean
+  outputs, exit codes, source revision / worktree state and finalized-tx
+  counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
+  groups them by revision, excludes failed / incomplete / dirty-source
+  runs and deduplicates repeated seed / scenario / configuration runs.
+  The volume and 14-night requirements remain open.
 
 - [ ] **F1.3 Measure coverage of consensus code.** Today
   `fuzz-diff coverage` only counts message types in the recorded
@@ -263,6 +269,15 @@ test), then start that harness's count again.
   `docs/fuzz-coverage.md`: 76.6% of tier-3 module lines, 83% of `x-ante`,
   80% of the tx decoder, 89% of `proposal.rs`; the per-message table, the
   types never executed with reasons, and what is open.
+  *Attribution (2026-10-21):* successful `MsgSubmitProposal` no longer
+  counts its payload as successfully executed. `GOV_EXECUTED` attributes
+  Go's `proposal_passed` events to the submitted message types; the
+  recorded corpus has the same accounting (`proposal_executed`). A fresh
+  v10 `gov` run (seed 20261021, `GOVPASS`, `IBC`, 150 generated blocks,
+  2,718 finalized txs) matched Go, including the new execution counts.
+  A v9 run found a CheckTx / PrepareProposal signature discrepancy
+  (also with the signature cache off); investigation is ongoing. The
+  coverage baseline still needs a full rerun with the new accounting.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
   harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /

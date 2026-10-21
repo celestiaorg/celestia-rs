@@ -115,7 +115,10 @@ jobs:
           crates/fuzz-diff/nightly.sh "${{ matrix.job }}" "$seed" "${{ runner.temp }}/findings"
       - if: always()
         run: cat "${{ runner.temp }}/findings/summary.txt" >>"$GITHUB_STEP_SUMMARY" || true
-      - if: failure()
+      - if: always()
+        name: Finalized transaction evidence (F1.2)
+        run: python3 crates/fuzz-diff/saturation-report.py "${{ runner.temp }}/findings" >>"$GITHUB_STEP_SUMMARY"
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: findings-${{ matrix.job }}

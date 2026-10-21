@@ -47,6 +47,7 @@ use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
+mod gov_coverage;
 mod trace;
 mod upgrade;
 
@@ -149,6 +150,9 @@ pub struct Stats {
     pub script: Vec<String>,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
+    /// Messages actually executed by Go in passed generated proposals,
+    /// counted by type URL (submission alone is not execution).
+    pub gov_executed: BTreeMap<String, u64>,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
@@ -3282,8 +3286,18 @@ fn type_urls(app_version: u64, tx: &[u8]) -> Vec<String> {
     let Ok(t) = txdecode::decode_for(app_version, tx) else {
         return vec!["<undecodable>".into()];
     };
+    message_type_urls(&t.body.messages, true)
+}
+
+fn executed_type_urls(app_version: u64, tx: &[u8]) -> Vec<String> {
+    txdecode::decode_for(app_version, tx)
+        .map(|t| message_type_urls(&t.body.messages, false))
+        .unwrap_or_default()
+}
+
+fn message_type_urls(messages: &[Any], proposal_contents: bool) -> Vec<String> {
     let mut out = Vec::new();
-    for a in &t.body.messages {
+    for a in messages {
         out.push(a.type_url.clone());
         let inner: Vec<Any> = match a.type_url.as_str() {
             "/cosmos.authz.v1beta1.MsgExec" => {
@@ -3291,7 +3305,7 @@ fn type_urls(app_version: u64, tx: &[u8]) -> Vec<String> {
                     .map(|m| m.msgs)
                     .unwrap_or_default()
             }
-            "/cosmos.gov.v1.MsgSubmitProposal" => {
+            "/cosmos.gov.v1.MsgSubmitProposal" if proposal_contents => {
                 celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(a.value.as_slice())
                     .map(|m| m.messages)
                     .unwrap_or_default()
@@ -3347,6 +3361,7 @@ pub fn run(
     };
     let mut rust = trace::Traced::new(app::App::new())?;
     let mut stats = Stats::default();
+    let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
     let pool_txs: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
     for t in &pool_txs {
@@ -4276,9 +4291,14 @@ pub fn run(
             for u in type_urls(app_version, t) {
                 let e = stats.per_type.entry(u).or_default();
                 e.0 += 1;
-                if res.code == 0 {
-                    e.1 += 1;
+            }
+            if res.code == 0 {
+                // Proposal payloads execute only when governance passes
+                // them later; a successful submission is not coverage.
+                for u in executed_type_urls(app_version, t) {
+                    stats.per_type.entry(u).or_default().1 += 1;
                 }
+                gov_coverage.submitted(app_version, t, &res.events);
             }
             for c in gn.wire.txs.remove(t).into_iter().flatten() {
                 let e = stats.wire.entry(c.to_owned()).or_default();
@@ -4321,6 +4341,7 @@ pub fn run(
             gn.dict.harvest_events(&res.events);
         }
         gn.dict.harvest_events(&g.events);
+        gov_coverage.completed(&g.events, &mut stats.gov_executed);
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
             for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
                 *stats.gov_results.entry(a.value.clone()).or_default() += 1;
@@ -5815,11 +5836,13 @@ fn registered(app_version: u64, type_url: &str) -> bool {
 pub fn coverage() -> String {
     use std::fmt::Write as _;
     let mut rec: BTreeMap<String, (u64, u64, BTreeSet<String>)> = BTreeMap::new();
+    let mut rec_gov: BTreeMap<String, u64> = BTreeMap::new();
     for sc in crate::corpus::scenarios() {
         let Ok(exs) = devnet_conformance::load_exchanges(&sc) else {
             continue;
         };
         let av = if sc.starts_with("v9-") { 9 } else { 10 };
+        let mut proposals = gov_coverage::Proposals::default();
         for ex in exs {
             if let (
                 Some(request::Value::FinalizeBlock(r)),
@@ -5827,10 +5850,17 @@ pub fn coverage() -> String {
             ) = (ex.request.value, ex.response.value)
             {
                 for (t, res) in r.txs.iter().zip(&g.tx_results) {
-                    let mut urls = type_urls(av, t);
-                    if urls.first().is_some_and(|u| u == "<undecodable>") {
-                        urls = type_urls(10, t);
-                    }
+                    let version = if txdecode::decode_for(av, t).is_ok() {
+                        av
+                    } else {
+                        10
+                    };
+                    let urls = if res.code == 0 {
+                        proposals.submitted(version, t, &res.events);
+                        executed_type_urls(version, t)
+                    } else {
+                        type_urls(version, t)
+                    };
                     for u in urls {
                         let e = rec.entry(u).or_default();
                         if res.code == 0 {
@@ -5841,11 +5871,12 @@ pub fn coverage() -> String {
                         e.2.insert(sc.clone());
                     }
                 }
+                proposals.completed(&g.events, &mut rec_gov);
             }
         }
     }
     let mut out = String::from(
-        "type\tv10\tv9\trust_handler\tsynth\trecorded_ok\trecorded_fail\tnested_ok\tnested_fail\tscenarios\n",
+        "type\tv10\tv9\trust_handler\tsynth\trecorded_ok\trecorded_fail\tnested_ok\tnested_fail\tproposal_executed\tscenarios\n",
     );
     for md in msg_types() {
         let url = format!("/{}", md.full_name());
@@ -5854,7 +5885,7 @@ pub fn coverage() -> String {
         let scs: Vec<String> = top.2.union(&nested.2).cloned().collect();
         let _ = writeln!(
             out,
-            "{url}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{url}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             u8::from(registered(10, &url)),
             u8::from(registered(9, &url)),
             u8::from(app::router::has_handler(&url)),
@@ -5863,6 +5894,7 @@ pub fn coverage() -> String {
             top.1,
             nested.0,
             nested.1,
+            rec_gov.get(&url).copied().unwrap_or(0),
             scs.join(",")
         );
     }
@@ -5872,6 +5904,25 @@ pub fn coverage() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn successful_submission_does_not_execute_its_payload() {
+        let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend::default());
+        let proposal = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+            messages: vec![send.clone()],
+            ..Default::default()
+        });
+        let authz = Any::pack(&celestia_proto::cosmos::authz::v1beta1::MsgExec {
+            grantee: String::new(),
+            msgs: vec![send],
+        });
+        let msgs = [proposal, authz];
+        let declared = message_type_urls(&msgs, true);
+        let executed = message_type_urls(&msgs, false);
+        let nested = ">/cosmos.bank.v1beta1.MsgSend";
+        assert_eq!(declared.iter().filter(|u| *u == nested).count(), 2);
+        assert_eq!(executed.iter().filter(|u| *u == nested).count(), 1);
+    }
 
     #[test]
     fn genesis_patch_adds_accounts() {

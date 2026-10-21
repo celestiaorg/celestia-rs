@@ -791,7 +791,12 @@ fn connect(
     rt: &tokio::runtime::Runtime,
     addr: &str,
 ) -> anyhow::Result<tonic::client::Grpc<tonic::transport::Channel>> {
-    let ep = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))?;
+    // Invalid denoms / repeated coins can produce large grpc-message
+    // headers, especially when Go-form strings are percent-encoded.
+    // Read the actual status from both servers instead of comparing a
+    // client's header-limit reset with the other app's SDK error code.
+    let ep = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))?
+        .http2_max_header_list_size(1024 * 1024);
     let mut last = None;
     for _ in 0..60 {
         match rt.block_on(ep.connect()) {

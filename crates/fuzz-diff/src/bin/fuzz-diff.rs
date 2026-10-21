@@ -497,6 +497,9 @@ fn main() -> anyhow::Result<()> {
         for (k, n) in &st.gov_results {
             println!("GOV {k} {n}");
         }
+        for (t, n) in &st.gov_executed {
+            println!("GOV_EXECUTED {t} {n}");
+        }
         for l in &st.script {
             println!("SCRIPT {l}");
         }
@@ -524,6 +527,22 @@ fn main() -> anyhow::Result<()> {
         for (t, (n, ok, bad)) in &st.sim {
             println!("SIM {t} simulated={n} go_ok={ok} differed={bad}");
         }
+        // Machine-readable evidence for F1.2: count finalized txs, not
+        // CheckTx attempts or messages nested inside one tx.
+        eprintln!(
+            "DELIVER_STATS {}",
+            serde_json::json!({
+                "scenario": scenario,
+                "seed": seed,
+                "requested_blocks": blocks,
+                "txs_per_block": per_block,
+                "blocks": st.blocks,
+                "delivered": st.delivered,
+                "delivered_ok": st.delivered_ok,
+                "mismatches": st.mismatches.len(),
+                "split": st.split,
+            })
+        );
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
             st.replayed,
