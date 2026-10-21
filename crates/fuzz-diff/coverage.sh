@@ -30,6 +30,7 @@ V10=$BIN/celestia-appd
 V9=$BIN/v9/celestia-appd
 LOG=$OUT/runs.txt
 : >"$LOG"
+FAILED=0
 run() { # <name> <env...> -- <cmd...>
   local name=$1
   shift
@@ -37,7 +38,9 @@ run() { # <name> <env...> -- <cmd...>
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
   env "${envs[@]}" "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
-  echo "$name rc=$? $(tail -n 1 "$OUT/$name.err")" | tee -a "$LOG"
+  local rc=$?
+  [ "$rc" -eq 0 ] || FAILED=1
+  echo "$name rc=$rc $(tail -n 1 "$OUT/$name.err")" | tee -a "$LOG"
 }
 for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting zkism-forwarding \
   ibc ibc-edge ibc-upgrades utf8 blob consensus evidence empty \
@@ -63,6 +66,7 @@ for s in 1 2 3 4; do
 done
 run "deliver-upgrade" GO_APPD="$V10" DELIVER_REPLAY_STOP=signal DELIVER_IBC=1 -- \
   crates/fuzz-diff/deliver-diff.sh upgrade "$BLOCKS" 8 1
-cargo llvm-cov report --release --lcov --output-path "$OUT/lcov.info"
-cargo llvm-cov report --release --summary-only >"$OUT/summary.txt"
+cargo llvm-cov report --release --lcov --output-path "$OUT/lcov.info" || exit 1
+cargo llvm-cov report --release --summary-only >"$OUT/summary.txt" || exit 1
 echo "wrote $OUT/lcov.info and $OUT/summary.txt"
+exit "$FAILED"
