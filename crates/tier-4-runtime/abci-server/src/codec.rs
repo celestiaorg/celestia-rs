@@ -23,7 +23,10 @@ pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> io::Result<Option<Ve
             }
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
-        if shift >= 64 {
+        // Byte ten has room for only the top bit of a u64. Reject both
+        // excess payload bits and a continuation bit before shifting;
+        // otherwise Rust discards the high bits and accepts a short frame.
+        if shift == 63 && b[0] > 1 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "varint overflow",
@@ -71,42 +74,5 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, payload: &[u8]) -> io
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn roundtrip_frames() -> io::Result<()> {
-        let payloads = [
-            vec![],
-            vec![1u8; 1],
-            vec![2u8; 127],
-            vec![3u8; 128],
-            vec![4u8; 70_000],
-        ];
-        let mut wire = Vec::new();
-        for p in &payloads {
-            wire.extend(encode_frame(p));
-        }
-        let mut r = wire.as_slice();
-        for p in &payloads {
-            assert_eq!(read_frame(&mut r).await?.as_ref(), Some(p));
-        }
-        assert_eq!(read_frame(&mut r).await?, None);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn truncated_prefix_is_error() {
-        let mut r: &[u8] = &[0x80];
-        assert!(read_frame(&mut r).await.is_err());
-    }
-
-    #[test]
-    fn prost_compatible_prefix() {
-        let payload = vec![9u8; 300];
-        let mut expected = Vec::new();
-        prost::encoding::encode_varint(300, &mut expected);
-        expected.extend_from_slice(&payload);
-        assert_eq!(encode_frame(&payload), expected);
-    }
-}
+#[path = "codec_tests.rs"]
+mod tests;
