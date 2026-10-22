@@ -1,4 +1,5 @@
 target/
 artifacts/
 coverage/
+corpus-cache/
 Cargo.lock

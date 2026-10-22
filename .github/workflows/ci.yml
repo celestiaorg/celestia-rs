@@ -37,7 +37,44 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Fuzz evidence accounting
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
+      - name: Quality evidence accounting
+        run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
       - run: cargo test --workspace --all-features
+
+  # A small, deterministic budget protects the signer and socket boundary.
+  # The complete per-crate report runs nightly, without a second PR workspace build.
+  coverage-critical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage-critical
+      - run: cargo install cargo-llvm-cov --version 0.9.1 --locked
+      - name: Measure critical boundary coverage
+        run: |
+          mkdir -p ${{ runner.temp }}/quality
+          rustc -Vv > ${{ runner.temp }}/quality/toolchain.txt
+          cargo llvm-cov --locked -p abci-server -p privval --json --output-path ${{ runner.temp }}/quality/llvm.json
+      - name: Check coverage budgets
+        run: >-
+          python3 scripts/quality/coverage.py ${{ runner.temp }}/quality/llvm.json
+          --policy scripts/quality/coverage-budgets.json --out ${{ runner.temp }}/quality
+          --suite 'cargo llvm-cov --locked -p abci-server -p privval'
+      - if: always()
+        run: test ! -f ${{ runner.temp }}/quality/coverage.md || cat ${{ runner.temp }}/quality/coverage.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: critical-coverage
+          path: ${{ runner.temp }}/quality
+          retention-days: 30
 
   # The reference validator is a Mac Mini M4 (aarch64-apple-darwin): build
   # the node in release mode on Apple silicon and run a fast smoke subset

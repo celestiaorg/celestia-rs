@@ -197,6 +197,87 @@ fn state_is_persisted_before_signature_returned() {
     assert_eq!(same.signature, v.signature);
 }
 
+#[test]
+fn failed_state_write_releases_no_vote_or_extension_signature() {
+    let (mut pv, dir) = temp_pv();
+    let before = pv.last_sign_state.clone();
+    let state_path = dir.path().join("state.json");
+    let persisted = fs::read(&state_path).unwrap();
+    // Force the atomic writer's open to fail, even when tests run as root.
+    let blocker = dir
+        .path()
+        .join(format!(".state.json.tmp{}", std::process::id()));
+    fs::create_dir(&blocker).unwrap();
+    let mut v = vote(&pv, PRECOMMIT_TYPE, 5, 0, 1);
+    v.extension = b"extension".to_vec();
+    assert!(pv.sign_vote("c", &mut v).is_err());
+    assert!(v.signature.is_empty());
+    assert!(v.extension_signature.is_empty());
+    assert_eq!(pv.last_sign_state, before);
+    assert_eq!(fs::read(&state_path).unwrap(), persisted);
+
+    fs::remove_dir(blocker).unwrap();
+    pv.sign_vote("c", &mut v).unwrap();
+    assert!(!v.signature.is_empty());
+    assert!(!v.extension_signature.is_empty());
+    let mut restarted = FilePv::load(dir.path().join("key.json"), state_path).unwrap();
+    let mut conflict = vote(&restarted, PRECOMMIT_TYPE, 5, 0, 2);
+    assert!(restarted.sign_vote("c", &mut conflict).is_err());
+    assert!(conflict.signature.is_empty());
+}
+
+#[test]
+fn failed_state_write_releases_no_proposal_signature() {
+    let (mut pv, dir) = temp_pv();
+    let before = pv.last_sign_state.clone();
+    let state_path = dir.path().join("state.json");
+    let persisted = fs::read(&state_path).unwrap();
+    let blocker = dir
+        .path()
+        .join(format!(".state.json.tmp{}", std::process::id()));
+    fs::create_dir(&blocker).unwrap();
+    let mut proposal = pb::Proposal {
+        r#type: ctypes::vote::PROPOSAL_TYPE,
+        height: 5,
+        round: 0,
+        pol_round: -1,
+        block_id: Some(block_id(1)),
+        timestamp: ts(1_700_000_000, 0),
+        signature: vec![],
+    };
+    assert!(pv.sign_proposal("c", &mut proposal).is_err());
+    assert!(proposal.signature.is_empty());
+    assert_eq!(pv.last_sign_state, before);
+    assert_eq!(fs::read(&state_path).unwrap(), persisted);
+
+    fs::remove_dir(blocker).unwrap();
+    pv.sign_proposal("c", &mut proposal).unwrap();
+    let mut restarted = FilePv::load(dir.path().join("key.json"), state_path).unwrap();
+    let mut conflict = proposal.clone();
+    conflict.signature.clear();
+    conflict.block_id = Some(block_id(2));
+    assert!(restarted.sign_proposal("c", &mut conflict).is_err());
+    assert!(conflict.signature.is_empty());
+    proposal.signature.clear();
+    restarted.sign_proposal("c", &mut proposal).unwrap();
+    assert!(!proposal.signature.is_empty());
+}
+
+#[test]
+fn existing_key_with_missing_or_corrupt_state_is_not_regenerated() {
+    let (_pv, dir) = temp_pv();
+    let key_path = dir.path().join("key.json");
+    let state_path = dir.path().join("state.json");
+    let key = fs::read(&key_path).unwrap();
+    fs::remove_file(&state_path).unwrap();
+    assert!(FilePv::load_or_generate(&key_path, &state_path).is_err());
+    assert!(!state_path.exists());
+    fs::write(&state_path, b"{truncated").unwrap();
+    assert!(FilePv::load_or_generate(&key_path, &state_path).is_err());
+    assert_eq!(fs::read(&state_path).unwrap(), b"{truncated");
+    assert_eq!(fs::read(&key_path).unwrap(), key);
+}
+
 #[derive(Debug)]
 struct VectorOp {
     kind: String,
