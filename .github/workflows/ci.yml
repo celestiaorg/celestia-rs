@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Fuzz evidence accounting
+        run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - run: cargo test --workspace --all-features
 
   # The reference validator is a Mac Mini M4 (aarch64-apple-darwin): build

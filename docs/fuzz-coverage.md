@@ -1,7 +1,7 @@
 # Fuzzing coverage of the consensus code (F1.3)
 
-*Run 2026-10-19 on `fa89c0e` (before `ab21011`, which adds the GOVPASS
-parameter proposals).* Reproduce with
+*Fresh run 2026-10-21 on `033bc74` (the later `dcdb5b9` changes only this
+evidence text).* Reproduce with
 
     DEVNET_BIN=$PWD/target/devnet-bin crates/fuzz-diff/coverage.sh <out> 150
     target/release/fuzz-diff coverage > rec.tsv
@@ -12,50 +12,75 @@ and runs, at both app versions: `deliver` on every devnet scenario (150
 generated blocks, `DELIVER_IBC`, `WIRE`, `SWEEP`, `RECHECK`, `HL` where it
 applies), again with `DELIVER_GOVPASS` and `DELIVER_SIM`, `exec` in its
 four modes, `pp`, four `DELIVER_UPGRADE` seeds of the v9 → v10 upgrade and
-the recorded upgrade. All 176 runs were clean (no mismatch with Go).
+the recorded upgrade. The current scenario set produced 179 scheduled
+runs. Five `exec` starts initially collided with an ephemeral local port;
+all five were rerun with ports below the ephemeral range and matched Go.
+Every executed differential completed with zero mismatches. The merged
+profile, per-run logs and regenerated message table are retained under
+`target/coverage-033bc74-go126-net/` in the evidence workspace.
 
 Branch coverage needs llvm-cov's `-Z coverage-options=branch` (nightly
 only); the figures below are line coverage on stable.
+
+The full per-message table below remains the original 2026-10-19 baseline.
+Its nested `go_ok` / `nested_ok` counts for **proposal payloads** reflect
+successful submission, not execution. They must not establish handler
+coverage. The harness now excludes those payloads from transaction
+success counts and reports `GOV_EXECUTED` only after Go's
+`proposal_passed` event; `fuzz-diff coverage` adds the corresponding
+`proposal_executed` column for recorded traffic. Regenerate both inputs
+before comparing the new `coverage-table.py` output with this baseline.
+The regenerated 2026-10-21 table has 267 entries, 28 message types never
+executed successfully, and 274 passed-proposal payload executions across
+17 types. It is retained with the merged profile; the remaining types are
+not yet all covered, so F1.3 remains open.
+
+After this profile, the governance driver gained a valid
+`MsgSetSendEnabled` case that leaves `utia` enabled and a circuit
+authorization for an unused message URL. Targeted 150-block v10 and v9
+runs executed the bank handler three times each and the circuit handler
+one and two times, respectively, with zero mismatches. The next full
+profile should therefore remove both from the never-successful list.
 
 ## Line coverage by scope
 
 | scope | lines | line cover | branches | branch cover |
 |---|---:|---:|---:|---:|
-| tier-3 modules (x/*) | 30677 | 76.6% | 0 | 0.0% |
-| x-ante | 3061 | 83.4% | 0 | 0.0% |
-| txdecode | 2261 | 80.0% | 0 | 0.0% |
-| app (incl. Prepare/ProcessProposal) | 5193 | 47.4% | 0 | 0.0% |
-| app/src/proposal.rs | 626 | 88.8% | 0 | 0.0% |
-| square + shares | 2888 | 48.7% | 0 | 0.0% |
+| tier-3 modules (x/*) | 30803 | 76.8% | 0 | 0.0% |
+| x-ante | 3090 | 82.8% | 0 | 0.0% |
+| txdecode | 2264 | 80.4% | 0 | 0.0% |
+| app (incl. Prepare/ProcessProposal) | 5215 | 47.2% | 0 | 0.0% |
+| app/src/proposal.rs | 632 | 89.4% | 0 | 0.0% |
+| square + shares | 2888 | 49.0% | 0 | 0.0% |
 | multistore + iavl + kvstore | 3058 | 44.4% | 0 | 0.0% |
-| sdk | 1609 | 79.2% | 0 | 0.0% |
+| sdk | 1613 | 80.5% | 0 | 0.0% |
 
 Least-covered handler files (x/*, >= 80 lines):
 - `tier-3-app-modules/x/hyperlane/src/testing.rs`: 0% of 81 lines
 - `tier-3-app-modules/x/ibc/src/export.rs`: 0% of 187 lines
 - `tier-3-app-modules/x/distribution/src/genesis.rs`: 16% of 193 lines
 - `tier-3-app-modules/x/zkism/src/lib.rs`: 35% of 137 lines
-- `tier-3-app-modules/x/ibc/src/gojson.rs`: 37% of 111 lines
+- `tier-3-app-modules/x/ibc/src/gojson.rs`: 36% of 113 lines
 - `tier-3-app-modules/x/packetforward/src/memo.rs`: 44% of 252 lines
-- `tier-3-app-modules/x/minfee/src/lib.rs`: 47% of 89 lines
 - `tier-3-app-modules/x/hyperlane/src/genesis.rs`: 48% of 80 lines
-- `tier-3-app-modules/x/authz/src/authorization.rs`: 49% of 403 lines
 - `tier-3-app-modules/x/staking/src/slash.rs`: 49% of 182 lines
+- `tier-3-app-modules/x/authz/src/authorization.rs`: 50% of 426 lines
 - `tier-3-app-modules/x/staking/src/genesis.rs`: 52% of 155 lines
-- `tier-3-app-modules/x/circuit/src/lib.rs`: 55% of 197 lines
 - `tier-3-app-modules/x/icahost/src/lib.rs`: 55% of 162 lines
 - `tier-3-app-modules/x/gov/src/lib.rs`: 55% of 159 lines
 - `tier-3-app-modules/x/ibc/src/router.rs`: 57% of 81 lines
+- `tier-3-app-modules/x/circuit/src/lib.rs`: 57% of 197 lines
 - `tier-3-app-modules/x/evidence/src/lib.rs`: 58% of 188 lines
-- `tier-3-app-modules/x/ante/src/pubkey.rs`: 61% of 146 lines
-- `tier-3-app-modules/x/ibc/src/client.rs`: 62% of 747 lines
-- `tier-3-app-modules/x/hyperlane/src/ism.rs`: 64% of 765 lines
+- `tier-3-app-modules/x/hyperlane/src/ism.rs`: 63% of 765 lines
+- `tier-3-app-modules/x/ibc/src/client.rs`: 63% of 747 lines
+- `tier-3-app-modules/x/ante/src/pubkey.rs`: 65% of 155 lines
 - `tier-3-app-modules/x/valaddr/src/lib.rs`: 65% of 237 lines
-- `tier-3-app-modules/x/ibc/src/upgrade.rs`: 66% of 1136 lines
+- `tier-3-app-modules/x/ibc/src/upgrade.rs`: 65% of 1136 lines
 - `tier-3-app-modules/x/ibc/src/commitment.rs`: 66% of 253 lines
 - `tier-3-app-modules/x/icahost/src/host.rs`: 68% of 852 lines
+- `tier-3-app-modules/x/packetforward/src/middleware.rs`: 68% of 537 lines
+- `tier-3-app-modules/x/gov/src/abci.rs`: 68% of 130 lines
 - `tier-3-app-modules/x/capability/src/lib.rs`: 69% of 342 lines
-- `tier-3-app-modules/x/packetforward/src/middleware.rs`: 70% of 537 lines
 
 The node-side crates (`ctypes`, `p2p`, `nodestore`, `mempool`,
 `propagation`, `evidence`, `celestia-core-proto`) read 0% here: `deliver`
@@ -68,9 +93,9 @@ Several low files are not on the block-execution path: `genesis.rs` /
 and the gRPC query server. On the execution path the gaps worth closing
 next are `x/zkism/src/lib.rs` (35%: state-transition proofs other than the
 two fixtures), `x/packetforward/src/memo.rs` (44%: memo shapes),
-`x/authz/src/authorization.rs` (49%: authorization kinds other than
+`x/authz/src/authorization.rs` (50%: authorization kinds other than
 generic / send), `x/staking/src/slash.rs` (49%: double-sign slashing of
-redelegations and unbondings), `x/circuit` (55%) and `x/evidence` (58%).
+redelegations and unbondings), `x/circuit` (57%) and `x/evidence` (58%).
 
 ## Messages
 
@@ -398,9 +423,9 @@ proposal (`GOV proposal_passed`), not per type.
   `MsgUpdateParams` of minfee, distribution, slashing, ICA host, IBC
   client / connection / channel. `ab21011` makes GOVPASS propose each one
   with the current parameters every 4 blocks (25 proposals pass in 150
-  blocks of `gov`, clean against Go at both versions); the per-type count
-  of executions needs the proposal outcome attributed to its messages
-  (open).
+  blocks of `gov`, clean against Go at both versions). Per-type
+  attribution is now implemented by `GOV_EXECUTED` / `proposal_executed`;
+  this baseline predates it and needs a full rerun.
 * **Disabled in Celestia's Go code** (every such tx fails in Go at both
   app versions, so no harness can execute it successfully):
   `cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount` (and
@@ -429,6 +454,6 @@ proposal (`GOV proposal_passed`), not per type.
 
 Not met yet: the per-type outcome table exists and every handler module
 runs, but (1) the harness gaps above, (2) per-type attribution of
-proposal executions, and (3) the list of uncovered branches of each
+  proposal executions in a regenerated full report, and (3) the list of uncovered branches of each
 message handler and ante decorator with a reason (needs the nightly
 branch instrumentation) remain.

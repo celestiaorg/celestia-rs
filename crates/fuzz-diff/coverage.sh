@@ -16,6 +16,10 @@ BLOCKS=${2:-150}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
 cd "$ROOT"
+# Keep the local ABCI / oracle listeners below Linux's default ephemeral
+# range. Otherwise an unrelated outgoing connection can intermittently
+# occupy a fixed harness port between sequential cases.
+export DEVNET_PORT_OFFSET=${DEVNET_PORT_OFFSET:--10000}
 # Its own target directory: a build in target/ while this runs would
 # replace instrumented libraries.
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/cov}
@@ -30,6 +34,15 @@ V10=$BIN/celestia-appd
 V9=$BIN/v9/celestia-appd
 LOG=$OUT/runs.txt
 : >"$LOG"
+git rev-parse HEAD >"$OUT/revision.txt"
+git diff --binary HEAD >"$OUT/worktree.patch"
+git status --porcelain >"$OUT/worktree.status"
+if command -v go >/dev/null 2>&1; then
+  go version -m "$V10" "$V9" >"$OUT/go-build-info.txt" 2>&1
+else
+  echo "go command unavailable; compiler provenance not captured" >"$OUT/go-build-info.txt"
+fi
+FAILED=0
 run() { # <name> <env...> -- <cmd...>
   local name=$1
   shift
@@ -37,7 +50,9 @@ run() { # <name> <env...> -- <cmd...>
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
   env "${envs[@]}" "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
-  echo "$name rc=$? $(tail -n 1 "$OUT/$name.err")" | tee -a "$LOG"
+  local rc=$?
+  [ "$rc" -eq 0 ] || FAILED=1
+  echo "$name rc=$rc $(tail -n 1 "$OUT/$name.err")" | tee -a "$LOG"
 }
 for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting zkism-forwarding \
   ibc ibc-edge ibc-upgrades utf8 blob consensus evidence empty \
@@ -63,6 +78,7 @@ for s in 1 2 3 4; do
 done
 run "deliver-upgrade" GO_APPD="$V10" DELIVER_REPLAY_STOP=signal DELIVER_IBC=1 -- \
   crates/fuzz-diff/deliver-diff.sh upgrade "$BLOCKS" 8 1
-cargo llvm-cov report --release --lcov --output-path "$OUT/lcov.info"
-cargo llvm-cov report --release --summary-only >"$OUT/summary.txt"
+cargo llvm-cov report --release --lcov --output-path "$OUT/lcov.info" || exit 1
+cargo llvm-cov report --release --summary-only >"$OUT/summary.txt" || exit 1
 echo "wrote $OUT/lcov.info and $OUT/summary.txt"
+exit "$FAILED"

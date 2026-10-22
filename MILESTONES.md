@@ -158,6 +158,15 @@ Every item must pass on the commit the canary runs.
   fuzz-exec run 39477569911): 68 runs (every scenario at 300 blocks, seeds
   12 / 13, and the upgrade over seeds 1202-1212), 0 mismatches. Rerun on
   the commit the canary runs.
+  *Pinned-oracle local rerun 2026-10-21* on `62c98f6` (also not a release):
+  all 68 scheduled cases completed with individual exit code 0 and no
+  consensus mismatches (every v10 / v9 scenario in both flag sets, plus
+  12 v9 -> v10 upgrade seeds). The run produced 19,819 generated blocks
+  and 42,848 finalized txs. Its final wrapper footer was not written
+  because `nightly.sh` was edited after the process started; the retained
+  manifest was checked independently (68 `RUN` entries, 68 matching exit
+  files, no missing case). This is useful parity evidence but does not
+  replace the required rerun on the canary release commit.
 
 - [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
   copied (no second process may ever hold it); operator key offline or
@@ -247,6 +256,16 @@ test), then start that harness's count again.
   any harness for **14 consecutive nightly runs**. Proposed numbers; the
   owner may change them, but the second condition (finding rate has gone
   to zero) is the one that matters.
+  *Evidence tooling (2026-10-21):* nightly artifacts now retain clean
+  outputs, exit codes, source revision / worktree state and finalized-tx
+  counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
+  groups them by revision, excludes failed / incomplete / dirty-source
+  runs and deduplicates repeated seed / scenario / configuration runs.
+  The pinned-oracle `62c98f6` campaign contributes 42,681 finalized txs
+  across 66 complete 300-block runs. Two additional recorded-upgrade
+  scenarios intentionally stopped at the upgrade signal (167 finalized
+  txs) and are excluded from the volume count as incomplete block runs.
+  The volume and 14-night requirements remain open.
 
 - [ ] **F1.3 Measure coverage of consensus code.** Today
   `fuzz-diff coverage` only counts message types in the recorded
@@ -263,6 +282,37 @@ test), then start that harness's count again.
   `docs/fuzz-coverage.md`: 76.6% of tier-3 module lines, 83% of `x-ante`,
   80% of the tx decoder, 89% of `proposal.rs`; the per-message table, the
   types never executed with reasons, and what is open.
+  *Fresh run (2026-10-21, `033bc74`):* all 179 scheduled coverage cases
+  executed with zero differential mismatches. Five starts first collided
+  with an ephemeral local port and were rerun clean below that range; the
+  merged profile reports 76.8% of tier-3 module lines, 82.8% of `x-ante`,
+  80.4% of the tx decoder and 89.4% of `proposal.rs`. The regenerated
+  message report contains 267 entries, 274 passed-proposal payload
+  executions across 17 types and 28 message types never executed
+  successfully. Stable Rust still reports no branch data, so the branch
+  and per-error coverage exit criteria remain open.
+  *Harness follow-up (2026-10-21):* `DELIVER_GOVPASS` now submits a valid
+  `MsgSetSendEnabled` that keeps `utia` enabled and grants a fuzz account
+  circuit permission for an unused message URL (so it cannot interrupt
+  later traffic). Targeted 150-block v10 and v9 runs executed the bank
+  handler three times each and the circuit handler one / two times,
+  finalized 5,010 txs and had zero mismatches. This closes two
+  successful-handler gaps in the next full profile.
+  *Attribution (2026-10-21):* successful `MsgSubmitProposal` no longer
+  counts its payload as successfully executed. `GOV_EXECUTED` attributes
+  Go's `proposal_passed` events to the submitted message types; the
+  recorded corpus has the same accounting (`proposal_executed`). A fresh
+  v10 `gov` run (seed 20261021, `GOVPASS`, `IBC`, 150 generated blocks,
+  2,718 finalized txs) matched Go, including the new execution counts.
+  A local Go 1.27 build produced CheckTx / PrepareProposal amino
+  signature discrepancies, also with the signature cache off: a direct
+  JSON probe confirms it emits literal U+FFFD where Go 1.26.9 and Rust
+  emit `\ufffd` for invalid UTF-8. This is not evidence against the
+  pinned Go oracle. Rerunning the affected v9 `gov` seed with Go 1.26.9
+  matched every compared field (150 blocks, 2,614 finalized txs); two
+  isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
+  The full campaign is being rerun with the pinned compiler. The
+  coverage baseline still needs a full rerun with the new accounting.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
   harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /

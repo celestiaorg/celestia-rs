@@ -9,6 +9,10 @@
 # usage: [DEVNET_BIN=dir] [APP_VERSION=vX.Y.Z] [APPD_ONLY=1] conformance/devnet/build-bins.sh
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# The Go release affects consensus-visible JSON (including amino sign
+# bytes). Do not silently build the oracles with a newer installed Go.
+# setup-go supplies GOTOOLCHAIN=local in CI after selecting this version.
+export GOTOOLCHAIN=${GOTOOLCHAIN:-$(awk '$1 == "toolchain" { print $2; exit }' "$ROOT/conformance/devnet-oracle/go.mod")}
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 APP_VERSION=${APP_VERSION:-v10.4.0}
 CORE_VERSION=${CORE_VERSION:-v0.42.3}
