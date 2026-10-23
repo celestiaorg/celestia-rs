@@ -21,7 +21,7 @@ import (
 	sharev3 "github.com/celestiaorg/go-square/v3/share"
 	"github.com/celestiaorg/nmt"
 	nmtnamespace "github.com/celestiaorg/nmt/namespace"
-	rsmt2d "github.com/celestiaorg/rsmt2d"
+	rsmt2d "github.com/celestiaorg/celestia-app/rsmt2d"
 	"github.com/cometbft/cometbft/crypto/merkle"
 )
 
