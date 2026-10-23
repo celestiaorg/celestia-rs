@@ -1,5 +1,5 @@
 // Command antevectors runs generated transactions through the celestia-app
-// v10.4.0 ante handler (app.AnteHandler(), real keepers over an in-memory
+// v10.5.0 ante handler (app.AnteHandler(), real keepers over an in-memory
 // store) and records, per transaction, the pre-state delta, the ante result
 // (code, codespace, gas wanted/used, priority, events) and the state writes.
 //

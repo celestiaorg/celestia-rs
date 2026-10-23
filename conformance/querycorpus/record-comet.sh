@@ -125,7 +125,7 @@ cat > "$OUT/meta.json" <<JSON
 {
   "scenario": "$SCENARIO",
   "chain_id": "$CHAIN_ID",
-  "celestia_app": "v10.4.0",
+  "celestia_app": "v10.5.0",
   "celestia_core": "v0.42.3",
   "committed_heights": $LAST,
   "workload": "$(basename "$WORKLOAD")",

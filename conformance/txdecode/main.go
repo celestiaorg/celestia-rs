@@ -1,5 +1,5 @@
 // Command txdecode generates conformance vectors for the Rust `txdecode`
-// crate: raw block tx bytes and the outcome of celestia-app v10.4.0's
+// crate: raw block tx bytes and the outcome of celestia-app v10.5.0's
 // TxDecoder (encoding.MakeConfig(app.ModuleEncodingRegisters...)), plus a
 // dump of the interface registry and the Rust registry table derived from it.
 //
@@ -67,7 +67,7 @@ func main() {
 // writeVectors writes one vector per line to keep diffs readable.
 func writeVectors(path string, vs []vector) {
 	var b []byte
-	b = append(b, "{\"generator\":\"conformance/txdecode (celestia-app v10.4.0 TxDecoder)\",\"vectors\":[\n"...)
+	b = append(b, "{\"generator\":\"conformance/txdecode (celestia-app v10.5.0 TxDecoder)\",\"vectors\":[\n"...)
 	for i, v := range vs {
 		line, err := json.Marshal(v)
 		if err != nil {

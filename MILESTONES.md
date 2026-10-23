@@ -159,6 +159,17 @@ Every item must pass on the commit the canary runs.
   fuzz-exec run 39477569911): 68 runs (every scenario at 300 blocks, seeds
   12 / 13, and the upgrade over seeds 1202-1212), 0 mismatches. Rerun on
   the commit the canary runs.
+  *v10.5.0 campaign 2026-10-23*, candidate `95ecd86` (PR #94): all
+  68 runs passed, no skipped runs or consensus mismatches, 19,815 generated
+  blocks and 75,174 finalized txs. Each campaign scenario ran at seeds
+  105 / 106, with the full wire/gas-sweep/recheck flags and a GOVPASS pass;
+  twelve v9 → v10.5 upgrade runs used seeds 10501–10512 with IBC,
+  hyperlane, wire mutations, gas sweep and recheck enabled. The two v10
+  `upgrade` cases stopped at the expected v11 signal after 10 / 5 blocks;
+  the other 66 runs completed all 300 requested blocks. Both Go binaries
+  used Go 1.26.9, Rust used release / 1.99.1 on Linux x86_64. This is
+  candidate evidence, not a claim about the installed canary commit or
+  the separate nightly, soak and determinism gates.
   *Pinned-oracle local rerun 2026-10-21* on `62c98f6` (also not a release):
   all 68 scheduled cases completed with individual exit code 0 and no
   consensus mismatches (every v10 / v9 scenario in both flag sets, plus
