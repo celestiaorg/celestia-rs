@@ -30,7 +30,7 @@ jobs:
           command: check advisories
           arguments: --all-features
 
-  # Go binaries for the devnet scripts (celestia-app v10.4.0 / celestia-core
+  # Go binaries for the devnet scripts (celestia-app v10.5.0 / celestia-core
   # v0.42.3, and celestia-app v9.0.8 in v9/), built from module-proxy
   # sources and cached by version.
   devnet-bins:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: devnet-bin-app-v10.4.0-v9.0.8-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: devnet-bin-app-v10.5.0-v9.0.8-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         run: |
           conformance/devnet/build-bins.sh
@@ -138,7 +138,7 @@ jobs:
           retention-days: 14
 
   # Differential fuzzing against the pinned Go implementations
-  # (crates/fuzz-diff vs conformance/fuzzoracle: celestia-app v10.4.0 and
+  # (crates/fuzz-diff vs conformance/fuzzoracle: celestia-app v10.5.0 and
   # v9.0.8), bounded in time. A mismatch fails the job and uploads the
   # inputs with both outcomes; docs/security.md ("Fuzzing").
   fuzz-diff:

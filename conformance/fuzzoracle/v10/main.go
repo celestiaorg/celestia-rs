@@ -1,6 +1,6 @@
 // Command fuzzoracle is the Go side of the differential fuzzer
 // (`crates/fuzz-diff`): it answers decode requests with the outcome of
-// celestia-app v10.4.0's own code, one request per line on stdin, one JSON
+// celestia-app v10.5.0's own code, one request per line on stdin, one JSON
 // object per line on stdout.
 //
 // Requests are `<op> <hex input>`:

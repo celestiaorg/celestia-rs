@@ -5,9 +5,9 @@
 //!
 //! Both run on a branch of the latest state that is always discarded:
 //! committed state, plus the InitChain writes at the initial height
-//! (`getContextForProposal`). The ante handler is called directly on that
-//! branch, as Go does, so a failing decorator's earlier writes stay visible
-//! to later transactions.
+//! (`getContextForProposal`). v10.5.0's PrepareProposal branches again for
+//! each ante run, so a rejected transaction leaves no partial writes or
+//! replacement gas meter behind. v9 keeps its original in-place ante runs.
 //!
 //! The `RequestProcessProposal.header` celestia-core sends is not read by
 //! v10 (BaseApp builds the header from the request fields and the handler
@@ -275,6 +275,28 @@ fn ante_fill(
     }
 }
 
+/// v10.5.0's per-tx `CacheContext` in `FilteredSquareBuilder.Fill`.
+/// On error Go keeps the parent context, including its gas meter; on
+/// success it keeps the tx meter and writes only the cached store changes.
+fn ante_fill_cached(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    deps: &x_ante::StoreDeps,
+) -> Result<bool, Abort> {
+    let gas = ctx.gas.clone();
+    let events = std::mem::take(&mut ctx.events);
+    let cp = ctx.branch();
+    let result = ante_fill(ctx, tx, deps);
+    if matches!(result, Ok(Ok(()))) {
+        ctx.write(cp);
+    } else {
+        ctx.discard(cp);
+        ctx.gas = gas;
+    }
+    ctx.events = events;
+    result.map(|r| r.is_ok())
+}
+
 impl App {
     /// The header `BaseApp` gives the proposal state: at the initial height
     /// the InitChain context with its header cleared (the chain id stays).
@@ -408,6 +430,9 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Result<Separated<'a>, Ab
                 let Some(tx) = fill_decode(txdecode::decode(raw))? else {
                     continue;
                 };
+                if has_pfb(&tx) {
+                    continue;
+                }
                 if fibre_tx::count_pff(tx.msgs()) > 0 {
                     if fibre_tx::validate_shape(&tx).is_ok() {
                         s.pff.push(raw);
@@ -468,16 +493,12 @@ fn fill(
     }
     let sep = separate(within_bytes.into_iter())?;
 
-    // Set once an ante decorator returned `sdk.Context{}`: Go keeps using
-    // that store-less context, so every later ante run fails and any state
-    // read outside a recover panics the whole handler.
-    let mut zeroed = false;
     let mut kept = Vec::new();
 
     let mut sdk_count = 0usize;
     for (raw, tx) in &sep.normal {
         ctx.tx_bytes = raw.to_vec();
-        let exec = count_executable_msgs((!zeroed).then_some(&mut *ctx), tx.gogo_msgs())
+        let exec = count_executable_msgs(Some(&mut *ctx), tx.gogo_msgs())
             .map_err(|_| Abort("nil multistore".into()))?;
         if sdk_count + exec > MAX_SDK_MESSAGES {
             continue;
@@ -485,12 +506,7 @@ fn fill(
         if !builder.append_tx(raw) {
             continue;
         }
-        if zeroed {
-            let _ = builder.revert_last_tx();
-            continue;
-        }
-        if let Err(e) = ante_fill(ctx, tx, deps)? {
-            zeroed |= e.zero_ctx;
+        if !ante_fill_cached(ctx, tx, deps)? {
             let _ = builder.revert_last_tx();
             continue;
         }
@@ -510,6 +526,9 @@ fn fill(
         if blob_msgs + tx.msgs().len() > MAX_PFB_MESSAGES {
             continue;
         }
+        if validate_blob_tx(&tx, u).is_err() {
+            continue;
+        }
         let Ok(btx) = to_square_blob_tx(u) else {
             continue;
         };
@@ -517,12 +536,7 @@ fn fill(
             Ok(true) => {}
             Ok(false) | Err(_) => continue,
         }
-        if zeroed {
-            let _ = builder.revert_last_blob_tx();
-            continue;
-        }
-        if let Err(e) = ante_fill(ctx, &tx, deps)? {
-            zeroed |= e.zero_ctx;
+        if !ante_fill_cached(ctx, &tx, deps)? {
             let _ = builder.revert_last_blob_tx();
             continue;
         }
@@ -530,7 +544,7 @@ fn fill(
         kept.push(raw.to_vec());
     }
 
-    kept.extend(process_fibre_txs(ctx, deps, builder, &sep.pff, zeroed)?);
+    kept.extend(process_fibre_txs(ctx, deps, builder, &sep.pff)?);
     Ok(kept)
 }
 
@@ -713,7 +727,6 @@ fn process_fibre_txs(
     deps: &x_ante::StoreDeps,
     builder: &mut Builder,
     pff: &[&[u8]],
-    zeroed: bool,
 ) -> Result<Vec<Vec<u8>>, Abort> {
     let mut kept = Vec::new();
     let mut fibre_msgs = 0usize;
@@ -726,9 +739,6 @@ fn process_fibre_txs(
         };
         if fibre_msgs + tx.msgs().len() > MAX_PAY_FOR_FIBRE_MESSAGES {
             continue;
-        }
-        if zeroed {
-            return Err(Abort("nil multistore".into()));
         }
         let base = ctx.multistore().depth();
         let cp = ctx.branch();

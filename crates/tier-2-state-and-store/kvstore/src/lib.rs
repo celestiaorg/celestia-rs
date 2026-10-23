@@ -582,6 +582,8 @@ pub struct GasMeter {
     /// The first consumption past the limit: its descriptor and the gas
     /// consumed after it (Go panics right there with `ErrorOutOfGas`).
     first_out_of_gas: Option<(&'static str, Gas)>,
+    /// Optional charge trace for Hyperlane's routing-cycle acceleration.
+    charges: Option<Vec<(Gas, &'static str)>>,
 }
 
 impl GasMeter {
@@ -592,6 +594,7 @@ impl GasMeter {
             limit: Some(limit),
             consumed: 0,
             first_out_of_gas: None,
+            charges: None,
         }
     }
 
@@ -602,6 +605,7 @@ impl GasMeter {
             limit: None,
             consumed: 0,
             first_out_of_gas: None,
+            charges: None,
         }
     }
 
@@ -615,6 +619,22 @@ impl GasMeter {
     #[must_use]
     pub const fn consumed(&self) -> Gas {
         self.consumed
+    }
+
+    /// Records subsequent charges in order, for replaying a routing cycle.
+    pub fn record_charges(&mut self) {
+        self.charges = Some(Vec::new());
+    }
+
+    /// Stops recording and returns the recorded charges.
+    pub fn take_charges(&mut self) -> Vec<(Gas, &'static str)> {
+        self.charges.take().unwrap_or_default()
+    }
+
+    /// Number of charges recorded so far.
+    #[must_use]
+    pub fn recorded_charges(&self) -> usize {
+        self.charges.as_ref().map_or(0, Vec::len)
     }
 
     /// The first consumption that went past the limit (descriptor, gas
@@ -669,6 +689,9 @@ impl GasMeter {
         // Go stopped at the panic: nothing after it consumes gas.
         if unwind::panicking() {
             return Ok(());
+        }
+        if let Some(charges) = &mut self.charges {
+            charges.push((amount, descriptor));
         }
         let Some(next) = self.consumed.checked_add(amount) else {
             self.consumed = Gas::MAX;

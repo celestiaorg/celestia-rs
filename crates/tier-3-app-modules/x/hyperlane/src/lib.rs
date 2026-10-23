@@ -1,4 +1,4 @@
-//! `hyperlane` module: port of hyperlane-cosmos v1.3.0 `x/core` with its
+//! `hyperlane` module: port of hyperlane-cosmos v1.3.1 `x/core` with its
 //! `01_interchain_security` and `02_post_dispatch` submodules, which share
 //! the `hyperlane` store through `collections` prefixes:
 //!

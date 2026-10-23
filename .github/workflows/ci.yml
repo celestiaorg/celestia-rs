@@ -171,6 +171,6 @@ jobs:
         working-directory: conformance/${{ matrix.module }}
         run: go build ./...
       - name: Test
-        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay'
+        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay' || matrix.module == 'fuzzoracle/v10'
         working-directory: conformance/${{ matrix.module }}
         run: go test ./...
