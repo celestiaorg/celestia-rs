@@ -37,7 +37,7 @@ set -euo pipefail
 SCENARIO=${1:?scenario}
 BLOCKS=${2:?blocks}
 WORKLOAD=${3:-}
-APP_VERSION=v10.4.0
+APP_VERSION=v10.5.0
 [ -n "${APP_V9:-}" ] && APP_VERSION=v9.0.8
 CORE_VERSION=v0.42.3
 CHAIN_ID=${CHAIN_ID:-rs-devnet-1}
@@ -54,13 +54,16 @@ mkdir -p "$BIN"
 export PATH=$BIN:$PATH
 
 build_go() { # <module@version> <pkg> <name>
-  [ -x "$BIN/$3" ] && return
+  if [ -x "$BIN/$3" ] && [ "$(cat "$BIN/$3.module" 2>/dev/null)" = "$1" ]; then
+    return
+  fi
   local src
   src=$(cd "$ROOT/conformance/devnet-oracle" && go mod download -json "$1" | sed -n 's/.*"Dir": "\(.*\)",/\1/p')
   rm -rf "$WORK/src" && cp -r "$src" "$WORK/src" && chmod -R u+w "$WORK/src"
-  (cd "$WORK/src" && GOFLAGS=-mod=mod go build -o "$BIN/$3" "$2")
+  (cd "$WORK/src" && GOFLAGS=-mod=mod go build -buildvcs=false -o "$BIN/$3" "$2")
+  printf '%s\n' "$1" >"$BIN/$3.module"
 }
-build_go github.com/celestiaorg/celestia-app/v10@v10.4.0 ./cmd/celestia-appd celestia-appd
+build_go github.com/celestiaorg/celestia-app/v10@v10.5.0 ./cmd/celestia-appd celestia-appd
 if [ -n "${APP_V9:-}" ]; then
   mkdir -p "$BIN/v9"
   build_go github.com/celestiaorg/celestia-app/v9@v9.0.8 ./cmd/celestia-appd v9/celestia-appd

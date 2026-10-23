@@ -10,8 +10,9 @@ Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 **End state:** a Rust Celestia mainnet validator that is consensus-compatible
 with Go celestia-app/celestia-core and runs on a Mac Mini M4 (16 GB / 512 GB).
 
-**Go parity target:** celestia-app **v10.4.0** / celestia-core v0.42.x, and
-app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004).
+**Go parity target:** celestia-app **v10.5.0** (Mainnet) /
+**v10.5.0-mocha** (Mocha), celestia-core **v0.42.3**, and historical
+app version 9 at celestia-app **v9.0.8** (ADR 0004).
 
 ## Remaining milestones
 
@@ -29,7 +30,7 @@ until F1's exit criteria are met).
 | M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 
-Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target)
+Mainnet's v9 → v10 upgrade (celestia-app v10.4.0 at activation)
 ran at height **15,116,658** on 2026-10-20 (~03:40 UTC); mainnet reports
 app version 10 (`abci_info`, height 15,117,413). The Mac was offline at
 the time (power outage, see M14), so it did not execute the upgrade live.
@@ -111,7 +112,7 @@ Every item must pass on the commit the canary runs.
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
   `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
-  v10.4.0 and v9.0.8, rotating scenarios with a new seed per night; a
+  v10.5.0 and v9.0.8, rotating scenarios with a new seed per night; a
   mismatch fails the job. Exit: running, and clean for **7 consecutive
   nights** before M14 starts.
   *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
@@ -158,6 +159,26 @@ Every item must pass on the commit the canary runs.
   fuzz-exec run 39477569911): 68 runs (every scenario at 300 blocks, seeds
   12 / 13, and the upgrade over seeds 1202-1212), 0 mismatches. Rerun on
   the commit the canary runs.
+  *v10.5.0 campaign 2026-10-23*, candidate `95ecd86` (PR #94): all
+  68 runs passed, no skipped runs or consensus mismatches, 19,815 generated
+  blocks and 75,174 finalized txs. Each campaign scenario ran at seeds
+  105 / 106, with the full wire/gas-sweep/recheck flags and a GOVPASS pass;
+  twelve v9 → v10.5 upgrade runs used seeds 10501–10512 with IBC,
+  hyperlane, wire mutations, gas sweep and recheck enabled. The two v10
+  `upgrade` cases stopped at the expected v11 signal after 10 / 5 blocks;
+  the other 66 runs completed all 300 requested blocks. Both Go binaries
+  used Go 1.26.9, Rust used release / 1.99.1 on Linux x86_64. This is
+  candidate evidence, not a claim about the installed canary commit or
+  the separate nightly, soak and determinism gates.
+  *Pinned-oracle local rerun 2026-10-21* on `62c98f6` (also not a release):
+  all 68 scheduled cases completed with individual exit code 0 and no
+  consensus mismatches (every v10 / v9 scenario in both flag sets, plus
+  12 v9 -> v10 upgrade seeds). The run produced 19,819 generated blocks
+  and 42,848 finalized txs. Its final wrapper footer was not written
+  because `nightly.sh` was edited after the process started; the retained
+  manifest was checked independently (68 `RUN` entries, 68 matching exit
+  files, no missing case). This is useful parity evidence but does not
+  replace the required rerun on the canary release commit.
 
 - [ ] **C1.5 Operations.** A new mainnet consensus key and home, never
   copied (no second process may ever hold it); operator key offline or
@@ -234,7 +255,7 @@ test), then start that harness's count again.
 
 - [ ] **F1.1 Every differential harness in CI.** Nightly today runs only
   the decode-level ops and cargo-fuzz. Add nightly jobs that build Go
-  `celestia-appd` v10.4.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
+  `celestia-appd` v10.5.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
   does) and run `json_*`, `exec` (default, `nil`, `synth`, `json` modes),
   `pp` and `deliver`, rotating over every devnet scenario and both app
   versions with a new seed per night, and uploading findings like the
@@ -247,6 +268,16 @@ test), then start that harness's count again.
   any harness for **14 consecutive nightly runs**. Proposed numbers; the
   owner may change them, but the second condition (finding rate has gone
   to zero) is the one that matters.
+  *Evidence tooling (2026-10-21):* nightly artifacts now retain clean
+  outputs, exit codes, source revision / worktree state and finalized-tx
+  counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
+  groups them by revision, excludes failed / incomplete / dirty-source
+  runs and deduplicates repeated seed / scenario / configuration runs.
+  The pinned-oracle `62c98f6` campaign contributes 42,681 finalized txs
+  across 66 complete 300-block runs. Two additional recorded-upgrade
+  scenarios intentionally stopped at the upgrade signal (167 finalized
+  txs) and are excluded from the volume count as incomplete block runs.
+  The volume and 14-night requirements remain open.
 
 - [ ] **F1.3 Measure coverage of consensus code.** Today
   `fuzz-diff coverage` only counts message types in the recorded
@@ -263,6 +294,37 @@ test), then start that harness's count again.
   `docs/fuzz-coverage.md`: 76.6% of tier-3 module lines, 83% of `x-ante`,
   80% of the tx decoder, 89% of `proposal.rs`; the per-message table, the
   types never executed with reasons, and what is open.
+  *Fresh run (2026-10-21, `033bc74`):* all 179 scheduled coverage cases
+  executed with zero differential mismatches. Five starts first collided
+  with an ephemeral local port and were rerun clean below that range; the
+  merged profile reports 76.8% of tier-3 module lines, 82.8% of `x-ante`,
+  80.4% of the tx decoder and 89.4% of `proposal.rs`. The regenerated
+  message report contains 267 entries, 274 passed-proposal payload
+  executions across 17 types and 28 message types never executed
+  successfully. Stable Rust still reports no branch data, so the branch
+  and per-error coverage exit criteria remain open.
+  *Harness follow-up (2026-10-21):* `DELIVER_GOVPASS` now submits a valid
+  `MsgSetSendEnabled` that keeps `utia` enabled and grants a fuzz account
+  circuit permission for an unused message URL (so it cannot interrupt
+  later traffic). Targeted 150-block v10 and v9 runs executed the bank
+  handler three times each and the circuit handler one / two times,
+  finalized 5,010 txs and had zero mismatches. This closes two
+  successful-handler gaps in the next full profile.
+  *Attribution (2026-10-21):* successful `MsgSubmitProposal` no longer
+  counts its payload as successfully executed. `GOV_EXECUTED` attributes
+  Go's `proposal_passed` events to the submitted message types; the
+  recorded corpus has the same accounting (`proposal_executed`). A fresh
+  v10 `gov` run (seed 20261021, `GOVPASS`, `IBC`, 150 generated blocks,
+  2,718 finalized txs) matched Go, including the new execution counts.
+  A local Go 1.27 build produced CheckTx / PrepareProposal amino
+  signature discrepancies, also with the signature cache off: a direct
+  JSON probe confirms it emits literal U+FFFD where Go 1.26.9 and Rust
+  emit `\ufffd` for invalid UTF-8. This is not evidence against the
+  pinned Go oracle. Rerunning the affected v9 `gov` seed with Go 1.26.9
+  matched every compared field (150 blocks, 2,614 finalized txs); two
+  isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
+  The full campaign is being rerun with the pinned compiler. The
+  coverage baseline still needs a full rerun with the new accounting.
 
 - [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
   harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /
@@ -362,7 +424,7 @@ test), then start that harness's count again.
   off, and in `release` vs `dist`; a recorded replay gives the same app
   hashes on x86_64 and aarch64.
 
-- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.4.0 and
+- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.5.0 and
   v9.0.8. Mainnet's v10 upgrade may ship a later v10.x (and v9 patch
   releases are possible). Exit: before M14 starts, and before every
   mainnet upgrade the Rust validator will run through, the fuzz oracles,
@@ -381,6 +443,18 @@ test), then start that harness's count again.
   rollback with a 100-height depth guard; no consensus change) and no
   celestia-app release uses it yet, so the pin stays v0.42.3. Port the
   command when a celestia-app release picks it up.
+  *Retargeted 2026-10-23:* owner requests v10.5.0 for Mainnet and Mocha.
+  Read-only `abci_info` reports `10.5.0` on Mainnet (15,221,231) and
+  `10.5.0-mocha` on Mocha (1,951,411). The two release tags have identical
+  source trees. Active v10 Go modules, devnet builds, CI binary caches and
+  CLI parity metadata now pin v10.5.0 / hyperlane-cosmos v1.3.1; core stays
+  v0.42.3, as in that release's go.mod. Proposal rollback and blob filtering
+  are ported, as are iterative Hyperlane routing and its query gas cap.
+  Go-generated regression vectors cover proposal filtering/rollback and
+  110 routing result/gas cases. See
+  [`docs/adr/0007-app-v10-5.md`](docs/adr/0007-app-v10-5.md).
+  Historical v10.4.0 fixture provenance is retained; the soak,
+  determinism and saturation gates still require evidence on this target.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the

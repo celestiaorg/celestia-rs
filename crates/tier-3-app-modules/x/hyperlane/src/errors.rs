@@ -41,6 +41,7 @@ pub mod core {
         no_receiver_ism = 1, "no receiver ISM";
         required_hook_not_set = 2, "required hook not set";
         default_hook_not_set = 3, "default hook not set";
+        ism_routing_cycle = 4, "ism routing cycle";
     }
 }
 

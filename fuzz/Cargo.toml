@@ -35,7 +35,8 @@ tokio = { version = "1", features = ["rt", "io-util", "macros", "time", "sync", 
 [features]
 # Targets are grouped so one build does not compile every crate (rpc pulls
 # in the app and RocksDB): `cargo +nightly fuzz build --features net`.
-net = ["dep:abci-server", "dep:p2p", "dep:consensus", "dep:propagation", "dep:statesync", "dep:blocksync", "dep:tokio", "dep:celestia-core-proto"]
+abci = ["dep:abci-server", "dep:tokio", "dep:celestia-core-proto"]
+net = ["abci", "dep:p2p", "dep:consensus", "dep:propagation", "dep:statesync", "dep:blocksync"]
 rpc = ["dep:light", "dep:rpc"]
 
 [workspace]
@@ -43,6 +44,8 @@ rpc = ["dep:light", "dep:rpc"]
 [profile.release]
 debug = 1
 incremental = false
+# Match the shipped node: overflows must fail instead of silently wrapping.
+overflow-checks = true
 
 [[bin]]
 name = "txdecode"
@@ -75,7 +78,7 @@ bench = false
 [[bin]]
 name = "abci_frame"
 path = "fuzz_targets/abci_frame.rs"
-required-features = ["net"]
+required-features = ["abci"]
 test = false
 doc = false
 bench = false

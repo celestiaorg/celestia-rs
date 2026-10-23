@@ -30,7 +30,7 @@ jobs:
           command: check advisories
           arguments: --all-features
 
-  # Go binaries for the devnet scripts (celestia-app v10.4.0 / celestia-core
+  # Go binaries for the devnet scripts (celestia-app v10.5.0 / celestia-core
   # v0.42.3, and celestia-app v9.0.8 in v9/), built from module-proxy
   # sources and cached by version.
   devnet-bins:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: devnet-bin-app-v10.4.0-v9.0.8-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: devnet-bin-app-v10.5.0-v9.0.8-core-v0.42.3-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         run: |
           conformance/devnet/build-bins.sh
@@ -138,7 +138,7 @@ jobs:
           retention-days: 14
 
   # Differential fuzzing against the pinned Go implementations
-  # (crates/fuzz-diff vs conformance/fuzzoracle: celestia-app v10.4.0 and
+  # (crates/fuzz-diff vs conformance/fuzzoracle: celestia-app v10.5.0 and
   # v9.0.8), bounded in time. A mismatch fails the job and uploads the
   # inputs with both outcomes; docs/security.md ("Fuzzing").
   fuzz-diff:
@@ -203,7 +203,7 @@ jobs:
           - { target: amino, features: "" }
           - { target: square, features: "" }
           - { target: shares_parse, features: "" }
-          - { target: abci_frame, features: net }
+          - { target: abci_frame, features: abci }
           - { target: p2p_handshake, features: net }
           - { target: mconn_recv, features: net }
           - { target: p2p_msgs, features: net }
@@ -215,23 +215,58 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: fuzz
-      - run: cargo install cargo-fuzz --locked
+      - run: cargo install cargo-fuzz --version 0.13.2 --locked
+      # Keep discoveries across runs, separately from the checked-in seeds.
+      # The run suffix makes each save immutable; the prefix restores the latest.
+      - uses: actions/cache/restore@v6
+        with:
+          path: fuzz/corpus-cache/${{ matrix.target }}
+          key: fuzz-corpus-v1-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-v1-${{ runner.os }}-${{ matrix.target }}-
       - name: Fuzz ${{ matrix.target }}
         run: |
           features=""
           if [ -n "${{ matrix.features }}" ]; then features="--features ${{ matrix.features }}"; fi
           mkdir -p fuzz/corpus/${{ matrix.target }}
-          cargo fuzz run --sanitizer none $features ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- \
-            -max_total_time=600 -rss_limit_mb=2048 -timeout=30
-      - if: failure()
+          mkdir -p fuzz/corpus-cache/${{ matrix.target }} ${{ runner.temp }}/fuzz-metrics
+          rustc -Vv > ${{ runner.temp }}/fuzz-metrics/toolchain.txt
+          cargo fuzz --version >> ${{ runner.temp }}/fuzz-metrics/toolchain.txt
+          # Capture failure status even through tee; do not turn a crash green.
+          set +e
+          cargo fuzz run --sanitizer none $features ${{ matrix.target }} \
+            fuzz/corpus-cache/${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- \
+            -max_total_time=600 -rss_limit_mb=2048 -timeout=30 -print_final_stats=1 \
+            2>&1 | tee ${{ runner.temp }}/fuzz-metrics/fuzz.log
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > ${{ runner.temp }}/fuzz-metrics/exit-code
+          exit "$rc"
+      - name: Record fuzz evidence
+        if: always()
+        run: >-
+          python3 scripts/quality/fuzz_stats.py '${{ matrix.target }}'
+          --out ${{ runner.temp }}/fuzz-metrics --corpus fuzz/corpus-cache/${{ matrix.target }}
+          --budget-seconds 600
+      - if: always()
+        run: test ! -f ${{ runner.temp }}/fuzz-metrics/metrics.md || cat ${{ runner.temp }}/fuzz-metrics/metrics.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@v6
+        if: success()
+        with:
+          path: fuzz/corpus-cache/${{ matrix.target }}
+          key: fuzz-corpus-v1-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: cargo-fuzz-${{ matrix.target }}
-          path: fuzz/artifacts
-          retention-days: 14
+          path: |
+            ${{ runner.temp }}/fuzz-metrics
+            fuzz/artifacts
+            fuzz/Cargo.lock
+            fuzz/corpus-cache/${{ matrix.target }}
+          retention-days: 30
 
   coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -239,6 +274,24 @@ jobs:
           components: llvm-tools
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
+        run: cargo install cargo-llvm-cov --version 0.9.1 --locked
       - name: Compute coverage
-        run: cargo llvm-cov --workspace --summary-only || echo "coverage tooling smoke-run only"
+        run: |
+          mkdir -p ${{ runner.temp }}/quality
+          rustc -Vv > ${{ runner.temp }}/quality/toolchain.txt
+          cargo llvm-cov --workspace --all-features --locked --json --output-path ${{ runner.temp }}/quality/llvm.json
+      - name: Report coverage and check budgets
+        run: >-
+          python3 scripts/quality/coverage.py ${{ runner.temp }}/quality/llvm.json
+          --policy scripts/quality/coverage-budgets.json --out ${{ runner.temp }}/quality --require-all
+          --suite 'cargo llvm-cov --workspace --all-features --locked'
+      - name: Annotated source report
+        run: cargo llvm-cov report --html --output-dir ${{ runner.temp }}/quality/html
+      - if: always()
+        run: test ! -f ${{ runner.temp }}/quality/coverage.md || cat ${{ runner.temp }}/quality/coverage.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workspace-coverage
+          path: ${{ runner.temp }}/quality
+          retention-days: 30

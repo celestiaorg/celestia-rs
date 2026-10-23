@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the CometBFT RPC differential corpus of a devnet scenario against
-# Go celestia-core v0.42.3 (+ Go celestia-appd v10.4.0).
+# Go celestia-core v0.42.3 (+ Go celestia-appd v10.5.0).
 #
 # usage: [DEVNET_PORT_OFFSET=n] conformance/rpccorpus/record.sh <scenario> <blocks> [workload.sh]
 #
@@ -193,7 +193,7 @@ cat > "$OUT/meta.json" <<JSON
 {
   "scenario": "$SCENARIO",
   "chain_id": "$CHAIN_ID",
-  "celestia_app": "v10.4.0",
+  "celestia_app": "v10.5.0",
   "celestia_core": "v0.42.3",
   "blocks": $BLOCKS,
   "workload": "$(basename "${WORKLOAD:-none}")",

@@ -1,5 +1,5 @@
 //! Hyperlane queries (`hyperlane.core.v1`, `…interchain_security.v1`,
-//! `…post_dispatch.v1`, `hyperlane.warp.v1`; hyperlane-cosmos v1.3.0) and
+//! `…post_dispatch.v1`, `hyperlane.warp.v1`; hyperlane-cosmos v1.3.1) and
 //! the celestia-app modules built on them (`celestia.zkism.v1`,
 //! `celestia.forwarding.v1`).
 
@@ -406,6 +406,11 @@ fn verify_dry_run(
     let mut limit = 200_000u64;
     if !req.gas_limit.is_empty() {
         limit = u64::from(parse_u32(&req.gas_limit)?);
+        if limit > 10_000_000 {
+            return Err(QueryError::Plain(format!(
+                "gas limit {limit} exceeds maximum 10000000"
+            )));
+        }
     }
     ctx.gas = kvstore::GasMeter::new(limit);
     let ism_id = hex_plain(&req.ism_id)?;
@@ -1022,6 +1027,23 @@ fn quote_forwarding_fee(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_dry_run_rejects_excessive_gas_before_decoding() {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let result = verify_dry_run(
+            &mut ctx,
+            corepb::QueryVerifyDryRunRequest {
+                gas_limit: "10000001".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            result.map_err(|e| e.go_error_string()),
+            Err("gas limit 10000001 exceeds maximum 10000000".into())
+        );
+    }
 
     #[test]
     fn go_strings() {

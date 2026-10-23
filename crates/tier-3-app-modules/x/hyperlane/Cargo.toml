@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "hyperlane-cosmos v1.3.0 x/core: mailboxes, ISMs and post-dispatch hooks."
+description = "hyperlane-cosmos v1.3.1 x/core: mailboxes, ISMs and post-dispatch hooks."
 publish = false
 
 [lints]
@@ -24,3 +24,6 @@ prost = "0.13"
 sdk = { path = "../../sdk" }
 serde_json = "1"
 sha3 = "0.10"
+
+[dev-dependencies]
+kvstore = { path = "../../../tier-2-state-and-store/kvstore" }

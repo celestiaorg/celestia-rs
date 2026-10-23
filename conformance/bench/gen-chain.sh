@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # B1 benchmarks, step 1: record a heavy chain.
 #
-# One Go celestia-appd v10.4.0 validator (standalone ABCI) behind Go
+# One Go celestia-appd v10.5.0 validator (standalone ABCI) behind Go
 # celestia-core v0.42.3 with the abci-recorder proxy in between (as
 # conformance/devnet/devnet.sh), loaded by `bench_load` (Rust example,
 # locally signed txs): every height ~600 bank sends to fresh addresses +
@@ -112,7 +112,7 @@ cp "$H/config/genesis.json" "$OUT/genesis.json"
 cat > "$OUT/meta.json" <<JSON
 {
   "chain_id": "$CHAIN_ID",
-  "celestia_app": "v10.4.0",
+  "celestia_app": "v10.5.0",
   "celestia_core": "v0.42.3",
   "last_height": $LAST,
   "generation_secs": $(( $(date +%s) - T0 )),

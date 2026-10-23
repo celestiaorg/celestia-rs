@@ -41,13 +41,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: determinism
+      - name: Reserve the diff scripts' ports (Linux)
+        if: runner.os == 'Linux'
+        # Keep outbound connections from taking the fixed ABCI and gRPC
+        # ports before deliver / pp bind them (as in fuzz-exec.yml).
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=37658,37758,37858,39590,39690
       - id: cache
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: determinism-bin-${{ runner.os }}-${{ runner.arch }}-app-v10.4.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: determinism-bin-${{ runner.os }}-${{ runner.arch }}-app-v10.5.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        name: Build celestia-appd v10.4.0 and v9.0.8
+        name: Build celestia-appd v10.5.0 and v9.0.8
         run: |
           APPD_ONLY=1 conformance/devnet/build-bins.sh
           APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh

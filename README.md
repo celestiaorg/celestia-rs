@@ -106,6 +106,9 @@ binary; `conformance/` the Go fixture generators and devnet harness;
 `docs/` the [design](docs/specs/2026-05-14-celestia-rs-design.md),
 [ADRs](docs/adr/), benchmarks and [security notes](docs/security.md).
 
+Reliability metrics, coverage budgets and fuzz evidence:
+[`docs/quality.md`](docs/quality.md).
+
 ## License
 
 Dual-licensed under [Apache 2.0](LICENSE-APACHE) and [MIT](LICENSE-MIT).
