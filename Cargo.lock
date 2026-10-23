@@ -4684,6 +4684,7 @@ dependencies = [
  "hash",
  "hex",
  "k256",
+ "kvstore",
  "math",
  "prost",
  "sdk",

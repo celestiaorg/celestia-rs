@@ -2,7 +2,7 @@
 //! implementations.
 //!
 //! The Go side is `conformance/fuzzoracle/{v9,v10}`: celestia-app v9.0.8 /
-//! v10.4.0 built as a line-oriented server ([`oracle::Oracle`]). For each
+//! v10.5.0 built as a line-oriented server ([`oracle::Oracle`]). For each
 //! input both sides produce an [`Out`] — accept/reject with the ABCI error
 //! code, the decoded tx re-encoded by gogoproto, signer addresses, blobs and
 //! share indexes — and [`compare`] reports any difference. Inputs come from

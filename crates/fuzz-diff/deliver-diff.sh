@@ -9,12 +9,12 @@
 # usage: GO_APPD=<celestia-appd of the scenario's version> \
 #        crates/fuzz-diff/deliver-diff.sh <scenario> [blocks] [txs-per-block] [seed]
 #
-# v10 scenarios need celestia-appd v10.4.0, v9-* scenarios v9.0.8 (both as
+# v10 scenarios need celestia-appd v10.5.0, v9-* scenarios v9.0.8 (both as
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
 # Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
 # types.
 #
-# The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.4.0): when Go
+# The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.5.0): when Go
 # raises the app version, the harness stops the Go app after that Commit
 # and starts GO_APPD_NEXT on the same home and address (the multiplexer's
 # switch, as abci-recorder reproduces it); the Rust app continues.

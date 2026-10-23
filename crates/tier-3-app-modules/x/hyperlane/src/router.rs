@@ -54,6 +54,17 @@ pub struct StandardHookMetadata {
 
 /// `util.InterchainSecurityModule`.
 pub trait InterchainSecurityModule {
+    /// A routing ISM delegates all verification to the returned ISM.
+    /// Leaf ISMs return `None` (hyperlane-cosmos v1.3.1).
+    fn route(
+        &self,
+        _ctx: &mut Context<'_>,
+        _ism_id: &HexAddress,
+        _message: &HyperlaneMessage,
+    ) -> Result<Option<HexAddress>> {
+        Ok(None)
+    }
+
     /// `Exists`.
     fn exists(&self, ctx: &mut Context<'_>, deps: &Deps<'_>, ism_id: &HexAddress) -> Result<bool>;
     /// `Verify`.

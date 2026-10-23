@@ -145,7 +145,9 @@ pub fn set_message(ctx: &mut Context<'_>, mailbox: u64, message_id: &[u8]) -> Re
     ctx.set(STORE_KEY, message_key(mailbox, message_id), Vec::new())
 }
 
-/// `Keeper.Verify`: charges 10000 gas, then routes to the ISM.
+/// v1.3.1 `Keeper.Verify`: follows routing ISMs without recursion, charging
+/// exactly the same gas as v1.3.0. A cycle fast-forwards whole laps and
+/// replays the last lap charge by charge to preserve the out-of-gas point.
 pub fn verify(
     ctx: &mut Context<'_>,
     deps: &Deps<'_>,
@@ -153,9 +155,56 @@ pub fn verify(
     metadata: &[u8],
     message: &HyperlaneMessage,
 ) -> Result<bool> {
-    consume_gas(ctx, 10_000, "ism verification")?;
-    let handler = deps.isms.get(ism_id)?;
-    handler.verify(ctx, deps, ism_id, metadata, message)
+    let mut id = *ism_id;
+    let mut visited = std::collections::BTreeMap::new();
+    ctx.gas.record_charges();
+    let result = (|| {
+        loop {
+            if let Some(start) = visited.insert(id, ctx.gas.recorded_charges()) {
+                let charges = ctx.gas.take_charges();
+                return verify_routing_cycle(ctx, &id, &charges[start..]);
+            }
+            consume_gas(ctx, 10_000, "ism verification")?;
+            let handler = deps.isms.get(&id)?;
+            if let Some(next) = handler.route(ctx, &id, message)? {
+                id = next;
+            } else {
+                ctx.gas.take_charges();
+                return handler.verify(ctx, deps, &id, metadata, message);
+            }
+        }
+    })();
+    ctx.gas.take_charges();
+    result
+}
+
+fn verify_routing_cycle(
+    ctx: &mut Context<'_>,
+    ism_id: &HexAddress,
+    charges: &[(u64, &'static str)],
+) -> Result<bool> {
+    // Go's infinite meter reports MaxUint64 as its limit. The explicit
+    // finite MaxUint64 case takes this path too.
+    let limit = ctx.gas.limit().unwrap_or(u64::MAX);
+    if limit == u64::MAX {
+        return Err(errors::core::ism_routing_cycle(format!(
+            "ISM {ism_id} is part of a routing cycle"
+        )));
+    }
+    // The recorded lap has already consumed gas successfully, so its sum
+    // fits u64 and contains at least the 10000-gas verification charge.
+    let lap: u64 = charges.iter().map(|c| c.0).sum();
+    if ctx.gas.consumed() < limit {
+        let laps = (limit - ctx.gas.consumed()) / lap;
+        if laps > 0 {
+            consume_gas(ctx, laps * lap, "ism verification")?;
+        }
+    }
+    loop {
+        for &(amount, descriptor) in charges {
+            consume_gas(ctx, amount, descriptor)?;
+        }
+    }
 }
 
 /// Charges `amount` gas (`GasMeter.ConsumeGas`).

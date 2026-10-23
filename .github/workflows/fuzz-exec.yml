@@ -1,6 +1,6 @@
 name: fuzz-exec
 
-# Execution differentials against Go celestia-app v10.4.0 and v9.0.8
+# Execution differentials against Go celestia-app v10.5.0 and v9.0.8
 # (MILESTONES.md C1.2 / F1.1): `json_*`, `c_*` (F1.7), `exec`, `pp` and `deliver`
 # (DELIVER_IBC / HL / WIRE / SWEEP / RECHECK / SIM, and DELIVER_UPGRADE on
 # v9-upgrade), sharded by crates/fuzz-diff/nightly.sh, which rotates
@@ -50,9 +50,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: fuzz-exec-bin-app-v10.4.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: fuzz-exec-bin-app-v10.5.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        name: Build celestia-appd v10.4.0 and v9.0.8
+        name: Build celestia-appd v10.5.0 and v9.0.8
         run: |
           conformance/devnet/build-bins.sh
           APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh

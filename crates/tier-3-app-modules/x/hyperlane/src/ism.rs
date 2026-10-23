@@ -349,6 +349,18 @@ impl InterchainSecurityModule for RoutingIsmHandler {
         metadata: &[u8],
         message: &HyperlaneMessage,
     ) -> Result<bool> {
+        let route = self
+            .route(ctx, ism_id, message)?
+            .ok_or_else(|| internal("routing ISM did not return a route"))?;
+        corek::verify(ctx, deps, &route, metadata, message)
+    }
+
+    fn route(
+        &self,
+        ctx: &mut Context<'_>,
+        ism_id: &HexAddress,
+        message: &HyperlaneMessage,
+    ) -> Result<Option<HexAddress>> {
         let ism =
             get_ism(ctx, ism_id.internal_id())?.ok_or_else(|| not_found(ism_id.internal_id()))?;
         let Ism::Routing { routes, .. } = ism else {
@@ -362,7 +374,7 @@ impl InterchainSecurityModule for RoutingIsmHandler {
                 message.origin
             )));
         };
-        corek::verify(ctx, deps, &route.ism, metadata, message)
+        Ok(Some(route.ism))
     }
 }
 

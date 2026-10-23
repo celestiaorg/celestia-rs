@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Nightly execution differentials (MILESTONES.md C1.2 / F1.1): runs one
 # shard of the `json_*`, `c_*` (consensus types, MILESTONES.md F1.7),
-# `exec`, `pp` and `deliver` harnesses against Go celestia-app v10.4.0 and
+# `exec`, `pp` and `deliver` harnesses against Go celestia-app v10.5.0 and
 # v9.0.8 (celestia-core v0.42.3), rotating scenarios, modes and flags with
 # the seed so that consecutive nights cover different combinations.
 #
@@ -10,7 +10,7 @@
 #        campaign-<k>of<n>
 #
 # Environment:
-#   DEVNET_BIN   Go binaries: $DEVNET_BIN/celestia-appd (v10.4.0) and
+#   DEVNET_BIN   Go binaries: $DEVNET_BIN/celestia-appd (v10.5.0) and
 #                $DEVNET_BIN/v9/celestia-appd (v9.0.8)
 #   FUZZ_DIFF    the fuzz-diff binary (default target/release/fuzz-diff)
 #   BUDGET_SECS  wall-clock budget of the shard (default 5400); a run is

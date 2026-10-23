@@ -10,8 +10,9 @@ Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 **End state:** a Rust Celestia mainnet validator that is consensus-compatible
 with Go celestia-app/celestia-core and runs on a Mac Mini M4 (16 GB / 512 GB).
 
-**Go parity target:** celestia-app **v10.4.0** / celestia-core v0.42.x, and
-app version 9 at celestia-app **v9.0.8** (mainnet today; ADR 0004).
+**Go parity target:** celestia-app **v10.5.0** (Mainnet) /
+**v10.5.0-mocha** (Mocha), celestia-core **v0.42.3**, and historical
+app version 9 at celestia-app **v9.0.8** (ADR 0004).
 
 ## Remaining milestones
 
@@ -29,7 +30,7 @@ until F1's exit criteria are met).
 | M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 
-Mainnet's v9 → v10 upgrade (celestia-app v10.4.0, the parity target)
+Mainnet's v9 → v10 upgrade (celestia-app v10.4.0 at activation)
 ran at height **15,116,658** on 2026-10-20 (~03:40 UTC); mainnet reports
 app version 10 (`abci_info`, height 15,117,413). The Mac was offline at
 the time (power outage, see M14), so it did not execute the upgrade live.
@@ -111,7 +112,7 @@ Every item must pass on the commit the canary runs.
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
   `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
-  v10.4.0 and v9.0.8, rotating scenarios with a new seed per night; a
+  v10.5.0 and v9.0.8, rotating scenarios with a new seed per night; a
   mismatch fails the job. Exit: running, and clean for **7 consecutive
   nights** before M14 starts.
   *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
@@ -243,7 +244,7 @@ test), then start that harness's count again.
 
 - [ ] **F1.1 Every differential harness in CI.** Nightly today runs only
   the decode-level ops and cargo-fuzz. Add nightly jobs that build Go
-  `celestia-appd` v10.4.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
+  `celestia-appd` v10.5.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
   does) and run `json_*`, `exec` (default, `nil`, `synth`, `json` modes),
   `pp` and `deliver`, rotating over every devnet scenario and both app
   versions with a new seed per night, and uploading findings like the
@@ -412,7 +413,7 @@ test), then start that harness's count again.
   off, and in `release` vs `dist`; a recorded replay gives the same app
   hashes on x86_64 and aarch64.
 
-- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.4.0 and
+- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.5.0 and
   v9.0.8. Mainnet's v10 upgrade may ship a later v10.x (and v9 patch
   releases are possible). Exit: before M14 starts, and before every
   mainnet upgrade the Rust validator will run through, the fuzz oracles,
@@ -431,6 +432,18 @@ test), then start that harness's count again.
   rollback with a 100-height depth guard; no consensus change) and no
   celestia-app release uses it yet, so the pin stays v0.42.3. Port the
   command when a celestia-app release picks it up.
+  *Retargeted 2026-10-23:* owner requests v10.5.0 for Mainnet and Mocha.
+  Read-only `abci_info` reports `10.5.0` on Mainnet (15,221,231) and
+  `10.5.0-mocha` on Mocha (1,951,411). The two release tags have identical
+  source trees. Active v10 Go modules, devnet builds, CI binary caches and
+  CLI parity metadata now pin v10.5.0 / hyperlane-cosmos v1.3.1; core stays
+  v0.42.3, as in that release's go.mod. Proposal rollback and blob filtering
+  are ported, as are iterative Hyperlane routing and its query gas cap.
+  Go-generated regression vectors cover proposal filtering/rollback and
+  110 routing result/gas cases. See
+  [`docs/adr/0007-app-v10-5.md`](docs/adr/0007-app-v10-5.md).
+  Historical v10.4.0 fixture provenance is retained; the soak,
+  determinism and saturation gates still require evidence on this target.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the
