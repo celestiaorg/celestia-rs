@@ -20,6 +20,9 @@ the binary is versioned.
    `cargo xtask bump-version <version>`: the crate's version in `Cargo.toml`
    and `Cargo.lock`, and the CHANGELOG's `## Unreleased` entries moved under
    `## v<version> (<date>)`.
+   The commit is created through GitHub's API with a verified signature.
+   An existing `release/v<version>` branch causes preparation to fail instead
+   of overwriting edits on an existing release PR.
 
 2. Review the PR (edit the CHANGELOG section there if you like) and merge
    it.

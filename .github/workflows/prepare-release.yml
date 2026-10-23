@@ -33,6 +33,7 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -58,11 +59,14 @@ jobs:
         run: |
           set -euo pipefail
           branch="release/v$VERSION"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
-          git commit -qam "release: v$VERSION"
-          git push -f origin "$branch"
+          # Fail if the release branch already exists rather than force-push
+          # over a release PR's edits. GitHub signs the API-created commit.
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/heads/$branch" -f sha="$(git rev-parse HEAD)"
+          git add --update
+          python3 .github/scripts/commit-signed-changes.py \
+            "$branch" "release: v$VERSION"
           ci_note=""
           if [ "$HAS_TOKEN" != true ]; then
             ci_note="
