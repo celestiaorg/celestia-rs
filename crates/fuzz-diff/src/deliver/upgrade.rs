@@ -12,7 +12,7 @@
 //! the 5/6 quorum), the fuzz accounts send `MsgTryUpgrade` until the
 //! upgrade is pending, then repeat it (`ErrUpgradePending`). At the
 //! upgrade height `H` Go's v9 `EndBlocker` raises the app version; after
-//! that `Commit` the harness switches Go to the v10.4.0 binary
+//! that `Commit` the harness switches Go to the v10.5.0 binary
 //! (`DELIVER_SWITCH_CMD`, like the multiplexer / `abci-recorder`); the
 //! Rust app stays the same process. Around `H` (and after) the driver
 //! sends v10-only messages (fibre escrow, valaddr, warp
