@@ -795,22 +795,6 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
-        // A state at app version 9 has no fibre / valaddr stores (ADR
-        // 0004): restore it into the v9 store set, as Go does with its v9
-        // app. Without this every store of a v9 snapshot restores but the
-        // final commit misses the v10-only stores mounted by a fresh app.
-        if self.last_height == 0 && stores::is_v9(req.app_version) {
-            for name in stores::ADDED_IN_V10 {
-                if self.ms.is_mounted(name)
-                    && let Err(e) = self.ms.unmount_iavl(name)
-                {
-                    tracing::error!(store = name, error = %e, "failed to unmount store");
-                    return abci::ResponseOfferSnapshot {
-                        result: R::Abort as i32,
-                    };
-                }
-            }
-        }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
             (Some(_), None) => R::Reject,
@@ -824,7 +808,29 @@ impl App {
                 )
                 .and_then(|snapshot| manager.begin_restore(snapshot))
                 {
-                    Ok(()) => R::Accept,
+                    Ok(()) => {
+                        // Only accepted offers select stores. A later offer
+                        // may replace an abandoned restore of another version.
+                        if self.last_height == 0 {
+                            for name in stores::ADDED_IN_V10 {
+                                let mounted = self.ms.is_mounted(name);
+                                let result = if stores::is_v9(req.app_version) && mounted {
+                                    self.ms.unmount_iavl(name)
+                                } else if !stores::is_v9(req.app_version) && !mounted {
+                                    self.ms.mount(name, sdk::Kind::Iavl)
+                                } else {
+                                    Ok(())
+                                };
+                                if let Err(e) = result {
+                                    tracing::error!(store = name, error = %e, "failed to select snapshot stores");
+                                    return abci::ResponseOfferSnapshot {
+                                        result: R::Abort as i32,
+                                    };
+                                }
+                            }
+                        }
+                        R::Accept
+                    }
                     Err(snapshots::Error::UnknownFormat(_)) => R::RejectFormat,
                     Err(snapshots::Error::InvalidMetadata(e)) => {
                         tracing::error!(error = %e, "rejecting invalid snapshot");

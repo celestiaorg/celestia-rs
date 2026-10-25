@@ -1180,10 +1180,10 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 let Ok(sk) = p256::ecdsa::SigningKey::from_slice(&[i; 32]) else {
                     continue;
                 };
-                let pk = sk.verifying_key().to_encoded_point(true);
+                let pk = sk.verifying_key().to_sec1_point(true);
                 for msg in [&b""[..], b"celestia", &[i; 300]] {
                     let sig: p256::ecdsa::Signature = sk.sign(msg);
-                    let low = sig.normalize_s().unwrap_or(sig);
+                    let low = sig.normalize_s();
                     out.push(input(&[(1, pk.as_bytes()), (2, msg), (3, &low.to_bytes())]));
                     // The high-S twin (Go rejects it).
                     let (r, s) = low.split_scalars();

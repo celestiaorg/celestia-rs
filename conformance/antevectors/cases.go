@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -51,6 +52,38 @@ var scenarios = []scenario{
 	{"keys", scenarioKeys},
 	{"celestia", scenarioCelestia},
 	{"fuzz", scenarioFuzz},
+	{"fee-boundaries", scenarioFeeBoundaries},
+}
+
+// Reach fee arithmetic and telemetry before balance deduction. These amounts
+// need not be affordable: ValidateTxFee runs before the bank balance check.
+func scenarioFeeBoundaries(g *gen) {
+	g.setupBase()
+	max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	scaledBoundary := new(big.Int).Quo(new(big.Int).Set(max), big.NewInt(1_000_000))
+	amounts := []string{
+		"9223372036854775807", "9223372036854775808",
+		scaledBoundary.String(),
+		new(big.Int).Add(scaledBoundary, big.NewInt(1)).String(),
+		max.String(),
+	}
+	for i, amount := range amounts {
+		for _, mode := range []string{"check", "recheck", "finalize", "simulate"} {
+			s := one(acc.a[0], 0, send(acc.a[0], 10))
+			s.feeRaw = []rawCoin{{"utia", amount}}
+			g.add(fmt.Sprintf("fee-boundary-%d-%s", i, mode),
+				modeSpec{mode: mode, height: 2, simulate: mode == "simulate"}, s, nil)
+		}
+	}
+	// v9 converts uint64 gas to int64 when calculating priority. With a
+	// zero configured minimum fee these affordable txs reach that arithmetic.
+	for _, gas := range []uint64{1<<63 - 1, 1 << 63, 1<<63 + 1, ^uint64(0)} {
+		s := one(acc.a[0], 0, send(acc.a[0], 10))
+		s.gas = gas
+		g.add(fmt.Sprintf("gas-signed-boundary-%d", gas), finalize, s, func(ctx sdk.Context) {
+			g.app.MinFeeKeeper.SetParams(ctx, minfeetypes.Params{NetworkMinGasPrice: math.LegacyZeroDec()})
+		})
+	}
 }
 
 // accounts used by every scenario.

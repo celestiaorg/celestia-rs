@@ -200,6 +200,24 @@ impl fmt::Display for Coin {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Coins(pub Vec<Coin>);
 
+/// `sdk.NewCoins`: removes zero amounts, sorts, then panics on invalid
+/// denominations, duplicates or non-positive amounts. This differs from
+/// [`Coins::sanitized`], which returns an ordinary validation error.
+pub fn new_coins_go(raw: &[pb::Coin]) -> Result<Coins> {
+    if raw.iter().any(|c| c.amount.is_empty()) {
+        return Err(nil_amount_panic());
+    }
+    let mut coins = Coins::from_proto(raw).map_err(|e| crate::error::go_panic(e.log))?;
+    coins.0.retain(|c| !c.is_zero());
+    coins.0.sort_by(|a, b| a.denom.cmp(&b.denom));
+    if let Err(error) = raw_coins_validate(&coins.to_proto())? {
+        return Err(crate::error::go_panic(format!(
+            "invalid coin set {coins}: {error}"
+        )));
+    }
+    Ok(coins)
+}
+
 impl Coins {
     /// Empty.
     #[must_use]
@@ -320,6 +338,37 @@ impl fmt::Display for Coins {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct NewCoinsVector {
+        coins: Vec<pb::Coin>,
+        result: String,
+        panic: String,
+    }
+
+    /// Generated and checked by the pinned celestia-app v10.5.0 Go oracle.
+    #[test]
+    fn new_coins_matches_go_vectors() {
+        let vectors: Vec<NewCoinsVector> = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/fixtures/new-coins.json"
+        )))
+        .expect("valid Go-generated NewCoins vectors");
+        for vector in vectors {
+            match new_coins_go(&vector.coins) {
+                Ok(coins) => {
+                    assert!(vector.panic.is_empty(), "expected panic: {}", vector.panic);
+                    assert_eq!(coins.to_string(), vector.result);
+                }
+                Err(error) => {
+                    assert!(vector.result.is_empty());
+                    assert_eq!(error.code, 111_222);
+                    assert_eq!(error.log, vector.panic);
+                }
+            }
+        }
+    }
 
     /// Found by the execution differential (`fuzz-diff exec`): Go validates
     /// the decoded coins as they are, and a nil amount panics once reached.

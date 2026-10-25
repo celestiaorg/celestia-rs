@@ -426,7 +426,7 @@ pub fn verify_secp256r1(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     let Ok(signature) = p256::ecdsa::Signature::from_slice(sig) else {
         return false;
     };
-    if signature.normalize_s().is_some() {
+    if signature.normalize_s() != signature {
         return false;
     }
     let digest = hash::sha256(msg);

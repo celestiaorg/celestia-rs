@@ -38,6 +38,40 @@ fn init_home(home: &Path, chain: &str) -> init::InitInfo {
 }
 
 #[test]
+fn init_never_resets_an_incomplete_signing_pair() {
+    for missing in [
+        "config/priv_validator_key.json",
+        "data/priv_validator_state.json",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        init_home(home, "signer-state-test");
+        let state = home.join("data/priv_validator_state.json");
+        std::fs::write(&state, r#"{"height":"50","round":0,"step":3}"#).unwrap();
+        std::fs::remove_file(home.join(missing)).unwrap();
+        let error = init::init(&init::InitOptions {
+            home: home.to_path_buf(),
+            moniker: "n0".into(),
+            chain_id: "signer-state-test".into(),
+            network: None,
+            overwrite: true,
+            recover_mnemonic: Some(MNEMONIC.into()),
+            download_genesis: false,
+        })
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to reset signing state")
+        );
+        assert!(!home.join(missing).exists());
+        if state.exists() {
+            assert_eq!(json(&state)["height"], "50");
+        }
+    }
+}
+
+#[test]
 fn init_writes_go_templates() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();

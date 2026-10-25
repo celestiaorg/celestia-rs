@@ -406,7 +406,7 @@ fn verify_dry_run(
     let mut limit = 200_000u64;
     if !req.gas_limit.is_empty() {
         limit = u64::from(parse_u32(&req.gas_limit)?);
-        if limit > 10_000_000 {
+        if limit > 10_000_000 && !sdk::version::is_v9(sdk::version::app_version()) {
             return Err(QueryError::Plain(format!(
                 "gas limit {limit} exceeds maximum 10000000"
             )));
@@ -1027,6 +1027,25 @@ fn quote_forwarding_fee(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v9_verify_dry_run_keeps_its_historical_gas_limit() {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        sdk::version::set_app_version(9);
+        let result = verify_dry_run(
+            &mut ctx,
+            corepb::QueryVerifyDryRunRequest {
+                gas_limit: "10000001".into(),
+                ..Default::default()
+            },
+        );
+        sdk::version::set_app_version(0);
+        // v9 proceeds to ISM decoding; the v10.5 cap must not mask that error.
+        let error = result.unwrap_err().go_error_string();
+        assert!(!error.contains("exceeds maximum"), "{error}");
+        assert_eq!(ctx.gas.limit(), Some(10_000_001));
+    }
 
     #[test]
     fn verify_dry_run_rejects_excessive_gas_before_decoding() {

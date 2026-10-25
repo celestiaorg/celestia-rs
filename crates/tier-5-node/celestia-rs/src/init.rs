@@ -100,11 +100,9 @@ pub fn apply_network_peers(home: &Path, net: &Network) -> anyhow::Result<()> {
 fn validator_files(home: &Path, mnemonic: Option<&str>) -> anyhow::Result<()> {
     let key = home.join("config").join("priv_validator_key.json");
     let state = home.join("data").join("priv_validator_state.json");
-    if key.exists() {
-        if !state.exists() {
-            let pv = privval::FilePv::load_empty_state(&key, &state).map_err(|e| anyhow!("{e}"))?;
-            pv.last_sign_state.save().map_err(|e| anyhow!("{e}"))?;
-        }
+    if key.exists() || state.exists() {
+        privval::FilePv::load(&key, &state)
+            .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
         return Ok(());
     }
     let pv = match mnemonic {

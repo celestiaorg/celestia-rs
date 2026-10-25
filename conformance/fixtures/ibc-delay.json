@@ -1,0 +1,4 @@
+{
+  "error": "cannot verify packet until height: 4-12, current height: 4-10: packet-specified delay period has not been reached",
+  "reference": "celestia-app v10.5.0 / ibc-go v8.7.2"
+}

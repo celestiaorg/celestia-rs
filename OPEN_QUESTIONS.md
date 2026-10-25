@@ -3,6 +3,12 @@
 Things that need the owner. Work continues around each item; the "Default"
 column records what the code does until it is answered.
 
+**Scope clarified 2026-10-24:** target general recommendation for
+non-archival RPC nodes, consensus nodes and validators against Go v10.5.0.
+Archival RPC, HSMs and remote signers are later goals. An external audit is
+optional; a separate review agent is authorized for independent code review.
+F1's measurable acceptance criteria remain in force (ADR 0008).
+
 | # | Opened | Question | Default meanwhile |
 |---|---|---|---|
 | 1 | 2026-10-14 | **Partly resolved 2026-10-15.** HTTPS to public Celestia RPCs now works (mainnet: `rpc.celestia.pops.one`, `celestia-rpc.publicnode.com`; Mocha: `rpc.celestia-mocha.com` (archival from genesis), `celestia-testnet-rpc.polkachu.com`). **Raw P2P (tcp 26656 etc.) does not**: the environment's egress proxy accepts the CONNECT and then resets non-TLS traffic, so this container cannot join a network's P2P layer. A validator (Mocha or mainnet) therefore has to run on the owner's machine. **Mocha P2P verified on the owner's Mac 2026-10-15** (state sync, block sync and consensus against Go peers; `operator-guide.md` §11.5). | Follow testnets/mainnet over HTTPS RPC (fetch blocks + commits, verify with the light client, execute, compare app hashes); run P2P/consensus only on local devnets. |

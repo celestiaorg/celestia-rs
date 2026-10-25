@@ -7,8 +7,12 @@ progress notes are archived in
 and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
 Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
-**End state:** a Rust Celestia mainnet validator that is consensus-compatible
-with Go celestia-app/celestia-core and runs on a Mac Mini M4 (16 GB / 512 GB).
+**End state:** evidence sufficient to recommend Rust for Celestia mainnet's
+non-archival RPC nodes, full consensus nodes and validators. The Mac Mini M4
+(16 GB / 512 GB) remains a deployment target. Archival RPC, HSMs and remote
+signers are later goals; an external security audit is optional
+([ADR 0008](docs/adr/0008-mainnet-recommendation.md)). F1 still requires
+independent code review and evidence tied to an exact release candidate.
 
 **Go parity target:** celestia-app **v10.5.0** (Mainnet) /
 **v10.5.0-mocha** (Mocha), celestia-core **v0.42.3**, and historical
@@ -29,6 +33,7 @@ until F1's exit criteria are met).
 | C1  | pending     | **Canary gate** for M14 | Every item of C1.1–C1.5 below met on the release commit |
 | M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
+| Q1  | pending | **General mainnet recommendation** for the scoped node roles (ADR 0008) | F1 closed on an exact RC; non-archival RPC/REST/gRPC interoperability, mixed Go/Rust fault/recovery tests and supported-platform checks pass on that RC, with retained artifacts and no unresolved release blocker |
 
 Mainnet's v9 → v10 upgrade (celestia-app v10.4.0 at activation)
 ran at height **15,116,658** on 2026-10-20 (~03:40 UTC); mainnet reports

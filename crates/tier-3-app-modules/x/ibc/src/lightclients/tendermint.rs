@@ -977,9 +977,11 @@ fn verify_delay_period_passed(
             revision_height: processed.revision_height.wrapping_add(delay_block),
         };
         if height::lt(&current, &valid) {
-            return Err(tmerr::delay_period_not_passed(
-                "cannot verify packet until height",
-            ));
+            return Err(tmerr::delay_period_not_passed(format!(
+                "cannot verify packet until height: {}, current height: {}",
+                height::to_string(&valid),
+                height::to_string(&current)
+            )));
         }
     }
     Ok(())
@@ -1220,4 +1222,45 @@ pub fn validate_client_message(msg: &ClientMessage) -> Result<()> {
 #[must_use]
 pub fn latest_height(cs: &ClientState) -> Height {
     latest(cs)
+}
+
+#[cfg(test)]
+mod delay_tests {
+    use super::*;
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn block_delay_error_includes_both_heights_like_go() {
+        let mut ms = sdk::MultiStore::new();
+        ms.mount(crate::STORE_KEY, sdk::Kind::Iavl).unwrap();
+        let mut ctx = Context::new(
+            &mut ms,
+            sdk::Header {
+                chain_id: "test-4".into(),
+                height: 10,
+                ..Default::default()
+            },
+            sdk::ExecMode::Finalize,
+        );
+        let proof = Height {
+            revision_number: 1,
+            revision_height: 5,
+        };
+        let processed = Height {
+            revision_number: 4,
+            revision_height: 9,
+        };
+        set_consensus_metadata_with_values(&mut ctx, "07-tendermint-0", &proof, &processed, 0)
+            .unwrap();
+        let error =
+            verify_delay_period_passed(&mut ctx, "07-tendermint-0", &proof, 0, 3).unwrap_err();
+        let reference: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../conformance/fixtures/ibc-delay.json"
+        )))
+        .unwrap();
+        assert_eq!(error.log, reference["error"]);
+        ctx.header.height = 12;
+        verify_delay_period_passed(&mut ctx, "07-tendermint-0", &proof, 0, 3).unwrap();
+    }
 }

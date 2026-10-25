@@ -10,6 +10,43 @@ hand.
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
+## Qualifying a release candidate
+
+General mainnet recommendation covers the node roles in
+[ADR 0008](adr/0008-mainnet-recommendation.md). A release tag or successful
+build does not close the acceptance criteria in `MILESTONES.md`.
+
+Use `cargo xtask bump-version <version>-rc.<n>` to prepare the candidate,
+commit its source, and retain evidence against that exact commit. Run an
+individual check with the evidence wrapper, for example:
+
+```sh
+python3 scripts/quality/qualify.py --out target/qualification/workspace-tests \
+  -- cargo test --workspace --all-features --locked
+python3 scripts/quality/qualify.py --out target/qualification/campaign-0 \
+  --binary target/release/fuzz-diff \
+  --binary target/devnet-bin/celestia-appd \
+  --binary target/devnet-bin/v9/celestia-appd \
+  -- env DEVNET_BIN="$PWD/target/devnet-bin" \
+    crates/fuzz-diff/nightly.sh campaign-0of8 1 target/qualification/findings-0
+```
+
+Each output directory must be new. The wrapper retains the command, source
+commit/tree, platform/toolchains, exit status, log digest and optional input
+binary digests. Dirty source is rejected; a source or input-binary change
+during the command invalidates the result even if the command exits zero.
+Interrupted checks have no passing completion record. Archive the whole
+directory, including the log and each harness's detailed findings. Use the
+Go toolchain pinned by the oracle modules, not a newer installed compiler.
+
+Complete every campaign shard with a sufficient budget; summarize volume
+with `crates/fuzz-diff/saturation-report.py`. Retain separate evidence for
+cross-platform determinism, clean nightly history, coverage, snapshot-based
+mainnet-state trials, live replay and independent review. A passing wrapper
+record describes one check only. It cannot replace missing F1 evidence or
+the required elapsed nights. Publishing or changing a live validator is a
+separate operator action.
+
 ## Cutting a release
 
 1. **Actions → prepare release → Run workflow**, with the version, e.g.
