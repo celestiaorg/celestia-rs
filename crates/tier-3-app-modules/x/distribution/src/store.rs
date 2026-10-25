@@ -193,6 +193,54 @@ impl Params {
         }
         .encode_to_vec()
     }
+
+    /// `Params.ValidateBasic` while retaining a nil community tax.
+    pub fn validate_basic_wire(&self, wire: &pb::Params) -> Result<()> {
+        if wire.community_tax.is_empty() {
+            return Err(sdk::error::internal("community tax must be not nil"));
+        }
+        if self.community_tax.is_negative() {
+            return Err(sdk::error::internal(format!(
+                "community tax must be positive: {}",
+                self.community_tax
+            )));
+        }
+        if self.community_tax > LegacyDec::one() {
+            return Err(sdk::error::internal(format!(
+                "community tax too large: {}",
+                self.community_tax
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(deprecated)]
+mod params_tests {
+    use super::*;
+
+    #[test]
+    fn nil_community_tax_differs_from_explicit_zero() {
+        let params = Params {
+            community_tax: LegacyDec::zero(),
+            base_proposer_reward: None,
+            bonus_proposer_reward: None,
+            withdraw_addr_enabled: true,
+        };
+        let mut wire = pb::Params {
+            community_tax: String::new(),
+            base_proposer_reward: String::new(),
+            bonus_proposer_reward: String::new(),
+            withdraw_addr_enabled: true,
+        };
+        assert_eq!(
+            params.validate_basic_wire(&wire).unwrap_err().log,
+            "community tax must be not nil"
+        );
+        wire.community_tax = "0".into();
+        params.validate_basic_wire(&wire).unwrap();
+    }
 }
 
 /// `Params.Get` (collections: missing is an error).

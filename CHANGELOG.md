@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.1.0-rc.4 (2026-10-25)
+
+### Fixed
+
+- Staking, slashing and distribution parameter updates preserve omitted
+  LegacyDec fields through validation, rejecting nil values in Go's order
+  instead of accepting them as explicit zero; unsupported validator key-type
+  errors also use Go's slice formatting.
+
 ## v0.1.0-rc.3 (2026-10-25)
 
 ### Fixed

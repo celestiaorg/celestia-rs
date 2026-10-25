@@ -2081,8 +2081,8 @@ impl Gen {
                 } else {
                     "utia".into()
                 },
-                min_commission_rate: ["50000000000000000", "0", "1000000000000000000"]
-                    [self.m.rng.below(3)]
+                min_commission_rate: ["50000000000000000", "0", "1000000000000000000", ""]
+                    [self.m.rng.below(4)]
                 .into(),
             }),
         })
@@ -4669,7 +4669,7 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
     use celestia_proto::cosmos::{
         auth::v1beta1 as auth, bank::v1beta1 as bank, circuit::v1 as circuit,
         consensus::v1 as cons, distribution::v1beta1 as distr, gov::v1 as gov,
-        slashing::v1beta1 as slashing,
+        slashing::v1beta1 as slashing, staking::v1beta1 as staking,
     };
     use celestia_proto::ibc::applications::transfer::v1 as transfer;
     use celestia_proto::ibc::core::{
@@ -4720,16 +4720,54 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
             limit_type_urls: vec!["/coverage.unused.Msg".into()],
         }),
     }));
-    params!(
-        distr,
+    if let Some(r) = query_app::<distr::QueryParamsResponse>(
+        rust,
         "/cosmos.distribution.v1beta1.Query/Params",
-        MsgUpdateParams { authority }
-    );
-    params!(
-        slashing,
+        &distr::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&distr::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.community_tax.clear();
+        out.push(Any::pack(&distr::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
+    if let Some(r) = query_app::<slashing::QueryParamsResponse>(
+        rust,
         "/cosmos.slashing.v1beta1.Query/Params",
-        MsgUpdateParams { authority }
-    );
+        &slashing::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&slashing::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.min_signed_per_window.clear();
+        out.push(Any::pack(&slashing::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
+    if let Some(r) = query_app::<staking::QueryParamsResponse>(
+        rust,
+        "/cosmos.staking.v1beta1.Query/Params",
+        &staking::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&staking::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.min_commission_rate.clear();
+        out.push(Any::pack(&staking::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
     params!(
         minfee,
         "/celestia.minfee.v1.Query/Params",
