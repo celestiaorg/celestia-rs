@@ -73,6 +73,12 @@ set_releases() {
 
 set_releases mock/stable "v0.3.0-rc.1 1" "v0.2.0 0" "v0.1.0 0"
 set_releases mock/pre "v0.1.0-alpha.2 1" "v0.1.0-alpha.1 1"
+# Feed entries can precede their binary uploads (or outlive a failed build).
+set_releases mock/incomplete "v0.1.0-rc.4 1" "v0.1.0-rc.3 1" "v0.1.0-rc.2 1" "v0.1.0-rc.1 1"
+rm "$work"/www/mock/incomplete/releases/download/v0.1.0-rc.4/*
+rm "$work"/www/mock/incomplete/releases/download/v0.1.0-rc.3/*.tar.gz
+rm "$work"/www/mock/incomplete/releases/download/v0.1.0-rc.2/*.sha256
+: >"$work/www/mock/incomplete/ratelimited"
 mkdir -p "$work/www/mock/none" && : >"$work/www/mock/none/releases.txt"
 set_releases mock/private "v0.2.0 0" "v0.1.0 0"
 : >"$work/www/mock/private/private"
@@ -344,6 +350,10 @@ else fail "$t"; fi
 t="pre-releases only, API rate-limited: the releases feed still finds the newest"
 new_home ratelimited
 if run mock/ratelimited && [ "$(installed)" = v0.1.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
+
+t="feed skips releases missing archives or checksums, even when the API is rate-limited"
+new_home incomplete
+if run mock/incomplete && [ "$(installed)" = v0.1.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
 
 t="a source-built binary already in bin is replaced and kept as .prev"
 new_home srcbuild

@@ -320,7 +320,17 @@ latest_version() {
   # shared hosts (CI runners, NAT) run out of.
   if [ -z "$token" ]; then
     version=$(get "$GITHUB_URL/$REPO/releases.atom" - 2>/dev/null |
-      sed -n 's|.*href="[^"]*/releases/tag/\([^"]*\)".*|\1|p' | head -n 1)
+      sed -n 's|.*href="[^"]*/releases/tag/\([^"]*\)".*|\1|p' |
+      while IFS= read -r candidate; do
+        # The feed can advertise a tag before a release's assets exist.
+        # Probe both files without downloading the archive; explicit
+        # --version requests still fail if their assets are missing.
+        asset_url=$GITHUB_URL/$REPO/releases/download/$candidate/celestia-rs-$candidate-$target.tar.gz
+        if asset_exists "$asset_url" && asset_exists "$asset_url.sha256"; then
+          printf '%s\n' "$candidate"
+          break
+        fi
+      done)
     if [ -n "$version" ]; then
       [ "$1" = 1 ] || say "no stable release yet; using the newest pre-release, $version"
       return 0
@@ -340,6 +350,15 @@ If GitHub rate-limited this IP, set GITHUB_TOKEN, or pass --version."
   [ -n "$version" ] || err "$REPO has no releases yet; build from source: https://github.com/$REPO#getting-started"
   if [ "$1" = 0 ]; then
     say "no stable release yet; using the newest pre-release, $version"
+  fi
+}
+
+# Check a public release asset without downloading its body.
+asset_exists() {
+  if [ "$downloader" = curl ]; then
+    curl --proto "$proto" --tlsv1.2 -sSfIL "$1" >/dev/null 2>&1
+  else
+    wget -q --spider "$1" >/dev/null 2>&1
   fi
 }
 
