@@ -25,7 +25,7 @@ crypto = { path = "../../tier-0-primitives/crypto" }
 encoding = { path = "../../tier-0-primitives/encoding" }
 hex = "0.4"
 hmac = "0.12"
-k256 = { version = "0.13", features = ["arithmetic"] }
+k256 = { version = "0.14", features = ["arithmetic"] }
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 prost = "0.13"
 rand = "0.8"

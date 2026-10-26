@@ -27,6 +27,12 @@ fn copy_fixture(home: &Path) {
     for f in ["genesis.json", "priv_validator_key.json"] {
         std::fs::copy(Path::new(FIXTURE).join("config").join(f), cfg.join(f)).unwrap();
     }
+    std::fs::create_dir_all(home.join("data")).unwrap();
+    std::fs::write(
+        home.join("data/priv_validator_state.json"),
+        r#"{"height":"0","round":0,"step":0}"#,
+    )
+    .unwrap();
 }
 
 fn opts(home: &Path, stop: i64) -> StartOptions {

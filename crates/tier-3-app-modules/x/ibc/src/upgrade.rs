@@ -319,28 +319,15 @@ fn verify_cp_error_receipt(
     )
 }
 
-/// `connectiontypes.Version` in gogoproto compact text form.
-fn version_text(v: &celestia_proto::ibc::core::connection::v1::Version) -> String {
-    let mut parts = vec![format!("identifier:{:?}", v.identifier)];
-    parts.extend(v.features.iter().map(|f| format!("features:{f:?}")));
-    parts.join(" ")
-}
-
-/// `UpgradeFields` in gogoproto compact text form.
+/// Go `%s` of an `UpgradeFields` value. Its generated `String` method has a
+/// pointer receiver, so `fmt` recursively formats the value's struct fields.
 fn fields_text(f: &UpgradeFields) -> String {
-    let mut parts = Vec::new();
-    if f.ordering != 0 {
-        parts.push(format!("ordering:{}", order_name(f.ordering)));
-    }
-    parts.extend(
-        f.connection_hops
-            .iter()
-            .map(|h| format!("connection_hops:{h:?}")),
-    );
-    if !f.version.is_empty() {
-        parts.push(format!("version:{:?}", f.version));
-    }
-    parts.join(" ")
+    format!(
+        "{{{} [{}] {}}}",
+        order_name(f.ordering),
+        f.connection_hops.join(" "),
+        f.version
+    )
 }
 
 /// `validateSelfUpgradeFields`.
@@ -367,12 +354,8 @@ fn validate_self_upgrade_fields(
     connection_open(&conn)?;
     if conn.versions.len() != 1 {
         return Err(conerr::invalid_version(format!(
-            "single version must be negotiated on connection before opening channel, got: [{}]",
-            conn.versions
-                .iter()
-                .map(version_text)
-                .collect::<Vec<_>>()
-                .join(" ")
+            "single version must be negotiated on connection before opening channel, got: {}",
+            crate::connection::go_versions_string(&conn.versions)
         )));
     }
     if !crate::connection::verify_supported_feature(
@@ -381,7 +364,7 @@ fn validate_self_upgrade_fields(
     ) {
         return Err(conerr::invalid_version(format!(
             "connection version {} does not support channel ordering: {}",
-            version_text(&conn.versions[0]),
+            crate::connection::go_version_string(&conn.versions[0]),
             order_name(proposed.ordering)
         )));
     }
@@ -1164,10 +1147,7 @@ pub fn chan_upgrade_timeout(
         let up_conn = crate::connection::get_connection(ctx, &up_hop)?
             .ok_or_else(|| conerr::connection_not_found(&up_hop))?;
         let cp_hop = cp_conn_id(&up_conn);
-        if f.version == cp_channel.version
-            && f.ordering == cp_channel.ordering
-            && cp_channel.connection_hops.first().map(String::as_str) == Some(cp_hop.as_str())
-        {
+        if counterparty_already_upgraded(&f, cp_channel, &cp_hop) {
             return Err(cherr::upgrade_timeout_failed(
                 "counterparty channel is already upgraded",
             ));
@@ -1181,6 +1161,20 @@ pub fn chan_upgrade_timeout(
     }
     verify_cp_channel(ctx, &conn, &ch, proof_height, proof, cp_channel)
         .map_err(|e| e.wrap("failed to verify counterparty channel state"))
+}
+
+fn counterparty_already_upgraded(
+    proposed: &UpgradeFields,
+    counterparty_channel: &Channel,
+    proposed_connection_counterparty: &str,
+) -> bool {
+    proposed.version == counterparty_channel.version
+        && proposed.ordering == counterparty_channel.ordering
+        // ibc-go v8.7.2 compares the proposed local connection ID with its
+        // own counterparty ID here; it does not inspect the relayed channel's
+        // connection hops. Preserve that baseline behavior.
+        && proposed.connection_hops.first().map(String::as_str)
+            == Some(proposed_connection_counterparty)
 }
 
 /// `WriteUpgradeTimeoutChannel`.
@@ -1327,3 +1321,49 @@ pub fn emit_open(port: &str, chan: &str, ch: &Channel) -> [Event; 2] {
 
 /// `chpb::ResponseResultType` values.
 pub use chpb::ResponseResultType;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeout_already_upgraded_check_uses_go_connection_operands() {
+        let mut proposed = UpgradeFields {
+            ordering: Order::Ordered as i32,
+            connection_hops: vec!["connection-local".into()],
+            version: "ics20-1".into(),
+        };
+        let counterparty = Channel {
+            state: State::Open as i32,
+            ordering: Order::Ordered as i32,
+            connection_hops: vec!["connection-remote".into()],
+            version: "ics20-1".into(),
+            ..Channel::default()
+        };
+
+        assert!(!counterparty_already_upgraded(
+            &proposed,
+            &counterparty,
+            "connection-remote"
+        ));
+        proposed.connection_hops[0] = "connection-remote".into();
+        assert!(counterparty_already_upgraded(
+            &proposed,
+            &counterparty,
+            "connection-remote"
+        ));
+    }
+
+    #[test]
+    fn identical_upgrade_error_uses_go_value_formatting() {
+        let fields = UpgradeFields {
+            ordering: Order::Unordered as i32,
+            connection_hops: vec!["connection-0".into()],
+            version: "ics20-1".into(),
+        };
+        assert_eq!(
+            fields_text(&fields),
+            "{ORDER_UNORDERED [connection-0] ics20-1}"
+        );
+    }
+}

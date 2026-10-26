@@ -49,7 +49,8 @@ fn error_ack(err: &str) -> Acknowledgement {
 pub fn get_receiver(channel: &str, original_sender: &str) -> String {
     let typ = hash::sha256(crate::MODULE_NAME.as_bytes());
     let mut pre = typ.to_vec();
-    pre.extend_from_slice(format!("{channel}/{original_sender}").as_bytes());
+    let sender = format!("{channel}/{original_sender}");
+    pre.extend_from_slice(&gostr::to_go_bytes(&sender));
     let h = hash::sha256(&pre);
     sdk::address::to_bech32(sdk::address::ACC_PREFIX, &h[..20])
 }
@@ -694,6 +695,30 @@ mod tests {
         assert!(
             denom_for_this_chain("transfer", "channel-0", "transfer", "channel-1", "stake")
                 .starts_with("ibc/")
+        );
+    }
+
+    #[test]
+    fn receiver_hashes_go_string_bytes() {
+        // Go v1.26.9 / packet-forward-middleware v8.2.0 GetReceiver vector.
+        // Exercise the JSON decoder used by on_recv_packet: U+10FFFF becomes
+        // four reserved gostr chars internally, then GetReceiver hashes its
+        // original four UTF-8 bytes.
+        let json = "{\"denom\":\"utia\",\"amount\":\"1\",\"sender\":\"\u{10ffff}\",\"receiver\":\"pfm\",\"memo\":\"\"}"
+            .to_string();
+        let data = PacketData::decode(json.as_bytes()).unwrap();
+        assert_eq!(
+            gostr::to_go_bytes(&data.sender).as_ref(),
+            "\u{10ffff}".as_bytes()
+        );
+        assert_eq!(
+            get_receiver("channel-0", &data.sender),
+            "celestia1v67n437r7naz4p0zrpry7grxes753qwyng7vla"
+        );
+        assert!(
+            data.marshal_unsorted()
+                .windows("\u{10ffff}".len())
+                .any(|window| window == "\u{10ffff}".as_bytes())
         );
     }
 

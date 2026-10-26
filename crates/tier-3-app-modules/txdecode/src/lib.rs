@@ -388,7 +388,9 @@ pub fn default_tx_decode(tx_bytes: &[u8]) -> sdk::Result<Tx> {
 /// [`default_tx_decode`] with celestia-app v9.0.8's interface registry
 /// (app version 9).
 pub fn default_tx_decode_v9(tx_bytes: &[u8]) -> sdk::Result<Tx> {
-    with_v9(|| default_tx_decode(tx_bytes))
+    with_stack(tx_bytes.len(), || {
+        with_v9(|| default_tx_decode_inner(tx_bytes))
+    })
 }
 
 fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {

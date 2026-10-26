@@ -18,7 +18,7 @@ celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 encoding = { path = "../../../tier-0-primitives/encoding" }
 hash = { path = "../../../tier-0-primitives/hash" }
 hex = "0.4"
-k256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.14", features = ["ecdsa"] }
 math = { path = "../../../tier-0-primitives/math" }
 prost = "0.13"
 sdk = { path = "../../sdk" }

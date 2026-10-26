@@ -2081,8 +2081,8 @@ impl Gen {
                 } else {
                     "utia".into()
                 },
-                min_commission_rate: ["50000000000000000", "0", "1000000000000000000"]
-                    [self.m.rng.below(3)]
+                min_commission_rate: ["50000000000000000", "0", "1000000000000000000", ""]
+                    [self.m.rng.below(4)]
                 .into(),
             }),
         })
@@ -2558,21 +2558,16 @@ impl Gen {
         let Ok(sk) = k256::ecdsa::SigningKey::from_slice(&secret) else {
             return Any::default();
         };
-        let point = sk.verifying_key().to_encoded_point(false);
+        let point = sk.verifying_key().to_sec1_point(false);
         let h = x_hyperlane::util::keccak256(&[&point.as_bytes()[1..]]);
         let mut validator = h[12..].to_vec();
         let location = format!("s3://bucket/{}", self.m.rng.below(4));
         let mbox = hex::decode(mailbox.trim_start_matches("0x")).unwrap_or_default();
         let digest = x_hyperlane::ism::announcement_digest(&location, domain, &mbox);
         let hash = x_hyperlane::util::eth_signing_hash(&digest);
-        let mut sig = match sk.sign_prehash_recoverable(&hash) {
-            Ok((s, rid)) => {
-                let mut v = s.to_bytes().to_vec();
-                v.push(27 + rid.to_byte());
-                v
-            }
-            Err(_) => vec![0u8; 65],
-        };
+        let (signed, rid) = sk.sign_prehash_recoverable(&hash);
+        let mut sig = signed.to_bytes().to_vec();
+        sig.push(27 + rid.to_byte());
         if self.m.rng.one_in(10) {
             sig[3] ^= 1;
         }
@@ -2951,7 +2946,7 @@ impl Gen {
             6 => u64::MAX,
             _ => 4_000_000,
         };
-        let fee_amount: Vec<Coin> = match self.m.rng.below(20) {
+        let mut fee_amount: Vec<Coin> = match self.m.rng.below(20) {
             0 => Vec::new(),
             1 => vec![Coin {
                 denom: "utia".into(),
@@ -2980,6 +2975,19 @@ impl Gen {
                 amount: (u128::from(gas) / 50 + 1).to_string(),
             }],
         };
+        // Fee validation precedes balance deduction, so unaffordable fees
+        // still reach Go's Int64 telemetry conversion and priority overflow.
+        if self.m.rng.one_in(100) {
+            let boundaries = [
+                "9223372036854775807",
+                "9223372036854775808",
+                "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+            ];
+            fee_amount = vec![Coin {
+                denom: "utia".into(),
+                amount: boundaries[self.m.rng.below(boundaries.len())].into(),
+            }];
+        }
         let mut granter = String::new();
         let mut payer = String::new();
         match self.m.rng.below(20) {
@@ -4661,7 +4669,7 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
     use celestia_proto::cosmos::{
         auth::v1beta1 as auth, bank::v1beta1 as bank, circuit::v1 as circuit,
         consensus::v1 as cons, distribution::v1beta1 as distr, gov::v1 as gov,
-        slashing::v1beta1 as slashing,
+        slashing::v1beta1 as slashing, staking::v1beta1 as staking,
     };
     use celestia_proto::ibc::applications::transfer::v1 as transfer;
     use celestia_proto::ibc::core::{
@@ -4712,16 +4720,54 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
             limit_type_urls: vec!["/coverage.unused.Msg".into()],
         }),
     }));
-    params!(
-        distr,
+    if let Some(r) = query_app::<distr::QueryParamsResponse>(
+        rust,
         "/cosmos.distribution.v1beta1.Query/Params",
-        MsgUpdateParams { authority }
-    );
-    params!(
-        slashing,
+        &distr::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&distr::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.community_tax.clear();
+        out.push(Any::pack(&distr::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
+    if let Some(r) = query_app::<slashing::QueryParamsResponse>(
+        rust,
         "/cosmos.slashing.v1beta1.Query/Params",
-        MsgUpdateParams { authority }
-    );
+        &slashing::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&slashing::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.min_signed_per_window.clear();
+        out.push(Any::pack(&slashing::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
+    if let Some(r) = query_app::<staking::QueryParamsResponse>(
+        rust,
+        "/cosmos.staking.v1beta1.Query/Params",
+        &staking::QueryParamsRequest {},
+    ) && let Some(mut p) = r.params
+    {
+        out.push(Any::pack(&staking::MsgUpdateParams {
+            authority: a(),
+            params: Some(p.clone()),
+        }));
+        p.min_commission_rate.clear();
+        out.push(Any::pack(&staking::MsgUpdateParams {
+            authority: a(),
+            params: Some(p),
+        }));
+    }
     params!(
         minfee,
         "/celestia.minfee.v1.Query/Params",

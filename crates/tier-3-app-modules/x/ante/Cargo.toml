@@ -22,7 +22,7 @@ encoding = { path = "../../../tier-0-primitives/encoding" }
 hash = { path = "../../../tier-0-primitives/hash" }
 kvstore = { path = "../../../tier-2-state-and-store/kvstore" }
 crypto = { path = "../../../tier-0-primitives/crypto" }
-p256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.14", features = ["ecdsa"] }
 ed25519-consensus = "2.1"
 math = { path = "../../../tier-0-primitives/math" }
 pbjson-types = "0.7"

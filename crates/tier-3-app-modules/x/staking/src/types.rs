@@ -849,6 +849,17 @@ impl Params {
         }
         Ok(())
     }
+
+    /// `Params.Validate` while retaining a nil minimum commission rate.
+    pub fn validate_wire(&self, wire: &pb::Params) -> Result<()> {
+        self.validate()?;
+        if wire.min_commission_rate.is_empty() {
+            return Err(sdk::error::internal(
+                "minimum commission rate cannot be nil: <nil>",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// `Description.EnsureLength`.
@@ -947,6 +958,33 @@ mod tests {
         assert_eq!(
             log(&|p| p.min_commission_rate = "1.5".parse::<LegacyDec>().unwrap()),
             "minimum commission rate cannot be greater than 100%: 1.500000000000000000"
+        );
+
+        let p = Params {
+            unbonding_time: Duration {
+                seconds: 600,
+                nanos: 0,
+            },
+            max_validators: 100,
+            max_entries: 7,
+            historical_entries: 0,
+            bond_denom: "utia".into(),
+            min_commission_rate: LegacyDec::zero(),
+        };
+        let mut wire = p.to_proto();
+        wire.min_commission_rate.clear();
+        assert_eq!(
+            p.validate_wire(&wire).unwrap_err().log,
+            "minimum commission rate cannot be nil: <nil>"
+        );
+        wire.min_commission_rate = "0".into();
+        p.validate_wire(&wire).unwrap();
+        wire.min_commission_rate.clear();
+        let mut invalid = p.clone();
+        invalid.bond_denom.clear();
+        assert_eq!(
+            invalid.validate_wire(&wire).unwrap_err().log,
+            "bond denom cannot be blank"
         );
     }
 }

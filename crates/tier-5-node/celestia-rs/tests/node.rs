@@ -29,6 +29,11 @@ fn copy_fixture(home: &Path) {
     for f in ["genesis.json", "priv_validator_key.json"] {
         std::fs::copy(Path::new(FIXTURE).join("config").join(f), cfg.join(f)).unwrap();
     }
+    std::fs::write(
+        home.join("data/priv_validator_state.json"),
+        r#"{"height":"0","round":0,"step":0}"#,
+    )
+    .unwrap();
     for e in std::fs::read_dir(Path::new(FIXTURE).join("txs")).unwrap() {
         let e = e.unwrap();
         std::fs::copy(e.path(), inbox.join(e.file_name())).unwrap();
@@ -41,6 +46,26 @@ fn opts(home: &Path, halt: i64) -> StartOptions {
         halt,
         consensus::ConsensusConfig::default(),
     )
+}
+
+#[test]
+fn restart_refuses_missing_signing_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 2)).unwrap();
+    let state_path = home.join("data/priv_validator_state.json");
+    let signed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&state_path).unwrap()).unwrap();
+    assert_ne!(signed["height"], "0");
+    std::fs::remove_file(&state_path).unwrap();
+    let error = node::start(&opts(home, 3)).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("refusing to reset signing state")
+    );
+    assert!(!state_path.exists());
 }
 
 #[test]

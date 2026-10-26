@@ -241,7 +241,8 @@ pub fn recover_eth_address(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], Stri
     let v = sig[64].wrapping_sub(27);
     let mut signature = Signature::from_slice(&sig[..64]).map_err(|e| e.to_string())?;
     let mut rid = RecoveryId::from_byte(v).ok_or("invalid signature recovery id")?;
-    if let Some(low) = signature.normalize_s() {
+    let low = signature.normalize_s();
+    if low != signature {
         // (r, n - s) with the opposite y parity recovers the same key; k256
         // only verifies low-S signatures.
         signature = low;
@@ -249,7 +250,7 @@ pub fn recover_eth_address(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], Stri
     }
     let key = VerifyingKey::recover_from_prehash(hash, &signature, rid)
         .map_err(|_| "recovery failed".to_string())?;
-    let point = key.to_encoded_point(false);
+    let point = key.to_sec1_point(false);
     let h = keccak256(&[&point.as_bytes()[1..]]);
     let mut out = [0u8; 20];
     out.copy_from_slice(&h[12..]);
@@ -379,10 +380,10 @@ mod tests {
         use k256::ecdsa::SigningKey;
         let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
         let hash = eth_signing_hash(b"hello");
-        let (sig, rid) = sk.sign_prehash_recoverable(&hash).unwrap();
+        let (sig, rid) = sk.sign_prehash_recoverable(&hash);
         let mut raw = sig.to_bytes().to_vec();
         raw.push(rid.to_byte() + 27);
-        let pk = sk.verifying_key().to_encoded_point(false);
+        let pk = sk.verifying_key().to_sec1_point(false);
         let expected = &keccak256(&[&pk.as_bytes()[1..]])[12..];
         assert_eq!(recover_eth_address(&hash, &raw).unwrap(), expected);
     }

@@ -408,6 +408,24 @@ pub fn commit_acknowledgement(data: &[u8]) -> Vec<u8> {
     hash::sha256(data).to_vec()
 }
 
+fn go_byte_slice(bytes: &[u8]) -> String {
+    format!(
+        "[{}]",
+        bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+
+fn packet_received_log(next_sequence_recv: u64, packet_sequence: u64, on_close: bool) -> String {
+    let close = if on_close { "" } else { ")" };
+    format!(
+        "packet already received, next sequence receive > packet sequence ({next_sequence_recv} > {packet_sequence}{close}"
+    )
+}
+
 /// `Packet.ValidateBasic`.
 pub fn validate_packet(p: &Packet) -> Result<()> {
     host::port_identifier_validator(&p.source_port)
@@ -615,13 +633,15 @@ pub(crate) fn conn_state_name(s: i32) -> std::borrow::Cow<'static, str> {
 
 fn single_version_supports(c: &ConnectionEnd, order: i32) -> Result<()> {
     if c.versions.len() != 1 {
-        return Err(conerr::invalid_version(
-            "single version must be negotiated on connection before opening channel",
-        ));
+        return Err(conerr::invalid_version(format!(
+            "single version must be negotiated on connection before opening channel, got: {}",
+            crate::connection::go_versions_string(&c.versions)
+        )));
     }
     if !crate::connection::verify_supported_feature(&c.versions[0], &order_name(order)) {
         return Err(conerr::invalid_version(format!(
-            "connection version does not support channel ordering: {}",
+            "connection version {} does not support channel ordering: {}",
+            crate::connection::go_version_string(&c.versions[0]),
             order_name(order)
         )));
     }
@@ -1383,7 +1403,9 @@ fn decode_acknowledgement_go(bz: &[u8]) -> core::result::Result<(AckResponse, bo
     if let Some(e) = fields.remove("error") {
         out = match &e.kind {
             gojson::Kind::Null => AckResponse::Error(String::new()),
-            gojson::Kind::String(s) => AckResponse::Error(s.clone()),
+            gojson::Kind::String(s) => {
+                AckResponse::Error(gostr::from_go_bytes(s.as_bytes()).into_owned())
+            }
             _ => return Err("invalid value for field error".into()),
         };
     }
@@ -1463,7 +1485,11 @@ pub fn acknowledge_packet(
         ));
     }
     if commitment != packet_commitment {
-        return Err(cherr::invalid_packet("commitment bytes are not equal"));
+        return Err(cherr::invalid_packet(format!(
+            "commitment bytes are not equal: got ({}), expected ({})",
+            go_byte_slice(&packet_commitment),
+            go_byte_slice(&commitment)
+        )));
     }
     verify(
         ctx,
@@ -1543,10 +1569,13 @@ pub fn timeout_packet(
         emit_packet_event(ctx, "timeout_packet", p, &ch, None);
         return Ok(Outcome::NoOp);
     }
-    if commitment != commit_packet(p) {
-        return Err(cherr::invalid_packet(
-            "packet commitment bytes are not equal",
-        ));
+    let packet_commitment = commit_packet(p);
+    if commitment != packet_commitment {
+        return Err(cherr::invalid_packet(format!(
+            "packet commitment bytes are not equal: got ({}), expected ({})",
+            go_byte_slice(&commitment),
+            go_byte_slice(&packet_commitment)
+        )));
     }
     verify_unreceived(
         ctx,
@@ -1574,11 +1603,11 @@ fn verify_unreceived(
 ) -> Result<()> {
     if ch.ordering == Order::Ordered as i32 {
         if next_seq_recv > p.sequence {
-            let log = "packet already received, next sequence receive > packet sequence";
+            let log = packet_received_log(next_seq_recv, p.sequence, on_close);
             return Err(if on_close {
-                cherr::invalid_packet(log)
+                cherr::invalid_packet(&log)
             } else {
-                cherr::packet_received(log)
+                cherr::packet_received(&log)
             });
         }
         verify(
@@ -1702,10 +1731,13 @@ pub fn timeout_on_close(
         emit_packet_event(ctx, "timeout_packet", p, &ch, None);
         return Ok(Outcome::NoOp);
     }
-    if commitment != commit_packet(p) {
-        return Err(cherr::invalid_packet(
-            "packet commitment bytes are not equal",
-        ));
+    let packet_commitment = commit_packet(p);
+    if commitment != packet_commitment {
+        return Err(cherr::invalid_packet(format!(
+            "packet commitment bytes are not equal: got ({}), expected ({})",
+            go_byte_slice(&commitment),
+            go_byte_slice(&packet_commitment)
+        )));
     }
     let expected = Channel {
         state: State::Closed as i32,
@@ -1784,5 +1816,58 @@ mod tests {
         let attrs = packet_attrs(&p, true);
         assert_eq!(attrs[0].0, "packet_data");
         assert_eq!(gostr::to_go_bytes(&attrs[0].1).as_ref(), data.as_slice());
+    }
+
+    #[test]
+    fn channel_order_error_includes_the_negotiated_version() {
+        use celestia_proto::ibc::core::connection::v1::Version;
+
+        let connection = ConnectionEnd {
+            versions: vec![Version {
+                identifier: "1".into(),
+                features: vec!["ORDER_ORDERED".into()],
+            }],
+            ..ConnectionEnd::default()
+        };
+        let error = single_version_supports(&connection, Order::Unordered as i32)
+            .expect_err("the negotiated version supports only ordered channels");
+        assert!(error.log.starts_with(
+            "connection version identifier:\"1\" features:\"ORDER_ORDERED\"  does not support channel ordering: ORDER_UNORDERED"
+        ));
+    }
+
+    #[test]
+    fn channel_requires_one_version_with_go_list_detail() {
+        let error = single_version_supports(&ConnectionEnd::default(), Order::Ordered as i32)
+            .expect_err("the connection has no negotiated version");
+        assert!(error.log.starts_with(
+            "single version must be negotiated on connection before opening channel, got: []"
+        ));
+    }
+
+    #[test]
+    fn packet_error_values_use_go_formatting() {
+        assert_eq!(go_byte_slice(&[0, 1, 255]), "[0 1 255]");
+        assert_eq!(
+            packet_received_log(9, 7, false),
+            "packet already received, next sequence receive > packet sequence (9 > 7)"
+        );
+        // ibc-go v8.7.2's TimeoutOnClose text intentionally lacks the final
+        // parenthesis; it is consensus-visible through governance.
+        assert_eq!(
+            packet_received_log(9, 7, true),
+            "packet already received, next sequence receive > packet sequence (9 > 7"
+        );
+    }
+
+    #[test]
+    fn acknowledgement_error_round_trips_reserved_unicode() {
+        let ack = "{\"error\":\"\u{10ffff}\"}".as_bytes();
+        let decoded = decode_acknowledgement(ack).unwrap();
+        let AckResponse::Error(error) = decoded else {
+            panic!("expected error acknowledgement");
+        };
+        assert_eq!(gostr::to_go_bytes(&error).as_ref(), "\u{10ffff}".as_bytes());
+        assert!(!ack_marshalling_mismatch(ack));
     }
 }

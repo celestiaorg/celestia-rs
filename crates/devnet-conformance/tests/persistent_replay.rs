@@ -150,6 +150,21 @@ fn v9_snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
 }
 
 fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::Result<()> {
+    snapshot_restore_after_offers(scenario, app_version, false)
+}
+
+/// A rejected v9 offer must not change a later v10 restore, and an accepted
+/// but abandoned v9 offer must be replaceable with a v10 offer.
+#[test]
+fn snapshot_restore_recovers_after_v9_offers() -> anyhow::Result<()> {
+    snapshot_restore_after_offers("staking", 10, true)
+}
+
+fn snapshot_restore_after_offers(
+    scenario: &str,
+    app_version: u64,
+    prior_v9_offers: bool,
+) -> anyhow::Result<()> {
     let hashes = go_app_hashes(&load_exchanges(scenario)?);
     let last = hashes.last().map_or(0, |(h, _)| *h);
     let at = last / 2;
@@ -173,6 +188,29 @@ fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::
     let mut dst_opts = options();
     dst_opts.chain_id = Some(src.chain_id().to_owned());
     let mut dst = App::open_with(dst_home.path(), dst_opts)?;
+    if prior_v9_offers {
+        use celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot;
+        let rejected = dst.offer_snapshot(RequestOfferSnapshot {
+            snapshot: None,
+            app_version: 9,
+            ..Default::default()
+        });
+        assert_eq!(rejected.result, 3, "reject missing snapshot");
+        for name in app::stores::ADDED_IN_V10 {
+            assert!(dst.multistore().is_mounted(name));
+        }
+        // Offer validation selects the store set; no chunks have arrived,
+        // so the attempt can still be replaced by the trusted v10 offer.
+        let abandoned = dst.offer_snapshot(RequestOfferSnapshot {
+            snapshot: Some(snapshot.clone()),
+            app_version: 9,
+            ..Default::default()
+        });
+        assert_eq!(abandoned.result, 1, "accept first attempt");
+        for name in app::stores::ADDED_IN_V10 {
+            assert!(!dst.multistore().is_mounted(name));
+        }
+    }
     let offer = dst.offer_snapshot(
         celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
             snapshot: Some(snapshot.clone()),

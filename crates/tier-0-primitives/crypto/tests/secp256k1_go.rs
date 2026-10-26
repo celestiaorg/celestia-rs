@@ -27,15 +27,15 @@ struct Vector {
 fn verify_k256(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     use k256::elliptic_curve::ops::Reduce;
     use k256::elliptic_curve::scalar::IsHigh;
-    use k256::{FieldBytes, Scalar, U256};
+    use k256::{FieldBytes, Scalar};
     if sig.len() != 64 {
         return false;
     }
     let Ok(vk) = k256::ecdsa::VerifyingKey::from_sec1_bytes(key) else {
         return false;
     };
-    let r = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[..32]));
-    let s = <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(&sig[32..]));
+    let r = <Scalar as Reduce<FieldBytes>>::reduce(&FieldBytes::try_from(&sig[..32]).unwrap());
+    let s = <Scalar as Reduce<FieldBytes>>::reduce(&FieldBytes::try_from(&sig[32..]).unwrap());
     if bool::from(s.is_high()) {
         return false;
     }
@@ -178,15 +178,15 @@ fn random_inputs_match_k256() {
         let vk = *sk.verifying_key();
         let len = rng.below(200);
         let mut msg = rng.bytes(len);
-        let (sig, _) = sk.sign_prehash_recoverable(&hash::sha256(&msg)).unwrap();
-        let sig = sig.normalize_s().unwrap_or(sig);
+        let (sig, _) = sk.sign_prehash_recoverable(&hash::sha256(&msg));
+        let sig = sig.normalize_s();
         let mut sig = sig.to_bytes().to_vec();
         let mut key = match rng.below(3) {
-            0 => vk.to_encoded_point(true).as_bytes().to_vec(),
-            1 => vk.to_encoded_point(false).as_bytes().to_vec(),
+            0 => vk.to_sec1_point(true).as_bytes().to_vec(),
+            1 => vk.to_sec1_point(false).as_bytes().to_vec(),
             _ => {
                 // Hybrid: 06 / 07 by the parity of y (sometimes the wrong one).
-                let mut b = vk.to_encoded_point(false).as_bytes().to_vec();
+                let mut b = vk.to_sec1_point(false).as_bytes().to_vec();
                 b[0] = 6 | (b[64] & 1);
                 if rng.below(4) == 0 {
                     b[0] ^= 1;
