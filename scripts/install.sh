@@ -346,8 +346,29 @@ latest_version() {
 If the repository is private, set GITHUB_TOKEN (or log in with 'gh auth login').
 If GitHub rate-limited this IP, set GITHUB_TOKEN, or pass --version."
   fi
-  version=$(printf '%s\n' "$json" | json_str tag_name)
-  [ -n "$version" ] || err "$REPO has no releases yet; build from source: https://github.com/$REPO#getting-started"
+  # A release can be published before its assets finish uploading. Pick
+  # the first non-draft release with both files for this machine. Asset
+  # names are available through the API even for private repositories.
+  version=$(printf '%s\n' "$json" | json_lines | awk -v target="$target" '
+    function value(line) {
+      sub(/^[^:]*:[[:space:]]*"/, "", line)
+      sub(/".*/, "", line)
+      return line
+    }
+    /^[[:space:]]*"tag_name":[[:space:]]*"/ {
+      tag = value($0)
+      name = "celestia-rs-" tag "-" target ".tar.gz"
+      archive = checksum = 0
+      draft = 1
+    }
+    /^[[:space:]]*"draft":[[:space:]]*false[[:space:]]*$/ { draft = 0 }
+    /^[[:space:]]*"name":[[:space:]]*"/ {
+      file = value($0)
+      if (file == name) archive = 1
+      if (file == name ".sha256") checksum = 1
+      if (archive && checksum && !draft) { print tag; exit }
+    }')
+  [ -n "$version" ] || err "$REPO has no releases yet with archives and checksums for $target; build from source: https://github.com/$REPO#getting-started"
   if [ "$1" = 0 ]; then
     say "no stable release yet; using the newest pre-release, $version"
   fi

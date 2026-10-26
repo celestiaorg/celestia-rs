@@ -110,6 +110,8 @@ def releases(repo):
         tag, pre = line.split()
         out.append({
             "tag_name": tag, "prerelease": pre == "1", "draft": False,
+            "assets": [{"name": n} for n in sorted(os.listdir(os.path.join(
+                root, repo, "releases", "download", tag)))],
             # Commas, braces and an escaped decoy key, to trip naive parsing.
             "body": 'Notes, {with} commas, and \\"tag_name\\": \\"decoy\\"',
         })
@@ -391,6 +393,12 @@ else fail "$t"; fi
 t="token: with no stable release, falls back to the newest pre-release"
 new_home token-pre
 if (T_TOKEN=secret && run mock/pre) && [ "$(installed)" = v0.1.0-alpha.2 ]; then pass "$t"; else fail "$t"; fi
+
+t="token: skips releases missing archives or checksums"
+new_home token-incomplete
+if (T_TOKEN=secret && run mock/incomplete) && [ "$(installed)" = v0.1.0-rc.1 ]; then
+  pass "$t"
+else fail "$t"; fi
 
 t="private repo: installs with GITHUB_TOKEN"
 new_home private
