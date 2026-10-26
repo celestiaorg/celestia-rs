@@ -18,7 +18,7 @@ gostr = { path = "../../tier-0-primitives/gostr" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
 math = { path = "../../tier-0-primitives/math" }
 sdk = { path = "../sdk" }
-p256 = { version = "0.13", default-features = false, features = ["arithmetic"] }
+p256 = { version = "0.14", default-features = false, features = ["arithmetic"] }
 prost = "0.13"
 
 [dev-dependencies]

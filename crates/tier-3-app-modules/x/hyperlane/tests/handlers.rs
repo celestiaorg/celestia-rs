@@ -483,13 +483,13 @@ fn tx<T>(c: &mut Context<'_>, f: impl FnOnce(&mut Context<'_>) -> Result<T>) -> 
 }
 
 fn eth_address(sk: &SigningKey) -> [u8; 20] {
-    let pk = sk.verifying_key().to_encoded_point(false);
+    let pk = sk.verifying_key().to_sec1_point(false);
     let h = keccak256(&[&pk.as_bytes()[1..]]);
     h[12..].try_into().unwrap()
 }
 
 fn sign(sk: &SigningKey, digest: &[u8; 32]) -> Vec<u8> {
-    let (sig, rid) = sk.sign_prehash_recoverable(digest).unwrap();
+    let (sig, rid) = sk.sign_prehash_recoverable(digest);
     let mut v = sig.to_bytes().to_vec();
     v.push(rid.to_byte() + 27);
     v

@@ -38,7 +38,8 @@ fn coins(cs: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
 
 /// `Coins.SafeSub(fee...)`: `(a - fee, any negative)` with zeros removed.
 fn safe_sub(a: &Coins, fee: &Coins) -> Result<(Coins, bool)> {
-    let neg: Vec<Coin> = fee
+    let sanitized = sdk::coins::new_coins_go(&fee.to_proto())?;
+    let neg: Vec<Coin> = sanitized
         .iter()
         .map(|c| Coin::with_amount(c.denom.clone(), c.amount.neg()))
         .collect();

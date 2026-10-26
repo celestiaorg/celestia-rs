@@ -115,25 +115,15 @@ pub fn handle_update_params(
     msg: &pb::MsgUpdateParams,
 ) -> Result<pb::MsgUpdateParamsResponse> {
     validate_authority(&msg.authority)?;
-    let p = Params::from_wire(&msg.params.clone().unwrap_or_default())?;
+    let wire = msg.params.clone().unwrap_or_default();
+    let p = Params::from_wire(&wire)?;
     let nonzero = |d: &Option<math::LegacyDec>| d.as_ref().is_some_and(|d| !d.is_zero());
     if nonzero(&p.base_proposer_reward) || nonzero(&p.bonus_proposer_reward) {
         return Err(errs::invalid_request(
             "cannot update base or bonus proposer reward because these are deprecated fields",
         ));
     }
-    if p.community_tax.is_negative() {
-        return Err(sdk::error::internal(format!(
-            "community tax must be positive: {}",
-            p.community_tax
-        )));
-    }
-    if p.community_tax > math::LegacyDec::one() {
-        return Err(sdk::error::internal(format!(
-            "community tax too large: {}",
-            p.community_tax
-        )));
-    }
+    p.validate_basic_wire(&wire)?;
     store::set_params(ctx, &p)?;
     Ok(pb::MsgUpdateParamsResponse {})
 }

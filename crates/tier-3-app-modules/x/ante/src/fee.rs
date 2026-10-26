@@ -99,19 +99,18 @@ fn trim_trailing_zeros(d: &LegacyDec) -> String {
 }
 
 /// `getTxPriority`: `fee * 1e6 / gas`, 0 when gas is 0 or the result does
-/// not fit an int64.
-#[must_use]
-pub fn get_tx_priority(fee: &Int, gas: u64) -> i64 {
+/// not fit an int64. Multiplication overflow is a Go panic.
+pub fn get_tx_priority(fee: &Int, gas: u64) -> R<i64> {
     if gas == 0 {
-        return 0;
+        return Ok(0);
     }
-    let Ok(scaled) = fee.checked_mul(&Int::from_i64(PRIORITY_SCALING_FACTOR)) else {
-        return 0;
-    };
-    let Ok(p) = scaled.checked_quo(&Int::from_u64(gas)) else {
-        return 0;
-    };
-    p.to_i64().unwrap_or(0)
+    let scaled = fee
+        .checked_mul(&Int::from_i64(PRIORITY_SCALING_FACTOR))
+        .or_else(|_| panic("integer overflow"))?;
+    let p = scaled
+        .checked_quo(&Int::from_u64(gas))
+        .or_else(|_| panic("division by zero"))?;
+    Ok(p.to_i64().unwrap_or(0))
 }
 
 /// The default node min gas price (`appconsts.DefaultMinGasPrice` = 0.004).
@@ -130,12 +129,12 @@ fn get_tx_priority_v9(coins: &[FeeCoin], gas: u64) -> R<i64> {
         let scaled = c
             .amount()?
             .checked_mul(&Int::from_i64(PRIORITY_SCALING_FACTOR))
-            .or_else(|_| panic("Int overflow"))?;
+            .or_else(|_| panic("integer overflow"))?;
         if gas == 0 {
             return panic("division by zero");
         }
         let p = scaled
-            .checked_quo(&Int::from_u64(gas))
+            .checked_quo(&Int::from_i64(i64::from_ne_bytes(gas.to_ne_bytes())))
             .or_else(|_| panic("division by zero"))?;
         let Some(p) = p.to_i64() else {
             continue;
@@ -189,10 +188,17 @@ fn validate_tx_fee(
         &network,
         "insufficient gas price for the network",
     )?;
-    if v9 {
-        return get_tx_priority_v9(coins, gas);
+    let priority = if v9 {
+        get_tx_priority_v9(coins, gas)?
+    } else {
+        get_tx_priority(&fee, gas)?
+    };
+    // Even though telemetry is not consensus state, Go evaluates this
+    // conversion before deducting fees. Its panic is part of the tx result.
+    if fee.to_i64().is_none() {
+        return panic("Int64() out of bound");
     }
-    Ok(get_tx_priority(&fee, gas))
+    Ok(priority)
 }
 
 /// `DeductFeeDecorator.AnteHandle`; returns the tx priority.

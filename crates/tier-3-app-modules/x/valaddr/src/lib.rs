@@ -231,10 +231,10 @@ pub fn set_fibre_provider_info_msg(
         }
         Some(Ok(c)) => c,
     };
-    if m.host.len() > MAX_HOST_LEN {
+    if gostr::go_len(&m.host) > MAX_HOST_LEN {
         return Err(err_invalid_host_address(format!(
             "address must be less or equal than {MAX_HOST_LEN} characters, got {}",
-            m.host.len()
+            gostr::go_len(&m.host)
         )));
     }
     if m.host.is_empty() {
@@ -403,6 +403,15 @@ mod tests {
                 .unwrap_or_else(|| err_invalid_validator(""));
             assert_eq!((e.codespace, e.code), ("valaddr", 1), "{bad}");
         }
+
+        // U+10FFFF is the gostr sentinel for one Go byte. Rust's encoded
+        // form is over 100 bytes here, while the Go string remains valid.
+        assert!(validate_host(&format!("{}:1", "a".repeat(95) + "\u{10ffff}")).is_ok());
+        let too_long = format!("{}:1", "a".repeat(98) + "\u{10ffff}");
+        assert_eq!(
+            validate_host(&too_long).unwrap_err().log,
+            "host must be at most 100 characters, got 101: invalid host address"
+        );
     }
 
     #[test]

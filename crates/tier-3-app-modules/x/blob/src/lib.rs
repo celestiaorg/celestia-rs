@@ -363,6 +363,17 @@ pub fn validate_blobs(blobs: &[shares::Blob]) -> Result<()> {
     Ok(())
 }
 
+fn go_slice<T: core::fmt::Display>(values: &[T]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+
 /// `ValidateBlobTxSkipCommitment` (after the inner tx was decoded into
 /// `pfb`) and, when `check_commitments`, the commitment check of
 /// `ValidateBlobTx`.
@@ -391,8 +402,11 @@ pub fn validate_blob_tx(
         }
     }
     if sizes != pfb.blob_sizes {
-        return Err(errors::blob_size_mismatch()
-            .wrap(format!("actual {sizes:?} declared {:?}", pfb.blob_sizes)));
+        return Err(errors::blob_size_mismatch().wrap(format!(
+            "actual {} declared {}",
+            go_slice(&sizes),
+            go_slice(&pfb.blob_sizes)
+        )));
     }
     for (i, ns) in pfb.namespaces.iter().enumerate() {
         let ns = namespace_from_bytes(ns).map_err(undefined)?;
@@ -400,12 +414,20 @@ pub fn validate_blob_tx(
             return Err(errors::mismatched_number_of_pfb_or_blob());
         };
         if b.namespace() != ns {
-            return Err(errors::namespace_mismatch());
+            return Err(errors::namespace_mismatch().wrap(format!(
+                "{} {}",
+                go_slice(b.namespace().as_bytes()),
+                go_slice(&pfb.namespaces[i])
+            )));
         }
     }
     for (i, b) in blobs.iter().enumerate() {
         if pfb.share_versions.get(i).copied() != Some(u32::from(b.share_version())) {
-            return Err(errors::share_version_mismatch());
+            return Err(errors::share_version_mismatch().wrap(format!(
+                "blob {i} has share version {} but MsgPayForBlobs declares {}",
+                b.share_version(),
+                pfb.share_versions[i]
+            )));
         }
     }
     if check_commitments {
@@ -553,6 +575,38 @@ mod tests {
         bad = msg.clone();
         bad.blob_sizes = vec![1, 2];
         assert_eq!(validate_basic(&bad).map_err(|e| e.code), Err(11130));
+
+        bad = msg.clone();
+        bad.blob_sizes = vec![99];
+        assert_eq!(
+            validate_blob_tx(&bad, core::slice::from_ref(&blob), false)
+                .unwrap_err()
+                .log,
+            "actual [100] declared [99]: actual blob size differs from that specified in the MsgPayForBlob"
+        );
+
+        bad = msg.clone();
+        let other_ns = Namespace::new_v0(&[4, 5, 6]).map_err(|e| undefined(e.to_string()))?;
+        bad.namespaces = vec![other_ns.as_bytes().to_vec()];
+        assert_eq!(
+            validate_blob_tx(&bad, core::slice::from_ref(&blob), false)
+                .unwrap_err()
+                .log,
+            format!(
+                "{} {}: namespace of blob and its respective MsgPayForBlobs differ",
+                go_slice(ns().as_bytes()),
+                go_slice(other_ns.as_bytes())
+            )
+        );
+
+        bad = msg.clone();
+        bad.share_versions = vec![1];
+        assert_eq!(
+            validate_blob_tx(&bad, core::slice::from_ref(&blob), false)
+                .unwrap_err()
+                .log,
+            "blob 0 has share version 0 but MsgPayForBlobs declares 1: share version of blob and its respective MsgPayForBlobs differ"
+        );
 
         let mut ms = ms();
         let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);

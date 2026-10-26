@@ -24,6 +24,7 @@ import (
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
 	"github.com/celestiaorg/celestia-app/v10/app"
+	"github.com/celestiaorg/celestia-app/v10/pkg/appconsts"
 	testutil "github.com/celestiaorg/celestia-app/v10/test/util"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -66,11 +67,12 @@ type Expect struct {
 
 // Vector is one ante invocation.
 type Vector struct {
-	Name     string `json:"name"`
-	Mode     string `json:"mode"`
-	Simulate bool   `json:"simulate"`
-	Height   int64  `json:"height"`
-	ChainID  string `json:"chain_id"`
+	AppVersion uint64 `json:"app_version,omitempty"`
+	Name       string `json:"name"`
+	Mode       string `json:"mode"`
+	Simulate   bool   `json:"simulate"`
+	Height     int64  `json:"height"`
+	ChainID    string `json:"chain_id"`
 	// MaxGas of the block consensus params.
 	MaxGas int64 `json:"max_gas"`
 	// NodeMinGasPrice is the utia node min gas price ("" = none configured).
@@ -296,6 +298,7 @@ func (g *gen) run(s runSpec) {
 		exp.Events = []Event{}
 	}
 	g.vectors = append(g.vectors, Vector{
+		AppVersion:      appconsts.Version,
 		Name:            s.name,
 		Mode:            s.mode,
 		Simulate:        s.simulate,
@@ -334,6 +337,14 @@ func (g *gen) write(path string) {
 }
 
 func main() {
+	// TestApp writes upgrade metadata even with an in-memory database.
+	// Keep fixture generation isolated from the operator's default home.
+	home, err := os.MkdirTemp("", "antevectors-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(home)
+	app.NodeHome = home
 	out := "../fixtures/antevectors"
 	if len(os.Args) > 1 {
 		out = os.Args[1]
@@ -341,9 +352,17 @@ func main() {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		panic(err)
 	}
+	selected := 0
 	for _, sc := range scenarios {
+		if len(os.Args) > 2 && sc.name != os.Args[2] {
+			continue
+		}
+		selected++
 		g := newGen()
 		sc.fn(g)
 		g.write(filepath.Join(out, sc.name+".json.zst"))
+	}
+	if selected == 0 {
+		panic("unknown ante scenario: " + os.Args[2])
 	}
 }

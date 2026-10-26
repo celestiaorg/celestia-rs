@@ -1,0 +1,97 @@
+[
+  {
+    "coins": [],
+    "result": "",
+    "panic": ""
+  },
+  {
+    "coins": [
+      {
+        "denom": "utia",
+        "amount": "1"
+      },
+      {
+        "denom": "utia",
+        "amount": "2"
+      }
+    ],
+    "result": "",
+    "panic": "invalid coin set 1utia,2utia: duplicate denomination utia"
+  },
+  {
+    "coins": [
+      {
+        "denom": "utia",
+        "amount": "-1"
+      }
+    ],
+    "result": "",
+    "panic": "invalid coin set -1utia: coin -1utia amount is not positive"
+  },
+  {
+    "coins": [
+      {
+        "denom": "!",
+        "amount": "1"
+      }
+    ],
+    "result": "",
+    "panic": "invalid coin set 1!: invalid denom: !"
+  },
+  {
+    "coins": [
+      {
+        "denom": "!",
+        "amount": "0"
+      }
+    ],
+    "result": "",
+    "panic": ""
+  },
+  {
+    "coins": [
+      {
+        "denom": "!",
+        "amount": "1"
+      },
+      {
+        "denom": "utia",
+        "amount": ""
+      }
+    ],
+    "result": "",
+    "panic": "runtime error: invalid memory address or nil pointer dereference"
+  },
+  {
+    "coins": [
+      {
+        "denom": "uzzz",
+        "amount": "2"
+      },
+      {
+        "denom": "uabc",
+        "amount": "1"
+      },
+      {
+        "denom": "utia",
+        "amount": "0"
+      }
+    ],
+    "result": "1uabc,2uzzz",
+    "panic": ""
+  },
+  {
+    "coins": [
+      {
+        "denom": "uzzz",
+        "amount": "-1"
+      },
+      {
+        "denom": "uabc",
+        "amount": "1"
+      }
+    ],
+    "result": "",
+    "panic": "invalid coin set 1uabc,-1uzzz: coin uzzz amount is not positive"
+  }
+]

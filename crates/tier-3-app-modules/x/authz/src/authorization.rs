@@ -49,14 +49,7 @@ fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
 
 /// `sdk.NewCoins`: sanitizes and validates (panics on invalid coins).
 fn new_coins(cs: &[PbCoin]) -> Result<Coins> {
-    let c = Coins::from_proto(cs).map_err(|e| sdk::error::go_panic(e.log))?;
-    let mut v = c.0;
-    v.retain(|c| !c.is_zero());
-    v.sort_by(|a, b| a.denom.cmp(&b.denom));
-    if v.windows(2).any(|w| w[0].denom == w[1].denom) || !Coins(v.clone()).is_valid() {
-        return Err(sdk::error::go_panic("invalid coins"));
-    }
-    Ok(Coins(v))
+    sdk::coins::new_coins_go(cs)
 }
 
 /// `Coins.SafeSub`: `(a - b, any negative)`.

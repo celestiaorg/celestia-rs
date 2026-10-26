@@ -165,9 +165,9 @@ pub fn handle_create_validator(
         && !vp.pub_key_types.iter().any(|t| t == pk.type_str())
     {
         return Err(errors::validator_pub_key_type_not_supported().wrap(format!(
-            "got: {}, expected: {:?}",
+            "got: {}, expected: [{}]",
             pk.type_str(),
-            vp.pub_key_types
+            vp.pub_key_types.join(" ")
         )));
     }
 
@@ -535,8 +535,9 @@ pub fn handle_update_params(
             msg.authority
         )));
     }
-    let p = Params::from_proto(&msg.params.clone().unwrap_or_default(), Repr::Wire)?;
-    p.validate()?;
+    let wire = msg.params.clone().unwrap_or_default();
+    let p = Params::from_proto(&wire, Repr::Wire)?;
+    p.validate_wire(&wire)?;
     store::set_params(ctx, &p)?;
     Ok(pb::MsgUpdateParamsResponse {})
 }

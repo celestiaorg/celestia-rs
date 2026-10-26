@@ -365,16 +365,10 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     );
     let key_path = home.join("config").join("priv_validator_key.json");
     let state_path = home.join("data").join("priv_validator_state.json");
-    let pv = if state_path.exists() {
-        FilePv::load(&key_path, &state_path)
-    } else {
-        // `celestia-appd init` writes the initial state; create it otherwise.
-        FilePv::load_empty_state(&key_path, &state_path).and_then(|pv| {
-            pv.last_sign_state.save()?;
-            Ok(pv)
-        })
-    }
-    .map_err(|e| anyhow!("privval: {e}"))?;
+    // Init creates the pristine signing state. Never recreate it here:
+    // losing the persisted H/R/S does not make an existing key safe to sign.
+    let pv = FilePv::load(&key_path, &state_path)
+        .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
     // RPC (ADR 0003 `rpc`): JSON-RPC/WebSocket, celestia-core gRPC, the
     // app's gRPC (+BlockAPI) and REST servers, indexers and the event bus.
     let mut rpc = crate::rpc_service::Rpc::new(crate::rpc_service::RpcInputs {

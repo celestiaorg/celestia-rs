@@ -259,7 +259,7 @@ pub fn pick_version(supported: &[Version], counterparty: &[Version]) -> Result<V
 
 /// gogoproto `CompactTextString` of a `Version` (`%s` / `%v` of a
 /// `*Version`): `identifier:"1" features:"ORDER_ORDERED" `.
-fn go_version_string(v: &Version) -> String {
+pub(crate) fn go_version_string(v: &Version) -> String {
     use std::fmt::Write as _;
     let quote = x_ante::gogotext::quote;
     let mut s = String::new();
@@ -273,7 +273,7 @@ fn go_version_string(v: &Version) -> String {
 }
 
 /// `%v` of a `[]*Version`: the elements' text forms, space-separated in `[]`.
-fn go_versions_string(vs: &[Version]) -> String {
+pub(crate) fn go_versions_string(vs: &[Version]) -> String {
     let items: Vec<String> = vs.iter().map(go_version_string).collect();
     format!("[{}]", items.join(" "))
 }

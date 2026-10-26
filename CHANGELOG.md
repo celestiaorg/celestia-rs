@@ -2,8 +2,50 @@
 
 ## Unreleased
 
+## v0.1.0-rc.5 (2026-10-26)
+
 ### Fixed
 
+- IBC Tendermint client errors retain Go's trusted heights, validator-set and
+  hash details, elapsed/trusting-period values, concrete client-state types and
+  upgrade proof paths. These details can be persisted as a governance
+  proposal's `failed_reason`, so matching them prevents an app-hash split.
+- IBC channel handshake errors include the negotiated connection version and
+  the actual version list using Go's gogoproto text formatting.
+- IBC channel-upgrade timeout follows ibc-go's local/counterparty connection
+  operand check, and upgrade/packet errors preserve Go's value formatting,
+  commitment arrays and ordered-timeout sequence details.
+- IBC packet and acknowledgement JSON normalizes decoded strings to their
+  lossless Go representation; packet-forward receiver derivation hashes the
+  original bytes, and ICA host metadata gives protobuf JSON field names
+  precedence over snake-case aliases like gogoproto jsonpb.
+
+## v0.1.0-rc.4 (2026-10-25)
+
+### Fixed
+
+- Staking, slashing and distribution parameter updates preserve omitted
+  LegacyDec fields through validation, rejecting nil values in Go's order
+  instead of accepting them as explicit zero; unsupported validator key-type
+  errors also use Go's slice formatting.
+
+## v0.1.0-rc.3 (2026-10-25)
+
+### Fixed
+
+- Node startup and repeated initialization refuse incomplete validator
+  key/signing-state pairs instead of silently resetting signing history.
+- State sync preserves its mounted stores after a rejected snapshot offer
+  and reconciles v9/v10 stores when replacing an abandoned restore.
+- Historical v9 Hyperlane VerifyDryRun queries retain their original gas
+  limit behavior; the v10.5.0 cap applies to current-version queries.
+- v9/v10 fee overflow, signed-gas and priority behavior now matches Go at
+  integer boundaries covered by generated ante vectors.
+- `NewCoins`, circuit address codecs, valaddr byte lengths, IBC delay
+  errors, transaction decoding and blob rejection details match the
+  pinned Go implementation at newly covered boundaries.
+- RustCrypto elliptic-curve dependencies are upgraded past
+  RUSTSEC-2026-0387.
 - Redelegating the last shares away from an unbonded validator fails
   with `validator does not exist` like Go (`Unbond` removes the validator
   and `getBeginInfo` returns its lookup error); Rust completed it

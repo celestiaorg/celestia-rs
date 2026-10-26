@@ -12,7 +12,7 @@ use celestia_proto::cosmos::circuit::v1::{
     MsgTripCircuitBreakerResponse, Permissions, permissions::Level,
 };
 use prost::Message;
-use sdk::address::{acc_from_bech32, undefined};
+use sdk::address::{acc_codec_to_bytes, acc_from_bech32, undefined};
 use sdk::error::sdk as sdkerr;
 use sdk::event::event;
 use sdk::{Context, Result};
@@ -149,7 +149,7 @@ pub fn authorize_circuit_breaker(
     authority: &[u8],
     msg: &MsgAuthorizeCircuitBreaker,
 ) -> Result<MsgAuthorizeCircuitBreakerResponse> {
-    let address = acc_from_bech32(&msg.granter)?;
+    let address = acc_codec_to_bytes(&msg.granter)?;
     if address != authority {
         match get_permissions(ctx, &address)? {
             None => {
@@ -165,7 +165,7 @@ pub fn authorize_circuit_breaker(
             Some(_) => {}
         }
     }
-    let grantee = acc_from_bech32(&msg.grantee)?;
+    let grantee = acc_codec_to_bytes(&msg.grantee)?;
     let Some(perms) = &msg.permissions else {
         return Err(sdkerr::invalid_request("permissions cannot be nil"));
     };
@@ -212,7 +212,7 @@ pub fn trip_circuit_breaker(
     authority: &[u8],
     msg: &MsgTripCircuitBreaker,
 ) -> Result<MsgTripCircuitBreakerResponse> {
-    let address = acc_from_bech32(&msg.authority)?;
+    let address = acc_codec_to_bytes(&msg.authority)?;
     let perms = get_permissions(ctx, &address)?.unwrap_or_default();
     for url in &msg.msg_type_urls {
         if !is_allowed(ctx, url)? {
@@ -237,7 +237,7 @@ pub fn reset_circuit_breaker(
     authority: &[u8],
     msg: &MsgResetCircuitBreaker,
 ) -> Result<MsgResetCircuitBreakerResponse> {
-    let address = acc_from_bech32(&msg.authority)?;
+    let address = acc_codec_to_bytes(&msg.authority)?;
     let perms = get_permissions(ctx, &address)?.unwrap_or_default();
     for url in &msg.msg_type_urls {
         if is_allowed(ctx, url)? {
@@ -389,6 +389,20 @@ mod tests {
             },
         )?;
         assert!(!is_allowed(&mut ctx, &url)?);
+
+        // Go's account address.Codec reports a logic error for a valid
+        // bech32 address carrying the validator-operator prefix.
+        let wrong_prefix = to_bech32("celestiavaloper", &[7u8; 20]);
+        let error = trip_circuit_breaker(
+            &mut ctx,
+            &gov,
+            &MsgTripCircuitBreaker {
+                authority: wrong_prefix,
+                msg_type_urls: vec!["/test.Msg".into()],
+            },
+        )
+        .unwrap_err();
+        assert_eq!((error.codespace, error.code), ("sdk", 35));
         Ok(())
     }
 }

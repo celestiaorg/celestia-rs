@@ -105,16 +105,24 @@ pub fn metadata_from_version(version: &str) -> Result<Metadata> {
     match v {
         serde_json::Value::Null => {}
         serde_json::Value::Object(map) => {
-            for (k, val) in map {
-                let Some(i) = METADATA_FIELDS
+            for k in map.keys() {
+                if !METADATA_FIELDS
                     .iter()
-                    .position(|(orig, camel)| *orig == k || *camel == k)
-                else {
+                    .any(|(orig, camel)| *orig == k || *camel == k)
+                {
                     return Err(bad());
-                };
+                }
+            }
+            for (i, (orig, camel)) in METADATA_FIELDS.iter().enumerate() {
+                // gogoproto jsonpb's generated decoder consumes both aliases
+                // field by field and gives the protobuf JSON (camel-case)
+                // name precedence, independent of source order. A camel-case
+                // null therefore also clears a populated snake-case alias.
+                let val = map.get(*camel).or_else(|| map.get(*orig));
+                let Some(val) = val else { continue };
                 match val {
                     serde_json::Value::Null => {}
-                    serde_json::Value::String(s) => f[i] = s,
+                    serde_json::Value::String(s) => f[i].clone_from(s),
                     _ => return Err(bad()),
                 }
             }
@@ -1223,5 +1231,31 @@ mod tests {
         );
         assert_eq!(decode_packet_data(br#"{"type":1}"#), Ok((1, vec![])));
         assert!(decode_packet_data(br#"{"type":"NOPE"}"#).is_err());
+    }
+
+    #[test]
+    fn metadata_camel_alias_has_jsonpb_precedence() {
+        for input in [
+            r#"{"tx_type":"bad","txType":"sdk_multi_msg"}"#,
+            r#"{"txType":"sdk_multi_msg","tx_type":"bad"}"#,
+        ] {
+            assert_eq!(
+                metadata_from_version(input).unwrap().tx_type,
+                TX_TYPE_SDK_MULTI_MSG
+            );
+        }
+        assert_eq!(
+            metadata_from_version(r#"{"tx_type":"sdk_multi_msg","txType":null}"#)
+                .unwrap()
+                .tx_type,
+            ""
+        );
+        assert!(metadata_from_version(r#"{"tx_type":"sdk_multi_msg","txType":1}"#).is_err());
+
+        let metadata = metadata_from_version(
+            r#"{"controllerConnectionId":"connection-camel","controller_connection_id":"connection-snake"}"#,
+        )
+        .unwrap();
+        assert_eq!(metadata.controller_connection_id, "connection-camel");
     }
 }

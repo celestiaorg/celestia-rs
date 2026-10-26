@@ -147,6 +147,19 @@ impl Params {
 
     /// `Params.Validate` (unregistered errors in Go).
     pub fn validate(&self) -> Result<()> {
+        self.validate_inner([false; 3])
+    }
+
+    /// `Params.Validate` while retaining nil LegacyDec fields from the wire.
+    fn validate_wire(&self, wire: &pb::Params) -> Result<()> {
+        self.validate_inner([
+            wire.min_signed_per_window.is_empty(),
+            wire.slash_fraction_double_sign.is_empty(),
+            wire.slash_fraction_downtime.is_empty(),
+        ])
+    }
+
+    fn validate_inner(&self, nil: [bool; 3]) -> Result<()> {
         let e = |s: String| Err(sdk::error::internal(s));
         if self.signed_blocks_window <= 0 {
             return e(format!(
@@ -155,6 +168,9 @@ impl Params {
             ));
         }
         let one = LegacyDec::one();
+        if nil[0] {
+            return e("min signed per window cannot be nil: <nil>".into());
+        }
         if self.min_signed_per_window.is_negative() {
             return e(format!(
                 "min signed per window cannot be negative: {}",
@@ -175,16 +191,35 @@ impl Params {
                 sdk::time::go_duration_string(jail)
             ));
         }
-        for (name, v) in [
-            ("double sign", &self.slash_fraction_double_sign),
-            ("downtime", &self.slash_fraction_downtime),
-        ] {
-            if v.is_negative() {
-                return e(format!("{name} slash fraction cannot be negative: {v}"));
-            }
-            if *v > one {
-                return e(format!("{name} slash fraction too large: {v}"));
-            }
+        if nil[1] {
+            return e("double sign slash fraction cannot be nil: <nil>".into());
+        }
+        if self.slash_fraction_double_sign.is_negative() {
+            return e(format!(
+                "double sign slash fraction cannot be negative: {}",
+                self.slash_fraction_double_sign
+            ));
+        }
+        if self.slash_fraction_double_sign > one {
+            return e(format!(
+                "double sign slash fraction too large: {}",
+                self.slash_fraction_double_sign
+            ));
+        }
+        if nil[2] {
+            return e("downtime slash fraction cannot be nil: <nil>".into());
+        }
+        if self.slash_fraction_downtime.is_negative() {
+            return e(format!(
+                "downtime slash fraction cannot be negative: {}",
+                self.slash_fraction_downtime
+            ));
+        }
+        if self.slash_fraction_downtime > one {
+            return e(format!(
+                "downtime slash fraction too large: {}",
+                self.slash_fraction_downtime
+            ));
         }
         Ok(())
     }
@@ -701,8 +736,9 @@ pub fn handle_update_params(
             msg.authority
         )));
     }
-    let p = Params::from_wire(&msg.params.clone().unwrap_or_default())?;
-    p.validate()?;
+    let wire = msg.params.clone().unwrap_or_default();
+    let p = Params::from_wire(&wire)?;
+    p.validate_wire(&wire)?;
     set_params(ctx, &p)?;
     Ok(pb::MsgUpdateParamsResponse {})
 }

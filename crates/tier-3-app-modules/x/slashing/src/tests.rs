@@ -185,3 +185,60 @@ fn params_wire_matches_fixture() {
     assert_eq!(p.encode(), b);
     assert_eq!(p.min_signed_per_window_blocks().unwrap(), 10);
 }
+
+#[test]
+fn params_wire_nil_decimals_match_go_validation_order() {
+    let zero = LegacyDec::zero().marshal();
+    let mut wire = pb::Params {
+        signed_blocks_window: 100,
+        min_signed_per_window: zero.clone(),
+        downtime_jail_duration: Some(Duration {
+            seconds: 60,
+            nanos: 0,
+        }),
+        slash_fraction_double_sign: zero.clone(),
+        slash_fraction_downtime: zero,
+    };
+    let validate = |wire: &pb::Params| {
+        Params::from_wire(wire)
+            .unwrap()
+            .validate_wire(wire)
+            .map_err(|e| e.log)
+    };
+    validate(&wire).unwrap();
+
+    wire.min_signed_per_window.clear();
+    assert_eq!(
+        validate(&wire).unwrap_err(),
+        "min signed per window cannot be nil: <nil>"
+    );
+    wire.signed_blocks_window = 0;
+    assert_eq!(
+        validate(&wire).unwrap_err(),
+        "signed blocks window must be positive: 0"
+    );
+
+    wire.signed_blocks_window = 100;
+    wire.min_signed_per_window = LegacyDec::zero().marshal();
+    wire.slash_fraction_double_sign.clear();
+    assert_eq!(
+        validate(&wire).unwrap_err(),
+        "double sign slash fraction cannot be nil: <nil>"
+    );
+    wire.downtime_jail_duration = Some(Duration::default());
+    assert_eq!(
+        validate(&wire).unwrap_err(),
+        "downtime jail duration must be positive: 0s"
+    );
+
+    wire.downtime_jail_duration = Some(Duration {
+        seconds: 60,
+        nanos: 0,
+    });
+    wire.slash_fraction_double_sign = LegacyDec::zero().marshal();
+    wire.slash_fraction_downtime.clear();
+    assert_eq!(
+        validate(&wire).unwrap_err(),
+        "downtime slash fraction cannot be nil: <nil>"
+    );
+}

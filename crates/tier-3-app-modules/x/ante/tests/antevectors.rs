@@ -83,6 +83,8 @@ struct Expect {
 
 #[derive(Deserialize)]
 struct Vector {
+    #[serde(default)]
+    app_version: u64,
     name: String,
     mode: String,
     simulate: bool,
@@ -170,6 +172,7 @@ fn diff(a: &State, b: &State) -> BTreeMap<(String, Vec<u8>), Option<Vec<u8>>> {
 }
 
 fn run_vector(base: &[Kv], v: &Vector) -> Result<(), String> {
+    sdk::version::set_app_version(v.app_version);
     let mut ms = MultiStore::new();
     for s in STORES {
         ms.mount(s, Kind::Iavl).unwrap();
@@ -197,6 +200,8 @@ fn run_vector(base: &[Kv], v: &Vector) -> Result<(), String> {
     });
     let (code, codespace, gas_wanted, gas_used, priority, events) = {
         let mut ctx = Context::new(&mut ms, header, mode_of(&v.mode));
+        ctx.consensus_params.version =
+            Some(celestia_core_proto::tendermint::types::VersionParams { app: v.app_version });
         ctx.tx_bytes = v.ctx_tx_bytes.clone().unwrap_or_else(|| v.tx.clone());
         ctx.consensus_params.block = Some(BlockParams {
             max_bytes: 1 << 20,
