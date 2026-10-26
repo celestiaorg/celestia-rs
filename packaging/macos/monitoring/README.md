@@ -69,7 +69,9 @@ show in the dashboard's "Firing alerts" panel, in Grafana under Alerting
   ValidatorJailed, DoubleSignGuardRefused (a refusal line in the node's
   log, operator guide §11.11), DiskSpaceCritical (< 5%).
 - **Warning (dashboard only):** LowPeers, CatchingUp,
-  ValidatorMissingBlocks, AppHashCheckFailing, MonitoringCollectorStale,
+  ValidatorMissingBlocks, ValidatorJailedUnknown (staking's jailed flag
+  unreadable: no valoper in `nodes.conf`, or the query fails),
+  AppHashCheckFailing, MonitoringCollectorStale,
   DiskSpaceLow (< 10%).
 
 `promtool test rules rules_test.yml` pins these severities.
