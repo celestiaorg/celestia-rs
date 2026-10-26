@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
 : >"$t/val.log"
-mkdir -p "$t/bin" "$t/out" "$t/val/config" "$t/val/data" "$t/full/config" "$t/full/data"
+mkdir -p "$t/bin" "$t/out" "$t/val/config" "$t/val/data" "$t/full/config" "$t/full/data" "$t/chain"
 fails=0
 
 # --- stubs -----------------------------------------------------------------
@@ -39,6 +39,11 @@ cat >"$t/bin/du" <<'EOF'
 echo "2048	$2"
 EOF
 # celestia-rs: the validator home has signing info, the full node has none.
+# The validator's state is in $t/chain: jailed_until, tombstoned, and
+# staking's jailed flag ("fail" makes the staking query fail).
+echo 2999-01-01T00:00:00Z >"$t/chain/until"
+echo false >"$t/chain/tombstoned"
+echo true >"$t/chain/jailed"
 cat >"$t/bin/celestia-rs" <<EOF
 #!/usr/bin/env bash
 home=\${!#}
@@ -46,7 +51,13 @@ case "\$*" in
   "comet show-address --home $t/val") echo celestiavalcons1val ;;
   "comet show-address --home $t/full") echo celestiavalcons1full ;;
   "query slashing signing-info celestiavalcons1val --home $t/val")
-    echo '{"val_signing_info":{"missed_blocks_counter":"184","jailed_until":"2999-01-01T00:00:00Z","tombstoned":false}}' ;;
+    echo "{\"val_signing_info\":{\"missed_blocks_counter\":\"184\",\"jailed_until\":\"\$(cat $t/chain/until)\",\"tombstoned\":\$(cat $t/chain/tombstoned)}}" ;;
+  "query staking validator celestiavaloper1val --home $t/val")
+    case \$(cat $t/chain/jailed) in
+      true) echo '{"validator":{"operator_address":"celestiavaloper1val","jailed":true}}' ;;
+      false) echo '{"validator":{"operator_address":"celestiavaloper1val"}}' ;; # proto3 JSON omits false
+      *) echo 'Error: rpc error: code = Unavailable' >&2; exit 1 ;;
+    esac ;;
   "query slashing signing-info celestiavalcons1full --home $t/full")
     echo 'Error: rpc error: code = NotFound' >&2; exit 1 ;;
   "query slashing params --home "*)
@@ -58,8 +69,8 @@ chmod +x "$t/bin/"*
 
 cat >"$t/nodes.conf" <<EOF
 # network home rpc reference-rpc
-mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log
-mainnet $t/full http://127.0.0.1:2222 https://ref.invalid
+mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log celestiavaloper1val
+mainnet $t/full http://127.0.0.1:2222 https://ref.invalid -
 down    $t/none http://127.0.0.1:3333 https://ref.invalid
 EOF
 
@@ -126,10 +137,39 @@ printf '%s\n' 'Error: consensus start: found signature from the same key' >"$t/v
 collect
 expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 5'
 
+# --- jailed ------------------------------------------------------------------
+# Staking's jailed flag decides, not jailed_until: the jail period can be
+# over (here also ahead of the node's block time, 2026-10-19, as during
+# catch-up, but behind the wall clock) while the validator stays jailed
+# until an unjail tx.
+echo 2026-10-20T11:15:00.0Z >"$t/chain/until"
+collect
+expect "$f" 'celestia_rs_validator_jailed{network="mocha"} 1'
+expect "$f" 'celestia_rs_validator_jailed_until_seconds{network="mocha"} 1792494900'
+# Unjailed.
+echo false >"$t/chain/jailed"
+collect
+expect "$f" 'celestia_rs_validator_jailed{network="mocha"} 0'
+# The staking query fails: unknown, not healthy.
+echo fail >"$t/chain/jailed"
+collect
+if grep -q 'validator_jailed{network="mocha"}' "$f"; then
+  echo "FAIL: jailed must be absent when staking cannot be queried"; fails=$((fails + 1))
+fi
+expect "$f" 'celestia_rs_validator_jailed_until_seconds{network="mocha"} 1792494900'
+# Tombstoned is jailed for good.
+echo true >"$t/chain/tombstoned"
+collect
+expect "$f" 'celestia_rs_validator_jailed{network="mocha"} 1'
+# The full node has no valoper and no signing info.
+if grep -q 'validator_jailed{network="mainnet"}' "$f"; then
+  echo "FAIL: full node must not report jailed"; fails=$((fails + 1))
+fi
+
 # --- apphash -----------------------------------------------------------------
 cat >"$t/check-apphash.sh" <<'EOF'
 #!/usr/bin/env bash
-# Both arguments are checked: a log column must not leak into the reference.
+# Both arguments are checked: the log and valoper columns must not leak into the reference.
 [[ $2 == https://ref.invalid ]] || exit 2
 case $1 in
   http://127.0.0.1:1111) echo OK; exit 0 ;;

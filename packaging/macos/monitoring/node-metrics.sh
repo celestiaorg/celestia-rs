@@ -7,12 +7,15 @@
 #
 # `collect` adds what the node's own /metrics lacks on macOS: process
 # memory and CPU, data dir size, /status, and the chain's slashing view
-# of our validator (missed blocks in the window, jailed, tombstoned).
+# of our validator (missed blocks in the window, jailed_until,
+# tombstoned) and staking's jailed flag for it.
 # `apphash` runs check-apphash.sh against each node's reference RPC.
 #
 # nodes.conf has one node per line: <network> <home> <local-rpc>
-# <reference-rpc> [<log file>]. With a log file, `collect` also counts the
-# double-sign guard's refusals in it.
+# <reference-rpc> [<log file> [<valoper>]]. With a log file (`-` for
+# none), `collect` also counts the double-sign guard's refusals in it.
+# With the validator's operator address, it reports whether staking has
+# the validator jailed.
 # Needs curl and jq. Runs under macOS's bash 3.2.
 set -uo pipefail
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
@@ -94,15 +97,16 @@ collect() {
   help celestia_rs_validator_missed_blocks_window gauge "missed_blocks_counter in the current signed_blocks_window."
   help celestia_rs_validator_signed_blocks_window gauge "x/slashing signed_blocks_window."
   help celestia_rs_validator_min_signed_per_window gauge "x/slashing min_signed_per_window."
-  help celestia_rs_validator_jailed gauge "1 if jailed_until is in the future or the validator is tombstoned."
-  help celestia_rs_validator_jailed_until_seconds gauge "jailed_until, unix seconds."
+  help celestia_rs_validator_jailed gauge "1 if x/staking has the validator jailed or it is tombstoned; absent if unknown."
+  help celestia_rs_validator_jailed_until_seconds gauge "jailed_until, unix seconds: the earliest block time at which unjail is allowed."
   help celestia_rs_validator_tombstoned gauge "1 if tombstoned."
   help celestia_rs_sign_refusals_total counter "Double-sign guard refusals in the node's log (nodes.conf log column)."
   help celestia_rs_collector_timestamp_seconds gauge "When this file was written."
 
-  local net home rpc ref log
+  local net home rpc ref log valoper
   mkdir -p "$dir"
-  while read -r net home rpc ref log; do
+  while read -r net home rpc ref log valoper; do
+    [[ $log == - ]] && log=
     local st h bt cu line bin valcons si params
     st=$(curl -fsS -m 5 "$rpc/status" 2>/dev/null)
     h=$(jq -r '.result.sync_info.latest_block_height // empty' <<<"$st" 2>/dev/null)
@@ -148,12 +152,21 @@ collect() {
     fi
     emit celestia_rs_validator_signing_info_found "$net" 1
     emit celestia_rs_validator_missed_blocks_window "$net" "$(jq -r '.val_signing_info.missed_blocks_counter' <<<"$si")"
-    local ju jus tomb
+    local ju jus tomb jailed=
     ju=$(epoch "$(jq -r '.val_signing_info.jailed_until' <<<"$si")"); jus=${ju:-0}
     tomb=$(jq -r '.val_signing_info.tombstoned' <<<"$si")
     emit celestia_rs_validator_jailed_until_seconds "$net" "$jus"
     emit celestia_rs_validator_tombstoned "$net" "$([[ $tomb == true ]] && echo 1 || echo 0)"
-    emit celestia_rs_validator_jailed "$net" "$([[ $tomb == true || $jus -gt $now ]] && echo 1 || echo 0)"
+    # jailed_until only says when unjail becomes allowed: the validator
+    # stays jailed past it until an unjail tx, and during catch-up it can
+    # already be in the wall-clock past. Staking's flag is the answer; if
+    # it cannot be read, the metric is left out rather than reported 0.
+    if [[ -n $valoper ]]; then
+      jailed=$("$bin" query staking validator "$valoper" --home "$home" </dev/null 2>/dev/null |
+        jq -r 'if .validator then (if .validator.jailed == true then 1 else 0 end) else empty end' 2>/dev/null)
+    fi
+    [[ $tomb == true ]] && jailed=1
+    [[ -n $jailed ]] && emit celestia_rs_validator_jailed "$net" "$jailed"
     params=$("$bin" query slashing params --home "$home" </dev/null 2>/dev/null)
     if [[ -n $params ]]; then
       emit celestia_rs_validator_signed_blocks_window "$net" "$(jq -r '.params.signed_blocks_window' <<<"$params")"
@@ -167,9 +180,9 @@ collect() {
 apphash() {
   help celestia_rs_apphash_match gauge "1 app hash matches the reference RPC, 0 MISMATCH (parity bug), -1 check could not run."
   help celestia_rs_apphash_check_timestamp_seconds gauge "When the app hash was last checked."
-  local net home rpc ref _log rc
-  # _log takes the optional fifth column so it does not end up in ref.
-  while read -r net home rpc ref _log; do
+  local net home rpc ref _rest rc
+  # _rest takes the optional log and valoper columns so they do not end up in ref.
+  while read -r net home rpc ref _rest; do
     "$CHECK_APPHASH" "$rpc" "$ref" </dev/null >/dev/null 2>&1; rc=$?
     case $rc in 0) emit celestia_rs_apphash_match "$net" 1 ;; 1) emit celestia_rs_apphash_match "$net" 0 ;; *) emit celestia_rs_apphash_match "$net" -1 ;; esac
     emit celestia_rs_apphash_check_timestamp_seconds "$net" "$(date -u +%s)"
