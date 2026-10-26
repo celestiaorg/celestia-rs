@@ -122,7 +122,7 @@ pub fn metadata_from_version(version: &str) -> Result<Metadata> {
                 let Some(val) = val else { continue };
                 match val {
                     serde_json::Value::Null => {}
-                    serde_json::Value::String(s) => f[i] = s.clone(),
+                    serde_json::Value::String(s) => f[i].clone_from(s),
                     _ => return Err(bad()),
                 }
             }

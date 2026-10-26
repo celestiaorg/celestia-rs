@@ -704,9 +704,8 @@ mod tests {
         // Exercise the JSON decoder used by on_recv_packet: U+10FFFF becomes
         // four reserved gostr chars internally, then GetReceiver hashes its
         // original four UTF-8 bytes.
-        let json = format!(
-            "{{\"denom\":\"utia\",\"amount\":\"1\",\"sender\":\"\u{10ffff}\",\"receiver\":\"pfm\",\"memo\":\"\"}}"
-        );
+        let json = "{\"denom\":\"utia\",\"amount\":\"1\",\"sender\":\"\u{10ffff}\",\"receiver\":\"pfm\",\"memo\":\"\"}"
+            .to_string();
         let data = PacketData::decode(json.as_bytes()).unwrap();
         assert_eq!(
             gostr::to_go_bytes(&data.sender).as_ref(),

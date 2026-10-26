@@ -59,8 +59,7 @@ pub fn estimate_gas_for_pay_for_fibre(blob_size: u32) -> u64 {
     if blob_size == 0 {
         return PFB_FIBRE_GAS_FIXED_COST;
     }
-    let chunks = (u64::from(blob_size) + u64::from(PFB_FIBRE_CHUNK_SIZE) - 1)
-        / u64::from(PFB_FIBRE_CHUNK_SIZE);
+    let chunks = u64::from(blob_size).div_ceil(u64::from(PFB_FIBRE_CHUNK_SIZE));
     PFB_FIBRE_GAS_FIXED_COST + PFB_FIBRE_GAS_PER_CHUNK * chunks
 }
 
