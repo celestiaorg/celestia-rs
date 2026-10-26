@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v0.1.0-rc.5 (2026-10-26)
+
+### Fixed
+
+- IBC Tendermint client errors retain Go's trusted heights, validator-set and
+  hash details, elapsed/trusting-period values, concrete client-state types and
+  upgrade proof paths. These details can be persisted as a governance
+  proposal's `failed_reason`, so matching them prevents an app-hash split.
+- IBC channel handshake errors include the negotiated connection version and
+  the actual version list using Go's gogoproto text formatting.
+- IBC channel-upgrade timeout follows ibc-go's local/counterparty connection
+  operand check, and upgrade/packet errors preserve Go's value formatting,
+  commitment arrays and ordered-timeout sequence details.
+- IBC packet and acknowledgement JSON normalizes decoded strings to their
+  lossless Go representation; packet-forward receiver derivation hashes the
+  original bytes, and ICA host metadata gives protobuf JSON field names
+  precedence over snake-case aliases like gogoproto jsonpb.
+
 ## v0.1.0-rc.4 (2026-10-25)
 
 ### Fixed

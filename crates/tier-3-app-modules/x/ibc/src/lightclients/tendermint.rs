@@ -665,12 +665,76 @@ fn check_trusted_header(h: &Header, cons: &ConsensusState) -> Result<()> {
             "trusted validator set in not tendermint validator set type: {e}"
         ))
     })?;
-    if cons.next_validators_hash != tvals.hash() {
-        return Err(tmerr::invalid_validator_set(
-            "trusted validators does not hash to latest trusted validators",
-        ));
+    let got = tvals.hash();
+    if cons.next_validators_hash != got {
+        let trusted = h
+            .trusted_validators
+            .as_ref()
+            .map(validator_set_text)
+            .unwrap_or_default();
+        return Err(tmerr::invalid_validator_set(format!(
+            "trusted validators {trusted}, does not hash to latest trusted validators. Expected: {}, got: {}",
+            hex::encode_upper(&cons.next_validators_hash),
+            hex::encode_upper(got)
+        )));
     }
     Ok(())
+}
+
+fn quoted_bytes(bytes: &[u8]) -> String {
+    x_ante::gogotext::quote(&gostr::from_go_bytes(bytes))
+}
+
+fn public_key_text(
+    key: &celestia_proto::celestia_core_proto::tendermint::crypto::PublicKey,
+) -> String {
+    use celestia_proto::celestia_core_proto::tendermint::crypto::public_key::Sum;
+
+    match key.sum.as_ref() {
+        Some(Sum::Ed25519(bytes)) => format!("ed25519:{} ", quoted_bytes(bytes)),
+        Some(Sum::Secp256k1(bytes)) => format!("secp256k1:{} ", quoted_bytes(bytes)),
+        None => String::new(),
+    }
+}
+
+fn validator_text(validator: &tm::Validator) -> String {
+    use std::fmt::Write as _;
+
+    let mut text = String::new();
+    if !validator.address.is_empty() {
+        let _ = write!(text, "address:{} ", quoted_bytes(&validator.address));
+    }
+    if let Some(key) = validator.pub_key.as_ref() {
+        let _ = write!(text, "pub_key:<{}> ", public_key_text(key));
+    }
+    if validator.voting_power != 0 {
+        let _ = write!(text, "voting_power:{} ", validator.voting_power);
+    }
+    if validator.proposer_priority != 0 {
+        let _ = write!(text, "proposer_priority:{} ", validator.proposer_priority);
+    }
+    text
+}
+
+/// gogoproto `ValidatorSet.String()` (`proto.CompactTextString`).
+fn validator_set_text(validators: &tm::ValidatorSet) -> String {
+    use std::fmt::Write as _;
+
+    let mut text = String::new();
+    for validator in &validators.validators {
+        let _ = write!(text, "validators:<{}> ", validator_text(validator));
+    }
+    if let Some(proposer) = validators.proposer.as_ref() {
+        let _ = write!(text, "proposer:<{}> ", validator_text(proposer));
+    }
+    if validators.total_voting_power != 0 {
+        let _ = write!(
+            text,
+            "total_voting_power:{} ",
+            validators.total_voting_power
+        );
+    }
+    text
 }
 
 fn trust_level(cs: &ClientState) -> Fraction {
@@ -761,10 +825,12 @@ fn check_misbehaviour_header(
         crate::errors::unregistered(format!("commit is not tendermint commit type: {e}"))
     })?;
     check_trusted_header(h, cons)?;
-    if now - ts_nanos(cons.timestamp.as_ref()) >= trusting_period(cs) {
-        return Err(tmerr::trusting_period_expired(
-            "current timestamp minus the latest consensus state timestamp is greater than or equal to the trusting period",
-        ));
+    let elapsed = now - ts_nanos(cons.timestamp.as_ref());
+    let trusting_period = trusting_period(cs);
+    if elapsed >= trusting_period {
+        return Err(tmerr::trusting_period_expired(format!(
+            "current timestamp minus the latest consensus state timestamp is greater than or equal to the trusting period ({elapsed} >= {trusting_period})"
+        )));
     }
     let mut chain_id = cs.chain_id.clone();
     if client::is_revision_format(&chain_id) {
@@ -791,14 +857,16 @@ fn verify_misbehaviour(
     let th1 = h1.trusted_height.unwrap_or_default();
     let th2 = h2.trusted_height.unwrap_or_default();
     let c1 = get_consensus_state(ctx, client_id, &th1)?.ok_or_else(|| {
-        cerr::consensus_state_not_found(
-            "could not get trusted consensus state from clientStore for Header1",
-        )
+        cerr::consensus_state_not_found(format!(
+            "could not get trusted consensus state from clientStore for Header1 at TrustedHeight: {}",
+            height::to_string(&th1)
+        ))
     })?;
     let c2 = get_consensus_state(ctx, client_id, &th2)?.ok_or_else(|| {
-        cerr::consensus_state_not_found(
-            "could not get trusted consensus state from clientStore for Header2",
-        )
+        cerr::consensus_state_not_found(format!(
+            "could not get trusted consensus state from clientStore for Header2 at TrustedHeight: {}",
+            height::to_string(&th2)
+        ))
     })?;
     let now = block_time(ctx);
     check_misbehaviour_header(cs, &c1, &h1, now)
@@ -1037,6 +1105,14 @@ fn upgrade_path(upgrade_path: &[String], last: &Height, key: &str) -> MerklePath
     MerklePath { key_path: p }
 }
 
+fn consensus_state_go_type(any: &Any) -> &'static str {
+    match any.type_url.as_str() {
+        "/ibc.lightclients.tendermint.v1.ConsensusState" => "*tendermint.ConsensusState",
+        "/ibc.lightclients.solomachine.v3.ConsensusState" => "*solomachine.ConsensusState",
+        _ => "<nil>",
+    }
+}
+
 /// `ClientState.VerifyUpgradeAndUpdateState`.
 pub fn verify_upgrade_and_update_state(
     ctx: &mut Context<'_>,
@@ -1053,7 +1129,8 @@ pub fn verify_upgrade_and_update_state(
         ));
     }
     let last = latest(cs);
-    let up_latest = client::latest_height_of(upgraded_client)?;
+    let decoded_upgraded_client = client::ClientState::from_any(upgraded_client)?;
+    let up_latest = decoded_upgraded_client.latest_height();
     if !height::gt(&up_latest, &last) {
         return Err(ierr::invalid_height(format!(
             "upgraded client height {} must be at greater than current client height {}",
@@ -1061,15 +1138,17 @@ pub fn verify_upgrade_and_update_state(
             height::to_string(&last)
         )));
     }
-    let Some(Ok(up_cs)) = upgraded_client.unpack::<ClientState>() else {
-        return Err(cerr::invalid_client_type(
-            "upgraded client must be Tendermint client",
-        ));
+    let client::ClientState::Tendermint(up_cs) = decoded_upgraded_client else {
+        return Err(cerr::invalid_client_type(format!(
+            "upgraded client must be Tendermint client. expected: *tendermint.ClientState got: {}",
+            decoded_upgraded_client.go_type()
+        )));
     };
     let Some(Ok(up_cons)) = upgraded_cons.unpack::<ConsensusState>() else {
-        return Err(cerr::invalid_consensus(
-            "upgraded consensus state must be Tendermint consensus state",
-        ));
+        return Err(cerr::invalid_consensus(format!(
+            "upgraded consensus state must be Tendermint consensus state. expected *tendermint.ConsensusState, got: {}",
+            consensus_state_go_type(upgraded_cons)
+        )));
     };
     let mp_client = ics23_proof(proof_client, "client")?;
     let mp_cons = ics23_proof(proof_cons, "consensus state")?;
@@ -1078,23 +1157,23 @@ pub fn verify_upgrade_and_update_state(
     })?;
     let root = cons.root.clone().unwrap_or_default().hash;
     let bz = client_state_any(&zero_custom_fields(&up_cs)).encode_to_vec();
-    crate::commitment::verify_membership(
-        &mp_client,
-        &cs.proof_specs,
-        &root,
-        &upgrade_path(&cs.upgrade_path, &last, "upgradedClient"),
-        &bz,
-    )
-    .map_err(|e| e.wrap("client state proof failed"))?;
+    let client_path = upgrade_path(&cs.upgrade_path, &last, "upgradedClient");
+    crate::commitment::verify_membership(&mp_client, &cs.proof_specs, &root, &client_path, &bz)
+        .map_err(|e| {
+            e.wrap(format!(
+                "client state proof failed. Path: [{}]",
+                client_path.key_path.join(" ")
+            ))
+        })?;
     let bz = consensus_state_any(&up_cons).encode_to_vec();
-    crate::commitment::verify_membership(
-        &mp_cons,
-        &cs.proof_specs,
-        &root,
-        &upgrade_path(&cs.upgrade_path, &last, "upgradedConsState"),
-        &bz,
-    )
-    .map_err(|e| e.wrap("consensus state proof failed"))?;
+    let consensus_path = upgrade_path(&cs.upgrade_path, &last, "upgradedConsState");
+    crate::commitment::verify_membership(&mp_cons, &cs.proof_specs, &root, &consensus_path, &bz)
+        .map_err(|e| {
+            e.wrap(format!(
+                "consensus state proof failed. Path: [{}]",
+                consensus_path.key_path.join(" ")
+            ))
+        })?;
     let new_cs = ClientState {
         chain_id: up_cs.chain_id.clone(),
         trust_level: cs.trust_level,
@@ -1156,8 +1235,12 @@ pub fn check_substitute_and_update_state(
     substitute_id: &str,
     substitute: &Any,
 ) -> Result<()> {
-    let Some(Ok(sub)) = substitute.unpack::<ClientState>() else {
-        return Err(cerr::invalid_client("expected type *types.ClientState"));
+    let decoded_substitute = client::ClientState::from_any(substitute)?;
+    let client::ClientState::Tendermint(sub) = decoded_substitute else {
+        return Err(cerr::invalid_client(format!(
+            "expected type *tendermint.ClientState, got {}",
+            decoded_substitute.go_type()
+        )));
     };
     if !is_matching(cs, &sub) {
         return Err(cerr::invalid_substitute(
@@ -1225,8 +1308,16 @@ pub fn latest_height(cs: &ClientState) -> Height {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod delay_tests {
     use super::*;
+
+    fn context() -> (sdk::MultiStore, sdk::Header) {
+        let mut ms = sdk::MultiStore::new();
+        ms.mount(crate::STORE_KEY, sdk::Kind::Iavl)
+            .expect("mount IBC store");
+        (ms, sdk::Header::default())
+    }
 
     #[test]
     #[allow(clippy::unwrap_used)]
@@ -1262,5 +1353,116 @@ mod delay_tests {
         assert_eq!(error.log, reference["error"]);
         ctx.header.height = 12;
         verify_delay_period_passed(&mut ctx, "07-tendermint-0", &proof, 0, 3).unwrap();
+    }
+
+    #[test]
+    fn missing_misbehaviour_consensus_state_includes_trusted_height() {
+        let (mut ms, header) = context();
+        let mut ctx = Context::new(&mut ms, header, sdk::ExecMode::Finalize);
+        let trusted = Height {
+            revision_number: 4,
+            revision_height: 99,
+        };
+        let m = Misbehaviour {
+            header_1: Some(Header {
+                trusted_height: Some(trusted),
+                ..Header::default()
+            }),
+            ..Misbehaviour::default()
+        };
+        let error = verify_misbehaviour(&mut ctx, "07-tendermint-0", &ClientState::default(), &m)
+            .expect_err("the trusted consensus state is absent");
+        assert!(error.log.starts_with(
+            "could not get trusted consensus state from clientStore for Header1 at TrustedHeight: 4-99"
+        ));
+    }
+
+    #[test]
+    fn recovery_type_error_names_expected_and_actual_go_types() {
+        use celestia_proto::ibc::lightclients::solomachine::v3 as sm;
+
+        let (mut ms, header) = context();
+        let mut ctx = Context::new(&mut ms, header, sdk::ExecMode::Finalize);
+        let substitute = Any::pack(&sm::ClientState {
+            sequence: 2,
+            ..sm::ClientState::default()
+        });
+        let error = check_substitute_and_update_state(
+            &mut ctx,
+            "07-tendermint-0",
+            &ClientState::default(),
+            "06-solomachine-1",
+            &substitute,
+        )
+        .expect_err("a solo-machine substitute has the wrong concrete type");
+        assert!(
+            error
+                .log
+                .starts_with("expected type *tendermint.ClientState, got *solomachine.ClientState")
+        );
+    }
+
+    #[test]
+    fn upgrade_paths_use_go_slice_format() {
+        let path = upgrade_path(
+            &["upgrade".into(), "upgradedIBCState".into()],
+            &Height {
+                revision_number: 1,
+                revision_height: 10,
+            },
+            "upgradedClient",
+        );
+        assert_eq!(
+            format!("[{}]", path.key_path.join(" ")),
+            "[upgrade upgradedIBCState/10/upgradedClient]"
+        );
+    }
+
+    #[test]
+    fn trusted_validator_error_keeps_proto_and_hash_details() {
+        use celestia_proto::celestia_core_proto::tendermint::crypto::{PublicKey, public_key::Sum};
+
+        let key = [1_u8; 32];
+        let validator = tm::Validator {
+            address: crypto::ed25519::address(&key).to_vec(),
+            pub_key: Some(PublicKey {
+                sum: Some(Sum::Ed25519(key.to_vec())),
+            }),
+            voting_power: 1,
+            proposer_priority: 0,
+        };
+        let validators = tm::ValidatorSet {
+            validators: vec![validator.clone()],
+            proposer: Some(validator),
+            total_voting_power: 1,
+        };
+        let got = light::ValidatorSet::from_proto(Some(&validators))
+            .expect("valid test validator set")
+            .hash();
+        let trusted = validator_set_text(&validators);
+        assert_eq!(
+            trusted,
+            r#"validators:<address:"r\315n\204\"\304\007\373m\t\206\220\361\023\013}\355~\302\367" pub_key:<ed25519:"\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001" > voting_power:1 > proposer:<address:"r\315n\204\"\304\007\373m\t\206\220\361\023\013}\355~\302\367" pub_key:<ed25519:"\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001" > voting_power:1 > total_voting_power:1 "#
+        );
+        let expected_hash = vec![0xAA; 32];
+        let error = check_trusted_header(
+            &Header {
+                trusted_validators: Some(validators),
+                ..Header::default()
+            },
+            &ConsensusState {
+                next_validators_hash: expected_hash.clone(),
+                ..ConsensusState::default()
+            },
+        )
+        .expect_err("the hashes differ");
+        assert_eq!(
+            error.log,
+            format!(
+                "trusted validators {trusted}, does not hash to latest trusted validators. Expected: {}, got: {}: invalid validator set",
+                hex::encode_upper(expected_hash),
+                hex::encode_upper(got)
+            )
+        );
     }
 }

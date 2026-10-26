@@ -412,6 +412,16 @@ impl ClientState {
         }
     }
 
+    /// Go `%T` of the concrete client state.
+    #[must_use]
+    pub fn go_type(&self) -> &'static str {
+        match self {
+            Self::Tendermint(_) => "*tendermint.ClientState",
+            Self::Solomachine(_) => "*solomachine.ClientState",
+            Self::Localhost(_) => "*localhost.ClientState",
+        }
+    }
+
     /// `GetLatestHeight()`.
     #[must_use]
     pub fn latest_height(&self) -> Height {
@@ -663,9 +673,10 @@ pub fn validate_upgrade_client(
     )?;
     let ty = consensus_type(consensus_state)?;
     if cs.client_type() != ty {
-        return Err(cerr::invalid_upgrade_client(
-            "consensus state's client-type does not match client",
-        ));
+        return Err(cerr::invalid_upgrade_client(format!(
+            "consensus state's client-type does not match client. expected: {}, got: {ty}",
+            cs.client_type()
+        )));
     }
     Ok(())
 }
@@ -1106,5 +1117,32 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn concrete_client_state_go_types() {
+        assert_eq!(
+            ClientState::Tendermint(Box::default()).go_type(),
+            "*tendermint.ClientState"
+        );
+        assert_eq!(
+            ClientState::Solomachine(Box::default()).go_type(),
+            "*solomachine.ClientState"
+        );
+        assert_eq!(
+            ClientState::Localhost(LocalhostClientState::default()).go_type(),
+            "*localhost.ClientState"
+        );
+    }
+
+    #[test]
+    fn upgrade_validation_names_expected_and_actual_client_types() {
+        let client = Any::pack(&tmpb::ClientState::default());
+        let consensus = Any::pack(&sm::ConsensusState::default());
+        let error = validate_upgrade_client(Some(&client), Some(&consensus))
+            .expect_err("the client and consensus types differ");
+        assert!(error.log.starts_with(
+            "consensus state's client-type does not match client. expected: 07-tendermint, got: 06-solomachine"
+        ));
     }
 }

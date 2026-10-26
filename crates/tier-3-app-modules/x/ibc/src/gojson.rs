@@ -118,7 +118,10 @@ fn to_serde(v: &gojson::Value) -> Result<Value, String> {
             Kind::Number(n) => serde_json::from_str::<serde_json::Number>(n)
                 .map(Value::Number)
                 .map_err(|e| e.to_string())?,
-            Kind::String(s) => Value::String(s.clone()),
+            // JSON unquoting returns ordinary UTF-8. Normalize immediately
+            // into the lossless representation used for Go strings by the
+            // rest of the application, including gostr's reserved scalars.
+            Kind::String(s) => Value::String(gostr::canonical(s).into_owned()),
             Kind::Array(items) => Value::Array(
                 items
                     .iter()
@@ -214,6 +217,12 @@ mod tests {
         assert_eq!(
             decode_string_fields(br#"{"denom":"a\ud800b"}"#, &["denom"]).unwrap(),
             vec!["a\u{fffd}b".to_owned()]
+        );
+        let reserved =
+            decode_string_fields("{\"denom\":\"\u{10ffff}\"}".as_bytes(), &["denom"]).unwrap();
+        assert_eq!(
+            gostr::to_go_bytes(&reserved[0]).as_ref(),
+            "\u{10ffff}".as_bytes()
         );
         let deep = format!("{}1{}", "[".repeat(129), "]".repeat(129));
         assert!(first_value(deep.as_bytes()).is_err());
