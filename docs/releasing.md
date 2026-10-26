@@ -82,6 +82,11 @@ then open a PR with the result.
   crate version at that commit; otherwise the run fails and says so.
 - Re-running a failed release run (same commit, tag already made by it)
   retries the build and publish.
+- The release is created as a draft, the archives attached, and only then
+  published: the repository has immutable releases on, so a published
+  release takes no new assets. A re-run finishes a draft left behind; a
+  release already published can't be fixed in place, so release the next
+  version instead.
 
 ## Repository settings
 
