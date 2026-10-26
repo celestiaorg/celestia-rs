@@ -1,0 +1,26 @@
+name: slack-test
+
+# Temporary: checks that PROTOCOL_CI_SLACK_WEBHOOK_URL posts to #protocol-ci
+# (nightly.yml's `report` job uses it). Runs on its own PR and on demand;
+# delete once the message has arrived.
+on:
+  pull_request:
+    paths: [.github/workflows/slack-test.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          webhook: ${{ secrets.PROTOCOL_CI_SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          errors: true
+          payload: |
+            {
+              "text": ${{ toJSON(format('{0} | test message from the nightly failure notifier (ignore): {1}/{0}/actions/runs/{2}', github.repository, github.server_url, github.run_id)) }}
+            }
