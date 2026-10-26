@@ -181,6 +181,7 @@ apphash() {
   help celestia_rs_apphash_match gauge "1 app hash matches the reference RPC, 0 MISMATCH (parity bug), -1 check could not run."
   help celestia_rs_apphash_check_timestamp_seconds gauge "When the app hash was last checked."
   local net home rpc ref _rest rc
+  # _rest takes the optional log and valoper columns so they do not end up in ref.
   while read -r net home rpc ref _rest; do
     "$CHECK_APPHASH" "$rpc" "$ref" </dev/null >/dev/null 2>&1; rc=$?
     case $rc in 0) emit celestia_rs_apphash_match "$net" 1 ;; 1) emit celestia_rs_apphash_match "$net" 0 ;; *) emit celestia_rs_apphash_match "$net" -1 ;; esac

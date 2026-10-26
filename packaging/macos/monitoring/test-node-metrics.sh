@@ -169,7 +169,8 @@ fi
 # --- apphash -----------------------------------------------------------------
 cat >"$t/check-apphash.sh" <<'EOF'
 #!/usr/bin/env bash
-[[ $2 == https://ref.invalid ]] || exit 3 # the extra nodes.conf columns stay out
+# Both arguments are checked: the log and valoper columns must not leak into the reference.
+[[ $2 == https://ref.invalid ]] || exit 2
 case $1 in
   http://127.0.0.1:1111) echo OK; exit 0 ;;
   http://127.0.0.1:2222) echo MISMATCH >&2; exit 1 ;;
