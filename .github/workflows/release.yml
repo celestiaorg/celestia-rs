@@ -45,7 +45,7 @@ jobs:
       release: ${{ steps.plan.outputs.release }}
       label: ${{ steps.plan.outputs.label }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - id: plan
         env:
           BEFORE: ${{ github.event.before }}
@@ -116,7 +116,7 @@ jobs:
             os: ubuntu-22.04
             cross: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -176,7 +176,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: CHANGELOG.md
           sparse-checkout-cone-mode: false
