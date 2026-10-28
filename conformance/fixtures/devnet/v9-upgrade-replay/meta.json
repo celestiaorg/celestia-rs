@@ -1,0 +1,10 @@
+{
+  "scenario": "v9-upgrade-replay",
+  "chain_id": "test",
+  "celestia_app": "v9.0.8",
+  "celestia_core": "v0.42.3",
+  "committed_heights": 40,
+  "workload": "v9-upgrade.sh",
+  "generated_at": "2026-10-28T21:47:15Z",
+  "celestia_app_next": "v10.5.0"
+}

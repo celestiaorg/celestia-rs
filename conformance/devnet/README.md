@@ -24,6 +24,28 @@ Only Go (module proxy) and cargo are needed; no public RPC access.
 Genesis keys and times are random per run, so regenerating a scenario
 replaces its fixture wholesale.
 
+`SAVE_BLOCKS=1` additionally dumps the stopped core's block store as
+`blocks.bin.gz` (alternating length-prefixed block and seen-commit
+protobufs, compressed with gzip) and retains the binaries' module/compiler
+provenance in `go-build-info.txt`. These full, signed blocks allow
+`BlockExecutor` validation and persisted nodestore handshake tests; an
+ABCI recording alone cannot reconstruct authenticated commits.
+
+```bash
+SAVE_BLOCKS=1 APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test \
+  conformance/devnet/devnet.sh v9-upgrade-replay 40 conformance/devnet/workloads/v9-upgrade.sh
+cargo test -p devnet-conformance --test upgrade_handshake
+```
+
+The upgrade handshake regression validates Go blocks and seen commits,
+forwards reconstructed requests unchanged into the real App, and compares
+consensus results to the Go recording. It closes and reopens the app,
+block and state databases at H−1, H and H+1, both after saving a block and
+after committing the app before saving consensus state, on each persistent
+backend. Recovery must restore the uninterrupted state and execute the
+next authentic block. This is a controlled restart test with synced writes;
+abrupt process termination and power-loss durability require separate tests.
+
 Workloads may ship `<name>.setup.sh` (genesis accounts, run before gentx)
 and `<name>.genesis.py` (edits the final genesis, e.g. short gov voting
 periods); `CHAIN_ID` overrides the chain id and `ALLOW_HALT=1` accepts a
