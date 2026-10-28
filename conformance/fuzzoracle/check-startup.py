@@ -36,6 +36,8 @@ def check(binary, driver, version):
                 if len(homes) != 2 or any(not p.name.startswith("celestia-fuzzoracle-")
                                           or not p.is_dir() for p in homes):
                     raise RuntimeError(f"oracles did not create separate homes: {homes}")
+                if any(not (p / "data").is_dir() for p in homes):
+                    raise RuntimeError("App startup did not use each private home/data directory")
                 for child in children:
                     child.stdin.close()
                     if child.wait(timeout=30) != 0:
