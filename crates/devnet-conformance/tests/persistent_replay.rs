@@ -8,6 +8,76 @@ use app::{App, AppOptions};
 use celestia_proto::celestia_core_proto::abci::{request, response};
 use devnet_conformance::load_exchanges;
 use devnet_conformance::replay::{Report, replay_into};
+use prost::Message as _;
+
+/// Go v9 can produce the upgrade-commit snapshot, but pinned Go v10
+/// accepts its offer then aborts restoration because the newly mounted
+/// stores have no version at H. The H+1 snapshot is the successful control.
+#[test]
+fn go_upgrade_snapshot_restore_boundary() -> anyhow::Result<()> {
+    use celestia_proto::celestia_core_proto::abci::{
+        RequestApplySnapshotChunk, RequestOfferSnapshot, Snapshot,
+    };
+    let scenario = "v9-upgrade-replay";
+    let dir = devnet_conformance::scenario_dir(scenario).join("snapshots");
+    let hashes = go_app_hashes(&load_exchanges(scenario)?);
+    for backend in multistore::kvdb::BackendKind::ALL {
+        for height in [12_u64, 13] {
+            let case = dir.join(height.to_string());
+            let oracle: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(case.join("oracle.json"))?)?;
+            let snapshot =
+                Snapshot::decode(std::fs::read(case.join("snapshot.proto"))?.as_slice())?;
+            assert_eq!(snapshot.height, height);
+            assert_eq!(snapshot.chunks, 1);
+            let app_hash = hex::decode(oracle["app_hash"].as_str().expect("Go app hash"))?;
+            assert_eq!(
+                app_hash,
+                hashes
+                    .iter()
+                    .find(|(h, _)| u64::try_from(*h).ok() == Some(height))
+                    .expect("recorded height")
+                    .1
+            );
+            let home = tempfile::tempdir()?;
+            let mut opts = options();
+            opts.db.backend = *backend;
+            opts.chain_id = Some("test".into());
+            let mut app = App::open_with(home.path(), opts.clone())?;
+            let offered = app.offer_snapshot(RequestOfferSnapshot {
+                snapshot: Some(snapshot),
+                app_hash: app_hash.clone(),
+                app_version: 10,
+            });
+            assert_eq!(offered.result, 1, "{backend} h={height}");
+            let applied = app.apply_snapshot_chunk(RequestApplySnapshotChunk {
+                index: 0,
+                chunk: std::fs::read(case.join("chunk-0"))?,
+                sender: "pinned-go".into(),
+            });
+            let expected = if height == 12 { 2 } else { 1 };
+            assert_eq!(oracle["offer_result"], 1);
+            assert_eq!(oracle["apply_result"], expected);
+            assert_eq!(applied.result, expected, "{backend} h={height}");
+            if height == 12 {
+                assert_eq!(
+                    app.info().last_block_height,
+                    0,
+                    "failed restore must not advance Info"
+                );
+            } else {
+                assert_eq!(app.info().last_block_app_hash, app_hash);
+                assert_eq!(app.info().last_block_height, 13);
+                assert_eq!(app.info().app_version, 10);
+                drop(app);
+                let mut app = App::open_with(home.path(), opts)?;
+                assert_eq!(app.info().last_block_app_hash, app_hash);
+                assert_parity(scenario, &replay_into(scenario, &mut app, 13, None)?);
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Every recorded scenario (new ones are picked up automatically).
 fn scenarios() -> Vec<String> {

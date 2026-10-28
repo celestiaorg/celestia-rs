@@ -391,8 +391,17 @@ test), then start that harness's count again.
   the remaining blocks, including post-upgrade bank and reward txs.
   Call counts distinguish real-App replay from stored-response recovery.
   This is controlled close/reopen with synced writes; abrupt process /
-  power loss and exact-upgrade-height snapshot restoration still need
-  separate evidence against pinned Go.
+  power loss still needs separate evidence.
+  *Snapshot boundary (2026-10-28):* on the same fixture (H=12), pinned Go
+  v9.0.8 exports H, but v10.5.0 cannot export H after opening the upgraded
+  database (`fibre` has no version at H). A fresh Go v10 receiver accepts
+  the v9-produced H snapshot, then aborts restoration (`valaddr` version
+  0 versus H). The v10 H+1 export/restore control succeeds with the
+  recorded app hash. Frozen Go snapshots pin matching Rust outcomes on
+  both backends, including successful H+1 reopen and replay through the
+  remaining transactions. This is a shared exact-height limitation, not
+  evidence for a permissive restore change or completion of snapshot /
+  mainnet-state qualification. Reproduction: `conformance/devnet/README.md`.
   *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
   executed by `follow` with every app hash and tx result matching (M13).
 
