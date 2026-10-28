@@ -127,9 +127,14 @@ appd_for() { case $1 in v9-*) echo "$V9" ;; *) echo "$V10" ;; esac; }
 # Flags of a deliver run, chosen by the seed: IBC always (the mock
 # counterparty's packets cover every scenario), the others in rotation.
 deliver_flags() {
-  local scen=$1 s=$2
+  local scen=$1 s=$2 mode
   local f=(DELIVER_IBC=1)
-  case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1 "DELIVER_HL_ISM=$(pick "$((s / 3))" noop message-id merkle-root)") ;; esac
+  case $scen in *hyperlane* | *zkism*)
+    mode=$(pick "$((s / 3))" noop message-id merkle-root)
+    f+=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
+    [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+    ;;
+  esac
   [ $((s % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
   [ $((s % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
   [ $((s % 4)) -eq 1 ] && f+=(DELIVER_RECHECK=1)

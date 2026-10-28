@@ -18,6 +18,10 @@
 # (default noop). Multisig modes use harness-held 2-of-3 validators and
 # fail as incomplete evidence unless both incoming collateral and synthetic
 # transfers succeed. HL_VERIFIED and DELIVER_STATS retain their counts.
+# DELIVER_HL_REJECT=1 requires a signed ISM; it first rejects malformed
+# metadata then retries the same message in adjacent transactions. Every
+# required pair must reject at verification and then succeed, or exit nonzero.
+# Cannot be combined with DELIVER_UPGRADE (its early fixture windows).
 #
 # The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.5.0): when Go
 # raises the app version, the harness stops the Go app after that Commit

@@ -376,6 +376,21 @@ even when every Go/Rust rejection matched. Default `noop` behavior is
 preserved. Nightly hyperlane/zkism runs rotate all three modes independently
 of gas-sweep selection, retaining the mode in their `.env` evidence.
 
+`DELIVER_HL_REJECT=1` requires a signed ISM and begins with a controlled
+phase: missing, duplicated, reversed and invalid-recovery signatures, plus
+Merkle proof and signed-index mutations for `merkle-root`. Each invalid tx
+is immediately followed by valid metadata for the exact same message ID.
+Both include the ISM selection. Coverage requires adjacent finalized txs,
+the expected verification-stage rejection, and a successful retry; this
+checks rollback of mailbox receipts written before verification. Unrelated
+generators, gas sweeps and user scripts wait until every pair completes,
+then resume. `HL_RETRIED` and `DELIVER_STATS` retain per-case counts,
+failures, controlled-phase block count and completion height. Missing or
+failed pairs exit nonzero even if Go and Rust agree. Nightly signed modes
+enable this phase; noop runs retain their existing behavior.
+Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
+upgrade driver's early fixture windows would silently weaken that campaign.
+
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
 `celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before
