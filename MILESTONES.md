@@ -228,7 +228,7 @@ could commit a block Go rejects. F1 is sized for the second case ("would
 we let a large share of mainnet stake run this?"), not only for the
 first.
 
-### Where fuzzing stands (2026-10-16)
+### Historical fuzzing baseline (2026-10-16)
 
 Harnesses (details: `docs/security.md`, "Fuzzing"):
 
@@ -244,14 +244,22 @@ Harnesses (details: `docs/security.md`, "Fuzzing"):
 | cargo-fuzz (10 targets) | crashes only (p2p, ABCI, RPC, light client, decoders, square) | nightly (600 s each) | 6, 9, 10 |
 | Devnet replays, mixed Go + Rust soaks, `follow` on Mocha / mainnet | recorded and real blocks | CI / manual | 11, 26, 27, 35 + the four S3 bugs |
 
-The reason this is not yet enough: the strongest harness (`deliver`, the
-only one that signs, finalizes and compares app hashes on generated input)
-found ten splits in its **first and only** pass, so it is far from
-saturated; it and every other execution harness run only by hand; and
-whole areas (IBC with valid proofs, the v9→v10 upgrade, mainnet-sized
-state, the consensus layer, the Mac's aarch64 build) are not fuzzed at
-all. Findings 24 and 25 (address length, secp256k1 `r`/`s` reduction) were
-found by reading code, not by any harness.
+At that baseline, `deliver` found ten splits in its first pass and the
+execution harnesses ran only by hand. Findings 24 and 25 (address length,
+secp256k1 `r`/`s` reduction) came from code review. This table is historical;
+it does not describe the current scheduling or implemented harness paths.
+
+**Current state (2026-10-28):** `.github/workflows/fuzz-exec.yml` schedules
+`json_*`, consensus `c_*`, `exec`, `pp`, generated `deliver` and upgrade
+shards against pinned Go v10.5.0 / v9.0.8. `DELIVER_IBC` has a mock
+counterparty with signed headers and real ICS-23 proofs; signed Hyperlane
+message-ID and Merkle-root multisig delivery modes are implemented.
+`deliver` switches Go binaries across the v9 → v10.5 upgrade. The campaign,
+coverage and determinism evidence below records progress on earlier
+candidates. Production qualification still requires all exit criteria on
+one exact candidate, including volume, coverage, mainnet-shaped state,
+independent review and three consecutive clean nights. Green CI or a
+running canary does not establish that qualification.
 
 ### Remaining work and exit criteria
 
@@ -260,17 +268,18 @@ compared field. A finding resets the clock of the harness that found it:
 fix it, pin it in `crates/fuzz-diff/tests/regressions.jsonl` (or a unit
 test), then start that harness's count again.
 
-- [ ] **F1.1 Every differential harness in CI.** Nightly today runs only
-  the decode-level ops and cargo-fuzz. Add nightly jobs that build Go
-  `celestia-appd` v10.5.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
-  does) and run `json_*`, `exec` (default, `nil`, `synth`, `json` modes),
-  `pp` and `deliver`, rotating over every devnet scenario and both app
-  versions with a new seed per night, and uploading findings like the
-  existing `fuzz-diff` job. Exit: all four run every night and a mismatch
-  fails the job.
+- [ ] **F1.1 Every differential harness in CI.** The execution workflow
+  and `crates/fuzz-diff/nightly.sh` implement the nightly `json_*`, `exec`
+  (default, `nil`, `synth`, `json`), `pp` and `deliver` rotation across both
+  app versions, with source metadata and finding artifacts; a mismatch
+  fails the job. The workflow also runs consensus-type differentials and
+  generated upgrade shards. Exit: all four execution harnesses run every
+  night on the qualifying candidate, both pinned Go versions and every
+  applicable devnet scenario are covered by the rotation, and a mismatch
+  fails the job. C1.2 / F1.2 retain the separate three-night requirement.
 
 - [ ] **F1.2 Saturate `deliver`.** Exit: after the last fix, at least
-  **1 000 000 finalized txs** (~100× today) across every scenario at both
+  **1 000 000 finalized txs** across every scenario at both
   app versions with no mismatch, **and** no new consensus finding from
   any harness for **3 consecutive nightly runs** (owner, 2026-10-28;
   ADR 0009). The finalized-tx requirement still applies separately.
@@ -285,11 +294,12 @@ test), then start that harness's count again.
   txs) and are excluded from the volume count as incomplete block runs.
   The volume and 3-night requirements remain open.
 
-- [ ] **F1.3 Measure coverage of consensus code.** Today
-  `fuzz-diff coverage` only counts message types in the recorded
-  scenarios. Run `deliver` / `exec` / `pp` under `cargo llvm-cov` and
-  report line and branch coverage of tier-3 modules, `x-ante`, the tx
-  decoder, PrepareProposal / ProcessProposal and the multistore. Exit: a
+- [ ] **F1.3 Measure coverage of consensus code.** The recorded-message
+  inventory (`fuzz-diff coverage`) and instrumented campaigns below do
+  not yet establish complete per-error and branch coverage. Qualifying
+  `deliver` / `exec` / `pp` runs under `cargo llvm-cov` must report line
+  and branch coverage of tier-3 modules, `x-ante`, the tx decoder,
+  PrepareProposal / ProcessProposal and the multistore. Exit: a
   committed report (`docs/fuzz-coverage.md`) in which every registered
   `sdk.Msg` type has been executed by Go **successfully** and with each of
   its error codes in `deliver`, and every uncovered branch of a message
@@ -329,34 +339,52 @@ test), then start that harness's count again.
   pinned Go oracle. Rerunning the affected v9 `gov` seed with Go 1.26.9
   matched every compared field (150 blocks, 2,614 finalized txs); two
   isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
-  The full campaign is being rerun with the pinned compiler. The
-  coverage baseline still needs a full rerun with the new accounting.
+  C1.4 records subsequent pinned-compiler campaign results. The coverage
+  baseline still needs a full rerun with the new accounting.
 
-- [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
-  harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /
-  `MsgTimeout` / `MsgUpdateClient` fails at proof or header verification
-  before the transfer, PFM or ICA host code runs; those paths are covered
-  only by the recorded `ibc`, `ibc-edge`, `ibc-upgrades` fixtures and the
-  decode-only `json_*` ops. Mainnet carries IBC traffic every block. Add a
-  counterparty to the harness (the ibc-go testing package already used by
-  `conformance/ibcvectors`, or harness-held counterparty validator keys)
-  so fuzzed packets arrive with valid proofs: ICS-20 denoms / amounts /
-  receivers, PFM memos (forwards, retries, refunds, timeouts), ICA host
-  txs in both encodings, acks of every form, client updates with mutated
-  headers, misbehaviour, frozen and expired clients. Same for hyperlane:
-  `MsgProcessMessage` signed by harness-held multisig ISM validators.
-  Exit: F1.2's criteria for this harness too.
+- [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
+  already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
+  whose harness-held ed25519 validator signs headers committing to IAVL
+  stores. Real ICS-23 proofs reach client, connection and channel setup,
+  packet receive / acknowledgement / timeout, PFM and ICA host paths,
+  misbehaviour, client upgrades and channel upgrades / closes. It also
+  mutates proofs and packets; these paths are no longer restricted to
+  recorded fixtures or decode-only operations. See `docs/security.md`,
+  "Fuzzing", for the implemented sequence and its limits.
+  `DELIVER_HL_ISM=message-id|merkle-root` uses harness-held 2-of-3
+  validators and requires successful incoming collateral and synthetic
+  transfers, with explicit counts. PR #113's pinned v10.5.0 / v9.0.8
+  campaigns on `65e08e3` completed 400 generated blocks, 966 finalized
+  txs and 65 successful signed incoming transfers without a consensus
+  mismatch. These are bounded candidate results, not saturation.
+  Remaining work is to establish complete coverage and qualifying volume
+  across ICS-20 denoms / amounts / receivers, PFM forwards / retries /
+  refunds / timeouts, both ICA encodings, acknowledgement forms, mutated
+  headers, misbehaviour, frozen / expired clients and signed Hyperlane
+  verification paths. Exit: F1.2's exact-candidate volume and three-night
+  criteria for this harness too, plus F1.3's coverage accounting.
 
-- [ ] **F1.5 The v9 → v10 upgrade.** `exec`, `pp` and `deliver` do not
-  support `v9-upgrade` (the binary switch inside `Commit`); the upgrade
-  every mainnet Rust validator must execute exactly like Go's multiplexer
-  is covered by one recorded scenario. Exit: `deliver` across the upgrade
-  (Go switched from v9.0.8 to v10.x at the upgrade height, Rust in one
+- [ ] **F1.5 The v9 → v10 upgrade.** `deliver` supports `v9-upgrade` and
+  `v9-upgrade-boundary`, switching the pinned Go binary after the upgrade
+  commit while Rust continues in one process. `DELIVER_UPGRADE` builds
+  generated state before signalling and continues after the switch. The
+  C1.4 v10.5.0 campaign records twelve clean upgrade seeds; this is progress
+  toward the required 50 runs, not completion on a new candidate.
+  Exit: `deliver` across the upgrade (Go v9.0.8 → v10.5.0, Rust in one
   process), with fuzzed state built before it (pending unbondings and
   redelegations, open proposals, grants, allowances, vesting, IBC
   channels, hyperlane routes) and fuzzed txs after it, clean over at least
   50 upgrade runs with different seeds; and F1.6's mainnet-state rehearsal
   of the same upgrade.
+  *Persistent replay (2026-10-28, PR #108):* both recorded upgrade
+  scenarios reopen the real App at H−1, H and H+1 on RocksDB and redb
+  (12 cases), retaining Go app-hash / tx-result parity, app version and
+  store mount / commit timing. This tests orderly database reopen.
+  Real-App replay through persisted nodestore when the app upgrade commit
+  succeeds before consensus state is saved remains unproved; the current
+  ABCI recordings lack the full blocks and commit signatures needed for
+  that test. Abrupt process / power loss and exact-upgrade-height snapshot
+  restoration also need separate evidence against pinned Go.
   *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
   executed by `follow` with every app hash and tx result matching (M13).
 
@@ -370,12 +398,11 @@ test), then start that harness's count again.
   the v9 → v10 upgrade executed on that state with every store's root
   hash equal.
 
-- [ ] **F1.7 Consensus-layer differential.** fuzz-diff covers the
-  application; the celestia-core side (block, vote and evidence
-  validation) is fuzzed for crashes only, so a Rust validator that accepts
-  a proposal, block part, vote or evidence Go rejects (or the reverse)
-  would only be found on a live network. Add Go oracle ops built from
-  celestia-core v0.42.3 / v0.40.9 and compare under mutation:
+- [ ] **F1.7 Consensus-layer differential.** The consensus oracle ops
+  listed below already compare celestia-core behavior under mutation and
+  run in the nightly execution workflow. Qualification still needs the
+  required input volume after each op's last fix. Required scope against
+  pinned celestia-core v0.42.3 / v0.40.9:
   `ValidateBlock` and header validation, `LastCommit` / commit
   verification, vote and proposal signature checks, duplicate-vote and
   light-client-attack evidence verification, validator updates from
@@ -421,9 +448,11 @@ test), then start that harness's count again.
   *2026-10-20:* `follow` matched mainnet 15,105,001 → 15,137,961 (32,961
   heights, the last ~11,600 of the v9 era and ~21,300 at v10).
 
-- [ ] **F1.9 Determinism of the Rust binary.** The differentials run on
-  x86_64 Linux; the validator runs the `dist` build on aarch64 macOS, with
-  parallel erasure coding, a signature cache and background snapshots.
+- [ ] **F1.9 Determinism of the Rust binary.** C1.3 records Linux x86_64
+  and macOS aarch64 determinism runs on earlier candidates. The validator's
+  `dist` build uses parallel erasure coding, a signature cache and
+  background snapshots; qualification needs fresh evidence on its exact
+  candidate.
   Exit: `deliver` and `pp` clean on the Mac (or a `macos-14` runner) with
   the `dist` profile; the same seeds give byte-identical results under
   `RAYON_NUM_THREADS=1` and the default, with the signature cache on and
