@@ -21,6 +21,8 @@
 #   abci.rec            every ABCI frame (abci_server::record format)
 #   state/<h>.json      devnet-oracle statedump at heights 1 and <blocks>
 #   meta.json           versions used
+# SAVE_BLOCKS=1 also retains blocks.bin.gz: the stopped Go node's complete
+# blocks and seen commits, for validated node-store / handshake replay.
 #
 # APP_V9=1 runs celestia-app v9.0.8 (app version 9; binary cached as
 # $DEVNET_BIN/v9/celestia-appd, which also serves the workload's CLI).
@@ -72,6 +74,9 @@ fi
 build_go github.com/celestiaorg/celestia-core@$CORE_VERSION ./cmd/cometbft cometbft
 [ -x "$BIN/devnet-oracle" ] || (cd "$ROOT/conformance/devnet-oracle" && go build -o "$BIN/devnet-oracle" .)
 [ -x "$BIN/abci-recorder" ] || (cd "$ROOT" && cargo build -q --release -p abci-server --bin abci-recorder && cp target/release/abci-recorder "$BIN/")
+if [ -n "${SAVE_BLOCKS:-}" ] && [ ! -x "$BIN/rpc-recorder" ]; then
+  (cd "$ROOT/conformance/rpccorpus/recorder" && GOFLAGS=-mod=mod go build -o "$BIN/rpc-recorder" .)
+fi
 
 H=$WORK/home
 A="celestia-appd --home $H"
@@ -170,6 +175,10 @@ until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do
 done
 # Stop consensus first so the app commits nothing past what core saw.
 kill $CORE 2>/dev/null || true; sleep 2; cleanup
+if [ -n "${SAVE_BLOCKS:-}" ]; then
+  # The dumper opens the stopped core's Pebble store exclusively.
+  wait "$CORE" 2>/dev/null || true
+fi
 [ -f "$WORK/app-v10.pid" ] && kill "$(cat "$WORK/app-v10.pid")" 2>/dev/null || true
 sleep 1
 LAST=$(curl -s localhost:$P_RPC/status >/dev/null 2>&1 || true; python3 - "$WORK/abci.rec" <<'PY'
@@ -197,6 +206,19 @@ if [ -n "${CTYPES_ONLY:-}" ]; then
 fi
 
 rm -rf "$OUT" && mkdir -p "$OUT/state"
+if [ -n "${SAVE_BLOCKS:-}" ]; then
+  "$BIN/rpc-recorder" dump -data "$H/core/data" -out "$OUT/blocks.bin.gz"
+  go version -m "$(command -v celestia-appd)" "$BIN/cometbft" "$BIN/rpc-recorder" > "$OUT/go-build-info.txt"
+  # Copied module-cache sources appear as (devel) in Go build metadata;
+  # preserve build_go's pinned source-module receipts alongside it.
+  for binary in "$(command -v celestia-appd)" "$BIN/cometbft"; do
+    printf 'source-module\t%s\t%s\n' "$binary" "$(cat "$binary.module")" >> "$OUT/go-build-info.txt"
+  done
+  if [ -n "${UPGRADE_TO_V10:-}" ]; then
+    go version -m "$BIN/celestia-appd" >> "$OUT/go-build-info.txt"
+    printf 'source-module\t%s\t%s\n' "$BIN/celestia-appd" "$(cat "$BIN/celestia-appd.module")" >> "$OUT/go-build-info.txt"
+  fi
+fi
 cp "$H/config/genesis.json" "$OUT/genesis.json"
 cp "$WORK/abci.rec" "$OUT/abci.rec"
 for h in 1 "$LAST"; do
@@ -207,6 +229,7 @@ cat > "$OUT/meta.json" <<JSON
   "scenario": "$SCENARIO",
   "chain_id": "$CHAIN_ID",
   "celestia_app": "$APP_VERSION",
+  "celestia_app_next": $(if [ -n "${UPGRADE_TO_V10:-}" ]; then echo '"v10.5.0"'; else echo null; fi),
   "celestia_core": "$CORE_VERSION",
   "committed_heights": $LAST,
   "workload": "$(basename "${WORKLOAD:-none}")",

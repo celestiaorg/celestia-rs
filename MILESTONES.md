@@ -380,11 +380,19 @@ test), then start that harness's count again.
   scenarios reopen the real App at H−1, H and H+1 on RocksDB and redb
   (12 cases), retaining Go app-hash / tx-result parity, app version and
   store mount / commit timing. This tests orderly database reopen.
-  Real-App replay through persisted nodestore when the app upgrade commit
-  succeeds before consensus state is saved remains unproved; the current
-  ABCI recordings lack the full blocks and commit signatures needed for
-  that test. Abrupt process / power loss and exact-upgrade-height snapshot
-  restoration also need separate evidence against pinned Go.
+  *Real-App node recovery (2026-10-28):* `upgrade_handshake` uses a new
+  `v9-upgrade-replay` fixture with 40 full Go blocks, seen commits and
+  matching ABCI responses (v9.0.8 → v10.5.0, core v0.42.3, Go 1.26.9).
+  On RocksDB and redb at H−1 / H / H+1, it reopens all databases after
+  either saving the block or committing the real App before consensus
+  state is saved (12 cases). Seen commits verify against the current
+  validators; reconstructed requests are passed unchanged and compared
+  with Go. Recovery must match uninterrupted state and continue through
+  the remaining blocks, including post-upgrade bank and reward txs.
+  Call counts distinguish real-App replay from stored-response recovery.
+  This is controlled close/reopen with synced writes; abrupt process /
+  power loss and exact-upgrade-height snapshot restoration still need
+  separate evidence against pinned Go.
   *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
   executed by `follow` with every app hash and tx result matching (M13).
 
