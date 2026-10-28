@@ -23,6 +23,7 @@ class NightlyFlagsTest(unittest.TestCase):
         for line in result.stdout.splitlines():
             flags = dict(word.split("=", 1) for word in line.split())
             self.assertEqual(flags["DELIVER_HL"], "1")
+            self.assertEqual("DELIVER_HL_REJECT" in flags, flags["DELIVER_HL_ISM"] != "noop")
             combinations.add((flags["DELIVER_HL_ISM"], "DELIVER_SWEEP" in flags))
         self.assertEqual(combinations, {
             (mode, sweep)

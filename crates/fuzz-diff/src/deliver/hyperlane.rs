@@ -4,12 +4,84 @@ use anyhow::{Context as _, bail};
 use celestia_proto::Any;
 use celestia_proto::hyperlane::core::interchain_security::v1 as pb;
 use k256::ecdsa::SigningKey;
+use prost::Message as _;
 use x_hyperlane::ism::checkpoint_digest;
 use x_hyperlane::util::{branch_root, keccak256};
 
 pub(super) struct Verifier {
     name: String,
     keys: Vec<SigningKey>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Rejection {
+    MissingSignature,
+    DuplicateSignature,
+    ReversedSignatures,
+    RecoveryId,
+    MerkleProof,
+    SignedIndex,
+}
+
+impl Rejection {
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::MissingSignature => "missing-signature",
+            Self::DuplicateSignature => "duplicate-signature",
+            Self::ReversedSignatures => "reversed-signatures",
+            Self::RecoveryId => "recovery-id",
+            Self::MerkleProof => "merkle-proof",
+            Self::SignedIndex => "signed-index",
+        }
+    }
+
+    pub(super) fn error_marker(self) -> &'static str {
+        match self {
+            Self::MissingSignature => "threshold can not be reached",
+            Self::DuplicateSignature | Self::ReversedSignatures | Self::MerkleProof => {
+                "ism verification failed"
+            }
+            Self::RecoveryId => "failed to recover validator signature",
+            Self::SignedIndex => "invalid signed index",
+        }
+    }
+
+    fn mutate(self, metadata: &mut Vec<u8>) {
+        let offset = metadata.len() - 130;
+        match self {
+            Self::MissingSignature => metadata.truncate(metadata.len() - 65),
+            Self::DuplicateSignature => metadata.copy_within(offset..offset + 65, offset + 65),
+            Self::ReversedSignatures => metadata[offset..].rotate_left(65),
+            Self::RecoveryId => metadata[offset + 64] = 0,
+            Self::MerkleProof => metadata[68] ^= 1,
+            Self::SignedIndex => {
+                metadata[32..36].copy_from_slice(&1u32.to_be_bytes());
+                metadata[1092..1096].copy_from_slice(&0u32.to_be_bytes());
+            }
+        }
+    }
+
+    pub(super) fn messages(self, valid: &[Any]) -> anyhow::Result<Vec<Any>> {
+        use celestia_proto::hyperlane::core::v1::MsgProcessMessage;
+        let mut invalid = valid.to_vec();
+        let last = invalid.last_mut().context("missing incoming message")?;
+        anyhow::ensure!(
+            last.type_url == <MsgProcessMessage as prost::Name>::type_url(),
+            "expected incoming MsgProcessMessage"
+        );
+        let mut process = MsgProcessMessage::decode(last.value.as_slice())?;
+        let mut metadata = hex::decode(process.metadata.trim_start_matches("0x"))?;
+        let minimum = if matches!(self, Self::MerkleProof | Self::SignedIndex) {
+            1226
+        } else {
+            198
+        };
+        anyhow::ensure!(metadata.len() >= minimum, "missing signed metadata");
+        self.mutate(&mut metadata);
+        process.metadata = format!("0x{}", hex::encode(metadata));
+        *last = Any::pack(&process);
+        Ok(invalid)
+    }
 }
 
 impl Default for Verifier {
@@ -59,6 +131,30 @@ impl Verifier {
 
     pub(super) fn name(&self) -> &str {
         &self.name
+    }
+
+    pub(super) fn rejections(&self) -> &'static [Rejection] {
+        use Rejection::{
+            DuplicateSignature, MerkleProof, MissingSignature, RecoveryId, ReversedSignatures,
+            SignedIndex,
+        };
+        match self.name.as_str() {
+            "message-id" => &[
+                MissingSignature,
+                DuplicateSignature,
+                ReversedSignatures,
+                RecoveryId,
+            ],
+            "merkle-root" => &[
+                MissingSignature,
+                DuplicateSignature,
+                ReversedSignatures,
+                RecoveryId,
+                MerkleProof,
+                SignedIndex,
+            ],
+            _ => &[],
+        }
     }
 
     pub(super) fn create(&self, creator: String) -> Any {
@@ -155,6 +251,38 @@ mod tests {
             for index in [0, 1, 3, u32::MAX] {
                 let metadata = verifier.metadata(88, &message.bytes(), index);
                 assert!(ism.verify(&mut context, &metadata, &message).unwrap());
+                for &case in verifier.rejections() {
+                    use celestia_proto::hyperlane::core::v1::MsgProcessMessage;
+                    let process = MsgProcessMessage {
+                        message: format!("0x{}", hex::encode(message.bytes())),
+                        metadata: format!("0x{}", hex::encode(&metadata)),
+                        ..Default::default()
+                    };
+                    let prefix =
+                        Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend::default());
+                    let invalid = case
+                        .messages(&[prefix.clone(), Any::pack(&process)])
+                        .unwrap();
+                    assert_eq!(invalid[0], prefix);
+                    let invalid = MsgProcessMessage::decode(invalid[1].value.as_slice()).unwrap();
+                    assert_eq!(invalid.message, process.message);
+                    let mutated = hex::decode(invalid.metadata.trim_start_matches("0x")).unwrap();
+                    let result = ism.verify(&mut context, &mutated, &message);
+                    match case {
+                        Rejection::DuplicateSignature
+                        | Rejection::ReversedSignatures
+                        | Rejection::MerkleProof => assert!(!result.unwrap(), "{}", case.name()),
+                        _ => assert!(
+                            result
+                                .unwrap_err()
+                                .to_string()
+                                .contains(case.error_marker()),
+                            "{}",
+                            case.name()
+                        ),
+                    }
+                    assert!(ism.verify(&mut context, &metadata, &message).unwrap());
+                }
                 let mut changed = message.clone();
                 changed.body.push(4);
                 assert!(!ism.verify(&mut context, &metadata, &changed).unwrap());
@@ -182,5 +310,18 @@ mod tests {
                 .metadata(88, b"message", 0)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn rejection_requires_process_message_and_sufficient_metadata() {
+        use celestia_proto::hyperlane::core::v1::MsgProcessMessage;
+        assert!(Rejection::MissingSignature.messages(&[]).is_err());
+        let mut message = Any::pack(&MsgProcessMessage {
+            metadata: format!("0x{}", "00".repeat(198)),
+            ..Default::default()
+        });
+        assert!(Rejection::SignedIndex.messages(&[message.clone()]).is_err());
+        message.type_url = "unexpected".into();
+        assert!(Rejection::MissingSignature.messages(&[message]).is_err());
     }
 }

@@ -34,6 +34,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use abci_server::record::{Direction, parse};
+use anyhow::Context as _;
 use celestia_proto::Any;
 use celestia_proto::celestia_core_proto::abci::{self, Request, Response, request, response};
 use celestia_proto::cosmos::base::v1beta1::Coin;
@@ -160,6 +161,16 @@ pub struct Stats {
     pub hl_verification: Option<String>,
     /// Successful collateral / synthetic transfers verified by that ISM.
     pub hl_verified: BTreeMap<String, u64>,
+    /// Required rejection / successful same-message retry cases.
+    pub hl_rejection_cases: Vec<String>,
+    /// Complete expected-rejection then successful retry pairs, by case.
+    pub hl_retried: BTreeMap<String, u64>,
+    /// Incomplete or invalid rejection/retry pairs; not consensus findings.
+    pub hl_rejection_failures: Vec<String>,
+    /// Generated blocks in the controlled rejection setup phase.
+    pub hl_rejection_blocks: u64,
+    /// Height where every rejection/retry case was completed.
+    pub hl_rejection_complete_height: Option<i64>,
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
     /// code 0, in txs Go's `CheckTx` rejected).
     pub wire: BTreeMap<String, (u64, u64, u64)>,
@@ -1197,9 +1208,78 @@ impl HlSeq {
 }
 
 impl Stats {
+    fn hl_rejection_setup(&self) -> bool {
+        self.hl_rejection_cases
+            .iter()
+            .any(|case| self.hl_retried.get(case).copied().unwrap_or(0) == 0)
+    }
+
+    fn observe_hl_pair(
+        &mut self,
+        case: hyperlane::Rejection,
+        bad: &[u8],
+        good: &[u8],
+        txs: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+    ) {
+        let bad_result = txs
+            .iter()
+            .zip(results)
+            .enumerate()
+            .find(|(_, (tx, _))| tx.as_slice() == bad);
+        let good_result = txs
+            .iter()
+            .zip(results)
+            .enumerate()
+            .find(|(_, (tx, _))| tx.as_slice() == good);
+        let complete = match (bad_result, good_result) {
+            (Some((b, (_, rejected))), Some((g, (_, retried)))) => {
+                b + 1 == g
+                    && rejected.code != 0
+                    && rejected.log.contains(case.error_marker())
+                    && retried.code == 0
+            }
+            _ => false,
+        };
+        if complete {
+            *self.hl_retried.entry(case.name().into()).or_default() += 1;
+        } else {
+            let outcome = |r: Option<(usize, (&Vec<u8>, &abci::ExecTxResult))>| {
+                r.map_or_else(
+                    || "not finalized".into(),
+                    |(index, (_, r))| {
+                        format!(
+                            "index={index} code={}/{} log={}",
+                            r.codespace,
+                            r.code,
+                            r.log.chars().take(160).collect::<String>()
+                        )
+                    },
+                )
+            };
+            self.hl_rejection_failures.push(format!(
+                "{}: rejected [{}], retry [{}]",
+                case.name(),
+                outcome(bad_result),
+                outcome(good_result)
+            ));
+        }
+    }
+
     /// Require both signed incoming-transfer paths when a multisig ISM was
     /// explicitly selected. Matching rejections alone are incomplete evidence.
     pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.hl_rejection_failures.is_empty(),
+            "incomplete Hyperlane rejection/retry evidence: {:?}",
+            self.hl_rejection_failures
+        );
+        anyhow::ensure!(
+            !self.hl_rejection_setup(),
+            "incomplete Hyperlane rejection/retry coverage: required {:?}, completed {:?}",
+            self.hl_rejection_cases,
+            self.hl_retried
+        );
         if let Some(mode) = &self.hl_verification
             && mode != "noop"
         {
@@ -3396,9 +3476,18 @@ pub fn run(
 ) -> anyhow::Result<Stats> {
     let verifier = hyperlane::Verifier::from_env()?;
     let hl_on = std::env::var("DELIVER_HL").is_ok();
+    let hl_reject = std::env::var("DELIVER_HL_REJECT").is_ok();
     anyhow::ensure!(
         hl_on || verifier.name() == "noop",
         "DELIVER_HL_ISM requires DELIVER_HL"
+    );
+    anyhow::ensure!(
+        !hl_reject || (hl_on && verifier.name() != "noop"),
+        "DELIVER_HL_REJECT requires DELIVER_HL and a signed DELIVER_HL_ISM"
+    );
+    anyhow::ensure!(
+        !hl_reject || std::env::var("DELIVER_UPGRADE").is_err(),
+        "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
     );
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
@@ -3430,6 +3519,15 @@ pub fn run(
     let mut rust = trace::Traced::new(app::App::new())?;
     let mut stats = Stats {
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
+        hl_rejection_cases: if hl_reject {
+            verifier
+                .rejections()
+                .iter()
+                .map(|case| case.name().into())
+                .collect()
+        } else {
+            Vec::new()
+        },
         ..Stats::default()
     };
     let mut gov_coverage = gov_coverage::Proposals::default();
@@ -3733,6 +3831,9 @@ pub fn run(
             a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
+        let hl_setup = stats.hl_rejection_setup();
+        stats.hl_rejection_blocks += u64::from(hl_setup);
+        let mut hl_pair = None;
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
@@ -3743,7 +3844,7 @@ pub fn run(
             && upg
                 .upgrade_height
                 .is_some_and(|h| (h..=h + 2).contains(&height));
-        if upg.on && !bootstrap {
+        if upg.on && !bootstrap && !hl_setup {
             txs = upg.txs(&mut gn, b, height, &hl_seq.token);
         }
         if bootstrap {
@@ -3763,7 +3864,7 @@ pub fn run(
                     }
                 }
             }
-        } else if let Some(block) = script.pop_front() {
+        } else if !hl_setup && let Some(block) = script.pop_front() {
             scripted = true;
             for (i, mut msg, gas) in block {
                 // `vote <account>`: a yes vote on the latest proposal.
@@ -3781,7 +3882,7 @@ pub fn run(
                 }
             }
         } else {
-            if let Some(d) = ibc.as_mut() {
+            if !hl_setup && let Some(d) = ibc.as_mut() {
                 let accounts: Vec<(String, Vec<u8>)> = gn
                     .accts
                     .iter()
@@ -3807,7 +3908,7 @@ pub fn run(
                     gn.dict.string("source_channel", id.as_bytes());
                 }
             }
-            if sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+            if !hl_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
                 for t in sweep_txs(&mut gn, i, &msgs, used) {
                     stats.swept += 1;
@@ -3816,10 +3917,33 @@ pub fn run(
             }
             if hl_seq.on && hl_seq.pending.is_none() {
                 let msgs = hl_seq.msgs(&gn);
+                let rejection =
+                    if hl_setup && matches!(hl_seq.step, 11 | 14) {
+                        hl_seq.verifier.rejections().iter().copied().find(|case| {
+                            stats.hl_retried.get(case.name()).copied().unwrap_or(0) == 0
+                        })
+                    } else {
+                        None
+                    };
+                let bad = if let Some(case) = rejection {
+                    let invalid = case.messages(&msgs)?;
+                    let tx = sign_simple(&gn, HL_ACCT, invalid, 3_000_000)
+                        .context("signing rejected Hyperlane tx")?;
+                    gn.accts[HL_ACCT].seq += 1;
+                    txs.push(tx.clone());
+                    Some((case, tx))
+                } else {
+                    None
+                };
                 if let Some(t) = sign_simple(&gn, HL_ACCT, msgs, 3_000_000) {
                     gn.accts[HL_ACCT].seq += 1;
                     hl_seq.pending = Some(t.clone());
+                    if let Some((case, bad)) = bad {
+                        hl_pair = Some((case, bad, t.clone()));
+                    }
                     txs.push(t);
+                } else if bad.is_some() {
+                    anyhow::bail!("signing valid Hyperlane retry");
                 }
                 // The generated votes (any option) stay off the proposal.
                 gn.proposals.retain(|p| *p != hl_seq.proposal);
@@ -3868,7 +3992,7 @@ pub fn run(
                     }
                 }
             }
-            if govpass && !govpass_delegated {
+            if !hl_setup && govpass && !govpass_delegated {
                 // Stake on every bonded validator (only bonded stake is
                 // tallied; one may be jailed for downtime).
                 let vals = bonded_validators(&mut rust);
@@ -3891,7 +4015,7 @@ pub fn run(
                         }
                     }
                 }
-            } else if govpass && b % 4 == 0 && !gn.proposals.is_empty() {
+            } else if !hl_setup && govpass && b % 4 == 0 && !gn.proposals.is_empty() {
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
                 if !gn.gov_msgs.is_empty() {
@@ -3943,10 +4067,14 @@ pub fn run(
                     }
                 }
             }
-            let k = match gn.m.rng.below(20) {
-                0 => 0,
-                1 => per_block * 4,
-                _ => 1 + gn.m.rng.below(per_block.max(1)),
+            let k = if hl_setup {
+                0
+            } else {
+                match gn.m.rng.below(20) {
+                    0 => 0,
+                    1 => per_block * 4,
+                    _ => 1 + gn.m.rng.below(per_block.max(1)),
+                }
             };
             for _ in 0..k {
                 gn.wire.pending.clear();
@@ -4322,6 +4450,12 @@ pub fn run(
         valsets.insert(height + 2, apply_updates(&next, &g.validator_updates));
         valsets.retain(|h, _| *h + 8 > height);
         times.retain(|h, _| *h + 8 > height);
+        if let Some((case, bad, good)) = hl_pair {
+            stats.observe_hl_pair(case, &bad, &good, &fb.txs, &g.tx_results);
+            if !stats.hl_rejection_setup() && stats.hl_rejection_complete_height.is_none() {
+                stats.hl_rejection_complete_height = Some(height);
+            }
+        }
         if hl_seq.pending.is_some() {
             if let Some((t, res)) = fb
                 .txs
@@ -6044,6 +6178,61 @@ pub fn coverage() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejection_coverage_requires_a_complete_ordered_same_message_pair() {
+        let case = hyperlane::Rejection::MissingSignature;
+        let txs = vec![vec![1], vec![2]];
+        let rejected = abci::ExecTxResult {
+            code: 1,
+            log: case.error_marker().into(),
+            ..Default::default()
+        };
+        let accepted = abci::ExecTxResult::default();
+        let base = || Stats {
+            hl_rejection_cases: vec![case.name().into()],
+            ..Default::default()
+        };
+        assert!(base().hl_rejection_setup());
+        let mut stats = base();
+        stats.observe_hl_pair(
+            case,
+            &[1],
+            &[2],
+            &txs,
+            &[rejected.clone(), accepted.clone()],
+        );
+        assert_eq!(stats.hl_retried[case.name()], 1);
+        assert!(!stats.hl_rejection_setup());
+        assert!(stats.require_hl_coverage().is_ok());
+        let wrong_stage = abci::ExecTxResult {
+            code: 1,
+            log: "out of gas".into(),
+            ..Default::default()
+        };
+        for (txs, results) in [
+            (vec![vec![1]], vec![rejected.clone()]),
+            (
+                vec![vec![2], vec![1]],
+                vec![accepted.clone(), rejected.clone()],
+            ),
+            (
+                vec![vec![1], vec![3], vec![2]],
+                vec![rejected.clone(), accepted.clone(), accepted.clone()],
+            ),
+            (txs.clone(), vec![accepted.clone(), accepted.clone()]),
+            (txs.clone(), vec![wrong_stage, accepted]),
+            (txs, vec![rejected.clone(), rejected]),
+        ] {
+            let mut stats = base();
+            stats.observe_hl_pair(case, &[1], &[2], &txs, &results);
+            assert!(stats.hl_retried.is_empty());
+            assert_eq!(stats.hl_rejection_failures.len(), 1);
+            // A later successful pair must not hide an earlier failure.
+            stats.hl_retried.insert(case.name().into(), 1);
+            assert!(stats.require_hl_coverage().is_err());
+        }
+    }
 
     #[test]
     fn signed_hyperlane_coverage_requires_both_successful_transfers() {

@@ -500,6 +500,12 @@ fn main() -> anyhow::Result<()> {
                 st.hl_verification.as_deref().unwrap_or("noop")
             );
         }
+        for (case, n) in &st.hl_retried {
+            println!("HL_RETRIED {case} {n}");
+        }
+        for failure in &st.hl_rejection_failures {
+            println!("HL_REJECTION_FAILURE {failure}");
+        }
         for (k, n) in &st.gov_results {
             println!("GOV {k} {n}");
         }
@@ -549,6 +555,11 @@ fn main() -> anyhow::Result<()> {
                 "split": st.split,
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
+                "hl_rejection_cases": st.hl_rejection_cases,
+                "hl_retried": st.hl_retried,
+                "hl_rejection_failures": st.hl_rejection_failures,
+                "hl_rejection_blocks": st.hl_rejection_blocks,
+                "hl_rejection_complete_height": st.hl_rejection_complete_height,
             })
         );
         eprintln!(
