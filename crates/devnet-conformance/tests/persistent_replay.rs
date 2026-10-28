@@ -135,6 +135,102 @@ fn restart_halfway_resumes_from_disk_with_full_parity() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The v10 app opens immediately after the upgrade commit, before its
+/// added stores have a committed version. Exercise that boundary on disk,
+/// including the neighboring commits, rather than only a fixture's midpoint.
+#[test]
+fn restart_at_v9_upgrade_preserves_version_stores_and_parity() -> anyhow::Result<()> {
+    for scenario in ["v9-upgrade", "v9-upgrade-boundary"] {
+        let exchanges = load_exchanges(scenario)?;
+        let switch = exchanges
+            .iter()
+            .find_map(|ex| match (&ex.request.value, &ex.response.value) {
+                (
+                    Some(request::Value::FinalizeBlock(req)),
+                    Some(response::Value::FinalizeBlock(resp)),
+                ) if resp
+                    .consensus_param_updates
+                    .as_ref()
+                    .and_then(|cp| cp.version.as_ref())
+                    .is_some_and(|version| version.app == 10) =>
+                {
+                    Some(req.height)
+                }
+                _ => None,
+            })
+            .expect("recorded v9 to v10 upgrade");
+        let expected = reference(scenario)?;
+        assert_parity(scenario, &expected);
+        let hashes = go_app_hashes(&exchanges);
+        for backend in multistore::kvdb::BackendKind::ALL {
+            for checkpoint in [switch - 1, switch, switch + 1] {
+                let case = format!("{scenario} on {backend}, restart at {checkpoint}");
+                let home = tempfile::tempdir()?;
+                let mut opts = options();
+                opts.db.backend = *backend;
+                let mut app = App::open_with(home.path(), opts.clone())?;
+                let mut before = replay_into(scenario, &mut app, 0, Some(checkpoint))?;
+                assert_parity(&case, &before);
+                assert_eq!(before.matched_heights.last(), Some(&checkpoint), "{case}");
+                let info = app.info();
+                drop(app);
+
+                let mut app = App::open_with(home.path(), opts)?;
+                assert_eq!(app.info(), info, "{case}: Info changed on reopen");
+                assert_eq!(info.last_block_height, checkpoint, "{case}");
+                assert_eq!(info.app_version, if checkpoint < switch { 9 } else { 10 });
+                let go_hash = &hashes
+                    .iter()
+                    .find(|(height, _)| *height == checkpoint)
+                    .expect("recorded checkpoint")
+                    .1;
+                assert_eq!(&info.last_block_app_hash, go_hash, "{case}");
+                assert_eq!(app.chain_id(), "test", "{case}: chain id lost");
+                let committed = app
+                    .multistore()
+                    .root()
+                    .last_commit_info()
+                    .expect("committed checkpoint");
+                for store in ["fibre", "valaddr"] {
+                    assert_eq!(
+                        app.multistore().is_mounted(store),
+                        checkpoint >= switch,
+                        "{case}: {store} must mount immediately after the upgrade commit"
+                    );
+                    assert_eq!(
+                        committed.store_info(store).is_some(),
+                        checkpoint > switch,
+                        "{case}: {store} must first commit at the next height"
+                    );
+                }
+
+                let after = replay_into(scenario, &mut app, checkpoint, None)?;
+                assert_parity(&case, &after);
+                assert_eq!(
+                    after.matched_heights.first(),
+                    Some(&(checkpoint + 1)),
+                    "{case}"
+                );
+                before.matched_heights.extend(after.matched_heights);
+                assert_eq!(before.matched_heights, expected.matched_heights, "{case}");
+                assert!(
+                    before.init_chain_diffs.is_empty(),
+                    "{case}: InitChain differs"
+                );
+                assert!(
+                    before.event_log_diffs.is_empty(),
+                    "{case}: pre-restart events differ"
+                );
+                assert!(
+                    after.event_log_diffs.is_empty(),
+                    "{case}: post-restart events differ"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
     snapshot_restore_resumes_replay("staking", 0)
