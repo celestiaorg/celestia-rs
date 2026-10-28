@@ -328,6 +328,14 @@ func main() {
 	if debug.SetMemoryLimit(-1) == 1<<63-1 {
 		debug.SetMemoryLimit(1500 << 20)
 	}
+	// Even an in-memory app reads upgrade metadata from NodeHome. Isolate
+	// each oracle from the operator's home and from other oracle processes.
+	oracleHome, err := os.MkdirTemp(os.Getenv("FUZZ_ORACLE_TMPDIR"), "celestia-fuzzoracle-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(oracleHome)
+	app.NodeHome = oracleHome
 	a := app.New(log.NewNopLogger(), dbm.NewMemDB(), nil, 0, 0, simtestutil.EmptyAppOptions{})
 	enc := a.GetEncodingConfig()
 	dec := enc.TxConfig.TxDecoder()

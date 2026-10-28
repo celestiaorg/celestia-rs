@@ -14,6 +14,9 @@ pub struct Oracle {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    // Go's startup home lives here. Drop kills/reaps the process before
+    // TempDir removes its files, including after forced oracle restarts.
+    _scratch: tempfile::TempDir,
     /// The app version it implements.
     pub app_version: u64,
 }
@@ -63,9 +66,11 @@ impl Oracle {
     /// Starts the oracle for `app_version` (9 or 10).
     pub fn start(app_version: u64) -> anyhow::Result<Self> {
         let bin = oracle_binary(app_version)?;
+        let scratch = tempfile::tempdir().context("creating oracle scratch directory")?;
         // Bound the Go heap: the oracle shares the machine with other
         // nodes (the driver also restarts it every RESTART_EVERY inputs).
         let mut child = Command::new(&bin)
+            .env("FUZZ_ORACLE_TMPDIR", scratch.path())
             .env(
                 "GOMEMLIMIT",
                 std::env::var("GOMEMLIMIT").unwrap_or_else(|_| "1500MiB".into()),
@@ -81,6 +86,7 @@ impl Oracle {
             child,
             stdin,
             stdout,
+            _scratch: scratch,
             app_version,
         })
     }
