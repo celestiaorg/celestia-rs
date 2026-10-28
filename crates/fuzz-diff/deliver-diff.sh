@@ -13,6 +13,11 @@
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
 # Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
 # types.
+# DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
+# DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
+# (default noop). Multisig modes use harness-held 2-of-3 validators and
+# fail as incomplete evidence unless both incoming collateral and synthetic
+# transfers succeed. HL_VERIFIED and DELIVER_STATS retain their counts.
 #
 # The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.5.0): when Go
 # raises the app version, the harness stops the Go app after that Commit

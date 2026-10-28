@@ -48,6 +48,7 @@ use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
 mod gov_coverage;
+mod hyperlane;
 mod trace;
 mod upgrade;
 
@@ -155,6 +156,10 @@ pub struct Stats {
     pub gov_executed: BTreeMap<String, u64>,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
+    /// Selected `DELIVER_HL` ISM.
+    pub hl_verification: Option<String>,
+    /// Successful collateral / synthetic transfers verified by that ISM.
+    pub hl_verified: BTreeMap<String, u64>,
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
     /// code 0, in txs Go's `CheckTx` rejected).
     pub wire: BTreeMap<String, (u64, u64, u64)>,
@@ -892,23 +897,24 @@ struct WireGen {
 
 /// `DELIVER_HL`: the hyperlane success paths in order, one tx per
 /// generated block from a dedicated fuzz account, each step using the ids
-/// the earlier ones returned: a noop ISM, a mailbox on it, an IGP with a
+/// the earlier ones returned: an ISM (noop by default), a mailbox on it, an IGP with a
 /// gas config, a merkle tree hook, the mailbox's hooks, a collateral
 /// token with an enrolled router, a transfer out (the IGP charges its
 /// fee), `MsgPayForGas`, `MsgClaim` (fees collected), `MsgProcessMessage`
-/// of a transfer in (the noop ISM verifies it), a synthetic token, a
+/// of a transfer in (the selected ISM verifies it), a synthetic token, a
 /// transfer in minting it and one out burning it; then the transfer /
 /// payment / claim / process steps repeat. Steps 16 and 17 (first pass,
 /// app version 10) propose a `MsgCreateNativeSyntheticToken` (gov-only)
 /// and have every fuzz account vote yes.
 #[derive(Default)]
 struct HlSeq {
+    verifier: hyperlane::Verifier,
     on: bool,
     step: usize,
     tries: usize,
     /// The tx of the current step, until it is finalized.
     pending: Option<Vec<u8>>,
-    noop: String,
+    ism: String,
     mailbox: String,
     igp: String,
     hook: String,
@@ -938,8 +944,33 @@ impl HlSeq {
     const LAST: usize = 17;
     const REPEAT_FROM: usize = 8;
 
+    fn msgs(&mut self, gn: &Gen) -> Vec<Any> {
+        let message = self.msg(gn);
+        if self.verifier.name() != "noop" && matches!(self.step, 11 | 14) {
+            // Other fuzz txs can change mailbox/token overrides. Selecting
+            // the immutable multisig immediately before verification in the
+            // same atomic tx prevents a noop override from counting as
+            // successful signed coverage.
+            vec![
+                Any::pack(&celestia_proto::hyperlane::warp::v1::MsgSetToken {
+                    owner: gn.accts[HL_ACCT].acc.clone(),
+                    token_id: if self.step == 11 {
+                        self.token.clone()
+                    } else {
+                        self.synth.clone()
+                    },
+                    ism_id: self.ism.clone(),
+                    new_owner: String::new(),
+                    renounce_ownership: false,
+                }),
+                message,
+            ]
+        } else {
+            vec![message]
+        }
+    }
+
     fn msg(&mut self, gn: &Gen) -> Any {
-        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
         use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
         use celestia_proto::hyperlane::core::v1 as core;
         use celestia_proto::hyperlane::warp::v1 as warp;
@@ -969,11 +1000,11 @@ impl HlSeq {
             custom_hook_metadata: String::new(),
         };
         match self.step {
-            0 => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+            0 => self.verifier.create(me),
             1 => Any::pack(&core::MsgCreateMailbox {
                 owner: me,
                 local_domain: HL_LOCAL,
-                default_ism: self.noop.clone(),
+                default_ism: self.ism.clone(),
                 default_hook: String::new(),
                 required_hook: String::new(),
             }),
@@ -1051,10 +1082,15 @@ impl HlSeq {
                 let mut amount = [0u8; 32];
                 amount[24..].copy_from_slice(&1000u64.to_be_bytes());
                 m.extend_from_slice(&amount);
+                let metadata = self.verifier.metadata(HL_REMOTE, &m, self.nonce);
                 Any::pack(&core::MsgProcessMessage {
                     mailbox_id: self.mailbox.clone(),
                     relayer: me,
-                    metadata: String::new(),
+                    metadata: if metadata.is_empty() {
+                        String::new()
+                    } else {
+                        format!("0x{}", hex::encode(metadata))
+                    },
                     message: format!("0x{}", hex::encode(m)),
                 })
             }
@@ -1125,7 +1161,7 @@ impl HlSeq {
                     })
                     .unwrap_or_default();
             match self.step {
-                0 => self.noop = id,
+                0 => self.ism = id,
                 1 => self.mailbox = id,
                 2 => self.igp = id,
                 4 => self.hook = id,
@@ -1157,6 +1193,24 @@ impl HlSeq {
             } else {
                 self.step + 1
             };
+    }
+}
+
+impl Stats {
+    /// Require both signed incoming-transfer paths when a multisig ISM was
+    /// explicitly selected. Matching rejections alone are incomplete evidence.
+    pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
+        if let Some(mode) = &self.hl_verification
+            && mode != "noop"
+        {
+            for kind in ["collateral", "synthetic"] {
+                anyhow::ensure!(
+                    self.hl_verified.get(kind).copied().unwrap_or(0) > 0,
+                    "incomplete DELIVER_HL_ISM={mode} coverage: no successful {kind} MsgProcessMessage"
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -3340,6 +3394,12 @@ pub fn run(
     per_block: usize,
     seed: u64,
 ) -> anyhow::Result<Stats> {
+    let verifier = hyperlane::Verifier::from_env()?;
+    let hl_on = std::env::var("DELIVER_HL").is_ok();
+    anyhow::ensure!(
+        hl_on || verifier.name() == "noop",
+        "DELIVER_HL_ISM requires DELIVER_HL"
+    );
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
     // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
@@ -3368,7 +3428,10 @@ pub fn run(
         conns: BTreeMap::new(),
     };
     let mut rust = trace::Traced::new(app::App::new())?;
-    let mut stats = Stats::default();
+    let mut stats = Stats {
+        hl_verification: hl_on.then(|| verifier.name().to_owned()),
+        ..Stats::default()
+    };
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
     let pool_txs: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
@@ -3553,7 +3616,8 @@ pub fn run(
     };
     gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
     let mut hl_seq = HlSeq {
-        on: std::env::var("DELIVER_HL").is_ok(),
+        verifier,
+        on: hl_on,
         v10: app_version >= 10,
         ..HlSeq::default()
     };
@@ -3751,8 +3815,8 @@ pub fn run(
                 }
             }
             if hl_seq.on && hl_seq.pending.is_none() {
-                let msg = hl_seq.msg(&gn);
-                if let Some(t) = sign_simple(&gn, HL_ACCT, vec![msg], 3_000_000) {
+                let msgs = hl_seq.msgs(&gn);
+                if let Some(t) = sign_simple(&gn, HL_ACCT, msgs, 3_000_000) {
                     gn.accts[HL_ACCT].seq += 1;
                     hl_seq.pending = Some(t.clone());
                     txs.push(t);
@@ -4269,6 +4333,14 @@ pub fn run(
                     .into_iter()
                     .next()
                     .unwrap_or_default();
+                if res.code == 0 && matches!(hl_seq.step, 11 | 14) {
+                    let kind = if hl_seq.step == 11 {
+                        "collateral"
+                    } else {
+                        "synthetic"
+                    };
+                    *stats.hl_verified.entry(kind.into()).or_default() += 1;
+                }
                 hl_seq.result(&u, res);
             } else {
                 // Not in the block (CheckTx or PrepareProposal dropped it).
@@ -5972,6 +6044,19 @@ pub fn coverage() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_hyperlane_coverage_requires_both_successful_transfers() {
+        let mut stats = Stats {
+            hl_verification: Some("message-id".into()),
+            ..Stats::default()
+        };
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified.insert("collateral".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified.insert("synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_ok());
+    }
 
     #[test]
     fn successful_submission_does_not_execute_its_payload() {
