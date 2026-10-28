@@ -391,7 +391,7 @@ Hyperlane scenario modes enable this phase; noop runs retain their existing beha
 rotate noop, message-ID and Merkle-root verification independently of
 WIRE / SWEEP / RECHECK selection, without the rejection phase. The full
 campaign runs all three modes for each Hyperlane/zkism scenario, both with
-ordinary generation and with passed governance proposals, and distributes
+ordinary generation and with `DELIVER_GOVPASS` enabled, and distributes
 its twelve distinct upgrade seeds across all three modes. These selections
 are retained in each run's `.env`; signed success counters describe the
 whole run and do not alone establish successful delivery on both sides of
