@@ -5,6 +5,8 @@ here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12, B1) and thei
 progress notes are archived in
 [`docs/milestones-completed.md`](docs/milestones-completed.md). Direction
 and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
+Observation windows: [`ADR 0009`](docs/adr/0009-three-night-acceptance.md)
+(owner, 2026-10-28: three clean nights; three days for the mainnet soak).
 Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
 **End state:** evidence sufficient to recommend Rust for Celestia mainnet's
@@ -105,20 +107,20 @@ Every item must pass on the commit the canary runs.
 
 - [ ] **C1.1 Mainnet full node through the v10 upgrade.** M13's mainnet
   full node (release build) at the tip across height 15,116,658 and then
-  at least **7 days** at v10, with every `check-apphash.sh` check and every
+  at least **3 days** at v10, with every `check-apphash.sh` check and every
   tx result matching. Partial F1.8 (c) and F1.5.
   *2026-10-20:* the Mac was offline across the upgrade height (M14), so
-  this is the catch-up through it, not a live crossing; the 7 days at v10
+  this is the catch-up through it, not a live crossing; the 3 days at v10
   count from when it is back at the tip.
   The upgrade height itself is covered by the HTTPS follow in M13
   (15,105,001 → 15,137,961, every height matching); C1.1 still needs the
-  Mac's P2P node at the tip for 7 days.
+  Mac's P2P node at the tip for 3 days.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
   `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
   v10.5.0 and v9.0.8, rotating scenarios with a new seed per night; a
-  mismatch fails the job. Exit: running, and clean for **7 consecutive
+  mismatch fails the job. Exit: running, and clean for **3 consecutive
   nights** before M14 starts.
   *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
   drives `crates/fuzz-diff/nightly.sh` over 12 jobs: pinned `deliver`
@@ -126,7 +128,7 @@ Every item must pass on the commit the canary runs.
   `exec` (mode per round), `pp`, six `deliver` shards and two
   `DELIVER_UPGRADE` shards, each looping new seeds and flag sets
   (`IBC`, `HL`, `WIRE`, `SWEEP`, `RECHECK`, `SIM`, `GOVPASS`) for 2 h. Its
-  first local smoke found findings 75-77 (fixed); the 7-night count starts
+  first local smoke found findings 75-77 (fixed); the 3-night count starts
   at the first clean night.
 
 - [ ] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
@@ -270,9 +272,8 @@ test), then start that harness's count again.
 - [ ] **F1.2 Saturate `deliver`.** Exit: after the last fix, at least
   **1 000 000 finalized txs** (~100× today) across every scenario at both
   app versions with no mismatch, **and** no new consensus finding from
-  any harness for **14 consecutive nightly runs**. Proposed numbers; the
-  owner may change them, but the second condition (finding rate has gone
-  to zero) is the one that matters.
+  any harness for **3 consecutive nightly runs** (owner, 2026-10-28;
+  ADR 0009). The finalized-tx requirement still applies separately.
   *Evidence tooling (2026-10-21):* nightly artifacts now retain clean
   outputs, exit codes, source revision / worktree state and finalized-tx
   counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
@@ -282,7 +283,7 @@ test), then start that harness's count again.
   across 66 complete 300-block runs. Two additional recorded-upgrade
   scenarios intentionally stopped at the upgrade signal (167 finalized
   txs) and are excluded from the volume count as incomplete block runs.
-  The volume and 14-night requirements remain open.
+  The volume and 3-night requirements remain open.
 
 - [ ] **F1.3 Measure coverage of consensus code.** Today
   `fuzz-diff coverage` only counts message types in the recorded

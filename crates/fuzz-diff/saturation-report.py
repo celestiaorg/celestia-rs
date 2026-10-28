@@ -5,7 +5,7 @@ Usage: python3 crates/fuzz-diff/saturation-report.py <findings-dir> [...]
 Only successful, clean-worktree runs with zero consensus mismatches count.
 Identical scenario / seed / size / flags at one revision count once, even
 when artifacts are downloaded twice. This is volume evidence, not proof
-of the separate 14-night or scenario-coverage gates.
+of the separate 3-night or scenario-coverage gates.
 """
 
 import collections

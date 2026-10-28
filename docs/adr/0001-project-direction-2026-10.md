@@ -2,6 +2,8 @@
 
 **Status:** Accepted. Supersedes the conflicting parts of
 [`../specs/2026-05-14-celestia-rs-design.md`](../specs/2026-05-14-celestia-rs-design.md).
+The observation windows and PR workflow below are superseded by
+[`ADR 0009`](0009-three-night-acceptance.md) (2026-10-28).
 
 ## Context
 
