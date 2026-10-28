@@ -91,7 +91,7 @@ def report(roots):
     print(f"\nCounted {len(runs)} unique clean runs; "
           f"{sum(st['delivered'] for st in runs.values())} finalized txs across all revisions.")
     print("Assess the F1.2 volume gate per revision, after the last fix; "
-          "this report does not establish 14 clean nights or complete scenario coverage.")
+          "this report does not establish 3 clean nights or complete scenario coverage.")
     print(f"Both Go oracles must have been built with {PINNED_GO}.")
     if excluded:
         print("Excluded: " + ", ".join(f"{n} {why}" for why, n in sorted(excluded.items())) + ".")
