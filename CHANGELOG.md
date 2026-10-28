@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Validator signing fails if the parent directory of its signing-state file
+  cannot be opened or synced. Directory metadata is synced before returning
+  a signature, with a final full file sync on macOS after the rename.
+
 ## v0.1.0-rc.5 (2026-10-26)
 
 ### Fixed

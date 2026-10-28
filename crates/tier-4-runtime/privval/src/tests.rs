@@ -4,6 +4,46 @@
 use super::*;
 use ctypes::vote::{PRECOMMIT_TYPE, PREVOTE_TYPE};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DirectoryFault {
+    Open,
+    Sync,
+}
+
+thread_local! {
+    static DIRECTORY_FAULT: std::cell::Cell<Option<DirectoryFault>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+pub(super) fn directory_fault(stage: DirectoryFault) -> std::io::Result<()> {
+    DIRECTORY_FAULT.with(|fault| {
+        if fault.get() == Some(stage) {
+            fault.set(None);
+            Err(std::io::Error::other(format!(
+                "injected directory {stage:?} failure"
+            )))
+        } else {
+            Ok(())
+        }
+    })
+}
+
+struct DirectoryFaultGuard;
+
+impl DirectoryFaultGuard {
+    fn new(stage: DirectoryFault) -> Self {
+        DIRECTORY_FAULT.with(|fault| assert!(fault.replace(Some(stage)).is_none()));
+        Self
+    }
+}
+
+impl Drop for DirectoryFaultGuard {
+    fn drop(&mut self) {
+        DIRECTORY_FAULT.with(|fault| fault.set(None));
+    }
+}
+
 fn sha(b: &[u8]) -> Vec<u8> {
     hash::sha256(b).to_vec()
 }
@@ -261,6 +301,91 @@ fn failed_state_write_releases_no_proposal_signature() {
     proposal.signature.clear();
     restarted.sign_proposal("c", &mut proposal).unwrap();
     assert!(!proposal.signature.is_empty());
+}
+
+#[test]
+fn directory_failure_releases_no_vote_or_extension_signature() {
+    for stage in [DirectoryFault::Open, DirectoryFault::Sync] {
+        let (mut pv, dir) = temp_pv();
+        let before = pv.last_sign_state.clone();
+        let state_path = dir.path().join("state.json");
+        let persisted = fs::read(&state_path).unwrap();
+        let mut v = vote(&pv, PRECOMMIT_TYPE, 5, 0, 1);
+        v.extension = b"extension".to_vec();
+        {
+            let _fault = DirectoryFaultGuard::new(stage);
+            let error = pv.sign_vote("c", &mut v).unwrap_err();
+            assert!(error.0.contains("injected directory"), "{error}");
+        }
+        assert!(v.signature.is_empty(), "{stage:?}");
+        assert!(v.extension_signature.is_empty(), "{stage:?}");
+        assert_eq!(pv.last_sign_state, before, "{stage:?}");
+        let mut restarted = FilePv::load(dir.path().join("key.json"), &state_path).unwrap();
+        if stage == DirectoryFault::Open {
+            assert_eq!(fs::read(&state_path).unwrap(), persisted);
+            assert_eq!(restarted.last_sign_state, before);
+        } else {
+            // Rename already published the advanced state. An uncertain
+            // commit must not be mistaken for rollback after a restart.
+            assert_eq!(restarted.last_sign_state.height, 5);
+            let mut conflict = vote(&restarted, PRECOMMIT_TYPE, 5, 0, 2);
+            assert!(restarted.sign_vote("c", &mut conflict).is_err());
+            assert!(conflict.signature.is_empty());
+        }
+        // A successful retry establishes durability before releasing either signature.
+        pv.sign_vote("c", &mut v).unwrap();
+        assert!(!v.signature.is_empty());
+        assert!(!v.extension_signature.is_empty());
+        let mut restarted = FilePv::load(dir.path().join("key.json"), &state_path).unwrap();
+        let mut conflict = vote(&restarted, PRECOMMIT_TYPE, 5, 0, 2);
+        assert!(restarted.sign_vote("c", &mut conflict).is_err());
+        assert!(conflict.signature.is_empty());
+    }
+}
+
+#[test]
+fn directory_failure_releases_no_proposal_signature() {
+    for stage in [DirectoryFault::Open, DirectoryFault::Sync] {
+        let (mut pv, dir) = temp_pv();
+        let before = pv.last_sign_state.clone();
+        let state_path = dir.path().join("state.json");
+        let persisted = fs::read(&state_path).unwrap();
+        let mut proposal = pb::Proposal {
+            r#type: ctypes::vote::PROPOSAL_TYPE,
+            height: 5,
+            round: 0,
+            pol_round: -1,
+            block_id: Some(block_id(1)),
+            timestamp: ts(1_700_000_000, 0),
+            signature: vec![],
+        };
+        {
+            let _fault = DirectoryFaultGuard::new(stage);
+            let error = pv.sign_proposal("c", &mut proposal).unwrap_err();
+            assert!(error.0.contains("injected directory"), "{error}");
+        }
+        assert!(proposal.signature.is_empty(), "{stage:?}");
+        assert_eq!(pv.last_sign_state, before, "{stage:?}");
+        let mut restarted = FilePv::load(dir.path().join("key.json"), &state_path).unwrap();
+        if stage == DirectoryFault::Open {
+            assert_eq!(fs::read(&state_path).unwrap(), persisted);
+            assert_eq!(restarted.last_sign_state, before);
+        } else {
+            assert_eq!(restarted.last_sign_state.height, 5);
+            let mut conflict = proposal.clone();
+            conflict.block_id = Some(block_id(2));
+            assert!(restarted.sign_proposal("c", &mut conflict).is_err());
+            assert!(conflict.signature.is_empty());
+        }
+        pv.sign_proposal("c", &mut proposal).unwrap();
+        assert!(!proposal.signature.is_empty());
+        let mut restarted = FilePv::load(dir.path().join("key.json"), &state_path).unwrap();
+        let mut conflict = proposal.clone();
+        conflict.signature.clear();
+        conflict.block_id = Some(block_id(2));
+        assert!(restarted.sign_proposal("c", &mut conflict).is_err());
+        assert!(conflict.signature.is_empty());
+    }
 }
 
 #[test]
