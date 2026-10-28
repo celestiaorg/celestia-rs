@@ -155,6 +155,8 @@ pub struct Stats {
     /// Messages actually executed by Go in passed generated proposals,
     /// counted by type URL (submission alone is not execution).
     pub gov_executed: BTreeMap<String, u64>,
+    /// Exact payload types explicitly required to execute through governance.
+    pub gov_required: Vec<String>,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
     /// Selected `DELIVER_HL` ISM.
@@ -1266,6 +1268,24 @@ impl Stats {
         }
     }
 
+    /// Reject missing authority-handler execution even when proposal submission
+    /// and unrelated proposal payloads succeeded.
+    pub fn require_gov_coverage(&self) -> anyhow::Result<()> {
+        for required in &self.gov_required {
+            anyhow::ensure!(
+                self.gov_executed.get(required).copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_GOV_REQUIRE coverage: no executed {required} proposal payload"
+            );
+        }
+        Ok(())
+    }
+
+    fn gov_setup(&self) -> bool {
+        self.gov_required
+            .iter()
+            .any(|required| self.gov_executed.get(required).copied().unwrap_or(0) == 0)
+    }
+
     /// Require both signed incoming-transfer paths when a multisig ISM was
     /// explicitly selected. Matching rejections alone are incomplete evidence.
     pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
@@ -1292,6 +1312,26 @@ impl Stats {
         }
         Ok(())
     }
+}
+
+fn gov_requirements(value: Option<&str>, govpass: bool) -> anyhow::Result<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    anyhow::ensure!(govpass, "DELIVER_GOV_REQUIRE requires DELIVER_GOVPASS");
+    let mut required = BTreeSet::new();
+    for url in value.split(',').map(str::trim) {
+        anyhow::ensure!(
+            url.starts_with('/')
+                && url.len() > 1
+                && url[1..]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.'),
+            "DELIVER_GOV_REQUIRE expects nonempty exact message type URLs"
+        );
+        required.insert(url.to_owned());
+    }
+    Ok(required.into_iter().collect())
 }
 
 /// A generated, signed tx.
@@ -3489,6 +3529,18 @@ pub fn run(
         !hl_reject || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
     );
+    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
+    let required = std::env::var_os("DELIVER_GOV_REQUIRE")
+        .map(|v| {
+            v.into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_GOV_REQUIRE must be UTF-8"))
+        })
+        .transpose()?;
+    let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    anyhow::ensure!(
+        gov_required.is_empty() || std::env::var("DELIVER_UPGRADE").is_err(),
+        "DELIVER_GOV_REQUIRE cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
+    );
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
     // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
@@ -3518,6 +3570,7 @@ pub fn run(
     };
     let mut rust = trace::Traced::new(app::App::new())?;
     let mut stats = Stats {
+        gov_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_rejection_cases: if hl_reject {
             verifier
@@ -3812,7 +3865,6 @@ pub fn run(
     // `DELIVER_GOVPASS`: the fuzz accounts pass every proposal (deposit and
     // yes votes, re-sent every 4 blocks), so each proposal's messages run
     // and a failure's text is stored in `failed_reason` (state).
-    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let mut govpass_delegated = false;
     let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
@@ -3837,6 +3889,8 @@ pub fn run(
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
+        let gov_setup = !hl_setup && stats.gov_setup();
+        scripted |= gov_setup;
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
@@ -3864,7 +3918,10 @@ pub fn run(
                     }
                 }
             }
-        } else if !hl_setup && let Some(block) = script.pop_front() {
+        } else if !hl_setup
+            && !gov_setup
+            && let Some(block) = script.pop_front()
+        {
             scripted = true;
             for (i, mut msg, gas) in block {
                 // `vote <account>`: a yes vote on the latest proposal.
@@ -3882,7 +3939,10 @@ pub fn run(
                 }
             }
         } else {
-            if !hl_setup && let Some(d) = ibc.as_mut() {
+            if !hl_setup
+                && !gov_setup
+                && let Some(d) = ibc.as_mut()
+            {
                 let accounts: Vec<(String, Vec<u8>)> = gn
                     .accts
                     .iter()
@@ -3908,14 +3968,14 @@ pub fn run(
                     gn.dict.string("source_channel", id.as_bytes());
                 }
             }
-            if !hl_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+            if !hl_setup && !gov_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
                 for t in sweep_txs(&mut gn, i, &msgs, used) {
                     stats.swept += 1;
                     txs.push(t);
                 }
             }
-            if hl_seq.on && hl_seq.pending.is_none() {
+            if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
                 let msgs = hl_seq.msgs(&gn);
                 let rejection =
                     if hl_setup && matches!(hl_seq.step, 11 | 14) {
@@ -4015,11 +4075,23 @@ pub fn run(
                         }
                     }
                 }
-            } else if !hl_setup && govpass && b % 4 == 0 && !gn.proposals.is_empty() {
+            } else if !hl_setup && govpass && (gov_setup || b % 4 == 0) {
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
-                if !gn.gov_msgs.is_empty() {
-                    let msg = gn.gov_msgs[(b / 4) % gn.gov_msgs.len()].clone();
+                let msg = if gov_setup {
+                    gn.gov_msgs
+                        .iter()
+                        .find(|msg| {
+                            stats.gov_required.contains(&msg.type_url)
+                                && stats.gov_executed.get(&msg.type_url).copied().unwrap_or(0) == 0
+                        })
+                        .cloned()
+                } else if gn.gov_msgs.is_empty() {
+                    None
+                } else {
+                    Some(gn.gov_msgs[(b / 4) % gn.gov_msgs.len()].clone())
+                };
+                if let Some(msg) = msg {
                     let submit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
                         messages: vec![msg],
                         initial_deposit: vec![Coin {
@@ -4067,7 +4139,7 @@ pub fn run(
                     }
                 }
             }
-            let k = if hl_setup {
+            let k = if hl_setup || gov_setup {
                 0
             } else {
                 match gn.m.rng.below(20) {
@@ -6232,6 +6304,55 @@ mod tests {
             stats.hl_retried.insert(case.name().into(), 1);
             assert!(stats.require_hl_coverage().is_err());
         }
+    }
+
+    #[test]
+    fn required_governance_payloads_need_actual_execution() {
+        let bank = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        let circuit = "/cosmos.circuit.v1.MsgAuthorizeCircuitBreaker";
+        let mut stats = Stats {
+            gov_required: vec![bank.into(), circuit.into()],
+            ..Stats::default()
+        };
+        assert!(stats.gov_setup());
+        stats
+            .gov_executed
+            .insert("/hyperlane.warp.v1.MsgCreateNativeSyntheticToken".into(), 1);
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(bank.into(), 0);
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(bank.into(), 1);
+        assert!(stats.gov_setup());
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(circuit.into(), 1);
+        assert!(!stats.gov_setup());
+        assert!(stats.require_gov_coverage().is_ok());
+        assert!(Stats::default().require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn governance_requirement_is_explicit_and_never_silently_empty() {
+        assert!(gov_requirements(None, false).unwrap().is_empty());
+        let bank = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        assert!(gov_requirements(Some(bank), false).is_err());
+        for invalid in [
+            "",
+            ",",
+            " , ",
+            "MsgSetSendEnabled",
+            "/",
+            "/cosmos bank.Msg",
+            "/a,,/b",
+        ] {
+            assert!(
+                gov_requirements(Some(invalid), true).is_err(),
+                "{invalid:?}"
+            );
+        }
+        assert_eq!(
+            gov_requirements(Some(&format!(" {bank},{bank} ")), true).unwrap(),
+            vec![bank]
+        );
     }
 
     #[test]

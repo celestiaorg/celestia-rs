@@ -399,6 +399,20 @@ the upgrade. Budget-skipped campaign cases still make the campaign fail.
 Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
 upgrade driver's early fixture windows would silently weaken that campaign.
 
+`DELIVER_GOVPASS` periodically submits valid single-payload authority
+proposals even when no earlier proposal exists, then deposits and votes on
+the known proposals. `DELIVER_GOV_REQUIRE` accepts comma-separated exact
+payload type URLs. Until every required payload executes, a controlled phase
+pauses custom scripts and unrelated generators, forces the required proposal
+traffic into each block and continues depositing and voting. It then resumes
+the selected IBC, Hyperlane, recheck and other traffic. The option requires
+`DELIVER_GOVPASS`, rejects empty or malformed URLs, and retains both
+requirements and actual `GOV_EXECUTED` counts in `DELIVER_STATS`. Combining it
+with `DELIVER_UPGRADE` is rejected because the controlled phase would skip the
+upgrade campaign's early fixtures. This prevents proposal submission or an
+unrelated passed proposal from being mistaken for execution of the authority
+handler under test.
+
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
 `celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before

@@ -553,6 +553,8 @@ fn main() -> anyhow::Result<()> {
                 "delivered_ok": st.delivered_ok,
                 "mismatches": st.mismatches.len(),
                 "split": st.split,
+                "gov_required": st.gov_required,
+                "gov_executed": st.gov_executed,
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
                 "hl_rejection_cases": st.hl_rejection_cases,
@@ -581,6 +583,7 @@ fn main() -> anyhow::Result<()> {
             std::process::exit(1);
         }
         st.require_hl_coverage()?;
+        st.require_gov_coverage()?;
         return Ok(());
     }
     if argv.get(1).map(String::as_str) == Some("record") {
