@@ -61,12 +61,30 @@ def check(binary, driver, version):
             # The driver kills Go; its parent-owned scratch must still vanish.
             for _ in range(2):
                 result = subprocess.run(
-                    [str(driver), "--app-version", str(version), "--ops", "c_ed25519",
-                     "--iters", "1", "--seed", "950101"],
-                    env=env, capture_output=True, text=True, timeout=60,
+                    [str(driver), "record", str(version), "oracle-startup-smoke"],
+                    input="iw 00\n",
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
                 )
-                if result.returncode or "done:" not in result.stderr:
-                    raise RuntimeError(f"Rust/Go smoke failed: {result.stdout}\n{result.stderr}")
+                if (
+                    result.returncode
+                    or "agree iw" not in result.stderr
+                    or "MISMATCH" in result.stderr
+                ):
+                    raise RuntimeError(
+                        f"Rust/Go smoke failed: {result.stdout}\n{result.stderr}"
+                    )
+                record = json.loads(result.stdout)
+                if (
+                    record.get("app_version") != version
+                    or record.get("op") != "iw"
+                    or record.get("input") != "00"
+                    or record["go"].get("err")
+                    or record["go"].get("is_wrapper", False)
+                ):
+                    raise RuntimeError(f"missing expected index-wrapper reply: {record}")
                 if list(root.iterdir()):
                     raise RuntimeError("Rust-driven oracle scratch survived forced shutdown")
         print(json.dumps({"binary": str(binary), "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
