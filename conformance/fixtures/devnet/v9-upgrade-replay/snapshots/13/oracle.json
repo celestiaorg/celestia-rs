@@ -1,0 +1,14 @@
+{
+  "height": 13,
+  "producer": "v10.5.0",
+  "receiver": "v10.5.0",
+  "core": "v0.42.3",
+  "compiler": "go1.26.9",
+  "app_version": 10,
+  "app_hash": "d5833099ab82cf8a45f725113e990387b2252668f39e723aa4bd8b7443b1c409",
+  "offer_result": 1,
+  "apply_result": 1,
+  "snapshot_sha256": "76cf11b78a6a94e89545e68f6be40314ad696bf63307aeedbf3ca495c9f0d7ae",
+  "chunk_sha256": "3983ef77d93904a677bf14087f218ef1e7362827e209c51849dc80272c7f07d3",
+  "scope": "one complete snapshot chunk; fresh receiver per case; source app hash checked against recorded Go FinalizeBlock response"
+}
