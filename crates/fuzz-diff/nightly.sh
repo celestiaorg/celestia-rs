@@ -129,7 +129,7 @@ appd_for() { case $1 in v9-*) echo "$V9" ;; *) echo "$V10" ;; esac; }
 deliver_flags() {
   local scen=$1 s=$2
   local f=(DELIVER_IBC=1)
-  case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
+  case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1 "DELIVER_HL_ISM=$(pick "$((s / 3))" noop message-id merkle-root)") ;; esac
   [ $((s % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
   [ $((s % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
   [ $((s % 4)) -eq 1 ] && f+=(DELIVER_RECHECK=1)

@@ -363,6 +363,19 @@ the IGP), `MsgProcessMessage` 22-26, `MsgRemoteTransfer` 22-25 and
 mismatch. Generated gov proposals carry `MsgCreateNativeSyntheticToken`
 too (a fuzz-created mailbox; a new denom, `utia` or empty).
 
+`DELIVER_HL_ISM=message-id` or `merkle-root` replaces the scripted mailbox's
+default noop verifier with a 2-of-3 multisig whose Ethereum signing keys the
+harness holds. Incoming transfers carry signed checkpoints; Merkle-root
+metadata also carries a valid membership proof. Each signed incoming tx
+sets its recipient token's ISM immediately before `MsgProcessMessage`, so
+other fuzz transactions cannot replace verification with a noop and still
+earn signed-coverage credit. `HL_VERIFIED` lines and `DELIVER_STATS` retain
+successful collateral and synthetic deliveries separately. A selected
+multisig mode exits nonzero if either success path was never reached,
+even when every Go/Rust rejection matched. Default `noop` behavior is
+preserved. Nightly hyperlane/zkism runs rotate all three modes independently
+of gas-sweep selection, retaining the mode in their `.env` evidence.
+
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
 `celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before

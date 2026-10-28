@@ -494,6 +494,12 @@ fn main() -> anyhow::Result<()> {
         for (k, n) in &st.ibc {
             println!("IBC {k} {n}");
         }
+        for (kind, n) in &st.hl_verified {
+            println!(
+                "HL_VERIFIED {} {kind} {n}",
+                st.hl_verification.as_deref().unwrap_or("noop")
+            );
+        }
         for (k, n) in &st.gov_results {
             println!("GOV {k} {n}");
         }
@@ -541,6 +547,8 @@ fn main() -> anyhow::Result<()> {
                 "delivered_ok": st.delivered_ok,
                 "mismatches": st.mismatches.len(),
                 "split": st.split,
+                "hl_verification": st.hl_verification,
+                "hl_verified": st.hl_verified,
             })
         );
         eprintln!(
@@ -561,6 +569,7 @@ fn main() -> anyhow::Result<()> {
         if !st.mismatches.is_empty() {
             std::process::exit(1);
         }
+        st.require_hl_coverage()?;
         return Ok(());
     }
     if argv.get(1).map(String::as_str) == Some("record") {
