@@ -386,8 +386,16 @@ checks rollback of mailbox receipts written before verification. Unrelated
 generators, gas sweeps and user scripts wait until every pair completes,
 then resume. `HL_RETRIED` and `DELIVER_STATS` retain per-case counts,
 failures, controlled-phase block count and completion height. Missing or
-failed pairs exit nonzero even if Go and Rust agree. Nightly signed modes
-enable this phase; noop runs retain their existing behavior.
+failed pairs exit nonzero even if Go and Rust agree. Nightly signed
+Hyperlane scenario modes enable this phase; noop runs retain their existing behavior. Upgrade jobs
+rotate noop, message-ID and Merkle-root verification independently of
+WIRE / SWEEP / RECHECK selection, without the rejection phase. The full
+campaign runs all three modes for each Hyperlane/zkism scenario, both with
+ordinary generation and with passed governance proposals, and distributes
+its twelve distinct upgrade seeds across all three modes. These selections
+are retained in each run's `.env`; signed success counters describe the
+whole run and do not alone establish successful delivery on both sides of
+the upgrade. Budget-skipped campaign cases still make the campaign fail.
 Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
 upgrade driver's early fixture windows would silently weaken that campaign.
 

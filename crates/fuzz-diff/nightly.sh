@@ -153,6 +153,22 @@ deliver_run() { # <scenario> <seed> <flags...>
     "$ROOT/crates/fuzz-diff/deliver-diff.sh" "$scen" "$BLOCKS" 8 "$s"
 }
 
+# Full campaign: every verifier mode for Hyperlane scenarios, including
+# rejection/retry coverage for signed modes. Other scenarios run once.
+campaign_deliver_run() { # <scenario> <seed> <flags...>
+  local scen=$1 s=$2 mode
+  shift 2
+  case $scen in *hyperlane* | *zkism*)
+    for mode in noop message-id merkle-root; do
+      local f=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
+      [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+      deliver_run "$scen" "$s" "$@" "${f[@]}"
+    done
+    ;;
+  *) deliver_run "$scen" "$s" "$@" ;;
+  esac
+}
+
 upgrade_run() { # <seed> <flags...>
   local s=$1
   shift
@@ -249,7 +265,10 @@ upgrade-*of*)
     s=$((SEED * 1000 + i * n + k))
     i=$((i + 1))
     j=$((SEED + i + k))
-    f=(DELIVER_IBC=1 DELIVER_HL=1)
+    # Divide by the flag cycle so every verifier sees both settings of
+    # WIRE / SWEEP / RECHECK. Rejection setup cannot be combined with upgrades.
+    mode=$(pick "$((j / 6))" noop message-id merkle-root)
+    f=(DELIVER_IBC=1 DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
     [ $((j % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
     [ $((j % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
     [ $((j % 2)) -eq 1 ] && f+=(DELIVER_RECHECK=1)
@@ -270,22 +289,21 @@ campaign-*of*)
     d:*)
       scen=${it#d:}
       f=(DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1)
-      case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
-      deliver_run "$scen" "$SEED" "${f[@]}"
+      campaign_deliver_run "$scen" "$SEED" "${f[@]}"
       ;;
     g:*)
       # The same with every proposal passed (handler error texts reach
       # state through `failed_reason`).
       scen=${it#g:}
       f=(DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_RECHECK=1)
-      case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
-      deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
+      campaign_deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
       ;;
     u:*)
       i=${it#u:}
-      upgrade_run "$((SEED * 100 + i))" DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
+      mode=$(pick "$((i - 1))" noop message-id merkle-root)
+      upgrade_run "$((SEED * 100 + i))" DELIVER_IBC=1 DELIVER_HL=1 "DELIVER_HL_ISM=$mode" DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
       ;;
     esac
   done
