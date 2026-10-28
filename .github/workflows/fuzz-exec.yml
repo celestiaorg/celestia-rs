@@ -63,6 +63,12 @@ jobs:
             (cd conformance/fuzzoracle/$v && go build -o "$GITHUB_WORKSPACE/target/fuzzoracle/fuzzoracle-$v" .)
           done
       - run: cargo build --release -p fuzz-diff
+      - name: Check isolated oracle startup and cleanup
+        run: |
+          for v in 9 10; do
+            python3 conformance/fuzzoracle/check-startup.py --version "$v" \
+              --binary "target/fuzzoracle/fuzzoracle-v$v" --driver target/release/fuzz-diff
+          done
       - run: |
           mkdir -p bins
           cp -r target/devnet-bin bins/devnet-bin

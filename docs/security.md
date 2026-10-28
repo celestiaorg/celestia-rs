@@ -399,6 +399,15 @@ the upgrade. Budget-skipped campaign cases still make the campaign fail.
 Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
 upgrade driver's early fixture windows would silently weaken that campaign.
 
+The standalone Go decoding oracles also construct an in-memory App, whose
+upgrade keeper reads on-disk metadata at startup. Each oracle therefore uses
+a private temporary `NodeHome`. The Rust driver owns the parent scratch
+directory and removes it after killing and reaping an oracle, including
+periodic restarts; standalone EOF removes the Go-created home. The startup
+smoke check exercises two concurrent instances and repeated Rust-driven
+shutdowns without changing the operator's home. `fuzz-exec` runs it against
+both pinned Go versions before differential jobs.
+
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
 `celestia-appd` (standalone ABCI) and the Rust app in lockstep, and before
