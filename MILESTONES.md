@@ -688,6 +688,16 @@ test), then start that harness's count again.
   deterministic initial-height reachability and a bounded mutation campaign
   only; other initial-height/evidence branches and the 10⁸-input,
   exact-candidate, coverage and three-night gates remain open.
+  *Evidence byte-limit boundary (2026-10-29):* `c_vblock` now attaches one
+  structurally valid frozen duplicate-vote item to a successful real block,
+  recomputes the current header's evidence hash and compares otherwise
+  identical states whose evidence limits are the encoded evidence-list size
+  `S` and `S-1`. The `S` case succeeds and the `S-1` case reaches the exact
+  evidence-overflow rejection after the authentic LastCommit, proposer and
+  time checks. This is synthetic pure-`validateBlock` boundary coverage: the
+  frozen evidence belongs to its fixture chain, and the later evidence-pool
+  admissibility check is outside `c_vblock`. Full-block evidence acceptance,
+  the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs
