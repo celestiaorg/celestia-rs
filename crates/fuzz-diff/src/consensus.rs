@@ -1530,6 +1530,20 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     let values = rd(&format!("{version}{case}/public_values.bin"));
                     let vkey = hex::decode(vkey).unwrap_or_default();
                     out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
+                    let mut wrong_proof = proof.clone();
+                    // Preserve the four-byte verifier-key hash prefix, and
+                    // SP1 v6's additional 96 bytes of public-input metadata,
+                    // so rejection happens while checking the proof body.
+                    let proof_body_offset = if version.is_empty() { 4 + 96 } else { 4 };
+                    if let Some(byte) = wrong_proof.get_mut(proof_body_offset) {
+                        *byte ^= 1;
+                        out.push(input(&[
+                            (1, &vk),
+                            (2, &wrong_proof),
+                            (3, &vkey),
+                            (4, &values),
+                        ]));
+                    }
                 }
             }
         }
@@ -1791,6 +1805,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn groth16_seeds_reach_proof_rejection_with_valid_versioned_keys() {
+        let seeds = seeds("c_groth16");
+        assert_eq!(seeds.len(), 8);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_groth16", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "vk=ok\nverify=ok\n")
+                    .count(),
+                2
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("vk=ok\nverify=err:"))
+                    .count(),
+                2
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("vk=err:"))
+                    .count(),
+                4
+            );
+        }
+    }
+
     /// Go's `ParseInt` reads the digits as a `uint64` first.
     #[test]
     fn go_parse_int_like_go() {
@@ -1984,19 +2031,29 @@ mod tests {
     #[test]
     fn groth16_seeds_use_the_executing_app_version() {
         let seeds = seeds("c_groth16");
-        assert_eq!(seeds.len(), 4);
-        for seed in &seeds[..2] {
+        assert_eq!(seeds.len(), 8);
+        for pair in seeds[..4].as_chunks::<2>().0 {
             assert!(
-                crate::rust_out(10, "c_groth16", seed)
+                crate::rust_out(10, "c_groth16", &pair[0])
                     .out
                     .ends_with("verify=ok\n")
             );
-        }
-        for seed in &seeds[2..] {
             assert!(
-                crate::rust_out(9, "c_groth16", seed)
+                crate::rust_out(10, "c_groth16", &pair[1])
+                    .out
+                    .contains("\nverify=err:")
+            );
+        }
+        for pair in seeds[4..].as_chunks::<2>().0 {
+            assert!(
+                crate::rust_out(9, "c_groth16", &pair[0])
                     .out
                     .ends_with("verify=ok\n")
+            );
+            assert!(
+                crate::rust_out(9, "c_groth16", &pair[1])
+                    .out
+                    .contains("\nverify=err:")
             );
         }
         assert_eq!(
@@ -2005,7 +2062,7 @@ mod tests {
         );
 
         sdk::version::set_app_version(10);
-        let _ = crate::rust_out(9, "c_groth16", &seeds[2]);
+        let _ = crate::rust_out(9, "c_groth16", &seeds[4]);
         assert_eq!(sdk::version::app_version(), 10);
     }
 

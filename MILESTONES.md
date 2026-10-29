@@ -642,6 +642,16 @@ test), then start that harness's count again.
   deterministic state/block mismatch reachability only; other validation
   branches and the 10⁸-input, exact-candidate and three-night gates remain
   open.
+  *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
+  fixture now has a twin whose proof body changes after its four-byte
+  verifier-key hash prefix, while its valid verifying key and public inputs
+  remain fixed. The bounded pinned v0.40.9 and v0.42.3
+  campaigns completed 29,576 and 29,064 inputs, respectively, with zero
+  mismatches. Both seed reports agreed on two successful and two rejected
+  proof checks for the executing app version, while the other version's four
+  key checks still reject. This records deterministic proof-rejection
+  reachability only; other mutations and the 10⁸-input, exact-candidate and
+  three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
