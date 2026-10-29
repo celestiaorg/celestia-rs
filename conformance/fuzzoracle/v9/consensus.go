@@ -12,7 +12,8 @@ package main
 //	c_proposal  1 chain id, 2 crypto.PublicKey, 3 Proposal
 //	c_header    1 Header
 //	c_block     1 Block
-//	c_commit    1 chain id, 2 ValidatorSet, 3 BlockID, 4 height (decimal), 5 Commit
+//	c_commit    1 chain id, 2 ValidatorSet, 3 BlockID, 4 height (decimal), 5 Commit,
+//	            6 trust ValidatorSet, 7 trust numerator, 8 trust denominator (optional)
 //	c_valset    1 ValidatorSet, 2.. Validator (the change set)
 //	c_valupd    1 ConsensusParams, 2.. abci.ValidatorUpdate
 //	c_params    1 ConsensusParams, 2 ConsensusParams (update, optional), 3 height
@@ -252,9 +253,30 @@ func consensusOp(op string, in []byte) (o out) {
 		c.run("verify", func() error { return vals.VerifyCommit(chainID, *bid, height, cm) })
 		c.run("light", func() error { return vals.VerifyCommitLight(chainID, *bid, height, cm) })
 		c.run("light_all", func() error { return vals.VerifyCommitLightAllSignatures(chainID, *bid, height, cm) })
-		tl := cmtmath.Fraction{Numerator: 1, Denominator: 3}
-		c.run("trusting", func() error { return vals.VerifyCommitLightTrusting(chainID, cm, tl) })
-		c.run("trusting_all", func() error { return vals.VerifyCommitLightTrustingAllSignatures(chainID, cm, tl) })
+		trustVals := vals
+		if b := first(m, 6); b != nil {
+			var pTrust cmtproto.ValidatorSet
+			if !c.run("trust_valset", func() error {
+				if err := pTrust.Unmarshal(b); err != nil {
+					return err
+				}
+				var err error
+				trustVals, err = types.ValidatorSetFromProto(&pTrust)
+				return err
+			}) {
+				break
+			}
+		}
+		num, den := uint64(1), uint64(3)
+		if b := first(m, 7); b != nil {
+			num, _ = strconv.ParseUint(string(b), 10, 64)
+		}
+		if b := first(m, 8); b != nil {
+			den, _ = strconv.ParseUint(string(b), 10, 64)
+		}
+		tl := cmtmath.Fraction{Numerator: num, Denominator: den}
+		c.run("trusting", func() error { return trustVals.VerifyCommitLightTrusting(chainID, cm, tl) })
+		c.run("trusting_all", func() error { return trustVals.VerifyCommitLightTrustingAllSignatures(chainID, cm, tl) })
 	case "c_valset":
 		var pvs cmtproto.ValidatorSet
 		if !c.run("unmarshal", func() error { return pvs.Unmarshal(first(m, 1)) }) {
