@@ -59,3 +59,8 @@ v9-upgrade 300 6 10498 GO_APPD_NEXT=v10 DELIVER_UPGRADE=38 DELIVER_IBC=1 DELIVER
 # its first valid authority proposal. Require execution of an exact payload so
 # submission alone, or Hyperlane's separate native-token proposal, cannot pass.
 v9-hyperlane 300 8 940002 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_HL_REJECT=1 DELIVER_GOVPASS=1 DELIVER_GOV_REQUIRE=/cosmos.bank.v1beta1.MsgSetSendEnabled DELIVER_IBC=1 DELIVER_RECHECK=1
+# ibc-go's duplicate channel-upgrade error receipt panic carries its
+# errorsmod.Wrapf frame. Governance persists the panic text in failed_reason.
+# Delay the proposal to the triggering state, close expedited voting in the
+# next block, and require the exact Go frame so an earlier failure cannot pass.
+v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048

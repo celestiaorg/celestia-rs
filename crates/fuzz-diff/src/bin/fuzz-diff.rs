@@ -555,6 +555,8 @@ fn main() -> anyhow::Result<()> {
                 "split": st.split,
                 "gov_required": st.gov_required,
                 "gov_executed": st.gov_executed,
+                "gov_failure_required": st.gov_failure_required,
+                "gov_failure_matches": st.gov_failure_matches,
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
                 "hl_rejection_cases": st.hl_rejection_cases,

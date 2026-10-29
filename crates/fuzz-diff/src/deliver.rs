@@ -157,6 +157,10 @@ pub struct Stats {
     pub gov_executed: BTreeMap<String, u64>,
     /// Exact payload types explicitly required to execute through governance.
     pub gov_required: Vec<String>,
+    /// Substring required in a failed proposal's Go `proposal_log`.
+    pub gov_failure_required: Option<String>,
+    /// Failed Go proposal logs that contained the required substring.
+    pub gov_failure_matches: u64,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
     /// Selected `DELIVER_HL` ISM.
@@ -1275,6 +1279,12 @@ impl Stats {
             anyhow::ensure!(
                 self.gov_executed.get(required).copied().unwrap_or(0) > 0,
                 "incomplete DELIVER_GOV_REQUIRE coverage: no executed {required} proposal payload"
+            );
+        }
+        if let Some(required) = &self.gov_failure_required {
+            anyhow::ensure!(
+                self.gov_failure_matches > 0,
+                "incomplete DELIVER_GOV_FAILURE_REQUIRE coverage: no failed proposal log contained {required:?}"
             );
         }
         Ok(())
@@ -3537,6 +3547,18 @@ pub fn run(
         })
         .transpose()?;
     let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    let gov_failure_required = std::env::var_os("DELIVER_GOV_FAILURE_REQUIRE")
+        .map(|value| {
+            let value = value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_GOV_FAILURE_REQUIRE must be UTF-8"))?;
+            anyhow::ensure!(
+                !value.is_empty(),
+                "DELIVER_GOV_FAILURE_REQUIRE must be nonempty"
+            );
+            Ok::<_, anyhow::Error>(value)
+        })
+        .transpose()?;
     anyhow::ensure!(
         gov_required.is_empty() || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_GOV_REQUIRE cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
@@ -3571,6 +3593,7 @@ pub fn run(
     let mut rust = trace::Traced::new(app::App::new())?;
     let mut stats = Stats {
         gov_required,
+        gov_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_rejection_cases: if hl_reject {
             verifier
@@ -3860,6 +3883,35 @@ pub fn run(
         Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         Err(_) => std::collections::VecDeque::new(),
     };
+    let script_at = match std::env::var_os("DELIVER_SCRIPT_AT") {
+        None => 0,
+        Some(value) => value
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("DELIVER_SCRIPT_AT must be UTF-8"))?
+            .parse::<usize>()
+            .context("DELIVER_SCRIPT_AT must be a generated block index")?,
+    };
+    let time_jump_at = std::env::var_os("DELIVER_TIME_JUMP_AT")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_TIME_JUMP_AT must be UTF-8"))?
+                .parse::<usize>()
+                .context("DELIVER_TIME_JUMP_AT must be a generated block index")
+        })
+        .transpose()?;
+    let time_jump_seconds = match std::env::var_os("DELIVER_TIME_JUMP_SECONDS") {
+        None => 3600,
+        Some(value) => value
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("DELIVER_TIME_JUMP_SECONDS must be UTF-8"))?
+            .parse::<i64>()
+            .context("DELIVER_TIME_JUMP_SECONDS must be a positive number of seconds")?,
+    };
+    anyhow::ensure!(
+        time_jump_seconds > 0,
+        "DELIVER_TIME_JUMP_SECONDS must be a positive number of seconds"
+    );
     let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
     let sim_on = std::env::var("DELIVER_SIM").is_ok();
     // `DELIVER_GOVPASS`: the fuzz accounts pass every proposal (deposit and
@@ -3877,6 +3929,12 @@ pub fn run(
             time.seconds += [3600, 86_400, 90, 700_000, 1_300_000][gn.m.rng.below(5)];
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
+        }
+        if time_jump_at == Some(b) {
+            time.seconds = time
+                .seconds
+                .checked_add(time_jump_seconds)
+                .context("DELIVER_TIME_JUMP_SECONDS overflowed the block time")?;
         }
         // Sequences from the committed state.
         for a in &mut gn.accts {
@@ -3920,6 +3978,7 @@ pub fn run(
             }
         } else if !hl_setup
             && !gov_setup
+            && b >= script_at
             && let Some(block) = script.pop_front()
         {
             scripted = true;
@@ -4629,6 +4688,18 @@ pub fn run(
         gn.dict.harvest_events(&g.events);
         gov_coverage.completed(&g.events, &mut stats.gov_executed);
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
+            let failed = e
+                .attributes
+                .iter()
+                .any(|a| a.key == "proposal_result" && a.value == "proposal_failed");
+            if failed
+                && let Some(required) = &stats.gov_failure_required
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "proposal_log" && a.value.contains(required))
+            {
+                stats.gov_failure_matches += 1;
+            }
             for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
                 *stats.gov_results.entry(a.value.clone()).or_default() += 1;
                 if hl_seq.on {
@@ -6328,6 +6399,17 @@ mod tests {
         assert!(!stats.gov_setup());
         assert!(stats.require_gov_coverage().is_ok());
         assert!(Stats::default().require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_governance_failure_needs_the_exact_go_log_marker() {
+        let mut stats = Stats {
+            gov_failure_required: Some("upgrade.go:1048".into()),
+            ..Stats::default()
+        };
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_failure_matches = 1;
+        assert!(stats.require_gov_coverage().is_ok());
     }
 
     #[test]

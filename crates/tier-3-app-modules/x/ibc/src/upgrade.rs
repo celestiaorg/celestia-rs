@@ -446,6 +446,19 @@ fn restore_channel(
 }
 
 /// `WriteErrorReceipt` (Go panics on the invariant violations).
+fn duplicate_error_receipt_panic(sequence: u64, existing: u64) -> SdkError {
+    let log = cherr::invalid_upgrade_sequence(format!(
+        "error receipt sequence ({sequence}) must be greater than existing error receipt sequence ({existing})"
+    ))
+    .log;
+    // `errorsmod.Wrapf` includes its call-site frame in `%v`. A recovered
+    // governance message persists that text in `Proposal.failed_reason`.
+    sdk::error::go_panic(format!(
+        "{log} [celestiaorg/ibc-go/v8@v8.7.2/modules/core/04-channel/keeper/upgrade.go:1048]"
+    ))
+}
+
+/// Writes an IBC channel-upgrade error receipt.
 pub fn write_error_receipt(
     ctx: &mut Context<'_>,
     port: &str,
@@ -458,12 +471,9 @@ pub fn write_error_receipt(
     if let Some(existing) = get_error_receipt(ctx, port, chan)?
         && existing.sequence >= receipt.sequence
     {
-        return Err(sdk::error::go_panic(
-            cherr::invalid_upgrade_sequence(format!(
-                "error receipt sequence ({}) must be greater than existing error receipt sequence ({})",
-                receipt.sequence, existing.sequence
-            ))
-            .log,
+        return Err(duplicate_error_receipt_panic(
+            receipt.sequence,
+            existing.sequence,
         ));
     }
     if ch.upgrade_sequence <= receipt.sequence
@@ -1325,6 +1335,16 @@ pub use chpb::ResponseResultType;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duplicate_error_receipt_panic_carries_go_wrap_frame() {
+        let e = duplicate_error_receipt_panic(2, 2);
+        assert!(e.is_panic());
+        assert_eq!(
+            e.log,
+            "error receipt sequence (2) must be greater than existing error receipt sequence (2): invalid upgrade sequence [celestiaorg/ibc-go/v8@v8.7.2/modules/core/04-channel/keeper/upgrade.go:1048]"
+        );
+    }
 
     #[test]
     fn timeout_already_upgraded_check_uses_go_connection_operands() {
