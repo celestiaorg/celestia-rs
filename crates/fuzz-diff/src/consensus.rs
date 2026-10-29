@@ -1586,11 +1586,28 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .filter_map(|i| ps.get_part(i))
                     .map(|p| p.to_proto().encode_to_vec())
                     .collect();
+                let derive_negative_seeds = out.is_empty();
                 let mut fields: Vec<(u64, &[u8])> = vec![(1, &hdr)];
                 for p in &parts {
                     fields.push((2, p));
                 }
                 out.push(input(&fields));
+                if derive_negative_seeds && let Some(part) = parts.first() {
+                    // A valid header with no parts is incomplete.
+                    out.push(input(&[(1, &hdr)]));
+                    // Adding the same valid part twice succeeds but reports
+                    // that the duplicate was not added.
+                    out.push(input(&[(1, &hdr), (2, part), (2, part)]));
+                    // The part still decodes and validates structurally, but
+                    // its retained proof no longer authenticates its bytes.
+                    if let Ok(mut corrupt) = pb::Part::decode(part.as_slice())
+                        && let Some(byte) = corrupt.bytes.first_mut()
+                    {
+                        *byte ^= 1;
+                        let corrupt = corrupt.encode_to_vec();
+                        out.push(input(&[(1, &hdr), (2, &corrupt)]));
+                    }
+                }
             }
         }
         _ => {}
@@ -1630,6 +1647,30 @@ mod tests {
         for (i, input) in s.iter().enumerate() {
             let out = rust_out("c_vblock", input);
             assert!(out.out.ends_with("validate=ok\n"), "seed {i}: {}", out.out);
+        }
+    }
+
+    #[test]
+    fn partset_seeds_reach_incomplete_duplicate_and_bad_proof() {
+        let seeds = seeds("c_partset");
+        assert!(seeds.len() >= 83, "{} seeds", seeds.len());
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_partset", seed).out)
+                .collect();
+            assert!(outputs.iter().any(|out| {
+                out.ends_with("complete=false\ncount=0\n") && !out.contains("part0_add=")
+            }));
+            assert!(outputs.iter().any(|out| {
+                out.contains("part1_add=ok\npart1_added=false\n")
+                    && out.ends_with("complete=true\ncount=1\n")
+            }));
+            assert!(outputs.iter().any(|out| {
+                out.contains("part0_add=err:")
+                    && out.contains("part0_added=false\n")
+                    && out.ends_with("complete=false\ncount=0\n")
+            }));
         }
     }
 
