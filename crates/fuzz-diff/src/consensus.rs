@@ -1348,6 +1348,7 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .get(i % fp.cases.len().max(1))
                     .map(|p| hx(&p["proto"]))
                     .unwrap_or_default();
+                let derive_negative_seed = out.is_empty();
                 let ups: Vec<Vec<u8>> = vs
                     .validators
                     .iter()
@@ -1365,6 +1366,17 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     fields.push((2, u));
                 }
                 out.push(input(&fields));
+                if derive_negative_seed {
+                    // Power-zero updates skip public-key validation but the
+                    // subsequent PB2TM conversion still needs a key to derive
+                    // the validator identity.
+                    let missing_key = abci::ValidatorUpdate {
+                        pub_key: None,
+                        power: 0,
+                    }
+                    .encode_to_vec();
+                    out.push(input(&[(1, &params), (2, &missing_key)]));
+                }
             }
         }
         "c_params" => {
@@ -2263,6 +2275,37 @@ mod tests {
             validator_set_fingerprint(&vals).expect("changed fingerprint"),
             fingerprint
         );
+    }
+
+    #[test]
+    fn validator_update_seeds_reach_conversion_rejection() {
+        let seeds = seeds("c_valupd");
+        assert_eq!(seeds.len(), 301);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_valupd", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("pb2tm=ok\n"))
+                    .count(),
+                300,
+                "v{app_version}"
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.contains("update_unmarshal=ok\nvalidate=ok\n")
+                            && out.ends_with("pb2tm=err:validator update without pub key\n")
+                    })
+                    .count(),
+                1,
+                "v{app_version}"
+            );
+        }
     }
 
     #[test]

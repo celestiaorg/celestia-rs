@@ -684,6 +684,15 @@ test), then start that harness's count again.
   reachability plus serialized validator state and observed-cache preservation;
   other private fields, validator-update branches and the 10⁸-input,
   exact-candidate and three-night gates remain open.
+  *Validator-update conversion rejection (2026-10-29):* `c_valupd` now derives
+  one power-zero update without a public key. Both pinned cores allow it through
+  `validateValidatorUpdates`' deletion shortcut, then reject it during the
+  following `PB2TM.ValidatorUpdates` conversion. Pinned v0.40.9 and v0.42.3
+  campaigns each completed 200,109 inputs with 139,232 Go accepts and zero
+  mismatches. Their seed reports agreed on 301 inputs, including 151 successful
+  validations and exactly one conversion rejection while retaining 300
+  successful conversions. This records the conversion-rejection boundary only;
+  the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
