@@ -487,6 +487,11 @@ pub struct Driver {
     pub a_transfer: Option<String>,
     a_ica: Option<String>,
     ica_version: String,
+    /// Required ICA host lifecycle: successful exact-packet acknowledgement
+    /// under proto3, then after a real channel upgrade under proto3json.
+    ica_encoding_required: bool,
+    ica_requirement_stage: u8,
+    ica_required_packet: Option<(ch::Packet, bool)>,
     /// Handshakes the chain under test finished (events).
     conn_open: bool,
     transfer_open: bool,
@@ -613,6 +618,13 @@ impl Driver {
     #[must_use]
     pub fn with_pfm_exhaust_requirement(mut self, enabled: bool) -> Self {
         self.pfm_exhaust_required = enabled;
+        self
+    }
+
+    /// Require successful exact-packet ICA host execution in both encodings.
+    #[must_use]
+    pub fn with_ica_encoding_requirement(mut self, enabled: bool) -> Self {
+        self.ica_encoding_required = enabled;
         self
     }
 
@@ -845,7 +857,7 @@ impl Driver {
                 self.waited = 0;
             }
             5 if self.transfer_open => {
-                let encoding = if c.rng.one_in(2) {
+                let encoding = if self.ica_encoding_required || c.rng.one_in(2) {
                     "proto3"
                 } else {
                     "proto3json"
@@ -980,6 +992,19 @@ impl Driver {
                 }
                 return self.pfm_ack(c, &signer);
             }
+        }
+        if self.ica_encoding_required && self.ica_open && self.ica_requirement_stage < 3 {
+            if self.ica_required_packet.is_some() {
+                return None;
+            }
+            if self.ica_requirement_stage == 1 && self.ica_version.contains("proto3json") {
+                self.ica_requirement_stage = 2;
+            }
+            return match self.ica_requirement_stage {
+                0 | 2 => self.ica_packet(c),
+                1 => self.chan_upgrade(c),
+                _ => None,
+            };
         }
         let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
@@ -1851,7 +1876,7 @@ impl Driver {
                 amount: (1 + c.rng.below(1000)).to_string(),
             }],
         })];
-        if c.rng.one_in(3) {
+        if !self.ica_encoding_required && c.rng.one_in(3) {
             msgs.push(Any::pack(
                 &celestia_proto::cosmos::feegrant::v1beta1::MsgGrantAllowance {
                     granter: ica.clone(),
@@ -1868,7 +1893,7 @@ impl Driver {
                 },
             ));
         }
-        if std::env::var("DELIVER_WIRE").is_ok() {
+        if !self.ica_encoding_required && std::env::var("DELIVER_WIRE").is_ok() {
             // Systematic wire mutations (`crate::wire`) of host messages:
             // the host decodes them with gogoproto and no unknown-field
             // check. A periodic allowance with an expiration exercises the
@@ -1962,6 +1987,9 @@ impl Driver {
             timeout_timestamp: u64::try_from(c.now + 3600).unwrap_or(0) * 1_000_000_000,
         };
         self.cp.send(&mut p);
+        if self.ica_encoding_required && matches!(self.ica_requirement_stage, 0 | 2) {
+            self.ica_required_packet = Some((p.clone(), json));
+        }
         let h = self.cp.commit(c.now - 5);
         let mut out: Vec<Any> = self.update(&signer).into_iter().collect();
         out.push(Any::pack(&ch::MsgRecvPacket {
@@ -2006,6 +2034,7 @@ impl Driver {
             let mut pfm_exhaust_ack = false;
             let mut pfm_timeout = false;
             let mut pfm_retry = None;
+            let mut ica_success_ack = None;
             for e in &r.events {
                 if self.cu_ack_failure_pending
                     && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
@@ -2206,6 +2235,23 @@ impl Driver {
                         pfm_downstream_ack = true;
                     }
                     "write_acknowledgement"
+                        if self.ica_encoding_required
+                            && self
+                                .ica_required_packet
+                                .as_ref()
+                                .is_some_and(|(packet, _)| {
+                                    packet_of(e).as_ref().is_some_and(|event_packet| {
+                                        same_packet(event_packet, packet)
+                                    })
+                                })
+                            && packet_event_has_ica_send_success_ack(e) =>
+                    {
+                        ica_success_ack = self
+                            .ica_required_packet
+                            .as_ref()
+                            .map(|(_, proto3json)| *proto3json);
+                    }
+                    "write_acknowledgement"
                         if completing_pfm_exhaustion
                             && self.pfm_stage == 2
                             && packet_of(e).as_ref().is_some_and(|packet| {
@@ -2247,6 +2293,20 @@ impl Driver {
                 self.pfm_timeout_complete = true;
                 self.bump("pfm_timeout");
                 self.bump("pfm_retry");
+            }
+            if let Some(proto3json) = ica_success_ack {
+                match (self.ica_requirement_stage, proto3json) {
+                    (0, false) => {
+                        self.ica_requirement_stage = 1;
+                        self.bump("ica_proto3_success_ack");
+                    }
+                    (2, true) => {
+                        self.ica_requirement_stage = 3;
+                        self.bump("ica_proto3json_success_ack");
+                    }
+                    _ => {}
+                }
+                self.ica_required_packet = None;
             }
             if pfm_downstream_ack && pfm_original_ack {
                 self.pfm_ack_pending = false;
@@ -2318,6 +2378,11 @@ impl Driver {
                 self.recover_update_pending = true;
                 self.bump("recover_client");
             }
+        }
+        if self.ica_encoding_required && self.ica_required_packet.is_some() {
+            // A required relay that did not produce its exact success Ack is
+            // retried with a fresh uniquely attributable packet next block.
+            self.ica_required_packet = None;
         }
     }
 }
@@ -2413,6 +2478,39 @@ fn packet_event_matches(
         && attr(event, "packet_timeout_height").as_deref() == Some(expected_height.as_str())
         && attr(event, "packet_timeout_timestamp").and_then(|value| value.parse::<u64>().ok())
             == Some(packet.timeout_timestamp)
+}
+
+fn packet_event_has_ica_send_success_ack(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+) -> bool {
+    let Some(bytes) = attr(event, "packet_ack_hex").and_then(|value| hex::decode(value).ok())
+    else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return false;
+    };
+    if value.get("error").is_some() {
+        return false;
+    }
+    let Some(result) = value
+        .get("result")
+        .and_then(serde_json::Value::as_str)
+        .and_then(x_ibc::gojson::decode_base64_std)
+    else {
+        return false;
+    };
+    let Ok(data) =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(result.as_slice())
+    else {
+        return false;
+    };
+    matches!(
+        data.msg_responses.as_slice(),
+        [response]
+            if response.type_url == "/cosmos.bank.v1beta1.MsgSendResponse"
+                && response.value.is_empty()
+    )
 }
 
 /// Standard base64 with padding.
@@ -2989,5 +3087,107 @@ mod tests {
         assert_eq!(driver.stats.get("pfm_original_error_ack"), Some(&1));
         assert!(!driver.pfm_timeout_pending);
         assert_eq!(driver.pfm_stage, 3);
+    }
+
+    #[test]
+    fn ica_encoding_credit_requires_exact_success_ack_for_each_packet() {
+        let response = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+            msg_responses: vec![Any {
+                type_url: "/cosmos.bank.v1beta1.MsgSendResponse".into(),
+                value: Vec::new(),
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let success_ack = format!(r#"{{"result":"{}"}}"#, base64_std(&response));
+        let success_ack_hex = hex::encode(success_ack);
+        let proto3_packet = ch::Packet {
+            sequence: 4,
+            source_port: CP_ICA_PORT.into(),
+            source_channel: CP_ICA_CHAN.into(),
+            destination_port: "icahost".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact proto3 packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            ica_encoding_required: true,
+            ica_required_packet: Some((proto3_packet.clone(), false)),
+            ..Driver::default()
+        };
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(PFM_ERROR_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+        assert_eq!(driver.ica_requirement_stage, 0);
+
+        let mut changed_data = proto3_packet.clone();
+        changed_data.data.push(1);
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &changed_data,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        let success_and_error = hex::encode(format!(
+            r#"{{"result":"{}","error":"not a success"}}"#,
+            base64_std(&response)
+        ));
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(&success_and_error),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), Some(&1));
+        assert_eq!(driver.ica_requirement_stage, 1);
+
+        let proto3json_packet = ch::Packet {
+            sequence: 5,
+            data: b"exact proto3json packet".to_vec(),
+            ..proto3_packet.clone()
+        };
+        let mut unrelated = proto3json_packet.clone();
+        unrelated.sequence += 1;
+        driver.ica_requirement_stage = 2;
+        driver.ica_required_packet = Some((proto3json_packet.clone(), true));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &unrelated,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3json_success_ack"), None);
+        assert_eq!(driver.ica_requirement_stage, 2);
+
+        driver.ica_required_packet = Some((proto3json_packet.clone(), true));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3json_packet,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3json_success_ack"), Some(&1));
+        assert_eq!(driver.ica_requirement_stage, 3);
     }
 }
