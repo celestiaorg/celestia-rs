@@ -445,8 +445,14 @@ proposal (`GOV proposal_passed`), not per type.
 * **Harness gaps** (reachable on mainnet, to add):
   the IBC channel messages that need a counterparty step the mock does
   not take (`MsgChannelCloseInit` is refused by the transfer app, so only
-  an ICA channel can close; `MsgChannelUpgradeAck`,
-  `MsgPruneAcknowledgements`).
+  an ICA channel can close). Successful `MsgChannelUpgradeAck` is not a
+  reachable handler path in celestia-app: it enables the ICA host but not
+  the controller, and the host rejects controller-side init / ack. A code-0
+  Ack with a failure response and error receipt would not establish a
+  successful handshake. The mock now executes `MsgPruneAcknowledgements`
+  after a completed host-channel upgrade; pinned v9 and v10 300-block
+  regressions reached five and six successful executions with zero
+  mismatches. The table above predates that change and needs regeneration.
   `hyperlane.warp.v1.MsgUnrollRemoteRouter` now mostly targets a router
   enrolled on a token the signer owns (first Go success in a local
   `hyperlane` run, seed 4243, after this report).

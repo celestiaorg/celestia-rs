@@ -474,9 +474,9 @@ pub struct Driver {
     /// Sequences the counterparty received (for timeouts: none).
     pub stats: BTreeMap<&'static str, u64>,
     /// ICS-27 channel upgrade: stage (0 idle, 1 try sent, 2 flushing,
-    /// 3 confirm sent, 4 flush complete, 5 open sent), the channel's
-    /// upgrade sequence, the proposed version, when the try was sent and
-    /// blocks waited in the stage.
+    /// 3 confirm sent, 4 flush complete, 5 open sent, 6 pruning pending,
+    /// 7 pruning sent), the channel's upgrade sequence, the proposed
+    /// version, when the try was sent and blocks waited in the stage.
     cu_stage: u8,
     cu_seq: u64,
     cu_new: String,
@@ -1223,6 +1223,18 @@ impl Driver {
                 self.cu_stage = 5;
                 self.bump("chan_upgrade_open");
             }
+            // A completed upgrade sets the acknowledgement/receipt pruning
+            // bounds. Exercise the permissionless pruning handler against
+            // that real channel state before starting another upgrade.
+            6 => {
+                msgs.push(Any::pack(&ch::MsgPruneAcknowledgements {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica,
+                    limit: 100,
+                    signer,
+                }));
+                self.cu_stage = 7;
+            }
             // A step that did not land is sent again.
             1 if self.cu_wait > 6 => {
                 self.cu_stage = 0;
@@ -1234,6 +1246,10 @@ impl Driver {
             }
             5 if self.cu_wait > 6 => {
                 self.cu_stage = 4;
+                return None;
+            }
+            7 if self.cu_wait > 6 => {
+                self.cu_stage = 6;
                 return None;
             }
             _ => return None,
@@ -1644,7 +1660,7 @@ impl Driver {
                             "channel_upgrade_open" => {
                                 self.ica_version = self.cu_new.clone();
                                 self.bump("chan_upgraded");
-                                0
+                                6
                             }
                             _ => 0,
                         };
@@ -1673,21 +1689,27 @@ impl Driver {
                     _ => {}
                 }
             }
-            // The ICA address is in the `MsgChannelOpenTry` response's
-            // version.
-            if self.ica_addr.is_none()
-                && let Ok(d) = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(
-                    r.data.as_slice(),
-                )
+            if let Ok(d) =
+                celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(r.data.as_slice())
             {
                 for resp in &d.msg_responses {
-                    if resp.type_url.ends_with("MsgChannelOpenTryResponse")
+                    // The ICA address is in the `MsgChannelOpenTry`
+                    // response's version.
+                    if self.ica_addr.is_none()
+                        && resp.type_url.ends_with("MsgChannelOpenTryResponse")
                         && let Ok(t) = ch::MsgChannelOpenTryResponse::decode(resp.value.as_slice())
                         && let Ok(v) = serde_json::from_str::<serde_json::Value>(&t.version)
                         && let Some(a) = v.get("address").and_then(|a| a.as_str())
                     {
                         self.ica_addr = Some(a.to_owned());
                         self.ica_version.clone_from(&t.version);
+                    }
+                    if self.cu_stage == 7
+                        && resp.type_url.ends_with("MsgPruneAcknowledgementsResponse")
+                    {
+                        self.cu_stage = 0;
+                        self.cu_wait = 0;
+                        self.bump("prune_acknowledgements");
                     }
                 }
             }
