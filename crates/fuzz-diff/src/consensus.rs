@@ -1496,6 +1496,23 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     let state_bytes = state.encode_to_vec();
                     out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
                     if derive_negative_seeds {
+                        // Keep a valid state and block while making each
+                        // state/header comparison fail in isolation.
+                        let mut wrong_version = pbk.clone();
+                        if let Some(version) = wrong_version
+                            .header
+                            .as_mut()
+                            .and_then(|header| header.version.as_mut())
+                        {
+                            version.app = version.app.saturating_add(1);
+                            let wrong_version = wrong_version.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_version),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
                         // Keep a valid block but make the state's chain
                         // identity disagree with its header.
                         let mut wrong_chain = state.clone();
@@ -1515,6 +1532,75 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                                 (3, now.as_bytes()),
                             ]));
                         }
+
+                        let mut wrong_last_block = state.clone();
+                        if let Some(byte) = wrong_last_block
+                            .last_block_id
+                            .as_mut()
+                            .and_then(|id| id.hash.first_mut())
+                        {
+                            *byte ^= 1;
+                            let wrong_last_block = wrong_last_block.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_last_block),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        let mut wrong_app_hash = state.clone();
+                        if let Some(byte) = wrong_app_hash.app_hash.first_mut() {
+                            *byte ^= 1;
+                            let wrong_app_hash = wrong_app_hash.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_app_hash),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        let header_hash_fields: [for<'a> fn(&'a mut pb::Header) -> &'a mut Vec<u8>;
+                            3] = [
+                            |header: &mut pb::Header| &mut header.consensus_hash,
+                            |header: &mut pb::Header| &mut header.validators_hash,
+                            |header: &mut pb::Header| &mut header.next_validators_hash,
+                        ];
+                        for field in header_hash_fields {
+                            let mut wrong_block = pbk.clone();
+                            if let Some(byte) = wrong_block
+                                .header
+                                .as_mut()
+                                .map(field)
+                                .and_then(|hash| hash.first_mut())
+                            {
+                                *byte ^= 1;
+                                let wrong_block = wrong_block.encode_to_vec();
+                                out.push(input(&[
+                                    (1, &state_bytes),
+                                    (2, &wrong_block),
+                                    (3, now.as_bytes()),
+                                ]));
+                            }
+                        }
+
+                        let mut wrong_results = state.clone();
+                        if let Some(byte) = wrong_results.last_results_hash.first_mut() {
+                            *byte ^= 1;
+                            let wrong_results = wrong_results.encode_to_vec();
+                            out.push(input(&[(1, &wrong_results), (2, &bz), (3, now.as_bytes())]));
+                        }
+
+                        let before_now = t
+                            .seconds
+                            .saturating_sub(61)
+                            .saturating_mul(1_000_000_000)
+                            .saturating_add(i64::from(t.nanos))
+                            .to_string();
+                        out.push(input(&[
+                            (1, &state_bytes),
+                            (2, &bz),
+                            (3, before_now.as_bytes()),
+                        ]));
                     }
                 }
             }
@@ -1746,7 +1832,7 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 50);
+        assert_eq!(s.len(), 58);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
@@ -1821,7 +1907,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 50);
+        assert_eq!(seeds.len(), 58);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -1834,19 +1920,39 @@ mod tests {
                     .count(),
                 48
             );
-            for error in ["wrong Block.Header.ChainID.", "wrong Block.Header.Height."] {
-                assert_eq!(
-                    outputs
-                        .iter()
-                        .filter(|out| {
-                            out.starts_with(&format!(
-                                "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:{error}"
-                            ))
-                        })
-                        .count(),
-                    1
-                );
+            for error in [
+                "wrong Block.Header.Version.",
+                "wrong Block.Header.ChainID.",
+                "wrong Block.Header.Height.",
+                "wrong Block.Header.LastBlockID.",
+                "wrong Block.Header.AppHash.",
+                "wrong Block.Header.ConsensusHash.",
+                "wrong Block.Header.LastResultsHash.",
+                "wrong Block.Header.ValidatorsHash.",
+                "wrong Block.Header.NextValidatorsHash.",
+            ] {
+                let matches = outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(&format!(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:{error}"
+                        ))
+                    })
+                    .count();
+                assert_eq!(matches, 1, "v{app_version}: {error}");
             }
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block time ",
+                        ) && out.contains(" is too far in the future")
+                    })
+                    .count(),
+                1,
+                "v{app_version}: future time"
+            );
         }
     }
 

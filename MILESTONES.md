@@ -642,6 +642,15 @@ test), then start that harness's count again.
   deterministic state/block mismatch reachability only; other validation
   branches and the 10⁸-input, exact-candidate and three-night gates remain
   open.
+  *State/header mismatch matrix (2026-10-29):* `c_vblock` now extends its
+  first real transition with isolated version, last-block ID, app hash,
+  consensus hash, last-results hash, current/next validator hash and future
+  wall-clock mismatches. Pinned v0.40.9 and v0.42.3 seed replays agree on all
+  58 decodable state/block pairs: 48 valid transitions and ten intended
+  validation errors including the earlier chain-ID and height cases. This
+  records deterministic comparison-branch reachability only; commit,
+  proposer, median-time, evidence and the broader qualification gates remain
+  open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs
