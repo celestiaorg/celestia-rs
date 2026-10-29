@@ -1535,6 +1535,31 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 }
                 f.extend(path);
                 out.push(input(&f));
+                if i == 0 {
+                    // Keep the valid proof, root and path but require it to
+                    // authenticate a different value.
+                    let wrong_value = b"different value";
+                    out.push(input(&[
+                        (1, &proof),
+                        (2, &root),
+                        (3, wrong_value),
+                        (4, b"ibc"),
+                        (4, k.as_bytes()),
+                    ]));
+                } else if i == 1 {
+                    // Keep the valid absence proof and path but verify it
+                    // against a different commitment root.
+                    let mut wrong_root = root.clone();
+                    if let Some(byte) = wrong_root.first_mut() {
+                        *byte ^= 1;
+                        out.push(input(&[
+                            (1, &proof),
+                            (2, &wrong_root),
+                            (4, b"ibc"),
+                            (4, k.as_bytes()),
+                        ]));
+                    }
+                }
             }
         }
         "c_secp256r1" => {
@@ -1671,6 +1696,46 @@ mod tests {
                     && out.contains("part0_added=false\n")
                     && out.ends_with("complete=false\ncount=0\n")
             }));
+        }
+    }
+
+    #[test]
+    fn ics23_seeds_reach_membership_and_non_membership_rejections() {
+        let seeds = seeds("c_ics23");
+        assert_eq!(seeds.len(), 42);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_ics23", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nverify=err:"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nverify_absence=err:"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nverify=ok\n")
+                    .count(),
+                27
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nverify_absence=ok\n")
+                    .count(),
+                13
+            );
         }
     }
 

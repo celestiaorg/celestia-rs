@@ -625,6 +625,14 @@ test), then start that harness's count again.
   all 83 inputs, including two incomplete results, one proof error and one
   duplicate-part result. This records negative-seed reachability only; the
   10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Invalid ICS-23 proof seeds (2026-10-29):* `c_ics23` now keeps a valid
+  membership proof while changing its claimed value, and keeps a valid
+  non-membership proof while changing its commitment root. Pinned v0.40.9
+  and v0.42.3 campaigns each completed 200,106 inputs with zero mismatches.
+  Their seed reports agreed on all 42 inputs, including exactly one rejected
+  membership check and one rejected non-membership check. This records
+  deterministic verification-rejection reachability only; malformed-proof
+  coverage, the 10⁸-input, exact-candidate and three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
