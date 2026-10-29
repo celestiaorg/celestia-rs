@@ -10,7 +10,7 @@ use std::io::Read as _;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use app::{App, AppOptions};
+use app::{App, AppOptions, NodeOptions};
 use ctypes::proto::{abci, types as pb};
 use devnet_conformance::load_exchanges;
 use multistore::kvdb::{self, BackendKind, DbOptions};
@@ -345,6 +345,16 @@ impl Node {
         fixture: &Fixture,
         interrupt: Option<Interruption>,
     ) -> anyhow::Result<Self> {
+        Self::open_with_min_retain(home, backend, fixture, interrupt, 0)
+    }
+
+    fn open_with_min_retain(
+        home: &Path,
+        backend: BackendKind,
+        fixture: &Fixture,
+        interrupt: Option<Interruption>,
+        min_retain_blocks: u64,
+    ) -> anyhow::Result<Self> {
         let db = DbOptions {
             backend,
             sync_writes: true,
@@ -353,6 +363,10 @@ impl Node {
         let opts = AppOptions {
             chain_id: Some(fixture.genesis.chain_id.clone()),
             db,
+            node: NodeOptions {
+                min_retain_blocks,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let app = Arc::new(Mutex::new(
@@ -615,6 +629,147 @@ fn assert_reference_height(
         reference.infos[index],
         "{case} h={height} app info"
     );
+    Ok(())
+}
+
+#[test]
+fn real_app_reopens_and_continues_after_pruning() -> anyhow::Result<()> {
+    let fixture = Fixture::load()?;
+    for &backend in BackendKind::ALL {
+        reopen_after_pruning(&fixture, backend)?;
+    }
+    Ok(())
+}
+
+fn reopen_after_pruning(fixture: &Fixture, backend: BackendKind) -> anyhow::Result<()> {
+    const MIN_RETAIN_BLOCKS: u64 = 5;
+    const REOPEN_HEIGHT: i64 = 20;
+
+    anyhow::ensure!(REOPEN_HEIGHT >= fixture.upgrade + 1);
+    anyhow::ensure!(
+        fixture
+            .blocks
+            .last()
+            .is_some_and(|(block, _)| block.header.height > REOPEN_HEIGHT)
+    );
+    let case = format!("{backend} pruned reopen h={REOPEN_HEIGHT}");
+    let reference = Reference::build(fixture, backend)?;
+    let home = tempfile::tempdir()?;
+    let mut node =
+        Node::open_with_min_retain(home.path(), backend, fixture, None, MIN_RETAIN_BLOCKS)?;
+    assert_eq!(node.recover(&fixture.genesis)?, 0, "{case}");
+    for frame in fixture.blocks.iter().take(usize::try_from(REOPEN_HEIGHT)?) {
+        node.apply(frame)?;
+    }
+    assert_reference_height(&node, &reference, REOPEN_HEIGHT, &case)?;
+    assert_pruned_records(&node, fixture, &reference, REOPEN_HEIGHT, &case)?;
+    drop(node);
+
+    let mut node =
+        Node::open_with_min_retain(home.path(), backend, fixture, None, MIN_RETAIN_BLOCKS)?;
+    assert_reference_height(&node, &reference, REOPEN_HEIGHT, &case)?;
+    assert_pruned_records(&node, fixture, &reference, REOPEN_HEIGHT, &case)?;
+    assert_eq!(node.recover(&fixture.genesis)?, 0, "{case}");
+    assert_eq!(*node.calls.lock().unwrap(), Calls::default(), "{case}");
+    assert_reference_height(&node, &reference, REOPEN_HEIGHT, &case)?;
+    assert_pruned_records(&node, fixture, &reference, REOPEN_HEIGHT, &case)?;
+
+    for (i, frame) in fixture
+        .blocks
+        .iter()
+        .enumerate()
+        .skip(usize::try_from(REOPEN_HEIGHT)?)
+    {
+        node.apply(frame)?;
+        assert_reference_height(&node, &reference, i64::try_from(i + 1)?, &case)?;
+    }
+    assert_pruned_records(
+        &node,
+        fixture,
+        &reference,
+        node.state.last_block_height,
+        &case,
+    )?;
+    Ok(())
+}
+
+fn assert_pruned_records(
+    node: &Node,
+    fixture: &Fixture,
+    reference: &Reference,
+    completed_height: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    const MIN_RETAIN_BLOCKS: i64 = 5;
+    let base = completed_height - MIN_RETAIN_BLOCKS;
+    assert_eq!(node.exec.block_store.base(), base, "{case} block base");
+    assert_eq!(
+        node.exec.block_store.height(),
+        completed_height,
+        "{case} block height"
+    );
+    for height in fixture.genesis.initial_height..base {
+        let index = usize::try_from(height - fixture.genesis.initial_height)?;
+        assert!(
+            node.exec.block_store.load_block(height)?.is_none(),
+            "{case} block h={height}"
+        );
+        let meta = node
+            .exec
+            .block_store
+            .load_block_meta(height)?
+            .ok_or_else(|| anyhow::anyhow!("{case} missing evidence header h={height}"))?;
+        assert_eq!(
+            meta.header, fixture.blocks[index].0.header,
+            "{case} evidence header h={height}"
+        );
+        let commit = node
+            .exec
+            .block_store
+            .load_block_commit(height)?
+            .ok_or_else(|| anyhow::anyhow!("{case} missing evidence commit h={height}"))?;
+        assert_eq!(
+            Some(&commit),
+            fixture.blocks[index + 1].0.last_commit.as_ref(),
+            "{case} evidence commit h={height}"
+        );
+        assert!(
+            node.exec.state_store.load_consensus_params(height).is_err(),
+            "{case} pruned consensus params h={height}"
+        );
+        assert!(
+            node.exec
+                .state_store
+                .load_finalize_block_response(height)?
+                .is_none(),
+            "{case} pruned response h={height}"
+        );
+    }
+    for height in base..=completed_height {
+        assert!(
+            node.exec.block_store.load_block(height)?.is_some(),
+            "{case} retained block h={height}"
+        );
+        let response = node
+            .exec
+            .state_store
+            .load_finalize_block_response(height)?
+            .ok_or_else(|| anyhow::anyhow!("{case} missing retained response h={height}"))?;
+        assert_response(&response, &fixture.expected[&height].response);
+    }
+    assert_historical_validators(node, &reference.validators, completed_height + 2, case)?;
+    for height in base..=completed_height + 1 {
+        let got = node
+            .exec
+            .state_store
+            .load_consensus_params(height)?
+            .to_proto()
+            .encode_to_vec();
+        assert_eq!(
+            got, fixture.consensus_params[&height],
+            "{case} consensus params h={height}"
+        );
+    }
     Ok(())
 }
 
