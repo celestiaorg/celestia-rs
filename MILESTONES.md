@@ -633,6 +633,15 @@ test), then start that harness's count again.
   membership check and one rejected non-membership check. This records
   deterministic verification-rejection reachability only; malformed-proof
   coverage, the 10⁸-input, exact-candidate and three-night gates remain open.
+  *Invalid block-transition seeds (2026-10-29):* `c_vblock` now keeps a real
+  block decodable while changing the state's chain ID, and keeps a real state
+  decodable while moving its block one height ahead. The bounded pinned
+  v0.40.9 and v0.42.3 campaigns completed 118,578 and 119,602 inputs,
+  respectively, with zero mismatches. Both seed reports agreed on 48 valid
+  transitions and the two intended validation errors. This records
+  deterministic state/block mismatch reachability only; other validation
+  branches and the 10⁸-input, exact-candidate and three-night gates remain
+  open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
