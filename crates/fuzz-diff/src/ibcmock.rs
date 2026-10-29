@@ -35,6 +35,8 @@ pub const CHAIN_ID: &str = "cp-1";
 pub const CP_CLIENT: &str = "07-tendermint-0";
 /// Its connection.
 pub const CP_CONNECTION: &str = "connection-0";
+/// A counterparty-initiated connection used to exercise OpenTry / Confirm.
+pub const CP_CONNECTION2: &str = "connection-1";
 
 /// The mock chain.
 pub struct Cp {
@@ -308,6 +310,10 @@ impl Cp {
 
     /// The counterparty's connection end.
     pub fn put_connection(&mut self, state: i32, a_client: &str, a_conn: &str) {
+        self.put_connection_at(CP_CONNECTION, state, a_client, a_conn);
+    }
+
+    fn put_connection_at(&mut self, cp_conn: &str, state: i32, a_client: &str, a_conn: &str) {
         let end = conn::ConnectionEnd {
             client_id: CP_CLIENT.into(),
             versions: vec![conn::Version {
@@ -326,7 +332,7 @@ impl Cp {
         };
         // gogoproto's encoding, which Go compares with.
         self.put(
-            &format!("connections/{CP_CONNECTION}"),
+            &format!("connections/{cp_conn}"),
             Some(txdecode::gogo_repack(&Any::pack(&end)).value),
         );
     }
@@ -494,6 +500,14 @@ pub struct Driver {
     cl_packet: Option<ch::Packet>,
     cl_k: u32,
     cl_wait: u32,
+    /// A counterparty-initiated connection: stage (0 not started, 1 Try
+    /// sent, 2 Try landed, 3 Confirm sent, 4 complete), its local id and
+    /// blocks waited in the current stage.
+    conn2_stage: u8,
+    a_conn2: Option<String>,
+    conn2_wait: u32,
+    connection_confirm_on: bool,
+    legacy_upgrade_fixture: bool,
 }
 
 fn proof_height(h: i64) -> Option<Height> {
@@ -525,6 +539,24 @@ fn is_ica_host_ack_error(
 }
 
 impl Driver {
+    /// Enable the counterparty-initiated OpenTry / OpenConfirm flow.
+    #[must_use]
+    pub fn with_connection_confirm(mut self, enabled: bool) -> Self {
+        self.connection_confirm_on = enabled;
+        self
+    }
+
+    /// Preserve the pre-Ack/pruning channel-upgrade state machine used to
+    /// capture a static signed-header fixture.
+    #[must_use]
+    pub fn with_legacy_upgrade_fixture(mut self, enabled: bool) -> Self {
+        self.legacy_upgrade_fixture = enabled;
+        if enabled {
+            self.bump("legacy_upgrade_fixture");
+        }
+        self
+    }
+
     fn bump(&mut self, k: &'static str) {
         *self.stats.entry(k).or_default() += 1;
     }
@@ -575,6 +607,7 @@ impl Driver {
         self.waited += 1;
         self.cu_wait += 1;
         self.cl_wait += 1;
+        self.conn2_wait += 1;
         // A phase that waits too long (its tx failed) is retried.
         let retry = self.waited > 6;
         match self.phase {
@@ -805,7 +838,7 @@ impl Driver {
     fn steady(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
         let signer = c.signer.clone();
         let a_chan = self.a_transfer.clone()?;
-        match c.rng.below(17) {
+        let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
             13 | 14 => self.chan_upgrade(c),
             15 | 16 => self.close_flow(c),
@@ -989,7 +1022,89 @@ impl Driver {
                     })
                 }])
             }
+        };
+        // Fill a block in which the existing steady-state schedule had no
+        // relay. The opt-in flow still advances counterparty and relayer state;
+        // leaving it disabled preserves established fixed-seed paths.
+        relay.or_else(|| self.connection_confirm_flow(c))
+    }
+
+    /// A counterparty-initiated connection handshake. The counterparty's
+    /// INIT and OPEN ends are committed to the signed IAVL store, so the
+    /// chain under test verifies real proofs in OpenTry and OpenConfirm.
+    fn connection_confirm_flow(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        if !self.connection_confirm_on || !self.conn_open || self.conn2_stage == 4 {
+            return None;
         }
+        let signer = c.signer.clone();
+        let a_client = self.a_client.clone()?;
+        let version = conn::Version {
+            identifier: "1".into(),
+            features: vec!["ORDER_ORDERED".into(), "ORDER_UNORDERED".into()],
+        };
+        let key = format!("connections/{CP_CONNECTION2}");
+        let mut msgs: Vec<Any> = Vec::new();
+        match self.conn2_stage {
+            0 => {
+                self.cp
+                    .put_connection_at(CP_CONNECTION2, conn::State::Init as i32, &a_client, "");
+                let h = self.cp.commit(c.now - 4);
+                msgs.extend(self.update(&signer));
+                msgs.push(Any::pack(&conn::MsgConnectionOpenTry {
+                    client_id: a_client,
+                    previous_connection_id: String::new(),
+                    client_state: None,
+                    counterparty: Some(conn::Counterparty {
+                        client_id: CP_CLIENT.into(),
+                        connection_id: CP_CONNECTION2.into(),
+                        prefix: Some(MerklePrefix {
+                            key_prefix: b"ibc".to_vec(),
+                        }),
+                    }),
+                    delay_period: 0,
+                    counterparty_versions: vec![version],
+                    proof_height: proof_height(h),
+                    proof_init: self.cp.proof(&key),
+                    proof_client: Vec::new(),
+                    proof_consensus: Vec::new(),
+                    consensus_height: None,
+                    signer,
+                    host_consensus_state_proof: Vec::new(),
+                }));
+                self.conn2_stage = 1;
+                self.bump("connection_open_try");
+            }
+            2 => {
+                let a_conn = self.a_conn2.clone()?;
+                self.cp.put_connection_at(
+                    CP_CONNECTION2,
+                    conn::State::Open as i32,
+                    &a_client,
+                    &a_conn,
+                );
+                let h = self.cp.commit(c.now - 3);
+                msgs.extend(self.update(&signer));
+                msgs.push(Any::pack(&conn::MsgConnectionOpenConfirm {
+                    connection_id: a_conn,
+                    proof_ack: self.cp.proof(&key),
+                    proof_height: proof_height(h),
+                    signer,
+                }));
+                self.conn2_stage = 3;
+                self.bump("connection_open_confirm");
+            }
+            1 if self.conn2_wait > 6 => {
+                self.conn2_stage = 0;
+                return None;
+            }
+            3 if self.conn2_wait > 6 => {
+                self.conn2_stage = 2;
+                return None;
+            }
+            _ => return None,
+        }
+        self.conn2_wait = 0;
+        Some(msgs)
     }
 
     /// `MsgUpgradeClient` of the third client to chain `cp-2` (once): the
@@ -1146,7 +1261,7 @@ impl Driver {
                 let seq = self.cu_seq;
                 let new = self.cu_new.clone();
                 let r = c.rng.below(10);
-                let ack_failure = seq % 4 == 1;
+                let ack_failure = !self.legacy_upgrade_fixture && seq % 4 == 1;
                 if !ack_failure && c.now - self.cu_try_at > 620 && r < 6 {
                     // The upgrade timed out: the counterparty never moved on.
                     let end = cp_end(ch::State::Open, &cur, seq);
@@ -1650,6 +1765,26 @@ impl Driver {
                         }
                     }
                     "connection_open_ack" => self.conn_open = true,
+                    "connection_open_try"
+                        if self.conn2_stage == 1
+                            && attr(e, "counterparty_connection_id").as_deref()
+                                == Some(CP_CONNECTION2)
+                            && attr(e, "client_id") == self.a_client =>
+                    {
+                        self.a_conn2 = attr(e, "connection_id");
+                        self.conn2_stage = 2;
+                        self.conn2_wait = 0;
+                    }
+                    "connection_open_confirm"
+                        if self.conn2_stage == 3
+                            && self.a_conn2.as_deref().is_some_and(|id| {
+                                attr(e, "connection_id").as_deref() == Some(id)
+                            }) =>
+                    {
+                        self.conn2_stage = 4;
+                        self.conn2_wait = 0;
+                        self.bump("connection_confirmed");
+                    }
                     "channel_open_ack" if attr(e, "port_id").as_deref() == Some("transfer") => {
                         if self.cl_stage == 3 && attr(e, "channel_id") == self.a_transfer2 {
                             self.cl_stage = 4;
@@ -1705,7 +1840,7 @@ impl Driver {
                             "channel_upgrade_open" => {
                                 self.ica_version = self.cu_new.clone();
                                 self.bump("chan_upgraded");
-                                6
+                                if self.legacy_upgrade_fixture { 0 } else { 6 }
                             }
                             _ => 0,
                         };

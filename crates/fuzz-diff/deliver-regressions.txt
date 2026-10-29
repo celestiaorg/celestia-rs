@@ -67,6 +67,10 @@ v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_TYPE_REQUIRE=/ibc.core.channel.v1.MsgPru
 # event so code 0 cannot be mistaken for a successful handshake.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_TYPE_REQUIRE=/ibc.core.channel.v1.MsgChannelUpgradeAck DELIVER_IBC_ACK_FAILURE_REQUIRE=1
 v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_TYPE_REQUIRE=/ibc.core.channel.v1.MsgChannelUpgradeAck DELIVER_IBC_ACK_FAILURE_REQUIRE=1
+# Drive the counterparty-initiated connection handshake with signed IAVL
+# proofs, including successful OpenTry and OpenConfirm on the chain under test.
+ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_CONNECTION_CONFIRM=1 DELIVER_TYPE_REQUIRE=/ibc.core.connection.v1.MsgConnectionOpenConfirm
+v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_CONNECTION_CONFIRM=1 DELIVER_TYPE_REQUIRE=/ibc.core.connection.v1.MsgConnectionOpenConfirm
 # MsgExec through a SendAuthorization whose stored spend limit is unsorted:
 # Go's safeAdd panics before the allow list (#85, security.md 104).
 v9-upgrade 300 6 10498 GO_APPD_NEXT=v10 DELIVER_UPGRADE=38 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
@@ -77,8 +81,9 @@ v9-hyperlane 300 8 940002 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_HL_REJ
 # ibc-go's duplicate channel-upgrade error receipt panic carries its
 # errorsmod.Wrapf frame. Governance persists the panic text in failed_reason.
 # Delay the proposal to the triggering state, close expedited voting in the
-# next block, and require the exact Go frame so an earlier failure cannot pass.
-v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
+# next block, keep post-capture Ack-abort state out of the static signed-header
+# fixture, and require the exact Go frame so an earlier failure cannot pass.
+v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture DELIVER_IBC=1 DELIVER_IBC_LEGACY_UPGRADE_FIXTURE=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
 # Signed upgrade runs used to let unrelated mempool traffic consume the
 # scripted account sequence. Merkle-root synthetic delivery then succeeded only
 # after the binary switch, while whole-run counters hid the missing v9 path.
