@@ -1415,6 +1415,28 @@ impl Stats {
                 "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: no delayed success acknowledgement for the exact original packet"
             );
         }
+        if self.ibc_required.contains("pfm_exhaust_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_timeout").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact first timeout"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_retry").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact configured retry"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_retry_exhausted").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: retry did not time out without another retry"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_error_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact delayed refund acknowledgement for the original packet"
+            );
+        }
         Ok(())
     }
 
@@ -3755,6 +3777,7 @@ pub fn run(
     let ibc_pfm_required = std::env::var_os("DELIVER_IBC_PFM_REQUIRE").is_some();
     let ibc_pfm_error_required = std::env::var_os("DELIVER_IBC_PFM_ERROR_REQUIRE").is_some();
     let ibc_pfm_timeout_required = std::env::var_os("DELIVER_IBC_PFM_TIMEOUT_REQUIRE").is_some();
+    let ibc_pfm_exhaust_required = std::env::var_os("DELIVER_IBC_PFM_EXHAUST_REQUIRE").is_some();
     anyhow::ensure!(
         !ibc_connection_confirm || ibc_on,
         "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
@@ -3784,11 +3807,16 @@ pub fn run(
         "DELIVER_IBC_PFM_TIMEOUT_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
+        !ibc_pfm_exhaust_required || ibc_on,
+        "DELIVER_IBC_PFM_EXHAUST_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
         usize::from(ibc_pfm_required)
             + usize::from(ibc_pfm_error_required)
             + usize::from(ibc_pfm_timeout_required)
+            + usize::from(ibc_pfm_exhaust_required)
             <= 1,
-        "DELIVER_IBC PFM success, error, and timeout requirements are mutually exclusive"
+        "DELIVER_IBC PFM success, error, timeout, and exhaustion requirements are mutually exclusive"
     );
     let required = std::env::var_os("DELIVER_GOV_REQUIRE")
         .map(|v| {
@@ -3858,7 +3886,8 @@ pub fn run(
                 && !ibc_ack_failure_required
                 && !ibc_pfm_required
                 && !ibc_pfm_error_required
-                && !ibc_pfm_timeout_required,
+                && !ibc_pfm_timeout_required
+                && !ibc_pfm_exhaust_required,
             "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, or PFM requirements"
         );
     }
@@ -3930,6 +3959,9 @@ pub fn run(
     }
     if ibc_pfm_timeout_required {
         stats.ibc_required.insert("pfm_timeout_lifecycle");
+    }
+    if ibc_pfm_exhaust_required {
+        stats.ibc_required.insert("pfm_exhaust_lifecycle");
     }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
@@ -4208,6 +4240,7 @@ pub fn run(
             .with_pfm_requirement(ibc_pfm_required)
             .with_pfm_error_requirement(ibc_pfm_error_required)
             .with_pfm_timeout_requirement(ibc_pfm_timeout_required)
+            .with_pfm_exhaust_requirement(ibc_pfm_exhaust_required)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
     // The relayer: the last single-key fuzz account.
@@ -7015,6 +7048,24 @@ mod tests {
         }
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("pfm_original_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_exhaustion_needs_both_timeouts_and_refund_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_exhaust_lifecycle");
+        for event in [
+            "pfm_forwarded",
+            "pfm_timeout",
+            "pfm_retry",
+            "pfm_retry_exhausted",
+        ] {
+            assert!(stats.require_ibc_coverage().is_err());
+            stats.ibc.insert(event, 1);
+        }
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_error_ack", 1);
         assert!(stats.require_ibc_coverage().is_ok());
     }
 

@@ -470,6 +470,7 @@ pub struct Driver {
     pfm_required: bool,
     pfm_error_required: bool,
     pfm_timeout_required: bool,
+    pfm_exhaust_required: bool,
     pfm_stage: u8,
     pfm_original: Option<ch::Packet>,
     pfm_forwarded: Option<ch::Packet>,
@@ -608,8 +609,22 @@ impl Driver {
         self
     }
 
+    /// Require the configured retry to time out and propagate its refund Ack.
+    #[must_use]
+    pub fn with_pfm_exhaust_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_exhaust_required = enabled;
+        self
+    }
+
     fn pfm_enabled(&self) -> bool {
-        self.pfm_required || self.pfm_error_required || self.pfm_timeout_required
+        self.pfm_required
+            || self.pfm_error_required
+            || self.pfm_timeout_required
+            || self.pfm_exhaust_required
+    }
+
+    fn pfm_timeout_enabled(&self) -> bool {
+        self.pfm_timeout_required || self.pfm_exhaust_required
     }
 
     fn pfm_acknowledgement(&self) -> (&'static [u8], &'static str) {
@@ -618,6 +633,16 @@ impl Driver {
         } else {
             (PFM_SUCCESS_ACK, PFM_SUCCESS_ACK_HEX)
         }
+    }
+
+    fn pfm_exhaust_ack_hex(&self) -> Option<String> {
+        let channel = self.a_transfer.as_deref()?;
+        let acknowledgement = serde_json::json!({
+            "error": format!(
+                "packet-forward-middleware error: giving up on packet on channel ({channel}) port (transfer) after max retries"
+            )
+        });
+        Some(hex::encode(acknowledgement.to_string()))
     }
 
     /// A frozen subject and a newer active substitute suitable for recovery.
@@ -948,7 +973,9 @@ impl Driver {
                 return Some(self.pfm_recv(c, &signer, &a_chan));
             }
             if self.pfm_stage == 2 {
-                if self.pfm_timeout_required && !self.pfm_timeout_complete {
+                if self.pfm_timeout_enabled()
+                    && (!self.pfm_timeout_complete || self.pfm_exhaust_required)
+                {
                     return self.pfm_timeout(c, &signer);
                 }
                 return self.pfm_ack(c, &signer);
@@ -1148,7 +1175,7 @@ impl Driver {
     /// Send one uniquely attributable valid PFM packet into the app.
     fn pfm_recv(&mut self, c: &StepCtx<'_>, signer: &str, a_chan: &str) -> Vec<Any> {
         let local_receiver = c.accounts[0].0.clone();
-        let timeout = if self.pfm_timeout_required {
+        let timeout = if self.pfm_timeout_enabled() {
             "1s"
         } else {
             "10m"
@@ -1971,9 +1998,12 @@ impl Driver {
             if r.code != 0 {
                 continue;
             }
+            let completing_pfm_exhaustion =
+                self.pfm_exhaust_required && self.pfm_timeout_complete && self.pfm_timeout_pending;
             let mut ack_callback_error = false;
             let mut pfm_downstream_ack = false;
             let mut pfm_original_ack = false;
+            let mut pfm_exhaust_ack = false;
             let mut pfm_timeout = false;
             let mut pfm_retry = None;
             for e in &r.events {
@@ -2133,7 +2163,7 @@ impl Driver {
                                     self.pfm_stage = 2;
                                     self.bump("pfm_forwarded");
                                 }
-                                if self.pfm_timeout_required
+                                if self.pfm_timeout_enabled()
                                     && self.pfm_timeout_pending
                                     && self.pfm_stage == 2
                                     && self.pfm_forwarded.as_ref().is_some_and(|forwarded| {
@@ -2154,7 +2184,7 @@ impl Driver {
                         }
                     }
                     "timeout_packet"
-                        if self.pfm_timeout_required
+                        if self.pfm_timeout_enabled()
                             && self.pfm_timeout_pending
                             && self.pfm_stage == 2
                             && self
@@ -2176,6 +2206,18 @@ impl Driver {
                         pfm_downstream_ack = true;
                     }
                     "write_acknowledgement"
+                        if completing_pfm_exhaustion
+                            && self.pfm_stage == 2
+                            && packet_of(e).as_ref().is_some_and(|packet| {
+                                self.pfm_original
+                                    .as_ref()
+                                    .is_some_and(|original| same_packet(packet, original))
+                            })
+                            && attr(e, "packet_ack_hex") == self.pfm_exhaust_ack_hex() =>
+                    {
+                        pfm_exhaust_ack = true;
+                    }
+                    "write_acknowledgement"
                         if self.pfm_enabled()
                             && self.pfm_ack_pending
                             && self.pfm_stage == 2
@@ -2192,7 +2234,14 @@ impl Driver {
                     _ => {}
                 }
             }
-            if pfm_timeout && let Some(retry) = pfm_retry {
+            if completing_pfm_exhaustion {
+                if pfm_timeout && pfm_retry.is_none() && pfm_exhaust_ack {
+                    self.pfm_timeout_pending = false;
+                    self.pfm_stage = 3;
+                    self.bump("pfm_retry_exhausted");
+                    self.bump("pfm_original_error_ack");
+                }
+            } else if pfm_timeout && let Some(retry) = pfm_retry {
                 self.pfm_forwarded = Some(retry);
                 self.pfm_timeout_pending = false;
                 self.pfm_timeout_complete = true;
@@ -2852,5 +2901,93 @@ mod tests {
                 .as_ref()
                 .is_some_and(|packet| same_packet(packet, &retry))
         );
+    }
+
+    #[test]
+    fn pfm_exhaustion_credit_requires_exact_retry_timeout_and_original_error_ack() {
+        let retry = ch::Packet {
+            sequence: 10,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: serde_json::json!({
+                "amount": PFM_COVERAGE_AMOUNT,
+                "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+                "memo": "",
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "sender": "cosmos1intermediate"
+            })
+            .to_string()
+            .into_bytes(),
+            timeout_height: None,
+            timeout_timestamp: 199,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact original data".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_exhaust_required: true,
+            pfm_stage: 2,
+            pfm_original: Some(original.clone()),
+            pfm_forwarded: Some(retry.clone()),
+            pfm_timeout_pending: true,
+            pfm_timeout_complete: true,
+            a_transfer: Some("channel-3".into()),
+            ..Driver::default()
+        };
+        let exhaust_ack = driver.pfm_exhaust_ack_hex().unwrap();
+
+        // The matching events must share one successful result.
+        driver.observe(&[result(packet_event("timeout_packet", &retry, None))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(&exhaust_ack),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+        assert!(driver.pfm_timeout_pending);
+
+        // A different original packet or acknowledgement cannot receive credit.
+        let mut other_original = original.clone();
+        other_original.sequence += 1;
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &other_original, Some(&exhaust_ack)),
+        ])]);
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &original, Some(PFM_ERROR_ACK_HEX)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+
+        // Another attributable retry contradicts exhaustion.
+        let next_retry = ch::Packet {
+            sequence: 11,
+            timeout_timestamp: 299,
+            ..retry.clone()
+        };
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("send_packet", &next_retry, None),
+            packet_event("write_acknowledgement", &original, Some(&exhaust_ack)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &original, Some(&exhaust_ack)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), Some(&1));
+        assert!(!driver.pfm_timeout_pending);
+        assert_eq!(driver.pfm_stage, 3);
     }
 }
