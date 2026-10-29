@@ -693,6 +693,18 @@ test), then start that harness's count again.
   validations and exactly one conversion rejection while retaining 300
   successful conversions. This records the conversion-rejection boundary only;
   the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Cross-chain commit replay rejection (2026-10-29):* `c_commit` now twins one
+  recorded commit for which full, light, light-all-signatures and both trusting
+  verifiers succeed. The twin preserves the validator sets, block ID, height,
+  commit bytes and trust level while changing only the supplied chain ID. Both
+  pinned cores keep conversion and `ValidateBasic` successful, then reject the
+  unchanged signatures in all five verifiers with the exact `wrong signature
+  (#0)` result. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,101
+  inputs with 69,113 Go accepts and zero mismatches. Their seed reports agreed
+  on all 901 inputs with no oracle errors. This records deterministic signature
+  domain separation and a bounded mutation campaign only; other commit branches
+  and the 10⁸-input, exact-candidate, coverage and three-night gates remain
+  open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
