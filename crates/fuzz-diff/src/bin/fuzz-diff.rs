@@ -500,6 +500,9 @@ fn main() -> anyhow::Result<()> {
                 st.hl_verification.as_deref().unwrap_or("noop")
             );
         }
+        for (version_kind, n) in &st.hl_verified_versions {
+            println!("HL_VERIFIED_VERSION {version_kind} {n}");
+        }
         for (case, n) in &st.hl_retried {
             println!("HL_RETRIED {case} {n}");
         }
@@ -559,6 +562,8 @@ fn main() -> anyhow::Result<()> {
                 "gov_failure_matches": st.gov_failure_matches,
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
+                "hl_verified_versions": st.hl_verified_versions,
+                "hl_preupgrade_required": st.hl_preupgrade_required,
                 "hl_rejection_cases": st.hl_rejection_cases,
                 "hl_retried": st.hl_retried,
                 "hl_rejection_failures": st.hl_rejection_failures,

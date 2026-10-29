@@ -167,6 +167,11 @@ pub struct Stats {
     pub hl_verification: Option<String>,
     /// Successful collateral / synthetic transfers verified by that ISM.
     pub hl_verified: BTreeMap<String, u64>,
+    /// Successful scripted transfers by app version and path
+    /// (`v9/collateral`, for example). Signed upgrade runs require these.
+    pub hl_verified_versions: BTreeMap<String, u64>,
+    /// A signed upgrade run must cover both incoming paths before switching.
+    pub hl_preupgrade_required: bool,
     /// Required rejection / successful same-message retry cases.
     pub hl_rejection_cases: Vec<String>,
     /// Complete expected-rejection then successful retry pairs, by case.
@@ -897,6 +902,8 @@ struct Gen {
     /// Gov-authority messages built from the app's current parameters
     /// (`DELIVER_GOVPASS`, see [`authority_msgs`]).
     gov_msgs: Vec<Any>,
+    /// An account that unrelated generated txs must not sign with.
+    reserved_account: Option<usize>,
 }
 
 /// State of `DELIVER_WIRE`: messages get a [`crate::wire`] mutation of
@@ -1319,6 +1326,15 @@ impl Stats {
                     "incomplete DELIVER_HL_ISM={mode} coverage: no successful {kind} MsgProcessMessage"
                 );
             }
+            if self.hl_preupgrade_required {
+                for kind in ["collateral", "synthetic"] {
+                    let key = format!("v9/{kind}");
+                    anyhow::ensure!(
+                        self.hl_verified_versions.get(&key).copied().unwrap_or(0) > 0,
+                        "incomplete DELIVER_UPGRADE signed coverage: no successful v9 {kind} MsgProcessMessage before the binary switch"
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -1344,6 +1360,25 @@ fn gov_requirements(value: Option<&str>, govpass: bool) -> anyhow::Result<Vec<St
     Ok(required.into_iter().collect())
 }
 
+fn allow_postupgrade_hl(
+    value: Option<&str>,
+    scripted: bool,
+    gov_failure_required: bool,
+) -> anyhow::Result<bool> {
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    anyhow::ensure!(
+        value == "governance-fixture",
+        "DELIVER_HL_ALLOW_POSTUPGRADE must be governance-fixture"
+    );
+    anyhow::ensure!(
+        scripted && gov_failure_required,
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires DELIVER_SCRIPT and DELIVER_GOV_FAILURE_REQUIRE"
+    );
+    Ok(true)
+}
+
 /// A generated, signed tx.
 struct Built {
     raw: Vec<u8>,
@@ -1356,11 +1391,23 @@ impl Gen {
 
     /// A fuzz account: mostly a single-key one, sometimes a multisig.
     fn acct_idx(&mut self) -> usize {
-        if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
+        let i = if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
             self.m.rng.below(ACCOUNTS)
         } else {
             self.m.rng.below(self.accts.len())
+        };
+        if self.reserved_account == Some(i) {
+            // Preserve the RNG stream while moving this signer away from the
+            // dedicated account. HL_ACCT is not the first account.
+            i - 1
+        } else {
+            i
         }
+    }
+
+    fn uses_reserved_signer(&self, idx: &[Option<usize>]) -> bool {
+        self.reserved_account
+            .is_some_and(|reserved| idx.iter().flatten().any(|i| *i == reserved))
     }
 
     fn address_value(&mut self) -> Vec<u8> {
@@ -2371,7 +2418,10 @@ impl Gen {
         let cands: Vec<(u8, usize)> = self
             .hl_objects
             .iter()
-            .filter(|o| matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN))
+            .filter(|o| {
+                matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN)
+                    && self.reserved_account != Some(o.2)
+            })
             .map(|o| (o.0, o.2))
             .collect();
         let (kind, i) = self.pick(&cands)?;
@@ -3333,6 +3383,12 @@ impl Gen {
             signatures: sigs,
         }
         .encode_to_vec();
+        // Message fields can draw a signer from the harvested dictionary, so
+        // acct_idx alone cannot reserve an account. Finish generation first to
+        // preserve the RNG stream, then drop any tx that actually needs it.
+        if self.uses_reserved_signer(&idx) {
+            return None;
+        }
         Some(Built { raw })
     }
 }
@@ -3559,6 +3615,25 @@ pub fn run(
             Ok::<_, anyhow::Error>(value)
         })
         .transpose()?;
+    let script_path = std::env::var_os("DELIVER_SCRIPT")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_SCRIPT must be UTF-8"))
+        })
+        .transpose()?;
+    let allow_postupgrade = std::env::var_os("DELIVER_HL_ALLOW_POSTUPGRADE")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_HL_ALLOW_POSTUPGRADE must be UTF-8"))
+        })
+        .transpose()?;
+    let allow_postupgrade = allow_postupgrade_hl(
+        allow_postupgrade.as_deref(),
+        script_path.is_some(),
+        gov_failure_required.is_some(),
+    )?;
     anyhow::ensure!(
         gov_required.is_empty() || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_GOV_REQUIRE cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
@@ -3583,6 +3658,10 @@ pub fn run(
         // halts: the generated blocks then run on its gov-upgrade state).
         stop_at = upgrade::held_signals(&records).0;
     }
+    anyhow::ensure!(
+        !allow_postupgrade || (upg.on && hl_on && verifier.name() != "noop"),
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires a signed DELIVER_UPGRADE run"
+    );
     // Go raised the app version in the last `FinalizeBlock`: the binary
     // switches after its `Commit`.
     let mut switch_to: Option<(u64, u64)> = None;
@@ -3595,6 +3674,7 @@ pub fn run(
         gov_required,
         gov_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
+        hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
         hl_rejection_cases: if hl_reject {
             verifier
                 .rejections()
@@ -3787,6 +3867,7 @@ pub fn run(
         force_amino: false,
         wire: WireGen::default(),
         gov_msgs: Vec::new(),
+        reserved_account: None,
     };
     gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
     let mut hl_seq = HlSeq {
@@ -3879,10 +3960,14 @@ pub fn run(
         .then(crate::ibcmock::Driver::default);
     // The relayer: the last single-key fuzz account.
     let relayer = ACCOUNTS - 1;
-    let mut script = match std::env::var("DELIVER_SCRIPT") {
-        Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
-        Err(_) => std::collections::VecDeque::new(),
+    let mut script = match script_path {
+        Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
+        None => std::collections::VecDeque::new(),
     };
+    anyhow::ensure!(
+        !allow_postupgrade || !script.is_empty(),
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires a nonempty DELIVER_SCRIPT"
+    );
     let script_at = match std::env::var_os("DELIVER_SCRIPT_AT") {
         None => 0,
         Some(value) => value
@@ -3949,6 +4034,17 @@ pub fn run(
         let block_av = app_version;
         let gov_setup = !hl_setup && stats.gov_setup();
         scripted |= gov_setup;
+        // A signed Hyperlane sequence needs its dedicated account's committed
+        // sequence. Before both incoming paths succeed at v9, keep unrelated
+        // mempool traffic off that account and defer the held upgrade signal.
+        let hl_preupgrade = upg.on
+            && app_version < 10
+            && ["collateral", "synthetic"].iter().any(|kind| {
+                let key = format!("v9/{kind}");
+                stats.hl_verified_versions.get(&key).copied().unwrap_or(0) == 0
+            })
+            && stats.hl_preupgrade_required;
+        gn.reserved_account = hl_preupgrade.then_some(HL_ACCT);
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
@@ -3957,12 +4053,15 @@ pub fn run(
                 .upgrade_height
                 .is_some_and(|h| (h..=h + 2).contains(&height));
         if upg.on && !bootstrap && !hl_setup {
-            txs = upg.txs(&mut gn, b, height, &hl_seq.token);
+            txs = upg.txs(&mut gn, b, height, &hl_seq.token, hl_preupgrade);
         }
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
                 for i in 0..gn.accts.len() {
+                    if hl_preupgrade && i == HL_ACCT {
+                        continue;
+                    }
                     let msg = Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                         delegator_address: gn.accts[i].acc.clone(),
                         validator_address: v.clone(),
@@ -3998,6 +4097,8 @@ pub fn run(
                 }
             }
         } else {
+            // IBC uses the dedicated relayer, not the Hyperlane account. Keep
+            // it active so packets can be in flight across the switch.
             if !hl_setup
                 && !gov_setup
                 && let Some(d) = ibc.as_mut()
@@ -4029,9 +4130,11 @@ pub fn run(
             }
             if !hl_setup && !gov_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
-                for t in sweep_txs(&mut gn, i, &msgs, used) {
-                    stats.swept += 1;
-                    txs.push(t);
+                if !hl_preupgrade || i != HL_ACCT {
+                    for t in sweep_txs(&mut gn, i, &msgs, used) {
+                        stats.swept += 1;
+                        txs.push(t);
+                    }
                 }
             }
             if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
@@ -4118,7 +4221,7 @@ pub fn run(
                 if !vals.is_empty() {
                     govpass_delegated = true;
                     gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
-                    for i in 0..ACCOUNTS - 1 {
+                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let msg =
                             Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                                 delegator_address: gn.accts[i].acc.clone(),
@@ -4184,7 +4287,7 @@ pub fn run(
                         gn.accts[0].seq += 1;
                         txs.push(t);
                     }
-                    for i in 0..ACCOUNTS - 1 {
+                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
                             proposal_id: id,
                             voter: gn.accts[i].acc.clone(),
@@ -4540,6 +4643,39 @@ pub fn run(
                 ));
             }
         }
+        // Give the reserved Hyperlane tx a proposer that includes it without
+        // changing the generator's RNG stream or suppressing other traffic.
+        // ProcessProposal still has to accept the resulting block on both apps.
+        if hl_preupgrade
+            && let Some(t) = hl_seq.pending.as_ref()
+            && !final_txs.contains(t)
+        {
+            let mut forced = proc.clone();
+            forced.txs.clone_from(&final_txs);
+            forced.txs.push(t.clone());
+            if let Ok((size, root)) = app::proposal::block_data_root(app_version, &forced.txs) {
+                forced.square_size = size;
+                forced.data_root_hash = root;
+            }
+            let g = go_value(go.call_or_exception(
+                cons_conn,
+                &Request {
+                    value: Some(request::Value::ProcessProposal(forced.clone())),
+                },
+            )?)?;
+            let g = match g {
+                response::Value::ProcessProposal(p) => Some(p.status),
+                _ => None,
+            };
+            let o = rust.process_proposal(&forced).map(|p| p.status).ok();
+            if g != o {
+                stats.mismatches.push(format!(
+                    "{scenario} h={height} ProcessProposal (reserved Hyperlane tx) go={g:?} rust={o:?}"
+                ));
+            } else if g == accepted {
+                final_txs = forced.txs;
+            }
+        }
         let fb = abci::RequestFinalizeBlock {
             txs: final_txs,
             decided_last_commit: Some(commit),
@@ -4605,6 +4741,10 @@ pub fn run(
                         "synthetic"
                     };
                     *stats.hl_verified.entry(kind.into()).or_default() += 1;
+                    *stats
+                        .hl_verified_versions
+                        .entry(format!("v{block_av}/{kind}"))
+                        .or_default() += 1;
                 }
                 hl_seq.result(&u, res);
             } else {
@@ -6187,6 +6327,7 @@ fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
         force_amino,
         wire: WireGen::default(),
         gov_msgs: Vec::new(),
+        reserved_account: None,
     };
     for t in crate::corpus::devnet_txs() {
         g.m.harvest(&t);
@@ -6435,6 +6576,11 @@ mod tests {
             gov_requirements(Some(&format!(" {bank},{bank} ")), true).unwrap(),
             vec![bank]
         );
+        assert!(!allow_postupgrade_hl(None, false, false).unwrap());
+        assert!(allow_postupgrade_hl(Some("yes"), true, true).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), false, true).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), true, false).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), true, true).unwrap());
     }
 
     #[test]
@@ -6447,6 +6593,18 @@ mod tests {
         stats.hl_verified.insert("collateral".into(), 1);
         assert!(stats.require_hl_coverage().is_err());
         stats.hl_verified.insert("synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_ok());
+
+        stats.hl_preupgrade_required = true;
+        assert!(stats.require_hl_coverage().is_err());
+        stats
+            .hl_verified_versions
+            .insert("v10/collateral".into(), 1);
+        stats.hl_verified_versions.insert("v10/synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified_versions.insert("v9/collateral".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified_versions.insert("v9/synthetic".into(), 1);
         assert!(stats.require_hl_coverage().is_ok());
     }
 
@@ -6507,6 +6665,7 @@ mod tests {
             force_amino: false,
             wire: WireGen::default(),
             gov_msgs: Vec::new(),
+            reserved_account: None,
         };
         assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);
@@ -6518,5 +6677,31 @@ mod tests {
         for _ in 0..200 {
             assert!(g.tx().is_some());
         }
+    }
+
+    #[test]
+    fn reserved_account_is_filtered_even_when_harvested_as_a_signer() {
+        let mut g = offline_gen(10, 7, false);
+        let address = g.accts[HL_ACCT].addr.clone();
+        let account = g.accts[HL_ACCT].acc.clone().into_bytes();
+        g.reserved_account = Some(HL_ACCT);
+        g.dict
+            .strings
+            .insert("sender".into(), vec![account.clone()]);
+
+        assert!((0..500).any(|_| g.address_value() == account));
+        let mut decoded = 0;
+        for _ in 0..2_000 {
+            let Some(tx) = g.tx() else {
+                continue;
+            };
+            let Ok(tx) = txdecode::decode_for(10, &tx.raw) else {
+                continue;
+            };
+            decoded += 1;
+            let signers = x_ante::txview::signers(&tx).unwrap_or_default();
+            assert!(!signers.contains(&address));
+        }
+        assert!(decoded > 100);
     }
 }

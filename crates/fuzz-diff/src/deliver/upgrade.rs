@@ -172,6 +172,14 @@ pub(super) struct Upgrade {
     pub built: BTreeMap<String, u64>,
 }
 
+fn random_account(gn: &mut Gen, reserve_hl: bool) -> usize {
+    if !reserve_hl {
+        return gn.m.rng.below(ACCOUNTS);
+    }
+    let i = gn.m.rng.below(ACCOUNTS - 1);
+    if i >= HL_ACCT { i + 1 } else { i }
+}
+
 impl Upgrade {
     /// The phase of `height` (volumes are counted per phase).
     pub fn phase(&self, height: i64, app_version: u64) -> String {
@@ -223,7 +231,14 @@ impl Upgrade {
 
     /// The driver's txs of generated block `b` at `height`.
     #[allow(clippy::too_many_lines)]
-    pub fn txs(&mut self, gn: &mut Gen, b: usize, height: i64, hl_token: &str) -> Vec<Vec<u8>> {
+    pub fn txs(
+        &mut self,
+        gn: &mut Gen,
+        b: usize,
+        height: i64,
+        hl_token: &str,
+        reserve_hl: bool,
+    ) -> Vec<Vec<u8>> {
         use celestia_proto::celestia::signal::v1 as signal;
         let mut out = Vec::new();
         let v10 = gn.app_version >= 10;
@@ -288,7 +303,7 @@ impl Upgrade {
         }
         // Grants, allowances and vesting accounts made at v9, used at v10.
         if !v10 && (2..12).contains(&b) {
-            self.v9_setup(gn, &mut out, b);
+            self.v9_setup(gn, &mut out, b, reserve_hl);
         }
         // Late at v10 the fuzz validators take over 5/6 of the power and
         // signal the current version (or 9). Go compares with
@@ -355,12 +370,12 @@ impl Upgrade {
             self.push(gn, &mut out, i, vec![msg], 200_000);
         }
         // The scenario validator's held signal txs (in order).
-        if b >= self.signal_at {
+        if !reserve_hl && b >= self.signal_at {
             out.extend(self.held.iter().cloned());
         }
         // MsgTryUpgrade: too early (no quorum), in the block of the
         // signal, until pending, repeated while pending, and at v10.
-        let tries = if !self.held.is_empty() && b + 1 < self.signal_at {
+        let tries = if reserve_hl || (!self.held.is_empty() && b + 1 < self.signal_at) {
             usize::from(gn.m.rng.one_in(4))
         } else if (self.upgrade_height.is_none() && !v10) || near || self.late {
             1 + gn.m.rng.below(2)
@@ -368,14 +383,14 @@ impl Upgrade {
             usize::from(gn.m.rng.one_in(5))
         };
         for _ in 0..tries {
-            let i = gn.m.rng.below(ACCOUNTS);
+            let i = random_account(gn, reserve_hl);
             let msg = Any::pack(&signal::MsgTryUpgrade {
                 signer: gn.accts[i].acc.clone(),
             });
             self.push(gn, &mut out, i, vec![msg], 200_000);
         }
         // Hyperlane routers in v9's shapes (stored as given at v9).
-        if !v10 && !hl_token.is_empty() && self.routers == 0 {
+        if !reserve_hl && !v10 && !hl_token.is_empty() && self.routers == 0 {
             self.routers = 1;
             let msgs = V9_ROUTERS
                 .iter()
@@ -470,7 +485,7 @@ impl Upgrade {
                 .collect();
             for id in ids.into_iter().take(2) {
                 self.voted.insert(id);
-                for i in 0..ACCOUNTS {
+                for i in (0..ACCOUNTS).filter(|i| !reserve_hl || *i != HL_ACCT) {
                     let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
                         proposal_id: id,
                         voter: gn.accts[i].acc.clone(),
@@ -482,7 +497,9 @@ impl Upgrade {
             }
         }
         // The boundary: v10-only messages, v9 shapes, the v9 state used.
-        let n = if near {
+        let n = if reserve_hl {
+            0
+        } else if near {
             6 + gn.m.rng.below(6)
         } else if self.upgrade_height.is_some() || gn.m.rng.one_in(3) {
             1 + gn.m.rng.below(3)
@@ -497,12 +514,20 @@ impl Upgrade {
 
     /// v9 setup of generated block `b`: authz grants (incl. for v10-only
     /// messages), fee allowances, vesting accounts, gov proposals.
-    fn v9_setup(&mut self, gn: &mut Gen, out: &mut Vec<Vec<u8>>, b: usize) {
+    fn v9_setup(&mut self, gn: &mut Gen, out: &mut Vec<Vec<u8>>, b: usize, reserve_hl: bool) {
         use celestia_proto::cosmos::authz::v1beta1 as authz;
         use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
         use celestia_proto::cosmos::vesting::v1beta1 as vesting;
-        let i = b % ACCOUNTS;
-        let next = (i + 1) % ACCOUNTS;
+        let i = if reserve_hl && b % ACCOUNTS == HL_ACCT {
+            (b + 1) % ACCOUNTS
+        } else {
+            b % ACCOUNTS
+        };
+        let next = if reserve_hl && (i + 1) % ACCOUNTS == HL_ACCT {
+            (i + 2) % ACCOUNTS
+        } else {
+            (i + 1) % ACCOUNTS
+        };
         let utia = |n: u64| Coin {
             denom: "utia".into(),
             amount: n.to_string(),
