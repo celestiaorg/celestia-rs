@@ -1664,6 +1664,21 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                                 (3, now.as_bytes()),
                             ]));
                         }
+
+                        // Keep the authentic initial block and wall clock,
+                        // but make the reconstructed genesis time disagree by
+                        // one second. This reaches the initial-height time
+                        // equality check after proposer validation.
+                        let mut wrong_genesis_time = state.clone();
+                        if let Some(time) = wrong_genesis_time.last_block_time.as_mut() {
+                            time.seconds = time.seconds.saturating_add(1);
+                            let wrong_genesis_time = wrong_genesis_time.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_genesis_time),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
                     }
                 }
                 for (window_index, w) in bs.windows(2).enumerate() {
@@ -2178,7 +2193,7 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 66);
+        assert_eq!(s.len(), 67);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
@@ -2187,7 +2202,7 @@ mod tests {
     }
 
     #[test]
-    fn vblock_seeds_reach_initial_height_commit_rejection() {
+    fn vblock_seeds_reach_initial_height_rules() {
         let initial: Vec<_> = seeds("c_vblock")
             .into_iter()
             .filter(|seed| {
@@ -2198,7 +2213,29 @@ mod tests {
                     .is_ok_and(|state| state.last_block_height == 0)
             })
             .collect();
-        assert_eq!(initial.len(), 2);
+        assert_eq!(initial.len(), 3);
+
+        let valid_fields = args(&initial[0]).unwrap();
+        let time_fields = args(&initial[2]).unwrap();
+        assert_eq!(
+            first(&valid_fields, 2),
+            first(&time_fields, 2),
+            "block changed"
+        );
+        assert_eq!(
+            first(&valid_fields, 3),
+            first(&time_fields, 3),
+            "wall clock changed"
+        );
+        let original =
+            ctypes::proto::state::State::decode(first(&valid_fields, 1).unwrap()).unwrap();
+        let mut changed =
+            ctypes::proto::state::State::decode(first(&time_fields, 1).unwrap()).unwrap();
+        let changed_time = Time::from_proto(changed.last_block_time.as_ref()).unwrap();
+        changed.last_block_time = original.last_block_time;
+        assert_eq!(changed, original, "state changed beyond genesis time");
+        let block = Block::decode(first(&valid_fields, 2).unwrap()).unwrap();
+        let block_time = block.header.time;
 
         for app_version in [9, 10] {
             let valid = crate::rust_out(app_version, "c_vblock", &initial[0]).out;
@@ -2207,6 +2244,16 @@ mod tests {
             assert!(
                 rejected.ends_with("validate=err:initial block can't have LastCommit signatures\n"),
                 "v{app_version}: {rejected}"
+            );
+            let wrong_time = crate::rust_out(app_version, "c_vblock", &initial[2]).out;
+            assert_eq!(
+                wrong_time,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block time {} is not equal to genesis time {}\n",
+                    block_time.go_string(),
+                    changed_time.go_string()
+                ),
+                "v{app_version}"
             );
         }
     }
@@ -2286,7 +2333,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 66);
+        assert_eq!(seeds.len(), 67);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()

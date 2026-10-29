@@ -688,6 +688,13 @@ test), then start that harness's count again.
   deterministic initial-height reachability and a bounded mutation campaign
   only; other initial-height/evidence branches and the 10⁸-input,
   exact-candidate, coverage and three-night gates remain open.
+  *Initial-height genesis time (2026-10-29):* `c_vblock` now twins the
+  successful initial transition by changing only the reconstructed state's
+  genesis time by one second. The authentic first block and wall clock remain
+  byte-identical, and both pinned cores reach the exact genesis-time equality
+  rejection after proposer validation. This is reconstructed-state validation
+  only; it does not independently replay `InitChain`, and the 10⁸-input,
+  exact-candidate, coverage and three-night gates remain open.
   *Evidence byte-limit boundary (2026-10-29):* `c_vblock` now attaches one
   structurally valid frozen duplicate-vote item to a successful real block,
   recomputes the current header's evidence hash and compares otherwise
