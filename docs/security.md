@@ -843,7 +843,7 @@ and creates false CheckTx / PrepareProposal discrepancies against Rust.
 installed; the report excludes other compiler versions.
 Different finalized counts for an identical run are an error. Do not
 sum revisions to claim F1.2: its volume starts after the last fix and
-still needs every scenario, both app versions and 14 clean nights.
+still needs every scenario, both app versions and three consecutive clean nights.
 Artifacts from before `DELIVER_STATS` are not counted by this report.
 
 The `exec` client allows HTTP/2 header lists up to 1 MiB on both
