@@ -608,6 +608,15 @@ test), then start that harness's count again.
   mismatches. This closes only deterministic positive-seed reachability;
   aggregate acceptance does not establish branch coverage, and the 10⁸-input,
   exact-candidate and three-night gates remain open.
+  *Seed-outcome accounting (2026-10-29):* consensus campaigns now emit a
+  machine-readable `CONSENSUS_GO_SEED_OUTCOMES` record for the complete
+  unmutated Go seed replay before mutation. It counts inputs and oracle errors
+  per operation and classifies every returned field as success, error, false,
+  panic, skip or data. Initial pinned v0.40.9 and v0.42.3 reports covered all
+  seventeen operations with no seed-level oracle errors and confirmed the new
+  `c_prop` proof result as data. This distinguishes deterministic seed
+  reachability from the aggregate oracle-accept count; it does not establish
+  mutation branch coverage or close any volume or nightly gate.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
