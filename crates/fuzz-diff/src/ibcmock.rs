@@ -429,6 +429,9 @@ const PFM_COVERAGE_DENOM: &str = "upfmcoverage";
 const PFM_COVERAGE_RECEIVER: &str = "cosmos1pfmcoverage";
 const PFM_SUCCESS_ACK: &[u8] = br#"{"result":"AQ=="}"#;
 const PFM_SUCCESS_ACK_HEX: &str = "7b22726573756c74223a2241513d3d227d";
+const PFM_ERROR_ACK: &[u8] = br#"{"error":"pfm downstream rejection"}"#;
+const PFM_ERROR_ACK_HEX: &str =
+    "7b226572726f72223a2270666d20646f776e73747265616d2072656a656374696f6e227d";
 
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
@@ -465,6 +468,7 @@ pub struct Driver {
     /// Required PFM success lifecycle: 0 not sent, 1 incoming packet landed,
     /// 2 exact forwarded packet observed, 3 original acknowledgement written.
     pfm_required: bool,
+    pfm_error_required: bool,
     pfm_stage: u8,
     pfm_original: Option<ch::Packet>,
     pfm_forwarded: Option<ch::Packet>,
@@ -585,6 +589,25 @@ impl Driver {
     pub fn with_pfm_requirement(mut self, enabled: bool) -> Self {
         self.pfm_required = enabled;
         self
+    }
+
+    /// Require the exact PFM downstream-error and original-error Ack path.
+    #[must_use]
+    pub fn with_pfm_error_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_error_required = enabled;
+        self
+    }
+
+    fn pfm_enabled(&self) -> bool {
+        self.pfm_required || self.pfm_error_required
+    }
+
+    fn pfm_acknowledgement(&self) -> (&'static [u8], &'static str) {
+        if self.pfm_error_required {
+            (PFM_ERROR_ACK, PFM_ERROR_ACK_HEX)
+        } else {
+            (PFM_SUCCESS_ACK, PFM_SUCCESS_ACK_HEX)
+        }
     }
 
     /// A frozen subject and a newer active substitute suitable for recovery.
@@ -910,7 +933,7 @@ impl Driver {
     fn steady(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
         let signer = c.signer.clone();
         let a_chan = self.a_transfer.clone()?;
-        if self.pfm_required {
+        if self.pfm_enabled() {
             if self.pfm_stage == 0 {
                 return Some(self.pfm_recv(c, &signer, &a_chan));
             }
@@ -1161,10 +1184,11 @@ impl Driver {
     /// Relay a success acknowledgement for the exact forwarded packet.
     fn pfm_ack(&mut self, c: &StepCtx<'_>, signer: &str) -> Option<Vec<Any>> {
         let packet = self.pfm_forwarded.clone()?;
+        let (acknowledgement, _) = self.pfm_acknowledgement();
         if let Some(index) = self.pending.iter().position(|p| p == &packet) {
             self.pending.remove(index);
         }
-        self.cp.write_ack(&packet, PFM_SUCCESS_ACK);
+        self.cp.write_ack(&packet, acknowledgement);
         let h = self.cp.commit(c.now - 6);
         self.pfm_ack_pending = true;
         let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
@@ -1174,7 +1198,7 @@ impl Driver {
                 packet.destination_port, packet.destination_channel, packet.sequence
             )),
             packet: Some(packet),
-            acknowledgement: PFM_SUCCESS_ACK.to_vec(),
+            acknowledgement: acknowledgement.to_vec(),
             proof_height: proof_height(h),
             signer: signer.into(),
         }));
@@ -2057,7 +2081,7 @@ impl Driver {
                                 self.cl_stage = 6;
                             }
                             if p.destination_channel == CP_TRANSFER {
-                                if self.pfm_required
+                                if self.pfm_enabled()
                                     && self.pfm_stage == 1
                                     && is_required_pfm_forward(&p, self.a_transfer.as_deref())
                                 {
@@ -2073,7 +2097,7 @@ impl Driver {
                         }
                     }
                     "acknowledge_packet"
-                        if self.pfm_required
+                        if self.pfm_enabled()
                             && self.pfm_ack_pending
                             && self.pfm_stage == 2
                             && self
@@ -2084,7 +2108,7 @@ impl Driver {
                         pfm_downstream_ack = true;
                     }
                     "write_acknowledgement"
-                        if self.pfm_required
+                        if self.pfm_enabled()
                             && self.pfm_ack_pending
                             && self.pfm_stage == 2
                             && packet_of(e).as_ref().is_some_and(|packet| {
@@ -2093,7 +2117,7 @@ impl Driver {
                                     .is_some_and(|original| same_packet(packet, original))
                             })
                             && attr(e, "packet_ack_hex").as_deref()
-                                == Some(PFM_SUCCESS_ACK_HEX) =>
+                                == Some(self.pfm_acknowledgement().1) =>
                     {
                         pfm_original_ack = true;
                     }
@@ -2104,7 +2128,11 @@ impl Driver {
                 self.pfm_ack_pending = false;
                 self.pfm_stage = 3;
                 self.bump("pfm_downstream_ack");
-                self.bump("pfm_original_ack");
+                if self.pfm_error_required {
+                    self.bump("pfm_original_error_ack");
+                } else {
+                    self.bump("pfm_original_ack");
+                }
             }
             if let Ok(d) =
                 celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(r.data.as_slice())
@@ -2583,5 +2611,61 @@ mod tests {
             Some(PFM_SUCCESS_ACK_HEX),
         ))]);
         assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
+    }
+
+    #[test]
+    fn pfm_error_credit_requires_the_exact_propagated_error_ack() {
+        let forward = ch::Packet {
+            sequence: 9,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: b"exact forward".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 99,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact original".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_error_required: true,
+            pfm_stage: 2,
+            pfm_original: Some(original.clone()),
+            pfm_forwarded: Some(forward.clone()),
+            pfm_ack_pending: true,
+            ..Driver::default()
+        };
+
+        // A success acknowledgement cannot satisfy the error path, even
+        // alongside the exact downstream acknowledge_packet event.
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event(
+                "write_acknowledgement",
+                &original,
+                Some(PFM_SUCCESS_ACK_HEX),
+            ),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), None);
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), None);
+        assert!(driver.pfm_ack_pending);
+        assert_eq!(driver.pfm_stage, 2);
+
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event("write_acknowledgement", &original, Some(PFM_ERROR_ACK_HEX)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), Some(&1));
+        assert!(!driver.pfm_ack_pending);
+        assert_eq!(driver.pfm_stage, 3);
     }
 }
