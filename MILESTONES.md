@@ -375,12 +375,28 @@ test), then start that harness's count again.
   attribute two v9 and three v10 executions only when that response and the
   exact pending channel / sequence callback error occur in the same result.
   This is negative-path coverage, not successful-handshake credit.
+  *Packet-forward follow-up (2026-10-29, PRs #147–#150):* separate opt-in
+  contracts now require the exact forwarded packet and delayed original
+  acknowledgement for downstream success and error, one exact timeout and
+  configured retry before downstream success, and the recorded retry's
+  timeout followed by PFM v8.2.0's exact max-retries error acknowledgement.
+  Each path passed pinned v9 and v10 300-block differentials with every
+  required event exactly once and zero mismatches. The error and exhaustion
+  contracts execute PFM's refundable unwind path; differential state equality
+  covers its effects, without a separate balance assertion. These are bounded
+  regressions, not volume or three-night qualification evidence.
+  *ICA encoding follow-up (2026-10-29):* an opt-in contract executes an exact
+  successful host packet under proto3, upgrades that real ICA channel to
+  proto3json, then requires the exact second packet's success acknowledgement.
+  Credit is tied to each full packet and its code-0 acknowledgement; scheduled
+  packets and channel-upgrade events alone do not count.
   Remaining work is to establish complete coverage and qualifying volume
-  across ICS-20 denoms / amounts / receivers, PFM forwards / retries /
-  refunds / timeouts, both ICA encodings, acknowledgement forms, mutated
-  headers, misbehaviour, frozen / expired clients and signed Hyperlane
-  verification paths. Exit: F1.2's exact-candidate volume and three-night
-  criteria for this harness too, plus F1.3's coverage accounting.
+  across ICS-20 denoms / amounts / receivers, additional acknowledgement
+  forms and ICA error paths, mutated headers, misbehaviour, frozen / expired
+  clients and signed Hyperlane verification paths. The exact PFM and ICA
+  lifecycles above still need the same exact-candidate saturation as the rest
+  of this harness. Exit: F1.2's exact-candidate volume and three-night criteria
+  for this harness too, plus F1.3's coverage accounting.
 
 - [ ] **F1.5 The v9 → v10 upgrade.** `deliver` supports `v9-upgrade` and
   `v9-upgrade-boundary`, switching the pinned Go binary after the upgrade
