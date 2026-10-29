@@ -432,6 +432,9 @@ const PFM_SUCCESS_ACK_HEX: &str = "7b22726573756c74223a2241513d3d227d";
 const PFM_ERROR_ACK: &[u8] = br#"{"error":"pfm downstream rejection"}"#;
 const PFM_ERROR_ACK_HEX: &str =
     "7b226572726f72223a2270666d20646f776e73747265616d2072656a656374696f6e227d";
+const ICA_ERROR_AMOUNT: &str = "100000000000";
+const ICA_INSUFFICIENT_FUNDS_ACK: &str =
+    "ABCI code: 5: error handling packet: see events for details";
 
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
@@ -498,6 +501,10 @@ pub struct Driver {
     ica_encoding_required: bool,
     ica_requirement_stage: u8,
     ica_required_packet: Option<(ch::Packet, bool)>,
+    /// Required ICA host application-error lifecycle: exact packet, its
+    /// converted callback-error event and deterministic error acknowledgement.
+    ica_error_required: bool,
+    ica_error_packet: Option<ch::Packet>,
     /// Handshakes the chain under test finished (events).
     conn_open: bool,
     transfer_open: bool,
@@ -631,6 +638,13 @@ impl Driver {
     #[must_use]
     pub fn with_ica_encoding_requirement(mut self, enabled: bool) -> Self {
         self.ica_encoding_required = enabled;
+        self
+    }
+
+    /// Require an exact ICA host application error acknowledgement.
+    #[must_use]
+    pub fn with_ica_error_requirement(mut self, enabled: bool) -> Self {
+        self.ica_error_required = enabled;
         self
     }
 
@@ -906,11 +920,12 @@ impl Driver {
                 self.waited = 0;
             }
             5 if self.transfer_open => {
-                let encoding = if self.ica_encoding_required || c.rng.one_in(2) {
-                    "proto3"
-                } else {
-                    "proto3json"
-                };
+                let encoding =
+                    if self.ica_encoding_required || self.ica_error_required || c.rng.one_in(2) {
+                        "proto3"
+                    } else {
+                        "proto3json"
+                    };
                 let md = self.metadata("", encoding);
                 self.cp.put_channel(
                     CP_ICA_PORT,
@@ -1057,6 +1072,12 @@ impl Driver {
                 1 => self.chan_upgrade(c),
                 _ => None,
             };
+        }
+        if self.ica_error_required && self.ica_open && !self.stats.contains_key("ica_error_ack") {
+            if self.ica_error_packet.is_some() {
+                return None;
+            }
+            return self.ica_packet(c);
         }
         let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
@@ -1920,15 +1941,20 @@ impl Driver {
         let a_ica = self.a_ica.clone()?;
         let signer = c.signer.clone();
         let (to, _) = c.accounts[c.rng.below(c.accounts.len())].clone();
+        let required_error = self.ica_error_required && !self.stats.contains_key("ica_error_ack");
         let mut msgs = vec![Any::pack(&MsgSend {
             from_address: ica.clone(),
             to_address: to.clone(),
             amount: vec![Coin {
                 denom: "utia".into(),
-                amount: (1 + c.rng.below(1000)).to_string(),
+                amount: if required_error {
+                    ICA_ERROR_AMOUNT.into()
+                } else {
+                    (1 + c.rng.below(1000)).to_string()
+                },
             }],
         })];
-        if !self.ica_encoding_required && c.rng.one_in(3) {
+        if !self.ica_encoding_required && !self.ica_error_required && c.rng.one_in(3) {
             msgs.push(Any::pack(
                 &celestia_proto::cosmos::feegrant::v1beta1::MsgGrantAllowance {
                     granter: ica.clone(),
@@ -1945,7 +1971,10 @@ impl Driver {
                 },
             ));
         }
-        if !self.ica_encoding_required && std::env::var("DELIVER_WIRE").is_ok() {
+        if !self.ica_encoding_required
+            && !self.ica_error_required
+            && std::env::var("DELIVER_WIRE").is_ok()
+        {
             // Systematic wire mutations (`crate::wire`) of host messages:
             // the host decodes them with gogoproto and no unknown-field
             // check. A periodic allowance with an expiration exercises the
@@ -2042,6 +2071,9 @@ impl Driver {
         if self.ica_encoding_required && matches!(self.ica_requirement_stage, 0 | 2) {
             self.ica_required_packet = Some((p.clone(), json));
         }
+        if required_error {
+            self.ica_error_packet = Some(p.clone());
+        }
         let h = self.cp.commit(c.now - 5);
         let mut out: Vec<Any> = self.update(&signer).into_iter().collect();
         out.push(Any::pack(&ch::MsgRecvPacket {
@@ -2099,6 +2131,8 @@ impl Driver {
             let mut pfm_timeout = false;
             let mut pfm_retry = None;
             let mut ica_success_ack = None;
+            let mut ica_error_ack = false;
+            let mut ica_error_event = false;
             for e in &r.events {
                 if self.cu_ack_failure_pending
                     && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
@@ -2324,6 +2358,28 @@ impl Driver {
                             .map(|(_, proto3json)| *proto3json);
                     }
                     "write_acknowledgement"
+                        if self.ica_error_required
+                            && self.ica_error_packet.as_ref().is_some_and(|packet| {
+                                packet_of(e)
+                                    .as_ref()
+                                    .is_some_and(|event_packet| same_packet(event_packet, packet))
+                            })
+                            && packet_event_has_ica_insufficient_funds_ack(e) =>
+                    {
+                        ica_error_ack = true;
+                    }
+                    "ibccallbackerror-ics27_packet"
+                        if self.ica_error_required
+                            && self.ica_error_packet.as_ref().is_some_and(|packet| {
+                                is_ica_insufficient_funds_error_event(
+                                    e,
+                                    packet.destination_channel.as_str(),
+                                )
+                            }) =>
+                    {
+                        ica_error_event = true;
+                    }
+                    "write_acknowledgement"
                         if completing_pfm_exhaustion
                             && self.pfm_stage == 2
                             && packet_of(e).as_ref().is_some_and(|packet| {
@@ -2379,6 +2435,10 @@ impl Driver {
                     _ => {}
                 }
                 self.ica_required_packet = None;
+            }
+            if ica_error_ack && ica_error_event {
+                self.ica_error_packet = None;
+                self.bump("ica_error_ack");
             }
             if pfm_downstream_ack && pfm_original_ack {
                 self.pfm_ack_pending = false;
@@ -2455,6 +2515,11 @@ impl Driver {
             // A required relay that did not produce its exact success Ack is
             // retried with a fresh uniquely attributable packet next block.
             self.ica_required_packet = None;
+        }
+        if self.ica_error_required && self.ica_error_packet.is_some() {
+            // Retry a required relay unless one finalized result contained
+            // the exact error Ack and converted detailed callback event.
+            self.ica_error_packet = None;
         }
     }
 }
@@ -2594,6 +2659,31 @@ fn packet_event_has_ica_send_success_ack(
             if response.type_url == "/cosmos.bank.v1beta1.MsgSendResponse"
                 && response.value.is_empty()
     )
+}
+
+fn packet_event_has_ica_insufficient_funds_ack(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+) -> bool {
+    let Some(bytes) = attr(event, "packet_ack_hex").and_then(|value| hex::decode(value).ok())
+    else {
+        return false;
+    };
+    bytes
+        == serde_json::json!({"error": ICA_INSUFFICIENT_FUNDS_ACK})
+            .to_string()
+            .as_bytes()
+}
+
+fn is_ica_insufficient_funds_error_event(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+    channel_id: &str,
+) -> bool {
+    event.r#type == "ibccallbackerror-ics27_packet"
+        && attr(event, "ibccallbackerror-module").as_deref() == Some("interchainaccounts")
+        && attr(event, "ibccallbackerror-host_channel_id").as_deref() == Some(channel_id)
+        && attr(event, "ibccallbackerror-success").as_deref() == Some("false")
+        && attr(event, "ibccallbackerror-error")
+            .is_some_and(|error| error.contains("insufficient funds"))
 }
 
 /// Standard base64 with padding.
@@ -3348,5 +3438,81 @@ mod tests {
         ))]);
         assert_eq!(driver.stats.get("ica_proto3json_success_ack"), Some(&1));
         assert_eq!(driver.ica_requirement_stage, 3);
+    }
+
+    #[test]
+    fn ica_error_credit_requires_exact_packet_ack_and_callback_error_together() {
+        fn callback_error(channel: &str, error: &str) -> Event {
+            Event {
+                r#type: "ibccallbackerror-ics27_packet".into(),
+                attributes: [
+                    ("ibccallbackerror-module", "interchainaccounts"),
+                    ("ibccallbackerror-host_channel_id", channel),
+                    ("ibccallbackerror-success", "false"),
+                    ("ibccallbackerror-error", error),
+                ]
+                .into_iter()
+                .map(|(key, value)| EventAttribute {
+                    key: key.into(),
+                    value: value.into(),
+                    index: true,
+                })
+                .collect(),
+            }
+        }
+
+        let packet = ch::Packet {
+            sequence: 4,
+            source_port: CP_ICA_PORT.into(),
+            source_channel: CP_ICA_CHAN.into(),
+            destination_port: "icahost".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact ICA error packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let ack_hex =
+            hex::encode(serde_json::json!({"error": ICA_INSUFFICIENT_FUNDS_ACK}).to_string());
+        let ack = packet_event("write_acknowledgement", &packet, Some(&ack_hex));
+        let error = callback_error(
+            "channel-3",
+            "spendable balance 10000000000utia is smaller than 100000000000utia: insufficient funds",
+        );
+        let mut driver = Driver {
+            ica_error_required: true,
+            ica_error_packet: Some(packet.clone()),
+            ..Driver::default()
+        };
+
+        let wrong_ack = packet_event(
+            "write_acknowledgement",
+            &packet,
+            Some(&hex::encode(
+                r#"{"error":"ABCI code: 1: error handling packet: see events for details"}"#,
+            )),
+        );
+        driver.observe(&[result(wrong_ack)]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        // Both exact events must occur in one finalized result.
+        driver.observe(&[result(ack.clone())]);
+        driver.observe(&[result(error.clone())]);
+        let wrong_error = callback_error("channel-3", "invalid address");
+        driver.observe(&[result_events(vec![ack.clone(), wrong_error])]);
+        let wrong_channel = callback_error("channel-30", "insufficient funds");
+        driver.observe(&[result_events(vec![ack.clone(), wrong_channel])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        let mut changed = packet.clone();
+        changed.data.push(1);
+        driver.observe(&[result_events(vec![
+            packet_event("write_acknowledgement", &changed, Some(&ack_hex)),
+            error.clone(),
+        ])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        driver.observe(&[result_events(vec![ack, error])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), Some(&1));
+        assert_eq!(driver.ica_error_packet, None);
     }
 }

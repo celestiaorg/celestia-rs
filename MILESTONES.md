@@ -398,11 +398,24 @@ test), then start that harness's count again.
   300-block differentials delivered 481 and 707 transactions, observed the
   exact rejection once in each run and had zero mismatches or splits. This is
   bounded negative-path coverage, not volume or three-night qualification.
+  *ICA application-error follow-up (2026-10-29):* an opt-in contract relays a
+  dedicated proto3 ICA host packet whose bank send exceeds the funded
+  interchain account balance. Credit requires the full exact packet and
+  ibc-go's canonical `ABCI code: 5` error acknowledgement in a code-0 outer
+  delivery, together with the same result's converted
+  `ibccallbackerror-ics27_packet` event identifying the host channel and
+  insufficient-funds cause. The packet payload and canonical acknowledgement
+  are exact; the callback module, host channel, failure status and error cause
+  are matched rather than accepting an arbitrary ICA error. Pinned v9 and v10
+  300-block differentials delivered 556 / 669 transactions (246 / 324 code
+  0), attributed this lifecycle exactly once in each run and had zero
+  mismatches or splits. This is bounded negative-path coverage, not volume or
+  three-night qualification.
   Remaining work is to establish complete coverage and qualifying volume
-  across ICS-20 denoms / amounts / receivers, additional acknowledgement
-  forms and ICA error paths, mutated headers, broader misbehaviour and frozen
-  client behavior, and signed Hyperlane verification paths. The exact PFM,
-  ICA and expired-client lifecycles above still need the same exact-candidate
+  across ICS-20 denoms / amounts / receivers, other acknowledgement forms and
+  ICA error classes, mutated headers, broader misbehaviour and frozen client
+  behavior, and signed Hyperlane verification paths. The exact PFM, ICA and
+  expired-client lifecycles above still need the same exact-candidate
   saturation as the rest of this harness. Exit: F1.2's exact-candidate volume
   and three-night criteria for this harness too, plus F1.3's coverage
   accounting.

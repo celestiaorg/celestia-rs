@@ -1451,6 +1451,12 @@ impl Stats {
                 "incomplete DELIVER_IBC_ICA_ENCODINGS_REQUIRE coverage: no exact successful proto3json packet acknowledgement after channel upgrade"
             );
         }
+        if self.ibc_required.contains("ica_error_ack") {
+            anyhow::ensure!(
+                self.ibc.get("ica_error_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_ICA_ERROR_REQUIRE coverage: no exact ICA application-error acknowledgement"
+            );
+        }
         if self.ibc_required.contains("expired_client_update") {
             anyhow::ensure!(
                 self.ibc
@@ -3804,6 +3810,7 @@ pub fn run(
     let ibc_pfm_exhaust_required = std::env::var_os("DELIVER_IBC_PFM_EXHAUST_REQUIRE").is_some();
     let ibc_ica_encodings_required =
         std::env::var_os("DELIVER_IBC_ICA_ENCODINGS_REQUIRE").is_some();
+    let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
     let ibc_expired_client_required =
         std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
     anyhow::ensure!(
@@ -3841,6 +3848,14 @@ pub fn run(
     anyhow::ensure!(
         !ibc_ica_encodings_required || ibc_on,
         "DELIVER_IBC_ICA_ENCODINGS_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ica_error_required || ibc_on,
+        "DELIVER_IBC_ICA_ERROR_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ica_encodings_required || !ibc_ica_error_required,
+        "DELIVER_IBC ICA encoding-success and application-error requirements are mutually exclusive"
     );
     anyhow::ensure!(
         !ibc_expired_client_required || ibc_on,
@@ -3933,8 +3948,9 @@ pub fn run(
                 && !ibc_pfm_timeout_required
                 && !ibc_pfm_exhaust_required
                 && !ibc_ica_encodings_required
+                && !ibc_ica_error_required
                 && !ibc_expired_client_required,
-            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA-encoding, or expired-client requirements"
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA, or expired-client requirements"
         );
     }
     anyhow::ensure!(
@@ -4011,6 +4027,9 @@ pub fn run(
     }
     if ibc_ica_encodings_required {
         stats.ibc_required.insert("ica_encoding_lifecycle");
+    }
+    if ibc_ica_error_required {
+        stats.ibc_required.insert("ica_error_ack");
     }
     if ibc_expired_client_required {
         stats.ibc_required.insert("expired_client_update");
@@ -4294,6 +4313,7 @@ pub fn run(
             .with_pfm_timeout_requirement(ibc_pfm_timeout_required)
             .with_pfm_exhaust_requirement(ibc_pfm_exhaust_required)
             .with_ica_encoding_requirement(ibc_ica_encodings_required)
+            .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
@@ -7131,6 +7151,15 @@ mod tests {
         stats.ibc.insert("ica_proto3_success_ack", 1);
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("ica_proto3json_success_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ica_error_needs_exact_application_error_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("ica_error_ack");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("ica_error_ack", 1);
         assert!(stats.require_ibc_coverage().is_ok());
     }
 
