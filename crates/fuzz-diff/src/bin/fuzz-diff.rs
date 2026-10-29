@@ -28,6 +28,53 @@ use anyhow::Context;
 use fuzz_diff::mutate::Mutator;
 use fuzz_diff::oracle::Oracle;
 use fuzz_diff::{compare, corpus, rust_out};
+use serde::Serialize;
+
+#[derive(Debug, Default, Serialize)]
+struct SeedOutcomeCoverage {
+    inputs: u64,
+    oracle_errors: u64,
+    fields: BTreeMap<String, BTreeMap<&'static str, u64>>,
+}
+
+fn seed_outcome_class(field: &str, value: &str) -> &'static str {
+    if field == "panic" || value.starts_with("panic:") {
+        "panic"
+    } else if value == "ok" || value == "true" {
+        "success"
+    } else if value == "false" {
+        "false"
+    } else if value.starts_with("err:") {
+        "error"
+    } else if value.starts_with("skip:") {
+        "skip"
+    } else {
+        "data"
+    }
+}
+
+fn record_seed_outcomes(
+    coverage: &mut BTreeMap<String, SeedOutcomeCoverage>,
+    op: &str,
+    outcome: &fuzz_diff::Out,
+) {
+    let report = coverage.entry(op.to_owned()).or_default();
+    report.inputs += 1;
+    if !outcome.ok {
+        report.oracle_errors += 1;
+        return;
+    }
+    for line in outcome.out.lines() {
+        let (field, value) = line.split_once('=').unwrap_or((line, ""));
+        let class = seed_outcome_class(field, value);
+        *report
+            .fields
+            .entry(field.to_owned())
+            .or_default()
+            .entry(class)
+            .or_default() += 1;
+    }
+}
 
 struct Args {
     app_version: u64,
@@ -689,12 +736,14 @@ fn main() -> anyhow::Result<()> {
     let mut found: BTreeMap<String, usize> = BTreeMap::new();
     let mut done = 0u64;
     let mut stats: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    let mut seed_outcomes: BTreeMap<String, SeedOutcomeCoverage> = BTreeMap::new();
     let mut first = true;
     while done < a.iters {
         if a.max_secs > 0 && start.elapsed() > Duration::from_secs(a.max_secs) {
             break;
         }
         // The first round replays the seeds unmutated.
+        let replaying_seeds = first;
         let mut batch: Vec<(String, Vec<u8>)> = Vec::new();
         if first {
             for (op, ss) in &seeds {
@@ -746,6 +795,9 @@ fn main() -> anyhow::Result<()> {
         let go = oracle.query_batch(&reqs)?;
         for ((op, input), g) in batch.iter().zip(&go) {
             done += 1;
+            if replaying_seeds && op.starts_with("c_") {
+                record_seed_outcomes(&mut seed_outcomes, op, g);
+            }
             let r = rust_out(a.app_version, op, input);
             let st = stats.entry(op.clone()).or_default();
             st.0 += 1;
@@ -781,6 +833,12 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+    }
+    if !seed_outcomes.is_empty() {
+        eprintln!(
+            "CONSENSUS_GO_SEED_OUTCOMES={}",
+            serde_json::to_string(&seed_outcomes)?
+        );
     }
     eprintln!(
         "done: {done} inputs in {:.0}s; per op (inputs, Go accepts): {stats:?}",
@@ -961,5 +1019,36 @@ fn edit_node(m: &mut Mutator, v: &mut serde_json::Value, target: usize, i: &mut 
         J::Array(a) => a.iter_mut().for_each(|x| edit_node(m, x, target, i)),
         J::Object(o) => o.values_mut().for_each(|x| edit_node(m, x, target, i)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn consensus_seed_outcomes_distinguish_result_classes() {
+        let mut coverage = BTreeMap::new();
+        let outcome = fuzz_diff::Out {
+            ok: true,
+            out: "verify=ok\nverify=false\nverify=err:bad\nproofs=4:abcd\nupdate=panic:boom\npanic=outer boom\nincrement=skip:bounded\n"
+                .into(),
+            ..fuzz_diff::Out::default()
+        };
+        record_seed_outcomes(&mut coverage, "c_example", &outcome);
+        let report = &coverage["c_example"];
+        assert_eq!(report.inputs, 1);
+        assert_eq!(report.oracle_errors, 0);
+        assert_eq!(report.fields["verify"]["success"], 1);
+        assert_eq!(report.fields["verify"]["false"], 1);
+        assert_eq!(report.fields["verify"]["error"], 1);
+        assert_eq!(report.fields["proofs"]["data"], 1);
+        assert_eq!(report.fields["update"]["panic"], 1);
+        assert_eq!(report.fields["panic"]["panic"], 1);
+        assert_eq!(report.fields["increment"]["skip"], 1);
+
+        record_seed_outcomes(&mut coverage, "c_example", &fuzz_diff::Out::default());
+        assert_eq!(coverage["c_example"].inputs, 2);
+        assert_eq!(coverage["c_example"].oracle_errors, 1);
     }
 }
