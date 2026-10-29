@@ -364,6 +364,17 @@ test), then start that harness's count again.
   with v9 collateral 1 / synthetic 1 and v10 collateral 3 / synthetic 3.
   Both runs had zero consensus mismatches or splits. These are bounded
   candidate results, not saturation.
+  *Channel-upgrade follow-up (2026-10-29, PRs #140 and #141):* after a real
+  ICA host-channel upgrade opens, the mock now executes permissionless
+  acknowledgement / receipt pruning before starting another upgrade. Pinned
+  v9 and v10 300-block regressions reached five and six successful pruning
+  calls with zero mismatches. Celestia enables the ICA host without the
+  controller, so a successful `MsgChannelUpgradeAck` handshake is not
+  reachable: valid `FLUSHING` counterparty proofs reach the host callback,
+  which aborts the upgrade and returns code 0 with `FAILURE`. The regressions
+  attribute two v9 and three v10 executions only when that response and the
+  exact pending channel / sequence callback error occur in the same result.
+  This is negative-path coverage, not successful-handshake credit.
   Remaining work is to establish complete coverage and qualifying volume
   across ICS-20 denoms / amounts / receivers, PFM forwards / retries /
   refunds / timeouts, both ICA encodings, acknowledgement forms, mutated
@@ -531,6 +542,13 @@ test), then start that harness's count again.
   checks, not F1.7 qualification: both versions remain far below 10⁸ inputs
   per operation, and the exact-candidate, coverage and three-night gates are
   still open.
+  *Fresh current-tree guard (2026-10-29):* both pinned Go oracles were rebuilt
+  from tree `b963791a` and each version ran all seventeen operations for
+  250,020 inputs. The v0.40.9 oracle accepted 172,059 inputs and v0.42.3
+  accepted 172,347; neither campaign found a mismatch. The qualification
+  manifests name pre-squash commit `fb5318e`; merged main `3ddeca2` has the
+  identical tree. This is one seed per version, averages about 14,700 inputs
+  per operation and provides no 10⁸-input or three-night qualification credit.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
