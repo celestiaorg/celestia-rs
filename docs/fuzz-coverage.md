@@ -456,7 +456,11 @@ proposal (`GOV proposal_passed`), not per type.
   executes `MsgPruneAcknowledgements`
   after a completed host-channel upgrade; pinned v9 and v10 300-block
   regressions reached five and six successful executions with zero
-  mismatches. The table above predates that change and needs regeneration.
+  mismatches. With `DELIVER_IBC_CONNECTION_CONFIRM`, a separate
+  counterparty-initiated connection supplies signed IAVL proofs for successful
+  `MsgConnectionOpenTry` and `MsgConnectionOpenConfirm`. The flow is opt-in, so
+  established fixed-seed IBC schedules remain unchanged when it is disabled.
+  The table above predates these changes and needs regeneration.
   `hyperlane.warp.v1.MsgUnrollRemoteRouter` now mostly targets a router
   enrolled on a token the signer owns (first Go success in a local
   `hyperlane` run, seed 4243, after this report).

@@ -3652,7 +3652,18 @@ pub fn run(
     );
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
+    let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
+    let ibc_legacy_upgrade_fixture =
+        std::env::var_os("DELIVER_IBC_LEGACY_UPGRADE_FIXTURE").is_some();
     let ibc_ack_failure_required = std::env::var_os("DELIVER_IBC_ACK_FAILURE_REQUIRE").is_some();
+    anyhow::ensure!(
+        !ibc_connection_confirm || ibc_on,
+        "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_legacy_upgrade_fixture || ibc_on,
+        "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE requires DELIVER_IBC"
+    );
     anyhow::ensure!(
         !ibc_ack_failure_required || ibc_on,
         "DELIVER_IBC_ACK_FAILURE_REQUIRE requires DELIVER_IBC"
@@ -3702,6 +3713,20 @@ pub fn run(
         script_path.is_some(),
         gov_failure_required.is_some(),
     )?;
+    if ibc_legacy_upgrade_fixture {
+        anyhow::ensure!(
+            script_path.as_deref()
+                == Some("crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script")
+                && gov_failure_required.as_deref() == Some("upgrade.go:1048")
+                && std::env::var_os("DELIVER_UPGRADE").is_some()
+                && allow_postupgrade,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE is restricted to the upgrade.go:1048 governance fixture"
+        );
+        anyhow::ensure!(
+            !ibc_connection_confirm && !ibc_ack_failure_required,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm or Ack-failure requirements"
+        );
+    }
     anyhow::ensure!(
         gov_required.is_empty() || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_GOV_REQUIRE cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
@@ -4025,7 +4050,11 @@ pub fn run(
     // the message handlers (store access order and iterator charges).
     let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
     // A mock IBC counterparty driving the IBC success paths.
-    let mut ibc = ibc_on.then(crate::ibcmock::Driver::default);
+    let mut ibc = ibc_on.then(|| {
+        crate::ibcmock::Driver::default()
+            .with_connection_confirm(ibc_connection_confirm)
+            .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
+    });
     // The relayer: the last single-key fuzz account.
     let relayer = ACCOUNTS - 1;
     let mut script = match script_path {
