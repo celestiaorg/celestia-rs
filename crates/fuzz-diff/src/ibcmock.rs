@@ -482,6 +482,9 @@ pub struct Driver {
     cu_new: String,
     cu_try_at: i64,
     cu_wait: u32,
+    /// A valid Ack was relayed to the host-only ICA route. Its application
+    /// callback must abort the upgrade and return a code-0 FAILURE response.
+    cu_ack_failure_pending: bool,
     /// A transfer channel the counterparty closes: stage (0 none, 1 init
     /// sent, 2 initialized, 3 ack sent, 4 open, 5 transfer sent, 6 packet
     /// seen, 7 close sent), its id, the packet timed out on close, how many
@@ -503,6 +506,22 @@ fn attr(e: &celestia_proto::celestia_core_proto::abci::Event, key: &str) -> Opti
         .iter()
         .find(|a| a.key == key)
         .map(|a| a.value.clone())
+}
+
+const ICA_HOST_ACK_ERROR: &str = "channel upgrade handshake must be initiated by controller chain: invalid message sent to channel end";
+
+/// Whether this event attributes a code-0 Ack failure to the ICA host callback
+/// for the channel upgrade currently being relayed.
+fn is_ica_host_ack_error(
+    e: &celestia_proto::celestia_core_proto::abci::Event,
+    channel: Option<&str>,
+    sequence: u64,
+) -> bool {
+    e.r#type == "channel_upgrade_error"
+        && attr(e, "port_id").as_deref() == Some("icahost")
+        && attr(e, "channel_id").as_deref() == channel
+        && attr(e, "upgrade_sequence").and_then(|s| s.parse().ok()) == Some(sequence)
+        && attr(e, "error_receipt").as_deref() == Some(ICA_HOST_ACK_ERROR)
 }
 
 impl Driver {
@@ -1127,7 +1146,8 @@ impl Driver {
                 let seq = self.cu_seq;
                 let new = self.cu_new.clone();
                 let r = c.rng.below(10);
-                if c.now - self.cu_try_at > 620 && r < 6 {
+                let ack_failure = seq % 4 == 1;
+                if !ack_failure && c.now - self.cu_try_at > 620 && r < 6 {
                     // The upgrade timed out: the counterparty never moved on.
                     let end = cp_end(ch::State::Open, &cur, seq);
                     self.cp.put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &end);
@@ -1142,7 +1162,7 @@ impl Driver {
                         signer,
                     }));
                     self.bump("chan_upgrade_timeout");
-                } else if r < 2 {
+                } else if !ack_failure && r < 2 {
                     let receipt = ch::ErrorReceipt {
                         sequence: seq,
                         message: "fuzz: upgrade cancelled".into(),
@@ -1163,7 +1183,7 @@ impl Driver {
                     }));
                     self.bump("chan_upgrade_cancel");
                 } else {
-                    let state = if r < 5 {
+                    let state = if ack_failure || r < 5 {
                         ch::State::Flushing
                     } else {
                         ch::State::Flushcomplete
@@ -1187,17 +1207,35 @@ impl Driver {
                     self.cp.put_gogo(&up_key, &upgrade);
                     let h = self.cp.commit(c.now - 3);
                     msgs.extend(self.update(&signer));
-                    msgs.push(Any::pack(&ch::MsgChannelUpgradeConfirm {
-                        port_id: "icahost".into(),
-                        channel_id: a_ica.clone(),
-                        counterparty_channel_state: state as i32,
-                        counterparty_upgrade: Some(upgrade),
-                        proof_channel: self.cp.proof(&ch_key),
-                        proof_upgrade: self.cp.proof(&up_key),
-                        proof_height: proof_height(h),
-                        signer,
-                    }));
-                    self.bump("chan_upgrade_confirm");
+                    if ack_failure {
+                        // Celestia enables the ICA host, not the controller.
+                        // Core accepts these real counterparty proofs, then
+                        // the host's Ack callback aborts the upgrade, writes
+                        // an error receipt and returns code 0 with FAILURE.
+                        msgs.push(Any::pack(&ch::MsgChannelUpgradeAck {
+                            port_id: "icahost".into(),
+                            channel_id: a_ica.clone(),
+                            counterparty_upgrade: Some(upgrade),
+                            proof_channel: self.cp.proof(&ch_key),
+                            proof_upgrade: self.cp.proof(&up_key),
+                            proof_height: proof_height(h),
+                            signer,
+                        }));
+                        self.cu_ack_failure_pending = true;
+                        self.bump("chan_upgrade_ack_failure_sent");
+                    } else {
+                        msgs.push(Any::pack(&ch::MsgChannelUpgradeConfirm {
+                            port_id: "icahost".into(),
+                            channel_id: a_ica.clone(),
+                            counterparty_channel_state: state as i32,
+                            counterparty_upgrade: Some(upgrade),
+                            proof_channel: self.cp.proof(&ch_key),
+                            proof_upgrade: self.cp.proof(&up_key),
+                            proof_height: proof_height(h),
+                            signer,
+                        }));
+                        self.bump("chan_upgrade_confirm");
+                    }
                 }
                 self.cu_stage = 3;
             }
@@ -1241,6 +1279,7 @@ impl Driver {
                 return None;
             }
             3 if self.cu_wait > 6 => {
+                self.cu_ack_failure_pending = false;
                 self.cu_stage = 2;
                 return None;
             }
@@ -1570,7 +1609,13 @@ impl Driver {
             if r.code != 0 {
                 continue;
             }
+            let mut ack_callback_error = false;
             for e in &r.events {
+                if self.cu_ack_failure_pending
+                    && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
+                {
+                    ack_callback_error = true;
+                }
                 match e.r#type.as_str() {
                     "create_client" => {
                         if let Some(id) = attr(e, "client_id") {
@@ -1711,6 +1756,20 @@ impl Driver {
                         self.cu_wait = 0;
                         self.bump("prune_acknowledgements");
                     }
+                    if self.cu_ack_failure_pending
+                        && resp.type_url.ends_with("MsgChannelUpgradeAckResponse")
+                        && let Ok(response) =
+                            ch::MsgChannelUpgradeAckResponse::decode(resp.value.as_slice())
+                    {
+                        self.cu_ack_failure_pending = false;
+                        if response.result == ch::ResponseResultType::Failure as i32
+                            && ack_callback_error
+                        {
+                            self.bump("chan_upgrade_ack_failure");
+                        } else {
+                            self.bump("chan_upgrade_ack_unexpected_result");
+                        }
+                    }
                 }
             }
         }
@@ -1753,4 +1812,40 @@ fn base64_std(b: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute};
+
+    fn ack_error(channel: &str, sequence: u64, error: &str) -> Event {
+        Event {
+            r#type: "channel_upgrade_error".into(),
+            attributes: [
+                ("port_id", "icahost".to_owned()),
+                ("channel_id", channel.to_owned()),
+                ("upgrade_sequence", sequence.to_string()),
+                ("error_receipt", error.to_owned()),
+            ]
+            .into_iter()
+            .map(|(key, value)| EventAttribute {
+                key: key.into(),
+                value,
+                index: true,
+            })
+            .collect(),
+        }
+    }
+
+    #[test]
+    fn ack_failure_credit_requires_the_exact_pending_host_callback() {
+        let event = ack_error("channel-1", 7, ICA_HOST_ACK_ERROR);
+        assert!(is_ica_host_ack_error(&event, Some("channel-1"), 7));
+
+        let unrelated = ack_error("channel-1", 7, "channel upgrade timeout elapsed");
+        assert!(!is_ica_host_ack_error(&unrelated, Some("channel-1"), 7));
+        assert!(!is_ica_host_ack_error(&event, Some("channel-2"), 7));
+        assert!(!is_ica_host_ack_error(&event, Some("channel-1"), 8));
+    }
 }
