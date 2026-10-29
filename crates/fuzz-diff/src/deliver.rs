@@ -1349,11 +1349,7 @@ impl Stats {
         }
         if self.ibc_required.contains("recover_client") {
             anyhow::ensure!(
-                self.ibc
-                    .get("misbehaviour_confirmed")
-                    .copied()
-                    .unwrap_or(0)
-                    > 0,
+                self.ibc.get("misbehaviour_confirmed").copied().unwrap_or(0) > 0,
                 "incomplete MsgRecoverClient coverage: no matching confirmed misbehaviour event"
             );
             anyhow::ensure!(
