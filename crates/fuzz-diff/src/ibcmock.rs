@@ -493,13 +493,16 @@ pub struct Driver {
     cu_ack_failure_pending: bool,
     /// A transfer channel the counterparty closes: stage (0 none, 1 init
     /// sent, 2 initialized, 3 ack sent, 4 open, 5 transfer sent, 6 packet
-    /// seen, 7 close sent), its id, the packet timed out on close, how many
-    /// were closed and blocks waited in the stage.
+    /// seen, 7 counterparty close sent, 8 local close-init sent), its id, the
+    /// packet timed out on close, how many were closed and blocks waited in
+    /// the stage.
     cl_stage: u8,
     a_transfer2: Option<String>,
     cl_packet: Option<ch::Packet>,
     cl_k: u32,
     cl_wait: u32,
+    close_init_failure_required: bool,
+    close_init_rejected_channel: Option<String>,
     /// A counterparty-initiated connection: stage (0 not started, 1 Try
     /// sent, 2 Try landed, 3 Confirm sent, 4 complete), its local id and
     /// blocks waited in the current stage.
@@ -543,6 +546,13 @@ impl Driver {
     #[must_use]
     pub fn with_connection_confirm(mut self, enabled: bool) -> Self {
         self.connection_confirm_on = enabled;
+        self
+    }
+
+    /// Require one attributed application rejection of a local channel close.
+    #[must_use]
+    pub fn with_close_init_failure_requirement(mut self, enabled: bool) -> Self {
+        self.close_init_failure_required = enabled;
         self
     }
 
@@ -1474,6 +1484,19 @@ impl Driver {
             }
             4 => {
                 let a2 = self.a_transfer2.clone()?;
+                if self.close_init_failure_required
+                    && !self.stats.contains_key("close_init_failure")
+                {
+                    msgs.push(Any::pack(&ch::MsgChannelCloseInit {
+                        port_id: "transfer".into(),
+                        channel_id: a2,
+                        signer,
+                    }));
+                    self.cl_stage = 8;
+                    self.bump("close_init_failure_sent");
+                    self.cl_wait = 0;
+                    return Some(msgs);
+                }
                 msgs.push(Any::pack(
                     &celestia_proto::ibc::applications::transfer::v1::MsgTransfer {
                         source_port: "transfer".into(),
@@ -1530,9 +1553,10 @@ impl Driver {
                 self.bump("close");
             }
             // A step that did not land is sent again.
-            1 | 3 | 5 | 7 if self.cl_wait > 6 => {
+            1 | 3 | 5 | 7 | 8 if self.cl_wait > 6 => {
                 self.cl_stage = match self.cl_stage {
                     1 => 0,
+                    8 => 4,
                     s => s - 1,
                 };
                 return None;
@@ -1720,6 +1744,21 @@ impl Driver {
 
     /// Learns ids and packets from a finalized block's tx results (Go's).
     pub fn observe(&mut self, results: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]) {
+        if self.cl_stage == 8
+            && let Some(channel_id) = self.a_transfer2.clone()
+            && results
+                .iter()
+                .any(|result| is_transfer_close_init_rejection(result, &channel_id))
+        {
+            // Transfer and ICA host are the only production routes, and both
+            // intentionally reject a local close. The callback runs before
+            // core writes CLOSED, so reuse this exact channel to prove the
+            // rejection left it usable.
+            self.cl_stage = 4;
+            self.cl_wait = 0;
+            self.close_init_rejected_channel = Some(channel_id);
+            self.bump("close_init_failure");
+        }
         for r in results {
             if r.code != 0 {
                 continue;
@@ -1809,6 +1848,12 @@ impl Driver {
                         }
                     }
                     "channel_close_confirm" if attr(e, "channel_id") == self.a_transfer2 => {
+                        if attr(e, "channel_id").as_deref()
+                            == self.close_init_rejected_channel.as_deref()
+                        {
+                            self.close_init_rejected_channel = None;
+                            self.bump("close_init_reused_closed");
+                        }
                         self.cl_stage = 0;
                         self.cl_k += 1;
                     }
@@ -1911,6 +1956,16 @@ impl Driver {
     }
 }
 
+fn is_transfer_close_init_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    channel_id: &str,
+) -> bool {
+    result.code != 0
+        && result.log.contains(&format!(
+            "channel close init callback failed for port ID: transfer, channel ID: {channel_id}: user cannot close channel"
+        ))
+}
+
 /// The packet of a `send_packet` event.
 fn packet_of(e: &celestia_proto::celestia_core_proto::abci::Event) -> Option<ch::Packet> {
     let th = attr(e, "packet_timeout_height")?;
@@ -1982,5 +2037,20 @@ mod tests {
         assert!(!is_ica_host_ack_error(&unrelated, Some("channel-1"), 7));
         assert!(!is_ica_host_ack_error(&event, Some("channel-2"), 7));
         assert!(!is_ica_host_ack_error(&event, Some("channel-1"), 8));
+    }
+
+    #[test]
+    fn close_init_rejection_credit_requires_the_exact_channel() {
+        let result = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 8,
+            log: "failed to execute message: channel close init callback failed for port ID: transfer, channel ID: channel-10: user cannot close channel: invalid request".into(),
+            ..Default::default()
+        };
+        assert!(is_transfer_close_init_rejection(&result, "channel-10"));
+        assert!(!is_transfer_close_init_rejection(&result, "channel-1"));
+        assert!(!is_transfer_close_init_rejection(&result, "channel-11"));
+        let successful =
+            celestia_proto::celestia_core_proto::abci::ExecTxResult { code: 0, ..result };
+        assert!(!is_transfer_close_init_rejection(&successful, "channel-10"));
     }
 }

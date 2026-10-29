@@ -168,6 +168,9 @@ pub struct Stats {
     /// Require a code-0 channel-upgrade Ack FAILURE response with the matching
     /// callback error after the host aborts the otherwise valid proof path.
     pub ibc_ack_failure_required: bool,
+    /// Named fail-closed IBC path requirements that do not have a successful
+    /// top-level transaction to count.
+    pub ibc_required: BTreeSet<&'static str>,
     /// Selected `DELIVER_HL` ISM.
     pub hl_verification: Option<String>,
     /// Successful collateral / synthetic transfers verified by that ISM.
@@ -1328,6 +1331,20 @@ impl Stats {
                     .unwrap_or(0)
                     > 0,
                 "incomplete DELIVER_IBC_ACK_FAILURE_REQUIRE coverage: no attributed code-0 MsgChannelUpgradeAck FAILURE response"
+            );
+        }
+        if self.ibc_required.contains("close_init_failure") {
+            anyhow::ensure!(
+                self.ibc.get("close_init_failure").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE coverage: no attributed MsgChannelCloseInit callback rejection"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("close_init_reused_closed")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE coverage: the rejected channel did not remain usable through counterparty close"
             );
         }
         Ok(())
@@ -3653,12 +3670,18 @@ pub fn run(
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
+    let ibc_close_init_failure_required =
+        std::env::var_os("DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE").is_some();
     let ibc_legacy_upgrade_fixture =
         std::env::var_os("DELIVER_IBC_LEGACY_UPGRADE_FIXTURE").is_some();
     let ibc_ack_failure_required = std::env::var_os("DELIVER_IBC_ACK_FAILURE_REQUIRE").is_some();
     anyhow::ensure!(
         !ibc_connection_confirm || ibc_on,
         "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_close_init_failure_required || ibc_on,
+        "DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
         !ibc_legacy_upgrade_fixture || ibc_on,
@@ -3723,8 +3746,10 @@ pub fn run(
             "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE is restricted to the upgrade.go:1048 governance fixture"
         );
         anyhow::ensure!(
-            !ibc_connection_confirm && !ibc_ack_failure_required,
-            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm or Ack-failure requirements"
+            !ibc_connection_confirm
+                && !ibc_close_init_failure_required
+                && !ibc_ack_failure_required,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, or Ack-failure requirements"
         );
     }
     anyhow::ensure!(
@@ -3781,6 +3806,9 @@ pub fn run(
         },
         ..Stats::default()
     };
+    if ibc_close_init_failure_required {
+        stats.ibc_required.insert("close_init_failure");
+    }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
     let pool_txs: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
@@ -4053,6 +4081,7 @@ pub fn run(
     let mut ibc = ibc_on.then(|| {
         crate::ibcmock::Driver::default()
             .with_connection_confirm(ibc_connection_confirm)
+            .with_close_init_failure_requirement(ibc_close_init_failure_required)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
     // The relayer: the last single-key fuzz account.
@@ -6745,6 +6774,18 @@ mod tests {
         );
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("chan_upgrade_ack_failure", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_close_init_failure_needs_rejection_and_channel_reuse() {
+        let mut stats = Stats { ..Stats::default() };
+        stats.ibc_required.insert("close_init_failure");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("close_init_failure", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("close_init_reused_closed", 1);
         assert!(stats.require_ibc_coverage().is_ok());
         assert!(Stats::default().require_ibc_coverage().is_ok());
     }
