@@ -3,8 +3,8 @@
 use ctypes::gofmt::{duration_string, hex_upper};
 use ctypes::vote::signed_msg_type_string;
 use ctypes::{
-    BlockMeta, Commit, DuplicateVoteEvidence, Evidence, Fraction, LightClientAttackEvidence,
-    SignedHeader, Time, ValidatorSet,
+    BLOCK_ID_FLAG_COMMIT, BlockMeta, Commit, DuplicateVoteEvidence, Evidence, Fraction,
+    LightClientAttackEvidence, SignedHeader, Time, ValidatorSet,
 };
 use nodestore::State;
 use nodestore::block_store::is_evidence_expired;
@@ -300,6 +300,28 @@ pub fn validate_abci_evidence(
         return Err(format!(
             "total voting power from the evidence and our validator set does not match ({ev_total} != {vals_total})"
         ));
+    }
+
+    // In Go, an equivocation commit with more signatures than the trusted
+    // commit indexes past the trusted slice in GetByzantineValidators. The
+    // consensus harness canonicalizes that panic to an error; preserve its
+    // exact text without panicking the Rust node.
+    let trusted = trusted_header.header.clone().unwrap_or_default();
+    if !ev.conflicting_header_is_invalid(&trusted) {
+        let conflicting = conflicting_commit(ev);
+        let trusted_commit = trusted_header.commit.clone().unwrap_or_default();
+        if conflicting.round == trusted_commit.round {
+            for (idx, signature) in conflicting.signatures.iter().enumerate() {
+                if signature.block_id_flag == BLOCK_ID_FLAG_COMMIT
+                    && idx >= trusted_commit.signatures.len()
+                {
+                    return Err(format!(
+                        "runtime error: index out of range [{idx}] with length {}",
+                        trusted_commit.signatures.len()
+                    ));
+                }
+            }
+        }
     }
     let validators = ev.get_byzantine_validators(common_vals, trusted_header);
     if validators.is_empty() {
