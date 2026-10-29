@@ -598,6 +598,16 @@ test), then start that harness's count again.
   manifests name pre-squash commit `fb5318e`; merged main `3ddeca2` has the
   identical tree. This is one seed per version, averages about 14,700 inputs
   per operation and provides no 10⁸-input or three-night qualification credit.
+  *Positive compact-block proof seed (2026-10-29):* a base-seed outcome audit
+  found that `c_prop`'s only compact block used unrelated original and parity
+  roots, so `Proofs` reached only its incorrect-root error. The propagation
+  vector generator now derives both roots from its four deterministic leaf
+  hashes, and a reachability test requires a successful four-proof result at
+  both app versions. Exact-source pinned v0.40.9 and v0.42.3 campaigns each
+  completed 200,069 `c_prop` inputs, of which Go accepted 137,065, with zero
+  mismatches. This closes only deterministic positive-seed reachability;
+  aggregate acceptance does not establish branch coverage, and the 10⁸-input,
+  exact-candidate and three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
