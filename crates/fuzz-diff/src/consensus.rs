@@ -442,6 +442,16 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
             if !c.run("update", vals.update_with_change_set(&changes)) {
                 return;
             }
+            if let Some(raw) = first(m, 3) {
+                let times = go_parse_i32(raw);
+                if times > 1024 {
+                    c.put("increment", "skip:times exceed 1024");
+                    return;
+                }
+                if !c.run("increment", vals.increment_proposer_priority(times)) {
+                    return;
+                }
+            }
             c.put("hash", &hex::encode(vals.hash()));
             c.put(
                 "proposer",
@@ -927,6 +937,47 @@ fn go_parse_int(b: &[u8]) -> i64 {
     if neg { v.wrapping_neg() } else { v }
 }
 
+/// Go `strconv.ParseInt(s, 10, 32)` with the error ignored.
+fn go_parse_i32(b: &[u8]) -> i32 {
+    let (neg, digits) = match b.first() {
+        Some(b'+') => (false, &b[1..]),
+        Some(b'-') => (true, &b[1..]),
+        _ => (false, b),
+    };
+    if digits.is_empty() {
+        return 0;
+    }
+    let mut n = 0u64;
+    let mut range = false;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return 0;
+        }
+        let Some(next) = n
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u64::from(c - b'0')))
+        else {
+            range = true;
+            break;
+        };
+        if next > u64::from(u32::MAX) {
+            range = true;
+            break;
+        }
+        n = next;
+    }
+    let cutoff = 1u64 << 31;
+    if !neg && (range || n >= cutoff) {
+        return i32::MAX;
+    }
+    if neg && (range || n > cutoff) {
+        return i32::MIN;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let v = n as i32;
+    if neg { v.wrapping_neg() } else { v }
+}
+
 /// Go `strconv.ParseUint(s, 10, 64)` with the error ignored: a syntax
 /// error is zero and a range error saturates at `u64::MAX`.
 fn go_parse_uint(b: &[u8]) -> u64 {
@@ -1196,6 +1247,10 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     for ch in &changes {
                         fields.push((2, ch));
                     }
+                    out.push(input(&fields));
+                    let increments = [-1, 0, 1, 2, 3, 4, 5];
+                    let times = increments[i % increments.len()].to_string();
+                    fields.push((3, times.as_bytes()));
                     out.push(input(&fields));
                 }
             }
@@ -1591,6 +1646,20 @@ mod tests {
     }
 
     #[test]
+    fn go_parse_i32_like_go() {
+        assert_eq!(go_parse_i32(b"2147483647"), i32::MAX);
+        assert_eq!(go_parse_i32(b"2147483648"), i32::MAX);
+        assert_eq!(go_parse_i32(b"-2147483648"), i32::MIN);
+        assert_eq!(go_parse_i32(b"-2147483649"), i32::MIN);
+        assert_eq!(go_parse_i32(b"2147483648x"), 0);
+        assert_eq!(go_parse_i32(b"4294967296x"), i32::MAX);
+        assert_eq!(go_parse_i32(b"-4294967296x"), i32::MIN);
+        assert_eq!(go_parse_i32(b"+12"), 12);
+        assert_eq!(go_parse_i32(b"-"), 0);
+        assert_eq!(go_parse_i32(b"99999999999999999999x"), i32::MAX);
+    }
+
+    #[test]
     fn go_parse_uint_like_go() {
         assert_eq!(go_parse_uint(b"18446744073709551615"), u64::MAX);
         assert_eq!(go_parse_uint(b"18446744073709551616"), u64::MAX);
@@ -1598,6 +1667,83 @@ mod tests {
         assert_eq!(go_parse_uint(b"+12"), 0);
         assert_eq!(go_parse_uint(b"-1"), 0);
         assert_eq!(go_parse_uint(b""), 0);
+    }
+
+    #[test]
+    fn valset_seeds_reach_proposer_priority_evolution() {
+        let seeds = seeds("c_valset");
+        assert!(seeds.len() >= 1_800, "{} seeds", seeds.len());
+        let times: std::collections::BTreeSet<Vec<u8>> = seeds
+            .iter()
+            .filter_map(|seed| args(seed).and_then(|fields| first(&fields, 3).map(<[u8]>::to_vec)))
+            .collect();
+        let expected: std::collections::BTreeSet<Vec<u8>> = ["-1", "0", "1", "2", "3", "4", "5"]
+            .into_iter()
+            .map(|s| s.as_bytes().to_vec())
+            .collect();
+        assert_eq!(times, expected);
+
+        for app_version in [9, 10] {
+            let base = seeds
+                .iter()
+                .find(|seed| {
+                    let fields = args(seed).unwrap();
+                    first(&fields, 3).is_none()
+                        && crate::rust_out(app_version, "c_valset", seed)
+                            .out
+                            .contains("\nupdate=ok\n")
+                })
+                .unwrap();
+            let fields = args(base).unwrap();
+            let mut bounded_fields: Vec<(u64, &[u8])> = vec![(1, first(&fields, 1).unwrap())];
+            for change in fields.get(&2).map(Vec::as_slice).unwrap_or_default() {
+                bounded_fields.push((2, change));
+            }
+            for raw in [&b"2147483647"[..], &b"4294967296x"[..]] {
+                bounded_fields.push((3, raw));
+                let bounded = crate::rust_out(app_version, "c_valset", &input(&bounded_fields)).out;
+                assert!(
+                    bounded.ends_with("increment=skip:times exceed 1024\n"),
+                    "v{app_version}: {bounded}"
+                );
+                bounded_fields.pop();
+            }
+
+            let mut evolved = false;
+            let mut rejected_non_positive = false;
+            for seed in &seeds {
+                let fields = args(seed).unwrap();
+                let Some(raw_times) = first(&fields, 3) else {
+                    continue;
+                };
+                let out = crate::rust_out(app_version, "c_valset", seed).out;
+                if raw_times == b"-1" || raw_times == b"0" {
+                    rejected_non_positive |= out.contains(
+                        "increment=err:Cannot call IncrementProposerPriority with non-positive times",
+                    );
+                    continue;
+                }
+                if !out.contains("\nincrement=ok\n") {
+                    continue;
+                }
+                let mut base_fields: Vec<(u64, &[u8])> = vec![(1, first(&fields, 1).unwrap())];
+                for change in fields.get(&2).map(Vec::as_slice).unwrap_or_default() {
+                    base_fields.push((2, change));
+                }
+                let base = crate::rust_out(app_version, "c_valset", &input(&base_fields)).out;
+                let priorities = |s: &str| {
+                    s.lines()
+                        .find_map(|line| line.strip_prefix("priorities="))
+                        .map(str::to_owned)
+                };
+                evolved |= priorities(&out).is_some() && priorities(&out) != priorities(&base);
+            }
+            assert!(evolved, "v{app_version} did not evolve priorities");
+            assert!(
+                rejected_non_positive,
+                "v{app_version} did not reject a seeded non-positive count"
+            );
+        }
     }
 
     #[test]

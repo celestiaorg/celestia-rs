@@ -14,7 +14,8 @@ package main
 //	c_block     1 Block
 //	c_commit    1 chain id, 2 ValidatorSet, 3 BlockID, 4 height (decimal), 5 Commit,
 //	            6 trust ValidatorSet, 7 trust numerator, 8 trust denominator (optional)
-//	c_valset    1 ValidatorSet, 2.. Validator (the change set)
+//	c_valset    1 ValidatorSet, 2.. Validator (the change set),
+//	            3 proposer-priority increments (decimal, optional)
 //	c_valupd    1 ConsensusParams, 2.. abci.ValidatorUpdate
 //	c_params    1 ConsensusParams, 2 ConsensusParams (update, optional), 3 height
 //	c_evidence  1 chain id, 2 ValidatorSet (optional), 3 Evidence,
@@ -304,6 +305,19 @@ func consensusOp(op string, in []byte) (o out) {
 		}
 		if !c.run("update", func() error { return vals.UpdateWithChangeSet(changes) }) {
 			break
+		}
+		if b := first(m, 3); b != nil {
+			times, _ := strconv.ParseInt(string(b), 10, 32)
+			if times > 1024 {
+				c.put("increment", "skip:times exceed 1024")
+				break
+			}
+			if !c.run("increment", func() error {
+				vals.IncrementProposerPriority(int32(times))
+				return nil
+			}) {
+				break
+			}
 		}
 		c.data("hash", func() string { return h(vals.Hash()) })
 		c.data("proposer", func() string { return h(vals.GetProposer().Address) })
