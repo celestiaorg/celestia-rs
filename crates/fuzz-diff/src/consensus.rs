@@ -377,14 +377,31 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 "light_all",
                 v::verify_commit_light_all_signatures(&chain_id, &vals, &bid, height, &cm),
             );
-            let tl = v::Fraction::ONE_THIRD;
+            let trust_vals = if let Some(raw) = first(m, 6) {
+                let p: pb::ValidatorSet = match decode(Some(raw)) {
+                    Ok(v) => v,
+                    Err(e) => return c.put("trust_valset", &format!("err:{e}")),
+                };
+                let v = match ValidatorSet::from_proto(&p) {
+                    Ok(v) => v,
+                    Err(e) => return c.put("trust_valset", &format!("err:{e}")),
+                };
+                c.put("trust_valset", "ok");
+                v
+            } else {
+                vals.clone()
+            };
+            let tl = v::Fraction {
+                numerator: first(m, 7).map_or(1, go_parse_uint),
+                denominator: first(m, 8).map_or(3, go_parse_uint),
+            };
             c.run(
                 "trusting",
-                v::verify_commit_light_trusting(&chain_id, &vals, &cm, tl),
+                v::verify_commit_light_trusting(&chain_id, &trust_vals, &cm, tl),
             );
             c.run(
                 "trusting_all",
-                v::verify_commit_light_trusting_all_signatures(&chain_id, &vals, &cm, tl),
+                v::verify_commit_light_trusting_all_signatures(&chain_id, &trust_vals, &cm, tl),
             );
         }
         "c_valset" => {
@@ -910,6 +927,29 @@ fn go_parse_int(b: &[u8]) -> i64 {
     if neg { v.wrapping_neg() } else { v }
 }
 
+/// Go `strconv.ParseUint(s, 10, 64)` with the error ignored: a syntax
+/// error is zero and a range error saturates at `u64::MAX`.
+fn go_parse_uint(b: &[u8]) -> u64 {
+    let digits = b;
+    if digits.is_empty() || !digits[0].is_ascii_digit() {
+        return 0;
+    }
+    let mut n = 0u64;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return 0;
+        }
+        let Some(next) = n
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u64::from(c - b'0')))
+        else {
+            return u64::MAX;
+        };
+        n = next;
+    }
+    n
+}
+
 fn canon(op: &str, out: &str) -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = Vec::new();
     for l in out.lines() {
@@ -921,6 +961,7 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
             || k.ends_with("from_proto")
             || k == "pubkey"
             || k == "valset"
+            || k == "trust_valset"
             || k == "block_id"
             || k == "header"
             || k.starts_with("change");
@@ -1127,12 +1168,18 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 let vals = hx(&c["vals"]);
                 if op == "c_commit" {
                     let h = c["height"].as_i64().unwrap_or(0).to_string();
+                    let trust_vals = hx(&c["trust_vals"]);
+                    let trust_num = c["trust_num"].as_u64().unwrap_or(0).to_string();
+                    let trust_den = c["trust_den"].as_u64().unwrap_or(0).to_string();
                     out.push(input(&[
                         (1, s(&c["chain_id"]).as_bytes()),
                         (2, &vals),
                         (3, &hx(&c["block_id"])),
                         (4, h.as_bytes()),
                         (5, &hx(&c["commit"])),
+                        (6, &trust_vals),
+                        (7, trust_num.as_bytes()),
+                        (8, trust_den.as_bytes()),
                     ]));
                 } else {
                     // The change set: validators of another case's set.
@@ -1541,6 +1588,93 @@ mod tests {
         assert_eq!(go_parse_int(b"+12"), 12);
         assert_eq!(go_parse_int(b"-"), 0);
         assert_eq!(go_parse_int(b"99999999999999999999x"), i64::MAX);
+    }
+
+    #[test]
+    fn go_parse_uint_like_go() {
+        assert_eq!(go_parse_uint(b"18446744073709551615"), u64::MAX);
+        assert_eq!(go_parse_uint(b"18446744073709551616"), u64::MAX);
+        assert_eq!(go_parse_uint(b"18446744073709551616x"), u64::MAX);
+        assert_eq!(go_parse_uint(b"+12"), 0);
+        assert_eq!(go_parse_uint(b"-1"), 0);
+        assert_eq!(go_parse_uint(b""), 0);
+    }
+
+    #[test]
+    fn commit_seeds_reach_recorded_trust_contexts() {
+        let seeds = seeds("c_commit");
+        assert!(seeds.len() >= 900);
+        for app_version in [9, 10] {
+            let outputs: Vec<(bool, String)> = seeds
+                .iter()
+                .map(|seed| {
+                    let fields = args(seed).unwrap();
+                    let distinct_trust_set = first(&fields, 2) != first(&fields, 6);
+                    (
+                        distinct_trust_set,
+                        crate::rust_out(app_version, "c_commit", seed).out,
+                    )
+                })
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .any(|(distinct, out)| { *distinct && out.contains("\ntrusting=ok\n") })
+            );
+            for error in [
+                "invalid commit -- insufficient voting power",
+                "double vote from Validator",
+                "trustLevel has zero Denominator",
+                "int64 overflow while calculating voting power needed",
+            ] {
+                assert!(
+                    outputs.iter().any(|(_, out)| {
+                        out.contains(&format!("\ntrusting=err:{error}"))
+                            || out.contains(&format!("\ntrusting_all=err:{error}"))
+                    }),
+                    "v{app_version} missing seeded trusting outcome: {error}"
+                );
+            }
+            assert!(outputs.iter().any(|(_, out)| {
+                out.contains("\ntrusting=ok\n")
+                    && out.contains("\ntrusting_all=err:invalid signature")
+            }));
+        }
+    }
+
+    #[test]
+    fn commit_plus_prefixed_trust_denominator_matches_go_zero() {
+        let seeds = seeds("c_commit");
+        for app_version in [9, 10] {
+            let base = seeds
+                .iter()
+                .find(|seed| {
+                    crate::rust_out(app_version, "c_commit", seed)
+                        .out
+                        .contains("\ntrusting=ok\n")
+                })
+                .unwrap();
+            let fields = args(base).unwrap();
+            let plus_three = input(&[
+                (1, first(&fields, 1).unwrap()),
+                (2, first(&fields, 2).unwrap()),
+                (3, first(&fields, 3).unwrap()),
+                (4, first(&fields, 4).unwrap()),
+                (5, first(&fields, 5).unwrap()),
+                (6, first(&fields, 6).unwrap()),
+                (7, first(&fields, 7).unwrap()),
+                (8, b"+3"),
+            ]);
+            let out = crate::rust_out(app_version, "c_commit", &plus_three).out;
+            assert!(
+                out.contains("\ntrusting=err:trustLevel has zero Denominator\n"),
+                "v{app_version}: {out}"
+            );
+            assert!(
+                out.contains("\ntrusting_all=err:trustLevel has zero Denominator\n"),
+                "v{app_version}: {out}"
+            );
+        }
     }
 
     #[test]
