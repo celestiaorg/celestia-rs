@@ -468,6 +468,9 @@ pub struct Driver {
     recover_client_on: bool,
     recover_subject_ready: bool,
     recover_update_pending: bool,
+    /// Exact rejection of a valid update after the second client freezes.
+    frozen_client_required: bool,
+    frozen_update_pending: bool,
     /// Required PFM success lifecycle: 0 not sent, 1 incoming packet landed,
     /// 2 exact forwarded packet observed, 3 original acknowledgement written.
     pfm_required: bool,
@@ -602,6 +605,13 @@ impl Driver {
     #[must_use]
     pub fn with_recover_client(mut self, enabled: bool) -> Self {
         self.recover_client_on = enabled;
+        self
+    }
+
+    /// Require the frozen second client to reject a valid signed update.
+    #[must_use]
+    pub fn with_frozen_client_requirement(mut self, enabled: bool) -> Self {
+        self.frozen_client_required = enabled;
         self
     }
 
@@ -760,6 +770,65 @@ impl Driver {
                 signer: c.signer.clone(),
             },
         ))
+    }
+
+    /// A valid update for the second client after exact misbehaviour froze it.
+    fn frozen_update(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        if !self.frozen_client_required
+            || !self.recover_subject_ready
+            || self.frozen_update_pending
+            || self.stats.contains_key("frozen_client_update_rejected")
+        {
+            return None;
+        }
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.trusted2 {
+            return None;
+        }
+        let header = self.cp.header(h, self.trusted2, None);
+        self.frozen_update_pending = true;
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
+            },
+        ))
+    }
+
+    /// Freeze the second client with two valid conflicting signed headers.
+    fn misbehaviour(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        if self.frozen {
+            return None;
+        }
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 4);
+        let h1 = self.cp.header(h, self.trusted2, None);
+        let h2 = self.cp.header(h, self.trusted2, Some(vec![7; 32]));
+        self.frozen = true;
+        self.bump("misbehaviour");
+        let mb = tmlc::Misbehaviour {
+            client_id: client.clone(),
+            header_1: Some(h1),
+            header_2: Some(h2),
+        };
+        Some(vec![if c.rng.one_in(2) {
+            #[allow(deprecated)]
+            Any::pack(
+                &celestia_proto::ibc::core::client::v1::MsgSubmitMisbehaviour {
+                    client_id: client,
+                    misbehaviour: Some(Any::pack(&mb)),
+                    signer: c.signer.clone(),
+                },
+            )
+        } else {
+            Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&mb)),
+                signer: c.signer.clone(),
+            })
+        }])
     }
 
     /// `MsgUpdateClient` proving the recovered subject accepts a new header.
@@ -1035,6 +1104,9 @@ impl Driver {
             }
             _ => {}
         }
+        if let Some(update) = self.frozen_update(c) {
+            txs.push(vec![update]);
+        }
         if let Some(update) = self.expired_update(c) {
             txs.push(vec![update]);
         }
@@ -1078,6 +1150,9 @@ impl Driver {
                 return None;
             }
             return self.ica_packet(c);
+        }
+        if self.frozen_client_required && !self.frozen {
+            return self.misbehaviour(c);
         }
         let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
@@ -1231,38 +1306,7 @@ impl Driver {
             // An ICA host tx.
             8..=10 => self.ica_packet(c),
             // Misbehaviour on the second client.
-            _ => {
-                if self.frozen {
-                    return None;
-                }
-                let client = self.a_client2.clone()?;
-                let h = self.cp.commit(c.now - 4);
-                let h1 = self.cp.header(h, self.trusted2, None);
-                let h2 = self.cp.header(h, self.trusted2, Some(vec![7; 32]));
-                self.frozen = true;
-                self.bump("misbehaviour");
-                let mb = tmlc::Misbehaviour {
-                    client_id: client.clone(),
-                    header_1: Some(h1),
-                    header_2: Some(h2),
-                };
-                Some(vec![if c.rng.one_in(2) {
-                    #[allow(deprecated)]
-                    Any::pack(
-                        &celestia_proto::ibc::core::client::v1::MsgSubmitMisbehaviour {
-                            client_id: client,
-                            misbehaviour: Some(Any::pack(&mb)),
-                            signer: signer.clone(),
-                        },
-                    )
-                } else {
-                    Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
-                        client_id: client,
-                        client_message: Some(Any::pack(&mb)),
-                        signer: signer.clone(),
-                    })
-                }])
-            }
+            _ => self.misbehaviour(c),
         };
         // Fill a block in which the existing steady-state schedule had no
         // relay. The opt-in flow still advances counterparty and relayer state;
@@ -2091,6 +2135,18 @@ impl Driver {
 
     /// Learns ids and packets from a finalized block's tx results (Go's).
     pub fn observe(&mut self, results: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]) {
+        if self.frozen_update_pending {
+            if let Some(client_id) = self.a_client2.as_deref()
+                && results
+                    .iter()
+                    .any(|result| is_frozen_client_update_rejection(result, client_id))
+            {
+                self.bump("frozen_client_update_rejected");
+            }
+            // `observe` is called for the same finalized block as `step`.
+            // Retry next block if CheckTx or proposal selection dropped it.
+            self.frozen_update_pending = false;
+        }
         if self.expired_update_pending {
             if let Some(client_id) = self.a_expired_client.as_deref()
                 && results
@@ -2521,6 +2577,11 @@ impl Driver {
             // the exact error Ack and converted detailed callback event.
             self.ica_error_packet = None;
         }
+        if self.frozen_client_required && self.frozen && !self.recover_subject_ready {
+            // Construction is not confirmation: retry required misbehaviour
+            // if CheckTx or proposal selection dropped the transaction.
+            self.frozen = false;
+        }
     }
 }
 
@@ -2532,6 +2593,17 @@ fn is_expired_client_update_rejection(
         && result.codespace == "client"
         && result.log.contains(&format!(
             "cannot update client ({client_id}) with status Expired: client state is not active"
+        ))
+}
+
+fn is_frozen_client_update_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    client_id: &str,
+) -> bool {
+    result.code == 29
+        && result.codespace == "client"
+        && result.log.contains(&format!(
+            "cannot update client ({client_id}) with status Frozen: client state is not active"
         ))
 }
 
@@ -2801,6 +2873,68 @@ mod tests {
         let successful =
             celestia_proto::celestia_core_proto::abci::ExecTxResult { code: 0, ..result };
         assert!(!is_transfer_close_init_rejection(&successful, "channel-10"));
+    }
+
+    #[test]
+    fn frozen_client_credit_requires_pending_exact_client_status_and_abci_error() {
+        let rejected = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 29,
+            codespace: "client".into(),
+            log: "cannot update client (07-tendermint-1) with status Frozen: client state is not active".into(),
+            ..Default::default()
+        };
+        assert!(is_frozen_client_update_rejection(
+            &rejected,
+            "07-tendermint-1"
+        ));
+        assert!(!is_frozen_client_update_rejection(
+            &rejected,
+            "07-tendermint-10"
+        ));
+
+        let expired = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            log: "cannot update client (07-tendermint-1) with status Expired: client state is not active".into(),
+            ..rejected.clone()
+        };
+        assert!(!is_frozen_client_update_rejection(
+            &expired,
+            "07-tendermint-1"
+        ));
+
+        let mut driver = Driver {
+            frozen_client_required: true,
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+        driver.observe(std::slice::from_ref(&rejected));
+        assert_eq!(driver.stats.get("frozen_client_update_rejected"), None);
+        driver.frozen_update_pending = true;
+        driver.observe(&[rejected]);
+        assert_eq!(driver.stats.get("frozen_client_update_rejected"), Some(&1));
+        assert!(!driver.frozen_update_pending);
+    }
+
+    #[test]
+    fn required_misbehaviour_retries_until_the_freeze_event_lands() {
+        let mut required = Driver {
+            frozen_client_required: true,
+            frozen: true,
+            ..Driver::default()
+        };
+        required.observe_block_events(&[]);
+        assert!(!required.frozen);
+
+        let mut default_schedule = Driver {
+            frozen: true,
+            ..Driver::default()
+        };
+        default_schedule.observe_block_events(&[]);
+        assert!(default_schedule.frozen);
+
+        required.frozen = true;
+        required.recover_subject_ready = true;
+        required.observe_block_events(&[]);
+        assert!(required.frozen);
     }
 
     #[test]
