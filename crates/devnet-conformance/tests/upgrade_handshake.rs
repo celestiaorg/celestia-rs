@@ -773,6 +773,170 @@ fn assert_pruned_records(
     Ok(())
 }
 
+#[test]
+fn real_app_pruned_store_replay_boundary() -> anyhow::Result<()> {
+    let fixture = Fixture::load()?;
+    for &backend in BackendKind::ALL {
+        for rollback_height in [14, 13] {
+            pruned_store_replay_boundary(&fixture, backend, rollback_height)?;
+        }
+    }
+    Ok(())
+}
+
+fn pruned_store_replay_boundary(
+    fixture: &Fixture,
+    backend: BackendKind,
+    rollback_height: i64,
+) -> anyhow::Result<()> {
+    const MIN_RETAIN_BLOCKS: u64 = 5;
+    const NODE_HEIGHT: i64 = 20;
+    const STORE_BASE: i64 = 15;
+
+    anyhow::ensure!(rollback_height >= fixture.upgrade + 1);
+    anyhow::ensure!(
+        NODE_HEIGHT - i64::try_from(MIN_RETAIN_BLOCKS)? == STORE_BASE,
+        "test constants must describe the configured pruning boundary"
+    );
+    anyhow::ensure!(rollback_height == STORE_BASE - 1 || rollback_height == STORE_BASE - 2);
+    anyhow::ensure!(
+        fixture
+            .blocks
+            .last()
+            .is_some_and(|(block, _)| block.header.height > NODE_HEIGHT)
+    );
+    let case = format!(
+        "{backend} pruned replay app={rollback_height} base={STORE_BASE} node={NODE_HEIGHT}"
+    );
+    let reference = Reference::build(fixture, backend)?;
+    assert_eq!(
+        reference.infos[usize::try_from(rollback_height)?].app_version,
+        10,
+        "{case} rollback must remain in the post-upgrade App"
+    );
+    let home = tempfile::tempdir()?;
+    let mut node =
+        Node::open_with_min_retain(home.path(), backend, fixture, None, MIN_RETAIN_BLOCKS)?;
+    assert_eq!(node.recover(&fixture.genesis)?, 0, "{case}");
+    for frame in fixture.blocks.iter().take(usize::try_from(NODE_HEIGHT)?) {
+        node.apply(frame)?;
+    }
+    assert_reference_height(&node, &reference, NODE_HEIGHT, &case)?;
+    assert_pruned_records(&node, fixture, &reference, NODE_HEIGHT, &case)?;
+    node.app
+        .lock()
+        .unwrap()
+        .rollback_to(rollback_height)
+        .map_err(|e| anyhow::anyhow!(e.log))?;
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(rollback_height)?],
+        "{case} after rollback"
+    );
+    drop(node);
+
+    let mut node =
+        Node::open_with_min_retain(home.path(), backend, fixture, None, MIN_RETAIN_BLOCKS)?;
+    assert_eq!(
+        node.state.bytes()?,
+        reference.states[usize::try_from(NODE_HEIGHT)?],
+        "{case}"
+    );
+    assert_eq!(node.exec.block_store.base(), STORE_BASE, "{case}");
+    assert_eq!(node.exec.block_store.height(), NODE_HEIGHT, "{case}");
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(rollback_height)?],
+        "{case} before handshake"
+    );
+
+    if rollback_height == STORE_BASE - 1 {
+        recover_pruned_store_boundary(node, fixture, &reference, rollback_height, &case)?;
+    } else {
+        reject_pruned_store_below_boundary(&mut node, fixture, &reference, rollback_height, &case)?;
+    }
+    Ok(())
+}
+
+fn recover_pruned_store_boundary(
+    mut node: Node,
+    fixture: &Fixture,
+    reference: &Reference,
+    rollback_height: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    const NODE_HEIGHT: i64 = 20;
+    const STORE_BASE: i64 = 15;
+    assert_eq!(
+        node.recover(&fixture.genesis)?,
+        usize::try_from(NODE_HEIGHT - rollback_height)?,
+        "{case} replay count"
+    );
+    let replayed: Vec<i64> = (STORE_BASE..=NODE_HEIGHT).collect();
+    assert_eq!(
+        *node.calls.lock().unwrap(),
+        Calls {
+            finalized: replayed.clone(),
+            committed: replayed,
+        },
+        "{case} replayed calls"
+    );
+    assert_reference_height(&node, reference, NODE_HEIGHT, case)?;
+    assert_pruned_records(&node, fixture, reference, NODE_HEIGHT, case)?;
+    for (i, frame) in fixture
+        .blocks
+        .iter()
+        .enumerate()
+        .skip(usize::try_from(NODE_HEIGHT)?)
+    {
+        node.apply(frame)?;
+        assert_reference_height(&node, reference, i64::try_from(i + 1)?, case)?;
+    }
+    assert_pruned_records(
+        &node,
+        fixture,
+        reference,
+        node.state.last_block_height,
+        case,
+    )
+}
+
+fn reject_pruned_store_below_boundary(
+    node: &mut Node,
+    fixture: &Fixture,
+    reference: &Reference,
+    rollback_height: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    const NODE_HEIGHT: i64 = 20;
+    const STORE_BASE: i64 = 15;
+    let error = node.recover(&fixture.genesis).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "app block height ({rollback_height}) is too far below the block store base ({STORE_BASE})"
+        ),
+        "{case}"
+    );
+    assert_eq!(*node.calls.lock().unwrap(), Calls::default(), "{case}");
+    assert_eq!(
+        node.state.bytes()?,
+        reference.states[usize::try_from(NODE_HEIGHT)?],
+        "{case}"
+    );
+    assert_eq!(
+        node.exec.state_store.load()?.unwrap().bytes()?,
+        reference.states[usize::try_from(NODE_HEIGHT)?],
+        "{case} stored state"
+    );
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(rollback_height)?],
+        "{case} app after rejected handshake"
+    );
+    assert_pruned_records(node, fixture, reference, NODE_HEIGHT, case)
+}
+
 fn recover_case(
     fixture: &Fixture,
     backend: BackendKind,
