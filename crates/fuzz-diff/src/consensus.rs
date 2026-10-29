@@ -15,8 +15,8 @@ use ctypes::proto::crypto as pbc;
 use ctypes::proto::types as pb;
 use ctypes::validation as v;
 use ctypes::{
-    BitArray, Block, BlockId, Commit, ConsensusParams, Evidence, Header, Part, PartSet,
-    PartSetHeader, Proposal, PubKey, SignedHeader, Time, Validator, ValidatorSet, Vote,
+    BitArray, Block, BlockId, Commit, ConsensusParams, Evidence, EvidenceData, Header, Part,
+    PartSet, PartSetHeader, Proposal, PubKey, SignedHeader, Time, Validator, ValidatorSet, Vote,
 };
 use prost::Message;
 use serde::Deserialize;
@@ -1587,6 +1587,22 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             }
         }
         "c_vblock" => {
+            // A frozen, structurally valid evidence item is enough to reach
+            // validateBlock's byte limit. Contextual evidence-pool checks run
+            // later in BlockExecutor and are deliberately outside this op.
+            let boundary_evidence = evidence_fixture()["cases"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|case| {
+                    case["label"].as_str() == Some("dve/valid")
+                        && case["from_proto_err"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .is_empty()
+                })
+                .and_then(|case| pb::Evidence::decode(hx(&case["evidence"]).as_slice()).ok())
+                .and_then(|evidence| Evidence::from_proto(&evidence).ok());
             // Consecutive real blocks: the state after block h-1 and block h.
             for name in ["real-blocks-blob", "real-blocks-empty"] {
                 let f = fixture(name);
@@ -1697,6 +1713,49 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     let state_bytes = state.encode_to_vec();
                     out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
                     if derive_negative_seeds {
+                        // Keep the real transition and authentic LastCommit,
+                        // but attach structurally valid frozen evidence and
+                        // recompute the current header's EvidenceHash. The
+                        // evidence parameter is intentionally the only state
+                        // change: ConsensusParams.Hash excludes it. The S / S-1
+                        // pair covers the exact inclusive byte-size boundary.
+                        if let Some(ev) = boundary_evidence.clone() {
+                            let evidence = EvidenceData { evidence: vec![ev] };
+                            let size = evidence.byte_size();
+                            if size > 0
+                                && let Ok(evidence_proto) = evidence.to_proto()
+                            {
+                                let mut block = pbk.clone();
+                                block.evidence = Some(evidence_proto);
+                                if let Some(header) = block.header.as_mut() {
+                                    header.evidence_hash = evidence.hash();
+                                }
+                                let block = block.encode_to_vec();
+                                let with_limit = |max_bytes: i64| {
+                                    let mut bounded = state.clone();
+                                    let params = bounded.consensus_params.as_mut()?;
+                                    params.evidence.as_mut()?.max_bytes = max_bytes;
+                                    let params = ConsensusParams::from_proto(params).ok()?;
+                                    (params.hash() == h.consensus_hash)
+                                        .then(|| bounded.encode_to_vec())
+                                };
+                                if let (Some(at_limit), Some(over_limit)) =
+                                    (with_limit(size), with_limit(size - 1))
+                                {
+                                    out.push(input(&[
+                                        (1, &at_limit),
+                                        (2, &block),
+                                        (3, now.as_bytes()),
+                                    ]));
+                                    out.push(input(&[
+                                        (1, &over_limit),
+                                        (2, &block),
+                                        (3, now.as_bytes()),
+                                    ]));
+                                }
+                            }
+                        }
+
                         // Keep a valid state and block while making each
                         // state/header comparison fail in isolation.
                         let mut wrong_version = pbk.clone();
@@ -2087,12 +2146,12 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 63);
+        assert_eq!(s.len(), 65);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
             .count();
-        assert_eq!(valid, 49);
+        assert_eq!(valid, 50);
     }
 
     #[test]
@@ -2195,7 +2254,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 63);
+        assert_eq!(seeds.len(), 65);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -2206,7 +2265,7 @@ mod tests {
                     .iter()
                     .filter(|out| out.as_str() == "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n")
                     .count(),
-                49
+                50
             );
             for error in [
                 "wrong Block.Header.Version.",
@@ -2268,6 +2327,70 @@ mod tests {
                     .count(),
                 1,
                 "v{app_version}: proposer membership"
+            );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_reach_evidence_size_boundary() {
+        let mut boundary: Vec<_> = seeds("c_vblock")
+            .into_iter()
+            .filter_map(|seed| {
+                let fields = args(&seed)?;
+                let mut state = ctypes::proto::state::State::decode(first(&fields, 1)?).ok()?;
+                let block_bytes = first(&fields, 2)?.to_vec();
+                let block = Block::decode(&block_bytes).ok()?;
+                if block.evidence.evidence.is_empty() {
+                    return None;
+                }
+                let got = block.evidence.byte_size();
+                let params = ConsensusParams::from_proto(state.consensus_params.as_ref()?).ok()?;
+                params.validate_basic().ok()?;
+                let max = params.evidence.max_bytes;
+                state
+                    .consensus_params
+                    .as_mut()?
+                    .evidence
+                    .as_mut()?
+                    .max_bytes = 0;
+                Some((
+                    seed,
+                    state.encode_to_vec(),
+                    block_bytes,
+                    first(&fields, 3)?.to_vec(),
+                    max,
+                    got,
+                ))
+            })
+            .collect();
+        assert_eq!(boundary.len(), 2);
+        boundary.sort_by_key(|case| case.4);
+        assert_eq!(
+            boundary[0].1, boundary[1].1,
+            "states differ beyond MaxBytes"
+        );
+        assert_eq!(boundary[0].2, boundary[1].2, "block bytes differ");
+        assert_eq!(boundary[0].3, boundary[1].3, "wall clocks differ");
+        assert_eq!(boundary[0].5, boundary[1].5, "evidence sizes differ");
+        let got = boundary[0].5;
+        assert!(got > 0);
+        assert_eq!(boundary[0].4, got - 1);
+        assert_eq!(boundary[1].4, got);
+
+        for app_version in [9, 10] {
+            let rejected = crate::rust_out(app_version, "c_vblock", &boundary[0].0).out;
+            assert_eq!(
+                rejected,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:Too much evidence: Max {}, got {got}\n",
+                    got - 1
+                ),
+                "v{app_version}"
+            );
+            let accepted = crate::rust_out(app_version, "c_vblock", &boundary[1].0).out;
+            assert_eq!(
+                accepted, "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n",
+                "v{app_version}"
             );
         }
     }
