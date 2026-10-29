@@ -398,6 +398,17 @@ test), then start that harness's count again.
   300-block differentials delivered 481 and 707 transactions, observed the
   exact rejection once in each run and had zero mismatches or splits. This is
   bounded negative-path coverage, not volume or three-night qualification.
+  *Frozen-client follow-up (2026-10-29):* an opt-in contract submits two
+  conflicting signed headers to the dedicated second Tendermint client and
+  waits for that exact client's `client_misbehaviour` event. It then builds a
+  fresh signed update from the retained trusted height and requires the exact
+  client ID, `client/29` and `Frozen` status in the finalized rejection. Core
+  checks the Frozen status before verifying the header, so this proves the
+  status gate and does not claim successful header verification. Pinned v9
+  and v10 300-block differentials delivered 546 / 639 transactions (223 / 314
+  code 0), confirmed the freeze and attributed the rejection exactly once in
+  each run, with zero mismatches or splits. This is bounded negative-path
+  coverage, not volume or three-night qualification.
   *ICA application-error follow-up (2026-10-29):* an opt-in contract relays a
   dedicated proto3 ICA host packet whose bank send exceeds the funded
   interchain account balance. Credit requires the full exact packet and
@@ -413,12 +424,12 @@ test), then start that harness's count again.
   three-night qualification.
   Remaining work is to establish complete coverage and qualifying volume
   across ICS-20 denoms / amounts / receivers, other acknowledgement forms and
-  ICA error classes, mutated headers, broader misbehaviour and frozen client
-  behavior, and signed Hyperlane verification paths. The exact PFM, ICA and
-  expired-client lifecycles above still need the same exact-candidate
-  saturation as the rest of this harness. Exit: F1.2's exact-candidate volume
-  and three-night criteria for this harness too, plus F1.3's coverage
-  accounting.
+  ICA error classes, mutated headers, broader misbehaviour and other frozen
+  client operations, and signed Hyperlane verification paths. The exact PFM,
+  ICA, expired-client and frozen-client lifecycles above still need the same
+  exact-candidate saturation as the rest of this harness. Exit: F1.2's
+  exact-candidate volume and three-night criteria for this harness too, plus
+  F1.3's coverage accounting.
 
 - [ ] **F1.5 The v9 → v10 upgrade.** `deliver` supports `v9-upgrade` and
   `v9-upgrade-boundary`, switching the pinned Go binary after the upgrade

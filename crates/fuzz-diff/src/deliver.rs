@@ -1365,6 +1365,20 @@ impl Stats {
                 "incomplete MsgRecoverClient coverage: recovered subject did not accept a subsequent update"
             );
         }
+        if self.ibc_required.contains("frozen_client_update") {
+            anyhow::ensure!(
+                self.ibc.get("misbehaviour_confirmed").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_FROZEN_CLIENT_REQUIRE coverage: no matching confirmed misbehaviour event"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("frozen_client_update_rejected")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_FROZEN_CLIENT_REQUIRE coverage: no exact frozen-client update rejection"
+            );
+        }
         if self.ibc_required.contains("pfm_lifecycle") {
             anyhow::ensure!(
                 self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
@@ -3813,6 +3827,8 @@ pub fn run(
     let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
     let ibc_expired_client_required =
         std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
+    let ibc_frozen_client_required =
+        std::env::var_os("DELIVER_IBC_FROZEN_CLIENT_REQUIRE").is_some();
     anyhow::ensure!(
         !ibc_connection_confirm || ibc_on,
         "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
@@ -3862,6 +3878,10 @@ pub fn run(
         "DELIVER_IBC_EXPIRED_CLIENT_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
+        !ibc_frozen_client_required || ibc_on,
+        "DELIVER_IBC_FROZEN_CLIENT_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
         usize::from(ibc_pfm_required)
             + usize::from(ibc_pfm_error_required)
             + usize::from(ibc_pfm_timeout_required)
@@ -3890,6 +3910,10 @@ pub fn run(
     anyhow::ensure!(
         !ibc_recover_client || ibc_on,
         "DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_frozen_client_required || !ibc_recover_client,
+        "DELIVER_IBC_FROZEN_CLIENT_REQUIRE cannot be combined with MsgRecoverClient coverage"
     );
     let type_required = std::env::var_os("DELIVER_TYPE_REQUIRE")
         .map(|v| {
@@ -3949,8 +3973,9 @@ pub fn run(
                 && !ibc_pfm_exhaust_required
                 && !ibc_ica_encodings_required
                 && !ibc_ica_error_required
-                && !ibc_expired_client_required,
-            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA, or expired-client requirements"
+                && !ibc_expired_client_required
+                && !ibc_frozen_client_required,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA, expired-client, or frozen-client requirements"
         );
     }
     anyhow::ensure!(
@@ -4033,6 +4058,9 @@ pub fn run(
     }
     if ibc_expired_client_required {
         stats.ibc_required.insert("expired_client_update");
+    }
+    if ibc_frozen_client_required {
+        stats.ibc_required.insert("frozen_client_update");
     }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
@@ -4315,6 +4343,7 @@ pub fn run(
             .with_ica_encoding_requirement(ibc_ica_encodings_required)
             .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
+            .with_frozen_client_requirement(ibc_frozen_client_required)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
     // The relayer: the last single-key fuzz account.
@@ -7171,6 +7200,17 @@ mod tests {
         stats.ibc.insert("expired_client_update_rejected", 1);
         assert!(stats.require_ibc_coverage().is_ok());
         assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_frozen_client_update_needs_freeze_and_exact_rejection() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("frozen_client_update");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("misbehaviour_confirmed", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("frozen_client_update_rejected", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
     }
 
     #[test]
