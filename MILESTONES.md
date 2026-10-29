@@ -407,6 +407,33 @@ test), then start that harness's count again.
   remaining authentic block. This tests process death after completed
   synced writes; interruption during a write and power-loss durability
   remain outside this evidence.
+  *Persisted validator and parameter history (2026-10-29, PRs #131 and
+  #132):* the same authenticated matrix now includes the fixture's sole
+  validator update at H7, its pending H8 set and active H9 set as recovery
+  checkpoints, in addition to the H12 upgrade boundary. Both backends and
+  both controlled-close / SIGKILL modes compare
+  `LastHeightValidatorsChanged` and complete historical validator sets
+  through H+2 with an uninterrupted reference before continuing through
+  the upgrade. Every historical consensus-parameter record is loaded
+  through recovered H+1 and final H+1 and compared with the frozen genesis
+  and complete Go response bytes; the stored app version is 9 through H12
+  and 10 from H13.
+  The fixture emits complete parameters on every block, so this does not
+  test sparse `last_height_changed` backpointer reconstruction.
+  *Lagging and pruned App reopen (2026-10-29, PRs #133 and #134):* with
+  node/block/state stores at H20 and only the App rolled back to the
+  post-upgrade H13 state, both backends replay exactly H14–H20 through the
+  real App, compare every reconstructed `FinalizeBlock` request and
+  consensus result with the frozen Go fixture, retain the H20 consensus
+  state/history and then execute H21–H40. A separate
+  `min-retain-blocks = 5` case reaches block base 15 at H20, reopens with a
+  zero-block handshake and continues to H40 / base 35. It requires old
+  block bodies, parameters and per-height results to be gone. Unexpired
+  evidence headers/commits and retained parameters/results match the frozen
+  Go data; validator history matches the uninterrupted Rust reference.
+  These are orderly rollback/reopen and pruning paths on the devnet
+  fixture. They do not cover a crash during rollback/pruning,
+  expired-evidence pruning, cross-upgrade App rollback or power loss.
   *Snapshot boundary (2026-10-28):* on the same fixture (H=12), pinned Go
   v9.0.8 exports H, but v10.5.0 cannot export H after opening the upgraded
   database (`fibre` has no version at H). A fresh Go v10 receiver accepts
