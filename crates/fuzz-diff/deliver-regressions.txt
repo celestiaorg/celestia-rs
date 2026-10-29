@@ -55,3 +55,7 @@ ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1
 # MsgExec through a SendAuthorization whose stored spend limit is unsorted:
 # Go's safeAdd panics before the allow list (#85, security.md 104).
 v9-upgrade 300 6 10498 GO_APPD_NEXT=v10 DELIVER_UPGRADE=38 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
+# GOVPASS used to wait forever for a pre-existing proposal before it submitted
+# its first valid authority proposal. Require execution of an exact payload so
+# submission alone, or Hyperlane's separate native-token proposal, cannot pass.
+v9-hyperlane 300 8 940002 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_HL_REJECT=1 DELIVER_GOVPASS=1 DELIVER_GOV_REQUIRE=/cosmos.bank.v1beta1.MsgSetSendEnabled DELIVER_IBC=1 DELIVER_RECHECK=1
