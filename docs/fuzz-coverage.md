@@ -454,7 +454,8 @@ proposal (`GOV proposal_passed`), not per type.
   exactly attributed misbehaviour event on the mock's second Tendermint
   client, then passes a recovery proposal using the compatible, newer active
   main client. The requirement receives credit only when the proposal payload
-  executes and the matching block-scope recovery event is observed.
+  executes, the matching block-scope recovery event is observed, and the
+  recovered subject accepts a subsequent signed client update.
 * **Harness gaps** (reachable on mainnet, to add):
   Successful `MsgChannelUpgradeAck` is not a
   reachable handler path in celestia-app: it enables the ICA host but not

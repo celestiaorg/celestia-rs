@@ -455,6 +455,7 @@ pub struct Driver {
     frozen: bool,
     recover_client_on: bool,
     recover_subject_ready: bool,
+    recover_update_pending: bool,
     /// A third client, upgraded once (`MsgUpgradeClient`).
     a_client3: Option<String>,
     upgraded: bool,
@@ -615,6 +616,23 @@ impl Driver {
                 client_id: client,
                 client_message: Some(Any::pack(&header)),
                 signer: signer.into(),
+            },
+        ))
+    }
+
+    /// `MsgUpdateClient` proving the recovered subject accepts a new header.
+    fn update_recovered(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.trusted2 {
+            return None;
+        }
+        let header = self.cp.header(h, self.trusted2, None);
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
             },
         ))
     }
@@ -837,6 +855,11 @@ impl Driver {
                             }],
                         },
                     )]);
+                }
+                if self.recover_update_pending
+                    && let Some(message) = self.update_recovered(c)
+                {
+                    txs.push(vec![message]);
                 }
                 if let Some(t) = self.steady(c) {
                     txs.push(t);
@@ -1815,7 +1838,12 @@ impl Driver {
                             if self.a_client.as_ref() == Some(&id) {
                                 self.trusted = self.trusted.max(h);
                             } else if self.a_client2.as_ref() == Some(&id) {
+                                let advanced = h > self.trusted2;
                                 self.trusted2 = self.trusted2.max(h);
+                                if self.recover_update_pending && advanced {
+                                    self.recover_update_pending = false;
+                                    self.bump("recovered_client_update");
+                                }
                             } else if self.a_client3.as_ref() == Some(&id) {
                                 self.trusted3 = self.trusted3.max(h);
                             }
@@ -1989,6 +2017,11 @@ impl Driver {
                 && attr(event, "subject_client_id") == self.a_client2
             {
                 self.recover_subject_ready = false;
+                // Recovery copies the substitute's latest client and
+                // consensus state to the subject. Build the next header from
+                // that exact trusted height and require it to land.
+                self.trusted2 = self.trusted;
+                self.recover_update_pending = true;
                 self.bump("recover_client");
             }
         }
@@ -2145,8 +2178,62 @@ mod tests {
         driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
         assert_eq!(driver.stats.get("recover_client"), Some(&1));
         assert!(!driver.recover_subject_ready);
+        assert!(driver.recover_update_pending);
+        assert_eq!(driver.trusted2, driver.trusted);
 
         driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
         assert_eq!(driver.stats.get("recover_client"), Some(&1));
+    }
+
+    #[test]
+    fn recovered_update_credit_requires_the_pending_exact_subject() {
+        fn update_result(
+            client: &str,
+            height: i64,
+        ) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            celestia_proto::celestia_core_proto::abci::ExecTxResult {
+                code: 0,
+                events: vec![Event {
+                    r#type: "update_client".into(),
+                    attributes: [
+                        ("client_id", client.to_owned()),
+                        ("consensus_height", format!("0-{height}")),
+                    ]
+                    .into_iter()
+                    .map(|(key, value)| EventAttribute {
+                        key: key.into(),
+                        value,
+                        index: true,
+                    })
+                    .collect(),
+                }],
+                ..Default::default()
+            }
+        }
+
+        let mut driver = Driver {
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+        driver.observe(&[update_result("07-tendermint-1", 8)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+
+        driver.recover_update_pending = true;
+        driver.observe(&[update_result("07-tendermint-10", 9)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+        assert!(driver.recover_update_pending);
+
+        driver.observe(&[update_result("07-tendermint-1", 8)]);
+        driver.observe(&[update_result("07-tendermint-1", 7)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+        assert!(driver.recover_update_pending);
+
+        driver.observe(&[update_result("07-tendermint-1", 9)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
+        assert!(!driver.recover_update_pending);
+        assert_eq!(driver.trusted2, 9);
+
+        driver.observe(&[update_result("07-tendermint-1", 10)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
     }
 }
