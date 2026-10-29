@@ -1727,6 +1727,28 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                                 (3, now.as_bytes()),
                             ]));
                         }
+
+                        // Keep the required 20-byte shape but select an
+                        // address outside the active validator set. This
+                        // reaches membership after LastCommit verification.
+                        let mut wrong_proposer = pbk.clone();
+                        if let Some(header) = wrong_proposer.header.as_mut()
+                            && let Some(first) = header.proposer_address.first_mut()
+                        {
+                            *first ^= 0xff;
+                            assert!(state.validators.as_ref().is_some_and(|validators| {
+                                validators
+                                    .validators
+                                    .iter()
+                                    .all(|validator| validator.address != header.proposer_address)
+                            }));
+                            let wrong_proposer = wrong_proposer.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_proposer),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
                     }
                 }
             }
@@ -1965,7 +1987,7 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 60);
+        assert_eq!(s.len(), 61);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
@@ -2048,7 +2070,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 60);
+        assert_eq!(seeds.len(), 61);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -2110,6 +2132,18 @@ mod tests {
                     "v{app_version}: {error}"
                 );
             }
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block.Header.ProposerAddress ",
+                        ) && out.ends_with(" is not a validator\n")
+                    })
+                    .count(),
+                1,
+                "v{app_version}: proposer membership"
+            );
         }
     }
 
