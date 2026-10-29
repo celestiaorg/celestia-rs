@@ -356,7 +356,14 @@ test), then start that harness's count again.
   transfers, with explicit counts. PR #113's pinned v10.5.0 / v9.0.8
   campaigns on `65e08e3` completed 400 generated blocks, 966 finalized
   txs and 65 successful signed incoming transfers without a consensus
-  mismatch. These are bounded candidate results, not saturation.
+  mismatch. PR #122 made ordinary signed upgrade campaigns fail unless both
+  kinds succeed before the v9 → v10 switch and records counts by app version. Its exact
+  pinned Merkle-root regression completed 100 blocks / 616 finalized txs
+  with v9 collateral 1 / synthetic 1 and v10 collateral 1. An exact-main
+  message-ID run on `374bb62` completed 300 blocks / 1,078 finalized txs
+  with v9 collateral 1 / synthetic 1 and v10 collateral 3 / synthetic 3.
+  Both runs had zero consensus mismatches or splits. These are bounded
+  candidate results, not saturation.
   Remaining work is to establish complete coverage and qualifying volume
   across ICS-20 denoms / amounts / receivers, PFM forwards / retries /
   refunds / timeouts, both ICA encodings, acknowledgement forms, mutated
@@ -390,8 +397,16 @@ test), then start that harness's count again.
   with Go. Recovery must match uninterrupted state and continue through
   the remaining blocks, including post-upgrade bank and reward txs.
   Call counts distinguish real-App replay from stored-response recovery.
-  This is controlled close/reopen with synced writes; abrupt process /
-  power loss still needs separate evidence.
+  This is controlled close/reopen with synced writes.
+  *SIGKILL replay (2026-10-29, PR #123):* the same RocksDB / redb matrix
+  now also runs in child processes killed at H−1 / H / H+1, either after
+  the authenticated block-store write or after the real App commit returns
+  but before consensus state is saved (12 cases). The parent reopens all
+  databases, requires one-block recovery, matches the uninterrupted state,
+  App info and Go-authenticated consensus results, then executes every
+  remaining authentic block. This tests process death after completed
+  synced writes; interruption during a write and power-loss durability
+  remain outside this evidence.
   *Snapshot boundary (2026-10-28):* on the same fixture (H=12), pinned Go
   v9.0.8 exports H, but v10.5.0 cannot export H after opening the upgraded
   database (`fibre` has no version at H). A fresh Go v10 receiver accepts
@@ -452,7 +467,17 @@ test), then start that harness's count again.
   `Data.hash` scan; the header's chain id), all fixed; the 5 031 inputs
   that differed before the fixes agree, 215 of them pinned in
   `tests/regressions.jsonl`. NMT proof verification has no caller in the
-  node (the data root is compared by `pp`). Open: the 10⁸ inputs per op.
+  node (the data root is compared by `pp`).
+  *Bounded current-target campaigns (2026-10-29):* clean exact-source runs
+  on `56faa0e` and `2319850` completed 200,120 inputs across eleven ops and
+  52,417 inputs across the other six, respectively, with zero mismatches
+  (the latter had 34,390 Go-accepted inputs). Together these exercise all
+  seventeen v0.42.3 ops but are far
+  below the 10⁸ inputs per op exit criterion. The app-v9 oracle's
+  `consensusOp` returns `v10 oracle only` for every `c_*` operation; a
+  200,018-input probe therefore made zero valid comparisons. That probe is
+  capability evidence, not a clean campaign. The v0.40.9 consensus oracle
+  and its required volume remain open, as does the v0.42.3 volume.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
