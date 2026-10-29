@@ -1356,6 +1356,14 @@ impl Stats {
                 self.ibc.get("recover_client").copied().unwrap_or(0) > 0,
                 "incomplete MsgRecoverClient coverage: no matching block-scope recovery event"
             );
+            anyhow::ensure!(
+                self.ibc
+                    .get("recovered_client_update")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete MsgRecoverClient coverage: recovered subject did not accept a subsequent update"
+            );
         }
         Ok(())
     }
@@ -6873,6 +6881,8 @@ mod tests {
         stats.ibc.insert("recover_client", 1);
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("misbehaviour_confirmed", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("recovered_client_update", 1);
         assert!(stats.require_ibc_coverage().is_ok());
     }
 
