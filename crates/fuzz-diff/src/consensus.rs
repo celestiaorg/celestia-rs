@@ -1274,6 +1274,60 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                         // Each change decodes independently, but a single
                         // atomic change set cannot name one validator twice.
                         out.push(input(&[(1, &vals), (2, change), (2, change)]));
+
+                        let (Ok(mut invalid), Ok(base)) = (
+                            pb::Validator::decode(change.as_slice()),
+                            pb::ValidatorSet::decode(vals.as_slice()),
+                        ) else {
+                            continue;
+                        };
+                        let Some(base_validator) = base.validators.first() else {
+                            continue;
+                        };
+                        invalid.voting_power = -1;
+                        let negative_power = invalid.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &negative_power)]));
+
+                        invalid.voting_power = ctypes::validator_set::MAX_TOTAL_VOTING_POWER + 1;
+                        let excessive_power = invalid.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &excessive_power)]));
+
+                        // ValidatorFromProto takes the address as given. Flip
+                        // one byte to isolate removal of an absent identity
+                        // while retaining the recorded, decodable public key.
+                        let mut absent = base_validator.clone();
+                        if let Some(first) = absent.address.first_mut() {
+                            *first ^= 0xff;
+                        } else {
+                            absent.address.push(0xff);
+                        }
+                        assert!(
+                            base.validators
+                                .iter()
+                                .all(|validator| validator.address != absent.address),
+                            "derived validator address must be absent"
+                        );
+                        absent.voting_power = 0;
+                        let missing_removal = absent.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &missing_removal)]));
+
+                        absent.voting_power = ctypes::validator_set::MAX_TOTAL_VOTING_POWER;
+                        let overflowing_addition = absent.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &overflowing_addition)]));
+
+                        let removals: Vec<Vec<u8>> = base
+                            .validators
+                            .iter()
+                            .cloned()
+                            .map(|mut validator| {
+                                validator.voting_power = 0;
+                                validator.encode_to_vec()
+                            })
+                            .collect();
+                        let mut remove_all_fields: Vec<(u64, &[u8])> = vec![(1, &vals)];
+                        remove_all_fields
+                            .extend(removals.iter().map(|removal| (2, removal.as_slice())));
+                        out.push(input(&remove_all_fields));
                     }
                     let increments = [-1, 0, 1, 2, 3, 4, 5];
                     let times = increments[i % increments.len()].to_string();
@@ -2136,19 +2190,46 @@ mod tests {
     }
 
     #[test]
-    fn valset_seeds_reach_duplicate_change_rejection() {
+    fn valset_seeds_reach_change_set_rejection_matrix() {
         let seeds = seeds("c_valset");
-        assert!(seeds.len() >= 1_801, "{} seeds", seeds.len());
+        assert_eq!(seeds.len(), 1_806);
         for app_version in [9, 10] {
-            let errors: Vec<String> = seeds
+            let outputs: Vec<String> = seeds
                 .iter()
                 .map(|seed| crate::rust_out(app_version, "c_valset", seed).out)
-                .filter(|out| out.contains("\nupdate=err:duplicate entry "))
                 .collect();
-            assert_eq!(errors.len(), 1, "v{app_version}: {errors:?}");
-            assert!(errors[0].contains("\nchange0=ok\nchange1=ok\n"));
-            assert!(errors[0].contains("\nerror_state="));
-            assert!(errors[0].ends_with("\nerror_unchanged=true\n"));
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.contains("\nupdate=ok\n"))
+                    .count(),
+                1_800,
+                "v{app_version}"
+            );
+            let errors: Vec<&String> = outputs
+                .iter()
+                .filter(|out| out.contains("\nupdate=err:"))
+                .collect();
+            assert_eq!(errors.len(), 6, "v{app_version}: {errors:?}");
+            for expected in [
+                "duplicate entry ",
+                "voting power can't be negative: -1",
+                "to prevent clipping/overflow, voting power can't be higher than ",
+                "failed to find validator ",
+                "total voting power of resulting valset exceeds max ",
+                "applying the validator changes would result in empty set",
+            ] {
+                assert_eq!(
+                    errors.iter().filter(|out| out.contains(expected)).count(),
+                    1,
+                    "v{app_version}: {expected}: {errors:?}"
+                );
+            }
+            assert!(errors.iter().all(|out| out.contains("\nchange0=ok\n")));
+            assert!(
+                errors.iter().all(|out| out.contains("\nerror_state=")
+                    && out.ends_with("\nerror_unchanged=true\n"))
+            );
         }
     }
 
