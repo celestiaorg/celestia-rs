@@ -436,6 +436,12 @@ proposal (`GOV proposal_passed`), not per type.
   `cosmos.gov.v1.MsgExecLegacyContent`: celestia-app v9.0.8 and v10.4.0
   call `SetLegacyRouter(govv1beta1.NewRouter())` with no routes, so the
   submission fails `ErrNoProposalHandlerExists` (gov/9) for any content.
+  The legacy `MsgDeposit` handler remains reachable on v1 proposals.
+  GOVPASS runs requesting that type now pair v1 and v1beta1 deposits against
+  the same active proposals, and the pinned v9.0.8 and v10.5.0 40-block regressions require
+  at least one successful legacy deposit. They completed 13 and 11
+  successful legacy deposits respectively with zero consensus mismatches.
+  The table above predates that change and still needs a full regeneration.
 * **Harness gaps** (reachable on mainnet, to add):
   the IBC channel messages that need a counterparty step the mock does
   not take (`MsgChannelCloseInit` is refused by the transfer app, so only
@@ -444,11 +450,6 @@ proposal (`GOV proposal_passed`), not per type.
   `hyperlane.warp.v1.MsgUnrollRemoteRouter` now mostly targets a router
   enrolled on a token the signer owns (first Go success in a local
   `hyperlane` run, seed 4243, after this report).
-  `cosmos.gov.v1beta1.MsgDeposit` now mostly makes a small deposit on one
-  of the three newest proposals; three local `gov` runs (seeds 4244 and,
-  with `DELIVER_GOVPASS`, 4245) still had no success: the newest proposals
-  had mostly ended (`gov/3`), so it needs a proposal kept in its deposit
-  period (open).
 
 ## Status against the F1.3 exit
 
