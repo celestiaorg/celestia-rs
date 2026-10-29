@@ -1592,7 +1592,65 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 let f = fixture(name);
                 let bs: Vec<&serde_json::Value> =
                     f["blocks"].as_array().into_iter().flatten().collect();
-                for w in bs.windows(2) {
+                let derive_negative_fixture = out.is_empty();
+                let vs =
+                    |v: &serde_json::Value| ctypes::gogo_decode::<pb::ValidatorSet>(&hx(v)).ok();
+                if derive_negative_fixture && let Some(cur) = bs.first() {
+                    let bz = hx(&cur["block"]);
+                    if let Ok(pbk) = ctypes::gogo_decode::<pb::Block>(&bz) {
+                        let h = pbk.header.clone().unwrap_or_default();
+                        let state = ctypes::proto::state::State {
+                            version: Some(ctypes::proto::state::Version {
+                                consensus: h.version,
+                                software: String::new(),
+                            }),
+                            chain_id: h.chain_id.clone(),
+                            initial_height: h.height,
+                            last_block_height: 0,
+                            last_block_id: Some(pb::BlockId::default()),
+                            last_block_time: h.time,
+                            next_validators: vs(&cur["next_vals"]),
+                            validators: vs(&cur["vals"]),
+                            last_validators: None,
+                            last_height_validators_changed: h.height,
+                            consensus_params: ctypes::gogo_decode::<pb::ConsensusParams>(&hx(
+                                &cur["params"]
+                            ))
+                            .ok(),
+                            last_height_consensus_params_changed: h.height,
+                            last_results_hash: h.last_results_hash,
+                            app_hash: h.app_hash,
+                            timeout_info: None,
+                        };
+                        let t = h.time.unwrap_or_default();
+                        let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
+                        let state_bytes = state.encode_to_vec();
+                        out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
+
+                        // An absent CommitSig is structurally valid, but the
+                        // initial block must not carry any LastCommit entries.
+                        let mut nonempty_commit = pbk.clone();
+                        let commit = nonempty_commit.last_commit.get_or_insert_default();
+                        commit.signatures.push(pb::CommitSig {
+                            block_id_flag: i32::from(ctypes::commit::BLOCK_ID_FLAG_ABSENT),
+                            validator_address: Vec::new(),
+                            timestamp: None,
+                            signature: Vec::new(),
+                        });
+                        if let Ok(commit) = Commit::from_proto(commit)
+                            && let Some(header) = nonempty_commit.header.as_mut()
+                        {
+                            header.last_commit_hash = commit.hash();
+                            let nonempty_commit = nonempty_commit.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &nonempty_commit),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+                    }
+                }
+                for (window_index, w) in bs.windows(2).enumerate() {
                     let (prev, cur) = (w[0], w[1]);
                     let bz = hx(&cur["block"]);
                     let Ok(pbk) = ctypes::gogo_decode::<pb::Block>(&bz) else {
@@ -1603,9 +1661,6 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                         continue;
                     };
                     let h = pbk.header.clone().unwrap_or_default();
-                    let vs = |v: &serde_json::Value| {
-                        ctypes::gogo_decode::<pb::ValidatorSet>(&hx(v)).ok()
-                    };
                     let state = ctypes::proto::state::State {
                         version: Some(ctypes::proto::state::Version {
                             consensus: h.version,
@@ -1638,7 +1693,7 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     };
                     let t = h.time.unwrap_or_default();
                     let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
-                    let derive_negative_seeds = out.is_empty();
+                    let derive_negative_seeds = derive_negative_fixture && window_index == 0;
                     let state_bytes = state.encode_to_vec();
                     out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
                     if derive_negative_seeds {
@@ -2032,12 +2087,37 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 61);
+        assert_eq!(s.len(), 63);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
             .count();
-        assert_eq!(valid, 48);
+        assert_eq!(valid, 49);
+    }
+
+    #[test]
+    fn vblock_seeds_reach_initial_height_commit_rejection() {
+        let initial: Vec<_> = seeds("c_vblock")
+            .into_iter()
+            .filter(|seed| {
+                let Some(fields) = args(seed) else {
+                    return false;
+                };
+                ctypes::proto::state::State::decode(first(&fields, 1).unwrap_or_default())
+                    .is_ok_and(|state| state.last_block_height == 0)
+            })
+            .collect();
+        assert_eq!(initial.len(), 2);
+
+        for app_version in [9, 10] {
+            let valid = crate::rust_out(app_version, "c_vblock", &initial[0]).out;
+            assert!(valid.ends_with("validate=ok\n"), "v{app_version}: {valid}");
+            let rejected = crate::rust_out(app_version, "c_vblock", &initial[1]).out;
+            assert!(
+                rejected.ends_with("validate=err:initial block can't have LastCommit signatures\n"),
+                "v{app_version}: {rejected}"
+            );
+        }
     }
 
     #[test]
@@ -2115,7 +2195,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 61);
+        assert_eq!(seeds.len(), 63);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -2126,7 +2206,7 @@ mod tests {
                     .iter()
                     .filter(|out| out.as_str() == "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n")
                     .count(),
-                48
+                49
             );
             for error in [
                 "wrong Block.Header.Version.",

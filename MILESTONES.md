@@ -676,6 +676,18 @@ test), then start that harness's count again.
   deterministic proposer-membership reachability and a bounded mutation
   campaign only; evidence branches and the 10⁸-input, exact-candidate,
   coverage and three-night gates remain open.
+  *Initial-height block rules (2026-10-29):* `c_vblock` now pairs the first
+  recorded Go block with a height-zero state reconstructed from that block's
+  version, hashes, validators, parameters and genesis time. The original
+  transition succeeds. Its twin adds one structurally valid absent
+  `CommitSig`, updates the header's LastCommit hash and reaches the exact
+  `initial block can't have LastCommit signatures` rejection. Pinned v0.40.9
+  and v0.42.3 campaigns each completed 100,031 inputs with 70,642 Go accepts
+  and zero mismatches. Their seed reports agreed on all 63 decodable pairs:
+  49 successful transitions and 14 intended validation errors. This records
+  deterministic initial-height reachability and a bounded mutation campaign
+  only; other initial-height/evidence branches and the 10⁸-input,
+  exact-candidate, coverage and three-night gates remain open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs
