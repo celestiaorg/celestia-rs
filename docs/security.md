@@ -336,8 +336,9 @@ error acknowledgements, timeouts), ICA host txs in either encoding (with
 a fee grant whose amount has a sign, and keys gogoproto skips),
 misbehaviour on the second client, `MsgUpgradeClient` of the third,
 ICS-27 channel upgrades the counterparty proposes (try, confirm with the
-counterparty flushing or flush complete, open, cancel on an error
-receipt, timeout) and transfer channels the counterparty closes
+counterparty flushing or flush complete, open, acknowledgement/receipt
+pruning after a completed upgrade, cancel on an error receipt, timeout) and
+transfer channels the counterparty closes
 (`MsgTimeoutOnClose`, `MsgChannelCloseConfirm`). Hyperlane owner
 operations target objects their signer created (a create message first
 when it has none), and ownership changes are followed. `DELIVER_HL`
