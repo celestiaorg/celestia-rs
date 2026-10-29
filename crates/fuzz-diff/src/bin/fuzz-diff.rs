@@ -560,6 +560,7 @@ fn main() -> anyhow::Result<()> {
                 "gov_executed": st.gov_executed,
                 "type_required": st.type_required,
                 "ibc_ack_failure_required": st.ibc_ack_failure_required,
+                "ibc_required": st.ibc_required,
                 "ibc": st.ibc,
                 "gov_failure_required": st.gov_failure_required,
                 "gov_failure_matches": st.gov_failure_matches,

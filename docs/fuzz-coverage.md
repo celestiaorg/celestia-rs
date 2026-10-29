@@ -442,10 +442,16 @@ proposal (`GOV proposal_passed`), not per type.
   at least one successful legacy deposit. They completed 13 and 11
   successful legacy deposits respectively with zero consensus mismatches.
   The table above predates that change and still needs a full regeneration.
+* **Production-disabled IBC paths:** `MsgChannelCloseInit` cannot succeed
+  through either route registered by celestia-app. Both the transfer and ICA
+  host callbacks unconditionally reject a local close; counterparty-initiated
+  `MsgChannelCloseConfirm` remains reachable. With
+  `DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE`, the mock requires the exact
+  transfer callback rejection on an open channel, then reuses and closes that
+  channel through the counterparty path to prove the failed callback left it
+  usable.
 * **Harness gaps** (reachable on mainnet, to add):
-  the IBC channel messages that need a counterparty step the mock does
-  not take (`MsgChannelCloseInit` is refused by the transfer app, so only
-  an ICA channel can close). Successful `MsgChannelUpgradeAck` is not a
+  Successful `MsgChannelUpgradeAck` is not a
   reachable handler path in celestia-app: it enables the ICA host but not
   the controller, and the host rejects controller-side init / ack. A code-0
   Ack with a failure response and error receipt does not establish a
