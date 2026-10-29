@@ -1619,6 +1619,8 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             }
         }
         "c_prop" => {
+            use ctypes::proto::propagation::message::Sum;
+
             let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../conformance/fixtures/consensus/propagation.json");
             let f: serde_json::Value = std::fs::read(&p)
@@ -1626,7 +1628,23 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 .and_then(|b| serde_json::from_slice(&b).ok())
                 .unwrap_or_default();
             for msg in f["messages"].as_array().into_iter().flatten() {
-                out.push(input(&[(1, &hx(&msg["hex"]))]));
+                let bz = hx(&msg["hex"]);
+                out.push(input(&[(1, &bz)]));
+                let Ok(mut proto) = ctypes::gogo_decode::<ctypes::proto::propagation::Message>(&bz)
+                else {
+                    continue;
+                };
+                match proto.sum.as_mut() {
+                    Some(Sum::HaveParts(have)) => {
+                        have.parts.clear();
+                        out.push(input(&[(1, &proto.encode_to_vec())]));
+                    }
+                    Some(Sum::WantParts(want)) => {
+                        want.missing_parts_count = 0;
+                        out.push(input(&[(1, &proto.encode_to_vec())]));
+                    }
+                    _ => {}
+                }
             }
         }
         "c_partset" => {
@@ -1835,6 +1853,39 @@ mod tests {
                     .count(),
                 4
             );
+        }
+    }
+
+    #[test]
+    fn propagation_seeds_reach_semantic_rejections() {
+        let seeds = seeds("c_prop");
+        assert_eq!(seeds.len(), 7);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_prop", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.contains("\nfrom_proto=ok\nvalidate=ok\n"))
+                    .count(),
+                5
+            );
+            for error in [
+                "HaveParts: Parts cannot be nil or empty",
+                "WantParts: MissingPartsCount cannot be negative or zero",
+            ] {
+                assert_eq!(
+                    outputs
+                        .iter()
+                        .filter(|out| {
+                            out.as_str() == format!("unmarshal=ok\nfrom_proto=err:{error}\n")
+                        })
+                        .count(),
+                    1
+                );
+            }
         }
     }
 

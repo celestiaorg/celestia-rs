@@ -652,6 +652,14 @@ test), then start that harness's count again.
   key checks still reject. This records deterministic proof-rejection
   reachability only; other mutations and the 10⁸-input, exact-candidate and
   three-night gates remain open.
+  *Invalid propagation seeds (2026-10-29):* `c_prop` now derives an empty
+  `HaveParts` and a zero-missing-count `WantParts` from its valid fixtures.
+  Pinned v0.40.9 and v0.42.3 campaigns each completed 200,071 inputs with
+  zero mismatches. Their seed reports agreed on five successful conversions
+  and the two exact semantic conversion errors. This records deterministic
+  `from_proto` rejection reachability only; other propagation validation
+  branches and the 10⁸-input, exact-candidate and three-night gates remain
+  open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
