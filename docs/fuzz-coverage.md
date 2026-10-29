@@ -450,6 +450,11 @@ proposal (`GOV proposal_passed`), not per type.
   transfer callback rejection on an open channel, then reuses and closes that
   channel through the counterparty path to prove the failed callback left it
   usable.
+  `DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient` waits for an
+  exactly attributed misbehaviour event on the mock's second Tendermint
+  client, then passes a recovery proposal using the compatible, newer active
+  main client. The requirement receives credit only when the proposal payload
+  executes and the matching block-scope recovery event is observed.
 * **Harness gaps** (reachable on mainnet, to add):
   Successful `MsgChannelUpgradeAck` is not a
   reachable handler path in celestia-app: it enables the ICA host but not
