@@ -742,6 +742,18 @@ test), then start that harness's count again.
   vote signature domain separation and a bounded mutation campaign only;
   other vote branches and the 10⁸-input, exact-candidate, coverage and
   three-night gates remain open.
+  *Cross-chain proposal replay rejection (2026-10-29):* `c_proposal` now twins
+  one recorded proposal whose conversion, basic validation and signature
+  verification succeed. The twin preserves the public key and signed proposal
+  bytes while changing only the supplied chain ID. Both pinned cores keep
+  conversion and basic validation successful, then reject the unchanged
+  signature. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,113
+  inputs with 68,572 Go accepts and zero mismatches. Their seed reports agreed
+  on all 401 inputs with no oracle errors, including 155 successful and 36
+  rejected signature checks. This records deterministic proposal signature
+  domain separation and a bounded mutation campaign only; other proposal
+  branches and the 10⁸-input, exact-candidate, coverage and three-night gates
+  remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
