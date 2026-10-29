@@ -1713,6 +1713,38 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     let state_bytes = state.encode_to_vec();
                     out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
                     if derive_negative_seeds {
+                        // Preserve the real state, clock and commit structure,
+                        // but corrupt one signature byte and recompute the
+                        // current header's LastCommitHash. Block.ValidateBasic
+                        // still succeeds before validateBlock authenticates the
+                        // previous block's commit and rejects the signature.
+                        let mut wrong_commit = pbk.clone();
+                        let changed = wrong_commit
+                            .last_commit
+                            .as_mut()
+                            .and_then(|commit| {
+                                commit
+                                    .signatures
+                                    .iter_mut()
+                                    .find(|sig| !sig.signature.is_empty())
+                            })
+                            .and_then(|sig| sig.signature.first_mut())
+                            .map(|byte| *byte ^= 1)
+                            .is_some();
+                        if changed
+                            && let Some(commit) = wrong_commit.last_commit.as_ref()
+                            && let Ok(commit) = Commit::from_proto(commit)
+                            && let Some(header) = wrong_commit.header.as_mut()
+                        {
+                            header.last_commit_hash = commit.hash();
+                            let wrong_commit = wrong_commit.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_commit),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
                         // Keep the real transition and authentic LastCommit,
                         // but attach structurally valid frozen evidence and
                         // recompute the current header's EvidenceHash. The
@@ -2146,7 +2178,7 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 65);
+        assert_eq!(s.len(), 66);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
@@ -2254,7 +2286,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 65);
+        assert_eq!(seeds.len(), 66);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -2390,6 +2422,70 @@ mod tests {
             let accepted = crate::rust_out(app_version, "c_vblock", &boundary[1].0).out;
             assert_eq!(
                 accepted, "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n",
+                "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_authenticate_last_commit() {
+        let seeds = seeds("c_vblock");
+        let pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let (Some(left), Some(right)) = (args(&pair[0]), args(&pair[1])) else {
+                    return false;
+                };
+                first(&left, 1) == first(&right, 1)
+                    && first(&left, 3) == first(&right, 3)
+                    && rust_out("c_vblock", &pair[0])
+                        .out
+                        .ends_with("validate=ok\n")
+                    && rust_out("c_vblock", &pair[1])
+                        .out
+                        .contains("validate=err:wrong signature (#0): ")
+            })
+            .collect();
+        assert_eq!(pairs.len(), 1);
+
+        let left = args(&pairs[0][0]).unwrap();
+        let right = args(&pairs[0][1]).unwrap();
+        let original = pb::Block::decode(first(&left, 2).unwrap()).unwrap();
+        let mut changed = pb::Block::decode(first(&right, 2).unwrap()).unwrap();
+        let original_commit = original.last_commit.as_ref().unwrap();
+        let changed_commit = changed.last_commit.as_ref().unwrap();
+        assert_eq!(original_commit.signatures.len(), 1);
+        assert_eq!(changed_commit.signatures.len(), 1);
+        assert_eq!(original_commit.signatures[0].signature.len(), 64);
+        assert_ne!(
+            original_commit.signatures[0].signature,
+            changed_commit.signatures[0].signature
+        );
+
+        changed.header.as_mut().unwrap().last_commit_hash =
+            original.header.as_ref().unwrap().last_commit_hash.clone();
+        changed.last_commit.as_mut().unwrap().signatures[0].signature =
+            original_commit.signatures[0].signature.clone();
+        assert_eq!(
+            changed, original,
+            "block changed beyond signature and commit hash"
+        );
+
+        let changed = Block::decode(first(&right, 2).unwrap()).unwrap();
+        let sig = &changed.last_commit.unwrap().signatures[0];
+        let detail = hex::encode_upper(&sig.signature);
+        for app_version in [9, 10] {
+            let original_out = crate::rust_out(app_version, "c_vblock", &pairs[0][0]).out;
+            assert_eq!(
+                original_out, "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n",
+                "v{app_version}"
+            );
+            let changed_out = crate::rust_out(app_version, "c_vblock", &pairs[0][1]).out;
+            assert_eq!(
+                changed_out,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:wrong signature (#0): {detail}\n"
+                ),
                 "v{app_version}"
             );
         }

@@ -698,6 +698,14 @@ test), then start that harness's count again.
   frozen evidence belongs to its fixture chain, and the later evidence-pool
   admissibility check is outside `c_vblock`. Full-block evidence acceptance,
   the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *LastCommit authentication path (2026-10-29):* `c_vblock` now twins the
+  first successful noninitial real transition by changing one byte of its sole
+  commit signature and recomputing the header's LastCommit hash. The state,
+  wall clock and all other block bytes stay fixed. The twin remains
+  structurally valid, then reaches the exact `wrong signature (#0)` rejection
+  while authenticating the previous block's commit. This is deterministic
+  single-signature integration coverage only; batch verification and the
+  10⁸-input, exact-candidate, coverage and three-night gates remain open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs
