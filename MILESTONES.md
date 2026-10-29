@@ -419,7 +419,12 @@ test), then start that harness's count again.
   and complete Go response bytes; the stored app version is 9 through H12
   and 10 from H13.
   The fixture emits complete parameters on every block, so this does not
-  test sparse `last_height_changed` backpointer reconstruction.
+  test sparse `last_height_changed` backpointer reconstruction. A separate
+  pinned celestia-core v0.40.9 / v0.42.3 StateStore regression covers full
+  and sparse parameter records, close/reopen, pruning that retains a live
+  anchor and explicit missing-anchor failure on RocksDB and redb. That
+  synthetic store regression does not establish real-App sparse-update
+  recovery or close F1.
   *Lagging and pruned App reopen (2026-10-29, PRs #133 and #134):* with
   node/block/state stores at H20 and only the App rolled back to the
   post-upgrade H13 state, both backends replay exactly H14–H20 through the

@@ -27,3 +27,5 @@ tracing = "0.1"
 [dev-dependencies]
 crypto = { path = "../../tier-0-primitives/crypto" }
 hash = { path = "../../tier-0-primitives/hash" }
+serde = { version = "1", features = ["derive"] }
+tempfile = "3.20"

@@ -3,13 +3,16 @@
 //! `consensus/replay_test.go` handshake matrix) with a deterministic
 //! in-memory application.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use ctypes::proto::abci;
 use ctypes::{
     BLOCK_ID_FLAG_COMMIT, BlockId, Commit, CommitSig, ExtendedCommit, PubKey, Time, Vote,
 };
-use kvdb::MemBackend;
+use kvdb::{BackendKind, DbOptions, MemBackend, WriteBatch};
+use prost::Message as _;
+use serde::Deserialize;
 
 use super::*;
 use crate::genesis::GenesisValidator;
@@ -464,6 +467,151 @@ fn validator_updates_apply_two_heights_later() {
         b5.header.validators_hash,
         ss.load_validators(5).unwrap().hash()
     );
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+struct SparseParamsRecord {
+    height: i64,
+    last_height_changed: i64,
+    full: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SparseParamsFixture {
+    core_version: String,
+    resolved: BTreeMap<String, String>,
+    records: Vec<SparseParamsRecord>,
+    pruned_records: Vec<SparseParamsRecord>,
+    post_prune_resolved: BTreeMap<String, String>,
+    removed_heights: Vec<i64>,
+    pruned_count: Option<u64>,
+    missing_anchor_error: String,
+}
+
+fn sparse_params_fixture(contents: &str) -> SparseParamsFixture {
+    serde_json::from_str(contents).unwrap()
+}
+
+fn params_record(db: &Arc<dyn kvdb::KvBackend>, height: i64) -> SparseParamsRecord {
+    let key = format!("consensusParamsKey:{height}");
+    let bytes = db.get(key.as_bytes()).unwrap().unwrap();
+    let info: ctypes::proto::state::ConsensusParamsInfo = ctypes::gogo_decode(&bytes).unwrap();
+    let full = info
+        .consensus_params
+        .as_ref()
+        .is_some_and(|p| *p != ctypes::proto::types::ConsensusParams::default());
+    SparseParamsRecord {
+        height,
+        last_height_changed: info.last_height_changed,
+        full,
+    }
+}
+
+fn assert_resolved_params(store: &StateStore, fixture: &SparseParamsFixture, heights: &[i64]) {
+    for &height in heights {
+        let got = store
+            .load_consensus_params(height)
+            .unwrap()
+            .to_proto()
+            .encode_to_vec();
+        assert_eq!(
+            hex::encode(got),
+            fixture.resolved[&height.to_string()],
+            "{} height {height}",
+            fixture.core_version
+        );
+    }
+}
+
+#[test]
+fn sparse_consensus_params_survive_reopen_and_pruning() {
+    let v9 = sparse_params_fixture(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/nodestore/sparse-consensus-params-v9.json"
+    )));
+    let v10 = sparse_params_fixture(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/nodestore/sparse-consensus-params-v10.json"
+    )));
+    assert_eq!(v9.resolved, v10.resolved);
+    assert_eq!(v9.records, v10.records);
+    assert_eq!(v9.pruned_records, v10.pruned_records);
+    assert_eq!(v9.post_prune_resolved, v10.post_prune_resolved);
+    for height in [4, 5] {
+        let height = height.to_string();
+        assert_eq!(v10.post_prune_resolved[&height], v10.resolved[&height]);
+    }
+    assert_eq!(v9.removed_heights, v10.removed_heights);
+    assert_eq!(v9.pruned_count, None);
+    assert_eq!(v10.pruned_count, Some(3));
+    assert_eq!(v9.missing_anchor_error, v10.missing_anchor_error);
+
+    let decode_params = |height: i64| {
+        let bytes = hex::decode(&v10.resolved[&height.to_string()]).unwrap();
+        let proto: ctypes::proto::types::ConsensusParams = ctypes::gogo_decode(&bytes).unwrap();
+        ctypes::ConsensusParams::from_proto(&proto).unwrap()
+    };
+    let a = decode_params(1);
+    let b = decode_params(3);
+    for &backend in BackendKind::ALL {
+        let home = tempfile::tempdir().unwrap();
+        let options = DbOptions {
+            backend,
+            cache_size: 8 << 20,
+            sync_writes: true,
+        };
+        let db = kvdb::open_backend(home.path(), "state", &options).unwrap();
+        let store = StateStore::new(db.clone());
+        let mut state = crate::state::make_genesis_state(&genesis(1)).unwrap();
+        for (last_height, change_height, params) in
+            [(0, 1, &a), (1, 1, &a), (2, 3, &b), (3, 3, &b), (4, 3, &b)]
+        {
+            state.last_block_height = last_height;
+            state.last_height_consensus_params_changed = change_height;
+            state.consensus_params.clone_from(params);
+            store.save(&state).unwrap();
+        }
+        drop(store);
+        drop(db);
+
+        let db = kvdb::open_backend(home.path(), "state", &options).unwrap();
+        let store = StateStore::new(db.clone());
+        assert_resolved_params(&store, &v10, &[1, 2, 3, 4, 5]);
+        let records: Vec<_> = (1..=5).map(|h| params_record(&db, h)).collect();
+        assert_eq!(records, v10.records, "{backend}");
+        assert_eq!(
+            store.prune_states(1, 4, 4).unwrap(),
+            v10.pruned_count.unwrap(),
+            "{backend}"
+        );
+        drop(store);
+        drop(db);
+
+        let db = kvdb::open_backend(home.path(), "state", &options).unwrap();
+        let store = StateStore::new(db.clone());
+        assert_resolved_params(&store, &v10, &[4, 5]);
+        for &height in &v10.removed_heights {
+            let key = format!("consensusParamsKey:{height}");
+            assert!(
+                db.get(key.as_bytes()).unwrap().is_none(),
+                "{backend} h={height}"
+            );
+            assert!(
+                store.load_consensus_params(height).is_err(),
+                "{backend} h={height}"
+            );
+        }
+        let records: Vec<_> = (3..=5).map(|h| params_record(&db, h)).collect();
+        assert_eq!(records, v10.pruned_records, "{backend}");
+        let mut batch = WriteBatch::new();
+        batch.delete(b"consensusParamsKey:3".to_vec());
+        db.write(batch).unwrap();
+        let error = store.load_consensus_params(4).unwrap_err().to_string();
+        assert!(
+            error.contains("height 3") && error.contains("height 4"),
+            "{backend}: {error}"
+        );
+    }
 }
 
 #[test]

@@ -1,0 +1,63 @@
+{
+  "core_version": "v0.40.9",
+  "resolved": {
+    "1": "0a10088080c00a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00",
+    "2": "0a10088080c00a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00",
+    "3": "0a1008ffffbf0a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00",
+    "4": "0a1008ffffbf0a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00",
+    "5": "0a1008ffffbf0a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00"
+  },
+  "records": [
+    {
+      "height": 1,
+      "last_height_changed": 1,
+      "full": true
+    },
+    {
+      "height": 2,
+      "last_height_changed": 1,
+      "full": false
+    },
+    {
+      "height": 3,
+      "last_height_changed": 3,
+      "full": true
+    },
+    {
+      "height": 4,
+      "last_height_changed": 3,
+      "full": false
+    },
+    {
+      "height": 5,
+      "last_height_changed": 3,
+      "full": false
+    }
+  ],
+  "pruned_records": [
+    {
+      "height": 3,
+      "last_height_changed": 3,
+      "full": true
+    },
+    {
+      "height": 4,
+      "last_height_changed": 3,
+      "full": false
+    },
+    {
+      "height": 5,
+      "last_height_changed": 3,
+      "full": false
+    }
+  ],
+  "post_prune_resolved": {
+    "4": "0a1008ffffbf0a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00",
+    "5": "0a1008ffffbf0a10ffffffffffffffffff01120e08a08d0612040880c60a188080401a090a076564323535313922002a00"
+  },
+  "removed_heights": [
+    1,
+    2
+  ],
+  "missing_anchor_error": "couldn't find consensus params at height 3 as last changed from height 4: value retrieved from db is empty"
+}
