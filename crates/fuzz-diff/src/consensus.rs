@@ -1226,12 +1226,32 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         }
         "c_proposal" => {
             let f = fixture("votes");
+            let mut derived_cross_chain_proposal = false;
             for p in f["proposals"].as_array().into_iter().flatten() {
+                let chain_id = s(&p["chain_id"]);
+                let pub_key = hx(&p["pub_key"]);
+                let proposal = hx(&p["proto"]);
                 out.push(input(&[
-                    (1, s(&p["chain_id"]).as_bytes()),
-                    (2, &hx(&p["pub_key"])),
-                    (3, &hx(&p["proto"])),
+                    (1, chain_id.as_bytes()),
+                    (2, &pub_key),
+                    (3, &proposal),
                 ]));
+                if !derived_cross_chain_proposal
+                    && p["from_proto_err"].as_str().is_some_and(str::is_empty)
+                    && p["validate_err"].as_str().is_some_and(str::is_empty)
+                    && p["verify_ok"].as_bool() == Some(true)
+                    && !pub_key.is_empty()
+                {
+                    // Preserve the signed proposal and public key while
+                    // changing only the signature-domain chain ID.
+                    let replay_chain_id = format!("{chain_id}-replay");
+                    out.push(input(&[
+                        (1, replay_chain_id.as_bytes()),
+                        (2, &pub_key),
+                        (3, &proposal),
+                    ]));
+                    derived_cross_chain_proposal = true;
+                }
             }
         }
         "c_header" => {
@@ -2560,6 +2580,41 @@ mod tests {
                     "v{app_version}: {replay}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn proposal_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_proposal");
+        assert_eq!(seeds.len(), 401);
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=3).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_proposal", &replay_pairs[0][0]).out;
+            assert!(
+                original.contains("\nfrom_proto=ok\nvalidate=ok\n")
+                    && original.ends_with("verify=true\n"),
+                "v{app_version}: {original}"
+            );
+            let replay = crate::rust_out(app_version, "c_proposal", &replay_pairs[0][1]).out;
+            assert!(
+                replay.contains("\nfrom_proto=ok\nvalidate=ok\n")
+                    && replay.ends_with("verify=false\n"),
+                "v{app_version}: {replay}"
+            );
         }
     }
 
