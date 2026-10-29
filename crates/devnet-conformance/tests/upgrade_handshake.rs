@@ -442,34 +442,39 @@ struct Reference {
     validators: BTreeMap<i64, Vec<u8>>,
 }
 
-fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
-    let fixture = Fixture::load()?;
-    for &backend in BackendKind::ALL {
-        let reference_home = tempfile::tempdir()?;
-        let mut reference = Node::open(reference_home.path(), backend, &fixture, None)?;
-        assert_eq!(reference.recover(&fixture.genesis)?, 0);
-        let mut states = vec![reference.state.bytes()?];
-        let mut validator_change_heights = vec![reference.state.last_height_validators_changed];
-        let mut infos = vec![reference.app.lock().unwrap().info()];
+impl Reference {
+    fn build(fixture: &Fixture, backend: BackendKind) -> anyhow::Result<Self> {
+        let home = tempfile::tempdir()?;
+        let mut node = Node::open(home.path(), backend, fixture, None)?;
+        assert_eq!(node.recover(&fixture.genesis)?, 0);
+        let mut states = vec![node.state.bytes()?];
+        let mut validator_change_heights = vec![node.state.last_height_validators_changed];
+        let mut infos = vec![node.app.lock().unwrap().info()];
         for frame in &fixture.blocks {
-            reference.apply(frame)?;
-            states.push(reference.state.bytes()?);
-            validator_change_heights.push(reference.state.last_height_validators_changed);
-            infos.push(reference.app.lock().unwrap().info());
+            node.apply(frame)?;
+            states.push(node.state.bytes()?);
+            validator_change_heights.push(node.state.last_height_validators_changed);
+            infos.push(node.app.lock().unwrap().info());
         }
-        let last_height = reference.state.last_block_height;
+        let last_height = node.state.last_block_height;
         let mut validators = BTreeMap::new();
         for height in fixture.genesis.initial_height..=last_height + 2 {
-            let set = reference.exec.state_store.load_validators(height)?;
+            let set = node.exec.state_store.load_validators(height)?;
             validators.insert(height, set.to_proto()?.encode_to_vec());
         }
-        drop(reference);
-        let reference = Reference {
+        Ok(Self {
             states,
             validator_change_heights,
             infos,
             validators,
-        };
+        })
+    }
+}
+
+fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
+    let fixture = Fixture::load()?;
+    for &backend in BackendKind::ALL {
+        let reference = Reference::build(&fixture, backend)?;
         let switch = usize::try_from(fixture.upgrade)?;
         assert_eq!(reference.infos[switch - 1].app_version, 9);
         assert_eq!(reference.infos[switch].app_version, 10);
@@ -494,6 +499,122 @@ fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+#[test]
+fn real_app_replays_multiple_blocks_when_app_is_behind() -> anyhow::Result<()> {
+    let fixture = Fixture::load()?;
+    for &backend in BackendKind::ALL {
+        replay_multiple_blocks(&fixture, backend)?;
+    }
+    Ok(())
+}
+
+fn replay_multiple_blocks(fixture: &Fixture, backend: BackendKind) -> anyhow::Result<()> {
+    const ROLLBACK_HEIGHT: i64 = 13;
+    const NODE_HEIGHT: i64 = 20;
+
+    anyhow::ensure!(ROLLBACK_HEIGHT >= fixture.upgrade + 1);
+    anyhow::ensure!(
+        NODE_HEIGHT > ROLLBACK_HEIGHT
+            && fixture
+                .blocks
+                .last()
+                .is_some_and(|(block, _)| block.header.height > NODE_HEIGHT)
+    );
+    let case = format!("{backend} app={ROLLBACK_HEIGHT} node={NODE_HEIGHT}");
+    let reference = Reference::build(fixture, backend)?;
+    assert_eq!(
+        reference.infos[usize::try_from(ROLLBACK_HEIGHT)?].app_version,
+        10,
+        "{case} rollback must remain in the post-upgrade App"
+    );
+    let home = tempfile::tempdir()?;
+    let mut node = Node::open(home.path(), backend, fixture, None)?;
+    assert_eq!(node.recover(&fixture.genesis)?, 0, "{case}");
+    for frame in fixture.blocks.iter().take(usize::try_from(NODE_HEIGHT)?) {
+        node.apply(frame)?;
+    }
+    assert_reference_height(&node, &reference, NODE_HEIGHT, &case)?;
+    assert_eq!(node.exec.block_store.height(), NODE_HEIGHT, "{case}");
+    node.app
+        .lock()
+        .unwrap()
+        .rollback_to(ROLLBACK_HEIGHT)
+        .map_err(|e| anyhow::anyhow!(e.log))?;
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(ROLLBACK_HEIGHT)?],
+        "{case} after rollback"
+    );
+    drop(node);
+
+    let mut node = Node::open(home.path(), backend, fixture, None)?;
+    assert_eq!(node.state.last_block_height, NODE_HEIGHT, "{case}");
+    assert_eq!(node.exec.block_store.height(), NODE_HEIGHT, "{case}");
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(ROLLBACK_HEIGHT)?],
+        "{case} before replay"
+    );
+    assert_eq!(
+        node.recover(&fixture.genesis)?,
+        usize::try_from(NODE_HEIGHT - ROLLBACK_HEIGHT)?,
+        "{case} replay count"
+    );
+    let replayed: Vec<i64> = (ROLLBACK_HEIGHT + 1..=NODE_HEIGHT).collect();
+    assert_eq!(
+        *node.calls.lock().unwrap(),
+        Calls {
+            finalized: replayed.clone(),
+            committed: replayed,
+        },
+        "{case} replayed calls"
+    );
+    assert_reference_height(&node, &reference, NODE_HEIGHT, &case)?;
+    assert_historical_state_records(&node, fixture, &reference, NODE_HEIGHT, &case)?;
+
+    for (i, frame) in fixture
+        .blocks
+        .iter()
+        .enumerate()
+        .skip(usize::try_from(NODE_HEIGHT)?)
+    {
+        node.apply(frame)?;
+        assert_reference_height(&node, &reference, i64::try_from(i + 1)?, &case)?;
+    }
+    assert_historical_state_records(
+        &node,
+        fixture,
+        &reference,
+        node.state.last_block_height,
+        &case,
+    )?;
+    Ok(())
+}
+
+fn assert_reference_height(
+    node: &Node,
+    reference: &Reference,
+    height: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    let index = usize::try_from(height)?;
+    assert_eq!(
+        node.state.bytes()?,
+        reference.states[index],
+        "{case} h={height}"
+    );
+    assert_eq!(
+        node.state.last_height_validators_changed, reference.validator_change_heights[index],
+        "{case} h={height} last_height_validators_changed"
+    );
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[index],
+        "{case} h={height} app info"
+    );
     Ok(())
 }
 
