@@ -1,7 +1,8 @@
 //! Consensus-layer differential ops (MILESTONES.md F1.7): the Rust side of
-//! `conformance/fuzzoracle/v10/consensus.go`. Each op's input is a protobuf
-//! message whose fields 1..n are its arguments; the output is the same
-//! `key=value` lines as Go's (`ok`, `err:<text>`, `panic:<text>` or data).
+//! the version-matched `conformance/fuzzoracle/v{9,10}/consensus.go`. Each
+//! op's input is a protobuf message whose fields 1..n are its arguments; the
+//! output is the same `key=value` lines as Go's (`ok`, `err:<text>`,
+//! `panic:<text>` or data).
 //! Seeds come from the Go-generated `conformance/fixtures/ctypes` vectors
 //! (valid signatures included), so the protobuf mutations start from real
 //! votes, commits, headers, blocks, evidence and parameters.
@@ -14,8 +15,8 @@ use ctypes::proto::crypto as pbc;
 use ctypes::proto::types as pb;
 use ctypes::validation as v;
 use ctypes::{
-    Block, BlockId, Commit, ConsensusParams, Evidence, Header, Part, PartSet, PartSetHeader,
-    Proposal, PubKey, Validator, ValidatorSet, Vote,
+    BitArray, Block, BlockId, Commit, ConsensusParams, Evidence, Header, Part, PartSet,
+    PartSetHeader, Proposal, PubKey, Validator, ValidatorSet, Vote,
 };
 use prost::Message;
 use serde::Deserialize;
@@ -141,6 +142,79 @@ impl Res {
 
 fn decode<M: Message + Default>(b: Option<&[u8]>) -> Result<M, String> {
     ctypes::gogo_decode::<M>(b.unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+fn want_parts_from_proto(
+    w: &ctypes::proto::propagation::WantParts,
+    v9: bool,
+) -> Result<propagation::types::WantParts, String> {
+    let mut pb = w.parts.clone().unwrap_or_default();
+    // Go's proto BitArray has a generated Size method: this is its encoded
+    // length, which WantPartsFromProto uses for the zero-element preallocation.
+    let size = pb.encoded_len();
+    if size == 0 {
+        return Err("WantParts: nil parts".into());
+    }
+    let max_bits =
+        i64::from(ctypes::part_set::MAX_BLOCK_PARTS_COUNT * propagation::types::PARITY_RATIO);
+    if !v9 && pb.bits > max_bits {
+        return Err(format!(
+            "WantParts: parts bit array size {} exceeds maximum {max_bits}",
+            pb.bits
+        ));
+    }
+    if w.missing_parts_count <= 0 {
+        return Err("WantParts: MissingPartsCount cannot be negative or zero".into());
+    }
+    if !v9 && i64::from(w.missing_parts_count) > pb.bits {
+        return Err(format!(
+            "WantParts: MissingPartsCount {} exceeds parts bit array size {}",
+            w.missing_parts_count, pb.bits
+        ));
+    }
+    if !v9 && i64::from(w.missing_parts_count) > i64::from(ctypes::part_set::MAX_BLOCK_PARTS_COUNT)
+    {
+        return Err(format!(
+            "WantParts: MissingPartsCount {} exceeds MaxBlockPartsCount {}",
+            w.missing_parts_count,
+            ctypes::part_set::MAX_BLOCK_PARTS_COUNT
+        ));
+    }
+    let elems = if pb.elems.is_empty() {
+        size.div_ceil(64)
+    } else {
+        pb.elems.len()
+    };
+    // celestia-core computes this with a signed 64-bit Go int; addition wraps.
+    let expected = pb.bits.wrapping_add(63) / 64;
+    if expected != i64::try_from(elems).unwrap_or(i64::MAX) {
+        return Err(format!(
+            "mismatch between specified number of bits {}, and number of elements {elems}, expected {expected} elements",
+            pb.bits
+        ));
+    }
+    if pb.elems.is_empty() {
+        pb.elems = vec![0; elems];
+    }
+    let out = propagation::types::WantParts {
+        parts: BitArray::from_proto(&pb),
+        height: w.height,
+        round: w.round,
+        prove: w.prove,
+        missing_parts_count: w.missing_parts_count,
+    };
+    validate_want_parts_v9(&out)?;
+    Ok(out)
+}
+
+fn validate_want_parts_v9(w: &propagation::types::WantParts) -> Result<(), String> {
+    if w.parts.is_nil() {
+        return Err("WantParts: Parts cannot be nil".into());
+    }
+    if w.missing_parts_count <= 0 {
+        return Err("WantParts: MissingPartsCount cannot be negative or zero".into());
+    }
+    Ok(())
 }
 
 /// The Rust side of op `op`.
@@ -487,7 +561,12 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("vk", &format!("err:{e}")),
             };
             c.put("vk", "ok");
-            let r = groth16::sp1_verify(
+            let verify = if sdk::version::is_v9(sdk::version::app_version()) {
+                groth16::sp1_verify_v5
+            } else {
+                groth16::sp1_verify
+            };
+            let r = verify(
                 &vk,
                 vk_bytes,
                 first(m, 2).unwrap_or_default(),
@@ -540,11 +619,19 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
         "c_prop" => {
             use propagation::types::Message as Msg;
             let bz = first(m, 1).unwrap_or_default();
-            if let Err(e) = decode::<ctypes::proto::propagation::Message>(Some(bz)) {
-                return c.put("unmarshal", &format!("err:{e}"));
-            }
+            let proto = match decode::<ctypes::proto::propagation::Message>(Some(bz)) {
+                Ok(v) => v,
+                Err(e) => return c.put("unmarshal", &format!("err:{e}")),
+            };
             c.put("unmarshal", "ok");
-            let msg = match Msg::decode(bz) {
+            let app_v9 = sdk::version::is_v9(sdk::version::app_version());
+            let want = match proto.sum.as_ref() {
+                Some(ctypes::proto::propagation::message::Sum::WantParts(w)) => {
+                    Some(want_parts_from_proto(w, app_v9).map(Msg::WantParts))
+                }
+                _ => None,
+            };
+            let msg = match want.unwrap_or_else(|| Msg::decode(bz)) {
                 Ok(v) => v,
                 Err(e) => return c.put("from_proto", &format!("err:{e}")),
             };
@@ -554,6 +641,7 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 match &msg {
                     Msg::CompactBlock(v) => v.validate_basic(),
                     Msg::HaveParts(v) => v.validate_basic(),
+                    Msg::WantParts(v) if app_v9 => validate_want_parts_v9(v),
                     Msg::WantParts(v) => v.validate_basic(),
                     Msg::RecoveryPart(v) => v.validate_basic(),
                 },
@@ -1134,21 +1222,41 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../tier-3-app-modules/x/zkism/testdata");
             let rd = |p: &str| std::fs::read(dir.join(p)).unwrap_or_default();
-            let vk = rd("groth16_vk.bin");
-            for (case, vkey) in [
+            for (version, cases) in [
                 (
-                    "state_transition",
-                    "004ac29c473e811dece0f8dd76c8eda80f886d263efb393ec81f54173e54f160",
+                    "",
+                    [
+                        (
+                            "state_transition",
+                            "004ac29c473e811dece0f8dd76c8eda80f886d263efb393ec81f54173e54f160",
+                        ),
+                        (
+                            "state_membership",
+                            "00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63",
+                        ),
+                    ],
                 ),
                 (
-                    "state_membership",
-                    "00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63",
+                    "v9/",
+                    [
+                        (
+                            "state_transition",
+                            "0017bc91d53b93c46eb842d7f9020a94ea13d8877a21608b34b71fcc4da64f29",
+                        ),
+                        (
+                            "state_membership",
+                            "004959d5fb2c3d5bc1f98e032188dd94fbb5c6b6152df356c7c20be23be824a2",
+                        ),
+                    ],
                 ),
             ] {
-                let proof = rd(&format!("{case}/proof.bin"));
-                let values = rd(&format!("{case}/public_values.bin"));
-                let vkey = hex::decode(vkey).unwrap_or_default();
-                out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
+                let vk = rd(&format!("{version}groth16_vk.bin"));
+                for (case, vkey) in cases {
+                    let proof = rd(&format!("{version}{case}/proof.bin"));
+                    let values = rd(&format!("{version}{case}/public_values.bin"));
+                    let vkey = hex::decode(vkey).unwrap_or_default();
+                    out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
+                }
             }
         }
         "c_ics23" => {
@@ -1280,5 +1388,69 @@ mod tests {
         assert_eq!(go_parse_int(b"+12"), 12);
         assert_eq!(go_parse_int(b"-"), 0);
         assert_eq!(go_parse_int(b"99999999999999999999x"), i64::MAX);
+    }
+
+    #[test]
+    fn groth16_seeds_use_the_executing_app_version() {
+        let seeds = seeds("c_groth16");
+        assert_eq!(seeds.len(), 4);
+        for seed in &seeds[..2] {
+            assert!(
+                crate::rust_out(10, "c_groth16", seed)
+                    .out
+                    .ends_with("verify=ok\n")
+            );
+        }
+        for seed in &seeds[2..] {
+            assert!(
+                crate::rust_out(9, "c_groth16", seed)
+                    .out
+                    .ends_with("verify=ok\n")
+            );
+        }
+        assert_eq!(
+            crate::rust_out(9, "c_groth16", &seeds[0]).out,
+            "vk=err:groth16 vkey must be exactly 396 bytes, got 492\n"
+        );
+
+        sdk::version::set_app_version(10);
+        let _ = crate::rust_out(9, "c_groth16", &seeds[2]);
+        assert_eq!(sdk::version::app_version(), 10);
+    }
+
+    #[test]
+    fn propagation_want_parts_uses_the_executing_core_version() {
+        let input = hex::decode("0a161a140a0608461202082010071801200128ffffffff07").unwrap();
+        assert_eq!(
+            crate::rust_out(9, "c_prop", &input).out,
+            "unmarshal=ok\nfrom_proto=ok\nvalidate=ok\nparts=[3 69]\nfields=7/1/true/2147483647\n"
+        );
+        assert_eq!(
+            crate::rust_out(10, "c_prop", &input).out,
+            "unmarshal=ok\nfrom_proto=err:WantParts: MissingPartsCount 2147483647 exceeds parts bit array size 70\n"
+        );
+
+        let malformed = hex::decode("0a0b1a090a0508421201012801").unwrap();
+        let want = "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 66, and number of elements 1, expected 2 elements\n";
+        assert_eq!(crate::rust_out(9, "c_prop", &malformed).out, want);
+        assert_eq!(crate::rust_out(10, "c_prop", &malformed).out, want);
+
+        for (input, want) in [
+            (
+                "0a081a060a0208462801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 70, and number of elements 1, expected 2 elements\n",
+            ),
+            (
+                "0a111a0f0a0b08ffffffffffffffffff012801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits -1, and number of elements 1, expected 0 elements\n",
+            ),
+            (
+                "0a101a0e0a0a08ffffffffffffffff7f2801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 9223372036854775807, and number of elements 1, expected -144115188075855871 elements\n",
+            ),
+        ] {
+            let input = hex::decode(input).unwrap();
+            assert_eq!(crate::rust_out(9, "c_prop", &input).out, want);
+        }
     }
 }

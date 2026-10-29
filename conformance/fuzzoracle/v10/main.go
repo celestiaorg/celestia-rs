@@ -23,12 +23,11 @@
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
 //	          (0: SquareSizeUpperBound); out: "<square width> <data root hex>"
 //	json_*    the JSON decodes of consensus execution (jsondecode.go)
-//	c_*       celestia-core v0.42.3 consensus-layer validation (consensus.go;
-//	          v10 oracle only)
+//	c_*       celestia-core v0.42.3 consensus-layer validation (consensus.go)
 //
-// The v9 oracle (`../v9`) is the same program built against celestia-app
-// v9.0.8 and go-square v4.0.0-rc4; keep the two files identical except for
-// the app import path.
+// The v9 oracle (`../v9`) follows the same protocol against celestia-app
+// v9.0.8, celestia-core v0.40.9 and go-square v4.0.0-rc4. Keep shared
+// operations aligned except where the application or consensus version differs.
 //
 //	GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.9 go build -o fuzzoracle-v10 .
 package main
