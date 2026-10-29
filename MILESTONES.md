@@ -705,6 +705,20 @@ test), then start that harness's count again.
   domain separation and a bounded mutation campaign only; other commit branches
   and the 10⁸-input, exact-candidate, coverage and three-night gates remain
   open.
+  *Cross-chain vote replay rejection (2026-10-29):* `c_vote` now twins one
+  recorded vote for which the vote, combined vote-and-extension and extension
+  signature verifiers all succeed. The twin preserves the public key and vote
+  bytes while changing only the supplied chain ID; all three verifiers then
+  reject it. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,061
+  inputs with 68,605 Go accepts and zero mismatches. Their seed reports agreed
+  on all 1,501 inputs with no oracle errors, including 590 successful vote,
+  538 successful combined and 816 successful extension-verifier method
+  outcomes. The extension total includes inapplicable early returns for
+  prevotes and nil precommits; the derived non-nil precommit twin itself
+  reaches and fails all three signature checks. This records deterministic
+  vote signature domain separation and a bounded mutation campaign only;
+  other vote branches and the 10⁸-input, exact-candidate, coverage and
+  three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.

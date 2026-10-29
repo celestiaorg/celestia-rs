@@ -1157,16 +1157,41 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
     match op {
         "c_vote" | "c_ed25519" | "c_secp256k1" => {
             let f = fixture("votes");
+            let mut derived_cross_chain_vote = false;
             for v in f["votes"].as_array().into_iter().flatten() {
                 let pk = hx(&v["pub_key"]);
                 let proto = hx(&v["proto"]);
                 if op == "c_vote" {
-                    let mut fields: Vec<(u64, &[u8])> = vec![(1, s(&v["chain_id"]).as_bytes())];
+                    let chain_id = s(&v["chain_id"]);
+                    let mut fields: Vec<(u64, &[u8])> = vec![(1, chain_id.as_bytes())];
                     if !pk.is_empty() {
                         fields.push((2, &pk));
                     }
                     fields.push((3, &proto));
                     out.push(input(&fields));
+                    if !derived_cross_chain_vote
+                        && !pk.is_empty()
+                        && [
+                            "from_proto_err",
+                            "validate_err",
+                            "ensure_ext_err",
+                            "verify_err",
+                            "verify_both_err",
+                            "verify_ext_err",
+                        ]
+                        .iter()
+                        .all(|field| v[*field].as_str().is_some_and(str::is_empty))
+                    {
+                        // Preserve both signed vote payloads and the public key
+                        // while changing only their signature-domain chain ID.
+                        let replay_chain_id = format!("{chain_id}-replay");
+                        out.push(input(&[
+                            (1, replay_chain_id.as_bytes()),
+                            (2, &pk),
+                            (3, &proto),
+                        ]));
+                        derived_cross_chain_vote = true;
+                    }
                     continue;
                 }
                 // Raw key, sign bytes and signature of the votes' signers.
@@ -2421,6 +2446,43 @@ mod tests {
                 assert!(
                     replay.contains(&format!("\n{field}=err:wrong signature (#0): ")),
                     "v{app_version} replay {field}: {replay}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn vote_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_vote");
+        assert_eq!(seeds.len(), 1_501);
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=3).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_vote", &replay_pairs[0][0]).out;
+            for field in ["verify", "verify_both", "verify_ext"] {
+                assert!(
+                    original.contains(&format!("\n{field}=ok\n")),
+                    "v{app_version}: {original}"
+                );
+            }
+            let replay = crate::rust_out(app_version, "c_vote", &replay_pairs[0][1]).out;
+            for field in ["verify", "verify_both", "verify_ext"] {
+                assert!(
+                    replay.contains(&format!("\n{field}=err:")),
+                    "v{app_version}: {replay}"
                 );
             }
         }
