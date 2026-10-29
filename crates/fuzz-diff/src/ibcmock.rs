@@ -424,6 +424,12 @@ pub const CP_ICA_PORT: &str = "icacontroller-fuzz";
 /// Its channel.
 pub const CP_ICA_CHAN: &str = "channel-9";
 
+const PFM_COVERAGE_AMOUNT: &str = "424242424242424242";
+const PFM_COVERAGE_DENOM: &str = "upfmcoverage";
+const PFM_COVERAGE_RECEIVER: &str = "cosmos1pfmcoverage";
+const PFM_SUCCESS_ACK: &[u8] = br#"{"result":"AQ=="}"#;
+const PFM_SUCCESS_ACK_HEX: &str = "7b22726573756c74223a2241513d3d227d";
+
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
     /// Time of the block the txs go into.
@@ -456,6 +462,13 @@ pub struct Driver {
     recover_client_on: bool,
     recover_subject_ready: bool,
     recover_update_pending: bool,
+    /// Required PFM success lifecycle: 0 not sent, 1 incoming packet landed,
+    /// 2 exact forwarded packet observed, 3 original acknowledgement written.
+    pfm_required: bool,
+    pfm_stage: u8,
+    pfm_original: Option<ch::Packet>,
+    pfm_forwarded: Option<ch::Packet>,
+    pfm_ack_pending: bool,
     /// A third client, upgraded once (`MsgUpgradeClient`).
     a_client3: Option<String>,
     upgraded: bool,
@@ -563,6 +576,14 @@ impl Driver {
     #[must_use]
     pub fn with_recover_client(mut self, enabled: bool) -> Self {
         self.recover_client_on = enabled;
+        self
+    }
+
+    /// Require one exact PFM forward, downstream success Ack and delayed
+    /// acknowledgement of the original incoming packet.
+    #[must_use]
+    pub fn with_pfm_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_required = enabled;
         self
     }
 
@@ -889,6 +910,14 @@ impl Driver {
     fn steady(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
         let signer = c.signer.clone();
         let a_chan = self.a_transfer.clone()?;
+        if self.pfm_required {
+            if self.pfm_stage == 0 {
+                return Some(self.pfm_recv(c, &signer, &a_chan));
+            }
+            if self.pfm_stage == 2 {
+                return self.pfm_ack(c, &signer);
+            }
+        }
         let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
             13 | 14 => self.chan_upgrade(c),
@@ -1078,6 +1107,78 @@ impl Driver {
         // relay. The opt-in flow still advances counterparty and relayer state;
         // leaving it disabled preserves established fixed-seed paths.
         relay.or_else(|| self.connection_confirm_flow(c))
+    }
+
+    /// Send one uniquely attributable valid PFM packet into the app.
+    fn pfm_recv(&mut self, c: &StepCtx<'_>, signer: &str, a_chan: &str) -> Vec<Any> {
+        let local_receiver = c.accounts[0].0.clone();
+        let memo = serde_json::json!({
+            "forward": {
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "port": "transfer",
+                "channel": a_chan,
+                "timeout": "10m",
+                "retries": 1
+            }
+        })
+        .to_string();
+        let data = serde_json::json!({
+            "amount": PFM_COVERAGE_AMOUNT,
+            "denom": PFM_COVERAGE_DENOM,
+            "memo": memo,
+            "receiver": local_receiver,
+            "sender": "cosmos1pfmcoverageorigin"
+        })
+        .to_string()
+        .into_bytes();
+        let mut packet = ch::Packet {
+            sequence: 0,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: a_chan.into(),
+            data,
+            timeout_height: None,
+            timeout_timestamp: u64::try_from(c.now + 3600).unwrap_or(0) * 1_000_000_000,
+        };
+        self.cp.send(&mut packet);
+        let h = self.cp.commit(c.now - 8);
+        self.pfm_original = Some(packet.clone());
+        self.pfm_stage = 1;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgRecvPacket {
+            proof_commitment: self.cp.proof(&format!(
+                "commitments/ports/transfer/channels/{CP_TRANSFER}/sequences/{}",
+                packet.sequence
+            )),
+            packet: Some(packet),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        messages
+    }
+
+    /// Relay a success acknowledgement for the exact forwarded packet.
+    fn pfm_ack(&mut self, c: &StepCtx<'_>, signer: &str) -> Option<Vec<Any>> {
+        let packet = self.pfm_forwarded.clone()?;
+        if let Some(index) = self.pending.iter().position(|p| p == &packet) {
+            self.pending.remove(index);
+        }
+        self.cp.write_ack(&packet, PFM_SUCCESS_ACK);
+        let h = self.cp.commit(c.now - 6);
+        self.pfm_ack_pending = true;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgAcknowledgement {
+            proof_acked: self.cp.proof(&format!(
+                "acks/ports/{}/channels/{}/sequences/{}",
+                packet.destination_port, packet.destination_channel, packet.sequence
+            )),
+            packet: Some(packet),
+            acknowledgement: PFM_SUCCESS_ACK.to_vec(),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        Some(messages)
     }
 
     /// A counterparty-initiated connection handshake. The counterparty's
@@ -1805,6 +1906,8 @@ impl Driver {
                 continue;
             }
             let mut ack_callback_error = false;
+            let mut pfm_downstream_ack = false;
+            let mut pfm_original_ack = false;
             for e in &r.events {
                 if self.cu_ack_failure_pending
                     && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
@@ -1954,6 +2057,14 @@ impl Driver {
                                 self.cl_stage = 6;
                             }
                             if p.destination_channel == CP_TRANSFER {
+                                if self.pfm_required
+                                    && self.pfm_stage == 1
+                                    && is_required_pfm_forward(&p, self.a_transfer.as_deref())
+                                {
+                                    self.pfm_forwarded = Some(p.clone());
+                                    self.pfm_stage = 2;
+                                    self.bump("pfm_forwarded");
+                                }
                                 self.pending.push(p);
                                 if self.pending.len() > 64 {
                                     self.pending.remove(0);
@@ -1961,8 +2072,39 @@ impl Driver {
                             }
                         }
                     }
+                    "acknowledge_packet"
+                        if self.pfm_required
+                            && self.pfm_ack_pending
+                            && self.pfm_stage == 2
+                            && self
+                                .pfm_forwarded
+                                .as_ref()
+                                .is_some_and(|forwarded| packet_event_matches(e, forwarded)) =>
+                    {
+                        pfm_downstream_ack = true;
+                    }
+                    "write_acknowledgement"
+                        if self.pfm_required
+                            && self.pfm_ack_pending
+                            && self.pfm_stage == 2
+                            && packet_of(e).as_ref().is_some_and(|packet| {
+                                self.pfm_original
+                                    .as_ref()
+                                    .is_some_and(|original| same_packet(packet, original))
+                            })
+                            && attr(e, "packet_ack_hex").as_deref()
+                                == Some(PFM_SUCCESS_ACK_HEX) =>
+                    {
+                        pfm_original_ack = true;
+                    }
                     _ => {}
                 }
+            }
+            if pfm_downstream_ack && pfm_original_ack {
+                self.pfm_ack_pending = false;
+                self.pfm_stage = 3;
+                self.bump("pfm_downstream_ack");
+                self.bump("pfm_original_ack");
             }
             if let Ok(d) =
                 celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(r.data.as_slice())
@@ -2057,6 +2199,58 @@ fn packet_of(e: &celestia_proto::celestia_core_proto::abci::Event) -> Option<ch:
     })
 }
 
+fn is_required_pfm_forward(packet: &ch::Packet, channel: Option<&str>) -> bool {
+    let Some(channel) = channel else {
+        return false;
+    };
+    if packet.source_port != "transfer"
+        || packet.source_channel != channel
+        || packet.destination_port != "transfer"
+        || packet.destination_channel != CP_TRANSFER
+    {
+        return false;
+    }
+    let Ok(data) = serde_json::from_slice::<serde_json::Value>(&packet.data) else {
+        return false;
+    };
+    let expected_denom = format!("transfer/{channel}/{PFM_COVERAGE_DENOM}");
+    data.get("amount").and_then(serde_json::Value::as_str) == Some(PFM_COVERAGE_AMOUNT)
+        && data.get("denom").and_then(serde_json::Value::as_str) == Some(expected_denom.as_str())
+        && data.get("receiver").and_then(serde_json::Value::as_str) == Some(PFM_COVERAGE_RECEIVER)
+        && data
+            .get("memo")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+}
+
+fn same_packet(a: &ch::Packet, b: &ch::Packet) -> bool {
+    a.sequence == b.sequence
+        && a.source_port == b.source_port
+        && a.source_channel == b.source_channel
+        && a.destination_port == b.destination_port
+        && a.destination_channel == b.destination_channel
+        && a.data == b.data
+        && a.timeout_height.unwrap_or_default() == b.timeout_height.unwrap_or_default()
+        && a.timeout_timestamp == b.timeout_timestamp
+}
+
+fn packet_event_matches(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+    packet: &ch::Packet,
+) -> bool {
+    let height = packet.timeout_height.unwrap_or_default();
+    let expected_height = format!("{}-{}", height.revision_number, height.revision_height);
+    attr(event, "packet_sequence").and_then(|value| value.parse::<u64>().ok())
+        == Some(packet.sequence)
+        && attr(event, "packet_src_port").as_deref() == Some(packet.source_port.as_str())
+        && attr(event, "packet_src_channel").as_deref() == Some(packet.source_channel.as_str())
+        && attr(event, "packet_dst_port").as_deref() == Some(packet.destination_port.as_str())
+        && attr(event, "packet_dst_channel").as_deref() == Some(packet.destination_channel.as_str())
+        && attr(event, "packet_timeout_height").as_deref() == Some(expected_height.as_str())
+        && attr(event, "packet_timeout_timestamp").and_then(|value| value.parse::<u64>().ok())
+            == Some(packet.timeout_timestamp)
+}
+
 /// Standard base64 with padding.
 fn base64_std(b: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -2080,6 +2274,54 @@ fn base64_std(b: &[u8]) -> String {
 mod tests {
     use super::*;
     use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute};
+
+    fn packet_event(kind: &str, packet: &ch::Packet, ack_hex: Option<&str>) -> Event {
+        let height = packet.timeout_height.unwrap_or_default();
+        let mut attributes = vec![
+            ("packet_sequence", packet.sequence.to_string()),
+            ("packet_src_port", packet.source_port.clone()),
+            ("packet_src_channel", packet.source_channel.clone()),
+            ("packet_dst_port", packet.destination_port.clone()),
+            ("packet_dst_channel", packet.destination_channel.clone()),
+            ("packet_data_hex", hex::encode(&packet.data)),
+            (
+                "packet_timeout_height",
+                format!("{}-{}", height.revision_number, height.revision_height),
+            ),
+            (
+                "packet_timeout_timestamp",
+                packet.timeout_timestamp.to_string(),
+            ),
+        ];
+        if let Some(ack) = ack_hex {
+            attributes.push(("packet_ack_hex", ack.into()));
+        }
+        Event {
+            r#type: kind.into(),
+            attributes: attributes
+                .into_iter()
+                .map(|(key, value)| EventAttribute {
+                    key: key.into(),
+                    value,
+                    index: true,
+                })
+                .collect(),
+        }
+    }
+
+    fn result(event: Event) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+        result_events(vec![event])
+    }
+
+    fn result_events(
+        events: Vec<Event>,
+    ) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+        celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 0,
+            events,
+            ..Default::default()
+        }
+    }
 
     fn ack_error(channel: &str, sequence: u64, error: &str) -> Event {
         Event {
@@ -2235,5 +2477,111 @@ mod tests {
 
         driver.observe(&[update_result("07-tendermint-1", 10)]);
         assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
+    }
+
+    #[test]
+    fn pfm_credit_requires_exact_forward_and_original_success_ack() {
+        let forward = ch::Packet {
+            sequence: 9,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: serde_json::json!({
+                "amount": PFM_COVERAGE_AMOUNT,
+                "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+                "memo": "",
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "sender": "cosmos1intermediate"
+            })
+            .to_string()
+            .into_bytes(),
+            timeout_height: None,
+            timeout_timestamp: 99,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"unique original data".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_required: true,
+            pfm_stage: 1,
+            pfm_original: Some(original.clone()),
+            a_transfer: Some("channel-3".into()),
+            ..Driver::default()
+        };
+
+        let mut unrelated = forward.clone();
+        unrelated.source_channel = "channel-30".into();
+        driver.observe(&[result(packet_event("send_packet", &unrelated, None))]);
+        assert_eq!(driver.stats.get("pfm_forwarded"), None);
+        assert_eq!(driver.pfm_stage, 1);
+
+        driver.observe(&[result(packet_event("send_packet", &forward, None))]);
+        assert_eq!(driver.stats.get("pfm_forwarded"), Some(&1));
+        assert_eq!(driver.pfm_stage, 2);
+        assert!(
+            driver
+                .pfm_forwarded
+                .as_ref()
+                .is_some_and(|packet| same_packet(packet, &forward))
+        );
+
+        // Even an exact original success Ack is premature until the driver
+        // emits and Go accepts the downstream Ack for the forwarded packet.
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), None);
+        assert_eq!(driver.pfm_stage, 2);
+        driver.pfm_ack_pending = true;
+
+        let mut other_original = original.clone();
+        other_original.sequence += 1;
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &other_original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some("00"),
+        ))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), None);
+        assert_eq!(driver.pfm_stage, 2);
+
+        // Both exact events must be in the same successful transaction.
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event(
+                "write_acknowledgement",
+                &original,
+                Some(PFM_SUCCESS_ACK_HEX),
+            ),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
+        assert_eq!(driver.pfm_stage, 3);
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
     }
 }

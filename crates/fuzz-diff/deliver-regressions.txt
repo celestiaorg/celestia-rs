@@ -79,6 +79,10 @@ v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE=1
 # governance proposal, using the newer active main client as substitute.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient
 v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient
+# Require the exact PFM success lifecycle: uniquely attributable incoming and
+# forwarded packets, signed downstream Ack, then delayed original-packet Ack.
+ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
 # MsgExec through a SendAuthorization whose stored spend limit is unsorted:
 # Go's safeAdd panics before the allow list (#85, security.md 104).
 v9-upgrade 300 6 10498 GO_APPD_NEXT=v10 DELIVER_UPGRADE=38 DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1
