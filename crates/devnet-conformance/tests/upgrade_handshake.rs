@@ -33,6 +33,7 @@ struct Fixture {
     genesis: GenesisDoc,
     blocks: Vec<(ctypes::Block, ctypes::Commit)>,
     expected: Arc<BTreeMap<i64, Expected>>,
+    consensus_params: BTreeMap<i64, Vec<u8>>,
     validator_update: i64,
     upgrade: i64,
 }
@@ -111,6 +112,7 @@ impl Fixture {
             })
             .ok_or_else(|| anyhow::anyhow!("missing v10 switch"))?;
         let validator_update = validator_update_height(&genesis, &blocks, &expected, upgrade)?;
+        let consensus_params = go_consensus_params(&genesis, &expected, upgrade)?;
         anyhow::ensure!(
             blocks
                 .last()
@@ -130,10 +132,48 @@ impl Fixture {
             genesis,
             blocks,
             expected: Arc::new(expected),
+            consensus_params,
             validator_update,
             upgrade,
         })
     }
+}
+
+fn go_consensus_params(
+    genesis: &GenesisDoc,
+    expected: &BTreeMap<i64, Expected>,
+    upgrade: i64,
+) -> anyhow::Result<BTreeMap<i64, Vec<u8>>> {
+    let mut history = BTreeMap::from([(
+        genesis.initial_height,
+        genesis.consensus_params.to_proto().encode_to_vec(),
+    )]);
+    for (&height, exchange) in expected {
+        let update = exchange
+            .response
+            .consensus_param_updates
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("missing Go consensus parameters at {height}"))?;
+        anyhow::ensure!(
+            update.block.is_some()
+                && update.evidence.is_some()
+                && update.validator.is_some()
+                && update.version.is_some()
+                && update.abci.is_some(),
+            "incomplete Go consensus parameters at {height}"
+        );
+        let params = ctypes::ConsensusParams::from_proto(update)?;
+        params.validate_basic()?;
+        let stored_height = height + 1;
+        let expected_app = if stored_height <= upgrade { 9 } else { 10 };
+        anyhow::ensure!(
+            params.version.app == expected_app,
+            "Go consensus parameters at {stored_height} have app version {}, expected {expected_app}",
+            params.version.app
+        );
+        history.insert(stored_height, update.encode_to_vec());
+    }
+    Ok(history)
 }
 
 fn validator_update_height(
@@ -514,7 +554,7 @@ fn recover_case(
         reference.infos[index + 1],
         "{case}"
     );
-    assert_historical_validators(&node, &reference.validators, checkpoint + 2, &case)?;
+    assert_historical_state_records(&node, fixture, reference, checkpoint, &case)?;
     let expected_calls = if after_commit {
         vec![]
     } else {
@@ -558,13 +598,25 @@ fn recover_case(
             i + 1
         );
     }
-    assert_historical_validators(
+    assert_historical_state_records(
         &node,
-        &reference.validators,
-        node.state.last_block_height + 2,
+        fixture,
+        reference,
+        node.state.last_block_height,
         &case,
     )?;
     Ok(())
+}
+
+fn assert_historical_state_records(
+    node: &Node,
+    fixture: &Fixture,
+    reference: &Reference,
+    completed_height: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    assert_historical_validators(node, &reference.validators, completed_height + 2, case)?;
+    assert_historical_consensus_params(&node.exec.state_store, fixture, completed_height + 1, case)
 }
 
 fn assert_historical_validators(
@@ -581,6 +633,25 @@ fn assert_historical_validators(
             .to_proto()?
             .encode_to_vec();
         assert_eq!(got, expected[&height], "{case} validators h={height}");
+    }
+    Ok(())
+}
+
+fn assert_historical_consensus_params(
+    states: &StateStore,
+    fixture: &Fixture,
+    through: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    for height in fixture.genesis.initial_height..=through {
+        let got = states
+            .load_consensus_params(height)?
+            .to_proto()
+            .encode_to_vec();
+        assert_eq!(
+            got, fixture.consensus_params[&height],
+            "{case} consensus params h={height}"
+        );
     }
     Ok(())
 }
