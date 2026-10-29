@@ -16,7 +16,7 @@ use ctypes::proto::types as pb;
 use ctypes::validation as v;
 use ctypes::{
     BitArray, Block, BlockId, Commit, ConsensusParams, Evidence, Header, Part, PartSet,
-    PartSetHeader, Proposal, PubKey, Validator, ValidatorSet, Vote,
+    PartSetHeader, Proposal, PubKey, SignedHeader, Time, Validator, ValidatorSet, Vote,
 };
 use prost::Message;
 use serde::Deserialize;
@@ -505,21 +505,72 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("from_proto", &format!("err:{e}")),
             };
             c.put("from_proto", "ok");
-            c.run("validate", ev.validate_basic());
+            let valid = c.run("validate", ev.validate_basic());
             c.put("hash", &hex::encode(ev.hash()));
             c.put("height", &ev.height().to_string());
-            if let (Some(vsb), Evidence::DuplicateVote(dve)) = (first(m, 2), &ev) {
-                let vals = match decode::<pb::ValidatorSet>(Some(vsb))
-                    .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
-                {
-                    Ok(v) => v,
-                    Err(e) => return c.put("valset", &format!("err:{e}")),
-                };
-                c.put("valset", "ok");
-                c.run(
-                    "verify_duplicate",
-                    evidence::verify::verify_duplicate_vote(dve, &chain_id, &vals),
-                );
+            if let Some(vsb) = first(m, 2) {
+                match &ev {
+                    Evidence::DuplicateVote(dve) => {
+                        let vals = match decode::<pb::ValidatorSet>(Some(vsb))
+                            .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
+                        {
+                            Ok(v) => v,
+                            Err(e) => return c.put("valset", &format!("err:{e}")),
+                        };
+                        c.put("valset", "ok");
+                        c.run(
+                            "verify_duplicate",
+                            evidence::verify::verify_duplicate_vote(dve, &chain_id, &vals),
+                        );
+                    }
+                    Evidence::LightClientAttack(lca)
+                        if valid && first(m, 4).is_some() && first(m, 5).is_some() =>
+                    {
+                        let vals = match decode::<pb::ValidatorSet>(Some(vsb))
+                            .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
+                        {
+                            Ok(v) => v,
+                            Err(e) => return c.put("valset", &format!("err:{e}")),
+                        };
+                        c.put("valset", "ok");
+                        let Ok(common_p) = ctypes::gogo_decode::<pb::SignedHeader>(
+                            first(m, 4).unwrap_or_default(),
+                        ) else {
+                            return c.put("common", "err:decode");
+                        };
+                        let Ok(common) = SignedHeader::from_proto(&common_p) else {
+                            return c.put("common", "err:invalid");
+                        };
+                        if common.validate_basic(&chain_id).is_err() {
+                            return c.put("common", "err:invalid");
+                        }
+                        c.put("common", "ok");
+                        let Ok(trusted_p) = ctypes::gogo_decode::<pb::SignedHeader>(
+                            first(m, 5).unwrap_or_default(),
+                        ) else {
+                            return c.put("trusted", "err:decode");
+                        };
+                        let Ok(trusted) = SignedHeader::from_proto(&trusted_p) else {
+                            return c.put("trusted", "err:invalid");
+                        };
+                        if trusted.validate_basic(&chain_id).is_err() {
+                            return c.put("trusted", "err:invalid");
+                        }
+                        c.put("trusted", "ok");
+                        c.run(
+                            "verify_light",
+                            evidence::verify::verify_light_client_attack(
+                                lca,
+                                &common,
+                                &trusted,
+                                &vals,
+                                Time::ZERO,
+                                0,
+                            ),
+                        );
+                    }
+                    Evidence::LightClientAttack(_) => {}
+                }
             }
         }
         "c_vblock" => {
@@ -1203,6 +1254,62 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 let vals = hx(&vals["vals"]);
                 out.push(input(&[(1, chain), (2, &vals), (3, &ev)]));
             }
+
+            for case in f["cases"].as_array().into_iter().flatten() {
+                if !case["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("lca/"))
+                    || !case["from_proto_err"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    continue;
+                }
+                let (Some(common_height), Some(trusted_height)) = (
+                    case["lca_common_height"].as_i64(),
+                    case["lca_trusted_height"].as_i64(),
+                ) else {
+                    continue;
+                };
+                let Some(headers) = case["headers"].as_array() else {
+                    continue;
+                };
+                let signed_header = |height: i64| -> Option<Vec<u8>> {
+                    let row = headers
+                        .iter()
+                        .find(|h| h["height"].as_i64() == Some(height))?;
+                    let header = pb::Header::decode(hx(&row["header"]).as_slice()).ok()?;
+                    let commit = pb::Commit::decode(hx(&row["commit"]).as_slice()).ok()?;
+                    Some(
+                        pb::SignedHeader {
+                            header: Some(header),
+                            commit: Some(commit),
+                        }
+                        .encode_to_vec(),
+                    )
+                };
+                let (Some(common), Some(trusted)) =
+                    (signed_header(common_height), signed_header(trusted_height))
+                else {
+                    continue;
+                };
+                let Some(vals) = case["vals"].as_array().and_then(|rows| {
+                    rows.iter()
+                        .find(|v| v["height"].as_i64() == Some(common_height))
+                }) else {
+                    continue;
+                };
+                let vals = hx(&vals["vals"]);
+                let ev = hx(&case["evidence"]);
+                out.push(input(&[
+                    (1, chain),
+                    (2, &vals),
+                    (3, &ev),
+                    (4, &common),
+                    (5, &trusted),
+                ]));
+            }
         }
         "c_vblock" => {
             // Consecutive real blocks: the state after block h-1 and block h.
@@ -1522,6 +1629,38 @@ mod tests {
             ] {
                 assert!(
                     outputs.iter().any(|out| out.contains(error)),
+                    "v{app_version} missing seeded verification outcome: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn evidence_seeds_reach_light_client_attack_verification() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_evidence")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_evidence", seed).out)
+                .filter(|out| out.contains("verify_light="))
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("verify_light=ok\n"))
+                    .count()
+                    >= 4
+            );
+            for error in [
+                "invalid commit from conflicting block: wrong signature",
+                "total voting power from the evidence and our validator set does not match",
+                "expected 4 byzantine validators from evidence but got 1",
+                "evidence contained unexpected byzantine validator power",
+                "evidence contained an unexpected byzantine validator address",
+            ] {
+                assert!(
+                    outputs
+                        .iter()
+                        .any(|out| out.contains(&format!("verify_light=err:{error}"))),
                     "v{app_version} missing seeded verification outcome: {error}"
                 );
             }

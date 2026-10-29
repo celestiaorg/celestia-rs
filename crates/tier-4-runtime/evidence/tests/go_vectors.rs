@@ -14,7 +14,10 @@
 use std::collections::HashMap;
 
 use ctypes::proto::types as pb;
-use ctypes::{BlockMeta, Commit, Evidence, Header, SignedHeader, Time, ValidatorSet};
+use ctypes::{
+    BLOCK_ID_FLAG_COMMIT, BLOCK_ID_FLAG_NIL, BlockMeta, Commit, Evidence, Header, SignedHeader,
+    Time, ValidatorSet,
+};
 use evidence::verify::{BlockSource, ValidatorSource, verify};
 use serde::Deserialize;
 
@@ -280,4 +283,89 @@ fn go_evidence_vectors() {
         failures.join("\n")
     );
     assert!(ok >= 8 && rejected >= 20, "ok {ok} rejected {rejected}");
+}
+
+#[test]
+fn equivocation_trusted_commit_bounds_match_go() {
+    let file: File = serde_json::from_str(&std::fs::read_to_string(FIXTURE).unwrap()).unwrap();
+    let case = file
+        .cases
+        .iter()
+        .find(|case| case.label == "lca/equivocation-valid")
+        .unwrap();
+    let Evidence::LightClientAttack(lca) =
+        Evidence::from_proto(&dec::<pb::Evidence>(&case.evidence)).unwrap()
+    else {
+        panic!("expected light-client attack evidence");
+    };
+    let stored = store(case);
+    let trusted = SignedHeader {
+        header: Some(stored.metas[&case.lca_trusted_height].header.clone()),
+        commit: Some(stored.commits[&case.lca_trusted_height].clone()),
+    };
+    let common_vals = &stored.vals[&case.lca_common_height];
+    assert!(evidence::verify::validate_abci_evidence(&lca, common_vals, &trusted).is_ok());
+
+    let missing_idx = lca
+        .conflicting_block
+        .as_ref()
+        .unwrap()
+        .signed_header
+        .as_ref()
+        .unwrap()
+        .commit
+        .as_ref()
+        .unwrap()
+        .signatures
+        .iter()
+        .rposition(|signature| signature.block_id_flag == BLOCK_ID_FLAG_COMMIT)
+        .unwrap();
+    let mut shorter = trusted.clone();
+    shorter
+        .commit
+        .as_mut()
+        .unwrap()
+        .signatures
+        .truncate(missing_idx);
+    let shorter_len = shorter.commit.as_ref().unwrap().signatures.len();
+    assert_eq!(
+        evidence::verify::validate_abci_evidence(&lca, common_vals, &shorter).unwrap_err(),
+        format!("runtime error: index out of range [{shorter_len}] with length {shorter_len}")
+    );
+
+    let mut non_commit = lca.clone();
+    non_commit
+        .conflicting_block
+        .as_mut()
+        .unwrap()
+        .signed_header
+        .as_mut()
+        .unwrap()
+        .commit
+        .as_mut()
+        .unwrap()
+        .signatures[shorter_len]
+        .block_id_flag = BLOCK_ID_FLAG_NIL;
+    let is_bounds_error = |result: Result<(), String>| matches!(result, Err(error) if error.starts_with("runtime error: index out of range"));
+    assert!(!is_bounds_error(evidence::verify::validate_abci_evidence(
+        &non_commit,
+        common_vals,
+        &shorter
+    )));
+
+    let mut different_round = shorter.clone();
+    different_round.commit.as_mut().unwrap().round += 1;
+    assert!(!is_bounds_error(evidence::verify::validate_abci_evidence(
+        &lca,
+        common_vals,
+        &different_round
+    )));
+
+    let mut lunatic = shorter;
+    lunatic.header.as_mut().unwrap().app_hash.push(0xff);
+    assert!(!is_bounds_error(evidence::verify::validate_abci_evidence(
+        &lca,
+        common_vals,
+        &lunatic
+    )));
 }

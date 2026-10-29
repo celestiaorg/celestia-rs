@@ -16,7 +16,8 @@ package main
 //	c_valset    1 ValidatorSet, 2.. Validator (the change set)
 //	c_valupd    1 ConsensusParams, 2.. abci.ValidatorUpdate
 //	c_params    1 ConsensusParams, 2 ConsensusParams (update, optional), 3 height
-//	c_evidence  1 chain id, 2 ValidatorSet (optional), 3 Evidence
+//	c_evidence  1 chain id, 2 ValidatorSet (optional), 3 Evidence,
+//	            4 common SignedHeader, 5 trusted SignedHeader (LCA optional)
 //	c_partset   1 PartSetHeader, 2.. Part
 //	c_ed25519   1 public key, 2 message, 3 signature
 //	c_secp256k1 1 public key (33 bytes), 2 message, 3 signature
@@ -352,23 +353,66 @@ func consensusOp(op string, in []byte) (o out) {
 		if !c.run("from_proto", func() (e error) { ev, e = types.EvidenceFromProto(&pe); return }) {
 			break
 		}
-		c.run("validate", ev.ValidateBasic)
+		valid := c.run("validate", ev.ValidateBasic)
 		c.data("hash", func() string { return h(ev.Hash()) })
 		c.data("height", func() string { return strconv.FormatInt(ev.Height(), 10) })
 		if vsb := first(m, 2); vsb != nil {
-			dve, isDup := ev.(*types.DuplicateVoteEvidence)
-			var pvs cmtproto.ValidatorSet
-			if !isDup || !c.run("valset", func() error {
-				if err := pvs.Unmarshal(vsb); err != nil {
+			switch e := ev.(type) {
+			case *types.DuplicateVoteEvidence:
+				var pvs cmtproto.ValidatorSet
+				if !c.run("valset", func() error {
+					if err := pvs.Unmarshal(vsb); err != nil {
+						return err
+					}
+					_, err := types.ValidatorSetFromProto(&pvs)
 					return err
+				}) {
+					break
 				}
-				_, err := types.ValidatorSetFromProto(&pvs)
-				return err
-			}) {
-				break
+				vals, _ := types.ValidatorSetFromProto(&pvs)
+				c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(e, chainID, vals) })
+			case *types.LightClientAttackEvidence:
+				commonB, trustedB := first(m, 4), first(m, 5)
+				if !valid || commonB == nil || trustedB == nil {
+					break
+				}
+				var pvs cmtproto.ValidatorSet
+				if !c.run("valset", func() error {
+					if err := pvs.Unmarshal(vsb); err != nil {
+						return err
+					}
+					_, err := types.ValidatorSetFromProto(&pvs)
+					return err
+				}) {
+					break
+				}
+				var commonP, trustedP cmtproto.SignedHeader
+				var common, trusted *types.SignedHeader
+				if err := commonP.Unmarshal(commonB); err != nil {
+					c.put("common", "err:decode")
+					break
+				}
+				common, err = types.SignedHeaderFromProto(&commonP)
+				if err != nil || common.ValidateBasic(chainID) != nil {
+					c.put("common", "err:invalid")
+					break
+				}
+				c.put("common", "ok")
+				if err := trustedP.Unmarshal(trustedB); err != nil {
+					c.put("trusted", "err:decode")
+					break
+				}
+				trusted, err = types.SignedHeaderFromProto(&trustedP)
+				if err != nil || trusted.ValidateBasic(chainID) != nil {
+					c.put("trusted", "err:invalid")
+					break
+				}
+				c.put("trusted", "ok")
+				vals, _ := types.ValidatorSetFromProto(&pvs)
+				c.run("verify_light", func() error {
+					return evidence.VerifyLightClientAttack(e, common, trusted, vals, time.Time{}, 0)
+				})
 			}
-			vals, _ := types.ValidatorSetFromProto(&pvs)
-			c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(dve, chainID, vals) })
 		}
 	case "c_secp256r1":
 		// The account key as the SDK decodes it (secp256r1.PubKey, whose
