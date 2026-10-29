@@ -481,6 +481,12 @@ pub struct Driver {
     a_client3: Option<String>,
     upgraded: bool,
     trusted3: i64,
+    /// A dedicated short-lived client and its rejected update. The client is
+    /// created active, then allowed to expire before the update is submitted.
+    expired_client_required: bool,
+    a_expired_client: Option<String>,
+    expired_trusted: i64,
+    expired_update_pending: bool,
     /// Its connection, transfer channel and ICA host channel.
     pub a_conn: Option<String>,
     /// The transfer channel.
@@ -628,6 +634,13 @@ impl Driver {
         self
     }
 
+    /// Require an exact update rejection for a dedicated expired client.
+    #[must_use]
+    pub fn with_expired_client_requirement(mut self, enabled: bool) -> Self {
+        self.expired_client_required = enabled;
+        self
+    }
+
     fn pfm_enabled(&self) -> bool {
         self.pfm_required
             || self.pfm_error_required
@@ -711,6 +724,30 @@ impl Driver {
         ))
     }
 
+    /// A valid update for the dedicated client after its one-second trusting
+    /// period has elapsed. Core must reject it before changing client state.
+    fn expired_update(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        if !self.expired_client_required
+            || self.stats.contains_key("expired_client_update_rejected")
+        {
+            return None;
+        }
+        let client = self.a_expired_client.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.expired_trusted {
+            return None;
+        }
+        let header = self.cp.header(h, self.expired_trusted, None);
+        self.expired_update_pending = true;
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
+            },
+        ))
+    }
+
     /// `MsgUpdateClient` proving the recovered subject accepts a new header.
     fn update_recovered(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
         let client = self.a_client2.clone()?;
@@ -760,6 +797,18 @@ impl Driver {
                 self.trusted = h;
                 self.trusted2 = h;
                 self.trusted3 = h;
+                if self.expired_client_required {
+                    // Create this client at the current block time so it is
+                    // active during creation, then let the next block's time
+                    // move beyond its one-second trusting period.
+                    let expired_h = self.cp.commit(c.now);
+                    txs.push(vec![Any::pack(&cl::MsgCreateClient {
+                        client_state: Some(self.cp.client_state(expired_h, 1)),
+                        consensus_state: Some(self.cp.consensus_state(expired_h)),
+                        signer: signer.clone(),
+                    })]);
+                    self.expired_trusted = expired_h;
+                }
                 self.phase = 1;
                 self.waited = 0;
             }
@@ -970,6 +1019,9 @@ impl Driver {
                 self.waited = 0;
             }
             _ => {}
+        }
+        if let Some(update) = self.expired_update(c) {
+            txs.push(vec![update]);
         }
         txs
     }
@@ -2007,6 +2059,18 @@ impl Driver {
 
     /// Learns ids and packets from a finalized block's tx results (Go's).
     pub fn observe(&mut self, results: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]) {
+        if self.expired_update_pending {
+            if let Some(client_id) = self.a_expired_client.as_deref()
+                && results
+                    .iter()
+                    .any(|result| is_expired_client_update_rejection(result, client_id))
+            {
+                self.bump("expired_client_update_rejected");
+            }
+            // `observe` is called for the same finalized block as `step`.
+            // Retry next block if CheckTx or proposal selection dropped it.
+            self.expired_update_pending = false;
+        }
         if self.cl_stage == 8
             && let Some(channel_id) = self.a_transfer2.clone()
             && results
@@ -2044,7 +2108,15 @@ impl Driver {
                 match e.r#type.as_str() {
                     "create_client" => {
                         if let Some(id) = attr(e, "client_id") {
-                            if self.a_client.is_none() {
+                            let expired_height = format!("1-{}", self.expired_trusted);
+                            if self.expired_client_required
+                                && self.a_expired_client.is_none()
+                                && attr(e, "client_type").as_deref() == Some("07-tendermint")
+                                && attr(e, "consensus_height").as_deref()
+                                    == Some(expired_height.as_str())
+                            {
+                                self.a_expired_client = Some(id);
+                            } else if self.a_client.is_none() {
                                 self.a_client = Some(id);
                             } else if self.a_client2.is_none()
                                 && self.a_client.as_ref() != Some(&id)
@@ -2387,6 +2459,17 @@ impl Driver {
     }
 }
 
+fn is_expired_client_update_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    client_id: &str,
+) -> bool {
+    result.code == 29
+        && result.codespace == "client"
+        && result.log.contains(&format!(
+            "cannot update client ({client_id}) with status Expired: client state is not active"
+        ))
+}
+
 fn is_transfer_close_init_rejection(
     result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
     channel_id: &str,
@@ -2535,7 +2618,7 @@ fn base64_std(b: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute};
+    use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute, ExecTxResult};
 
     fn packet_event(kind: &str, packet: &ch::Packet, ack_hex: Option<&str>) -> Event {
         let height = packet.timeout_height.unwrap_or_default();
@@ -2628,6 +2711,82 @@ mod tests {
         let successful =
             celestia_proto::celestia_core_proto::abci::ExecTxResult { code: 0, ..result };
         assert!(!is_transfer_close_init_rejection(&successful, "channel-10"));
+    }
+
+    #[test]
+    fn expired_client_credit_requires_exact_client_status_and_abci_error() {
+        let rejected = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 29,
+            codespace: "client".into(),
+            log: "cannot update client (07-tendermint-3) with status Expired: client state is not active".into(),
+            ..Default::default()
+        };
+        assert!(is_expired_client_update_rejection(
+            &rejected,
+            "07-tendermint-3"
+        ));
+        assert!(!is_expired_client_update_rejection(
+            &rejected,
+            "07-tendermint-30"
+        ));
+
+        let active = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            log: "cannot update client (07-tendermint-3) with status Active: client state is not active".into(),
+            ..rejected.clone()
+        };
+        assert!(!is_expired_client_update_rejection(
+            &active,
+            "07-tendermint-3"
+        ));
+
+        let successful = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 0,
+            ..rejected
+        };
+        assert!(!is_expired_client_update_rejection(
+            &successful,
+            "07-tendermint-3"
+        ));
+    }
+
+    #[test]
+    fn expired_client_identity_requires_its_exact_create_event() {
+        fn create_result(client: &str, client_type: &str, height: &str) -> ExecTxResult {
+            ExecTxResult {
+                events: vec![Event {
+                    r#type: "create_client".into(),
+                    attributes: [
+                        ("client_id", client),
+                        ("client_type", client_type),
+                        ("consensus_height", height),
+                    ]
+                    .into_iter()
+                    .map(|(key, value)| EventAttribute {
+                        key: key.into(),
+                        value: value.into(),
+                        index: true,
+                    })
+                    .collect(),
+                }],
+                ..Default::default()
+            }
+        }
+
+        let mut driver = Driver {
+            expired_client_required: true,
+            expired_trusted: 7,
+            ..Driver::default()
+        };
+        driver.observe(&[create_result("07-tendermint-99", "07-tendermint", "1-9")]);
+        assert_eq!(driver.a_expired_client, None);
+
+        driver.observe(&[create_result("06-solomachine-0", "06-solomachine", "1-7")]);
+        assert_eq!(driver.a_expired_client, None);
+
+        // The target may finalize before or after unrelated creations; its
+        // unique client type and consensus height, rather than ordinal, bind it.
+        driver.observe(&[create_result("07-tendermint-3", "07-tendermint", "1-7")]);
+        assert_eq!(driver.a_expired_client.as_deref(), Some("07-tendermint-3"));
     }
 
     #[test]
