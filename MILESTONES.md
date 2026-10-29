@@ -617,6 +617,14 @@ test), then start that harness's count again.
   `c_prop` proof result as data. This distinguishes deterministic seed
   reachability from the aggregate oracle-accept count; it does not establish
   mutation branch coverage or close any volume or nightly gate.
+  *Negative part-set seeds (2026-10-29):* `c_partset` now deterministically
+  reaches an incomplete header-only set, a duplicate valid part that is not
+  added twice, and a structurally valid part whose retained proof rejects its
+  modified bytes. Exact-source pinned v0.40.9 and v0.42.3 campaigns each
+  completed 200,019 inputs with zero mismatches. Their seed reports agreed on
+  all 83 inputs, including two incomplete results, one proof error and one
+  duplicate-part result. This records negative-seed reachability only; the
+  10⁸-input, exact-candidate, coverage and three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
