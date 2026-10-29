@@ -1236,6 +1236,7 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         "c_commit" | "c_valset" => {
             let f: Seeds =
                 serde_json::from_value(fixture("commits")).unwrap_or(Seeds { cases: vec![] });
+            let mut derived_cross_chain_commit = false;
             for (i, c) in f.cases.iter().enumerate() {
                 let vals = hx(&c["vals"]);
                 if op == "c_commit" {
@@ -1243,16 +1244,50 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     let trust_vals = hx(&c["trust_vals"]);
                     let trust_num = c["trust_num"].as_u64().unwrap_or(0).to_string();
                     let trust_den = c["trust_den"].as_u64().unwrap_or(0).to_string();
+                    let block_id = hx(&c["block_id"]);
+                    let commit = hx(&c["commit"]);
+                    let chain_id = s(&c["chain_id"]);
                     out.push(input(&[
-                        (1, s(&c["chain_id"]).as_bytes()),
+                        (1, chain_id.as_bytes()),
                         (2, &vals),
-                        (3, &hx(&c["block_id"])),
+                        (3, &block_id),
                         (4, h.as_bytes()),
-                        (5, &hx(&c["commit"])),
+                        (5, &commit),
                         (6, &trust_vals),
                         (7, trust_num.as_bytes()),
                         (8, trust_den.as_bytes()),
                     ]));
+
+                    let all_verifiers_succeed = [
+                        "verify",
+                        "light",
+                        "light_all",
+                        "trusting",
+                        "trusting_all",
+                        "validate_err",
+                    ]
+                    .into_iter()
+                    .all(|field| c[field].as_str().is_some_and(str::is_empty));
+                    if !derived_cross_chain_commit
+                        && all_verifiers_succeed
+                        && c["trust_num"].as_u64() == Some(1)
+                        && c["trust_den"].as_u64() == Some(3)
+                    {
+                        // Preserve the signed commit and every verification
+                        // input except its signature-domain chain ID.
+                        let replay_chain_id = format!("{chain_id}-replay");
+                        out.push(input(&[
+                            (1, replay_chain_id.as_bytes()),
+                            (2, &vals),
+                            (3, &block_id),
+                            (4, h.as_bytes()),
+                            (5, &commit),
+                            (6, &trust_vals),
+                            (7, trust_num.as_bytes()),
+                            (8, trust_den.as_bytes()),
+                        ]));
+                        derived_cross_chain_commit = true;
+                    }
                 } else {
                     // The change set: validators of another case's set.
                     let other = &f.cases[(i * 7 + 3) % f.cases.len()];
@@ -2347,6 +2382,47 @@ mod tests {
                 out.contains("\ntrusting=ok\n")
                     && out.contains("\ntrusting_all=err:invalid signature")
             }));
+        }
+    }
+
+    #[test]
+    fn commit_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_commit");
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=8).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_commit", &replay_pairs[0][0]).out;
+            for field in ["verify", "light", "light_all", "trusting", "trusting_all"] {
+                assert!(
+                    original.contains(&format!("\n{field}=ok\n")),
+                    "v{app_version} original {field}: {original}"
+                );
+            }
+
+            let replay = crate::rust_out(app_version, "c_commit", &replay_pairs[0][1]).out;
+            assert!(
+                replay.contains("\nvalidate=ok\n"),
+                "v{app_version}: {replay}"
+            );
+            for field in ["verify", "light", "light_all", "trusting", "trusting_all"] {
+                assert!(
+                    replay.contains(&format!("\n{field}=err:wrong signature (#0): ")),
+                    "v{app_version} replay {field}: {replay}"
+                );
+            }
         }
     }
 
