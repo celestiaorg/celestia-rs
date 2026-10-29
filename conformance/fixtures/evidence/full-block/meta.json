@@ -1,0 +1,39 @@
+{
+  "chain_id": "rs-double-sign-1",
+  "evidence_height": 9,
+  "validator_address": "AF8044DC1B8FD8DF0B3005BCE054F6EC830E8133",
+  "evidence_count": 2,
+  "evidence_vote_height": 7,
+  "sources": {
+    "go": "go1.26.9",
+    "celestia_app": "v10.5.0",
+    "celestia_core": "v0.42.3",
+    "celestia_rs": "dced448c41d93d5532cc715c3a4ec9e21e465de1",
+    "celestia_rs_features": "no-default-features",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_app_sum": "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc=",
+    "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+    "celestia_core_sum": "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM="
+  },
+  "regenerate": "DEVNET_NO_DEFAULT_FEATURES=1 RUST_LOG=info EVIDENCE_FIXTURE_OUT=/tmp/full-block-evidence conformance/devnet/double-sign-evidence.sh",
+  "sha256": {
+    "blocks.bin.gz": "5a1c4f45c13d78d70cf23600449d7097516f62265326c4ac20b426b22e63bd4d",
+    "genesis.json": "6d2657790c2bb7493fb57cf27cf8fdc55ddeba5ed7d07956e2ef269221caee57",
+    "go-build-info.txt": "964541e6f5da967c9c0eee6ea7c34a47bb678e329cba5d304f7990c9aa86f930",
+    "validation.json": "dd42de119062160e1224d5666f20d50dc0df7a7e360a82aa25f4d7fa62c6eb8d"
+  },
+  "capture_sources_sha256": {
+    "crates/tier-4-runtime/api-server/Cargo.toml": "b6765dd3f23986e0b2ed2320979b009ac450be0370679961aadd6c21c096511b",
+    "crates/tier-5-node/celestia-rs/Cargo.toml": "8d2e34ee520b44ddc4d76d05992c700627ecc56ca2f8816e86e003c42a1ac3cd",
+    "conformance/devnet/build-bins.sh": "bf7be421f6d9e3b1834515315a05d87e72b2e28d66fbc0956a8f3ac7e4797d32",
+    "conformance/devnet/double-sign-evidence.sh": "49a91541841ffca85bc821b014a0cbb9e13568ad4a752ae143d5b843a896a042",
+    "conformance/devnet/capture-evidence-fixture.sh": "07ec18c5ace09a963b779498360f4cae5f621e57ad5c2e1a9c94cc186e4d27cc",
+    "conformance/devnet/lib-mixed.sh": "d2791d76164765719553192940842e716115bdeb8900e73994dcaca4a43c3d10",
+    "conformance/rpccorpus/recorder/main.go": "887a212fe7cb733f38db9e35e3ab8fef1713bb1611680f105b4e1097a6bf89fc",
+    "conformance/rpccorpus/recorder/validation.go": "5e21afa58bcedb962bda04084be5bad2f669b78bb132a1e1eff22777c29769c3"
+  },
+  "celestia_rs_binary_sha256": "5d396952ebc7f6fefc49e87fa5fbcc17481fbf2b90b843193b41aca59a5e9fc2",
+  "celestia_app_binary_sha256": "5443d8a8c8e1d3e4bc41b12cca848a70b9b37927c62747399049f2b06fd85672",
+  "block_hash": "45E9D405F59655A0482F054DD56D6C9E4A76B210A2A845FC77666636F1D855DA",
+  "evidence_hash": "7C3CDBBF83C1FAA5B3B4E9700A5FE756527CB4433E5D8932FA31FF461E6D3CCF"
+}

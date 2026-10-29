@@ -4,6 +4,9 @@
 //	recorder dump   -data <core/data> -out blocks.bin.gz
 //	    every block and seen commit of a stopped node's block store as a
 //	    gzip'ed stream of length-prefixed protobufs
+//	    (-through H bounds the dump at H)
+//	recorder validation-state -data <core/data> -height H -out validation.json
+//	    historical pre-H state/store records and Go full-validation outcomes
 //	recorder ws     -url ws://host:port/websocket -out ws.jsonl -q <query>...
 //	    subscribes to event queries during a live run and records every
 //	    frame (until SIGTERM)
@@ -32,13 +35,15 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: recorder dump|ws|record ...")
+		fmt.Fprintln(os.Stderr, "usage: recorder dump|validation-state|ws|record ...")
 		os.Exit(2)
 	}
 	var err error
 	switch os.Args[1] {
 	case "dump":
 		err = dump(os.Args[2:])
+	case "validation-state":
+		err = validationState(os.Args[2:])
 	case "ws":
 		err = wsRecord(os.Args[2:])
 	case "record":
@@ -68,12 +73,21 @@ func dump(args []string) error {
 	fs := flag.NewFlagSet("dump", flag.ExitOnError)
 	dir := fs.String("data", "", "celestia-core data dir")
 	out := fs.String("out", "", "output file")
+	through := fs.Int64("through", 0, "last height (default: store height)")
 	_ = fs.Parse(args)
 	bdb, err := dbm.NewDB("blockstore", dbm.PebbleDBBackend, *dir)
 	if err != nil {
 		return err
 	}
 	bs := store.NewBlockStore(bdb)
+	defer bdb.Close()
+	end := bs.Height()
+	if *through != 0 {
+		if *through < bs.Base() || *through > end {
+			return fmt.Errorf("through height %d outside store %d..%d", *through, bs.Base(), end)
+		}
+		end = *through
+	}
 	f, err := os.Create(*out)
 	if err != nil {
 		return err
@@ -81,7 +95,7 @@ func dump(args []string) error {
 	defer f.Close()
 	zw, _ := gzip.NewWriterLevel(f, gzip.BestCompression)
 	w := bufio.NewWriter(zw)
-	for h := bs.Base(); h <= bs.Height(); h++ {
+	for h := bs.Base(); h <= end; h++ {
 		b := bs.LoadBlock(h)
 		if b == nil {
 			return fmt.Errorf("missing block %d", h)
@@ -112,7 +126,7 @@ func dump(args []string) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	fmt.Printf("dumped heights %d..%d\n", bs.Base(), bs.Height())
+	fmt.Printf("dumped heights %d..%d\n", bs.Base(), end)
 	return zw.Close()
 }
 
