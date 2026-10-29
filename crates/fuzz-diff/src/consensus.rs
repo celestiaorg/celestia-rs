@@ -1465,11 +1465,30 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     };
                     let t = h.time.unwrap_or_default();
                     let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
-                    out.push(input(&[
-                        (1, &state.encode_to_vec()),
-                        (2, &bz),
-                        (3, now.as_bytes()),
-                    ]));
+                    let derive_negative_seeds = out.is_empty();
+                    let state_bytes = state.encode_to_vec();
+                    out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
+                    if derive_negative_seeds {
+                        // Keep a valid block but make the state's chain
+                        // identity disagree with its header.
+                        let mut wrong_chain = state.clone();
+                        wrong_chain.chain_id.push_str("-other");
+                        let wrong_chain = wrong_chain.encode_to_vec();
+                        out.push(input(&[(1, &wrong_chain), (2, &bz), (3, now.as_bytes())]));
+
+                        // Keep the valid state but move the block one height
+                        // ahead of the state transition it must follow.
+                        let mut wrong_height = pbk.clone();
+                        if let Some(header) = wrong_height.header.as_mut() {
+                            header.height = header.height.saturating_add(1);
+                            let wrong_height = wrong_height.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_height),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+                    }
                 }
             }
         }
@@ -1663,16 +1682,17 @@ fn collect_block_protos(v: &serde_json::Value, out: &mut Vec<Vec<u8>>) {
 mod tests {
     use super::*;
 
-    /// The `c_vblock` seeds are valid blocks for their states (otherwise
-    /// the op compares error paths only).
+    /// The recorded real transitions remain the positive majority after
+    /// deterministic validation-error seeds are added.
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert!(s.len() >= 20, "{} seeds", s.len());
-        for (i, input) in s.iter().enumerate() {
-            let out = rust_out("c_vblock", input);
-            assert!(out.out.ends_with("validate=ok\n"), "seed {i}: {}", out.out);
-        }
+        assert_eq!(s.len(), 50);
+        let valid = s
+            .iter()
+            .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
+            .count();
+        assert_eq!(valid, 48);
     }
 
     #[test]
@@ -1736,6 +1756,38 @@ mod tests {
                     .count(),
                 13
             );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_reach_state_and_block_mismatches() {
+        let seeds = seeds("c_vblock");
+        assert_eq!(seeds.len(), 50);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_vblock", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n")
+                    .count(),
+                48
+            );
+            for error in ["wrong Block.Header.ChainID.", "wrong Block.Header.Height."] {
+                assert_eq!(
+                    outputs
+                        .iter()
+                        .filter(|out| {
+                            out.starts_with(&format!(
+                                "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:{error}"
+                            ))
+                        })
+                        .count(),
+                    1
+                );
+            }
         }
     }
 
