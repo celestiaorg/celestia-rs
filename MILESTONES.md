@@ -390,13 +390,22 @@ test), then start that harness's count again.
   proto3json, then requires the exact second packet's success acknowledgement.
   Credit is tied to each full packet and its code-0 acknowledgement; scheduled
   packets and channel-upgrade events alone do not count.
+  *Expired-client follow-up (2026-10-29):* an opt-in contract creates a
+  dedicated one-second Tendermint client while it is active, binds its ID to
+  the exact client type and consensus height, then submits a valid signed
+  update after expiration. Credit requires that exact client ID, `client/29`
+  and `Expired` status in the finalized rejection. Pinned v9 and v10
+  300-block differentials delivered 481 and 707 transactions, observed the
+  exact rejection once in each run and had zero mismatches or splits. This is
+  bounded negative-path coverage, not volume or three-night qualification.
   Remaining work is to establish complete coverage and qualifying volume
   across ICS-20 denoms / amounts / receivers, additional acknowledgement
-  forms and ICA error paths, mutated headers, misbehaviour, frozen / expired
-  clients and signed Hyperlane verification paths. The exact PFM and ICA
-  lifecycles above still need the same exact-candidate saturation as the rest
-  of this harness. Exit: F1.2's exact-candidate volume and three-night criteria
-  for this harness too, plus F1.3's coverage accounting.
+  forms and ICA error paths, mutated headers, broader misbehaviour and frozen
+  client behavior, and signed Hyperlane verification paths. The exact PFM,
+  ICA and expired-client lifecycles above still need the same exact-candidate
+  saturation as the rest of this harness. Exit: F1.2's exact-candidate volume
+  and three-night criteria for this harness too, plus F1.3's coverage
+  accounting.
 
 - [ ] **F1.5 The v9 → v10 upgrade.** `deliver` supports `v9-upgrade` and
   `v9-upgrade-boundary`, switching the pinned Go binary after the upgrade
