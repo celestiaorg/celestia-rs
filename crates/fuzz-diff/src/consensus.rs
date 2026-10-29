@@ -1888,6 +1888,22 @@ mod tests {
     }
 
     #[test]
+    fn propagation_seeds_reach_compact_block_proofs() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_prop")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_prop", seed).out)
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .any(|out| out.lines().any(|line| line.starts_with("proofs=4:"))),
+                "v{app_version} lacks a successful compact-block proof seed"
+            );
+        }
+    }
+
+    #[test]
     fn evidence_seeds_reach_duplicate_vote_verification() {
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds("c_evidence")

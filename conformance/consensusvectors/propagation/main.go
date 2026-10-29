@@ -132,17 +132,20 @@ func main() {
 	// Compact block: sign bytes and signature.
 	priv := ed25519.GenPrivKeyFromSecret([]byte("propagation-vectors"))
 	ts := time.Date(2026, 10, 14, 12, 0, 0, 123456789, time.UTC)
+	partsHashes := [][]byte{data("p0", 32), data("p1", 32), data("p2", 32), data("p3", 32)}
+	originalRoot, _ := merkle.ParallelProofsFromLeafHashes(partsHashes[:2])
+	parityRoot, _ := merkle.ParallelProofsFromLeafHashes(partsHashes[2:])
 	prop := types.Proposal{
 		Type: 32, Height: 7, Round: 1, POLRound: 0,
-		BlockID:   types.BlockID{Hash: data("bid", 32), PartSetHeader: types.PartSetHeader{Total: 2, Hash: data("psh", 32)}},
+		BlockID:   types.BlockID{Hash: data("bid", 32), PartSetHeader: types.PartSetHeader{Total: 2, Hash: originalRoot}},
 		Timestamp: ts, Signature: data("propsig", 64),
 	}
 	cb := proptypes.CompactBlock{
-		BpHash:      data("bp", 32),
+		BpHash:      parityRoot,
 		Blobs:       []proptypes.TxMetaData{{Hash: data("tx0", 32), Start: 10, End: 300}, {Hash: data("tx1", 32), Start: 300, End: 70000}},
 		Proposal:    prop,
 		LastLen:     4464,
-		PartsHashes: [][]byte{data("p0", 32), data("p1", 32), data("p2", 32), data("p3", 32)},
+		PartsHashes: partsHashes,
 	}
 	sb, err := cb.SignBytes()
 	if err != nil {
