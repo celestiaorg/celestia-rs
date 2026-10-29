@@ -67,6 +67,19 @@ func init() { gnarklogger.Disable() }
 
 func h(b []byte) string { return hex.EncodeToString(b) }
 
+func validatorSetFingerprint(vals *types.ValidatorSet) (string, error) {
+	pb, err := vals.ToProto()
+	if err != nil {
+		return "", err
+	}
+	bz, err := pb.Marshal()
+	if err != nil {
+		return "", err
+	}
+	return h(bz) + ":" + strconv.FormatInt(vals.TotalVotingPower(), 10) + ":" +
+		strconv.FormatBool(vals.AllKeysHaveSameType()), nil
+}
+
 // cargs splits the op input into its fields (field number -> values).
 func cargs(in []byte) (map[protowire.Number][][]byte, error) {
 	m := map[protowire.Number][][]byte{}
@@ -303,7 +316,19 @@ func consensusOp(op string, in []byte) (o out) {
 				return out{Ok: true, Out: c.b.String()}
 			}
 		}
+		before, err := validatorSetFingerprint(vals)
+		if err != nil {
+			c.put("state_before", "err:"+err.Error())
+			break
+		}
 		if !c.run("update", func() error { return vals.UpdateWithChangeSet(changes) }) {
+			after, err := validatorSetFingerprint(vals)
+			if err != nil {
+				c.put("error_state", "err:"+err.Error())
+				break
+			}
+			c.put("error_state", after)
+			c.put("error_unchanged", strconv.FormatBool(after == before))
 			break
 		}
 		if b := first(m, 3); b != nil {

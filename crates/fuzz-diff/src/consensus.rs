@@ -113,6 +113,16 @@ fn first(m: &BTreeMap<u64, Vec<Vec<u8>>>, n: u64) -> Option<&[u8]> {
     m.get(&n).and_then(|v| v.first()).map(Vec::as_slice)
 }
 
+fn validator_set_fingerprint(vals: &ValidatorSet) -> Result<String, String> {
+    let proto = vals.to_proto().map_err(|e| e.to_string())?;
+    Ok(format!(
+        "{}:{}:{}",
+        hex::encode(proto.encode_to_vec()),
+        vals.total_voting_power(),
+        vals.all_keys_have_same_type()
+    ))
+}
+
 #[derive(Default)]
 struct Res(String);
 
@@ -439,7 +449,18 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                     Err(e) => return c.put(&format!("change{i}"), &format!("err:{e}")),
                 }
             }
+            let before = match validator_set_fingerprint(&vals) {
+                Ok(fingerprint) => fingerprint,
+                Err(e) => return c.put("state_before", &format!("err:{e}")),
+            };
             if !c.run("update", vals.update_with_change_set(&changes)) {
+                match validator_set_fingerprint(&vals) {
+                    Ok(after) => {
+                        c.put("error_state", &after);
+                        c.put("error_unchanged", &(after == before).to_string());
+                    }
+                    Err(e) => c.put("error_state", &format!("err:{e}")),
+                }
                 return;
             }
             if let Some(raw) = first(m, 3) {
@@ -1243,11 +1264,17 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                         .take(1 + i % 4)
                         .map(Message::encode_to_vec)
                         .collect();
+                    let derive_negative_seed = out.is_empty();
                     let mut fields: Vec<(u64, &[u8])> = vec![(1, &vals)];
                     for ch in &changes {
                         fields.push((2, ch));
                     }
                     out.push(input(&fields));
+                    if derive_negative_seed && let Some(change) = changes.first() {
+                        // Each change decodes independently, but a single
+                        // atomic change set cannot name one validator twice.
+                        out.push(input(&[(1, &vals), (2, change), (2, change)]));
+                    }
                     let increments = [-1, 0, 1, 2, 3, 4, 5];
                     let times = increments[i % increments.len()].to_string();
                     fields.push((3, times.as_bytes()));
@@ -2000,6 +2027,40 @@ mod tests {
                 "v{app_version} did not reject a seeded non-positive count"
             );
         }
+    }
+
+    #[test]
+    fn valset_seeds_reach_duplicate_change_rejection() {
+        let seeds = seeds("c_valset");
+        assert!(seeds.len() >= 1_801, "{} seeds", seeds.len());
+        for app_version in [9, 10] {
+            let errors: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_valset", seed).out)
+                .filter(|out| out.contains("\nupdate=err:duplicate entry "))
+                .collect();
+            assert_eq!(errors.len(), 1, "v{app_version}: {errors:?}");
+            assert!(errors[0].contains("\nchange0=ok\nchange1=ok\n"));
+            assert!(errors[0].contains("\nerror_state="));
+            assert!(errors[0].ends_with("\nerror_unchanged=true\n"));
+        }
+    }
+
+    #[test]
+    fn valset_fingerprint_includes_proposer_priorities() {
+        let seed = seeds("c_valset").into_iter().next().expect("valset seed");
+        let fields = args(&seed).expect("seed fields");
+        let proto: pb::ValidatorSet = decode(first(&fields, 1)).expect("validator set proto");
+        let mut vals = ValidatorSet::from_proto(&proto).expect("validator set");
+        let hash = vals.hash();
+        let fingerprint = validator_set_fingerprint(&vals).expect("fingerprint");
+
+        vals.validators[0].proposer_priority = vals.validators[0].proposer_priority.wrapping_add(1);
+        assert_eq!(vals.hash(), hash);
+        assert_ne!(
+            validator_set_fingerprint(&vals).expect("changed fingerprint"),
+            fingerprint
+        );
     }
 
     #[test]

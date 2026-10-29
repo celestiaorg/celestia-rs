@@ -660,6 +660,18 @@ test), then start that harness's count again.
   `from_proto` rejection reachability only; other propagation validation
   branches and the 10⁸-input, exact-candidate and three-night gates remain
   open.
+  *Duplicate validator-change seed (2026-10-29):* `c_valset` now derives one
+  change set containing the same individually valid validator update twice.
+  Pinned v0.40.9 and v0.42.3 seed replays each decode all 1,801 inputs and
+  report exactly one duplicate-entry rejection, while retaining 1,800
+  successful updates. On rejection, both oracles and Rust also compare a
+  fingerprint of the serialized validator set, total voting power and key-type
+  homogeneity before and after the failed update; it remains unchanged. A
+  sensitivity regression confirms that changing proposer priority changes the
+  fingerprint even though the consensus hash does not. This records duplicate
+  rejection plus serialized validator state and observed-cache preservation;
+  other private fields, validator-update branches and the 10⁸-input,
+  exact-candidate and three-night gates remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
