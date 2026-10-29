@@ -963,6 +963,15 @@ fn fixture(name: &str) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+fn evidence_fixture() -> serde_json::Value {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/fixtures/evidence/vectors.json");
+    std::fs::read(&p)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+
 fn hx(v: &serde_json::Value) -> Vec<u8> {
     hex::decode(v.as_str().unwrap_or_default()).unwrap_or_default()
 }
@@ -1156,6 +1165,43 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .map(|c| hx(&c["vals"]))
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
+            }
+
+            // The generic ctypes corpus does not associate evidence with the
+            // validator set that signed it. Pair the Go-recorded evidence
+            // vectors with their actual chain and validator set so mutations
+            // start from successful DuplicateVote signature verification.
+            let f = evidence_fixture();
+            let chain = f["chain_id"].as_str().unwrap_or_default().as_bytes();
+            for case in f["cases"].as_array().into_iter().flatten() {
+                if !case["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("dve/"))
+                    || !case["from_proto_err"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    continue;
+                }
+                let ev = hx(&case["evidence"]);
+                let Some(ev_height) = pb::Evidence::decode(ev.as_slice())
+                    .ok()
+                    .and_then(|p| Evidence::from_proto(&p).ok())
+                    .map(|e| e.height())
+                else {
+                    continue;
+                };
+                // Pair only the fixture's single validator set at the exact
+                // evidence height; never substitute another recorded height.
+                let Some([vals]) = case["vals"].as_array().map(Vec::as_slice) else {
+                    continue;
+                };
+                if vals["height"].as_i64() != Some(ev_height) {
+                    continue;
+                }
+                let vals = hx(&vals["vals"]);
+                out.push(input(&[(1, chain), (2, &vals), (3, &ev)]));
             }
         }
         "c_vblock" => {
@@ -1451,6 +1497,34 @@ mod tests {
         ] {
             let input = hex::decode(input).unwrap();
             assert_eq!(crate::rust_out(9, "c_prop", &input).out, want);
+        }
+    }
+
+    #[test]
+    fn evidence_seeds_reach_duplicate_vote_verification() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_evidence")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_evidence", seed).out)
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("verify_duplicate=ok\n"))
+                    .count()
+                    >= 4
+            );
+            for error in [
+                "verifying VoteA: invalid signature",
+                "verifying VoteB: invalid signature",
+                "validator power from evidence and our validator set does not match",
+                "total voting power from the evidence and our validator set does not match",
+            ] {
+                assert!(
+                    outputs.iter().any(|out| out.contains(error)),
+                    "v{app_version} missing seeded verification outcome: {error}"
+                );
+            }
         }
     }
 }
