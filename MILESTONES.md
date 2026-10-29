@@ -664,6 +664,18 @@ test), then start that harness's count again.
   median-time rejection. This records deterministic time-check reachability
   and a bounded mutation campaign only; proposer/evidence branches and the
   10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Proposer membership rejection (2026-10-29):* `c_vblock` now keeps the
+  first real transition's state, LastCommit, hashes, time and 20-byte address
+  shape while changing only the proposer address to one asserted absent from
+  the active validator set. Both pinned cores complete block/state conversion
+  and authentic LastCommit verification before returning the exact
+  `block.Header.ProposerAddress ... is not a validator` rejection. Pinned
+  v0.40.9 and v0.42.3 campaigns each completed 100,029 inputs with 70,746 Go
+  accepts and zero mismatches. Their seed reports agreed on all 61 decodable
+  pairs: 48 valid transitions and 13 intended validation errors. This records
+  deterministic proposer-membership reachability and a bounded mutation
+  campaign only; evidence branches and the 10⁸-input, exact-candidate,
+  coverage and three-night gates remain open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs
