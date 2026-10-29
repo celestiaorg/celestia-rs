@@ -653,6 +653,17 @@ test), then start that harness's count again.
   records deterministic comparison-branch reachability only; commit,
   proposer, median-time, evidence and the broader qualification gates remain
   open.
+  *Block-time consistency matrix (2026-10-29):* `c_vblock` now extends its
+  first successful real transition with two further isolated cases after
+  authentic LastCommit and proposer validation: a state whose last block time
+  equals the candidate block time, and a header one second later than the
+  LastCommit-derived median time. Pinned v0.40.9 and v0.42.3 campaigns each
+  completed 100,028 inputs with 70,796 Go accepts and zero mismatches. Their
+  seed reports agreed on all 60 decodable pairs: 48 valid transitions and 12
+  intended validation errors, including exactly one monotonic-time and one
+  median-time rejection. This records deterministic time-check reachability
+  and a bounded mutation campaign only; proposer/evidence branches and the
+  10⁸-input, exact-candidate, coverage and three-night gates remain open.
   *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
   fixture now has a twin whose proof body changes after its four-byte
   verifier-key hash prefix, while its valid verifying key and public inputs

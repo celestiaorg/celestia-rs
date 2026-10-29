@@ -1702,6 +1702,31 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                             (2, &bz),
                             (3, before_now.as_bytes()),
                         ]));
+
+                        // Reach the two time-consistency checks after commit
+                        // and proposer validation. First, make the state say
+                        // that this block does not advance time.
+                        let mut non_monotonic = state.clone();
+                        non_monotonic.last_block_time = Some(t);
+                        let non_monotonic = non_monotonic.encode_to_vec();
+                        out.push(input(&[(1, &non_monotonic), (2, &bz), (3, now.as_bytes())]));
+
+                        // Then retain the authentic LastCommit but make the
+                        // header disagree with its commit-derived median time.
+                        let mut wrong_median_time = pbk.clone();
+                        if let Some(time) = wrong_median_time
+                            .header
+                            .as_mut()
+                            .and_then(|header| header.time.as_mut())
+                        {
+                            time.seconds = time.seconds.saturating_add(1);
+                            let wrong_median_time = wrong_median_time.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_median_time),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
                     }
                 }
             }
@@ -1940,7 +1965,7 @@ mod tests {
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert_eq!(s.len(), 58);
+        assert_eq!(s.len(), 60);
         let valid = s
             .iter()
             .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
@@ -2023,7 +2048,7 @@ mod tests {
     #[test]
     fn vblock_seeds_reach_state_and_block_mismatches() {
         let seeds = seeds("c_vblock");
-        assert_eq!(seeds.len(), 58);
+        assert_eq!(seeds.len(), 60);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
@@ -2069,6 +2094,22 @@ mod tests {
                 1,
                 "v{app_version}: future time"
             );
+            for error in [
+                "not greater than last block time",
+                "invalid block time. Expected ",
+            ] {
+                assert_eq!(
+                    outputs
+                        .iter()
+                        .filter(|out| {
+                            out.starts_with("unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:")
+                                && out.contains(error)
+                        })
+                        .count(),
+                    1,
+                    "v{app_version}: {error}"
+                );
+            }
         }
     }
 
