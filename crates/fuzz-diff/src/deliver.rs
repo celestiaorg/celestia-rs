@@ -136,6 +136,8 @@ pub struct Stats {
     /// Per message type URL (nested ones prefixed by `>`): (finalized,
     /// Go code 0, rejected by Go's `CheckTx`).
     pub per_type: BTreeMap<String, (u64, u64, u64)>,
+    /// Exact top-level message types required to execute successfully.
+    pub type_required: Vec<String>,
     /// Go's results of finalized txs by first message type and
     /// `codespace/code`.
     pub codes: BTreeMap<String, u64>,
@@ -1297,6 +1299,19 @@ impl Stats {
         Ok(())
     }
 
+    /// Reject a run that did not successfully finalize every explicitly
+    /// required top-level message type.
+    pub fn require_type_coverage(&self) -> anyhow::Result<()> {
+        for required in &self.type_required {
+            let successful = self.per_type.get(required).map_or(0, |counts| counts.1);
+            anyhow::ensure!(
+                successful > 0,
+                "incomplete DELIVER_TYPE_REQUIRE coverage: no successful {required} transaction"
+            );
+        }
+        Ok(())
+    }
+
     fn gov_setup(&self) -> bool {
         self.gov_required
             .iter()
@@ -1354,6 +1369,25 @@ fn gov_requirements(value: Option<&str>, govpass: bool) -> anyhow::Result<Vec<St
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.'),
             "DELIVER_GOV_REQUIRE expects nonempty exact message type URLs"
+        );
+        required.insert(url.to_owned());
+    }
+    Ok(required.into_iter().collect())
+}
+
+fn type_requirements(value: Option<&str>) -> anyhow::Result<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let mut required = BTreeSet::new();
+    for url in value.split(',').map(str::trim) {
+        anyhow::ensure!(
+            url.starts_with('/')
+                && url.len() > 1
+                && url[1..]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.'),
+            "DELIVER_TYPE_REQUIRE expects nonempty exact message type URLs"
         );
         required.insert(url.to_owned());
     }
@@ -3603,6 +3637,13 @@ pub fn run(
         })
         .transpose()?;
     let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    let type_required = std::env::var_os("DELIVER_TYPE_REQUIRE")
+        .map(|v| {
+            v.into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_TYPE_REQUIRE must be UTF-8"))
+        })
+        .transpose()?;
+    let type_required = type_requirements(type_required.as_deref())?;
     let gov_failure_required = std::env::var_os("DELIVER_GOV_FAILURE_REQUIRE")
         .map(|value| {
             let value = value
@@ -3673,6 +3714,7 @@ pub fn run(
     let mut stats = Stats {
         gov_required,
         gov_failure_required,
+        type_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
         hl_rejection_cases: if hl_reject {
@@ -4286,6 +4328,31 @@ pub fn run(
                     if let Some(t) = sign_simple(&gn, 0, vec![deposit], 600_000) {
                         gn.accts[0].seq += 1;
                         txs.push(t);
+                    }
+                    if stats
+                        .type_required
+                        .iter()
+                        .any(|url| url == "/cosmos.gov.v1beta1.MsgDeposit")
+                    {
+                        // Exercise the legacy deposit message against the
+                        // same active v1 proposal. Legacy proposal submission
+                        // is disabled by Celestia's empty legacy router, but
+                        // its deposit handler remains reachable on v1
+                        // proposals. Keep this opt-in so established GOVPASS
+                        // finding seeds retain their exact traffic schedule.
+                        let legacy_deposit =
+                            Any::pack(&celestia_proto::cosmos::gov::v1beta1::MsgDeposit {
+                                proposal_id: id,
+                                depositor: gn.accts[0].acc.clone(),
+                                amount: vec![Coin {
+                                    denom: "utia".into(),
+                                    amount: "60000000".into(),
+                                }],
+                            });
+                        if let Some(t) = sign_simple(&gn, 0, vec![legacy_deposit], 600_000) {
+                            gn.accts[0].seq += 1;
+                            txs.push(t);
+                        }
                     }
                     for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
@@ -6551,6 +6618,32 @@ mod tests {
         assert!(stats.require_gov_coverage().is_err());
         stats.gov_failure_matches = 1;
         assert!(stats.require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_message_types_need_a_successful_finalized_transaction() {
+        let deposit = "/cosmos.gov.v1beta1.MsgDeposit";
+        let mut stats = Stats {
+            type_required: vec![deposit.into()],
+            ..Stats::default()
+        };
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(format!(">{deposit}"), (1, 1, 0));
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(deposit.into(), (1, 0, 0));
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(deposit.into(), (1, 1, 0));
+        assert!(stats.require_type_coverage().is_ok());
+        assert!(Stats::default().require_type_coverage().is_ok());
+
+        assert!(type_requirements(None).unwrap().is_empty());
+        for invalid in ["", ",", "MsgDeposit", "/", "/cosmos gov.MsgDeposit"] {
+            assert!(type_requirements(Some(invalid)).is_err(), "{invalid:?}");
+        }
+        assert_eq!(
+            type_requirements(Some(&format!(" {deposit},{deposit} "))).unwrap(),
+            vec![deposit]
+        );
     }
 
     #[test]

@@ -26,10 +26,14 @@ ibc-upgrades 300 8 3080 DELIVER_IBC=1 DELIVER_WIRE=1
 ibc-edge 300 8 3020 DELIVER_IBC=1 DELIVER_WIRE=1
 # Simulate of a tx signed by an interchain account (security.md 95).
 v9-empty 300 8 3047 DELIVER_IBC=1 DELIVER_SIM=1
-# Gov `MsgUpdateParams` with a zero voting period: Go's `ValidateBasic` text
-# (`voting period must be positive: 0s`) is the failed proposal's
-# failed_reason: app-hash split (#71, security.md 97).
+# Historical seed for the #71 gov-parameter finding. The current 40-block
+# run remains a broad parity regression but no longer reaches the original
+# failed-proposal marker; the focused x-gov tests retain the error-text pin.
 v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_GOVPASS=1
+# The legacy deposit handler accepts current v1 proposals even though
+# Celestia's empty legacy router prevents legacy proposal submission.
+gov 40 8 4018 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
+v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
 # A failed gov proposal's MsgConnectionOpenTry: `PickVersion` prints both
 # version lists (`%v` of `[]*Version`) in its failed_reason: app-hash split
 # (#72, security.md 98).
