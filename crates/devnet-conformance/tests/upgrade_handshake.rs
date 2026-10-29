@@ -355,6 +355,24 @@ impl Node {
         interrupt: Option<Interruption>,
         min_retain_blocks: u64,
     ) -> anyhow::Result<Self> {
+        Self::open_with_app_home(
+            home,
+            &home.join("app"),
+            backend,
+            fixture,
+            interrupt,
+            min_retain_blocks,
+        )
+    }
+
+    fn open_with_app_home(
+        node_home: &Path,
+        app_home: &Path,
+        backend: BackendKind,
+        fixture: &Fixture,
+        interrupt: Option<Interruption>,
+        min_retain_blocks: u64,
+    ) -> anyhow::Result<Self> {
         let db = DbOptions {
             backend,
             sync_writes: true,
@@ -370,10 +388,10 @@ impl Node {
             ..Default::default()
         };
         let app = Arc::new(Mutex::new(
-            App::open_with(home.join("app"), opts).map_err(|e| anyhow::anyhow!(e.log))?,
+            App::open_with(app_home, opts).map_err(|e| anyhow::anyhow!(e.log))?,
         ));
-        let blocks = BlockStore::new(kvdb::open_backend(home, "blocks", &db)?)?;
-        let states = StateStore::new(kvdb::open_backend(home, "states", &db)?);
+        let blocks = BlockStore::new(kvdb::open_backend(node_home, "blocks", &db)?)?;
+        let states = StateStore::new(kvdb::open_backend(node_home, "states", &db)?);
         let state = states.load_from_db_or_genesis(&fixture.genesis)?;
         let calls = Arc::new(Mutex::new(Calls::default()));
         let adapter = Adapter {
@@ -606,6 +624,108 @@ fn replay_multiple_blocks(fixture: &Fixture, backend: BackendKind) -> anyhow::Re
         &case,
     )?;
     Ok(())
+}
+
+#[test]
+fn real_app_replays_from_upgrade_checkpoint() -> anyhow::Result<()> {
+    let fixture = Fixture::load()?;
+    for &backend in BackendKind::ALL {
+        let reference = Reference::build(&fixture, backend)?;
+        for checkpoint in [fixture.upgrade - 1, fixture.upgrade] {
+            replay_from_app_checkpoint(&fixture, backend, &reference, checkpoint)?;
+        }
+    }
+    Ok(())
+}
+
+fn replay_from_app_checkpoint(
+    fixture: &Fixture,
+    backend: BackendKind,
+    reference: &Reference,
+    checkpoint: i64,
+) -> anyhow::Result<()> {
+    const NODE_HEIGHT: i64 = 20;
+    anyhow::ensure!(checkpoint == fixture.upgrade - 1 || checkpoint == fixture.upgrade);
+    anyhow::ensure!(NODE_HEIGHT > checkpoint);
+    anyhow::ensure!(
+        fixture
+            .blocks
+            .last()
+            .is_some_and(|(block, _)| block.header.height > NODE_HEIGHT)
+    );
+    let case = format!("{backend} restored app={checkpoint} node={NODE_HEIGHT}");
+    assert_eq!(
+        reference.infos[usize::try_from(fixture.upgrade - 1)?].app_version,
+        9,
+        "{case} pre-upgrade checkpoint version"
+    );
+    assert_eq!(
+        reference.infos[usize::try_from(fixture.upgrade)?].app_version,
+        10,
+        "{case} upgrade checkpoint version"
+    );
+
+    let donor_home = tempfile::tempdir()?;
+    let mut donor = Node::open(donor_home.path(), backend, fixture, None)?;
+    assert_eq!(donor.recover(&fixture.genesis)?, 0, "{case} donor");
+    for frame in fixture.blocks.iter().take(usize::try_from(checkpoint)?) {
+        donor.apply(frame)?;
+    }
+    assert_reference_height(&donor, reference, checkpoint, &case)?;
+    drop(donor);
+
+    let node_home = tempfile::tempdir()?;
+    let mut ahead = Node::open(node_home.path(), backend, fixture, None)?;
+    assert_eq!(ahead.recover(&fixture.genesis)?, 0, "{case} ahead");
+    for frame in fixture.blocks.iter().take(usize::try_from(NODE_HEIGHT)?) {
+        ahead.apply(frame)?;
+    }
+    assert_reference_height(&ahead, reference, NODE_HEIGHT, &case)?;
+    assert_historical_state_records(&ahead, fixture, reference, NODE_HEIGHT, &case)?;
+    drop(ahead);
+
+    let donor_app = donor_home.path().join("app");
+    let mut node =
+        Node::open_with_app_home(node_home.path(), &donor_app, backend, fixture, None, 0)?;
+    assert_eq!(node.state.last_block_height, NODE_HEIGHT, "{case}");
+    assert_eq!(node.exec.block_store.height(), NODE_HEIGHT, "{case}");
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[usize::try_from(checkpoint)?],
+        "{case} before replay"
+    );
+    assert_eq!(
+        node.recover(&fixture.genesis)?,
+        usize::try_from(NODE_HEIGHT - checkpoint)?,
+        "{case} replay count"
+    );
+    let replayed: Vec<i64> = (checkpoint + 1..=NODE_HEIGHT).collect();
+    assert_eq!(
+        *node.calls.lock().unwrap(),
+        Calls {
+            finalized: replayed.clone(),
+            committed: replayed,
+        },
+        "{case} replayed calls"
+    );
+    assert_reference_height(&node, reference, NODE_HEIGHT, &case)?;
+    assert_historical_state_records(&node, fixture, reference, NODE_HEIGHT, &case)?;
+    for (i, frame) in fixture
+        .blocks
+        .iter()
+        .enumerate()
+        .skip(usize::try_from(NODE_HEIGHT)?)
+    {
+        node.apply(frame)?;
+        assert_reference_height(&node, reference, i64::try_from(i + 1)?, &case)?;
+    }
+    assert_historical_state_records(
+        &node,
+        fixture,
+        reference,
+        node.state.last_block_height,
+        &case,
+    )
 }
 
 fn assert_reference_height(

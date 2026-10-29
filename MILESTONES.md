@@ -434,6 +434,17 @@ test), then start that harness's count again.
   These are orderly rollback/reopen and pruning paths on the devnet
   fixture. They do not cover a crash during rollback/pruning,
   expired-evidence pruning, cross-upgrade App rollback or power loss.
+  *Restored App checkpoint replay (2026-10-29, PR #137):* closed Rust App
+  databases produced by replaying authenticated Go blocks through H11
+  (app v9) and H12 (app v10) are paired with separately persisted node,
+  block and state stores at H20. Both backends require exactly nine real
+  block replays for H12–H20 and eight for H13–H20. Every reconstructed
+  `FinalizeBlock` request and consensus result matches the frozen Go fixture; H20 state
+  and history remain equal to the uninterrupted reference before authentic
+  execution continues through H40. This covers orderly checkpoint
+  pairing and reopen across the upgrade. The donor databases are not Go
+  database or snapshot imports, and this does not establish cross-upgrade
+  rollback-command parity, crash recovery or power-loss durability.
   *Snapshot boundary (2026-10-28):* on the same fixture (H=12), pinned Go
   v9.0.8 exports H, but v10.5.0 cannot export H after opening the upgraded
   database (`fibre` has no version at H). A fresh Go v10 receiver accepts
