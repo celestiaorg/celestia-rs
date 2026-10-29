@@ -24,3 +24,7 @@ GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.6 go run . -out 
 Evidence is always verified after a protobuf round trip, as a node only
 sees decoded evidence; Go then reports an amnesia attack (no derivable
 byzantine validators) as invalid.
+
+The authentic evidence-bearing block fixture and full-block/persistent-pool
+composition regression are documented separately in
+[`fixtures/evidence/full-block`](../fixtures/evidence/full-block/README.md).

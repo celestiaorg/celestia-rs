@@ -12,9 +12,14 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Preserve standalone defaults while letting the node choose its backend.
+default = ["rocksdb"]
+rocksdb = ["app/rocksdb"]
+
 [dependencies]
 gostr = { path = "../../tier-0-primitives/gostr" }
-app = { path = "../app" }
+app = { path = "../app", default-features = false }
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
 bytes = "1"
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }

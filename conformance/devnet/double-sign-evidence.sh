@@ -11,9 +11,14 @@
 # keeps agreeing on block and app hashes.
 #
 # usage: [DEVNET_PORT_OFFSET=n] [DEVNET_BIN=dir] conformance/devnet/double-sign-evidence.sh
+# Set EVIDENCE_FIXTURE_OUT to an empty directory to capture the authentic
+# evidence block and its pre-height validation history before cleanup.
+# DEVNET_NO_DEFAULT_FEATURES=1 builds the Rust node with redb only.
 # Exit 0 iff all checks pass.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# Match build-bins.sh's Go pin for fixture recorder builds as well.
+export GOTOOLCHAIN=${GOTOOLCHAIN:-$(awk '$1 == "toolchain" { print $2; exit }' "$ROOT/conformance/devnet-oracle/go.mod")}
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 export PATH=$BIN:$PATH
 OFF=$((${DEVNET_PORT_OFFSET:-15000} + 200))
@@ -22,7 +27,16 @@ BYZ=$ROOT/target/debug/examples/double_sign
 W=$(mktemp -d)
 FAIL=()
 
-(cd "$ROOT" && cargo build -q -p celestia-rs && cargo build -q -p celestia-rs --example double_sign)
+if [ -n "${EVIDENCE_FIXTURE_OUT:-}" ]; then
+  mkdir -p "$EVIDENCE_FIXTURE_OUT"
+  [ -z "$(ls -A "$EVIDENCE_FIXTURE_OUT")" ] || { echo "fixture directory must be empty" >&2; exit 1; }
+  EVIDENCE_FIXTURE_OUT=$(cd "$EVIDENCE_FIXTURE_OUT" && pwd)
+  (cd "$ROOT/conformance/rpccorpus/recorder" && go build -o "$BIN/rpc-recorder" .)
+fi
+
+CARGO_FEATURES=()
+[ "${DEVNET_NO_DEFAULT_FEATURES:-0}" != 1 ] || CARGO_FEATURES=(--no-default-features)
+(cd "$ROOT" && cargo build -q "${CARGO_FEATURES[@]}" -p celestia-rs && cargo build -q "${CARGO_FEATURES[@]}" -p celestia-rs --example double_sign)
 
 # shellcheck source=lib-mixed.sh
 source "$ROOT/conformance/devnet/lib-mixed.sh"
@@ -31,6 +45,12 @@ CHAIN_ID=rs-double-sign-1
 D=$W/d
 mkdir -p "$D"
 make_net "$D" "$CHAIN_ID" "go go rs rs" "5000000000 5000000000 5000000000 5000000000"
+if [ -n "${EVIDENCE_FIXTURE_OUT:-}" ]; then
+  # Recover pre-evidence app/results hashes and timeouts from the original
+  # FinalizeBlock response, which the normal Go config discards.
+  sed -i.bak 's/^discard_abci_responses = true/discard_abci_responses = false/' "$D/n0/config/config.toml"
+  rm -f "$D/n0/config/config.toml.bak"
+fi
 for i in 0 1 2 3; do start_node "$D" $i; done
 ensure_up "$D" 0 1 2 3
 wait_height "$D" 0 5 240 || FAIL+=("network did not start")
@@ -89,6 +109,9 @@ for i in 1 2 3; do wait_height "$D" $i "$TOP" 60 || FAIL+=("node $i stuck"); don
 ALLOW_EVIDENCE=1 check_chain "$D" $((TOP - 1)) E || FAIL+=("chain checks")
 
 for i in 0 1 2 3; do kill_node "$D" $i; done
+if [ ${#FAIL[@]} -eq 0 ] && [ -n "${EVIDENCE_FIXTURE_OUT:-}" ]; then
+  "$ROOT/conformance/devnet/capture-evidence-fixture.sh" "$D/n0" "$EV_H" "$V1_ADDR" "$EVIDENCE_FIXTURE_OUT"
+fi
 trap - EXIT
 cleanup
 if [ ${#FAIL[@]} -eq 0 ]; then

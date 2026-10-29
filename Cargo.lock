@@ -1449,6 +1449,7 @@ version = "0.0.1"
 dependencies = [
  "crypto",
  "ctypes",
+ "flate2",
  "hash",
  "hex",
  "kvdb",
@@ -1458,6 +1459,7 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "zstd",
 ]
