@@ -618,13 +618,15 @@ test), then start that harness's count again.
   reachability from the aggregate oracle-accept count; it does not establish
   mutation branch coverage or close any volume or nightly gate.
   *Negative part-set seeds (2026-10-29):* `c_partset` now deterministically
-  reaches an incomplete header-only set, a duplicate valid part that is not
-  added twice, and a structurally valid part whose retained proof rejects its
-  modified bytes. Exact-source pinned v0.40.9 and v0.42.3 campaigns each
-  completed 200,019 inputs with zero mismatches. Their seed reports agreed on
-  all 83 inputs, including two incomplete results, one proof error and one
-  duplicate-part result. This records negative-seed reachability only; the
-  10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  rejects a decodable header with a 31-byte Merkle root, reaches an incomplete
+  valid header-only set, keeps a duplicate valid part from being added twice,
+  and rejects a structurally valid part whose retained proof no longer
+  authenticates its modified bytes. Exact-source pinned v0.40.9 and v0.42.3
+  campaigns each completed 200,020 inputs with 136,428 Go accepts and zero
+  mismatches. Their seed reports agreed on all 84 inputs, including one header
+  error, two incomplete results, one proof error and one duplicate-part result.
+  This records negative-seed reachability only; the 10⁸-input, exact-candidate,
+  coverage and three-night gates remain open.
   *Invalid ICS-23 proof seeds (2026-10-29):* `c_ics23` now keeps a valid
   membership proof while changing its claimed value, and keeps a valid
   non-membership proof while changing its commitment root. Pinned v0.40.9

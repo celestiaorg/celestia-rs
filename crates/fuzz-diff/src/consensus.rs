@@ -1836,6 +1836,13 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 }
                 out.push(input(&fields));
                 if derive_negative_seeds && let Some(part) = parts.first() {
+                    // The protobuf still decodes, but the 31-byte Merkle root
+                    // is not a valid part-set header hash.
+                    if let Ok(mut invalid_header) = pb::PartSetHeader::decode(hdr.as_slice()) {
+                        invalid_header.hash.pop();
+                        let invalid_header = invalid_header.encode_to_vec();
+                        out.push(input(&[(1, &invalid_header)]));
+                    }
                     // A valid header with no parts is incomplete.
                     out.push(input(&[(1, &hdr)]));
                     // Adding the same valid part twice succeeds but reports
@@ -1895,14 +1902,22 @@ mod tests {
     }
 
     #[test]
-    fn partset_seeds_reach_incomplete_duplicate_and_bad_proof() {
+    fn partset_seeds_reach_bad_header_incomplete_duplicate_and_bad_proof() {
         let seeds = seeds("c_partset");
-        assert!(seeds.len() >= 83, "{} seeds", seeds.len());
+        assert_eq!(seeds.len(), 84);
         for app_version in [9, 10] {
             let outputs: Vec<String> = seeds
                 .iter()
                 .map(|seed| crate::rust_out(app_version, "c_partset", seed).out)
                 .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nheader=err:wrong Hash: expected size to be 32 bytes, got 31 bytes"))
+                    .count(),
+                1,
+                "v{app_version}"
+            );
             assert!(outputs.iter().any(|out| {
                 out.ends_with("complete=false\ncount=0\n") && !out.contains("part0_add=")
             }));
