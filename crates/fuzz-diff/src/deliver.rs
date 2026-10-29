@@ -1365,6 +1365,20 @@ impl Stats {
                 "incomplete MsgRecoverClient coverage: recovered subject did not accept a subsequent update"
             );
         }
+        if self.ibc_required.contains("pfm_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_downstream_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no exact successful downstream acknowledgement"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no delayed success acknowledgement for the exact original packet"
+            );
+        }
         Ok(())
     }
 
@@ -3702,6 +3716,7 @@ pub fn run(
     let ibc_legacy_upgrade_fixture =
         std::env::var_os("DELIVER_IBC_LEGACY_UPGRADE_FIXTURE").is_some();
     let ibc_ack_failure_required = std::env::var_os("DELIVER_IBC_ACK_FAILURE_REQUIRE").is_some();
+    let ibc_pfm_required = std::env::var_os("DELIVER_IBC_PFM_REQUIRE").is_some();
     anyhow::ensure!(
         !ibc_connection_confirm || ibc_on,
         "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
@@ -3717,6 +3732,10 @@ pub fn run(
     anyhow::ensure!(
         !ibc_ack_failure_required || ibc_on,
         "DELIVER_IBC_ACK_FAILURE_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_pfm_required || ibc_on,
+        "DELIVER_IBC_PFM_REQUIRE requires DELIVER_IBC"
     );
     let required = std::env::var_os("DELIVER_GOV_REQUIRE")
         .map(|v| {
@@ -3783,8 +3802,9 @@ pub fn run(
             !ibc_connection_confirm
                 && !ibc_close_init_failure_required
                 && !ibc_recover_client
-                && !ibc_ack_failure_required,
-            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, or Ack-failure requirements"
+                && !ibc_ack_failure_required
+                && !ibc_pfm_required,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, or PFM requirements"
         );
     }
     anyhow::ensure!(
@@ -3846,6 +3866,9 @@ pub fn run(
     }
     if ibc_recover_client {
         stats.ibc_required.insert("recover_client");
+    }
+    if ibc_pfm_required {
+        stats.ibc_required.insert("pfm_lifecycle");
     }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
@@ -4121,6 +4144,7 @@ pub fn run(
             .with_connection_confirm(ibc_connection_confirm)
             .with_close_init_failure_requirement(ibc_close_init_failure_required)
             .with_recover_client(ibc_recover_client)
+            .with_pfm_requirement(ibc_pfm_required)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
     // The relayer: the last single-key fuzz account.
@@ -6884,6 +6908,20 @@ mod tests {
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("recovered_client_update", 1);
         assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_needs_forward_and_original_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_lifecycle");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_forwarded", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_downstream_ack", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
     }
 
     #[test]
