@@ -472,12 +472,22 @@ test), then start that harness's count again.
   on `56faa0e` and `2319850` completed 200,120 inputs across eleven ops and
   52,417 inputs across the other six, respectively, with zero mismatches
   (the latter had 34,390 Go-accepted inputs). Together these exercise all
-  seventeen v0.42.3 ops but are far
-  below the 10⁸ inputs per op exit criterion. The app-v9 oracle's
-  `consensusOp` returns `v10 oracle only` for every `c_*` operation; a
-  200,018-input probe therefore made zero valid comparisons. That probe is
-  capability evidence, not a clean campaign. The v0.40.9 consensus oracle
-  and its required volume remain open, as does the v0.42.3 volume.
+  seventeen v0.42.3 ops but remain far below the 10⁸ inputs per op exit
+  criterion.
+  *Bounded historical-target campaign (2026-10-29):* `4409219` implements
+  the same seventeen operations against app v9.0.8 / celestia-core v0.40.9,
+  including its SP1 v5 fixtures, and schedules both core versions in the
+  nightly consensus job. A clean exact-source run completed 200,059 inputs
+  with zero mismatches. Its immutable pre-fix run on `0d289b8` found one
+  `c_prop` `WantParts` mismatch family (three occurrences): v0.40.9 accepts
+  a missing-part count that the two later v0.42.3 bounds reject. Exact Go
+  regressions now preserve that version difference, protobuf encoded-size
+  allocation, error order and signed overflow; production propagation is
+  unchanged. A final v0.42.3 guard run completed 50,043 inputs over all
+  seventeen operations with zero mismatches. These are bounded capability
+  checks, not F1.7 qualification: both versions remain far below 10⁸ inputs
+  per operation, and the exact-candidate, coverage and three-night gates are
+  still open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
