@@ -453,6 +453,8 @@ pub struct Driver {
     pub a_client: Option<String>,
     a_client2: Option<String>,
     frozen: bool,
+    recover_client_on: bool,
+    recover_subject_ready: bool,
     /// A third client, upgraded once (`MsgUpgradeClient`).
     a_client3: Option<String>,
     upgraded: bool,
@@ -554,6 +556,22 @@ impl Driver {
     pub fn with_close_init_failure_requirement(mut self, enabled: bool) -> Self {
         self.close_init_failure_required = enabled;
         self
+    }
+
+    /// Enable a governance recovery payload once the second client is frozen.
+    #[must_use]
+    pub fn with_recover_client(mut self, enabled: bool) -> Self {
+        self.recover_client_on = enabled;
+        self
+    }
+
+    /// A frozen subject and a newer active substitute suitable for recovery.
+    #[must_use]
+    pub fn recovery_clients(&self) -> Option<(String, String)> {
+        if !self.recover_client_on || !self.recover_subject_ready || self.trusted <= self.trusted2 {
+            return None;
+        }
+        Some((self.a_client2.clone()?, self.a_client.clone()?))
     }
 
     /// Preserve the pre-Ack/pruning channel-upgrade state machine used to
@@ -1803,6 +1821,10 @@ impl Driver {
                             }
                         }
                     }
+                    "client_misbehaviour" if attr(e, "client_id") == self.a_client2 => {
+                        self.recover_subject_ready = true;
+                        self.bump("misbehaviour_confirmed");
+                    }
                     "connection_open_ack" => self.conn_open = true,
                     "connection_open_try"
                         if self.conn2_stage == 1
@@ -1954,6 +1976,23 @@ impl Driver {
             }
         }
     }
+
+    /// Learns governance-executed IBC events emitted at block scope.
+    pub fn observe_block_events(
+        &mut self,
+        events: &[celestia_proto::celestia_core_proto::abci::Event],
+    ) {
+        for event in events {
+            if self.recover_client_on
+                && self.recover_subject_ready
+                && event.r#type == "recover_client"
+                && attr(event, "subject_client_id") == self.a_client2
+            {
+                self.recover_subject_ready = false;
+                self.bump("recover_client");
+            }
+        }
+    }
 }
 
 fn is_transfer_close_init_rejection(
@@ -2052,5 +2091,62 @@ mod tests {
         let successful =
             celestia_proto::celestia_core_proto::abci::ExecTxResult { code: 0, ..result };
         assert!(!is_transfer_close_init_rejection(&successful, "channel-10"));
+    }
+
+    #[test]
+    fn recovery_clients_require_confirmed_freeze_and_newer_substitute() {
+        let mut driver = Driver::default().with_recover_client(true);
+        driver.a_client = Some("07-tendermint-0".into());
+        driver.a_client2 = Some("07-tendermint-1".into());
+        driver.trusted = 10;
+        driver.trusted2 = 9;
+        assert!(driver.recovery_clients().is_none());
+        driver.recover_subject_ready = true;
+        assert_eq!(
+            driver.recovery_clients(),
+            Some(("07-tendermint-1".into(), "07-tendermint-0".into()))
+        );
+        driver.trusted2 = 10;
+        assert!(driver.recovery_clients().is_none());
+    }
+
+    #[test]
+    fn recovery_credit_requires_the_exact_subject_client() {
+        fn recovery_event(subject: &str) -> Event {
+            Event {
+                r#type: "recover_client".into(),
+                attributes: [EventAttribute {
+                    key: "subject_client_id".into(),
+                    value: subject.into(),
+                    index: true,
+                }]
+                .into(),
+            }
+        }
+
+        let mut driver = Driver {
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+
+        driver.recover_client_on = true;
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+
+        driver.recover_subject_ready = true;
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-10")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+        assert!(driver.recover_subject_ready);
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), Some(&1));
+        assert!(!driver.recover_subject_ready);
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), Some(&1));
     }
 }

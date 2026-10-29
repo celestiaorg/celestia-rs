@@ -1347,6 +1347,16 @@ impl Stats {
                 "incomplete DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE coverage: the rejected channel did not remain usable through counterparty close"
             );
         }
+        if self.ibc_required.contains("recover_client") {
+            anyhow::ensure!(
+                self.ibc.get("misbehaviour_confirmed").copied().unwrap_or(0) > 0,
+                "incomplete MsgRecoverClient coverage: no matching confirmed misbehaviour event"
+            );
+            anyhow::ensure!(
+                self.ibc.get("recover_client").copied().unwrap_or(0) > 0,
+                "incomplete MsgRecoverClient coverage: no matching block-scope recovery event"
+            );
+        }
         Ok(())
     }
 
@@ -1391,6 +1401,15 @@ impl Stats {
         }
         Ok(())
     }
+}
+
+fn gov_setup_ready(stats: &Stats, messages: &[Any]) -> bool {
+    stats.gov_setup()
+        && stats.gov_required.iter().any(|required| {
+            stats.gov_executed.get(required).copied().unwrap_or(0) == 0
+                && (required != "/ibc.core.client.v1.MsgRecoverClient"
+                    || messages.iter().any(|message| &message.type_url == required))
+        })
 }
 
 fn gov_requirements(value: Option<&str>, govpass: bool) -> anyhow::Result<Vec<String>> {
@@ -3698,6 +3717,13 @@ pub fn run(
         })
         .transpose()?;
     let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    let ibc_recover_client = gov_required
+        .iter()
+        .any(|url| url == "/ibc.core.client.v1.MsgRecoverClient");
+    anyhow::ensure!(
+        !ibc_recover_client || ibc_on,
+        "DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient requires DELIVER_IBC"
+    );
     let type_required = std::env::var_os("DELIVER_TYPE_REQUIRE")
         .map(|v| {
             v.into_string()
@@ -3748,8 +3774,9 @@ pub fn run(
         anyhow::ensure!(
             !ibc_connection_confirm
                 && !ibc_close_init_failure_required
+                && !ibc_recover_client
                 && !ibc_ack_failure_required,
-            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, or Ack-failure requirements"
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, or Ack-failure requirements"
         );
     }
     anyhow::ensure!(
@@ -3808,6 +3835,9 @@ pub fn run(
     };
     if ibc_close_init_failure_required {
         stats.ibc_required.insert("close_init_failure");
+    }
+    if ibc_recover_client {
+        stats.ibc_required.insert("recover_client");
     }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
@@ -4082,6 +4112,7 @@ pub fn run(
         crate::ibcmock::Driver::default()
             .with_connection_confirm(ibc_connection_confirm)
             .with_close_init_failure_requirement(ibc_close_init_failure_required)
+            .with_recover_client(ibc_recover_client)
             .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
     });
     // The relayer: the last single-key fuzz account.
@@ -4158,7 +4189,25 @@ pub fn run(
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
-        let gov_setup = !hl_setup && stats.gov_setup();
+        if ibc_recover_client
+            && govpass_delegated
+            && !gn
+                .gov_msgs
+                .iter()
+                .any(|msg| msg.type_url == "/ibc.core.client.v1.MsgRecoverClient")
+            && let Some((subject_client_id, substitute_client_id)) = ibc
+                .as_ref()
+                .and_then(crate::ibcmock::Driver::recovery_clients)
+        {
+            gn.gov_msgs.push(Any::pack(
+                &celestia_proto::ibc::core::client::v1::MsgRecoverClient {
+                    subject_client_id,
+                    substitute_client_id,
+                    signer: GOV.into(),
+                },
+            ));
+        }
+        let gov_setup = !hl_setup && gov_setup_ready(&stats, &gn.gov_msgs);
         scripted |= gov_setup;
         // A signed Hyperlane sequence needs its dedicated account's committed
         // sequence. Before both incoming paths succeed at v9, keep unrelated
@@ -5007,6 +5056,7 @@ pub fn run(
         }
         if let Some(d) = ibc.as_mut() {
             d.observe(&g.tx_results);
+            d.observe_block_events(&g.events);
         }
         let (c, l) = finalize_diff(&g, &o);
         let block_txs = || fb.txs.iter().map(hex::encode).collect::<Vec<_>>().join(",");
@@ -6761,6 +6811,31 @@ mod tests {
     }
 
     #[test]
+    fn required_governance_setup_waits_until_dynamic_payload_exists() {
+        let recover = "/ibc.core.client.v1.MsgRecoverClient";
+        let mut stats = Stats {
+            gov_required: vec![recover.into()],
+            ..Stats::default()
+        };
+        assert!(stats.gov_setup());
+        assert!(!gov_setup_ready(&stats, &[]));
+        let messages = vec![Any {
+            type_url: recover.into(),
+            value: Vec::new(),
+        }];
+        assert!(gov_setup_ready(&stats, &messages));
+        stats.gov_executed.insert(recover.into(), 1);
+        assert!(!gov_setup_ready(&stats, &messages));
+
+        let static_required = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        let static_stats = Stats {
+            gov_required: vec![static_required.into()],
+            ..Stats::default()
+        };
+        assert!(gov_setup_ready(&static_stats, &[]));
+    }
+
+    #[test]
     fn required_ibc_ack_failure_needs_the_decoded_failure_response() {
         let mut stats = Stats {
             ibc_ack_failure_required: true,
@@ -6788,6 +6863,17 @@ mod tests {
         stats.ibc.insert("close_init_reused_closed", 1);
         assert!(stats.require_ibc_coverage().is_ok());
         assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_recovery_needs_the_matching_block_event() {
+        let mut stats = Stats { ..Stats::default() };
+        stats.ibc_required.insert("recover_client");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("recover_client", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("misbehaviour_confirmed", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
     }
 
     #[test]
