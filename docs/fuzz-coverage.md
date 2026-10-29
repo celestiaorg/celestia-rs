@@ -448,8 +448,12 @@ proposal (`GOV proposal_passed`), not per type.
   an ICA channel can close). Successful `MsgChannelUpgradeAck` is not a
   reachable handler path in celestia-app: it enables the ICA host but not
   the controller, and the host rejects controller-side init / ack. A code-0
-  Ack with a failure response and error receipt would not establish a
-  successful handshake. The mock now executes `MsgPruneAcknowledgements`
+  Ack with a failure response and error receipt does not establish a
+  successful handshake. The mock now supplies valid Ack proofs after Try and
+  requires the decoded code-0 FAILURE response plus the matching ICA host
+  callback error event, exercising that abort and error-receipt path without
+  granting handshake-success credit. It also
+  executes `MsgPruneAcknowledgements`
   after a completed host-channel upgrade; pinned v9 and v10 300-block
   regressions reached five and six successful executions with zero
   mismatches. The table above predates that change and needs regeneration.

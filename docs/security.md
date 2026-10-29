@@ -438,6 +438,13 @@ one. `DELIVER_STATS` retains the requirements, while the `TYPE` lines retain
 the observed per-type counts. This keeps a clean differential from receiving coverage
 credit when the required handler was only submitted, rejected by `CheckTx`, or
 failed during execution.
+`DELIVER_IBC_ACK_FAILURE_REQUIRE=1` additionally requires `DELIVER_IBC`, a
+decoded code-0 `MsgChannelUpgradeAck` FAILURE response and the same result's
+matching ICA host callback error event. The mock supplies valid counterparty
+channel and upgrade proofs after a host-side Try; Celestia's host-only ICA
+callback then aborts the Ack, writes the error receipt and returns FAILURE. A
+successful transaction code or an unrelated Ack failure cannot satisfy this
+contract or be reported as a successful Ack handshake.
 
 The standalone Go decoding oracles also construct an in-memory App, whose
 upgrade keeper reads on-disk metadata at startup. Each oracle therefore uses

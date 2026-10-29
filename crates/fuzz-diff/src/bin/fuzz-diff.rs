@@ -559,6 +559,8 @@ fn main() -> anyhow::Result<()> {
                 "gov_required": st.gov_required,
                 "gov_executed": st.gov_executed,
                 "type_required": st.type_required,
+                "ibc_ack_failure_required": st.ibc_ack_failure_required,
+                "ibc": st.ibc,
                 "gov_failure_required": st.gov_failure_required,
                 "gov_failure_matches": st.gov_failure_matches,
                 "hl_verification": st.hl_verification,
@@ -593,6 +595,7 @@ fn main() -> anyhow::Result<()> {
         st.require_hl_coverage()?;
         st.require_gov_coverage()?;
         st.require_type_coverage()?;
+        st.require_ibc_coverage()?;
         return Ok(());
     }
     if argv.get(1).map(String::as_str) == Some("record") {

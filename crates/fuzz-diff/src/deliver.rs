@@ -165,6 +165,9 @@ pub struct Stats {
     pub gov_failure_matches: u64,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
+    /// Require a code-0 channel-upgrade Ack FAILURE response with the matching
+    /// callback error after the host aborts the otherwise valid proof path.
+    pub ibc_ack_failure_required: bool,
     /// Selected `DELIVER_HL` ISM.
     pub hl_verification: Option<String>,
     /// Successful collateral / synthetic transfers verified by that ISM.
@@ -1307,6 +1310,24 @@ impl Stats {
             anyhow::ensure!(
                 successful > 0,
                 "incomplete DELIVER_TYPE_REQUIRE coverage: no successful {required} transaction"
+            );
+        }
+        Ok(())
+    }
+
+    /// A successful transaction alone is insufficient for channel-upgrade
+    /// Ack coverage: ibc-go uses code 0 for both SUCCESS and FAILURE. Require
+    /// the decoded failure response and matching callback error observed by
+    /// the mock driver.
+    pub fn require_ibc_coverage(&self) -> anyhow::Result<()> {
+        if self.ibc_ack_failure_required {
+            anyhow::ensure!(
+                self.ibc
+                    .get("chan_upgrade_ack_failure")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_ACK_FAILURE_REQUIRE coverage: no attributed code-0 MsgChannelUpgradeAck FAILURE response"
             );
         }
         Ok(())
@@ -3630,6 +3651,12 @@ pub fn run(
         "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
     );
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
+    let ibc_on = std::env::var("DELIVER_IBC").is_ok();
+    let ibc_ack_failure_required = std::env::var_os("DELIVER_IBC_ACK_FAILURE_REQUIRE").is_some();
+    anyhow::ensure!(
+        !ibc_ack_failure_required || ibc_on,
+        "DELIVER_IBC_ACK_FAILURE_REQUIRE requires DELIVER_IBC"
+    );
     let required = std::env::var_os("DELIVER_GOV_REQUIRE")
         .map(|v| {
             v.into_string()
@@ -3715,6 +3742,7 @@ pub fn run(
         gov_required,
         gov_failure_required,
         type_required,
+        ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
         hl_rejection_cases: if hl_reject {
@@ -3997,9 +4025,7 @@ pub fn run(
     // the message handlers (store access order and iterator charges).
     let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
     // A mock IBC counterparty driving the IBC success paths.
-    let mut ibc = std::env::var("DELIVER_IBC")
-        .is_ok()
-        .then(crate::ibcmock::Driver::default);
+    let mut ibc = ibc_on.then(crate::ibcmock::Driver::default);
     // The relayer: the last single-key fuzz account.
     let relayer = ACCOUNTS - 1;
     let mut script = match script_path {
@@ -6674,6 +6700,24 @@ mod tests {
         assert!(allow_postupgrade_hl(Some("governance-fixture"), false, true).is_err());
         assert!(allow_postupgrade_hl(Some("governance-fixture"), true, false).is_err());
         assert!(allow_postupgrade_hl(Some("governance-fixture"), true, true).unwrap());
+    }
+
+    #[test]
+    fn required_ibc_ack_failure_needs_the_decoded_failure_response() {
+        let mut stats = Stats {
+            ibc_ack_failure_required: true,
+            ..Stats::default()
+        };
+        // A code-0 Ack transaction without response attribution is not
+        // handshake or negative-path coverage.
+        stats.per_type.insert(
+            "/ibc.core.channel.v1.MsgChannelUpgradeAck".into(),
+            (1, 1, 0),
+        );
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("chan_upgrade_ack_failure", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
     }
 
     #[test]
