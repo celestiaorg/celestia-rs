@@ -1,5 +1,5 @@
 //! Real-App upgrade recovery from authenticated Go blocks. These are
-//! controlled close/reopen boundaries, not SIGKILL or power-loss tests.
+//! controlled reopen and Unix SIGKILL boundaries; they do not model power loss.
 
 // Integration-test helpers should fail immediately on poisoned test locks
 // or missing oracle results, just like assertions in the test itself.
@@ -160,13 +160,19 @@ struct Calls {
     committed: Vec<i64>,
 }
 
-/// Forward every request unchanged. A test-only failure is returned AFTER
-/// a successful real Commit, so the executor cannot save consensus state.
+enum Interruption {
+    Error(i64),
+    #[cfg(unix)]
+    Kill(i64, std::path::PathBuf),
+}
+
+/// Forward every request unchanged; interrupt AFTER the real Commit so
+/// the executor cannot save consensus state.
 struct Adapter {
     app: Arc<Mutex<App>>,
     expected: Arc<BTreeMap<i64, Expected>>,
     calls: Arc<Mutex<Calls>>,
-    interrupt: Option<i64>,
+    interrupt: Option<Interruption>,
     height: i64,
 }
 
@@ -231,8 +237,13 @@ impl AppConn for Adapter {
             .commit()
             .map_err(|e| nodestore::Error::new(e.log))?;
         self.calls.lock().unwrap().committed.push(self.height);
-        if self.interrupt == Some(self.height) {
-            return Err(nodestore::Error::new(INJECTED));
+        match &self.interrupt {
+            Some(Interruption::Error(h)) if *h == self.height => {
+                return Err(nodestore::Error::new(INJECTED));
+            }
+            #[cfg(unix)]
+            Some(Interruption::Kill(h, marker)) if *h == self.height => abrupt::kill(marker),
+            _ => {}
         }
         Ok(response)
     }
@@ -250,12 +261,12 @@ impl Node {
         home: &Path,
         backend: BackendKind,
         fixture: &Fixture,
-        interrupt: Option<i64>,
+        interrupt: Option<Interruption>,
     ) -> anyhow::Result<Self> {
         let db = DbOptions {
             backend,
+            sync_writes: true,
             cache_size: 8 << 20,
-            ..Default::default()
         };
         let opts = AppOptions {
             chain_id: Some(fixture.genesis.chain_id.clone()),
@@ -333,6 +344,16 @@ impl Node {
 
 #[test]
 fn real_app_upgrade_recovers_persisted_block_and_state_stores() -> anyhow::Result<()> {
+    recovery_matrix(false)
+}
+
+#[cfg(unix)]
+#[test]
+fn real_app_upgrade_recovers_after_sigkill() -> anyhow::Result<()> {
+    recovery_matrix(true)
+}
+
+fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
     let fixture = Fixture::load()?;
     for &backend in BackendKind::ALL {
         let reference_home = tempfile::tempdir()?;
@@ -351,7 +372,15 @@ fn real_app_upgrade_recovers_persisted_block_and_state_stores() -> anyhow::Resul
         assert_eq!(infos[switch].app_version, 10);
         for checkpoint in [fixture.upgrade - 1, fixture.upgrade, fixture.upgrade + 1] {
             for after_commit in [false, true] {
-                recover_case(&fixture, backend, &states, &infos, checkpoint, after_commit)?;
+                recover_case(
+                    &fixture,
+                    backend,
+                    &states,
+                    &infos,
+                    checkpoint,
+                    after_commit,
+                    hard_kill,
+                )?;
             }
         }
     }
@@ -365,40 +394,36 @@ fn recover_case(
     infos: &[abci::ResponseInfo],
     checkpoint: i64,
     after_commit: bool,
+    hard_kill: bool,
 ) -> anyhow::Result<()> {
     let case = format!("{backend} h={checkpoint} after_commit={after_commit}");
     let home = tempfile::tempdir()?;
-    let mut node = Node::open(
-        home.path(),
-        backend,
-        fixture,
-        after_commit.then_some(checkpoint),
-    )?;
-    node.recover(&fixture.genesis)?;
     let index = usize::try_from(checkpoint - fixture.genesis.initial_height)?;
-    for frame in &fixture.blocks[..index] {
-        node.apply(frame)?;
+    if hard_kill {
+        #[cfg(unix)]
+        abrupt::spawn(home.path(), backend, checkpoint, after_commit)?;
+    } else {
+        let node = populate_interrupted(
+            home.path(),
+            fixture,
+            backend,
+            checkpoint,
+            after_commit,
+            false,
+        )?;
+        assert_eq!(node.exec.block_store.height(), checkpoint, "{case}");
+        assert_eq!(
+            node.exec.state_store.load()?.unwrap().last_block_height,
+            checkpoint - 1,
+            "{case}"
+        );
+        assert_eq!(
+            node.app.lock().unwrap().info(),
+            infos[index + usize::from(after_commit)],
+            "{case}"
+        );
+        drop(node); // close App AND both node databases before opening any again
     }
-    let (mut block, id) = node.save(&fixture.blocks[index])?;
-    if after_commit {
-        let error = node
-            .exec
-            .apply_block(&node.state, id, &mut block, now())
-            .unwrap_err();
-        assert!(error.to_string().contains(INJECTED), "{case}: {error}");
-    }
-    assert_eq!(node.exec.block_store.height(), checkpoint, "{case}");
-    assert_eq!(
-        node.exec.state_store.load()?.unwrap().last_block_height,
-        checkpoint - 1,
-        "{case}"
-    );
-    assert_eq!(
-        node.app.lock().unwrap().info(),
-        infos[index + usize::from(after_commit)],
-        "{case}"
-    );
-    drop(node); // close App AND both node databases before opening any again
 
     let mut node = Node::open(home.path(), backend, fixture, None)?;
     assert_eq!(node.exec.block_store.height(), checkpoint, "{case}");
@@ -444,4 +469,150 @@ fn recover_case(
         );
     }
     Ok(())
+}
+
+fn populate_interrupted(
+    home: &Path,
+    fixture: &Fixture,
+    backend: BackendKind,
+    checkpoint: i64,
+    after_commit: bool,
+    hard_kill: bool,
+) -> anyhow::Result<Node> {
+    #[cfg(not(unix))]
+    assert!(!hard_kill, "SIGKILL requires Unix");
+    let case = format!("{backend} h={checkpoint} after_commit={after_commit}");
+    let mut node = Node::open(
+        home,
+        backend,
+        fixture,
+        after_commit.then(|| {
+            #[cfg(unix)]
+            if hard_kill {
+                return Interruption::Kill(checkpoint, home.join("injected-sigkill"));
+            }
+            Interruption::Error(checkpoint)
+        }),
+    )?;
+    node.recover(&fixture.genesis)?;
+    let index = usize::try_from(checkpoint - fixture.genesis.initial_height)?;
+    for frame in &fixture.blocks[..index] {
+        node.apply(frame)?;
+    }
+    let (mut block, id) = node.save(&fixture.blocks[index])?;
+    if after_commit {
+        let error = node
+            .exec
+            .apply_block(&node.state, id, &mut block, now())
+            .unwrap_err();
+        assert!(error.to_string().contains(INJECTED), "{case}: {error}");
+    }
+    #[cfg(unix)]
+    if hard_kill {
+        abrupt::kill(&home.join("injected-sigkill"));
+    }
+    Ok(node)
+}
+
+#[cfg(unix)]
+mod abrupt {
+    use super::*;
+    use std::os::unix::process::ExitStatusExt as _;
+    use std::process::{Child, Command};
+    use std::time::{Duration, Instant};
+
+    const HOME: &str = "CELESTIA_TEST_UPGRADE_CRASH_HOME";
+    const BACKEND: &str = "CELESTIA_TEST_UPGRADE_CRASH_BACKEND";
+    const HEIGHT: &str = "CELESTIA_TEST_UPGRADE_CRASH_HEIGHT";
+    const AFTER_COMMIT: &str = "CELESTIA_TEST_UPGRADE_CRASH_AFTER_COMMIT";
+
+    struct ChildGuard(Child);
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            if self.0.try_wait().ok().flatten().is_none() {
+                let _ = self.0.kill();
+            }
+            let _ = self.0.wait();
+        }
+    }
+
+    pub(super) fn kill(marker: &Path) -> ! {
+        // A marker plus the child's actual signal distinguishes this injection
+        // from a test panic or an early process failure. No DB handle is dropped.
+        std::fs::write(marker, b"before SIGKILL").expect("write injection marker");
+        Command::new("/bin/kill")
+            .args(["-KILL", &std::process::id().to_string()])
+            .status()
+            .expect("invoke SIGKILL");
+        std::process::abort();
+    }
+
+    pub(super) fn spawn(
+        home: &Path,
+        backend: BackendKind,
+        checkpoint: i64,
+        after_commit: bool,
+    ) -> anyhow::Result<()> {
+        let stdout_path = home.join("child.stdout");
+        let stderr_path = home.join("child.stderr");
+        let mut child = ChildGuard(
+            Command::new(std::env::current_exe()?)
+                .args(["--exact", "abrupt::child", "--nocapture"])
+                .env(HOME, home)
+                .env(BACKEND, backend.to_string())
+                .env(HEIGHT, checkpoint.to_string())
+                .env(AFTER_COMMIT, after_commit.to_string())
+                .stdout(std::fs::File::create(&stdout_path)?)
+                .stderr(std::fs::File::create(&stderr_path)?)
+                .spawn()?,
+        );
+        let started = Instant::now();
+        let timed_out = loop {
+            if child.0.try_wait()?.is_some() {
+                break false;
+            }
+            if started.elapsed() >= Duration::from_secs(60) {
+                child.0.kill()?;
+                break true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let status = child.0.wait()?;
+        let stdout = std::fs::read_to_string(stdout_path)?;
+        let stderr = std::fs::read_to_string(stderr_path)?;
+        anyhow::ensure!(
+            !timed_out,
+            "{backend} H={checkpoint} after_commit={after_commit}: child timed out; stdout={stdout} stderr={stderr}"
+        );
+        anyhow::ensure!(
+            status.signal() == Some(9),
+            "{backend} H={checkpoint} after_commit={after_commit}: child {status:?}\nstdout={stdout}\nstderr={stderr}"
+        );
+        anyhow::ensure!(
+            std::fs::read(home.join("injected-sigkill"))? == b"before SIGKILL",
+            "missing SIGKILL injection marker"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn child() -> anyhow::Result<()> {
+        let Some(home) = std::env::var_os(HOME) else {
+            return Ok(());
+        };
+        let fixture = Fixture::load()?;
+        let backend = std::env::var(BACKEND)?.parse()?;
+        let checkpoint = std::env::var(HEIGHT)?.parse()?;
+        let after_commit = std::env::var(AFTER_COMMIT)?.parse()?;
+        let _node = populate_interrupted(
+            Path::new(&home),
+            &fixture,
+            backend,
+            checkpoint,
+            after_commit,
+            true,
+        )?;
+        anyhow::bail!("child returned without SIGKILL")
+    }
 }
