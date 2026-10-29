@@ -33,6 +33,7 @@ struct Fixture {
     genesis: GenesisDoc,
     blocks: Vec<(ctypes::Block, ctypes::Commit)>,
     expected: Arc<BTreeMap<i64, Expected>>,
+    validator_update: i64,
     upgrade: i64,
 }
 
@@ -109,6 +110,7 @@ impl Fixture {
                     .map(|_| h)
             })
             .ok_or_else(|| anyhow::anyhow!("missing v10 switch"))?;
+        let validator_update = validator_update_height(&genesis, &blocks, &expected, upgrade)?;
         anyhow::ensure!(
             blocks
                 .last()
@@ -128,9 +130,49 @@ impl Fixture {
             genesis,
             blocks,
             expected: Arc::new(expected),
+            validator_update,
             upgrade,
         })
     }
+}
+
+fn validator_update_height(
+    genesis: &GenesisDoc,
+    blocks: &[(ctypes::Block, ctypes::Commit)],
+    expected: &BTreeMap<i64, Expected>,
+    upgrade: i64,
+) -> anyhow::Result<i64> {
+    let updates: Vec<i64> = expected
+        .iter()
+        .filter_map(|(&h, e)| (!e.response.validator_updates.is_empty()).then_some(h))
+        .collect();
+    anyhow::ensure!(
+        updates.len() == 1,
+        "fixture must contain exactly one validator update, got {updates:?}"
+    );
+    let update = updates[0];
+    let block_at = |height: i64| -> anyhow::Result<&ctypes::Block> {
+        let index = usize::try_from(height - genesis.initial_height)?;
+        blocks
+            .get(index)
+            .map(|(block, _)| block)
+            .ok_or_else(|| anyhow::anyhow!("missing block at height {height}"))
+    };
+    let update_block = block_at(update)?;
+    let pending_block = block_at(update + 1)?;
+    let active_block = block_at(update + 2)?;
+    anyhow::ensure!(
+        update_block.header.next_validators_hash != pending_block.header.next_validators_hash
+            && update_block.header.validators_hash == pending_block.header.validators_hash
+            && pending_block.header.validators_hash != pending_block.header.next_validators_hash
+            && active_block.header.validators_hash == pending_block.header.next_validators_hash,
+        "fixture does not record the validator update's H+1/H+2 hash transition"
+    );
+    anyhow::ensure!(
+        update + 2 < upgrade,
+        "validator update activation must precede the upgrade"
+    );
+    Ok(update)
 }
 
 /// Compare consensus results; Go's diagnostic logs/events are not hashed.
@@ -353,6 +395,13 @@ fn real_app_upgrade_recovers_after_sigkill() -> anyhow::Result<()> {
     recovery_matrix(true)
 }
 
+struct Reference {
+    states: Vec<Vec<u8>>,
+    validator_change_heights: Vec<i64>,
+    infos: Vec<abci::ResponseInfo>,
+    validators: BTreeMap<i64, Vec<u8>>,
+}
+
 fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
     let fixture = Fixture::load()?;
     for &backend in BackendKind::ALL {
@@ -360,23 +409,44 @@ fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
         let mut reference = Node::open(reference_home.path(), backend, &fixture, None)?;
         assert_eq!(reference.recover(&fixture.genesis)?, 0);
         let mut states = vec![reference.state.bytes()?];
+        let mut validator_change_heights = vec![reference.state.last_height_validators_changed];
         let mut infos = vec![reference.app.lock().unwrap().info()];
         for frame in &fixture.blocks {
             reference.apply(frame)?;
             states.push(reference.state.bytes()?);
+            validator_change_heights.push(reference.state.last_height_validators_changed);
             infos.push(reference.app.lock().unwrap().info());
         }
+        let last_height = reference.state.last_block_height;
+        let mut validators = BTreeMap::new();
+        for height in fixture.genesis.initial_height..=last_height + 2 {
+            let set = reference.exec.state_store.load_validators(height)?;
+            validators.insert(height, set.to_proto()?.encode_to_vec());
+        }
         drop(reference);
+        let reference = Reference {
+            states,
+            validator_change_heights,
+            infos,
+            validators,
+        };
         let switch = usize::try_from(fixture.upgrade)?;
-        assert_eq!(infos[switch - 1].app_version, 9);
-        assert_eq!(infos[switch].app_version, 10);
-        for checkpoint in [fixture.upgrade - 1, fixture.upgrade, fixture.upgrade + 1] {
+        assert_eq!(reference.infos[switch - 1].app_version, 9);
+        assert_eq!(reference.infos[switch].app_version, 10);
+        let checkpoints = [
+            fixture.validator_update,
+            fixture.validator_update + 1,
+            fixture.validator_update + 2,
+            fixture.upgrade - 1,
+            fixture.upgrade,
+            fixture.upgrade + 1,
+        ];
+        for checkpoint in checkpoints {
             for after_commit in [false, true] {
                 recover_case(
                     &fixture,
                     backend,
-                    &states,
-                    &infos,
+                    &reference,
                     checkpoint,
                     after_commit,
                     hard_kill,
@@ -390,8 +460,7 @@ fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
 fn recover_case(
     fixture: &Fixture,
     backend: BackendKind,
-    states: &[Vec<u8>],
-    infos: &[abci::ResponseInfo],
+    reference: &Reference,
     checkpoint: i64,
     after_commit: bool,
     hard_kill: bool,
@@ -419,7 +488,7 @@ fn recover_case(
         );
         assert_eq!(
             node.app.lock().unwrap().info(),
-            infos[index + usize::from(after_commit)],
+            reference.infos[index + usize::from(after_commit)],
             "{case}"
         );
         drop(node); // close App AND both node databases before opening any again
@@ -430,12 +499,22 @@ fn recover_case(
     assert_eq!(node.state.last_block_height, checkpoint - 1, "{case}");
     assert_eq!(
         node.app.lock().unwrap().info(),
-        infos[index + usize::from(after_commit)],
+        reference.infos[index + usize::from(after_commit)],
         "{case}"
     );
     assert_eq!(node.recover(&fixture.genesis)?, 1, "{case}");
-    assert_eq!(node.state.bytes()?, states[index + 1], "{case}");
-    assert_eq!(node.app.lock().unwrap().info(), infos[index + 1], "{case}");
+    assert_eq!(node.state.bytes()?, reference.states[index + 1], "{case}");
+    assert_eq!(
+        node.state.last_height_validators_changed,
+        reference.validator_change_heights[index + 1],
+        "{case} last_height_validators_changed"
+    );
+    assert_eq!(
+        node.app.lock().unwrap().info(),
+        reference.infos[index + 1],
+        "{case}"
+    );
+    assert_historical_validators(&node, &reference.validators, checkpoint + 2, &case)?;
     let expected_calls = if after_commit {
         vec![]
     } else {
@@ -460,13 +539,48 @@ fn recover_case(
     // would not exercise recovered transaction execution.
     for (i, frame) in fixture.blocks.iter().enumerate().skip(index + 1) {
         node.apply(frame)?;
-        assert_eq!(node.state.bytes()?, states[i + 1], "{case} next={}", i + 1);
         assert_eq!(
-            node.app.lock().unwrap().info(),
-            infos[i + 1],
+            node.state.bytes()?,
+            reference.states[i + 1],
             "{case} next={}",
             i + 1
         );
+        assert_eq!(
+            node.state.last_height_validators_changed,
+            reference.validator_change_heights[i + 1],
+            "{case} next={} last_height_validators_changed",
+            i + 1
+        );
+        assert_eq!(
+            node.app.lock().unwrap().info(),
+            reference.infos[i + 1],
+            "{case} next={}",
+            i + 1
+        );
+    }
+    assert_historical_validators(
+        &node,
+        &reference.validators,
+        node.state.last_block_height + 2,
+        &case,
+    )?;
+    Ok(())
+}
+
+fn assert_historical_validators(
+    node: &Node,
+    expected: &BTreeMap<i64, Vec<u8>>,
+    through: i64,
+    case: &str,
+) -> anyhow::Result<()> {
+    for height in 1..=through {
+        let got = node
+            .exec
+            .state_store
+            .load_validators(height)?
+            .to_proto()?
+            .encode_to_vec();
+        assert_eq!(got, expected[&height], "{case} validators h={height}");
     }
     Ok(())
 }
