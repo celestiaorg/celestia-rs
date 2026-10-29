@@ -219,6 +219,20 @@ fn rust_aminosign(app_version: u64, input: &[u8]) -> Out {
     }
 }
 
+struct RestoreAppVersion(u64);
+
+impl Drop for RestoreAppVersion {
+    fn drop(&mut self) {
+        sdk::version::set_app_version(self.0);
+    }
+}
+
+fn rust_consensus(app_version: u64, op: &str, input: &[u8]) -> Out {
+    let _restore = RestoreAppVersion(sdk::version::app_version());
+    sdk::version::set_app_version(app_version);
+    consensus::rust_out(op, input)
+}
+
 /// The Rust outcome of `op` on `input` at `app_version`. A Rust panic is
 /// reported in [`Out::panic`] with a `rust panic:` prefix (Go never reports
 /// that), so it always shows up as a difference.
@@ -231,7 +245,7 @@ pub fn rust_out(app_version: u64, op: &str, input: &[u8]) -> Out {
         "fibre" => rust_fibre(app_version, input),
         "aminosign" => rust_aminosign(app_version, input),
         "eds" => rust_eds(app_version, input),
-        op if op.starts_with("c_") => consensus::rust_out(op, input),
+        op if op.starts_with("c_") => rust_consensus(app_version, op, input),
         "amino_dec" => rust_amino(legacy_amino::tx_decode_amino_in(
             legacy_amino::Schema::for_app_version(app_version),
             input,

@@ -2,8 +2,8 @@
 # Nightly execution differentials (MILESTONES.md C1.2 / F1.1): runs one
 # shard of the `json_*`, `c_*` (consensus types, MILESTONES.md F1.7),
 # `exec`, `pp` and `deliver` harnesses against Go celestia-app v10.5.0 and
-# v9.0.8 (celestia-core v0.42.3), rotating scenarios, modes and flags with
-# the seed so that consecutive nights cover different combinations.
+# v9.0.8 (celestia-core v0.42.3 and v0.40.9 respectively), rotating scenarios,
+# modes and flags with the seed so consecutive nights cover different combinations.
 #
 # usage: crates/fuzz-diff/nightly.sh <job> <seed> [findings-dir]
 #   job: regressions | json | consensus | exec | pp | deliver-<k>of<n> | upgrade-<k>of<n> |
@@ -209,12 +209,18 @@ json)
   ;;
 consensus)
   # celestia-core's types (votes, proposals, headers, blocks, commits,
-  # validator sets and updates, params, evidence, part sets, signatures):
-  # the v10 oracle only (v9 runs the same celestia-core).
+  # validator sets and updates, params, evidence, part sets, signatures),
+  # checked against each app release's pinned celestia-core.
   OPS=c_vote,c_proposal,c_header,c_block,c_commit,c_valset,c_valupd,c_params,c_evidence,c_partset,c_ed25519,c_secp256k1,c_prop,c_secp256r1,c_ics23,c_groth16,c_vblock
-  t=$((BUDGET - 60))
-  run "consensus-s$SEED" "$t" -- "$FUZZ_DIFF" --app-version 10 --ops "$OPS" \
-    --iters 1000000000 --max-secs "$t" --seed "$SEED" --findings "$FINDINGS/consensus"
+  half=$((BUDGET / 2 - 60))
+  if [ "$half" -le 0 ]; then
+    echo "consensus budget must exceed 120 seconds" >&2
+    exit 2
+  fi
+  for v in 10 9; do
+    run "consensus-v$v-s$SEED" "$half" -- "$FUZZ_DIFF" --app-version "$v" --ops "$OPS" \
+      --iters 1000000000 --max-secs "$half" --seed "$SEED" --findings "$FINDINGS/consensus-v$v"
+  done
   ;;
 exec)
   # Rounds until the budget is spent: a new seed and mode per round, the
