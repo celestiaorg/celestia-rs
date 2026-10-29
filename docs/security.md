@@ -369,8 +369,9 @@ harness holds. Incoming transfers carry signed checkpoints; Merkle-root
 metadata also carries a valid membership proof. Each signed incoming tx
 sets its recipient token's ISM immediately before `MsgProcessMessage`, so
 other fuzz transactions cannot replace verification with a noop and still
-earn signed-coverage credit. `HL_VERIFIED` lines and `DELIVER_STATS` retain
-successful collateral and synthetic deliveries separately. A selected
+earn signed-coverage credit. `HL_VERIFIED` lines retain successful collateral
+and synthetic deliveries separately; `HL_VERIFIED_VERSION` and `DELIVER_STATS`
+also attribute them to the app version that finalized the message. A selected
 multisig mode exits nonzero if either success path was never reached,
 even when every Go/Rust rejection matched. Default `noop` behavior is
 preserved. Nightly hyperlane/zkism runs rotate all three modes independently
@@ -393,9 +394,20 @@ WIRE / SWEEP / RECHECK selection, without the rejection phase. The full
 campaign runs all three modes for each Hyperlane/zkism scenario, both with
 ordinary generation and with `DELIVER_GOVPASS` enabled, and distributes
 its twelve distinct upgrade seeds across all three modes. These selections
-are retained in each run's `.env`; signed success counters describe the
-whole run and do not alone establish successful delivery on both sides of
-the upgrade. Budget-skipped campaign cases still make the campaign fail.
+are retained in each run's `.env`. In a signed `DELIVER_UPGRADE` run, the
+harness reserves the scripted Hyperlane account from unrelated traffic and
+holds the upgrade signal until both incoming paths have succeeded at v9. The
+version-scoped counters fail the run if either pre-switch path is missing;
+post-switch counters remain separate evidence. Unrelated traffic continues on
+other accounts, preserving the upgrade driver's IBC and fuzzing schedule.
+Budget-skipped campaign cases still make the campaign fail.
+The existing duplicate-error-receipt governance fixture pins the original
+state timeline and sets
+`DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture`; that exact value is accepted
+only with both `DELIVER_SCRIPT` and `DELIVER_GOV_FAILURE_REQUIRE` in a signed
+upgrade run. It keeps the governance regression stable and cannot silently
+weaken ordinary signed campaigns. Its Hyperlane counts are not pre-upgrade
+coverage evidence; the separate signed upgrade regression below supplies that.
 Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
 upgrade driver's early fixture windows would silently weaken that campaign.
 
@@ -664,7 +676,10 @@ of the v9 grants, fees paid by the v9 allowances; every generated tx is
 also proposed unfiltered at `H..H+2`; late at v10 the fuzz validators take
 5/6 of the power and signal 10 / 9. `DELIVER_HL`, `DELIVER_IBC` (packets
 in flight across the switch), `DELIVER_WIRE` and `DELIVER_SWEEP` combine
-with it. Plus a live devnet with the real switch
+with it. When a signed Hyperlane ISM is selected, the driver first completes
+both collateral and synthetic incoming paths at v9 using its reserved account,
+then releases the held signal; this prevents post-switch successes from hiding
+a pre-switch coverage gap. Plus a live devnet with the real switch
 (`workloads/v9-upgrade-boundary.sh`, fixture replayed with full parity).
 
 Findings 68-72. Volumes after the fixes (24 runs, seeds 1-41, 0

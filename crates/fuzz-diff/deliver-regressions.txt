@@ -63,4 +63,8 @@ v9-hyperlane 300 8 940002 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_HL_REJ
 # errorsmod.Wrapf frame. Governance persists the panic text in failed_reason.
 # Delay the proposal to the triggering state, close expedited voting in the
 # next block, and require the exact Go frame so an earlier failure cannot pass.
-v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
+v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
+# Signed upgrade runs used to let unrelated mempool traffic consume the
+# scripted account sequence. Merkle-root synthetic delivery then succeeded only
+# after the binary switch, while whole-run counters hid the missing v9 path.
+v9-upgrade 100 6 930002 GO_APPD_NEXT=v10 DELIVER_UPGRADE=12 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
