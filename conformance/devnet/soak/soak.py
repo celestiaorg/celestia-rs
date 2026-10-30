@@ -24,6 +24,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cosmostx as ctx  # noqa: E402
+import provider  # noqa: E402
 
 EMPTY_HASH = hashlib.sha256(b"").hexdigest().upper()
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -272,6 +273,7 @@ class Soak:
         self.hashes_f = None
         if a.resume:
             self.load_state()
+        self.provider = provider.Workload(self)
         self.seg_start = now()
         self.seg_t0 = self.elapsed()
 
@@ -953,14 +955,21 @@ class Soak:
             # consecutive sequences meet the same check state; all nodes,
             # Go and Rust, receive load.
             nd = ups[((i - 1) % len(keys)) % len(ups)]
+            if self.provider.enabled and not self.provider.can_send(nd, k.address, acc):
+                self.stop.wait(0.1)
+                continue
             tx = ctx.sign_tx(k, self.chain_id, acc[0], acc[1], [ctx.msg_send(k.address, to, 1 + i % 997)], 120000, 3000)
             sequence = acc[1]
             try:
-                r = ctx.broadcast(nd.url, tx, timeout=5)
+                r = (self.provider.broadcast(nd, tx, i - 1) if self.provider.enabled
+                     else ctx.broadcast(nd.url, tx, timeout=5))
                 code = int(r.get("code", 0))
                 if code == 0:
                     acc[1] += 1
                     m["ok"] += 1
+                    if self.provider.enabled:
+                        with self.pending_lock:
+                            self.pending_txs.append((hashlib.sha256(tx).hexdigest().upper(), "bank", now(), nd.i))
                 else:
                     rk = f"{code}@n{nd.i}"  # code and the node that rejected
                     m["rejected"][rk] = m["rejected"].get(rk, 0) + 1
@@ -970,6 +979,8 @@ class Soak:
                         acc[1] = int(e.group(1))
             except Exception as error:
                 m["errors"] += 1
+                if self.provider.enabled:
+                    self.provider.block(k.address, sequence)
                 self.client_error(
                     "bank", "broadcast_tx_sync", error, nd,
                     address=k.address, recipient=to, account_number=acc[0], sequence=sequence,
@@ -2032,6 +2043,8 @@ class Soak:
         self.save_state()
         work = [self.monitor_loop, self.consistency_loop, self.bank_loop, self.pfb_loop, self.staking_loop,
                 self.gov_loop]
+        if self.provider.enabled:
+            work.append(self.provider.loop)
         if self.a.long:
             work += [self.authz_loop, self.utf8_loop, self.hyperlane_loop]
         if self.a.mem_sample:
@@ -2071,6 +2084,7 @@ class Soak:
                 if nd is not ref:
                     self.check_node(nd, limit=10**9)
         self.scan_logs()
+        self.provider.finalize()
         self.stop.set()
         self.done = True
         self.save_state()
@@ -2220,6 +2234,7 @@ class Soak:
               f"- hyperlane: {self.metrics['hyperlane']}", f"- utf8: {self.metrics['utf8']}",
               f"- precommit-delay stops: {self.metrics['precommit_stop']}", f"- signing refusals: {self.metrics['sign_refusals']}",
               f"- WAL: {self.metrics['wal']}", f"- disk: {self.metrics['disk']}", f"- rss: {self.metrics['rss']}",
+              f"- provider APIs: {self.metrics.get('provider', {'enabled': False})}",
               f"- stalls: {rep['stalls']}", f"- proposed by node: {rep['proposed_by_node']}", "",
               "| node | kind | restarts | state syncs | max RSS MB | disk MB | RSS growth (MB/h per lifetime) |",
               "|---|---|---|---|---|---|---|"]

@@ -34,6 +34,7 @@ def harness(url):
     run.max_height = 42
     run.metrics = {"bank": {"ok": 0, "rejected": {}, "errors": 0, "resyncs": 0}}
     run.stop = Stop()
+    run.provider = types.SimpleNamespace(enabled=False)
     run.events = io.StringIO()
     run.ev_lock = threading.Lock()
     node = types.SimpleNamespace(i=2, kind="rs", url=url)
