@@ -40,6 +40,17 @@ pub fn read_frame(s: &mut TcpStream) -> anyhow::Result<Vec<u8>> {
 
 /// One ABCI `Query` (+ flush) on an open connection.
 pub fn query(s: &mut TcpStream, req: &RequestQuery) -> anyhow::Result<ResponseQuery> {
+    query_response(s, req)?
+        .ok_or_else(|| anyhow::anyhow!("empty ABCI response envelope for {}", req.path))
+}
+
+/// One ABCI `Query` preserving an empty response envelope separately from
+/// a successful, default-valued `ResponseQuery`. Transport/decoding errors
+/// remain errors; the following Flush response is verified before reuse.
+pub fn query_response(
+    s: &mut TcpStream,
+    req: &RequestQuery,
+) -> anyhow::Result<Option<ResponseQuery>> {
     let q = Request {
         value: Some(request::Value::Query(req.clone())),
     };
@@ -49,9 +60,15 @@ pub fn query(s: &mut TcpStream, req: &RequestQuery) -> anyhow::Result<ResponseQu
     write_frame(s, &q.encode_to_vec())?;
     write_frame(s, &f.encode_to_vec())?;
     let r = Response::decode(read_frame(s)?.as_slice())?;
-    let _ = read_frame(s)?;
+    let flush = Response::decode(read_frame(s)?.as_slice())?;
+    anyhow::ensure!(
+        matches!(flush.value, Some(response::Value::Flush(_))),
+        "unexpected Flush response {:?}",
+        flush.value
+    );
     match r.value {
-        Some(response::Value::Query(q)) => Ok(q),
+        Some(response::Value::Query(q)) => Ok(Some(q)),
+        None => Ok(None),
         other => anyhow::bail!("unexpected response {other:?}"),
     }
 }
@@ -267,4 +284,116 @@ pub fn spawn_replaying_mock(exchanges: &[RpcExchange]) -> anyhow::Result<String>
         }
     });
     Ok(addr)
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::abci::ResponseFlush;
+
+    fn oracle(responses: Vec<Response>) -> (TcpStream, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        let task = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            for response in responses {
+                let _query = read_frame(&mut stream).unwrap();
+                let _flush = read_frame(&mut stream).unwrap();
+                write_frame(&mut stream, &response.encode_to_vec()).unwrap();
+                write_frame(
+                    &mut stream,
+                    &Response {
+                        value: Some(response::Value::Flush(ResponseFlush {})),
+                    }
+                    .encode_to_vec(),
+                )
+                .unwrap();
+            }
+        });
+        (stream, task)
+    }
+
+    #[test]
+    fn empty_envelope_is_distinct_from_success_and_connection_is_reusable() {
+        let (mut stream, task) = oracle(vec![
+            Response { value: None },
+            Response {
+                value: Some(response::Value::Query(ResponseQuery::default())),
+            },
+        ]);
+        let req = RequestQuery {
+            path: "/p2p/filter/other/x".into(),
+            ..Default::default()
+        };
+        assert_eq!(query_response(&mut stream, &req).unwrap(), None);
+        assert_eq!(
+            query_response(&mut stream, &req).unwrap(),
+            Some(ResponseQuery::default())
+        );
+        task.join().unwrap();
+    }
+
+    #[test]
+    fn strict_queries_and_exceptions_fail_instead_of_becoming_success() {
+        let (mut stream, task) = oracle(vec![Response { value: None }]);
+        let req = RequestQuery {
+            path: "/p2p/filter/other/x".into(),
+            ..Default::default()
+        };
+        assert!(
+            query(&mut stream, &req)
+                .unwrap_err()
+                .to_string()
+                .contains("empty ABCI response")
+        );
+        task.join().unwrap();
+        let (mut stream, task) = oracle(vec![Response {
+            value: Some(response::Value::Exception(
+                celestia_proto::celestia_core_proto::abci::ResponseException {
+                    error: "failure".into(),
+                },
+            )),
+        }]);
+        assert!(
+            query_response(&mut stream, &req)
+                .unwrap_err()
+                .to_string()
+                .contains("failure")
+        );
+        task.join().unwrap();
+    }
+
+    #[test]
+    fn broken_flush_is_a_recording_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        let task = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_frame(&mut stream).unwrap();
+            read_frame(&mut stream).unwrap();
+            for _ in 0..2 {
+                write_frame(
+                    &mut stream,
+                    &Response {
+                        value: Some(response::Value::Query(ResponseQuery::default())),
+                    }
+                    .encode_to_vec(),
+                )
+                .unwrap();
+            }
+        });
+        assert!(
+            query_response(&mut stream, &RequestQuery::default())
+                .unwrap_err()
+                .to_string()
+                .contains("unexpected Flush")
+        );
+        task.join().unwrap();
+    }
 }

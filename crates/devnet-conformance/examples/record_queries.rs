@@ -19,7 +19,9 @@ use std::net::TcpStream;
 
 use abci_server::record::{Direction, parse};
 use celestia_proto::celestia_core_proto::abci::{Request, RequestQuery, Response, request};
-use devnet_conformance::querycorpus::net::{http_get, query, read_frame, write_frame};
+use devnet_conformance::querycorpus::net::{
+    http_get, query, query_response, read_frame, write_frame,
+};
 use devnet_conformance::querycorpus::{
     AbciCase, AbciResponse, Corpus, RestCase, requests::Builder, rest_url,
 };
@@ -74,7 +76,7 @@ fn main() -> anyhow::Result<()> {
     );
     let mut qs = TcpStream::connect(addr.as_str())?;
     qs.set_nodelay(true)?;
-    let mut querier = |req: &RequestQuery| query(&mut qs, req).unwrap_or_default();
+    let mut querier = |req: &RequestQuery| query(&mut qs, req);
     let mut b = Builder::new(&mut querier, last_height);
     b.build();
     b.txs(&txs);
@@ -116,18 +118,18 @@ fn main() -> anyhow::Result<()> {
             false,
         );
     }
-    let reqs = std::mem::take(&mut b.reqs);
-    drop(b);
+    let reqs = b.finish()?;
     eprintln!("{} ABCI requests", reqs.len());
     let mut abci = Vec::with_capacity(reqs.len());
     for req in &reqs {
-        let resp = querier(req);
+        let resp = query_response(&mut qs, req)?;
         abci.push(AbciCase {
             path: req.path.clone(),
             data: hex::encode(&req.data),
             height: req.height,
             prove: req.prove,
-            response: AbciResponse::from(&resp),
+            missing_response: resp.is_none(),
+            response: resp.as_ref().map(AbciResponse::from).unwrap_or_default(),
         });
     }
     let mid = last_height / 2;
