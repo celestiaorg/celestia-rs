@@ -1,0 +1,157 @@
+# Current-release RPC evidence
+
+This directory is the evidence ledger for [#181](https://github.com/celestiaorg/celestia-rs/issues/181)
+and its provider compatibility issues. It separates source declarations, historical
+regression fixtures, and admitted current-release comparisons. **A green inventory
+check does not establish provider readiness.**
+
+The selected oracle is celestia-app v10.5.0 at
+`6013e758d5dceb75827ad191c8d739d7c43cfa04`, celestia-core v0.42.3 and
+Cosmos SDK v0.52.12. Recheck an active mainnet node before each fresh isolated
+capture. Record the actual compiler; do not substitute the `go` language version
+from `go.mod` for the binary's toolchain. Issue #181 originally used Go 1.26.6;
+the repository's oracle build scripts now select Go 1.26.9. Evidence must state
+that difference rather than attributing a new capture to the older compiler.
+
+## Offline inventory and CI
+
+From the repository root:
+
+```sh
+python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
+python3 conformance/mainnet-rpc/coverage.py --json /tmp/rpc-coverage.json
+python3 conformance/mainnet-rpc/coverage.py --run-current
+```
+
+These commands perform no fresh network capture. The CI `rpc-evidence` job
+validates the ledger and runs the exact regression selectors registered by
+admitted current-release manifests. It rejects a selector that selects zero
+tests. With no admitted manifests it explicitly reports zero current-release
+regressions, not a parity pass. Existing workspace tests retain their separate
+regression role.
+
+`policy.json` identifies every remaining behavior area and issue, and lists
+comparison policies, known mismatches and exclusions separately. The JSON
+inventory enumerates:
+
+- Comet URI, JSON-RPC and WebSocket declarations from `rpc/src/env.rs`, including
+  the optional unsafe routes; subscriptions are WebSocket-only.
+- Core gRPC handler paths from `rpc/src/grpc.rs`.
+- Cosmos unary descriptor candidates from generated `services.rs` and REST
+  binding candidates after the gateway's exclusion list.
+- Both streaming reflection versions on both listener types as required
+  registration checks, even when the unary method table cannot represent them.
+
+A descriptor candidate is **not** proof that Go or the production RS listener
+registers the service. A registration check may establish that a version or
+service is intentionally absent; an unknown-service error is evidence to capture,
+not permission to expose the service. For each endpoint, `unassessed_behaviors`
+means the behavior's applicability and coverage still need review. It does not
+assert every behavior applies to every endpoint. Case counts never imply branch
+completeness.
+
+The committed RPC v10.4.0 and query v9/v10.4 corpora remain regression-only.
+The inventory records their original metadata and hashes and identifies missing
+capture provenance instead of filling it with today's dependency versions.
+The tracking issue's unpublished `codex/rpc-provider-compatibility` work and
+v10.5 fixtures were not present on `main` when this ledger was introduced;
+none of their reported results are admitted by this ledger.
+
+## Fresh oracle selection and capture
+
+Oracle selection is a separate, explicit read-only network operation:
+
+```sh
+python3 conformance/mainnet-rpc/observe-mainnet.py \
+  --endpoint https://rpc.celestia.pops.one \
+  --out /tmp/mainnet-observation.json
+```
+
+This records the raw `/status` and `/abci_info` bodies with hashes and time,
+checks chain ID `celestia`, and refuses a version different from policy. It does
+not submit transactions or establish provider parity. If the active version
+changes, review the release commit, dependencies, compiler, capture tooling and
+policy before selecting a new oracle. Keep old evidence under its original
+identity; do not relabel it. The capture must follow the observation within 24
+hours; longer campaigns need a fresh observation before a new capture batch.
+
+Run oracle and candidate nodes only in isolated local devnets. Use the same
+genesis and workload, confirm chain ID, committed height and app hash, and record
+requests and responses through real listeners. Capture statuses, stable headers,
+metadata, frames and terminal errors as well as response bodies. Record failures
+without inventing empty successful responses. Do not use public mainnet as the
+transaction, malformed-input or resource-pressure test target.
+
+Add a manifest to `policy.json`'s `current_evidence` list only after the
+regression exists. Each manifest uses the following fields:
+
+```json
+{
+  "oracle": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+    "cosmos_sdk": "v0.52.12",
+    "cosmos_sdk_commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+    "compiler": "go1.26.9",
+    "build_tags": []
+  },
+  "binary_sha256": {"go": "<SHA-256>", "rs": "<SHA-256>"},
+  "inputs": {
+    "genesis": {"path": "<repo-relative file>", "sha256": "<SHA-256>"},
+    "workload": {"path": "<repo-relative file>", "sha256": "<SHA-256>"},
+    "capture_source": {"path": "<repo-relative file>", "sha256": "<SHA-256>"},
+    "mainnet_observation": {"path": "<repo-relative file>", "sha256": "<SHA-256>"}
+  },
+  "matched_state": {
+    "go": {"chain_id": "<local chain>", "height": 20, "app_hash": "<64 hex digits>"},
+    "rs": {"chain_id": "<same chain>", "height": 20, "app_hash": "<same hash>"}
+  },
+  "capture_command": "<reproducible isolated capture command>",
+  "captured_at": "<ISO 8601 time with timezone>",
+  "cases": [{
+    "transport": "comet-uri",
+    "endpoint": "status",
+    "behavior": "runtime-identity",
+    "comparison": "exact",
+    "outcome": "exact",
+    "request": {"path": "<request artifact>", "sha256": "<SHA-256>"},
+    "go_response": {"path": "<complete Go response artifact>", "sha256": "<SHA-256>"},
+    "rs_response": {"path": "<complete RS response artifact>", "sha256": "<SHA-256>"},
+    "test": {"package": "rpc", "target": "<integration test>", "filter": "<exact test name>", "source": "<test source file>"}
+  }]
+}
+```
+
+The placeholders above are documentation, not valid evidence. Paths must resolve
+to committed repository files; binary hashes record build identities without
+committing binaries. Commit the capture source, public inputs and responses,
+never private validator keys or local node databases. The capture command/source
+must preserve all source and build flags needed to reproduce those binaries.
+For non-exact cases use outcome `normalized`, `mismatch`, or `excluded`, record a
+specific `reason`, and select a documented comparison policy. New semantic
+normalizations need their own narrow policy and linked issue. Exact comparisons
+may record mismatches; they must not be relabelled normalized successes.
+
+## Provider readiness review
+
+The ledger always reports readiness as not established. A maintainer must assess
+complete behavior coverage and accepted deviations before changing that claim.
+The review requires:
+
+- Current oracle identity, reproducible input/capture provenance and actual Go/RS
+  listener registration on every transport.
+- Success/error contracts over populated state, including historical/proof and
+  pagination branches, with committed-root and matched-height verification.
+- Transaction admission/inclusion/failure, subscription lifecycle, default/custom
+  operator limits, cancellation, bounded allocation and capacity recovery.
+- Persistent restart/pruning/index/catch-up cases and narrow, explicit dynamic
+  field and build-identity policies.
+- Full relevant regression validation and a bounded all-API mixed-node soak with
+  classified client failures, hashes, progress, resources and excluded scenarios.
+- Each issue #182–#192 satisfied by reviewable evidence, and a distinction between
+  local changes, merged code and released behavior.
+
+Until then, green samples, source declarations and ledger validation remain
+scoped evidence, not a promise of universal provider equivalence.
