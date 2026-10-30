@@ -38,11 +38,10 @@ impl tonic::server::ServerStreamingService<Vec<u8>> for Parts {
 }
 async fn handle(State(limits): State<Limits>, req: Request<Body>) -> Response<Body> {
     let streaming = req.uri().path().ends_with("/Parts");
-    let mut grpc = limits.grpc();
     if streaming {
-        grpc_transport::response(grpc.server_streaming(Parts, req).await)
+        grpc_transport::response(limits.streaming_grpc().server_streaming(Parts, req).await)
     } else {
-        grpc_transport::response(grpc.unary(Echo, req).await)
+        grpc_transport::response(limits.grpc().unary(Echo, req).await)
     }
 }
 async fn client(
@@ -150,7 +149,7 @@ async fn streaming_limit_is_per_message_and_preserves_prior_frames() {
     assert_eq!(status.code(), tonic::Code::ResourceExhausted);
     assert_eq!(
         status.message(),
-        "grpc: trying to send message larger than max (33 vs. 32)"
+        "trying to send message larger than max (33 vs. 32)"
     );
     server.abort();
 }

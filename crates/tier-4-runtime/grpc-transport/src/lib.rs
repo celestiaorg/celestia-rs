@@ -51,9 +51,23 @@ impl Limits {
     /// A raw-protobuf server with allocation checked before message decoding.
     #[must_use]
     pub fn grpc(self) -> tonic::server::Grpc<RawCodec> {
-        tonic::server::Grpc::new(RawCodec::new(self))
-            .max_decoding_message_size(self.max_receive)
-            .max_encoding_message_size(self.max_send)
+        self.server(false)
+    }
+
+    /// A streaming server. grpc-go's stream send-limit message omits the unary
+    /// handler's `grpc: ` prefix; receive limits are identical for both.
+    #[must_use]
+    pub fn streaming_grpc(self) -> tonic::server::Grpc<RawCodec> {
+        self.server(true)
+    }
+
+    fn server(self, streaming: bool) -> tonic::server::Grpc<RawCodec> {
+        tonic::server::Grpc::new(RawCodec {
+            limits: self,
+            streaming,
+        })
+        .max_decoding_message_size(self.max_receive)
+        .max_encoding_message_size(self.max_send)
     }
 }
 
@@ -67,13 +81,17 @@ impl Default for Limits {
 #[derive(Debug, Clone, Copy)]
 pub struct RawCodec {
     limits: Limits,
+    streaming: bool,
 }
 
 impl RawCodec {
     /// Construct a codec with per-message limits.
     #[must_use]
     pub const fn new(limits: Limits) -> Self {
-        Self { limits }
+        Self {
+            limits,
+            streaming: false,
+        }
     }
 }
 
@@ -87,6 +105,7 @@ impl Default for RawCodec {
 #[derive(Debug, Clone, Copy)]
 pub struct RawCoder {
     max_send: usize,
+    streaming: bool,
 }
 
 impl Encoder for RawCoder {
@@ -104,8 +123,9 @@ impl Encoder for RawCoder {
         // Check before copying into tonic's output buffer, including streaming
         // responses. grpc-go also marshals before checking its send limit.
         if item.len() > self.max_send {
+            let prefix = if self.streaming { "" } else { "grpc: " };
             return Err(Status::resource_exhausted(format!(
-                "grpc: trying to send message larger than max ({} vs. {})",
+                "{prefix}trying to send message larger than max ({} vs. {})",
                 item.len(),
                 self.max_send
             )));
@@ -136,11 +156,13 @@ impl Codec for RawCodec {
     fn encoder(&mut self) -> RawCoder {
         RawCoder {
             max_send: self.limits.max_send,
+            streaming: self.streaming,
         }
     }
     fn decoder(&mut self) -> RawCoder {
         RawCoder {
             max_send: self.limits.max_send,
+            streaming: self.streaming,
         }
     }
 }
@@ -170,7 +192,18 @@ fn normalize(headers: &mut HeaderMap) {
         // tonic 0.12.3 wraps Encoder errors in Internal after formatting their
         // Status. Match only our own numeric send-limit error. Checking in the
         // encoder prevents allocating a second oversized message buffer.
-        let Some(rest) = status.message().strip_prefix("Error encoding: status: ResourceExhausted, message: \"grpc: trying to send message larger than max (") else { return };
+        let Some(rest) = status
+            .message()
+            .strip_prefix("Error encoding: status: ResourceExhausted, message: \"")
+        else {
+            return;
+        };
+        let (prefix, rest) = rest
+            .strip_prefix("grpc: ")
+            .map_or(("", rest), |rest| ("grpc: ", rest));
+        let Some(rest) = rest.strip_prefix("trying to send message larger than max (") else {
+            return;
+        };
         let Some((sent, rest)) = rest.split_once(" vs. ") else {
             return;
         };
@@ -180,7 +213,7 @@ fn normalize(headers: &mut HeaderMap) {
         let (Ok(sent), Ok(max)) = (sent.parse::<usize>(), max.parse::<usize>()) else {
             return;
         };
-        format!("grpc: trying to send message larger than max ({sent} vs. {max})")
+        format!("{prefix}trying to send message larger than max ({sent} vs. {max})")
     } else {
         return;
     };
