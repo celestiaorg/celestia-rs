@@ -984,7 +984,9 @@ class Soak:
                 self.client_error(
                     "bank", "broadcast_tx_sync", error, nd,
                     address=k.address, recipient=to, account_number=acc[0], sequence=sequence,
-                    tx_hash=hashlib.sha256(tx).hexdigest().upper(), tx_bytes=len(tx), timeout_s=5,
+                    tx_hash=hashlib.sha256(tx).hexdigest().upper(), tx_bytes=len(tx),
+                    timeout_s=10 if self.provider.enabled else 5,
+                    transport=provider.TRANSPORTS[(i - 1) % len(provider.TRANSPORTS)] if self.provider.enabled else "jsonrpc",
                 )
             if now() - last_resync > 60:
                 last_resync = now()
