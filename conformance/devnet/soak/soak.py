@@ -290,6 +290,34 @@ class Soak:
         self.failures.append(f"[t={self.elapsed():.0f}s h={self.max_height}] {msg}")
         self.event("FAIL", msg=msg)
 
+    def client_error(self, category, operation, error, nd, **context):
+        """Retain bounded first/latest diagnostics; every occurrence reaches events.log.
+
+        A client exception is evidence to investigate, not an attribution to a
+        node fault. Context contains public addresses and transaction hashes,
+        never account keys or signed transaction bodies.
+        """
+        kind = f"{type(error).__module__}.{type(error).__qualname__}"
+        sample = {
+            "t": round(self.elapsed(), 1), "h": self.max_height,
+            "node": nd.i if nd is not None else None,
+            "node_kind": nd.kind if nd is not None else None,
+            "endpoint": nd.url if nd is not None else None,
+            "category": category, "operation": operation,
+            "exception_type": kind, "message": str(error)[:4096],
+            "traceback": "".join(traceback.format_exception(error))[-8192:],
+            **context,
+        }
+        # Category/operation come from fixed workload call sites. Do not group
+        # by exception message, transaction, address, or node: those grow with
+        # the workload and would make persisted state unbounded.
+        key = f"{category}:{operation}"
+        summary = self.metrics.setdefault("client_errors", {}).setdefault(key, {"count": 0})
+        summary["count"] += 1
+        summary.setdefault("first", sample)
+        summary["last"] = sample
+        self.event("client-error", **sample)
+
     # ------------------------------------------------------------ persistence
     # A long soak runs in segments (`--resume` after the machine restarted
     # and killed every process): `state.json` carries the cumulative
@@ -901,11 +929,12 @@ class Soak:
             for k in keys:
                 if k.address in accs:
                     continue
+                nd = self.tx_node()
                 try:
-                    an, seq = ctx.query_account(self.tx_node().url, k.address)
+                    an, seq = ctx.query_account(nd.url, k.address)
                     accs[k.address] = [an, seq, now()]
-                except Exception:
-                    pass
+                except Exception as error:
+                    self.client_error("bank", "initial-account-query", error, nd, address=k.address)
             self.stop.wait(2)
         period = 1.0 / self.a.tx_rate
         nxt = now()
@@ -925,6 +954,7 @@ class Soak:
             # Go and Rust, receive load.
             nd = ups[((i - 1) % len(keys)) % len(ups)]
             tx = ctx.sign_tx(k, self.chain_id, acc[0], acc[1], [ctx.msg_send(k.address, to, 1 + i % 997)], 120000, 3000)
+            sequence = acc[1]
             try:
                 r = ctx.broadcast(nd.url, tx, timeout=5)
                 code = int(r.get("code", 0))
@@ -938,8 +968,13 @@ class Soak:
                     e = re.search(r"expected (\d+), got (\d+)", r.get("log", ""))
                     if code == 32 and e:
                         acc[1] = int(e.group(1))
-            except Exception:
+            except Exception as error:
                 m["errors"] += 1
+                self.client_error(
+                    "bank", "broadcast_tx_sync", error, nd,
+                    address=k.address, recipient=to, account_number=acc[0], sequence=sequence,
+                    tx_hash=hashlib.sha256(tx).hexdigest().upper(), tx_bytes=len(tx), timeout_s=5,
+                )
             if now() - last_resync > 60:
                 last_resync = now()
                 # Txs lost with a killed node leave sequence gaps that CheckTx
@@ -952,8 +987,8 @@ class Soak:
                         if accs[kk.address][1] - seq > 40:
                             accs[kk.address][1] = seq
                             m["resyncs"] += 1
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        self.client_error("bank", "account-resync", error, ref, address=kk.address)
             nxt += period
             d = nxt - now()
             if d > 0:
@@ -2173,7 +2208,8 @@ class Soak:
                 "disk_mb": round(du(f"{nd.home}/data") / 2**20), "checked_upto": nd.checked,
                 "rss_lifetimes": growth,
             })
-        json.dump(rep, open(f"{self.dir}/report.json", "w"), indent=1)
+        with open(f"{self.dir}/report.json", "w") as report:
+            json.dump(rep, report, indent=1)
         md = [f"# Soak report ({'final' if final else 'interim'})", "",
               f"- wall clock: {rep['elapsed_s'] / 3600:.2f} h, heights: {rep['heights']}, txs: {self.blocks['txs']}, "
               f"max block {self.blocks['max_bytes'] / 2**20:.1f} MiB, blocks > 8 MiB: {self.blocks['over_8mb']}",
@@ -2190,11 +2226,15 @@ class Soak:
         for n in rep["nodes"]:
             md.append(f"| {n['node']} | {n['kind']}{' val' if n['validator'] else ''} | {n['restarts']} | {n['statesyncs']} | "
                       f"{n['max_rss_mb']} | {n['disk_mb']} | {', '.join(str(g['slope_mb_per_h']) for g in n['rss_lifetimes'])} |")
+        md += ["", "## Client exceptions", "", "See events.log for every occurrence; these samples do not attribute node faults.", ""]
+        for operation, samples in sorted(self.metrics.get("client_errors", {}).items()):
+            md += [f"### {operation}", "", "```json", json.dumps(samples, indent=2), "```", ""]
         md += ["", "## Failures", ""] + [f"- {f}" for f in self.failures] + ["", "## Chaos", ""]
         md += [f"- {json.dumps(c)}" for c in self.metrics["chaos"]]
         md += ["", "## Valset cycles", ""] + [f"- {json.dumps(c)}" for c in self.metrics["valset"]]
         md += ["", "## Rust log warnings/errors (top)", ""] + [f"- {v} x {k}" for k, v in rep["log_hits"].items()]
-        open(f"{self.dir}/report.md", "w").write("\n".join(md) + "\n")
+        with open(f"{self.dir}/report.md", "w") as report:
+            report.write("\n".join(md) + "\n")
 
 
 def parse_rfc3339(ts):
