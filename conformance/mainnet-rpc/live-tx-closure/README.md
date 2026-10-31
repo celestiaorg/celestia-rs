@@ -86,7 +86,7 @@ disconnect, cancellation and timeout phase with monotonic time, transaction
 hash, local mempool size, status height and the complete transport response
 when a response exists. The verifier freezes the allowed transition sequence,
 links retries and inclusions to their original hashes, requires a distinct
-capacity probe and follow-up, and checks that all events occur inside the
+probe and follow-up for the dedicated capacity lifecycle, and checks that all events occur inside the
 receipt-bound node sampling interval. Listener PIDs, process samples and
 binary hashes must identify the same two processes within each generation.
 The controller compares the complete owned listener inventory, including P2P,
@@ -110,6 +110,14 @@ core-gRPC CheckTx result is decoded into the asserted success, mempool-full,
 duplicate or sequence/capacity outcome. Capacity B and every successful
 follow-up have paired indexed inclusion/result/post-state records that advance
 the state consumed by the next main case.
+
+The server-timeout lifecycle does not submit a second capacity probe. Its
+admission record already proves the timed-out transaction occupies the only
+effective slot. A transaction that passes application CheckTx and is then
+rejected by the mempool post-check can advance the application's volatile
+CheckTx sequence cache, which would contaminate the later restored-generation
+follow-up. The dedicated capacity lifecycle covers rejection and recovery
+without mixing that side effect into timeout cleanup.
 
 Admission records distinguish a hash observed in the mempool from the narrow
 race where it is already indexed at an exact later height. The latter must

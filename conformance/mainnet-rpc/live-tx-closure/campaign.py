@@ -41,7 +41,7 @@ ROLES = ("go", "rs")
 SEED_FILES = ("mainnet-observation.json", "build-receipts.json", "genesis.json", "configs.json", "blob-proxy.json")
 ENDPOINT_NAMES = {f"{role}_{kind}" for role in ROLES for kind in ("rpc", "core", "sdk", "rest", "p2p")}
 LIFECYCLE_INPUTS = {"mempool_followup", "disconnect_followup", "grpc_cancel_followup",
-                    "server_timeout_probe", "server_timeout_followup"}
+                    "server_timeout_followup"}
 CLIENT_FIELDS = {"transport", "wire", "http_status", "http_headers", "json", "grpc_status", "grpc_message",
                  "initial_metadata", "trailing_metadata", "websocket_frames", "websocket_handshake",
                  "client_error", "process_effect"}
@@ -1115,11 +1115,6 @@ def timeout_lifecycle_prefix(state: State, source: dict[str, Any], response: dic
               witnessed_event("timeout", "server-timeout", "timeout", digest, second_ms, pre_height, 1,
                               {side: response[side] for side in ROLES})]
     previous = second_ms
-    probe_bytes = harness.decode_blob(state.plan["lifecycle_inputs"]["server_timeout_probe"], "timeout capacity probe")
-    probe = paired_operation(state, probe_bytes, "core-grpc", "commit", "lifecycle-timeout-probe", 5000)
-    events.append(event(state, "timeout", "capacity-probe-rejected", "capacity-rejected", probe["digest"], probe,
-                        probe["receipts"], previous, expected_pool=1))
-    previous = events[-1]["go"]["monotonic_ms"]
     main = record_main_inclusion(state, source, response)
     events.append(event(state, "timeout", "tx-included", "included", digest, None, None, previous,
                         expected_pool=0, minimum_height=main["go"]["post_state"]["height"]))

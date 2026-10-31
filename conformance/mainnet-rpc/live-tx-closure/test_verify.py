@@ -208,7 +208,6 @@ def fixture(root: pathlib.Path) -> None:
         "mempool_followup": b"mempool-followup",
         "disconnect_followup": b"disconnect-followup",
         "grpc_cancel_followup": b"grpc-cancel-followup",
-        "server_timeout_probe": b"server-timeout-probe",
         "server_timeout_followup": b"server-timeout-followup",
     }
     lifecycle_indexed: dict[str, list[dict[str, object]]] = {
@@ -359,19 +358,19 @@ def fixture(root: pathlib.Path) -> None:
         "mempool_capacity": ["a-admitted", "b-rejected", "a-included", "b-retry-admitted", "b-included", "followup-succeeded", "mempool-empty"],
         "disconnect": ["request-written", "client-disconnected", "tx-included", "retry-observed", "followup-succeeded", "mempool-empty"],
         "grpc_cancel": ["request-started", "client-canceled", "tx-included", "retry-observed", "followup-succeeded", "mempool-empty"],
-        "server_timeout": ["request-started", "server-timeout", "capacity-probe-rejected", "tx-included", "retry-observed", "normal-config-restored", "followup-succeeded", "mempool-empty"],
+        "server_timeout": ["request-started", "server-timeout", "tx-included", "retry-observed", "normal-config-restored", "followup-succeeded", "mempool-empty"],
     }
     lifecycle_outcomes = {
         "mempool_capacity": ["admitted", "mempool-full", "included", "admitted", "included", "included", "empty"],
         "disconnect": ["written", "disconnected", "included", "duplicate", "included", "empty"],
         "grpc_cancel": ["started", "canceled", "included", "duplicate", "included", "empty"],
-        "server_timeout": ["started", "timeout", "capacity-rejected", "included", "duplicate", "restored", "included", "empty"],
+        "server_timeout": ["started", "timeout", "included", "duplicate", "restored", "included", "empty"],
     }
     lifecycle_mempools = {
         "mempool_capacity": [1, 1, 0, 1, 0, 0, 0],
         "disconnect": [0, 1, 0, 0, 0, 0],
         "grpc_cancel": [0, 1, 0, 0, 0, 0],
-        "server_timeout": [0, 1, 1, 0, 0, 0, 0, 0],
+        "server_timeout": [0, 1, 0, 0, 0, 0, 0],
     }
     request_hashes = {row["name"]: row["requests"]["go"]["sha256"] for row in input_cases}
     digest = lambda value: hashlib.sha256(value).hexdigest()
@@ -379,13 +378,13 @@ def fixture(root: pathlib.Path) -> None:
         "mempool_capacity": [digest(b"A" * 300), digest(b"B" * 300), digest(b"A" * 300), digest(b"B" * 300), digest(b"B" * 300), digest(lifecycle_input_bytes["mempool_followup"]), None],
         "disconnect": [request_hashes["comet-commit-disconnect"]] * 4 + [digest(lifecycle_input_bytes["disconnect_followup"]), None],
         "grpc_cancel": [request_hashes["core-grpc-cancel"]] * 4 + [digest(lifecycle_input_bytes["grpc_cancel_followup"]), None],
-        "server_timeout": [request_hashes["server-timeout"], request_hashes["server-timeout"], digest(lifecycle_input_bytes["server_timeout_probe"]), request_hashes["server-timeout"], request_hashes["server-timeout"], None, digest(lifecycle_input_bytes["server_timeout_followup"]), None],
+        "server_timeout": [request_hashes["server-timeout"], request_hashes["server-timeout"], request_hashes["server-timeout"], request_hashes["server-timeout"], None, digest(lifecycle_input_bytes["server_timeout_followup"]), None],
     }
     lifecycle_generations = {
         "mempool_capacity": ["normal"] * 7,
         "disconnect": ["normal"] * 6,
         "grpc_cancel": ["normal"] * 6,
-        "server_timeout": ["timeout"] * 5 + ["restored"] * 3,
+        "server_timeout": ["timeout"] * 4 + ["restored"] * 3,
     }
     lifecycles = {}
     lifecycle_case = {
@@ -448,12 +447,13 @@ def fixture(root: pathlib.Path) -> None:
         elif lifecycle_name in {"disconnect", "grpc_cancel"}:
             status_heights = [pre_height, pre_height, post_height, post_height, indexed_heights[0], indexed_heights[0]]
         else:
-            status_heights = [pre_height, pre_height, pre_height, post_height, post_height, post_height, indexed_heights[0], indexed_heights[0]]
+            status_heights = [pre_height, pre_height, post_height, post_height, post_height,
+                              indexed_heights[0], indexed_heights[0]]
         initial_delay = 120 if lifecycle_name == "mempool_capacity" else 10
         for offset, phase in enumerate(phases):
             tx_hash = lifecycle_hashes[lifecycle_name][offset]
             event_response = lifecycle_response(lifecycle_name, phase, tx_hash)
-            event_time = (25010 + (offset - 5) * 80 if lifecycle_name == "server_timeout" and offset >= 5 else
+            event_time = (25010 + (offset - 4) * 80 if lifecycle_name == "server_timeout" and offset >= 4 else
                           barriers[case_name] + initial_delay + offset * 80)
             operation = None
             if event_response is not None and (lifecycle_name, phase) not in {
@@ -996,7 +996,7 @@ class VerifyTest(unittest.TestCase):
     def test_lifecycle_generation(self):
         def mutate(value):
             for side in ("go", "rs"):
-                value["server_timeout"][side][5]["generation"] = "timeout"
+                value["server_timeout"][side][4]["generation"] = "timeout"
         self.rewrite("cleanup.json", mutate)
         self.reject("cleanup.generation", lambda: verify.verify(self.root))
 

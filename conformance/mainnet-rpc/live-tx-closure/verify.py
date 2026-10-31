@@ -758,19 +758,19 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
         "mempool_capacity": ["a-admitted", "b-rejected", "a-included", "b-retry-admitted", "b-included", "followup-succeeded", "mempool-empty"],
         "disconnect": ["request-written", "client-disconnected", "tx-included", "retry-observed", "followup-succeeded", "mempool-empty"],
         "grpc_cancel": ["request-started", "client-canceled", "tx-included", "retry-observed", "followup-succeeded", "mempool-empty"],
-        "server_timeout": ["request-started", "server-timeout", "capacity-probe-rejected", "tx-included", "retry-observed", "normal-config-restored", "followup-succeeded", "mempool-empty"],
+        "server_timeout": ["request-started", "server-timeout", "tx-included", "retry-observed", "normal-config-restored", "followup-succeeded", "mempool-empty"],
     }
     outcomes = {
         "mempool_capacity": ["admitted", "mempool-full", "included", "admitted", "included", "included", "empty"],
         "disconnect": ["written", "disconnected", "included", "duplicate", "included", "empty"],
         "grpc_cancel": ["started", "canceled", "included", "duplicate", "included", "empty"],
-        "server_timeout": ["started", "timeout", "capacity-rejected", "included", "duplicate", "restored", "included", "empty"],
+        "server_timeout": ["started", "timeout", "included", "duplicate", "restored", "included", "empty"],
     }
     mempool_sizes = {
         "mempool_capacity": [1, 1, 0, 1, 0, 0, 0],
         "disconnect": [0, 1, 0, 0, 0, 0],
         "grpc_cancel": [0, 1, 0, 0, 0, 0],
-        "server_timeout": [0, 1, 1, 0, 0, 0, 0, 0],
+        "server_timeout": [0, 1, 0, 0, 0, 0, 0],
     }
     response_absent = {
         "disconnect": {"request-written", "client-disconnected", "tx-included", "mempool-empty"},
@@ -780,7 +780,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
     }
     lifecycle_input_fields = {
         "mempool_followup", "disconnect_followup", "grpc_cancel_followup",
-        "server_timeout_probe", "server_timeout_followup",
+        "server_timeout_followup",
     }
     lifecycle_inputs = harness.require_fields(inputs["lifecycle_inputs"], lifecycle_input_fields, "lifecycle inputs")
     lifecycle_digests = {
@@ -793,7 +793,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
         "mempool_capacity": [capacity["tx_a"]["sha256"], capacity["tx_b"]["sha256"], capacity["tx_a"]["sha256"], capacity["tx_b"]["sha256"], capacity["tx_b"]["sha256"], lifecycle_digests["mempool_followup"], None],
         "disconnect": [case_requests["comet-commit-disconnect"]] * 4 + [lifecycle_digests["disconnect_followup"], None],
         "grpc_cancel": [case_requests["core-grpc-cancel"]] * 4 + [lifecycle_digests["grpc_cancel_followup"], None],
-        "server_timeout": [case_requests["server-timeout"], case_requests["server-timeout"], lifecycle_digests["server_timeout_probe"], case_requests["server-timeout"], case_requests["server-timeout"], None, lifecycle_digests["server_timeout_followup"], None],
+        "server_timeout": [case_requests["server-timeout"], case_requests["server-timeout"], case_requests["server-timeout"], case_requests["server-timeout"], None, lifecycle_digests["server_timeout_followup"], None],
     }
     case_barriers = {row["name"]: row["boundary"]["barrier_release_monotonic_ms"] for row in inputs["cases"]}
     lifecycle_barriers = {
@@ -818,7 +818,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
         "mempool_capacity": ["normal"] * 7,
         "disconnect": ["normal"] * 6,
         "grpc_cancel": ["normal"] * 6,
-        "server_timeout": ["timeout"] * 5 + ["restored"] * 3,
+        "server_timeout": ["timeout"] * 4 + ["restored"] * 3,
     }
     event_fields = {"phase", "generation", "monotonic_ms", "outcome", "tx_hash", "mempool_size", "status_height", "response", "operation"}
     main_response_phases = {("mempool_capacity", "a-admitted"), ("server_timeout", "server-timeout")}
@@ -941,7 +941,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             require(pair["go"][0]["monotonic_ms"] >= invocation_ms and pair["go"][1]["monotonic_ms"] >= pair_completed_ms and
                     projections["go"][1]["response"] == verify_response_record(main_response["go"], f"main response {case_name}"),
                     "cleanup.link", "server timeout is not linked to the main driver response")
-            inclusion_index = 3
+            inclusion_index = 2
         main_inclusion = inclusion_cases[case_name]["go"]
         require(main_inclusion["post_state"] is not None and
                 pair["go"][inclusion_index]["status_height"] >= main_inclusion["post_state"]["height"] and
@@ -959,7 +959,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             require(pair["go"][4]["status_height"] >= indexed_heights[0],
                     "cleanup.link", f"{name} followup height is not linked to indexed inclusion")
         else:
-            require(pair["go"][6]["status_height"] >= indexed_heights[0],
+            require(pair["go"][5]["status_height"] >= indexed_heights[0],
                     "cleanup.link", "server timeout followup height is not linked to indexed inclusion")
         event_hashes = [event["tx_hash"] for event in pair["go"]]
         require(all(value is None or re.fullmatch(r"[0-9a-f]{64}", value) is not None for value in event_hashes),
@@ -973,9 +973,8 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             require(len(set(event_hashes[:4])) == 1 and event_hashes[4] != event_hashes[0] and event_hashes[5] is None,
                     "cleanup.hash", name)
         else:
-            require(event_hashes[0] == event_hashes[1] == event_hashes[3] == event_hashes[4] and
-                    event_hashes[2] not in {event_hashes[0], event_hashes[6]} and event_hashes[5] is None and
-                    event_hashes[6] != event_hashes[0] and event_hashes[7] is None,
+            require(len(set(event_hashes[:4])) == 1 and event_hashes[4] is None and
+                    event_hashes[5] != event_hashes[0] and event_hashes[6] is None,
                     "cleanup.hash", name)
         intervals = pair["block_intervals_ms"]
         blocks = pair["blocks"]
