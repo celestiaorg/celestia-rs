@@ -172,6 +172,7 @@ jobs:
           - mathvectors
           - mintvectors
           - p2pvectors
+          - provider-client
           - rpccorpus/recorder
           - txdecode
     env:

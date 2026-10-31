@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Long-running soak + chaos test of a mixed Go / Rust network.
 #
-# Topology: validators V0, V1 (Go celestia-appd v10.4.0) and V2, V3, V4
+# Topology: validators V0, V1 (Go celestia-appd v10.5.0) and V2, V3, V4
 # (Rust `celestia-rs start`) with equal power, a Go full node F5 and a Rust
 # full node F6. Every P2P link goes through `soak/netproxy.py` (one
 # listener per directed node pair), so links can be cut or slowed without
@@ -35,6 +35,9 @@
 #        [SOAK_MIN_HEIGHTS=1500] [SOAK_SEED=n] [CELESTIA_RS=path]
 #        [SOAK_DIR=dir] [SOAK_PROFILE=chaos|memory] [SOAK_MEM_SAMPLE=30]
 #        [SOAK_RS_N<i>=path] [SOAK_ENV_N<i>="K=V;K2=V2"] conformance/devnet/soak.sh
+#        [SOAK_PROVIDER_APIS=1] [SOAK_MAINNET_OBSERVATION=/path/to/observe-mainnet.json]
+# Provider mode exercises all six native transports and requires fresh oracle
+# provenance. See soak/README.md for coverage limits and reproducible commands.
 #
 # SOAK_PROFILE=memory: 2 Go + 2 Rust validators + a Rust full node, the
 # same workload, no chaos (single node lifetimes) and per-node memory
@@ -70,6 +73,13 @@ fi
 RS=$CELESTIA_RS
 W=${SOAK_DIR:-$(mktemp -d)}
 mkdir -p "$W"
+if [ "${SOAK_PROVIDER_APIS:-0}" = 1 ]; then
+  : "${SOAK_MAINNET_OBSERVATION:?provider mode requires a fresh validated observe-mainnet artifact}"
+  export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.9}
+  SOAK_PROVIDER_CLIENT=${SOAK_PROVIDER_CLIENT:-$BIN/provider-client}
+  export SOAK_PROVIDER_CLIENT
+  (cd "$ROOT/conformance/provider-client" && go build -buildvcs=false -mod=readonly -o "$SOAK_PROVIDER_CLIENT" .)
+fi
 FAIL=()
 CHAIN_ID=rs-soak-1
 PROFILE=${SOAK_PROFILE:-chaos}
@@ -115,6 +125,10 @@ else
   make_net "$W" "$CHAIN_ID" "$KINDS" "$STAKE $STAKE $STAKE $STAKE $STAKE 0 0"
   N=7
   PROFILE_ARGS=()
+fi
+
+if [ "${SOAK_PROVIDER_APIS:-0}" = 1 ]; then
+  python3 "$ROOT/conformance/devnet/soak/provider.py" configure "$W" "$OFF"
 fi
 
 # Workload accounts in node 0's keyring (CLI txs), funded in genesis.
@@ -167,6 +181,10 @@ for i in $(seq 0 $((N - 1))); do
   sed -i.bak -e 's#^snapshot-interval = .*#snapshot-interval = 100#' -e 's#^snapshot-keep-recent = .*#snapshot-keep-recent = 3#' "$W/n$i/config/app.toml"
   rm -f "$W/n$i/config/app.toml.bak"
 done
+
+if [ "${SOAK_PROVIDER_APIS:-0}" = 1 ]; then
+  python3 "$ROOT/conformance/devnet/soak/provider.py" provenance "$W" "$RS" "$BIN/celestia-appd" "$SOAK_PROVIDER_CLIENT" "$SOAK_MAINNET_OBSERVATION"
+fi
 
 exec python3 "$ROOT/conformance/devnet/soak/soak.py" --dir "$W" --off "$OFF" --rs "$RS" --chain-id "$CHAIN_ID" \
   --secs "${SOAK_SECS:-7200}" --min-heights "${SOAK_MIN_HEIGHTS:-1500}" --seed "${SOAK_SEED:-1}" \
