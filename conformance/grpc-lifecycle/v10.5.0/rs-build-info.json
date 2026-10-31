@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-10-31T04:18:44.915631+00:00",
+  "binary_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252",
+  "source_commit": "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059",
+  "source_commit_signature_verified": true,
+  "cargo_lock_sha256": "d9c73525d5fde86d6f745a5ffe2bf74c0ce37617613c21f3d12ca1907f3b7238",
+  "rustc_vv": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8",
+  "cargo_version": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+  "target": "x86_64-unknown-linux-gnu",
+  "build_command": [
+    "cargo",
+    "build",
+    "--locked",
+    "--release",
+    "--package",
+    "celestia-rs",
+    "--bin",
+    "celestia-rs"
+  ],
+  "profile": "release",
+  "package": "celestia-rs",
+  "binary": "celestia-rs",
+  "locked": true,
+  "default_features": true,
+  "features": [
+    "rocksdb",
+    "jemalloc"
+  ],
+  "version_long": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 399f57ed728b17e9f1bee14f5d8cbdeaa66f0059\nbuild_profile: release\ntoolchain: rustc 1.98.0 (88d9e12ae 2026-08-18) x86_64-unknown-linux-gnu\napp_version: 10\ncompatibility_target: celestia-app v10.5.0, celestia-core v0.42.3"
+}

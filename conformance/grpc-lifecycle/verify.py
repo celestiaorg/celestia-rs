@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 import hashlib
 import ipaddress
 import json
@@ -77,6 +78,20 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def source_bytes(root: Path, name: str, commit: str | None = None) -> bytes:
+    if commit is None:
+        return (root / name).read_bytes()
+    assert re.fullmatch(r"[0-9a-f]{40}", commit)
+    return subprocess.check_output(
+        ["git", "-C", str(root), "show", f"{commit}:{name}"],
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def source_digest(root: Path, name: str, commit: str | None = None) -> str:
+    return hashlib.sha256(source_bytes(root, name, commit)).hexdigest()
+
+
 def load(path: Path) -> dict:
     value = json.loads(path.read_text())
     assert isinstance(value, dict), f"{path}: expected object"
@@ -86,8 +101,11 @@ def load(path: Path) -> dict:
 def parse_go_build_info(path: Path) -> dict:
     lines = path.read_text().splitlines()
     assert lines and ": go1." in lines[0]
+    binary_label, separator, compiler = lines[0].partition(": ")
+    assert separator and binary_label and "/" not in binary_label and "\\" not in binary_label
     result: dict[str, object] = {
-        "compiler": lines[0].rsplit(": ", 1)[1],
+        "binary_label": binary_label,
+        "compiler": compiler,
         "deps": {},
         "replacements": {},
         "build": {},
@@ -162,7 +180,8 @@ def verify_rs_receipt(
         assert receipt["version_long"] == version_long
 
 
-def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
+def verify_builds(root: Path, meta: dict, source_root: Path,
+                  source_commit: str | None = None) -> None:
     app = meta["go_builds"]["app"]
     core = meta["go_builds"]["core"]
     receipt_keys = {
@@ -208,6 +227,7 @@ def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
     assert core["ldflags"] == ""
 
     app_info = parse_go_build_info(root / "go-build-info.txt")
+    assert app_info["binary_label"] == "celestia-appd"
     assert app_info["compiler"] == "go1.26.9"
     assert app_info["path"] == "github.com/celestiaorg/celestia-app/v10/cmd/celestia-appd"
     assert app_info["module"][:2] == ["github.com/celestiaorg/celestia-app/v10", "(devel)"]
@@ -221,12 +241,14 @@ def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
     assert app_info["build"]["GOOS"] == "linux" and app_info["build"]["GOARCH"] == "amd64"
 
     core_info = parse_go_build_info(root / "go-core-build-info.txt")
+    assert core_info["binary_label"] == "cometbft"
     assert core_info["compiler"] == "go1.26.9"
     assert core_info["path"] == "github.com/cometbft/cometbft/cmd/cometbft"
     assert core_info["module"][:2] == ["github.com/cometbft/cometbft", "(devel)"]
     assert core_info["deps"]["google.golang.org/grpc"] == ["v1.83.2", GRPC_SUM]
 
     recorder = parse_go_build_info(root / "recorder-build-info.txt")
+    assert recorder["binary_label"] == "grpc-lifecycle-recorder"
     assert recorder["compiler"] == "go1.26.9"
     assert recorder["path"] == (
         "github.com/celestiaorg/celestia-rs/conformance/grpc-lifecycle"
@@ -236,7 +258,8 @@ def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
 
     rs = load(root / "rs-build-info.json")
     assert rs == meta["rs_build"]
-    verify_rs_receipt(rs, meta["source_commit"], digest(source_root / "Cargo.lock"))
+    verify_rs_receipt(rs, meta["source_commit"],
+                      source_digest(source_root, "Cargo.lock", source_commit))
     subprocess.run(["git", "-C", str(source_root), "verify-commit", rs["source_commit"]],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -245,7 +268,8 @@ def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
                for line in gzip_symbols)
 
 
-def verify_inventory(root: Path, meta: dict, source_root: Path) -> None:
+def verify_inventory(root: Path, meta: dict, source_root: Path,
+                     source_commit: str | None = None) -> None:
     expected = {"sources": SOURCE_NAMES, **INVENTORY}
     assert meta["inventory"] == expected
     classes = list(expected.values())
@@ -260,7 +284,9 @@ def verify_inventory(root: Path, meta: dict, source_root: Path) -> None:
     for name, expected_digest in meta["artifact_sha256"].items():
         assert digest(root / name) == expected_digest, f"artifact hash mismatch: {name}"
     for name, expected_digest in meta["source_sha256"].items():
-        assert digest(source_root / name) == expected_digest, f"source hash mismatch: {name}"
+        assert source_digest(source_root, name, source_commit) == expected_digest, (
+            f"source hash mismatch: {name}"
+        )
     for name, expected_digest in meta["input_sha256"].items():
         assert digest(root / name) == expected_digest, f"input hash mismatch: {name}"
 
@@ -456,7 +482,8 @@ def verify_resource_artifacts(root: Path, meta: dict) -> None:
                          implementation, quota, binary)
 
 
-def verify_source_audit(meta: dict, source_root: Path) -> None:
+def verify_source_audit(meta: dict, source_root: Path,
+                        source_commit: str | None = None) -> None:
     audit = meta["source_audit"]
     assert set(audit) == {
         "go_core_keepalive", "grpc_go_setup_timeout", "grpc_go_initial_settings",
@@ -497,30 +524,51 @@ def verify_source_audit(meta: dict, source_root: Path) -> None:
     rpc_name = "crates/tier-4-runtime/rpc/src/grpc.rs"
     service_name = "crates/tier-5-node/celestia-rs/src/rpc_service.rs"
     assert audit["rs_core_keepalive"] == {
-        "path": rpc_name, "sha256": digest(source_root / rpc_name),
+        "path": rpc_name, "sha256": source_digest(source_root, rpc_name, source_commit),
         "finding": "absent: HTTP/2 builder configures no keepalive interval or timeout",
     }
     assert audit["rs_setup_deadline"] == {
         "paths": [rpc_name, service_name],
         "sha256": {
-            rpc_name: digest(source_root / rpc_name),
-            service_name: digest(source_root / service_name),
+            rpc_name: source_digest(source_root, rpc_name, source_commit),
+            service_name: source_digest(source_root, service_name, source_commit),
         },
         "finding": "absent: core and SDK listeners configure no HTTP/2 setup deadline",
     }
-    rpc_source = (source_root / rpc_name).read_text()
-    service_source = (source_root / service_name).read_text()
+    rpc_source = source_bytes(source_root, rpc_name, source_commit).decode()
+    service_source = source_bytes(source_root, service_name, source_commit).decode()
     assert "keep_alive_interval" not in rpc_source
     assert "keep_alive_timeout" not in rpc_source
     assert "axum::serve(listener, router).await" in service_source
 
 
-def ok(call: dict, label: str) -> None:
+def verify_metadata(value: dict, implementation: str, listener: str,
+                    started: datetime, completed: datetime,
+                    *, rejected_compression: bool = False) -> None:
+    content_type = ("application/grpc+proto"
+                    if implementation == "go" and listener == "core"
+                    else "application/grpc")
+    expected = {"content-type": [content_type]}
+    if implementation == "rs":
+        assert set(value) == ({"content-type", "date", "grpc-accept-encoding"}
+                              if rejected_compression else {"content-type", "date"})
+        assert len(value["date"]) == 1
+        date = parsedate_to_datetime(value["date"][0])
+        assert date.tzinfo is not None
+        assert started - timedelta(seconds=1) <= date <= completed + timedelta(seconds=1)
+        expected["date"] = value["date"]
+        if rejected_compression:
+            expected["grpc-accept-encoding"] = ["identity"]
+    assert value == expected
+
+
+def ok(call: dict, implementation: str, started: datetime,
+       completed: datetime, label: str) -> None:
     assert set(call) == {"code", "message", "response_hex", "headers", "trailers", "elapsed_ms"}
     assert call["code"] == 0, f"{label}: {call}"
     assert call["message"] == "", f"{label}: {call}"
     assert call.get("response_hex", "") == "", f"{label}: {call}"
-    assert call["headers"] == {"content-type": ["application/grpc"]}, f"{label}: {call}"
+    verify_metadata(call["headers"], implementation, "core", started, completed)
     assert call["trailers"] == {}, f"{label}: {call}"
     assert 0 <= call["elapsed_ms"] <= 10_000, f"{label}: {call}"
 
@@ -528,7 +576,9 @@ def ok(call: dict, label: str) -> None:
 def deadline(call: dict, label: str) -> None:
     assert set(call) == {"code", "message", "response_hex", "headers", "trailers", "elapsed_ms"}
     assert call["code"] == 4, f"{label}: {call}"
-    assert call["message"] == "context deadline exceeded", f"{label}: {call}"
+    assert call["message"] == (
+        "context deadline exceeded while waiting for connections to become ready"
+    ), f"{label}: {call}"
     assert call.get("response_hex", "") == "", f"{label}: {call}"
     assert call.get("headers") is None and call.get("trailers") is None, f"{label}: {call}"
     assert 300 <= call["elapsed_ms"] <= 1_000, f"{label}: {call}"
@@ -707,10 +757,12 @@ def verify_capture(capture: dict, implementation: str, quota: int) -> None:
     assert saturation["opened"] == (4 if quota == 0 else 2)
     if quota == 2:
         deadline(saturation["concurrent_probe"], f"{implementation} quota two")
-        ok(saturation["recovered"], f"{implementation} saturation recovery")
+        ok(saturation["recovered"], implementation, started, completed,
+           f"{implementation} saturation recovery")
         assert saturation["recovery_action"] == "closed first established HTTP/2 connection"
     else:
-        ok(saturation["concurrent_probe"], f"{implementation} quota zero")
+        ok(saturation["concurrent_probe"], implementation, started, completed,
+           f"{implementation} quota zero")
         assert saturation.get("recovered") is None
         assert saturation["recovery_action"] == (
             "none: zero is unlimited and the concurrent probe succeeded"
@@ -723,14 +775,10 @@ def verify_capture(capture: dict, implementation: str, quota: int) -> None:
     }
     assert cancellation["first_response_hex"]
     verify_height_response(cancellation["first_response_hex"], cancellation["first_height"])
-    assert len(cancellation["buffered_after_cancel_hex"]) <= 16
-    for value in cancellation["buffered_after_cancel_hex"]:
-        decoded = proto_fields(bytes.fromhex(value))
-        assert len(decoded[1]) == 1
-        verify_height_response(value, decoded[1][0])
+    assert cancellation["buffered_after_cancel_hex"] is None
     assert cancellation["cancel_code"] == 1
     assert cancellation["cancel_message"] == "context canceled"
-    ok(cancellation["same_client_after_cancel"],
+    ok(cancellation["same_client_after_cancel"], implementation, started, completed,
        f"{implementation} same grpc.ClientConn after cancel")
 
     slow = capture["slow_reader"]
@@ -750,8 +798,10 @@ def verify_capture(capture: dict, implementation: str, quota: int) -> None:
     if quota == 2:
         deadline(slow["blocked"], f"{implementation} slow-reader quota")
     else:
-        ok(slow["blocked"], f"{implementation} unlimited slow-reader probe")
-    ok(slow["recovered_after_close"], f"{implementation} slow-reader recovery")
+        ok(slow["blocked"], implementation, started, completed,
+           f"{implementation} unlimited slow-reader probe")
+    ok(slow["recovered_after_close"], implementation, started, completed,
+       f"{implementation} slow-reader recovery")
     assert 0 <= slow["held_ms"] <= 30_000
 
     compressed = capture["compression"]
@@ -770,14 +820,16 @@ def verify_capture(capture: dict, implementation: str, quota: int) -> None:
             "grpc: received message after decompression larger than max 4194304"
         )
         assert result.get("headers") is None
-        assert result["trailers"] == {"content-type": ["application/grpc"]}
+        verify_metadata(result["trailers"], implementation, "core", started, completed,
+                        rejected_compression=True)
     else:
         # RS currently declines request compression. This is an explicit,
         # bounded behavior difference rather than an allocation escape.
         assert result["code"] == 12
         assert result["message"] == "Content is compressed with `gzip` which isn't supported"
         assert result.get("headers") is None
-        assert result["trailers"] == {"content-type": ["application/grpc"]}
+        verify_metadata(result["trailers"], implementation, "core", started, completed,
+                        rejected_compression=True)
 
     if implementation == "go" and quota == 2:
         keepalive = capture["keepalive_no_pong"]
@@ -861,11 +913,12 @@ def verify_sdk_capture(capture: dict, implementation: str) -> None:
         "grpc.reflection.v1alpha.ServerReflection",
     ):
         assert required in first
-    assert cancellation["first_headers"] == {"content-type": ["application/grpc"]}
+    verify_metadata(cancellation["first_headers"], implementation, "sdk", started, completed)
     assert cancellation["cancel_code"] == 1
     assert cancellation["cancel_message"] == "context canceled"
-    assert cancellation["cancel_trailers"] is None
-    assert cancellation["recovered_headers"] == {"content-type": ["application/grpc"]}
+    assert cancellation["cancel_trailers"] == {}
+    verify_metadata(cancellation["recovered_headers"], implementation, "sdk",
+                    started, completed)
 
     compressed = capture["compression"]
     assert set(compressed) == {"encoding", "uncompressed_len", "result"}
@@ -877,12 +930,13 @@ def verify_sdk_capture(capture: dict, implementation: str) -> None:
     assert result["response_hex"] == "" and 0 <= result["elapsed_ms"] <= 10_000
     if implementation == "go":
         assert result["code"] == 8
-        assert result["message"] == "grpc: received message after decompression larger than max (65 vs. 64)"
+        assert result["message"] == "grpc: received message after decompression larger than max 64"
     else:
         assert result["code"] == 12
         assert result["message"] == "Content is compressed with `gzip` which isn't supported"
     assert result["headers"] is None
-    assert result["trailers"] == {"content-type": ["application/grpc"]}
+    verify_metadata(result["trailers"], implementation, "sdk", started, completed,
+                    rejected_compression=True)
     assert capture["notes"] == [
         "SDK connection quota is unsupported; cancellation recovery uses the same grpc.ClientConn",
         "the compressed reflection request is exactly 65 uncompressed protobuf bytes against a 64-byte receive limit",
@@ -904,9 +958,12 @@ def main() -> None:
     assert meta["schema_version"] == 1
     assert meta["mainnet_observation"] == "mainnet-observation.json"
     source_root = Path(__file__).resolve().parents[2]
-    verify_inventory(root, meta, source_root)
-    verify_builds(root, meta, source_root)
-    verify_source_audit(meta, source_root)
+    source_commit = meta["source_commit"]
+    subprocess.run(["git", "-C", str(source_root), "verify-commit", source_commit],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    verify_inventory(root, meta, source_root, source_commit)
+    verify_builds(root, meta, source_root, source_commit)
+    verify_source_audit(meta, source_root, source_commit)
 
     observation = load(root / meta["mainnet_observation"])
     assert set(observation) == {
@@ -939,6 +996,7 @@ def main() -> None:
     assert set(deviations) == {
         "rs_request_compression", "sdk_connection_quota",
         "core_message_size_configuration", "rs_core_keepalive", "rs_handshake_deadline",
+        "transport_metadata",
     }
     assert deviations["rs_request_compression"] == (
         "unsupported on core and SDK: RS returns Unimplemented before decompression; "
@@ -956,6 +1014,10 @@ def main() -> None:
     )
     assert deviations["rs_handshake_deadline"] == (
         "absent: grpc-go closes a silent HTTP/2 setup at 120s; RS has no gRPC setup deadline"
+    )
+    assert deviations["transport_metadata"] == (
+        "intentional: Go core uses application/grpc+proto; Go SDK and RS use "
+        "application/grpc; RS adds RFC 1123 Date and advertises identity when rejecting gzip"
     )
 
     for implementation in ("go", "rs"):

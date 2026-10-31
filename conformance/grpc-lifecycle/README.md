@@ -1,12 +1,14 @@
 # gRPC lifecycle source audit for the v10.5 oracle
 
-The fresh read-only observation in `mainnet-observation.json` selected
+The fresh read-only observation in `v10.5.0/mainnet-observation.json` selected
 celestia-app v10.5.0 before any local transport capture. The local oracle must
 use app commit `6013e758d5dceb75827ad191c8d739d7c43cfa04`, core commit
 `a5537d84a008d566abc503d2ea41e30f2301403d`, Cosmos SDK v0.52.12, grpc-go
 v1.83.2 and Go 1.26.9. Captures are valid only when their metadata binds those
 identities, the executed binaries and configs, and every recorder/verifier
-source and input.
+source and input. The evidence binds signed capture source commit `399f57e`;
+later verifier changes read those sources from that commit and reject a
+working-tree or cross-commit rebind.
 
 The Rust executable must be created by `build-rs.sh`. That single build step
 requires a clean signed source commit, uses the locked release command with the
@@ -37,11 +39,19 @@ bounded send limit admits the real reflection inventory used by the
 cancellation/recovery case. PR #203's separate 5/6/7 and 128-byte send corpus
 remains authoritative for oversized unary and streaming responses.
 
-Successful Ping calls require code 0, an empty protobuf response, exact
-`content-type: application/grpc` headers and empty trailers. Saturated probes
-require `DeadlineExceeded/context deadline exceeded`, no response, and no
-headers or trailers. Receive-limit errors require code ResourceExhausted, no
-headers, and `content-type: application/grpc` trailers.
+Successful Ping calls require code 0, an empty protobuf response and empty
+trailers. The production transports have an intentional metadata difference:
+Go core uses `content-type: application/grpc+proto`; Go SDK and both RS
+listeners use `application/grpc`. Hyper adds an RFC 1123 `Date` to RS
+responses, and tonic advertises `grpc-accept-encoding: identity` when it
+rejects gzip. The evidence retains and hashes every exact value. The verifier
+requires the stable fields exactly and only treats the RS `Date` value as
+dynamic after proving it is a single valid timestamp inside the campaign
+interval. Changing the RS content type or suppressing Hyper's date would alter
+established transport metadata and is outside the connection/message limit
+configuration contract. Saturated probes require
+`DeadlineExceeded/context deadline exceeded`, no response, and no headers or
+trailers.
 
 The raw HTTP/2 ledger retains the client preface and every emitted frame, plus
 each complete server frame. The verifier decodes the nine-byte frame header and

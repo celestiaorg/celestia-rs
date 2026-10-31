@@ -67,6 +67,13 @@ def checked(*args: str) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
+def sanitized_go_build_info(binary: Path, label: str) -> str:
+    lines = checked("go", "version", "-m", str(binary)).splitlines()
+    assert lines and ": go1." in lines[0] and "/" not in label
+    lines[0] = f"{label}: {lines[0].rsplit(': ', 1)[1]}"
+    return "\n".join(lines) + "\n"
+
+
 def go_source_audit(repo: Path) -> dict:
     cache = Path(checked("go", "env", "GOMODCACHE"))
     files = {
@@ -168,9 +175,9 @@ def main() -> None:
     (capture / observation_name).write_bytes(args.observation.read_bytes())
     (capture / "go-app-build.json").write_bytes(args.go_app_build.read_bytes())
     (capture / "go-core-build.json").write_bytes(args.go_core_build.read_bytes())
-    go_build_info = checked("go", "version", "-m", str(args.go_bin)) + "\n"
-    go_core_build_info = checked("go", "version", "-m", str(args.go_core_bin)) + "\n"
-    recorder_build_info = checked("go", "version", "-m", str(args.recorder_bin)) + "\n"
+    go_build_info = sanitized_go_build_info(args.go_bin, "celestia-appd")
+    go_core_build_info = sanitized_go_build_info(args.go_core_bin, "cometbft")
+    recorder_build_info = sanitized_go_build_info(args.recorder_bin, "grpc-lifecycle-recorder")
     (capture / "go-build-info.txt").write_text(go_build_info)
     (capture / "go-core-build-info.txt").write_text(go_core_build_info)
     (capture / "recorder-build-info.txt").write_text(recorder_build_info)
@@ -286,6 +293,10 @@ def main() -> None:
             ),
             "rs_handshake_deadline": (
                 "absent: grpc-go closes a silent HTTP/2 setup at 120s; RS has no gRPC setup deadline"
+            ),
+            "transport_metadata": (
+                "intentional: Go core uses application/grpc+proto; Go SDK and RS use "
+                "application/grpc; RS adds RFC 1123 Date and advertises identity when rejecting gzip"
             ),
         },
     }

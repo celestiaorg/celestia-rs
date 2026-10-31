@@ -6,9 +6,11 @@ import importlib.util
 import copy
 import hashlib
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 
 
 PATH = Path(__file__).with_name("verify.py")
@@ -113,6 +115,48 @@ class ListenerSafety(unittest.TestCase):
                 VERIFY.verify_loopback_configs(changed, app)
 
 
+class MetadataVerification(unittest.TestCase):
+    def test_stable_headers_are_exact_and_only_rs_date_is_dynamic(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        started, completed = now - timedelta(seconds=1), now + timedelta(seconds=1)
+        go_core = {"content-type": ["application/grpc+proto"]}
+        VERIFY.verify_metadata(go_core, "go", "core", started, completed)
+        for mutation in (
+            {"content-type": ["application/grpc"]},
+            {},
+            {**go_core, "date": [format_datetime(now, usegmt=True)]},
+        ):
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_metadata(mutation, "go", "core", started, completed)
+
+        rs = {
+            "content-type": ["application/grpc"],
+            "date": [format_datetime(now, usegmt=True)],
+            "grpc-accept-encoding": ["identity"],
+        }
+        VERIFY.verify_metadata(rs, "rs", "sdk", started, completed,
+                               rejected_compression=True)
+        normalized_date = copy.deepcopy(rs)
+        normalized_date["date"] = [format_datetime(started, usegmt=True)]
+        VERIFY.verify_metadata(normalized_date, "rs", "sdk", started, completed,
+                               rejected_compression=True)
+        for key in ("content-type", "grpc-accept-encoding"):
+            missing = copy.deepcopy(rs)
+            del missing[key]
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_metadata(missing, "rs", "sdk", started, completed,
+                                       rejected_compression=True)
+        extra = {**rs, "x-extra": ["unexpected"]}
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_metadata(extra, "rs", "sdk", started, completed,
+                                   rejected_compression=True)
+        stale_date = copy.deepcopy(rs)
+        stale_date["date"] = [format_datetime(now - timedelta(minutes=1), usegmt=True)]
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_metadata(stale_date, "rs", "sdk", started, completed,
+                                   rejected_compression=True)
+
+
 class ResourceBounds(unittest.TestCase):
     def fixture(self):
         now = datetime.now(timezone.utc)
@@ -211,14 +255,14 @@ class SDKLifecycleVerification(unittest.TestCase):
             "cancellation": {
                 "first_response_hex": self.response(services), "first_services": services,
                 "first_headers": {"content-type": ["application/grpc"]},
-                "cancel_code": 1, "cancel_message": "context canceled", "cancel_trailers": None,
+                "cancel_code": 1, "cancel_message": "context canceled", "cancel_trailers": {},
                 "recovered_response_hex": self.response(services),
                 "recovered_services": services,
                 "recovered_headers": {"content-type": ["application/grpc"]},
             },
             "compression": {"encoding": "gzip", "uncompressed_len": 65, "result": {
                 "code": 8,
-                "message": "grpc: received message after decompression larger than max (65 vs. 64)",
+                "message": "grpc: received message after decompression larger than max 64",
                 "response_hex": "", "headers": None,
                 "trailers": {"content-type": ["application/grpc"]}, "elapsed_ms": 2,
             }},
@@ -317,6 +361,32 @@ class ProvenanceMutationResistance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             capture, source, meta = self.fixture(Path(directory))
             VERIFY.verify_inventory(capture, meta, source)
+
+    def test_source_hashes_remain_bound_to_captured_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "test"],
+                           check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.email",
+                            "test@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-qm", "captured"],
+                           check=True)
+            captured = subprocess.check_output(
+                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+            VERIFY.verify_inventory(capture, meta, source, captured)
+
+            changed = source / VERIFY.SOURCE_NAMES[0]
+            changed.write_text("later adjudication source\n")
+            VERIFY.verify_inventory(capture, meta, source, captured)
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-qm", "later"],
+                           check=True)
+            later = subprocess.check_output(
+                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_inventory(capture, meta, source, later)
 
     def test_deletion_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

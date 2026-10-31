@@ -41,6 +41,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
       - name: gRPC limit evidence integrity
         run: python3 conformance/grpc-limits/verify.py
+      - name: gRPC lifecycle evidence integrity
+        run: |
+          python3 -m unittest -v conformance/grpc-lifecycle/test_verify.py
+          python3 conformance/grpc-lifecycle/verify.py conformance/grpc-lifecycle/v10.5.0
       - run: cargo test --workspace --all-features
 
   rpc-evidence:
@@ -168,6 +172,7 @@ jobs:
           - fuzzoracle/v9
           - fuzzoracle/v10
           - grpc-limits/recorder
+          - grpc-lifecycle/recorder
           - lightvectors
           - mathvectors
           - mintvectors
