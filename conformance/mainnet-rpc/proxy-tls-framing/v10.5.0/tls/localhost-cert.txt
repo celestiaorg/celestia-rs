@@ -1,0 +1,62 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            06:7d:69:ce:88:0b:d9:4a:24:7a:59:07:c5:81:ea:51:e3:ab:e7:5b
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=localhost, O=celestia-rs conformance
+        Validity
+            Not Before: Oct 31 03:21:32 2026 GMT
+            Not After : Oct  7 03:21:32 2126 GMT
+        Subject: CN=localhost, O=celestia-rs conformance
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:aa:b7:d0:cd:77:e8:c4:ce:6d:9a:6a:48:c0:86:
+                    9f:1d:96:40:d1:56:a4:fa:57:e0:6d:cb:bc:d9:ca:
+                    43:86:c8:ee:45:ff:b7:b5:89:2b:4b:bc:4d:c7:b9:
+                    37:43:7d:49:e4:b9:aa:a6:5c:4d:a0:29:f3:65:87:
+                    fa:91:ca:59:cd:e4:b8:2c:df:d0:ae:df:da:8e:71:
+                    d8:c6:95:eb:a8:f9:f5:32:f1:d1:98:34:10:67:26:
+                    0c:1f:1c:df:d6:54:ab:1a:c5:ff:29:0c:0d:b5:dd:
+                    1c:48:00:81:37:89:70:33:86:ef:53:a1:ff:66:32:
+                    31:b5:39:be:75:5d:22:27:1b:be:c0:05:25:e9:05:
+                    e7:66:d3:b4:06:ab:90:98:33:1e:dc:e5:c2:cf:15:
+                    83:e5:86:91:56:01:ce:18:68:4a:f3:f0:4c:68:e4:
+                    d9:fd:cb:57:d9:b3:af:00:e2:4a:c6:10:18:16:56:
+                    33:64:4b:a3:b0:7a:6e:f4:c0:b2:80:cd:8a:ed:ec:
+                    69:b4:c5:ab:d8:2c:f6:08:fe:49:18:4f:d0:7e:a2:
+                    b7:87:1e:1f:00:d7:bf:73:a2:da:cf:e9:0b:1d:40:
+                    a7:7f:56:74:bf:34:a6:9f:bf:b8:1b:44:7b:c7:0c:
+                    0b:0b:0a:b4:98:61:a9:0a:6c:20:a7:32:00:cb:07:
+                    67:63
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication
+            X509v3 Subject Alternative Name: 
+                DNS:localhost, IP Address:127.0.0.1
+            X509v3 Subject Key Identifier: 
+                CD:E7:E3:1D:7A:73:AC:4D:1E:89:49:AB:FD:69:2D:70:FD:87:C9:CE
+    Signature Algorithm: sha256WithRSAEncryption
+    Signature Value:
+        60:9a:db:7d:6e:0b:73:bf:e5:6c:23:20:c4:ef:9a:32:03:59:
+        0c:5a:91:99:30:2d:66:84:f3:65:a5:8b:95:3a:6e:be:ac:46:
+        fa:2a:14:b6:d3:b9:1d:7d:1c:13:89:96:63:60:6a:49:3b:d2:
+        24:4b:a2:5e:42:f3:bf:dd:a8:3a:5b:b2:7e:53:02:c5:04:aa:
+        95:74:2e:1e:c1:ba:22:24:44:3a:f1:71:ca:71:90:ed:34:1e:
+        26:01:68:95:27:4e:3a:96:ee:78:b0:bc:ba:3d:2f:82:30:65:
+        66:0d:40:56:c8:7b:49:42:ad:80:5f:7d:16:e5:b0:df:18:76:
+        66:c1:87:3d:3e:cf:ee:2b:20:8b:e2:ba:b0:ad:0f:a5:94:5d:
+        6e:2f:cd:96:66:19:b9:f3:12:cc:7d:fb:ce:9f:dc:01:81:cd:
+        bc:fb:60:02:3f:75:e0:1d:a6:2b:33:51:f2:57:14:0a:a6:89:
+        52:ac:40:be:2d:ed:a6:45:e3:1d:8e:e3:4b:31:4a:f5:58:b9:
+        f5:a5:d6:61:b5:8b:cf:0b:1f:80:3c:3f:ba:dc:70:cc:52:39:
+        09:83:ad:06:a6:78:65:b7:aa:bc:b9:e9:98:a1:54:22:25:37:
+        ea:32:be:e9:54:12:8e:7d:3d:81:83:a5:fb:8a:53:bf:b9:ef:
+        4e:dc:a3:f9

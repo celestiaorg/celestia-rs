@@ -8,9 +8,13 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use ctypes::proto::abci;
+use futures_util::{SinkExt as _, StreamExt as _};
 use kvdb::MemBackend;
 use rpc::{AppQuery, Environment, NodeInfo, NodeStatus, RpcConfig};
 use serde_json::Value;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio_rustls::TlsConnector;
+use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest as _};
 
 const DYNAMIC_HEADERS: &[&str] = &[
     "connection",
@@ -91,12 +95,6 @@ impl rpc::EvidenceSink for Evidence {
 }
 
 fn environment(batch: usize, body: usize, header: usize) -> Arc<Environment> {
-    let query = Arc::new(Query(Mutex::new(app::App::new())));
-    let pool = Arc::new(mempool::TxPool::new(
-        mempool::MempoolConfig::celestia_app(),
-        query.clone(),
-        0,
-    ));
     let config = RpcConfig {
         cors_allowed_origins: vec!["https://allowed.example".into()],
         cors_allowed_methods: vec!["HEAD".into(), "GET".into(), "POST".into()],
@@ -113,6 +111,16 @@ fn environment(batch: usize, body: usize, header: usize) -> Arc<Environment> {
         max_header_bytes: header,
         ..Default::default()
     };
+    environment_with_config(config)
+}
+
+fn environment_with_config(config: RpcConfig) -> Arc<Environment> {
+    let query = Arc::new(Query(Mutex::new(app::App::new())));
+    let pool = Arc::new(mempool::TxPool::new(
+        mempool::MempoolConfig::celestia_app(),
+        query.clone(),
+        0,
+    ));
     Arc::new(Environment::new(
         nodestore::BlockStore::new(Arc::new(MemBackend::new())).unwrap(),
         nodestore::StateStore::new(Arc::new(MemBackend::new())),
@@ -232,6 +240,12 @@ impl Http {
             headers,
             body,
         })
+    }
+
+    fn exchange_half_close(&mut self, request: &[u8]) -> std::io::Result<HttpResponse> {
+        self.0.get_mut().write_all(request)?;
+        self.0.get_mut().shutdown(std::net::Shutdown::Write)?;
+        self.response()
     }
 }
 
@@ -384,4 +398,370 @@ async fn tagged_go_comet_http_boundaries_match_over_real_sockets() {
         .unwrap();
     zero_server.abort();
     custom_server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tagged_go_proxy_and_framing_boundaries_match_or_are_bounded() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(
+        listener,
+        environment_with_config(RpcConfig {
+            cors_allowed_origins: vec!["https://configured.example".into()],
+            cors_allowed_methods: vec!["HEAD".into(), "GET".into(), "POST".into()],
+            cors_allowed_headers: vec!["Content-Type".into()],
+            max_request_batch_size: 10,
+            max_body_bytes: 1_000_000,
+            max_header_bytes: 1 << 20,
+            ..Default::default()
+        }),
+    ));
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/proxy-tls-framing.json"
+    ))
+    .unwrap();
+    let cases = fixture["cases"].as_array().unwrap().clone();
+    tokio::task::spawn_blocking(move || {
+        for case in cases {
+            let category = case["category"].as_str().unwrap();
+            let name = case["name"].as_str().unwrap();
+            if category == "framing-connection" {
+                let requests = case["requests"].as_array().unwrap();
+                let expected = case["responses"].as_array().unwrap();
+                let mut http = Http::connect(address);
+                let first = http.exchange(&raw(&requests[0])).unwrap();
+                if name == "framing-conflicting-length-closes" {
+                    assert_eq!(first.status, 400, "{name}: bounded Hyper status");
+                    assert!(first.body.is_empty(), "{name}: bounded Hyper body");
+                    assert!(
+                        actual_stable_headers(&first).is_empty(),
+                        "{name}: bounded Hyper headers"
+                    );
+                } else {
+                    assert_response(&case, &expected[0], &first);
+                }
+                if expected.len() == 2 && name != "framing-transfer-length-keepalive" {
+                    let second = http
+                        .exchange(&raw(&requests[1]))
+                        .unwrap_or_else(|error| panic!("{name}: second exchange: {error}"));
+                    assert_response(&case, &expected[1], &second);
+                } else {
+                    assert!(
+                        http.exchange(&raw(&requests[1])).is_err(),
+                        "{name}: malformed framing must close the connection"
+                    );
+                }
+                continue;
+            }
+            if !matches!(
+                category,
+                "proxy" | "framing-valid-controls" | "framing-malformed-inputs"
+            ) {
+                continue;
+            }
+            let mut http = Http::connect(address);
+            let request = raw(&case["request"]);
+            let response = if matches!(
+                name,
+                "framing-truncated-content-length" | "framing-truncated-chunk"
+            ) {
+                http.exchange_half_close(&request)
+            } else {
+                http.exchange(&request)
+            };
+            let response = response.unwrap();
+            if matches!(
+                name,
+                "framing-content-length-comma-same"
+                    | "framing-header-name-space"
+                    | "framing-header-without-colon"
+                    | "framing-obs-fold"
+                    | "framing-nul-header-value"
+                    | "framing-invalid-method-token"
+                    | "framing-invalid-http-version"
+                    | "framing-invalid-target-control"
+                    | "framing-content-length-different"
+                    | "framing-content-length-negative"
+                    | "framing-content-length-plus"
+                    | "framing-content-length-nondigit"
+                    | "framing-transfer-encoding-gzip"
+                    | "framing-transfer-encoding-nonfinal-chunked"
+            ) {
+                // Hyper rejects these in its native parser before an
+                // application response exists. Freeze the explicit bounded
+                // deviation from Go's diagnostic body/status choices.
+                assert_eq!(response.status, 400, "{name}: bounded Hyper status");
+                assert!(response.body.is_empty(), "{name}: bounded Hyper body");
+                assert!(
+                    actual_stable_headers(&response).is_empty(),
+                    "{name}: bounded Hyper headers"
+                );
+            } else {
+                assert_response(&case, &case["response"], &response);
+            }
+        }
+    })
+    .await
+    .unwrap();
+    server.abort();
+}
+
+const TLS_CERT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/localhost.crt"
+);
+const TLS_KEY: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/localhost.key"
+);
+const TLS_MISMATCH_KEY: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/mismatch.key"
+);
+
+fn tls_config(cert: &str, key: &str) -> RpcConfig {
+    RpcConfig {
+        cors_allowed_origins: vec!["https://configured.example".into()],
+        cors_allowed_methods: vec!["HEAD".into(), "GET".into(), "POST".into()],
+        cors_allowed_headers: vec!["Content-Type".into()],
+        tls_cert_file: cert.into(),
+        tls_key_file: key.into(),
+        ..Default::default()
+    }
+}
+
+fn tls_connector(alpn: &[&[u8]]) -> TlsConnector {
+    let mut reader = BufReader::new(std::fs::File::open(TLS_CERT).unwrap());
+    let mut roots = rustls::RootCertStore::empty();
+    for certificate in rustls_pemfile::certs(&mut reader) {
+        roots.add(certificate.unwrap()).unwrap();
+    }
+    let mut config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    config.alpn_protocols = alpn.iter().map(|value| value.to_vec()).collect();
+    TlsConnector::from(Arc::new(config))
+}
+
+async fn connect_tls(
+    address: SocketAddr,
+    hostname: &str,
+    alpn: &[&[u8]],
+) -> tokio_rustls::client::TlsStream<tokio::net::TcpStream> {
+    let stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    let name = rustls::pki_types::ServerName::try_from(hostname.to_owned()).unwrap();
+    tls_connector(alpn).connect(name, stream).await.unwrap()
+}
+
+fn parse_raw_response(raw: &[u8]) -> HttpResponse {
+    let split = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .unwrap();
+    let head = std::str::from_utf8(&raw[..split]).unwrap();
+    let mut lines = head.split("\r\n");
+    let status = lines
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let headers = lines
+        .map(|line| {
+            let (name, value) = line.split_once(':').unwrap();
+            (name.to_ascii_lowercase(), value.trim().to_owned())
+        })
+        .collect();
+    HttpResponse {
+        status,
+        headers,
+        body: raw[split + 4..].to_vec(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tagged_go_tls_and_config_boundaries_match_or_are_bounded() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/proxy-tls-framing.json"
+    ))
+    .unwrap();
+    let case = |name: &str| {
+        fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["name"] == name)
+            .unwrap()
+    };
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(
+        listener,
+        environment_with_config(tls_config(TLS_CERT, TLS_KEY)),
+    ));
+
+    for name in [
+        "tls-health-http1",
+        "tls-jsonrpc-health-http1",
+        "tls-cors-preflight-http1",
+    ] {
+        let h1 = case(name);
+        let mut stream = connect_tls(address, "localhost", &[b"http/1.1"]).await;
+        assert_eq!(
+            stream.get_ref().1.alpn_protocol(),
+            Some(b"http/1.1".as_slice())
+        );
+        stream.write_all(&raw(&h1["request"])).await.unwrap();
+        let mut bytes = Vec::new();
+        stream.read_to_end(&mut bytes).await.unwrap();
+        assert_response(h1, &h1["response"], &parse_raw_response(&bytes));
+    }
+
+    let h2 = case("tls-health-http2");
+    let stream = connect_tls(address, "localhost", &[b"h2"]).await;
+    assert_eq!(stream.get_ref().1.alpn_protocol(), Some(b"h2".as_slice()));
+    let (mut sender, connection) = h2::client::handshake(stream).await.unwrap();
+    let connection = tokio::spawn(connection);
+    let request = axum::http::Request::builder()
+        .method("GET")
+        .uri("https://localhost/health")
+        .body(())
+        .unwrap();
+    let (response, _) = sender.send_request(request, true).unwrap();
+    let response = response.await.unwrap();
+    assert_eq!(response.version(), axum::http::Version::HTTP_2);
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .map(|(name, value)| (name.as_str().to_owned(), value.to_str().unwrap().to_owned()))
+        .collect();
+    let mut body = Vec::new();
+    let mut receive = response.into_body();
+    while let Some(chunk) = receive.data().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+    assert_response(
+        h2,
+        &h2["response"],
+        &HttpResponse {
+            status,
+            headers,
+            body,
+        },
+    );
+    drop(sender);
+    connection.abort();
+
+    let wss = case("tls-wss-jsonrpc-clean-close");
+    let stream = connect_tls(address, "localhost", &[b"http/1.1"]).await;
+    let request = "wss://localhost/websocket".into_client_request().unwrap();
+    let (mut websocket, response) = tokio_tungstenite::client_async(request, stream)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 101);
+    websocket
+        .send(Message::Text(
+            r#"{"jsonrpc":"2.0","id":1,"method":"health"}"#.into(),
+        ))
+        .await
+        .unwrap();
+    let message = websocket.next().await.unwrap().unwrap();
+    assert_eq!(
+        message.into_text().unwrap(),
+        wss["response_frame"]["payload_text"]
+    );
+    websocket
+        .send(Message::Close(Some(
+            tokio_tungstenite::tungstenite::protocol::CloseFrame {
+                code: 1000.into(),
+                reason: "".into(),
+            },
+        )))
+        .await
+        .unwrap();
+    let close = websocket.next().await.unwrap().unwrap();
+    let Message::Close(Some(close)) = close else {
+        panic!("server did not return a close frame");
+    };
+    assert_eq!(close.code, 1000.into());
+    let eof = tokio::time::timeout(Duration::from_secs(1), websocket.next())
+        .await
+        .expect("WSS stream did not close after close code 1000");
+    assert!(
+        eof.is_none()
+            || matches!(
+                eof,
+                Some(Err(tokio_tungstenite::tungstenite::Error::Io(ref error)))
+                    if error.kind() == std::io::ErrorKind::UnexpectedEof
+            ),
+        "WSS connection stayed usable after the clean close response: {eof:?}"
+    );
+
+    // Rust closes during TLS parsing rather than synthesizing Go's plaintext
+    // HTTP diagnostic on a TLS port.
+    let mut plain = tokio::net::TcpStream::connect(address).await.unwrap();
+    plain
+        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = Vec::new();
+    plain.read_to_end(&mut response).await.unwrap();
+    assert!(!response.starts_with(b"HTTP/"));
+
+    let wrong_name = tokio::net::TcpStream::connect(address).await.unwrap();
+    let name = rustls::pki_types::ServerName::try_from("not-localhost.invalid").unwrap();
+    assert!(
+        tls_connector(&[b"http/1.1"])
+            .connect(name, wrong_name)
+            .await
+            .is_err()
+    );
+    server.abort();
+
+    // Go enables TLS only when both fields are present.
+    let tls_on_plain = case("tls-on-plaintext-port");
+    assert_eq!(tls_on_plain["outcome"], "tls-handshake-rejected");
+    for config in [tls_config(TLS_CERT, ""), tls_config("", TLS_KEY)] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(rpc::server::serve(
+            listener,
+            environment_with_config(config),
+        ));
+        let health = b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+        let response = tokio::task::spawn_blocking(move || Http::connect(address).exchange(health))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(response.status, 200);
+        let stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        let name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+        assert!(
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                tls_connector(&[b"http/1.1"]).connect(name, stream),
+            )
+            .await
+            .expect("TLS-to-plaintext probe did not terminate")
+            .is_err()
+        );
+        server.abort();
+    }
+
+    // Complete bad pairs fail before accepting any plaintext fallback.
+    for config in [
+        tls_config("/definitely/missing.crt", "/definitely/missing.key"),
+        tls_config(TLS_CERT, TLS_MISMATCH_KEY),
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        assert!(
+            rpc::server::serve(listener, environment_with_config(config))
+                .await
+                .is_err()
+        );
+    }
 }

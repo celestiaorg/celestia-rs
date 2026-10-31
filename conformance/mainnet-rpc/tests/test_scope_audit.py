@@ -47,6 +47,44 @@ class ScopedEvidenceAudit(unittest.TestCase):
         self.assertTrue(any("Final Go/Rust app-root" in item for item in row["exclusions"]))
         self.assertFalse(result["provider_ready"])
 
+    def test_proxy_tls_framing_closure_scope_and_limits_stay_bound(self):
+        result = audit.validate(self.value)
+        row = next(row for row in result["packages"] if row["id"] == "proxy-tls-framing")
+        self.assertEqual(row["comparison"], "normalized-runtime-comparison")
+        self.assertEqual(len(row["runtime_regressions"]), 3)
+        self.assertIn("duplicate-preserving", row["normalizations"][0])
+        self.assertIn("X-Server-Time", row["normalizations"][1])
+        self.assertEqual(len(row["known_mismatches"]), 6)
+        self.assertTrue(any("close_notify" in item for item in row["known_mismatches"]))
+        self.assertTrue(any("Public-provider" in item for item in row["exclusions"]))
+        self.assertTrue(any("Go1.26.9" in item for item in row["provenance_limits"]))
+        behavior = next(row for row in result["behaviors"] if row["issue"] == 191)
+        self.assertEqual(
+            behavior["packages"],
+            ["comet-http", "proxy-tls-framing", "rest-heights", "rest-post"],
+        )
+        self.assertIn("acceptance is covered", behavior["remaining_gaps"][0])
+
+        mutations = (
+            ("normalizations", []),
+            ("known_mismatches", []),
+            ("scope", "universal exact parity"),
+            ("provenance_limits", ["none"]),
+            ("exclusions", ["none"]),
+            ("runtime_regressions", row["runtime_regressions"][:-1]),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field):
+                changed = json.loads(audit.AUDIT.read_text())
+                package = next(
+                    package
+                    for package in changed["packages"]
+                    if package["id"] == "proxy-tls-framing"
+                )
+                package[field] = value
+                with self.assertRaises(ValueError):
+                    audit.validate(changed)
+
     def test_provider_readiness_and_missing_issue_cannot_be_hidden(self):
         self.value["provider_ready"] = True
         with self.assertRaisesRegex(ValueError, "provider readiness"):

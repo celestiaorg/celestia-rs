@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-31T03:21:40.773256+00:00",
+  "endpoint": "https://localhost:6350",
+  "network": "rs-proxy-relative-1",
+  "comet_version": "0.38.17",
+  "protocol_app": "10",
+  "height": "1",
+  "app_version": "10.5.0",
+  "abci_app_version": "10",
+  "responses": {
+    "status": {
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"node_info\":{\"protocol_version\":{\"p2p\":\"8\",\"block\":\"11\",\"app\":\"10\"},\"id\":\"2792f7b1c81a2a3331d3673bb54534eb9f8daf6b\",\"listen_addr\":\"tcp://127.0.0.1:6351\",\"network\":\"rs-proxy-relative-1\",\"version\":\"0.38.17\",\"channels\":\"40202223303860613231505100\",\"moniker\":\"relative\",\"other\":{\"tx_index\":\"off\",\"rpc_address\":\"tcp://127.0.0.1:6350\"}},\"sync_info\":{\"latest_block_hash\":\"C9170CDD1779F2738FB4C5D2D81620F9D8EC89EBD1E17C752A4DD88495CAF68B\",\"latest_app_hash\":\"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\",\"latest_block_height\":\"1\",\"latest_block_time\":\"2026-10-31T03:21:35.063256917Z\",\"earliest_block_hash\":\"C9170CDD1779F2738FB4C5D2D81620F9D8EC89EBD1E17C752A4DD88495CAF68B\",\"earliest_app_hash\":\"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\",\"earliest_block_height\":\"1\",\"earliest_block_time\":\"2026-10-31T03:21:35.063256917Z\",\"catching_up\":false},\"validator_info\":{\"address\":\"AB720D5B9D1EF0D70249A14D6A89B5B5FA1D55D9\",\"pub_key\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"w1ovvmgLnzWd1OvsNx0pYqPKvjUafqqJof9Bv7FehzA=\"},\"voting_power\":\"5000\"}}}",
+      "sha256": "1d1701bfc3dba9ecb245ecfb4b5ed1fab3a2aa2b985e1746ed52e8411f9575a0"
+    },
+    "abci_info": {
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"response\":{\"data\":\"celestia-app\",\"version\":\"10.5.0\",\"app_version\":\"10\",\"last_block_height\":\"1\",\"last_block_app_hash\":\"2VXXFbgmd9ClEn1G5B3RSDZ+yYg+9YjZr+e30CoxcWc=\",\"timeout_info\":{\"timeout_propose\":\"3000000000\",\"timeout_propose_delta\":\"500000000\",\"timeout_prevote\":\"2000000000\",\"timeout_prevote_delta\":\"500000000\",\"timeout_precommit\":\"3000000000\",\"timeout_precommit_delta\":\"500000000\",\"timeout_commit\":\"500000000\",\"delayed_precommit_timeout\":\"2100000000\"}}}}",
+      "sha256": "b7e29ccd84f47043b897b535084bd2ebc11a3aac78d784b5f7444eb8f57830e5"
+    }
+  }
+}

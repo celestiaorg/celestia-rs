@@ -4,6 +4,8 @@
 //! status codes, headers and error envelopes.
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,9 +13,10 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, State};
-use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Version, header};
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::sync::mpsc;
+use tokio_rustls::TlsAcceptor;
 
 use crate::env::{ERR_HEAVY_LIMIT, Environment, MAX_QUERY_LENGTH, Route, find_route};
 use crate::json::{self, J, Node, Val};
@@ -512,6 +515,35 @@ fn not_found() -> Response<Body> {
     r
 }
 
+fn framing_error(status: StatusCode, body: &'static str) -> Response<Body> {
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONNECTION, HeaderValue::from_static("close"));
+    response
+}
+
+fn body_read_error(error: &axum::Error) -> &'static str {
+    // Hyper preserves the underlying framing reason in its debug chain while
+    // exposing one generic Display string. The dependency is lockfile-pinned;
+    // map the bounded reasons observed from the tagged net/http oracle.
+    let detail = format!("{error:?}");
+    if detail.contains("Invalid chunk size line") {
+        "invalid byte in chunk length"
+    } else if detail.contains("Invalid chunk body") {
+        "malformed chunked encoding"
+    } else if detail.contains("IncompleteBody") {
+        "unexpected EOF"
+    } else {
+        "http: request body too large"
+    }
+}
+
 fn uri_id() -> Option<Id> {
     Some(Id::Int(-1))
 }
@@ -851,6 +883,48 @@ fn unix_now() -> u64 {
 async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
     let (mut parts, body) = req.into_parts();
     let path = parts.uri.path().to_owned();
+    if parts.version == Version::HTTP_11 && parts.uri.authority().is_none() {
+        match parts.headers.get_all(header::HOST).iter().count() {
+            0 => {
+                return framing_error(
+                    StatusCode::BAD_REQUEST,
+                    "400 Bad Request: missing required Host header",
+                );
+            }
+            1 => {}
+            _ => return framing_error(StatusCode::BAD_REQUEST, "400 Bad Request"),
+        }
+    }
+    let transfer_codings: Vec<_> = parts
+        .headers
+        .get_all(header::TRANSFER_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .collect();
+    if transfer_codings.len() > 1
+        && transfer_codings
+            .iter()
+            .all(|coding| coding.eq_ignore_ascii_case("chunked"))
+    {
+        return framing_error(StatusCode::NOT_IMPLEMENTED, "Unsupported transfer encoding");
+    }
+    if parts
+        .headers
+        .get_all(header::TRAILER)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|name| {
+            matches!(
+                name.trim().to_ascii_lowercase().as_str(),
+                "transfer-encoding" | "trailer" | "content-length"
+            )
+        })
+    {
+        return framing_error(StatusCode::BAD_REQUEST, "400 Bad Request");
+    }
     if path == "/websocket" {
         let upgrade = WebSocketUpgrade::from_request_parts(&mut parts, &()).await;
         return if let Ok(up) = upgrade {
@@ -880,20 +954,24 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
         return r;
     }
     let max = ctx.env.config.max_body_bytes;
-    let Ok(body) = axum::body::to_bytes(body, max).await else {
-        let mut response = json_response(
-            StatusCode::BAD_REQUEST,
-            RpcResponse::invalid_request(
-                None,
-                "error reading request body: http: request body too large",
-            )
-            .encode(),
-            false,
-        );
-        response
-            .headers_mut()
-            .insert(header::CONNECTION, HeaderValue::from_static("close"));
-        return response;
+    let body = match axum::body::to_bytes(body, max).await {
+        Ok(body) => body,
+        Err(error) => {
+            let reason = body_read_error(&error);
+            let mut response = json_response(
+                StatusCode::BAD_REQUEST,
+                RpcResponse::invalid_request(
+                    None,
+                    &format!("error reading request body: {reason}"),
+                )
+                .encode(),
+                false,
+            );
+            response
+                .headers_mut()
+                .insert(header::CONNECTION, HeaderValue::from_static("close"));
+            return response;
+        }
     };
     // PreChecksHandler: oversized batches are rejected on every path.
     if ctx.env.config.max_request_batch_size > 0 {
@@ -925,11 +1003,16 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
     }
     let mut resp = if path == "/" {
         let host = parts
-            .headers
-            .get(header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or_default()
-            .to_owned();
+            .uri
+            .authority()
+            .map(axum::http::uri::Authority::as_str)
+            .or_else(|| {
+                parts
+                    .headers
+                    .get(header::HOST)
+                    .and_then(|header| header.to_str().ok())
+            });
+        let host = host.unwrap_or_default().to_owned();
         jsonrpc_handler(ctx, &body, &host).await
     } else if let Some(route) = path
         .strip_prefix('/')
@@ -964,6 +1047,72 @@ pub async fn serve(
     listener: tokio::net::TcpListener,
     env: Arc<Environment>,
 ) -> std::io::Result<()> {
+    let tls = if env.config.tls_enabled() {
+        Some(tls_acceptor(&env.config)?)
+    } else {
+        None
+    };
+    serve_transport(listener, env, tls).await
+}
+
+/// Serves an explicitly plaintext listener. The node uses this only for its
+/// loopback SDK query adapter when its public RPC listeners use TLS.
+pub async fn serve_plain(
+    listener: tokio::net::TcpListener,
+    env: Arc<Environment>,
+) -> std::io::Result<()> {
+    serve_transport(listener, env, None).await
+}
+
+fn tls_acceptor(config: &crate::env::RpcConfig) -> std::io::Result<TlsAcceptor> {
+    let mut cert_file = BufReader::new(File::open(&config.tls_cert_file)?);
+    let certificates = rustls_pemfile::certs(&mut cert_file)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if certificates.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "RPC TLS certificate file contains no certificates",
+        ));
+    }
+    let mut key_file = BufReader::new(File::open(&config.tls_key_file)?);
+    let key = rustls_pemfile::private_key(&mut key_file)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "RPC TLS key file contains no private key",
+            )
+        })?;
+    let mut tls = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    .with_no_client_auth()
+    .with_single_cert(certificates, key)
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    // net/http enables HTTP/2 for TLS servers and otherwise negotiates H1.
+    tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    Ok(TlsAcceptor::from(Arc::new(tls)))
+}
+
+fn request_header_limit(configured: usize) -> usize {
+    // net/http reserves 4 KiB beyond MaxHeaderBytes while reading the
+    // request line and headers. Hyper counts the same bytes directly.
+    (if configured == 0 {
+        GO_DEFAULT_MAX_HEADER_BYTES
+    } else {
+        configured
+    })
+    .saturating_add(GO_HTTP_HEADER_READ_BUFFER)
+}
+
+async fn serve_transport(
+    listener: tokio::net::TcpListener,
+    env: Arc<Environment>,
+    tls: Option<TlsAcceptor>,
+) -> std::io::Result<()> {
     let limit = env.config.max_open_connections;
     let sem = (limit > 0).then(|| Arc::new(tokio::sync::Semaphore::new(limit)));
     loop {
@@ -979,28 +1128,57 @@ pub async fn serve(
         let (stream, remote) = listener.accept().await?;
         let app = router(Arc::clone(&env), remote);
         let configured_header_limit = env.config.max_header_bytes;
+        let tls = tls.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            let svc = hyper_util::service::TowerToHyperService::new(app);
-            // net/http reserves 4 KiB beyond MaxHeaderBytes while reading the
-            // request line and headers. Hyper counts the same bytes directly.
-            let header_limit = (if configured_header_limit == 0 {
-                GO_DEFAULT_MAX_HEADER_BYTES
+            let header_limit = request_header_limit(configured_header_limit);
+            if let Some(acceptor) = tls {
+                let stream = match acceptor.accept(stream).await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        tracing::debug!(%error, %remote, "rpc TLS handshake failed");
+                        return;
+                    }
+                };
+                let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2");
+                let svc = hyper_util::service::TowerToHyperService::new(app);
+                if h2 {
+                    let mut builder = hyper::server::conn::http2::Builder::new(
+                        hyper_util::rt::TokioExecutor::new(),
+                    );
+                    builder.max_header_list_size(u32::try_from(header_limit).unwrap_or(u32::MAX));
+                    if let Err(error) = builder
+                        .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                        .await
+                    {
+                        tracing::debug!(%error, %remote, "rpc HTTP/2 connection error");
+                    }
+                } else {
+                    let mut builder = hyper::server::conn::http1::Builder::new();
+                    builder.max_header_size(header_limit);
+                    builder.max_buf_size(header_limit.max(8192));
+                    if let Err(error) = builder
+                        .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                        .with_upgrades()
+                        .await
+                    {
+                        tracing::debug!(%error, %remote, "rpc TLS HTTP/1 connection error");
+                    }
+                }
             } else {
-                configured_header_limit
-            })
-            .saturating_add(GO_HTTP_HEADER_READ_BUFFER);
-            let mut builder = hyper::server::conn::http1::Builder::new();
-            builder.max_header_size(header_limit);
-            // Hyper's default connection buffer is smaller than Go's default
-            // header allowance. Keep it large enough for the configured cap.
-            builder.max_buf_size(header_limit.max(8192));
-            if let Err(e) = builder
-                .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
-                .with_upgrades()
-                .await
-            {
-                tracing::debug!(error = %e, %remote, "rpc connection error");
+                let svc = hyper_util::service::TowerToHyperService::new(app);
+                let mut builder = hyper::server::conn::http1::Builder::new();
+                builder.max_header_size(header_limit);
+                // Hyper's default connection buffer is smaller than Go's
+                // default header allowance.
+                builder.max_buf_size(header_limit.max(8192));
+                if let Err(error) = builder
+                    .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                    .with_upgrades()
+                    .await
+                {
+                    tracing::debug!(%error, %remote, "rpc connection error");
+                }
             }
         });
     }
@@ -1038,11 +1216,19 @@ pub fn event_frame(id: &Option<Id>, query: &str, msg: &crate::events::Message) -
 async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<String>(env.config.websocket_write_buffer_size.max(1));
+    let (close_tx, mut close_rx) = mpsc::channel(1);
     let mut writer = tokio::spawn(async move {
         let mut ping = tokio::time::interval(WS_PING_PERIOD);
         ping.tick().await;
         loop {
             tokio::select! {
+                biased;
+                close = close_rx.recv() => {
+                    if close.is_some() {
+                        let _ = tokio::time::timeout(WS_WRITE_WAIT, sink.close()).await;
+                    }
+                    break;
+                },
                 m = rx.recv() => match m {
                     Some(m) => if !ws_write(&mut sink, WsMessage::Text(m)).await { break },
                     None => break,
@@ -1052,6 +1238,7 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
         }
     });
     let mut writer_finished = false;
+    let mut close = false;
     loop {
         let msg = tokio::select! {
             _ = &mut writer => {
@@ -1068,7 +1255,12 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
         let text = match msg {
             Ok(WsMessage::Text(t)) => t,
             Ok(WsMessage::Binary(b)) => json::go_string(&b),
-            Ok(WsMessage::Close(_)) | Err(_) => break,
+            Ok(WsMessage::Close(frame)) => {
+                let _ = frame;
+                close = true;
+                break;
+            }
+            Err(_) => break,
             Ok(_) => continue,
         };
         if let Some(r) = ws_request(&env, &remote, &text, &tx).await
@@ -1078,6 +1270,11 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
         }
     }
     let _ = env.event_bus.unsubscribe_all(&remote);
+    if close {
+        let _ = close_tx.send(()).await;
+        let _ = (&mut writer).await;
+        writer_finished = true;
+    }
     drop(tx);
     if !writer_finished {
         writer.abort();

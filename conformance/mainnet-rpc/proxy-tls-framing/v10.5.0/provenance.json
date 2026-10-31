@@ -1,0 +1,425 @@
+{
+  "schema_version": 1,
+  "tracking_issues": [
+    191,
+    181
+  ],
+  "release_selection": {
+    "network": "celestia",
+    "app_release": "10.5.0",
+    "observation": "mainnet-observation.json",
+    "rule": "Read-only status and abci_info agreed on chain, height, protocol app and active app release before capture; this selects the oracle and does not claim provider parity."
+  },
+  "oracle": {
+    "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+    "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "core": "github.com/celestiaorg/celestia-core@v0.42.3",
+    "compiler": "go version go1.26.9 linux/amd64",
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38"
+  },
+  "dynamic_response_headers_excluded_from_stable_projection": [
+    "connection",
+    "content-length",
+    "date",
+    "transfer-encoding",
+    "x-server-time"
+  ],
+  "semantic_header_comparison": "lowercase name to exact duplicate-preserving value multiset; raw order and casing remain hash-bound integrity evidence",
+  "published_exclusions": [
+    "node homes and databases",
+    "validator and node private keys",
+    "application keyrings",
+    "ordinary node logs",
+    "the 184 MiB oracle binary"
+  ],
+  "published_files": [
+    "README.md",
+    "campaign.json",
+    "capture-source.py",
+    "test_capture_source.py",
+    "config-probe-source.py",
+    "aggregate-source.py",
+    "observe-local-source.py",
+    "observe-mainnet.py",
+    "observe-mainnet.sh",
+    "run-source.sh",
+    "start-source.sh",
+    "make-cert.sh",
+    "copy-source.sh",
+    "build-provenance.py",
+    "verify.py",
+    "test_verify.py",
+    "mainnet-observation.json",
+    "proxy-tls-framing.json",
+    "cert_only-identity.json",
+    "relative-identity.json",
+    "oracle-build.json",
+    "oracle-build-info.txt.gz",
+    "oracle-module.txt",
+    "go-compiler.txt",
+    "curl-version.txt",
+    "curl-binary.sha256",
+    "tls/openssl.cnf",
+    "tls/localhost.crt",
+    "tls/localhost.key",
+    "tls/mismatch.key",
+    "tls/localhost-cert.txt",
+    "tls/openssl-version.txt",
+    "cert-only-config.toml.gz",
+    "cert-only-app.toml.gz",
+    "cert-only-genesis.json.gz",
+    "key-only-config.toml.gz",
+    "key-only-app.toml.gz",
+    "key-only-genesis.json.gz",
+    "relative-config.toml.gz",
+    "relative-app.toml.gz",
+    "relative-genesis.json.gz",
+    "absolute-config.toml.gz",
+    "absolute-app.toml.gz",
+    "absolute-genesis.json.gz",
+    "missing-config.toml.gz",
+    "missing-app.toml.gz",
+    "missing-genesis.json.gz",
+    "mismatch-config.toml.gz",
+    "mismatch-app.toml.gz",
+    "mismatch-genesis.json.gz",
+    "go-source/core-config.go.gz",
+    "go-source/core-http-json-handler.go.gz",
+    "go-source/core-http-server.go.gz",
+    "go-source/core-node.go.gz",
+    "go-source/core-toml.go.gz",
+    "go-source/core-ws-handler.go.gz",
+    "go-source/cors.go.gz",
+    "go-source/stdlib-crypto-tls-handshake-server.go.gz",
+    "go-source/stdlib-crypto-tls.go.gz",
+    "go-source/stdlib-net-http-chunked.go.gz",
+    "go-source/stdlib-net-http-h2-bundle.go.gz",
+    "go-source/stdlib-net-http-request.go.gz",
+    "go-source/stdlib-net-http-server.go.gz",
+    "go-source/stdlib-net-http-transfer.go.gz"
+  ],
+  "files": {
+    "README.md": {
+      "sha256": "d6912f5096be8da148ca62e4bc4c3747c1d8d3f105d1f927de3e8126657da007",
+      "size": 8115
+    },
+    "campaign.json": {
+      "sha256": "1830b1b7826348953804a8d68708cfadeb70eb35b18dc9eedbc83c071e4b4143",
+      "size": 3497
+    },
+    "capture-source.py": {
+      "sha256": "f1a843c3438c9dbcb4c8c6dd704ca4308b289b2a1e31af1e94cc7d6294178975",
+      "size": 26367
+    },
+    "test_capture_source.py": {
+      "sha256": "9c38cbba76ebfefa03d27d48551e05b99b88ea0d2061d78a560e6c0521dd6f57",
+      "size": 1379
+    },
+    "config-probe-source.py": {
+      "sha256": "b76c2f4f19d50d73b331f821176275ea64d70521a94c06e9c3b22de378b931ab",
+      "size": 3513
+    },
+    "aggregate-source.py": {
+      "sha256": "56a44310754646e98b840d07efd8bf4a25c0f6c30e9b79d426d50a7403961ce5",
+      "size": 1037
+    },
+    "observe-local-source.py": {
+      "sha256": "c33907bc1513c90ac91c2b97091e660bafaacd37b3eabaddeea12143926aafaa",
+      "size": 2097
+    },
+    "observe-mainnet.py": {
+      "sha256": "87b042e53e2ed02cf72d643a6cbb2887f35bcd5cca8f3fc9eae21d78f98467e8",
+      "size": 3193
+    },
+    "observe-mainnet.sh": {
+      "sha256": "4d4c702315dad92f5e1304e8ca7cfe7491c1d96a3be89e91718592f5e697b5a2",
+      "size": 125
+    },
+    "run-source.sh": {
+      "sha256": "3296b478ace9b12047b4c25047258ea76f5c583f83b4ab91e9d36fdd4e1ea0f2",
+      "size": 3670
+    },
+    "start-source.sh": {
+      "sha256": "27602fcfad048a79671264a8d75a943be770e4b187442a351b148b314dc8804e",
+      "size": 4001
+    },
+    "make-cert.sh": {
+      "sha256": "dd7965e7eb2c5ff25c37e8ef4cb3d6a425f865e97ff29b509b7a58402b39e04f",
+      "size": 402
+    },
+    "copy-source.sh": {
+      "sha256": "d41ed00b43387492da95b3b6a7625f387e1747bbe87a98de4275f9e4b80d7e33",
+      "size": 1714
+    },
+    "build-provenance.py": {
+      "sha256": "4a56012b47ca23bd334885eb8a69857f9c029b83356dab00f233d261bc003523",
+      "size": 2997
+    },
+    "verify.py": {
+      "sha256": "ef5c18358a68b12df67b868efef56a15f2b36c8b56131582c07226a41e91e459",
+      "size": 20193
+    },
+    "test_verify.py": {
+      "sha256": "dbd913b00090e280478d20a96f7c6635080862635a66f2dabeab32036dfcde04",
+      "size": 6058
+    },
+    "mainnet-observation.json": {
+      "sha256": "8b5a68f151c21656f4b7568946fe35e02834485195daa63e9055a826e33457ae",
+      "size": 2330
+    },
+    "proxy-tls-framing.json": {
+      "sha256": "54c20bff91a5dc901539d8234159243646ec89ee3d0697493a5a0a8ee9cb21ea",
+      "size": 177858
+    },
+    "cert_only-identity.json": {
+      "sha256": "e7068c9494594459c74217ae93ae765b857044ca0c2f64faa9169251490fc014",
+      "size": 2333
+    },
+    "relative-identity.json": {
+      "sha256": "ec410356a1cba50c33cd26678dec832f55d339702e8b575ced69717bc12bc81c",
+      "size": 2331
+    },
+    "oracle-build.json": {
+      "sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+      "size": 1064
+    },
+    "oracle-build-info.txt.gz": {
+      "sha256": "ce4eee8ca45a6a646639332cd309c3cb464938d83df73dcc421beb401e984df5",
+      "size": 12605,
+      "uncompressed_sha256": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+      "uncompressed_size": 24287
+    },
+    "oracle-module.txt": {
+      "sha256": "c5b3b47f59f423604a8fe2306206cf73bb7a6305e104a572777e4482253e8cde",
+      "size": 48
+    },
+    "go-compiler.txt": {
+      "sha256": "34113d5d84bc5406ab3bfd0028c381611cad764f40baa15e43cffd89485c0aee",
+      "size": 32
+    },
+    "curl-version.txt": {
+      "sha256": "340e8d38bf1c862292a3e712514855ea3cb962de7abceb713a7eb37973a91ed6",
+      "size": 582
+    },
+    "curl-binary.sha256": {
+      "sha256": "c8a14fe869a2a99a608f7b47fad29afbf66caf45d6e5b38e6f94d6d4b08f2702",
+      "size": 80
+    },
+    "tls/openssl.cnf": {
+      "sha256": "bf13aa3e28aadd678413549d369e8b2646f5c82784339faac1a77036c13771e9",
+      "size": 392
+    },
+    "tls/localhost.crt": {
+      "sha256": "e1129fe39750ed4b2c077c78e0aedbbaabebdde0111225e437d7c4fb0e615aad",
+      "size": 1249
+    },
+    "tls/localhost.key": {
+      "sha256": "1dffb75766cba18c276a2bafbe45da1641c9664affb0b65bc55897b230cc8857",
+      "size": 1704
+    },
+    "tls/mismatch.key": {
+      "sha256": "b3a3b1dad00b503dd989d388d9ab9324dff6a4b08834c7131ce3daab98097bb5",
+      "size": 1704
+    },
+    "tls/localhost-cert.txt": {
+      "sha256": "5e81d0a93af0ccdc7cc7c0507341ceafd5c0eebdb7d3b65a2e675fcb6095b97e",
+      "size": 3225
+    },
+    "tls/openssl-version.txt": {
+      "sha256": "da8cea13ee7bba15e72c513764101b7b8ef5a13b560425d188605c53d283e345",
+      "size": 861
+    },
+    "cert-only-config.toml.gz": {
+      "sha256": "fc8a0d1d634b7caa4d33061751ecfdb44abf818561a1fac5370e8ebfa06809bf",
+      "size": 8905,
+      "uncompressed_sha256": "10c0e9b7c3f2d1987eb406c099b3f4b7c17780eef04562fe2d56c8c7bdf47a1a",
+      "uncompressed_size": 26923
+    },
+    "cert-only-app.toml.gz": {
+      "sha256": "b48e431f14d847f40ce32475fa27942bab618d2925c8b08c2975419b68d371bb",
+      "size": 3062,
+      "uncompressed_sha256": "c00b664229ae27976d2537231bb12d9e4e8666de0c6e7c3ae71e3a44d6e9d89e",
+      "uncompressed_size": 9143
+    },
+    "cert-only-genesis.json.gz": {
+      "sha256": "681236f6c80b2393f5c7cef0c6fc6effb11ceda0c7d46d0b0d8c52e2cc5b9011",
+      "size": 3139,
+      "uncompressed_sha256": "bae6c3be8a8d4754a19cbb16fc9fe57dd52049f98d026a2d2abd7346ec42696a",
+      "uncompressed_size": 11693
+    },
+    "key-only-config.toml.gz": {
+      "sha256": "fe2940e5810271b269d370b26502c9023c7b1924a1ef0822722338912a3010c9",
+      "size": 8904,
+      "uncompressed_sha256": "d20647d949eb68c72b0d4fbfac6d81cc2cb21f6cb2dec33e8301f30c871fb925",
+      "uncompressed_size": 26922
+    },
+    "key-only-app.toml.gz": {
+      "sha256": "fe40b3f4c0514e47fd4eeab57881bb641de05e31ab92f21a27e69ec7f8034a4b",
+      "size": 3062,
+      "uncompressed_sha256": "4900adcaf45460fc8ef89407ef9d0dee85125d837297fbb011d7e4a781d518ca",
+      "uncompressed_size": 9143
+    },
+    "key-only-genesis.json.gz": {
+      "sha256": "c9b4279e9124343dc1b05730356c060a082f79279db7c56ec4811857326ce48b",
+      "size": 3137,
+      "uncompressed_sha256": "4a1e13c7a1766eedb4a5e45b9baf7d35d2356077017ad8686f7f5c899876c883",
+      "uncompressed_size": 11691
+    },
+    "relative-config.toml.gz": {
+      "sha256": "b9868fbd758bc78ef7d88f7df6a41a1fa15f042c99fa3368a3a5d19dfdb41ac5",
+      "size": 8906,
+      "uncompressed_sha256": "4ce87f0f768bf5a6ce4cc90fa0cb10da251ca249c253dc20cc482c1650cd6167",
+      "uncompressed_size": 26937
+    },
+    "relative-app.toml.gz": {
+      "sha256": "f38c74554b38e70208d9aeab1b486879646aa4ebff23386214a9571ab6a86d37",
+      "size": 3062,
+      "uncompressed_sha256": "05f80006aabd4f17b73702c256abc2b04f988767cdb6858afade47779eaf1098",
+      "uncompressed_size": 9143
+    },
+    "relative-genesis.json.gz": {
+      "sha256": "f6aa7031456747cb9fd9f2107cd1663befd343fdd329c553e5f17753fbe4259f",
+      "size": 3134,
+      "uncompressed_sha256": "4020d8cde204c9e95afaecd2fa9b8a1eb1b80d7c7d87f29c91eb92cd05e3908a",
+      "uncompressed_size": 11691
+    },
+    "absolute-config.toml.gz": {
+      "sha256": "bcc82afecb8f6d200ea8b0233ad412ffc27542c68e302867619d78d12bd21b53",
+      "size": 8934,
+      "uncompressed_sha256": "94dfba2d88a207e8fdf773556d2dec60cb403dbecf74b54de3b8efcda2bb6022",
+      "uncompressed_size": 27019
+    },
+    "absolute-app.toml.gz": {
+      "sha256": "0dca8740fcdaf9b796af9b1bd9b36fc676d774edf362f2c7b281763ff42d5f7b",
+      "size": 3062,
+      "uncompressed_sha256": "e6b091adc581acc3907666bb024ffc61a9b8d2a115f7b6931438315cac81c708",
+      "uncompressed_size": 9143
+    },
+    "absolute-genesis.json.gz": {
+      "sha256": "022816e1abcb2fa361920e1d2e59522107cb284daa511dddd919aefb163824eb",
+      "size": 3133,
+      "uncompressed_sha256": "8c2cbed5ae22dd84ed804d4ad68784f7725463ea87faf0fba69a517ab1b9adce",
+      "uncompressed_size": 11691
+    },
+    "missing-config.toml.gz": {
+      "sha256": "cb64f205787ad4b96d57260ac213e3b2ee3000c31a9fe5ccc8646a84bfb8256f",
+      "size": 8937,
+      "uncompressed_sha256": "adee29c57b28fd34267982f6293c623acda9a37ecf8c2ccf32826e483b6c3e23",
+      "uncompressed_size": 27014
+    },
+    "missing-app.toml.gz": {
+      "sha256": "af3c1db774baab39882287679a780673e8b112ea4623c3c5b0294a7391ceba4b",
+      "size": 3062,
+      "uncompressed_sha256": "d9c9f65682e407331ca215f54e752521791b0f67a8144a2550c2a057076cabd7",
+      "uncompressed_size": 9143
+    },
+    "missing-genesis.json.gz": {
+      "sha256": "129df5f15b924ea38cdfcee2a742dabb2a57c80d973dcd6e285e4d3a1ef70abc",
+      "size": 3139,
+      "uncompressed_sha256": "8068119a5dd14e56116258ba4cf4d30fecdc8af059bef2e677d0e557c9cdd47c",
+      "uncompressed_size": 11689
+    },
+    "mismatch-config.toml.gz": {
+      "sha256": "544221b534a7cb77295f757e94f000b9db534803885922fe0c1142d3f0747c05",
+      "size": 8942,
+      "uncompressed_sha256": "09f698356db72c1862173d09c836cd1b3f487efbee32e8836f146d81cd800a08",
+      "uncompressed_size": 27018
+    },
+    "mismatch-app.toml.gz": {
+      "sha256": "759c9811556cbd315d93f9018d8c9598d5a356d01ccf37a8ae8c0959f1a91d13",
+      "size": 3063,
+      "uncompressed_sha256": "551c2f8c47b2186d8c60b2f7fb58be6541a57ce4ca96a446fff078f2201b9894",
+      "uncompressed_size": 9143
+    },
+    "mismatch-genesis.json.gz": {
+      "sha256": "431ebc931b68d2f5d0cd00171fa7ac75cd00970e6add153be45ac4f36ee51c24",
+      "size": 3134,
+      "uncompressed_sha256": "552ba61a51d97c805973ef5796bced6a442523987c23b67b9cb62f54b8a40891",
+      "uncompressed_size": 11691
+    },
+    "go-source/core-config.go.gz": {
+      "sha256": "85319ec1e7326d4fa67798e349d4617b03193cb79437645a1974961ae604e1e9",
+      "size": 16465,
+      "uncompressed_sha256": "f75e9a79c8de981cef4be4db2d3f30835567512bb2b088e9c0fe861ec3bad5c1",
+      "uncompressed_size": 65278
+    },
+    "go-source/core-http-json-handler.go.gz": {
+      "sha256": "c103ae3b0cd030bee2fbe4820a4fbcbcee8e1b827d48e08f03db37de9c485bc2",
+      "size": 2690,
+      "uncompressed_sha256": "00fbc8e3e5c393363b96e1b65409298ab18cabd71823a7afb7dd090fc866e325",
+      "uncompressed_size": 7757
+    },
+    "go-source/core-http-server.go.gz": {
+      "sha256": "1375b043324e46dfd63af104bd3ae6321fe593f3d089664d56a30c5bfa80edd4",
+      "size": 3510,
+      "uncompressed_sha256": "762299ec1383f8c5eab150116e558492a98840303628a659f578ce805dddc5f8",
+      "uncompressed_size": 10660
+    },
+    "go-source/core-node.go.gz": {
+      "sha256": "e6c5d518c38074e25fe38334eb488e7b46df60a1fa5f5a25ea2034133b0d7b7a",
+      "size": 10818,
+      "uncompressed_sha256": "61607a6bef085f96863786e7d597c364d9e1d0e732a7128a713e65450e418215",
+      "uncompressed_size": 38380
+    },
+    "go-source/core-toml.go.gz": {
+      "sha256": "673bf35dc6cf83b8317bef2e62aecc10b930c23fe0ccc2be7c0e6e1a2ed0e2bb",
+      "size": 10040,
+      "uncompressed_sha256": "432466ae08870fa59f095d6346201ef8aa06941c215cfd6489a6fce3e98ba65a",
+      "uncompressed_size": 31704
+    },
+    "go-source/core-ws-handler.go.gz": {
+      "sha256": "7eadfa17765b6e330e0a058a8cd1850f24ee8dd4965b26a0fa3837bae0dff032",
+      "size": 4558,
+      "uncompressed_sha256": "f613f241c93843bda4a1f194fe7fc3352e00329a1990998440363385806cce67",
+      "uncompressed_size": 14462
+    },
+    "go-source/cors.go.gz": {
+      "sha256": "3a9bedebda398289143f73844e778dc6f0204264007e488a753099e6ef0ad918",
+      "size": 4784,
+      "uncompressed_sha256": "c28a470d8a64dc229f4014866260e1885ee62f3c726251e112254e3d0f796483",
+      "uncompressed_size": 17650
+    },
+    "go-source/stdlib-crypto-tls-handshake-server.go.gz": {
+      "sha256": "c89f0250b27fb1e8d6006b1cd1cdcd8ce568e4afd70558e98f54cf35161d9fbf",
+      "size": 8385,
+      "uncompressed_sha256": "371e52320f1011df2b23f1ee942f0ef0e6130cb53c8e7b2f83b7aff69cae21cb",
+      "uncompressed_size": 31880
+    },
+    "go-source/stdlib-crypto-tls.go.gz": {
+      "sha256": "234b2a093e4cee3c89b58bfcafcf3c88e4cae3ed2a79a8e618c9a1fd4c840977",
+      "size": 3935,
+      "uncompressed_sha256": "f7496eda12403ed3008aac8f1bdc7aa0238e4f9898eb5fe7bbbc1af711203554",
+      "uncompressed_size": 13069
+    },
+    "go-source/stdlib-net-http-chunked.go.gz": {
+      "sha256": "edc08912a0fc3642079947b1db1fc480b7ce8b2c24712bf2545c888ea16b23ad",
+      "size": 3422,
+      "uncompressed_sha256": "d2a088e8d1d0ae6ff593b27011982ef9115fee593cb57cc97eb34982ff17f5e2",
+      "uncompressed_size": 8479
+    },
+    "go-source/stdlib-net-http-h2-bundle.go.gz": {
+      "sha256": "4f50b6a8524cc1fc6aa70e55693af07bc1559d2a7bb94d5bb354b4e9a4f5779f",
+      "size": 106536,
+      "uncompressed_sha256": "a2525871d4dff10f9cb1205aa1f4af94845729643bc1aa411a1ccf31ea161e2e",
+      "uncompressed_size": 402342
+    },
+    "go-source/stdlib-net-http-request.go.gz": {
+      "sha256": "3521c55db8e25cbd085c75e0f85fc63b51ac6512fd41a299be6a431669c85227",
+      "size": 16163,
+      "uncompressed_sha256": "4a34a9e157a606a046d5b9f8f761c571c4762668fa351d92048515a595939c38",
+      "uncompressed_size": 50447
+    },
+    "go-source/stdlib-net-http-server.go.gz": {
+      "sha256": "6ec2a3107bc673fc0ab1f154e20df925f64698886be226f6e5b28b977756332f",
+      "size": 41433,
+      "uncompressed_sha256": "6f344ca40661ce5d31ce7f237dc23c53d4d34fe3043bd5e76bac50e6c97d91cb",
+      "uncompressed_size": 131971
+    },
+    "go-source/stdlib-net-http-transfer.go.gz": {
+      "sha256": "4ab74cdb9a3310c0aa2800345b9a106923038262498c58d9501b05fea6de843c",
+      "size": 10244,
+      "uncompressed_sha256": "3e04744176d3cf5bef2827ab158b10aaeec3981ac5f4e7fb86e3dbf5f592eed7",
+      "uncompressed_size": 31864
+    }
+  }
+}
