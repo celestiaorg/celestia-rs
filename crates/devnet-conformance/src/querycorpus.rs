@@ -53,7 +53,11 @@ pub struct AbciCase {
     /// Request `prove`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prove: bool,
-    /// Go's response.
+    /// True only when Go sent a decoded ABCI envelope without a Query value.
+    /// `response` is ignored in this case, never treated as successful output.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub missing_response: bool,
+    /// Go's response when the Query value was present.
     pub response: AbciResponse,
 }
 
@@ -353,6 +357,11 @@ pub fn check_abci(scenario: &str) -> anyhow::Result<Report> {
             report.skipped += 1;
             continue;
         }
+        anyhow::ensure!(
+            !case.missing_response,
+            "empty ABCI response envelope requires explicit transport comparison: {}",
+            case.path
+        );
         report.compared += 1;
         let ours = match app.handle(request::Value::Query(case.request())) {
             response::Value::Query(q) => AbciResponse::from(&q),
