@@ -6,11 +6,13 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 from urllib.parse import parse_qs, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = ROOT / "conformance/fixtures/devnet/v105-populated-governance"
+CAPTURE_COMMIT = "7627127a36b87eb7ce3770c88eda7de866ecff56"
 EXPECTED_CASES = (
     "proposal-voting", "proposal-deposit", "proposal-expedited",
     "proposal-historical", "proposals-first", "proposals-next-key",
@@ -172,6 +174,20 @@ def check(condition, message):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def captured_source_digest(name):
+    """Hash a replay source from the captured tree, not the moving worktree."""
+    try:
+        completed = subprocess.run(
+            ["git", "show", f"{CAPTURE_COMMIT}:{name}"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError(f"captured source unavailable: {name}") from error
+    return hashlib.sha256(completed.stdout).hexdigest()
 
 
 def read_varint(data, offset):
@@ -438,7 +454,7 @@ def verify_hashes(metadata):
     check(published == EXPECTED_ARTIFACTS | {"capture/metadata.json"},
           "fixture directory contains an unexpected or missing file")
     for name, expected in metadata["source_sha256"].items():
-        check(digest(ROOT / name) == expected, f"source hash mismatch: {name}")
+        check(captured_source_digest(name) == expected, f"source hash mismatch: {name}")
     for name, expected in metadata["artifact_sha256"].items():
         check(digest(FIXTURE / name) == expected, f"artifact hash mismatch: {name}")
 

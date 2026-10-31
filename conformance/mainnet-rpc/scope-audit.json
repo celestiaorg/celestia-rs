@@ -387,7 +387,7 @@
       "comparison": "exact-protobuf-structural-json-comparison",
       "receipt": {
         "path": "conformance/fixtures/devnet/v105-populated-governance/capture/metadata.json",
-        "sha256": "8a572e2e72af6e6c309542118eb84dca218b52bc3400ab62b0fc892ebb4c5de8"
+        "sha256": "4d330e5d6de9a046f1e7d3b80444cd4fe5fd596b64c734447e13d728006e021e"
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/populated-governance/README.md",
@@ -395,7 +395,7 @@
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/populated-governance/verify.py",
-        "sha256": "8bb8868be2e9376429b00fb37cd00cf9de70dfce07dfc3c3a1a58956a558e7cb"
+        "sha256": "988daf12dc7bea7100c6baa861362d46843c8da7aeab3691a57ad6d75bbeb95f"
       },
       "transports": [
         "comet-jsonrpc",
