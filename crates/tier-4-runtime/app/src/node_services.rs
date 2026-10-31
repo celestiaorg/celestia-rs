@@ -125,6 +125,7 @@ fn dispatch(env: &Env<'_>, path: &str, data: &[u8]) -> QResult<Vec<u8>> {
 
 /// The gRPC path: `CreateQueryContext(height)` under the lock, then the
 /// handler without it. `None` for other methods.
+#[must_use]
 pub fn grpc_query(
     app: &AbciApp,
     path: &str,
