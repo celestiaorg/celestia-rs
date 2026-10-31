@@ -117,6 +117,7 @@ def fixture(root: pathlib.Path) -> None:
     for node in ("go", "rs"):
         normal[node] = {
             "config.toml": {
+                "priv_validator_grpc_laddr": "",
                 "rpc.timeout_broadcast_tx_commit": "10s", "rpc.laddr": endpoint_values[f"{node}_rpc"],
                 "rpc.grpc_laddr": endpoint_values[f"{node}_core"], "rpc.max_subscription_clients": 1,
                 "rpc.max_subscriptions_per_client": 1, "p2p.pex": False, "mempool.broadcast": False,
@@ -136,6 +137,7 @@ def fixture(root: pathlib.Path) -> None:
             config, app = files["config.toml"], files["app.toml"]
             result[node] = {
                 "config.toml": {
+                    "priv_validator_grpc_laddr": config["priv_validator_grpc_laddr"],
                     "rpc": {"timeout_broadcast_tx_commit": config["rpc.timeout_broadcast_tx_commit"],
                             "laddr": config["rpc.laddr"], "grpc_laddr": config["rpc.grpc_laddr"],
                             "max_subscription_clients": config["rpc.max_subscription_clients"],
@@ -628,6 +630,15 @@ class VerifyTest(unittest.TestCase):
             "p2p.laddr", "tcp://127.0.0.1:39999"))
         self.reject("config.delta|config.listeners", lambda: verify.verify(self.root))
 
+    def test_priv_validator_grpc_listener_must_be_disabled(self):
+        def mutate(value):
+            for phase in ("normal", "timeout", "restored"):
+                for node in ("go", "rs"):
+                    value[phase][node]["config.toml"]["priv_validator_grpc_laddr"] = "127.0.0.1:26669"
+                    value["full"][phase][node]["config.toml"]["priv_validator_grpc_laddr"] = "127.0.0.1:26669"
+        self.rewrite("configs.json", mutate)
+        self.reject("config.isolation", lambda: verify.verify(self.root))
+
     def test_full_config_hidden_delta(self):
         self.rewrite("configs.json", lambda value: value["full"]["timeout"]["go"]["config.toml"].__setitem__(
             "instrumentation", {"prometheus": True}))
@@ -909,6 +920,21 @@ class VerifyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / "capture"
             self.reject("receipt-bound outer campaign", lambda: capture.run_driver(output, 0, ["/bin/true"]))
+
+    def test_process_group_live_members_ignore_only_zombies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc = pathlib.Path(directory)
+            for pid, state, group, name in (
+                (101, "S", 77, "live worker"),
+                (102, "Z", 77, "dead ) worker"),
+                (103, "R", 88, "other"),
+            ):
+                path = proc / str(pid)
+                path.mkdir()
+                (path / "stat").write_text(f"{pid} ({name}) {state} 1 {group} 0 0 0\n")
+            self.assertEqual(capture.process_group_live_members(77, proc), {101})
+            self.assertEqual(capture.process_group_live_members(88, proc), {103})
+            self.assertEqual(capture.process_group_live_members(99, proc), set())
 
     def test_final_state_link(self):
         def mutate(value):

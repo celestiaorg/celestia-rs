@@ -37,16 +37,39 @@ EXPECTED_PAYLOADS = {
 }
 
 
+def process_group_live_members(
+    process_group: int, proc_root: pathlib.Path = pathlib.Path("/proc")
+) -> set[int]:
+    """Return live members of ``process_group``; dead zombies cannot be reaped here."""
+    members: set[int] = set()
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text()
+        except FileNotFoundError:
+            continue
+        # comm is parenthesized and may itself contain spaces or `)`. Fields
+        # after the last `)` start with state, ppid and process-group ID.
+        close = raw.rfind(")")
+        harness.require(close >= 0, f"malformed process stat for PID {entry.name}")
+        fields = raw[close + 1 :].split()
+        harness.require(len(fields) >= 3, f"short process stat for PID {entry.name}")
+        try:
+            group = int(fields[2])
+        except ValueError as error:
+            raise harness.HarnessError(f"invalid process group for PID {entry.name}") from error
+        if group == process_group and fields[0] != "Z":
+            members.add(int(entry.name))
+    return members
+
+
 def process_group_exists(process_group: int) -> bool:
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return False
-    return True
+    return bool(process_group_live_members(process_group))
 
 
 def drain_process_group(process_group: int) -> dict[str, bool]:
-    """Boundedly drain descendants left by the isolated capture driver."""
+    """Boundedly drain every live descendant left by the isolated capture driver."""
     term_sent = process_group_exists(process_group)
     if term_sent:
         os.killpg(process_group, signal.SIGTERM)

@@ -278,6 +278,7 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
         raise VerificationError(f"config.delta: {error}") from error
     require(configs["restored"] == configs["normal"], "config.restore", "restored config differs from normal")
     config_fields = {
+        "priv_validator_grpc_laddr",
         "rpc.timeout_broadcast_tx_commit", "rpc.laddr", "rpc.grpc_laddr",
         "rpc.max_subscription_clients", "rpc.max_subscriptions_per_client",
         "p2p.pex", "p2p.laddr", "mempool.broadcast", "mempool.max_txs_bytes",
@@ -287,6 +288,7 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
     full = harness.require_fields(configs["full"], {"normal", "timeout", "restored"}, "full configs")
     paths = {
         "config.toml": {
+            "priv_validator_grpc_laddr": ("priv_validator_grpc_laddr",),
             "rpc.timeout_broadcast_tx_commit": ("rpc", "timeout_broadcast_tx_commit"),
             "rpc.laddr": ("rpc", "laddr"), "rpc.grpc_laddr": ("rpc", "grpc_laddr"),
             "rpc.max_subscription_clients": ("rpc", "max_subscription_clients"),
@@ -324,7 +326,8 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
             require(projected(full_files["config.toml"], "config.toml") == config and
                     projected(full_files["app.toml"], "app.toml") == app,
                     "config.full", f"{phase}/{node} full config projection differs")
-            require(config["p2p.pex"] is False and config["mempool.broadcast"] is False and
+            require(config["priv_validator_grpc_laddr"] == "" and
+                    config["p2p.pex"] is False and config["mempool.broadcast"] is False and
                     config["tx_index.indexer"] == "kv" and config["consensus.timeout_commit"] == "5s",
                     "config.isolation", f"{phase} {node}")
             require(config["mempool.max_txs_bytes"] == topology["max_txs_bytes"] and

@@ -54,6 +54,8 @@ Before starting, it proves that both home genesis files equal the public
 genesis and that each validator key's public identity matches its named genesis
 validator. The evidence preserves every complete parsed config and rejects any
 normal/timeout/restored delta except the declared commit timeout.
+The optional private-validator signer gRPC address is explicitly empty in both
+node configs, so it cannot add an unreviewed listener to the transport matrix.
 
 `verify.py` verifies a single explicitly named capture root. It never discovers
 or selects a convenient capture. It checks exact file inventory and hashes,
@@ -104,7 +106,9 @@ mempools, proving restored-generation liveness and final continuity.
 `capture.py` accepts only the local `campaign.py` source with its exact SHA-256
 and fixed Python entry point. The campaign remains unexecuted until its exact
 static tree receives independent runtime approval and fresh build receipts bind
-the final source hashes.
+the final source hashes. Cleanup requires every live process-group member to
+exit after bounded TERM/KILL; unreapable zombie records are ignored because
+they are already dead and cannot retain a listener or other runtime resource.
 
 No fixture is committed until a fresh read-only mainnet observation selects
 the active 10.5.0 release, both binaries are built and receipt-bound, all 28

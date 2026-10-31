@@ -47,6 +47,7 @@ CLIENT_FIELDS = {"transport", "wire", "http_status", "http_headers", "json", "gr
                  "client_error", "process_effect"}
 CONFIG_FIELDS = {
     "config.toml": {
+        "priv_validator_grpc_laddr": ("priv_validator_grpc_laddr",),
         "rpc.timeout_broadcast_tx_commit": ("rpc", "timeout_broadcast_tx_commit"),
         "rpc.laddr": ("rpc", "laddr"), "rpc.grpc_laddr": ("rpc", "grpc_laddr"),
         "rpc.max_subscription_clients": ("rpc", "max_subscription_clients"),
@@ -235,6 +236,10 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
                 harness.require(parsed == full_files[filename], f"{generation}/{role}/{filename} full config differs")
                 harness.require(toml_projection(raw, fields, f"{generation}/{role}/{filename}") == configs[generation][role][filename],
                                 f"{generation}/{role}/{filename} projection differs from receipt")
+            harness.require(
+                configs[generation][role]["config.toml"]["priv_validator_grpc_laddr"] == "",
+                f"{generation}/{role} priv_validator_grpc_laddr must be disabled",
+            )
     harness.validate_config_delta(configs["normal"], configs["timeout"])
     harness.require(configs["restored"] == configs["normal"], "restored config differs from normal")
     for role in ROLES:
