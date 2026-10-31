@@ -38,6 +38,10 @@ gostr = { path = "../tier-0-primitives/gostr" }
 [dev-dependencies]
 ctypes = { path = "../tier-1-protocol-types/ctypes" }
 nodestore = { path = "../tier-4-runtime/nodestore" }
+rpc = { path = "../tier-4-runtime/rpc", default-features = false }
+mempool = { path = "../tier-4-runtime/mempool" }
+kvdb = { path = "../tier-2-state-and-store/kvdb" }
+ics23-proofs = { path = "../tier-2-state-and-store/ics23-proofs" }
 snapshots = { path = "../tier-2-state-and-store/snapshots" }
 tempfile = "3"
 pbjson-types = "0.7"
