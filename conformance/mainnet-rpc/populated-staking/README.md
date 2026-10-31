@@ -20,10 +20,17 @@ and must never be used for a funded network. Block times remain live inputs;
 the capture binds their resulting genesis, ABCI stream and blocks by hash.
 
 `capture/metadata.json` binds all capture sources and outputs to SHA-256
-hashes. The app and core build manifests pin source commits, module sums,
-compiler target and flags. A fresh read-only mainnet observation confirms
-v10.5.0 before capture. The source-built app uses the `ledger` tag; it is not
-a downloaded release binary or the historical-version multiplexer.
+hashes. It also records the binary hash, complete build receipt and exact
+source set for each recorder and state generator. The offline verifier parses
+the block archive and state snapshots instead of treating them as opaque
+hashed files. The app and core build manifests pin source commits, module
+sums, compiler target and flags.
+
+The read-only mainnet observation must precede capture by no more than 24
+hours. Its raw `status` and `abci_info` bodies are hashed and parsed again to
+check their chain, height and application-version agreement. The source-built
+app uses the `ledger` tag; it is not a downloaded release binary or the
+historical-version multiplexer.
 
 This is a partial #188 artifact. Its explicit omissions include proof
 validity, non-staking modules, invalid UTF-8, Any/JSON edge cases and later

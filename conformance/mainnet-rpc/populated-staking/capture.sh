@@ -13,8 +13,8 @@ ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 K=(--keyring-backend test --home "$HOME_DIR")
 DELEGATOR=$(celestia-appd keys show user0 -a "${K[@]}")
 VALIDATOR=$(celestia-appd keys show val0 --bech val -a "${K[@]}")
-(cd "$ROOT/conformance/rpccorpus/recorder" && go run ./cmd/populated-queries \
+populated-queries \
   -abci "$ABCI_ADDR" -rpc "$COMET_RPC" -grpc "$SDK_GRPC" -rest "$REST_API" \
   -chain-id "$CHAIN_ID" -tip-height "$CAPTURE_HEIGHT" \
   -delegator "$DELEGATOR" -validator "$VALIDATOR" \
-  -out "$CAPTURE_DIR/transports.json")
+  -out "$CAPTURE_DIR/transports.json"

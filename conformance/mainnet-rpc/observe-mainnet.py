@@ -30,6 +30,10 @@ if status["node_info"]["network"] != "celestia":
     raise ValueError("endpoint is not mainnet (chain ID celestia)")
 if info["version"] != policy["oracle"]["celestia_app"].removeprefix("v"):
     raise ValueError("active mainnet version differs from policy: review oracle selection before capturing")
+if status["node_info"]["protocol_version"]["app"] != info["app_version"]:
+    raise ValueError("status and abci_info disagree on the application protocol version")
+if status["sync_info"]["latest_block_height"] != info["last_block_height"]:
+    raise ValueError("status and abci_info were not observed at the same height")
 result = {"endpoint": base, "observed_at": datetime.now(timezone.utc).isoformat(),
           "version": info["version"], "chain_id": "celestia", "responses": responses}
 args.out.parent.mkdir(parents=True, exist_ok=True)
