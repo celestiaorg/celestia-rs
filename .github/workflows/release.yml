@@ -108,7 +108,7 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
           # ubuntu-22.04 (glibc 2.35) so the binaries run on older distros.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
