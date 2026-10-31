@@ -84,6 +84,56 @@ test result into a committed response artifact, or turn schema/diagnostic checks
 into exact comparisons. A later capture can replace a blocker with an admitted
 manifest only by committing the corresponding evidence.
 
+## Current behavior checklist and scoped CI gate
+
+`scope-audit.json` separately indexes the merged evidence available at its exact
+`audited_main` revision. The strict paired-response admission contract above is
+unchanged. A scoped package is a hash-bound review of what the capture and its
+tests establish; it does not add an exact case or satisfy every branch of its
+tracking issue. `scope_audit.py` requires the complete package/transport/selector
+set and every issue #182–#192, including explicit remaining gaps for issues with
+no merged current-release campaign.
+
+| Issue | Current capture/test scope | Comparison limit |
+| --- | --- | --- |
+| #182 | Port-specific reflection streams and descriptors | Narrow ordering/whitespace normalization; upstream crash diagnostic excluded |
+| #183 | Custom unary/streaming byte limits and listener configuration | Current Go capture and unmatched Rust operator tests; resource campaign incomplete |
+| #184 | Production identity and consensus schema | Build identity intentionally differs; asynchronous values unconstrained |
+| #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
+| #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
+| #187 | Seventeen live Go submission exchanges and blob inclusion | Paired live Rust replay and broader mode/message/resource matrix remain open |
+| #188 | Eleven populated staking/reward cases across transports, Rust committed-root proof check | One list-order normalization; other modules and Go proof bytes remain open |
+| #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
+| #190 | One bounded Go subscription/quota/deadline/reconnect cycle plus Rust cleanup regressions | Relational timing/order/resource checks; sustained workload remains open |
+| #191 | REST height, REST POST and Comet HTTP boundary packages | REST callback/Go-only subsets and explicit Hyper431 diagnostic difference |
+| #192 | Merged310-second mixed-node all-API soak:111 heights,990 provider operations | Candidate809bfca, explicit disabled scenarios and cutoff accounting; no exact paired response parity |
+
+Run the scope gate independently:
+
+```sh
+python3 conformance/mainnet-rpc/scope_audit.py --verify
+python3 conformance/mainnet-rpc/coverage.py --verify-scoped --json /tmp/rpc-coverage.json
+```
+
+The `rpc-evidence` CI job now runs the registered offline current-release
+regressions for limits, WebSocket lifecycle, live transactions, populated staking,
+REST height/POST, Comet HTTP and the merged bounded provider soak. Their verifier sources and primary receipts are
+hash-bound. The full reviewed audit content is canonically hash-bound in code,
+including its merged baseline, deviations, provenance limits and remaining-gap
+text. Rebinding the baseline or hiding a gap requires an explicitly reviewed
+code change. It runs no fresh network capture. The ordinary workspace test job
+also executes the named Rust socket/production/proof regressions; the audit binds
+their exact source files and function names without creating a second Rust
+workspace build. A passing offline verifier confirms its stated captured
+contract and provenance, not untested provider equivalence.
+
+The scope audit records normalizations, demonstrated differences, exclusions and
+missing provenance separately. In particular, the older query corpus still
+contains its historical Simulate skip and stale gas-zero rationale. That retained
+skip is not evidence of a current Simulate mismatch: the merged fresh14-case
+contract is recorded separately. No source code or historical answer is silently
+changed to erase this distinction.
+
 ## Fresh oracle selection and capture
 
 Oracle selection is a separate, explicit read-only network operation:

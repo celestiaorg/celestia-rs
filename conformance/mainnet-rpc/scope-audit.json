@@ -1,0 +1,571 @@
+{
+  "schema_version": 1,
+  "audited_main": "19721fcbfb1db4458711e0cdcba244d3338b7fb8",
+  "provider_ready": false,
+  "packages": [
+    {
+      "id": "reflection",
+      "issue": 182,
+      "comparison": "normalized-runtime-comparison",
+      "receipt": {
+        "path": "conformance/grpc-reflection/v10.5.0/meta.json",
+        "sha256": "5841f957ee0a8c497aa6623b955bf9af41af74d13612685a86f973b5b34518b4"
+      },
+      "documentation": {
+        "path": "conformance/grpc-reflection/README.md",
+        "sha256": "218c47496c00f08aa321aa4f1f2133e8a129df61664421504080dd99bee136a2"
+      },
+      "verifier": null,
+      "transports": [
+        "core-grpc",
+        "cosmos-grpc"
+      ],
+      "scope": "Actual port-specific Go streaming transcripts replayed through Rust listeners",
+      "normalizations": [
+        "Sort SDK extension-number map output",
+        "ASCII space/NBSP immediately after proto: prefix"
+      ],
+      "known_mismatches": [
+        "Go extension65003 crash is a diagnostic; Rust keeps its stream alive and returns bounded NotFound"
+      ],
+      "exclusions": [
+        "Matched chain state is not established; reflection registration only"
+      ],
+      "provenance_limits": [
+        "No committed paired Rust binary/state/response capture; source and Go receipts are in evidence-reviews.json"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs",
+            "sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"
+          },
+          "function": "sdk_v1alpha_matches_go_socket_streams"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs",
+            "sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"
+          },
+          "function": "core_v1_and_v1alpha_match_go_socket_streams"
+        }
+      ]
+    },
+    {
+      "id": "grpc-limits",
+      "issue": 183,
+      "comparison": "unmatched-runtime-comparison",
+      "receipt": {
+        "path": "conformance/grpc-limits/v10.5.0/meta.json",
+        "sha256": "a4dd9b702f6826192c672cd0f69fcee868a0d097895fc63fd5cf8b7d256411d7"
+      },
+      "documentation": {
+        "path": "conformance/grpc-limits/README.md",
+        "sha256": "fc49d223902f8c1899cb7b2fb9b8998fb3ef3d7dad1e0effff9ac08c4c66225c"
+      },
+      "verifier": {
+        "path": "conformance/grpc-limits/verify.py",
+        "sha256": "6bfbcfdb58b345b2f1c8002a981f7e5d2899c1484240f0efa13620b21815b780"
+      },
+      "transports": [
+        "core-grpc",
+        "cosmos-grpc"
+      ],
+      "scope": "Custom SDK63/64/65-byte receive and5/6/7-byte send boundaries, streaming sizes and core4MiB boundaries",
+      "normalizations": [],
+      "known_mismatches": [
+        "Negative limits are rejected during Rust config loading rather than creating an unusable Go listener"
+      ],
+      "exclusions": [
+        "Keepalive, handshake deadlines, compression, comprehensive cancellation, sustained resource growth and quota0/2 remain incomplete"
+      ],
+      "provenance_limits": [
+        "Go receipts are current-release; production Rust test deliberately uses historical genesis and is not matched-state current-release replay"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-5-node/celestia-rs/tests/grpc_limits.rs",
+            "sha256": "91c9a86043b86e27c56b31a06e716382692eb03a603cbe91e6c7971b5f3e28a6"
+          },
+          "function": "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"
+        }
+      ]
+    },
+    {
+      "id": "runtime-identity",
+      "issue": 184,
+      "comparison": "schema-only",
+      "receipt": {
+        "path": "conformance/node-metadata/v10.5.0/consensus.json",
+        "sha256": "2707d1f08740929c9631d5db398a7675b5451c953dcee32eb15216fee728a1b0"
+      },
+      "documentation": {
+        "path": "docs/rpc-version-identity.md",
+        "sha256": "824b429c60e062416f0ccb9e54ad1f969e68dead27e2b16e04cfbf8435e1ffa7"
+      },
+      "verifier": null,
+      "transports": [
+        "comet-uri",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Production Rust build identity and compatibility version; Go consensus JSON schema exemplars",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "Asynchronous consensus values and cardinalities are not exact comparisons; Go and Rust build identity intentionally differ"
+      ],
+      "provenance_limits": [
+        "Actual schema-only capture disclaims matched-state equality; no paired Rust capture receipt"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs",
+            "sha256": "dc50b93017fd9fd6a21e2592b0590d58c8657cf82a7a2537f47cc92e98aabce2"
+          },
+          "function": "production_listeners_report_build_and_compatibility_separately"
+        }
+      ]
+    },
+    {
+      "id": "simulation",
+      "issue": 185,
+      "comparison": "normalized-runtime-comparison",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/simulation/metadata.json",
+        "sha256": "e79fb36cd98b5e00114ab3878ee9f1c2f400158a19e6896cf2a694b7390890dd"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/simulation/README.md",
+        "sha256": "1011c9f380bc0bef2fe82169a57365d9fa8a5d40db2a021ce0897c7ca5d9efdf"
+      },
+      "verifier": null,
+      "transports": [
+        "cosmos-grpc"
+      ],
+      "scope": "Fourteen fresh Go Simulate cases covering request/tx decoding, ante, execution, gas, details and height; actual Rust socket replay",
+      "normalizations": [
+        "Remove only syntactically identified Go source frames from expected diagnostic text"
+      ],
+      "known_mismatches": [],
+      "exclusions": [
+        "Raw HTTP2 header/trailer placement and nonempty protobuf status details are not covered"
+      ],
+      "provenance_limits": [
+        "Go committed empty20 state is checked by Rust at runtime; no committed Rust binary/state/response receipt"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/devnet-conformance/tests/simulation_errors.rs",
+            "sha256": "eea6a471de30d7bcdffcb268e4ac51f9f105dd58575ffb7e43725b640298dc49"
+          },
+          "function": "current_release_simulation_errors"
+        }
+      ]
+    },
+    {
+      "id": "empty-query",
+      "issue": 186,
+      "comparison": "runtime-exact-unrecorded",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json",
+        "sha256": "b7ba4357f0b675b58d69c033f4c9427a26dacc021470c05ff267cd20cb4be9d9"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/empty-query/README.md",
+        "sha256": "83f50921b6883312613316ee29c2cb0e03f515b7d2a66d28ce5d5c1ed63baaf4"
+      },
+      "verifier": null,
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc",
+        "comet-websocket"
+      ],
+      "scope": "Twenty-eight public transports and nine raw ABCI cases for missing envelopes and connection survival",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "Cosmos ABCIQuery wrapper and custom peer-filter callbacks are outside scope"
+      ],
+      "provenance_limits": [
+        "Runtime exact replay has no committed Rust response/binary or matched-state capture; current review ledger retains those blockers"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/empty_query.rs",
+            "sha256": "6c06cd5abc93d17533af6ff8916701c9bb8440b8214f29f6117e589d6a39c3c9"
+          },
+          "function": "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"
+        }
+      ]
+    },
+    {
+      "id": "live-transactions",
+      "issue": 187,
+      "comparison": "go-transports-only",
+      "receipt": {
+        "path": "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json",
+        "sha256": "6aa37a8c13820dd411cb1c70e85a5631c66102ac012193624a3f5061042da398"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/live-tx/README.md",
+        "sha256": "a48528b2da808fcdb150243d779b6580149463c694e53218b4d248689ca66568"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/tests/test_live_tx.py",
+        "sha256": "372cc2d3a07a9684a6c4b4ce6c986ef2205e7e4b2bd0b79d825519f360b8be21"
+      },
+      "transports": [
+        "comet-jsonrpc",
+        "core-grpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Seventeen Go submission/admission/inclusion/cancellation exchanges plus blob capture and persistent replay inputs",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "URI/WebSocket counterparts, gRPC cancellation, malformed raw tx protobuf, gas/mempool saturation and all families per transport remain unproved"
+      ],
+      "provenance_limits": [
+        "Merged Go response provenance exists; paired Rust transport replay is still absent from merged main"
+      ],
+      "runtime_regressions": []
+    },
+    {
+      "id": "populated-staking",
+      "issue": 188,
+      "comparison": "normalized-runtime-comparison",
+      "receipt": {
+        "path": "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json",
+        "sha256": "164bee6d21c3a4b34fc37ffdfd8b2b41de65638890805917959f3b282f5ef9c4"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/populated-staking/README.md",
+        "sha256": "1351afddf45b3b2f00d565ae4ee14084956e853072053af82c51b2fc2f84d20c"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/tests/test_populated_staking.py",
+        "sha256": "32f3baba474c390663f46125e8edfd9889a398d8de6698f558db8e1204397cd1"
+      },
+      "transports": [
+        "comet-jsonrpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Eleven pinned populated staking/rewards cases through ABCI, Comet, gRPC and REST, replayed at the Go app hash in Rust",
+      "normalizations": [
+        "Delegation rewards list ordering; JSON object ordering and explicitly dynamic HTTP headers"
+      ],
+      "known_mismatches": [],
+      "exclusions": [
+        "Go proof bytes, non-staking modules, invalid UTF8, broad Any/JSON edges and later staking lifecycle remain open"
+      ],
+      "provenance_limits": [
+        "Matched-state and Rust proof checks execute at runtime; no committed paired Rust binary/response receipt"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/devnet-conformance/tests/populated_staking_transports.rs",
+            "sha256": "bc65d7244740e95a126fe22a6ea5b2f1a96bd1a65e4259966601e68979b346c9"
+          },
+          "function": "admitted_populated_inputs_match_all_rust_transports"
+        }
+      ]
+    },
+    {
+      "id": "websocket-lifecycle",
+      "issue": 190,
+      "comparison": "relational-go-plus-rust-regressions",
+      "receipt": {
+        "path": "conformance/websocket-lifecycle/testdata/manifest.json",
+        "sha256": "e79820e963f705b747a06736d86563ff58cfd9294f056682e89695b06e731ce6"
+      },
+      "documentation": {
+        "path": "conformance/websocket-lifecycle/README.md",
+        "sha256": "5f1883e11a50bba0861f26093102a12f81938ec03465764254949cb873f90b4f"
+      },
+      "verifier": {
+        "path": "conformance/websocket-lifecycle/verify.py",
+        "sha256": "0b50ecc6c1d4460c05f4f7eefcf097c3191d9ff79f6acef905c08d5df4ff782f"
+      },
+      "transports": [
+        "comet-websocket"
+      ],
+      "scope": "Go upgrades, quota/reclaim, event payloads, reconnect, idle/write deadlines and one large-frame/resource cycle",
+      "normalizations": [
+        "Relational height/hash/order invariants; timing and cleanup bounds rather than literal runtime counts"
+      ],
+      "known_mismatches": [],
+      "exclusions": [
+        "Long concurrent provider/resource campaign and exhaustive missed-event or frame-boundary semantics remain incomplete"
+      ],
+      "provenance_limits": [
+        "Pinned Go capture and Rust regressions are distinct; no paired exact stream/matched-state response receipt"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/src/server.rs",
+            "sha256": "8ce33b90a9693de1a7f488189d12fdd6c94a75bba1deeaaee3f0cba75104051d"
+          },
+          "function": "websocket_write_is_bounded"
+        }
+      ]
+    },
+    {
+      "id": "rest-heights",
+      "issue": 191,
+      "comparison": "rust-with-stand-in-only",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/rest-boundaries/v10.5.0/provenance.json",
+        "sha256": "1af1afdce59ca3a5939781c0c4121682b25185f3c38f4429dd9e1d7f67f41758"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/rest-boundaries/README.md",
+        "sha256": "364706f0b15645bf4ce7d2d954da5dc3389eed24990bbb9969c0a7678655f75d"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/rest-boundaries/verify.py",
+        "sha256": "4477496c44911e5b193d975fca247d1383187cf121969b4dc313fcc55a43df5e"
+      },
+      "transports": [
+        "rest"
+      ],
+      "scope": "Forty-two raw Go REST height-header cases; pure Rust gateway callback comparisons and production height forwarding",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "Exact HTTP body and stable metadata subset only; general body/framing/proxy/TLS behavior is separate"
+      ],
+      "provenance_limits": [
+        "Rust callback supplies fixture handler results; this is not an actual matched-state Go/Rust handler/socket replay"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/api-server/src/rest.rs",
+            "sha256": "b80c68ac7255b7274ba0c562d5460a4feb7fa9a7c98729fa2776f77863888248"
+          },
+          "function": "go_rest_height_boundaries"
+        }
+      ]
+    },
+    {
+      "id": "rest-post",
+      "issue": 191,
+      "comparison": "go-transports-only",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/rest-post-boundaries/v10.5.0/provenance.json",
+        "sha256": "cb12190d6e9409eb4645aa7f2a0d69c7ac3d4901d0284a48526ba878570a2068"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/rest-post-boundaries/README.md",
+        "sha256": "e5ac9c82467c6113ccc2d776c9e03c0b38124b2e23d89610d677a62a76d48eb5"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/rest-post-boundaries/verify.py",
+        "sha256": "5afa0f466d6a463e1b69b9b854da09b72ee2b8193f2aea380e14de3751bfebf3"
+      },
+      "transports": [
+        "rest"
+      ],
+      "scope": "Eighty-two raw Go REST POST/method/path/protobuf-JSON cases over replayed empty20 state",
+      "normalizations": [
+        "Stable-header projection excludes explicitly listed transport-generated fields"
+      ],
+      "known_mismatches": [],
+      "exclusions": [
+        "Successful state-mutating broadcast, malformed HTTP framing, limits, TLS/proxies and every valid complex POST body are excluded"
+      ],
+      "provenance_limits": [
+        "Frozen Go-only evidence; no matching Rust82-case socket replay"
+      ],
+      "runtime_regressions": []
+    },
+    {
+      "id": "provider-soak",
+      "issue": 192,
+      "comparison": "bounded-mixed-node-soak",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/provider-provenance.json",
+        "sha256": "13ea54964fc445e3992b2fc92eac53c409f2b9ac159bd8ec8813ca7cd98ec10c"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/README.md",
+        "sha256": "93cbe6c3896fde1b6f7412724673cdb70c6b5e4464d2d9a200ae4fc266bd61cd"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/verify.py",
+        "sha256": "76047ed893ff7f9c41b43a034ab1cedf94a82b882287a8314d9c908cb7ba869a"
+      },
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc",
+        "comet-websocket",
+        "core-grpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Merged310-second mixed-node all-API soak:111 heights,990 provider operations and bounded hash/progress/resource checks",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "No TLS/proxies, external SDKs, proof cryptographic validity, multi-page traversal, every family on every transport, saturation or unbounded slow readers; exact matched-state response parity is excluded"
+      ],
+      "provenance_limits": [
+        "Both binary identities and consistency observations are archived; provider events are not paired exact request/response captures"
+      ],
+      "runtime_regressions": []
+    },
+    {
+      "id": "comet-http",
+      "issue": 191,
+      "comparison": "normalized-runtime-comparison",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/provenance.json",
+        "sha256": "4d740160ec07a490b3ebd2994faeaeeef46d49a665cca50be72922e8c5ddcf36"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/README.md",
+        "sha256": "286732d65fb18793364091d64fbbf700c3048de3e333b16b2d913ad575c7645f"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/verify.py",
+        "sha256": "4294d4b25fe7203f6d2cba7101bdd519bbe642aad11df3f570a43b655c9c72de"
+      },
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc"
+      ],
+      "scope": "Forty-three raw Go and Rust socket cases covering batches, notifications, body/header limits, preflight precedence and connection reuse",
+      "normalizations": [
+        "Explicit stable-header projection excludes dynamic/framing fields"
+      ],
+      "known_mismatches": [
+        "Hyper431 response has empty diagnostic body and no Go diagnostic Content-Type; threshold/status/close remain required"
+      ],
+      "exclusions": [
+        "TLS/proxies, conflicting framing, HTTP2 header lists, slow bodies/headers and sustained socket growth are excluded"
+      ],
+      "provenance_limits": [
+        "Full oracle/config/source receipts and actual Rust socket regression exist; no committed paired Rust binary/response receipt"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
+            "sha256": "a800ed00254aba030b80f5f337935f2ab85d7f0c412949e650cc2da5a25a063e"
+          },
+          "function": "tagged_go_comet_http_boundaries_match_over_real_sockets"
+        }
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "issue": 182,
+      "packages": [
+        "reflection"
+      ],
+      "remaining_gaps": [
+        "Exact admission still lacks the paired committed artifacts listed in evidence-reviews.json; accepted stream normalizations/crash deviation remain explicit"
+      ]
+    },
+    {
+      "issue": 183,
+      "packages": [
+        "grpc-limits"
+      ],
+      "remaining_gaps": [
+        "Keepalive/handshake/compression/saturation/cancellation/resource-growth campaign still unmerged; existing current Go/Rust operator-limit tests have unmatched state"
+      ]
+    },
+    {
+      "issue": 184,
+      "packages": [
+        "runtime-identity"
+      ],
+      "remaining_gaps": [
+        "Retain deliberate Rust build identity and schema normalization; paired exact runtime state/response provenance remains absent"
+      ]
+    },
+    {
+      "issue": 185,
+      "packages": [
+        "simulation"
+      ],
+      "remaining_gaps": [
+        "Retain the accepted Go diagnostic source-frame deviation and unrecorded Rust response/binary/state provenance; this does not reopen the completed scoped error-contract issue"
+      ]
+    },
+    {
+      "issue": 186,
+      "packages": [
+        "empty-query"
+      ],
+      "remaining_gaps": [
+        "Retain explicit current-review provenance blockers; Cosmos wrapper and custom callback behavior remain outside this batch"
+      ]
+    },
+    {
+      "issue": 187,
+      "packages": [
+        "live-transactions"
+      ],
+      "remaining_gaps": [
+        "Complete paired live Rust replay, every required mode/transport/message/error case, cleanup, retries and bounded admission/resource limits"
+      ]
+    },
+    {
+      "issue": 188,
+      "packages": [
+        "populated-staking"
+      ],
+      "remaining_gaps": [
+        "Extend beyond staking to all listed modules, Go proof byte/validity parity, invalidUTF8/Any/JSON and historical pagination; retain source/matched-state controls"
+      ]
+    },
+    {
+      "issue": 189,
+      "packages": [],
+      "remaining_gaps": [
+        "No current-mainnet pruning/index/restart/state-sync campaign is merged; local work and old regressions do not substitute for evidence"
+      ]
+    },
+    {
+      "issue": 190,
+      "packages": [
+        "websocket-lifecycle"
+      ],
+      "remaining_gaps": [
+        "Complete sustained concurrent subscriptions/reconnect/backpressure/resource bounds; avoid promoting the single Go lifecycle cycle to general parity"
+      ]
+    },
+    {
+      "issue": 191,
+      "packages": [
+        "comet-http",
+        "rest-heights",
+        "rest-post"
+      ],
+      "remaining_gaps": [
+        "Add Rust REST POST replay and remaining malformed HTTP/proxy/TLS/timeout behavior; preserve explicit431 diagnostic deviation"
+      ]
+    },
+    {
+      "issue": 192,
+      "packages": [
+        "provider-soak"
+      ],
+      "remaining_gaps": [
+        "Merged PR217 satisfies the bounded all-API soak issue; its disabled scenarios, cutoff-pending transactions, exact candidate809bfca and lack of exact matched-state response parity remain explicit"
+      ]
+    }
+  ]
+}
