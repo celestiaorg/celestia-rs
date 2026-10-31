@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "implementation": "rs",
+  "listener": "sdk",
+  "quota": null,
+  "started_at": "2026-10-31T04:22:31.239423+00:00",
+  "completed_at": "2026-10-31T04:22:33.810194+00:00",
+  "poll_ms": 250,
+  "settle_ms": 2000,
+  "monitor": {
+    "python_version": "3.12.14",
+    "system": "Linux",
+    "kernel_release": "6.18.55",
+    "clock_ticks_per_second": 100,
+    "page_size": 4096
+  },
+  "process_identity": {
+    "initial": {
+      "pid": 348590,
+      "start_ticks": 10458442,
+      "executable_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252"
+    },
+    "final": {
+      "pid": 348590,
+      "start_ticks": 10458442,
+      "executable_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252"
+    }
+  },
+  "samples": [
+    {
+      "elapsed_ms": 0,
+      "rss_kib": 85820,
+      "threads": 15,
+      "fd_count": 44
+    },
+    {
+      "elapsed_ms": 373,
+      "rss_kib": 85832,
+      "threads": 15,
+      "fd_count": 44
+    },
+    {
+      "elapsed_ms": 2570,
+      "rss_kib": 86004,
+      "threads": 15,
+      "fd_count": 44
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+[grpc]
+enable = true
+address = "127.0.0.1:16090"
+max-recv-msg-size = "64"
+max-send-msg-size = "4096"
+[api]
+enable = false

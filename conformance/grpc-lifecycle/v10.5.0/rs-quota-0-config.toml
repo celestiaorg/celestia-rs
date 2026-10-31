@@ -1,0 +1,11 @@
+moniker = "grpc-lifecycle"
+[rpc]
+laddr = "tcp://127.0.0.1:33657"
+grpc_laddr = "tcp://127.0.0.1:33658"
+grpc_max_open_connections = 0
+[p2p]
+laddr = "tcp://127.0.0.1:33656"
+pex = false
+addr_book_strict = false
+[tx_index]
+indexer = "kv"

@@ -11,18 +11,20 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "98be8b4296ac79071c935defc53dd6ba232dc36abb5980526b57c0a7620551fb"
+REVIEWED_AUDIT_SHA256 = "50ea06b4b6f10d76b91c99cb808c946f4d712c992820990dafcbe38ca1ccee73"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
 CONTRACTS = {
     "reflection": (182, "normalized-runtime-comparison", "conformance/grpc-reflection/v10.5.0/meta.json", "conformance/grpc-reflection/README.md", None),
     "grpc-limits": (183, "unmatched-runtime-comparison", "conformance/grpc-limits/v10.5.0/meta.json", "conformance/grpc-limits/README.md", "conformance/grpc-limits/verify.py"),
+    "grpc-lifecycle": (183, "relational-go-plus-rust-captures", "conformance/grpc-lifecycle/v10.5.0/meta.json", "conformance/grpc-lifecycle/README.md", "conformance/grpc-lifecycle/verify.py"),
     "runtime-identity": (184, "schema-only", "conformance/node-metadata/v10.5.0/consensus.json", "docs/rpc-version-identity.md", None),
     "simulation": (185, "normalized-runtime-comparison", "conformance/mainnet-rpc/simulation/metadata.json", "conformance/mainnet-rpc/simulation/README.md", None),
     "empty-query": (186, "runtime-exact-unrecorded", "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "conformance/mainnet-rpc/empty-query/README.md", None),
     "live-transactions": (187, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json", "conformance/mainnet-rpc/live-tx/README.md", "conformance/mainnet-rpc/tests/test_live_tx.py"),
     "populated-staking": (188, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json", "conformance/mainnet-rpc/populated-staking/README.md", "conformance/mainnet-rpc/tests/test_populated_staking.py"),
+    "populated-governance": (188, "exact-protobuf-structural-json-comparison", "conformance/fixtures/devnet/v105-populated-governance/capture/metadata.json", "conformance/mainnet-rpc/populated-governance/README.md", "conformance/mainnet-rpc/populated-governance/verify.py"),
     "websocket-lifecycle": (190, "relational-go-plus-rust-regressions", "conformance/websocket-lifecycle/closure-review.json", "conformance/websocket-lifecycle/README.md", "conformance/websocket-lifecycle/verify-closure.py"),
     "rest-heights": (191, "rust-with-stand-in-only", "conformance/mainnet-rpc/rest-boundaries/v10.5.0/provenance.json", "conformance/mainnet-rpc/rest-boundaries/README.md", "conformance/mainnet-rpc/rest-boundaries/verify.py"),
     "rest-post": (191, "go-transports-only", "conformance/mainnet-rpc/rest-post-boundaries/v10.5.0/provenance.json", "conformance/mainnet-rpc/rest-post-boundaries/README.md", "conformance/mainnet-rpc/rest-post-boundaries/verify.py"),
@@ -33,11 +35,13 @@ CONTRACTS = {
 RUNTIME_CONTRACTS = {
     "reflection": (("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "sdk_v1alpha_matches_go_socket_streams"), ("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "core_v1_and_v1alpha_match_go_socket_streams")),
     "grpc-limits": (("crates/tier-5-node/celestia-rs/tests/grpc_limits.rs", "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"),),
+    "grpc-lifecycle": (),
     "runtime-identity": (("crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "production_listeners_report_build_and_compatibility_separately"),),
     "simulation": (("crates/devnet-conformance/tests/simulation_errors.rs", "current_release_simulation_errors"),),
     "empty-query": (("crates/tier-4-runtime/rpc/tests/empty_query.rs", "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"),),
     "live-transactions": (("crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs", "admitted_live_transactions_match_rust_production_transports"),),
     "populated-staking": (("crates/devnet-conformance/tests/populated_staking_transports.rs", "admitted_populated_inputs_match_all_rust_transports"),),
+    "populated-governance": (("crates/devnet-conformance/tests/populated_governance_transports.rs", "admitted_populated_inputs_match_all_rust_transports"),),
     "websocket-lifecycle": (
         ("crates/tier-4-runtime/rpc/src/server.rs", "websocket_write_is_bounded"),
         ("crates/tier-4-runtime/rpc/tests/corpus.rs", "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"),
@@ -55,10 +59,12 @@ RUNTIME_CONTRACTS = {
 }
 TRANSPORT_CONTRACTS = {
     "reflection": {"core-grpc", "cosmos-grpc"}, "grpc-limits": {"core-grpc", "cosmos-grpc"},
+    "grpc-lifecycle": {"core-grpc", "cosmos-grpc"},
     "runtime-identity": {"comet-uri", "cosmos-grpc", "rest"}, "simulation": {"cosmos-grpc"},
     "empty-query": {"comet-uri", "comet-jsonrpc", "comet-websocket"},
     "live-transactions": {"comet-jsonrpc", "core-grpc", "cosmos-grpc", "rest"},
     "populated-staking": {"comet-jsonrpc", "cosmos-grpc", "rest"},
+    "populated-governance": {"comet-jsonrpc", "cosmos-grpc", "rest"},
     "websocket-lifecycle": {"comet-websocket"}, "rest-heights": {"rest"}, "rest-post": {"rest"},
     "comet-http": {"comet-uri", "comet-jsonrpc"},
     "proxy-tls-framing": {"comet-uri", "comet-jsonrpc", "comet-websocket", "rest"},

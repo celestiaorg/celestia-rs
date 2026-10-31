@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "0c7ed88c850b335a93e85a48dba4e502aef7d443",
+  "audited_main": "5682e0663cca5447fe72d4834da5eb22a63cfe26",
   "provider_ready": false,
   "packages": [
     {
@@ -91,6 +91,49 @@
           "function": "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"
         }
       ]
+    },
+    {
+      "id": "grpc-lifecycle",
+      "issue": 183,
+      "comparison": "relational-go-plus-rust-captures",
+      "receipt": {
+        "path": "conformance/grpc-lifecycle/v10.5.0/meta.json",
+        "sha256": "8d280b7a269407e19158e7e6c0e8f80d35d99d8591fc466c58df9e0defe050a2"
+      },
+      "documentation": {
+        "path": "conformance/grpc-lifecycle/README.md",
+        "sha256": "9268e7870ecb8a67c716d2b32b731facaaf4255bfe63ad03a18dfb6debf41e0c"
+      },
+      "verifier": {
+        "path": "conformance/grpc-lifecycle/verify.py",
+        "sha256": "fe499dd2fbee757f8bd21eb122aee525ef5e6e3b01901f689a10b6f1566f5217"
+      },
+      "transports": [
+        "core-grpc",
+        "cosmos-grpc"
+      ],
+      "scope": "Six ordered actual-Go and actual-Rust transport campaigns covering core quota0/2, SDK/core cancellation recovery, slow-reader capacity recovery, decompressed message limits, Go keepalive/no-pong and setup deadlines, exact metadata and bounded process resources",
+      "normalizations": [
+        "The exact RS RFC1123 Date is retained and hash-bound; semantic comparison accepts only canonical IMF-fixdate inside the recorded campaign interval"
+      ],
+      "known_mismatches": [
+        "Go core uses application/grpc+proto while Go SDK and RS use application/grpc; RS adds Date and advertises identity when rejecting gzip",
+        "Go applies gzip receive limits while RS rejects gzip as Unimplemented",
+        "Go core configures30/10 keepalive and a120-second setup deadline while RS configures neither"
+      ],
+      "exclusions": [
+        "SDK connection quota is unsupported by both app listeners",
+        "Core message-size operator settings are unsupported; both core listeners use fixed defaults",
+        "The two-hour Go SDK default keepalive is source-audited rather than live-soaked",
+        "Same grpc.ClientConn reuse is proved; physical-socket reuse is not claimed",
+        "#203 oversized unary/streaming response evidence is authoritative and is not relabeled as this campaign"
+      ],
+      "provenance_limits": [
+        "The fresh public mainnet observation selects v10.5.0 only; all captures use isolated loopback local genesis and perform no production writes",
+        "Go/Rust resources come from one bounded local run and are not universal production ceilings",
+        "The self-contained evidence carries signed historical commit 399f57e, its required raw tree objects, and exact reviewed source snapshots; the verifier rebuilds and verifies that graph without relying on an ambient repository ref"
+      ],
+      "runtime_regressions": []
     },
     {
       "id": "runtime-identity",
@@ -294,6 +337,50 @@
       ]
     },
     {
+      "id": "populated-governance",
+      "issue": 188,
+      "comparison": "exact-protobuf-structural-json-comparison",
+      "receipt": {
+        "path": "conformance/fixtures/devnet/v105-populated-governance/capture/metadata.json",
+        "sha256": "4d330e5d6de9a046f1e7d3b80444cd4fe5fd596b64c734447e13d728006e021e"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/populated-governance/README.md",
+        "sha256": "0f0e35a8db68e3778b5b53d574c94f275e523b034e91634a12ffd266c0ead628"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/populated-governance/verify.py",
+        "sha256": "8bb8868be2e9376429b00fb37cd00cf9de70dfce07dfc3c3a1a58956a558e7cb"
+      },
+      "transports": [
+        "comet-jsonrpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Twenty-five pinned governance/Any and pagination cases over four transport paths: direct ABCI and three Rust listeners (Comet JSON-RPC, Cosmos gRPC and REST), replayed at the exact Go roots with a separate Rust ICS23 governance proof check",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "The Go transport capture sends no proof-bearing request and records no Go proof bytes; the separate Rust ICS23 check does not establish Go/Rust proof-byte or proof-validity parity",
+        "Governance completion, cancellation and expiry, v1beta1 compatibility, failing history, historical key/offset traversal, invalid cursors, malformed requests and invalid UTF-8 remain outside this batch",
+        "IBC, authz, feegrant, vesting account Any, Hyperlane, fibre, forwarding, zkism and other populated module workloads remain outside this batch"
+      ],
+      "provenance_limits": [
+        "The fresh read-only mainnet observation selects active v10.5.0 only; capture uses an isolated loopback devnet and performs no production writes",
+        "The committed Go capture binds 30 source files, 17 artifacts, tagged generator binaries and identical inputs for every path without response normalization",
+        "Rust replay reconstructs the matched Go roots at runtime from committed inputs; no paired Rust binary or committed Rust response capture is claimed"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/devnet-conformance/tests/populated_governance_transports.rs",
+            "sha256": "4285631b72d9246e48120f79ace36ceed91a848a9c4744707e6fca4f4d1b3115"
+          },
+          "function": "admitted_populated_inputs_match_all_rust_transports"
+        }
+      ]
+    },
+    {
       "id": "websocket-lifecycle",
       "issue": 190,
       "comparison": "relational-go-plus-rust-regressions",
@@ -385,7 +472,7 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/api-server/src/rest.rs",
-            "sha256": "efc3b24aeaa88869d0e4ffe18e4d864b7d1dc5527c590550f5bf4a7d16b19282"
+            "sha256": "cb4de117c7652f795a8d03e93028737bf90c8ff292925abf5a44c4a86e9d2191"
           },
           "function": "go_rest_height_boundaries"
         }
@@ -584,10 +671,11 @@
     {
       "issue": 183,
       "packages": [
+        "grpc-lifecycle",
         "grpc-limits"
       ],
       "remaining_gaps": [
-        "Keepalive/handshake/compression/saturation/cancellation/resource-growth campaign still unmerged; existing current Go/Rust operator-limit tests have unmatched state"
+        "Acceptance is covered by merged production wiring plus bounded local evidence; unbounded production-duration load, the two-hour SDK keepalive default and physical-socket reuse remain outside scope"
       ]
     },
     {
@@ -629,10 +717,11 @@
     {
       "issue": 188,
       "packages": [
+        "populated-governance",
         "populated-staking"
       ],
       "remaining_gaps": [
-        "Extend beyond staking to all listed modules, Go proof byte/validity parity, invalidUTF8/Any/JSON and historical pagination; retain source/matched-state controls"
+        "Continue IBC, authz, feegrant, vesting account Any, Hyperlane, fibre, forwarding and zkism workloads; governance completion/cancellation/expiry and v1beta1; invalid UTF-8, malformed requests and invalid cursors; failing history and historical key/offset traversal; and broader proof coverage plus Go proof-byte/validity parity. Preserve source and matched-state controls."
       ]
     },
     {

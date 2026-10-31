@@ -1,0 +1,571 @@
+"""Mutation checks for the offline gRPC lifecycle verifier."""
+
+from __future__ import annotations
+
+import importlib.util
+import copy
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
+
+
+PATH = Path(__file__).with_name("verify.py")
+SPEC = importlib.util.spec_from_file_location("grpc_lifecycle_verify", PATH)
+VERIFY = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(VERIFY)
+FREEZE_PATH = Path(__file__).with_name("freeze.py")
+FREEZE_SPEC = importlib.util.spec_from_file_location("grpc_lifecycle_freeze", FREEZE_PATH)
+FREEZE = importlib.util.module_from_spec(FREEZE_SPEC)
+assert FREEZE_SPEC.loader is not None
+FREEZE_SPEC.loader.exec_module(FREEZE)
+
+
+def frame(kind: int, flags: int, stream: int, payload: bytes = b"") -> bytes:
+    return (len(payload).to_bytes(3, "big") + bytes([kind, flags])
+            + stream.to_bytes(4, "big") + payload)
+
+
+class RawFrameVerification(unittest.TestCase):
+    def test_exact_frame_headers(self):
+        raw = frame(6, 0, 0, b"12345678")
+        self.assertEqual(VERIFY.frames(raw), [(6, 0, 0, raw)])
+
+    def test_length_mutation_is_rejected(self):
+        raw = bytearray(frame(6, 0, 0, b"12345678"))
+        raw[2] = 9
+        with self.assertRaises(AssertionError):
+            VERIFY.frames(bytes(raw))
+
+    def test_wire_field_mutation_is_rejected(self):
+        preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+        client = preface + frame(4, 0, 0) + frame(4, 1, 0)
+        server = frame(4, 0, 0)
+        wire = {
+            "client_bytes_hex": client.hex(),
+            "server_frames": [{
+                "phase": "setup", "elapsed_ms": 0, "type": 6,
+                "flags": 0, "stream_id": 0, "length": 0,
+                "raw_hex": server.hex(),
+            }],
+        }
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_wire(wire, slow_reader=False)
+
+    def test_silent_handshake_requires_exact_initial_settings(self):
+        settings = frame(4, 0, 0, b"\x00\x05\x00\x00\x40\x00")
+        capture = {
+            "closed_ms": 120_000, "close_error": "EOF", "client_bytes_hex": "",
+            "received_bytes_hex": settings.hex(),
+        }
+        VERIFY.verify_silent_handshake(capture)
+        mutations = []
+        wrong_setting = copy.deepcopy(capture)
+        wrong_setting["received_bytes_hex"] = frame(
+            4, 0, 0, b"\x00\x05\x00\x00\x80\x00").hex()
+        mutations.append(wrong_setting)
+        stream_frame = copy.deepcopy(capture)
+        stream_frame["received_bytes_hex"] += frame(0, 0, 1).hex()
+        mutations.append(stream_frame)
+        truncated = copy.deepcopy(capture)
+        truncated["received_bytes_hex"] = settings[:-1].hex()
+        mutations.append(truncated)
+        early_close = copy.deepcopy(capture)
+        early_close["closed_ms"] = 114_999
+        mutations.append(early_close)
+        late_close = copy.deepcopy(capture)
+        late_close["closed_ms"] = 130_001
+        mutations.append(late_close)
+        client_write = copy.deepcopy(capture)
+        client_write["client_bytes_hex"] = "00"
+        mutations.append(client_write)
+        for mutation in mutations:
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_silent_handshake(mutation)
+
+
+class ListenerSafety(unittest.TestCase):
+    def configs(self):
+        config = {
+            "rpc": {"laddr": "tcp://127.0.0.1:26657",
+                    "grpc_laddr": "tcp://127.0.0.1:26658",
+                    "pprof_laddr": "127.0.0.1:6060"},
+            "p2p": {"laddr": "tcp://127.0.0.1:26656", "pex": False},
+            "priv_validator_laddr": "", "priv_validator_grpc_laddr": "",
+            "instrumentation": {"prometheus": False,
+                                "prometheus_listen_addr": ":26660"},
+        }
+        app = {"grpc": {"enable": True, "address": "127.0.0.1:9090"},
+               "api": {"enable": False, "address": "127.0.0.1:1317"},
+               "grpc-web": {"enable": False}}
+        return config, app
+
+    def test_loopback_listeners_are_accepted(self):
+        config, app = self.configs()
+        VERIFY.verify_loopback_configs(config, app)
+
+    def test_wildcard_and_pex_mutations_are_rejected(self):
+        config, app = self.configs()
+        for mutation in ("wildcard", "pex"):
+            changed = copy.deepcopy(config)
+            if mutation == "wildcard":
+                changed["p2p"]["laddr"] = "tcp://0.0.0.0:26656"
+            else:
+                changed["p2p"]["pex"] = True
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_loopback_configs(changed, app)
+
+
+class MetadataVerification(unittest.TestCase):
+    def test_stable_headers_are_exact_and_only_rs_date_is_dynamic(self):
+        now = datetime(2026, 10, 31, 4, 22, 28, tzinfo=timezone.utc)
+        started, completed = now - timedelta(seconds=1), now + timedelta(seconds=1)
+        go_core = {"content-type": ["application/grpc+proto"]}
+        VERIFY.verify_metadata(go_core, "go", "core", started, completed)
+        for mutation in (
+            {"content-type": ["application/grpc"]},
+            {},
+            {**go_core, "date": [format_datetime(now, usegmt=True)]},
+        ):
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_metadata(mutation, "go", "core", started, completed)
+
+        rs = {
+            "content-type": ["application/grpc"],
+            "date": [format_datetime(now, usegmt=True)],
+            "grpc-accept-encoding": ["identity"],
+        }
+        VERIFY.verify_metadata(rs, "rs", "sdk", started, completed,
+                               rejected_compression=True)
+        normalized_date = copy.deepcopy(rs)
+        normalized_date["date"] = [format_datetime(started, usegmt=True)]
+        VERIFY.verify_metadata(normalized_date, "rs", "sdk", started, completed,
+                               rejected_compression=True)
+        for key in ("content-type", "grpc-accept-encoding"):
+            missing = copy.deepcopy(rs)
+            del missing[key]
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_metadata(missing, "rs", "sdk", started, completed,
+                                       rejected_compression=True)
+        extra = {**rs, "x-extra": ["unexpected"]}
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_metadata(extra, "rs", "sdk", started, completed,
+                                   rejected_compression=True)
+        stale_date = copy.deepcopy(rs)
+        stale_date["date"] = [format_datetime(now - timedelta(minutes=1), usegmt=True)]
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_metadata(stale_date, "rs", "sdk", started, completed,
+                                   rejected_compression=True)
+        canonical = format_datetime(now, usegmt=True)
+        wrong_weekday = ("Mon" if canonical.startswith("Sun,") else "Sun") + canonical[3:]
+        for noncanonical in (
+            canonical.split(", ", 1)[1],
+            canonical.removesuffix("GMT") + "+0000",
+            wrong_weekday,
+        ):
+            mutated_date = copy.deepcopy(rs)
+            mutated_date["date"] = [noncanonical]
+            with self.assertRaises((AssertionError, ValueError)):
+                VERIFY.verify_metadata(mutated_date, "rs", "sdk", started, completed,
+                                       rejected_compression=True)
+
+
+class ResourceBounds(unittest.TestCase):
+    def fixture(self):
+        now = datetime.now(timezone.utc)
+        capture = {
+            "started_at": (now + timedelta(milliseconds=10)).isoformat(),
+            "completed_at": (now + timedelta(seconds=1)).isoformat(),
+        }
+        resources = {
+            "schema_version": 1, "implementation": "go", "listener": "core", "quota": 2,
+            "started_at": now.isoformat(),
+            "completed_at": (now + timedelta(seconds=3)).isoformat(),
+            "poll_ms": 250, "settle_ms": 2_000,
+            "monitor": {"python_version": "3.12.0", "system": "Linux",
+                        "kernel_release": "6.0.0", "clock_ticks_per_second": 100,
+                        "page_size": 4096},
+            "process_identity": {
+                "initial": {"pid": 42, "start_ticks": 1000,
+                            "executable_sha256": "a" * 64},
+                "final": {"pid": 42, "start_ticks": 1000,
+                          "executable_sha256": "a" * 64},
+            },
+            "samples": [
+                {"elapsed_ms": 0, "rss_kib": 100_000, "threads": 12, "fd_count": 20},
+                {"elapsed_ms": 1_000, "rss_kib": 120_000, "threads": 12, "fd_count": 20},
+                {"elapsed_ms": 3_000, "rss_kib": 120_000, "threads": 12, "fd_count": 20},
+            ],
+        }
+        return resources, capture
+
+    def test_bounded_recovered_resources_are_accepted(self):
+        resources, capture = self.fixture()
+        VERIFY.verify_resources(resources, capture, "go", 2, "a" * 64)
+
+    def test_resource_growth_and_rebinding_are_rejected(self):
+        resources, capture = self.fixture()
+        mutations = []
+        one = copy.deepcopy(resources)
+        one["samples"][-1]["fd_count"] = 40
+        mutations.append(one)
+        two = copy.deepcopy(resources)
+        two["samples"][-1]["rss_kib"] = 500_000
+        mutations.append(two)
+        three = copy.deepcopy(resources)
+        three["implementation"] = "rs"
+        mutations.append(three)
+        four = copy.deepcopy(resources)
+        four["process_identity"]["final"]["start_ticks"] = 1001
+        mutations.append(four)
+        executable = copy.deepcopy(resources)
+        executable["process_identity"]["initial"]["executable_sha256"] = "b" * 64
+        executable["process_identity"]["final"]["executable_sha256"] = "b" * 64
+        mutations.append(executable)
+        five = copy.deepcopy(resources)
+        five["samples"][1]["elapsed_ms"] = 2_500
+        mutations.append(five)
+        six = copy.deepcopy(resources)
+        six["samples"][-1]["elapsed_ms"] = 1_100
+        mutations.append(six)
+        for mutated in mutations:
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_resources(mutated, capture, "go", 2, "a" * 64)
+
+
+def write_varint(value: int) -> bytes:
+    out = bytearray()
+    while value >= 128:
+        out.append((value & 127) | 128)
+        value >>= 7
+    out.append(value)
+    return bytes(out)
+
+
+def proto_varint(field: int, value: int) -> bytes:
+    return write_varint(field << 3) + write_varint(value)
+
+
+def proto_bytes(field: int, value: bytes) -> bytes:
+    return write_varint(field << 3 | 2) + write_varint(len(value)) + value
+
+
+class SDKLifecycleVerification(unittest.TestCase):
+    def response(self, names):
+        listed = b"".join(proto_bytes(1, proto_bytes(1, name.encode())) for name in names)
+        return proto_bytes(6, listed).hex()
+
+    def fixture(self):
+        now = datetime.now(timezone.utc)
+        services = ["cosmos.base.node.v1beta1.Service",
+                    "grpc.reflection.v1alpha.ServerReflection"]
+        raw = bytes([0x0a, 61]) + b"x" * 61 + bytes([0x3a, 0])
+        return {
+            "schema_version": 1, "implementation": "go", "endpoint": "127.0.0.1:9090",
+            "started_at": now.isoformat(),
+            "completed_at": (now + timedelta(seconds=1)).isoformat(),
+            "input_sha256": {"gzip-reflection-list-services-65-bytes": hashlib.sha256(raw).hexdigest()},
+            "cancellation": {
+                "first_response_hex": self.response(services), "first_services": services,
+                "first_headers": {"content-type": ["application/grpc"]},
+                "cancel_code": 1, "cancel_message": "context canceled", "cancel_trailers": {},
+                "recovered_response_hex": self.response(services),
+                "recovered_services": services,
+                "recovered_headers": {"content-type": ["application/grpc"]},
+            },
+            "compression": {"encoding": "gzip", "uncompressed_len": 65, "result": {
+                "code": 8,
+                "message": "grpc: received message after decompression larger than max 64",
+                "response_hex": "", "headers": None,
+                "trailers": {"content-type": ["application/grpc"]}, "elapsed_ms": 2,
+            }},
+            "notes": [
+                "SDK connection quota is unsupported; cancellation recovery uses the same grpc.ClientConn",
+                "the compressed reflection request is exactly 65 uncompressed protobuf bytes against a 64-byte receive limit",
+            ],
+        }
+
+    def test_sdk_cancellation_and_compression_are_semantically_bound(self):
+        capture = self.fixture()
+        VERIFY.verify_sdk_capture(capture, "go")
+        mutated = copy.deepcopy(capture)
+        mutated["cancellation"]["first_services"][0] = "rebound.Service"
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_sdk_capture(mutated, "go")
+        oversized = copy.deepcopy(capture)
+        oversized["cancellation"]["first_response_hex"] = self.response(
+            ["cosmos.base.node.v1beta1.Service",
+             "grpc.reflection.v1alpha.ServerReflection", "x" * 4_096]
+        )
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_sdk_capture(oversized, "go")
+
+
+class ProvenanceMutationResistance(unittest.TestCase):
+    def test_freezer_exports_a_repository_independent_source_graph(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = base / "source"
+            capture = base / "capture"
+            source.mkdir()
+            capture.mkdir()
+            subprocess.run(["git", "init", "--quiet", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "test"],
+                           check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.email",
+                            "test@example.invalid"], check=True)
+            for index, name in enumerate(FREEZE.SOURCE_NAMES):
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"source {index}: {name}\n")
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m",
+                            "synthetic capture"], check=True)
+            commit = subprocess.check_output(
+                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True,
+            ).strip()
+
+            names = FREEZE.freeze_capture_source(source, capture, commit)
+            self.assertEqual(names[0], FREEZE.SOURCE_COMMIT_NAME)
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(
+                hashlib.sha1(b"commit " + str(len((capture / names[0]).read_bytes())).encode()
+                             + b"\0" + (capture / names[0]).read_bytes()).hexdigest(),
+                commit,
+            )
+            for name in FREEZE.SOURCE_NAMES:
+                self.assertEqual(
+                    (capture / FREEZE.SOURCE_SNAPSHOT_PREFIX / name).read_bytes(),
+                    subprocess.check_output(
+                        ["git", "-C", str(source), "show", f"{commit}:{name}"]
+                    ),
+                )
+
+    def test_capture_signature_is_self_contained_and_key_bound(self):
+        evidence = Path(__file__).with_name("v10.5.0")
+        with tempfile.TemporaryDirectory() as empty_home:
+            with patch.dict(os.environ, {"HOME": empty_home}):
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+                with patch.object(
+                    VERIFY,
+                    "CAPTURE_ALLOWED_SIGNER",
+                    VERIFY.CAPTURE_ALLOWED_SIGNER.replace("IOth0", "IAAAA"),
+                ):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+    def copied_evidence(self, base: Path) -> Path:
+        destination = base / "evidence"
+        shutil.copytree(Path(__file__).with_name("v10.5.0"), destination)
+        return destination
+
+    def test_capture_source_verifies_when_commit_is_unreachable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            evidence = self.copied_evidence(base)
+            fresh = base / "fresh-repository"
+            subprocess.run(["git", "init", "--quiet", str(fresh)], check=True)
+            missing = subprocess.run(
+                ["git", "-C", str(fresh), "cat-file", "-e",
+                 f"{VERIFY.CAPTURE_SOURCE_COMMIT}^{{commit}}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+    def test_commit_object_signature_and_snapshot_tampering_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+
+            evidence = self.copied_evidence(base / "commit")
+            commit_path = evidence / VERIFY.SOURCE_COMMIT_NAME
+            commit_path.write_bytes(commit_path.read_bytes().replace(
+                b"record gRPC setup frames", b"record gRPC setup FRAME", 1
+            ))
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+            evidence = self.copied_evidence(base / "signature")
+            commit_path = evidence / VERIFY.SOURCE_COMMIT_NAME
+            raw = commit_path.read_bytes().replace(b"XeRbT", b"XeRcT", 1)
+            self.assertNotEqual(raw, commit_path.read_bytes())
+            commit_path.write_bytes(raw)
+            rebound = subprocess.check_output(
+                ["git", "hash-object", "-t", "commit", "--stdin"], input=raw,
+            ).decode().strip()
+            with self.assertRaises(subprocess.CalledProcessError):
+                VERIFY.verify_capture_source(evidence, rebound)
+
+            evidence = self.copied_evidence(base / "snapshot")
+            snapshot = evidence / VERIFY.SOURCE_SNAPSHOT_NAMES[0]
+            snapshot.write_bytes(snapshot.read_bytes() + b"tampered\n")
+            with self.assertRaises(subprocess.CalledProcessError):
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+    def rs_receipt(self):
+        commit = "1" * 40
+        receipt = {
+            "schema_version": 1,
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "binary_sha256": "2" * 64,
+            "source_commit": commit,
+            "source_commit_signature_verified": True,
+            "cargo_lock_sha256": "3" * 64,
+            "rustc_vv": "rustc 1.98.0\nrelease: 1.98.0\nhost: x86_64-unknown-linux-gnu",
+            "cargo_version": "cargo 1.98.0 (example 2026-01-01)",
+            "target": "x86_64-unknown-linux-gnu",
+            "build_command": ["cargo", "build", "--locked", "--release",
+                              "--package", "celestia-rs", "--bin", "celestia-rs"],
+            "profile": "release", "package": "celestia-rs", "binary": "celestia-rs",
+            "locked": True, "default_features": True,
+            "features": ["rocksdb", "jemalloc"],
+            "version_long": (
+                "name: celestia-rs\nversion: 0.1.0-rc.5\n"
+                f"commit: {commit}\nbuild_profile: release\n"
+                "toolchain: rustc 1.98.0 x86_64-unknown-linux-gnu"
+            ),
+        }
+        return receipt
+
+    def test_rs_binary_receipt_source_rebind_is_rejected(self):
+        receipt = self.rs_receipt()
+        VERIFY.verify_rs_receipt(receipt, "1" * 40, "3" * 64, "2" * 64,
+                                 receipt["version_long"])
+        for field, value in (("binary_sha256", "4" * 64),
+                             ("source_commit", "5" * 40),
+                             ("cargo_lock_sha256", "6" * 64)):
+            mutated = copy.deepcopy(receipt)
+            mutated[field] = value
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_rs_receipt(mutated, "1" * 40, "3" * 64, "2" * 64,
+                                         receipt["version_long"])
+
+    def fixture(self, base: Path):
+        capture = base / "capture"
+        capture.mkdir()
+        source = capture / VERIFY.SOURCE_SNAPSHOT_PREFIX
+        for name in VERIFY.SOURCE_NAMES:
+            path = source / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"source:{name}\n")
+        for name in VERIFY.ARTIFACT_NAMES:
+            path = capture / name
+            if path.exists():
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"artifact:{name}\n")
+        (capture / "meta.json").write_text("{}\n")
+        meta = {
+            "inventory": {
+                "sources": VERIFY.SOURCE_NAMES,
+                **VERIFY.INVENTORY,
+                "source_support": VERIFY.SOURCE_SUPPORT_NAMES,
+            },
+            "artifact_sha256": {
+                name: hashlib.sha256((capture / name).read_bytes()).hexdigest()
+                for name in VERIFY.ARTIFACT_NAMES
+            },
+            "input_sha256": {
+                name: hashlib.sha256((capture / name).read_bytes()).hexdigest()
+                for name in VERIFY.INPUT_NAMES
+            },
+            "source_sha256": {
+                name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+                for name in VERIFY.SOURCE_NAMES
+            },
+        }
+        return capture, source, meta
+
+    def test_unmutated_inventory_fixture_passes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            VERIFY.verify_inventory(capture, meta, source)
+
+    def test_source_hashes_remain_bound_to_captured_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            changed = source / VERIFY.SOURCE_NAMES[0]
+            changed.write_text("later adjudication source\n")
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_inventory(capture, meta, source)
+
+    def test_symlinked_source_support_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            snapshot = source / VERIFY.SOURCE_NAMES[0]
+            outside = Path(directory) / "same-bytes"
+            outside.write_bytes(snapshot.read_bytes())
+            snapshot.unlink()
+            snapshot.symlink_to(outside)
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_inventory(capture, meta, source)
+
+    def test_deletion_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            (capture / VERIFY.CAPTURE_NAMES[0]).unlink()
+            with self.assertRaises((AssertionError, FileNotFoundError)):
+                VERIFY.verify_inventory(capture, meta, source)
+
+    def test_cross_class_rebind_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            mutated = copy.deepcopy(meta)
+            name = VERIFY.INPUT_NAMES[0]
+            mutated["inventory"]["inputs"].remove(name)
+            mutated["inventory"]["captures"].append(name)
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_inventory(capture, mutated, source)
+
+    def test_semantic_rebind_is_rejected_even_with_new_outer_hash(self):
+        timestamp = proto_varint(1, 1_700_000_000)
+        block_hash = bytes([1]) + bytes(31)
+        response = (proto_varint(1, 42) + proto_bytes(2, block_hash)
+                    + proto_bytes(3, timestamp))
+        # Re-hashing this mutated response in metadata cannot make height 43
+        # semantically equal to the recorded 42.
+        rebound_digest = hashlib.sha256(response).hexdigest()
+        self.assertEqual(len(rebound_digest), 64)
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_height_response(response.hex(), 43)
+
+    def test_response_to_wire_rebind_is_rejected(self):
+        response = proto_varint(1, 42)
+        envelope = bytes([0]) + len(response).to_bytes(4, "big") + response
+        settings = frame(4, 0, 0)
+        data = frame(0, 0, 1, envelope)
+        wire = {
+            "client_bytes_hex": "",
+            "server_frames": [
+                {"phase": "setup", "elapsed_ms": 0, "type": 4, "flags": 0,
+                 "stream_id": 0, "length": 0, "raw_hex": settings.hex()},
+                {"phase": "height-response", "elapsed_ms": 1, "type": 0, "flags": 0,
+                 "stream_id": 1, "length": len(envelope), "raw_hex": data.hex()},
+            ],
+        }
+        VERIFY.verify_grpc_envelope(wire, response)
+        rebound = proto_varint(1, 43)
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_grpc_envelope(wire, rebound)
+
+    def test_declared_grpc_length_mutation_is_rejected(self):
+        response = proto_varint(1, 42)
+        envelope = bytes([0]) + (len(response) + 1).to_bytes(4, "big") + response
+        data = frame(0, 0, 1, envelope)
+        wire = {"client_bytes_hex": "", "server_frames": [
+            {"phase": "height-response", "elapsed_ms": 1, "type": 0, "flags": 0,
+             "stream_id": 1, "length": len(envelope), "raw_hex": data.hex()},
+        ]}
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_grpc_envelope(wire, response)
+
+
+if __name__ == "__main__":
+    unittest.main()

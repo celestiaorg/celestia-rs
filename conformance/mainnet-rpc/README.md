@@ -97,12 +97,12 @@ no merged current-release campaign.
 | Issue | Current capture/test scope | Comparison limit |
 | --- | --- | --- |
 | #182 | Port-specific reflection streams and descriptors | Narrow ordering/whitespace normalization; upstream crash diagnostic excluded |
-| #183 | Custom unary/streaming byte limits and listener configuration | Current Go capture and unmatched Rust operator tests; resource campaign incomplete |
+| #183 | #203 custom unary/streaming limits plus six actual Go/Rust quota, cancellation, slow-reader, compression, keepalive/setup-deadline and resource campaigns | Bounded local transport evidence with explicit unsupported settings and metadata/compression/keepalive deviations; unbounded load, two-hour SDK keepalive and physical-socket reuse excluded |
 | #184 | Production identity and consensus schema | Build identity intentionally differs; asynchronous values unconstrained |
 | #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
 | #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
 | #187 | Seventeen Go exchanges replayed in sequence through Rust production listeners after two admitted state roots | Explicit cleanup CheckTx 12-gas difference; original envelope bytes and final root/balance equality excluded; broader matrix remains open |
-| #188 | Eleven populated staking/reward cases across transports, Rust committed-root proof check | One list-order normalization; other modules and Go proof bytes remain open |
+| #188 | Eleven populated staking/reward cases plus twenty-five governance/Any and pagination cases over four transport paths through three listeners, with Rust committed-root and ICS23 proof checks | Staking retains one list-order normalization; other modules, malformed inputs, lifecycle/history edges and Go proof bytes remain open |
 | #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
 | #190 | Focused actual-Go lifecycle capture composed with a 310-second five-node mixed soak and three Rust production regressions | Bounded local evidence with documented header/order/resource normalizations; TLS/proxy/external clients and exact matched-state payload parity excluded |
 | #191 | REST height/POST plus Comet/proxy/TLS/framing packages | Acceptance covered with explicit native parser/TLS deviations and local-oracle/provider exclusions |
@@ -116,7 +116,7 @@ python3 conformance/mainnet-rpc/coverage.py --verify-scoped --json /tmp/rpc-cove
 ```
 
 The `rpc-evidence` CI job now runs the registered offline current-release
-regressions for limits, WebSocket lifecycle, live transactions, populated staking,
+regressions for limits, WebSocket lifecycle, live transactions, populated staking and governance,
 REST height/POST, Comet HTTP and the merged bounded provider soak. Their verifier sources and primary receipts are
 hash-bound. The full reviewed audit content is canonically hash-bound in code,
 including its merged baseline, deviations, provenance limits and remaining-gap

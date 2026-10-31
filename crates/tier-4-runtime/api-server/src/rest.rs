@@ -294,6 +294,10 @@ fn gateway_bytes(v: &str) -> Result<Vec<u8>, String> {
 /// `strconv.ParseInt`.
 const NUMERIC_ENUM_PACKAGES: &[&str] = &["cosmos.gov.v1beta1."];
 
+/// Protobuf enums for which grpc-gateway accepts both the symbolic JSON name
+/// and its decimal value in a query parameter.
+const NUMERIC_OR_NAMED_ENUM_PACKAGES: &[&str] = &["cosmos.gov.v1."];
+
 /// Go's `strconv` error for `value` (`ParseInt`/`ParseUint`, bit size
 /// `bits`), or `None` if it parses.
 fn go_int_error(value: &str, signed: bool, bits: u32) -> Option<String> {
@@ -357,6 +361,15 @@ fn param_value(msg: &str, field: &services::Field, value: &str) -> Result<Value,
         ty::BYTES => {
             gateway_bytes(value)?;
             Value::String(value.to_owned())
+        }
+        ty::ENUM
+            if NUMERIC_OR_NAMED_ENUM_PACKAGES
+                .iter()
+                .any(|p| msg.starts_with(p)) =>
+        {
+            value
+                .parse::<i64>()
+                .map_or_else(|_| Value::String(value.to_owned()), |number| json!(number))
         }
         ty::ENUM if NUMERIC_ENUM_PACKAGES.iter().any(|p| msg.starts_with(p)) => {
             let n: i64 = value
@@ -653,6 +666,20 @@ mod tests {
         assert_eq!(
             Value::Object(obj),
             json!({"pagination": {"limit": "2", "count_total": true}, "resolve_denom": true})
+        );
+    }
+
+    #[test]
+    fn governance_v1_query_enum_accepts_number_and_name() {
+        let msg = "cosmos.gov.v1.QueryProposalsRequest";
+        let field = services::message(msg)
+            .unwrap()
+            .field("proposal_status")
+            .unwrap();
+        assert_eq!(param_value(msg, field, "2").unwrap(), json!(2));
+        assert_eq!(
+            param_value(msg, field, "PROPOSAL_STATUS_VOTING_PERIOD").unwrap(),
+            json!("PROPOSAL_STATUS_VOTING_PERIOD")
         );
     }
 

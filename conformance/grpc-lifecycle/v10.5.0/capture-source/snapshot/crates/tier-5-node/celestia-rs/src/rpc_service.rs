@@ -1,0 +1,1101 @@
+//! RPC wiring of `celestia-rs start` (ADR 0003, crate `rpc`): the
+//! CometBFT JSON-RPC/WebSocket server on `[rpc] laddr`, celestia-core's
+//! gRPC services on `[rpc] grpc_laddr`, and the app's gRPC query server
+//! (`app.toml [grpc] address`, with BlockAPI mounted like celestia-app's
+//! multiplexer does) plus its REST API; the kv tx/block indexers
+//! (`[tx_index] indexer = "kv"`) and the event bus fed by the block
+//! executor and consensus.
+
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+use anyhow::{Context as _, anyhow};
+use ctypes::proto::abci;
+use nodestore::{BlockStore, GenesisDoc, StateStore};
+use rpc::events::{BlockEventPublisher, EventBus, EventData};
+use rpc::{AppQuery, BlockIndexer, Environment, GenesisData, NodeInfo, RpcConfig, TxIndexer};
+
+/// RPC-related settings from `config/config.toml` and `config/app.toml`.
+#[derive(Debug, Clone, Default)]
+pub struct RpcSettings {
+    /// `[rpc]`.
+    pub rpc: RpcConfig,
+    /// `moniker`.
+    pub moniker: String,
+    /// `[p2p] laddr`.
+    pub p2p_laddr: String,
+    /// `[tx_index] indexer == "kv"`.
+    pub tx_index: bool,
+    /// `app.toml [grpc] address` (empty = disabled).
+    pub app_grpc: String,
+    /// `app.toml [grpc] max-recv-msg-size` and `max-send-msg-size`.
+    pub app_grpc_limits: api_server::GrpcLimits,
+    /// `app.toml [api] address` (empty = disabled).
+    pub app_api: String,
+}
+
+fn toml_file(path: &Path) -> anyhow::Result<toml::Table> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => s
+            .parse::<toml::Table>()
+            .with_context(|| format!("parse {}", path.display())),
+        Err(_) => Ok(toml::Table::new()),
+    }
+}
+
+fn get<'a>(t: &'a toml::Table, section: &str, key: &str) -> Option<&'a toml::Value> {
+    t.get(section)?.as_table()?.get(key)
+}
+
+fn get_str(t: &toml::Table, section: &str, key: &str) -> Option<String> {
+    get(t, section, key)?.as_str().map(str::to_owned)
+}
+
+fn get_int(t: &toml::Table, section: &str, key: &str) -> Option<i64> {
+    get(t, section, key)?.as_integer()
+}
+
+fn get_list(t: &toml::Table, section: &str, key: &str) -> Option<Vec<String>> {
+    Some(
+        get(t, section, key)?
+            .as_array()?
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+    )
+}
+
+/// Go `time.ParseDuration` for the simple forms config files use
+/// (`10s`, `500ms`, `1m30s`); milliseconds.
+fn parse_duration_ms(s: &str) -> Option<u64> {
+    let mut total = 0f64;
+    let mut num = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_ascii_digit() || c == '.' {
+            num.push(c);
+            continue;
+        }
+        let mut unit = c.to_string();
+        while let Some(&n) = chars.peek() {
+            if n.is_ascii_alphabetic() || n == 'µ' {
+                unit.push(n);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        let v: f64 = num.parse().ok()?;
+        num.clear();
+        total += v * match unit.as_str() {
+            "ns" => 1e-6,
+            "us" | "µs" => 1e-3,
+            "ms" => 1.0,
+            "s" => 1e3,
+            "m" => 6e4,
+            "h" => 3.6e6,
+            _ => return None,
+        };
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some(total as u64)
+}
+
+fn grpc_limit(t: &toml::Table, key: &str, default: usize, zero: usize) -> anyhow::Result<usize> {
+    let Some(value) = get(t, "grpc", key) else {
+        return Ok(default);
+    };
+    // The SDK's generated TOML quotes these numbers. Also accept native TOML
+    // integers, as Viper's mapstructure decoder does.
+    let n = if let Some(n) = value.as_integer() {
+        n
+    } else if let Some(s) = value.as_str() {
+        s.parse::<i64>()
+            .with_context(|| format!("grpc.{key} must be a nonnegative integer"))?
+    } else {
+        return Err(anyhow!("grpc.{key} must be a nonnegative integer"));
+    };
+    let n =
+        usize::try_from(n).with_context(|| format!("grpc.{key} must be a nonnegative integer"))?;
+    Ok(if n == 0 { zero } else { n })
+}
+
+fn grpc_limits(app: &toml::Table) -> anyhow::Result<api_server::GrpcLimits> {
+    let defaults = api_server::GrpcLimits::sdk();
+    let zero = api_server::GrpcLimits::sdk_zero();
+    Ok(api_server::GrpcLimits {
+        max_receive: grpc_limit(
+            app,
+            "max-recv-msg-size",
+            defaults.max_receive,
+            zero.max_receive,
+        )?,
+        max_send: grpc_limit(app, "max-send-msg-size", defaults.max_send, zero.max_send)?,
+    })
+}
+
+impl RpcSettings {
+    /// Reads a node home's configuration (missing files: defaults).
+    pub fn load(home: &Path) -> anyhow::Result<Self> {
+        let cfg_path = home.join("config").join("config.toml");
+        let cfg = toml_file(&cfg_path)?;
+        let app = toml_file(&home.join("config").join("app.toml"))?;
+        let mut rpc = RpcConfig::default();
+        // A home without config.toml (test fixtures, bare homes) serves
+        // nothing; `celestia-appd init` homes carry the Go defaults.
+        let configured = cfg_path.exists();
+        if !configured {
+            rpc.laddr = String::new();
+            rpc.grpc_laddr = String::new();
+        }
+        if let Some(v) = get_str(&cfg, "rpc", "laddr") {
+            rpc.laddr = v;
+        }
+        if let Some(v) = get_str(&cfg, "rpc", "grpc_laddr") {
+            rpc.grpc_laddr = v;
+        }
+        if let Some(v) = get_list(&cfg, "rpc", "cors_allowed_origins") {
+            rpc.cors_allowed_origins = v;
+        }
+        if let Some(v) = get_list(&cfg, "rpc", "cors_allowed_methods") {
+            rpc.cors_allowed_methods = v;
+        }
+        if let Some(v) = get_list(&cfg, "rpc", "cors_allowed_headers") {
+            rpc.cors_allowed_headers = v;
+        }
+        let n = |v: i64| usize::try_from(v).unwrap_or(0);
+        if let Some(v) = get_int(&cfg, "rpc", "max_open_connections") {
+            rpc.max_open_connections = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "grpc_max_open_connections") {
+            rpc.grpc_max_open_connections = n(v);
+        }
+        if let Some(v) = get(&cfg, "rpc", "unsafe").and_then(toml::Value::as_bool) {
+            rpc.unsafe_routes = v;
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_subscription_clients") {
+            rpc.max_subscription_clients = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_subscriptions_per_client") {
+            rpc.max_subscriptions_per_client = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "experimental_subscription_buffer_size") {
+            rpc.subscription_buffer_size = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "experimental_websocket_write_buffer_size") {
+            rpc.websocket_write_buffer_size = n(v);
+        }
+        if let Some(v) =
+            get(&cfg, "rpc", "experimental_close_on_slow_client").and_then(toml::Value::as_bool)
+        {
+            rpc.close_on_slow_client = v;
+        }
+        if let Some(v) = get_str(&cfg, "rpc", "timeout_broadcast_tx_commit")
+            .as_deref()
+            .and_then(parse_duration_ms)
+        {
+            rpc.timeout_broadcast_tx_commit_ms = v;
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_request_batch_size") {
+            rpc.max_request_batch_size = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_body_bytes") {
+            rpc.max_body_bytes = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_header_bytes") {
+            rpc.max_header_bytes = n(v);
+        }
+        if let Some(v) = get_int(&cfg, "rpc", "max_concurrent_heavy_requests") {
+            rpc.max_concurrent_heavy_requests = v;
+        }
+        let enabled = |section: &str| {
+            get(&app, section, "enable")
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(section == "grpc")
+        };
+        let app_grpc_limits = grpc_limits(&app)?;
+        Ok(Self {
+            rpc,
+            app_grpc_limits,
+            moniker: cfg
+                .get("moniker")
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            p2p_laddr: get_str(&cfg, "p2p", "laddr").unwrap_or_default(),
+            // celestia-app's default config indexes txs ("kv" unless set to
+            // "null").
+            tx_index: get_str(&cfg, "tx_index", "indexer").is_none_or(|v| v == "kv"),
+            app_grpc: if configured && enabled("grpc") {
+                get_str(&app, "grpc", "address").unwrap_or_else(|| "localhost:9090".into())
+            } else {
+                String::new()
+            },
+            app_api: if configured && enabled("api") {
+                get_str(&app, "api", "address").unwrap_or_default()
+            } else {
+                String::new()
+            },
+        })
+    }
+}
+
+/// Binds a listener (on the entered runtime). A listener that cannot be
+/// bound (address in use, bad address) is logged and skipped so the node
+/// still runs: several nodes of a test topology on one machine often share
+/// `celestia-appd init`'s default ports.
+fn bind(what: &str, laddr: &str) -> Option<tokio::net::TcpListener> {
+    let res = (|| {
+        let addr = socket_addr(laddr)?;
+        let listener = std::net::TcpListener::bind(addr).with_context(|| format!("bind {addr}"))?;
+        listener.set_nonblocking(true)?;
+        let listener = tokio::net::TcpListener::from_std(listener)?;
+        Ok::<_, anyhow::Error>((addr, listener))
+    })();
+    match res {
+        Ok((addr, listener)) => {
+            tracing::info!(%addr, "{what} listening");
+            Some(listener)
+        }
+        Err(e) => {
+            tracing::error!(laddr, error = format!("{e:#}"), "{what} not started");
+            None
+        }
+    }
+}
+
+/// `tcp://host:port` / `host:port` → socket address (`localhost` resolved).
+pub fn socket_addr(laddr: &str) -> anyhow::Result<SocketAddr> {
+    let a = laddr
+        .strip_prefix("tcp://")
+        .unwrap_or(laddr)
+        .replace("localhost", "127.0.0.1");
+    a.parse()
+        .with_context(|| format!("invalid listen address {laddr:?}"))
+}
+
+/// Node status shared between the consensus loop and the RPC.
+#[derive(Default)]
+pub struct NodeShared {
+    /// Own node info.
+    pub info: NodeInfo,
+    /// Round state JSON (`dump_consensus_state`, `consensus_state` with
+    /// [`HEIGHT_VOTE_SET_MARK`] for its votes, the votes).
+    pub round_state: Mutex<(String, String, String)>,
+    /// Block / state sync running.
+    pub syncing: AtomicBool,
+    /// The P2P switch (`net_info`, `dial_seeds`, `dial_peers`).
+    pub switch: std::sync::OnceLock<p2p::Switch>,
+    /// The consensus reactor (`WaitSync`, peer round states).
+    pub consensus: std::sync::OnceLock<Arc<consensus::reactor::Reactor>>,
+    /// The block propagation reactor (`IsCatchingUp`).
+    pub propagation: std::sync::OnceLock<Arc<propagation::Reactor>>,
+}
+
+impl std::fmt::Debug for NodeShared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeShared")
+            .field("info", &self.info)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Go's `p2p.ConnectionStatus` JSON.
+fn connection_status_json(st: &p2p::mconnection::ConnectionStatus) -> String {
+    let mon = |m: &p2p::flowrate::MonitorStatus| {
+        serde_json::json!({
+            "Start": "0001-01-01T00:00:00Z",
+            "Bytes": m.bytes.to_string(),
+            "Samples": "0",
+            "InstRate": "0",
+            "CurRate": "0",
+            "AvgRate": format!("{}", m.avg_rate.round()),
+            "PeakRate": "0",
+            "BytesRem": "0",
+            "Duration": m.duration.as_nanos().to_string(),
+            "Idle": "0",
+            "TimeRem": "0",
+            "Progress": 0,
+            "Active": true,
+        })
+    };
+    serde_json::json!({
+        "Duration": st.duration.as_nanos().to_string(),
+        "SendMonitor": mon(&st.send_monitor),
+        "RecvMonitor": mon(&st.recv_monitor),
+        "Channels": st.channels.iter().map(|c| serde_json::json!({
+            "ID": c.id,
+            "SendQueueCapacity": c.send_queue_capacity.to_string(),
+            "SendQueueSize": c.send_queue_size.to_string(),
+            "Priority": c.priority.to_string(),
+            "RecentlySent": c.recently_sent.to_string(),
+        })).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+/// `dial_seeds` / `dial_peers` take a list (JSON array or comma
+/// separated).
+fn split_addrs(s: &str) -> Vec<String> {
+    s.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(|a| a.trim().trim_matches('"').to_owned())
+        .filter(|a| !a.is_empty())
+        .collect()
+}
+
+impl rpc::NodeStatus for NodeShared {
+    fn node_info(&self) -> NodeInfo {
+        self.info.clone()
+    }
+    fn is_listening(&self) -> bool {
+        true
+    }
+    fn listeners(&self) -> Vec<String> {
+        vec![format!("Listener(@{})", self.info.listen_addr)]
+    }
+    fn peers(&self) -> Vec<rpc::PeerInfo> {
+        let Some(sw) = self.switch.get() else {
+            return Vec::new();
+        };
+        sw.peers()
+            .iter()
+            .map(|p| {
+                let ni = p.node_info();
+                rpc::PeerInfo {
+                    node_info: NodeInfo {
+                        p2p_version: ni.protocol_version.p2p,
+                        block_version: ni.protocol_version.block,
+                        app_version: ni.protocol_version.app,
+                        id: ni.id.clone(),
+                        listen_addr: ni.listen_addr.clone(),
+                        network: ni.network.clone(),
+                        version: ni.version.clone(),
+                        channels: ni.channels.clone(),
+                        moniker: ni.moniker.clone(),
+                        tx_index: ni.other.tx_index.clone(),
+                        rpc_address: ni.other.rpc_address.clone(),
+                    },
+                    is_outbound: p.is_outbound(),
+                    connection_status: connection_status_json(&p.status()),
+                    remote_ip: p.remote_ip().to_string(),
+                    socket_addr: p.socket_addr().to_string(),
+                    peer_state: self
+                        .consensus
+                        .get()
+                        .and_then(|r| r.peer_state(&p.id()))
+                        .map(|ps| peer_state_json(&ps)),
+                }
+            })
+            .collect()
+    }
+    fn wait_sync(&self) -> bool {
+        self.syncing.load(Ordering::SeqCst) || self.consensus.get().is_some_and(|r| r.wait_sync())
+    }
+    fn is_catching_up(&self) -> bool {
+        self.wait_sync()
+            || self
+                .propagation
+                .get()
+                .is_some_and(|p| propagation::Propagator::is_catching_up(&**p))
+    }
+    fn dial_seeds(&self, seeds: &str) -> Result<String, String> {
+        let seeds = split_addrs(seeds);
+        if seeds.is_empty() {
+            return Err("no seeds provided".into());
+        }
+        let sw = self.switch.get().ok_or("p2p is disabled")?;
+        sw.dial_peers_async(&seeds).map_err(|e| e.to_string())?;
+        Ok("Dialing seeds in progress. See /net_info for details".into())
+    }
+    fn dial_peers(
+        &self,
+        peers: &str,
+        persistent: bool,
+        unconditional: bool,
+        private: bool,
+    ) -> Result<String, String> {
+        let peers = split_addrs(peers);
+        if peers.is_empty() {
+            return Err("no peers provided".into());
+        }
+        let sw = self.switch.get().ok_or("p2p is disabled")?;
+        let ids: Vec<String> = peers
+            .iter()
+            .filter_map(|a| a.split('@').next().map(str::to_owned))
+            .collect();
+        if persistent {
+            sw.add_persistent_peers(&peers).map_err(|e| e.to_string())?;
+        }
+        if unconditional {
+            sw.add_unconditional_peer_ids(&ids)
+                .map_err(|e| e.to_string())?;
+        }
+        if private {
+            sw.add_private_peer_ids(&ids).map_err(|e| e.to_string())?;
+        }
+        sw.dial_peers_async(&peers).map_err(|e| e.to_string())?;
+        Ok("Dialing peers in progress. See /net_info for details".into())
+    }
+    fn round_state_json(&self) -> String {
+        match self.consensus.get() {
+            Some(r) => round_state_full_json(&r.snapshot().rs),
+            None => self.lock().0.clone(),
+        }
+    }
+    fn round_state_simple_json(&self) -> String {
+        let g = self.lock();
+        g.1.replacen(
+            HEIGHT_VOTE_SET_MARK,
+            if g.2.is_empty() { "[]" } else { &g.2 },
+            1,
+        )
+    }
+}
+
+/// Stands for `height_vote_set` in the cached `consensus_state` JSON; votes
+/// refresh it without re-encoding the rest of the round state.
+const HEIGHT_VOTE_SET_MARK: &str = "\u{0}height_vote_set\u{0}";
+
+/// `HeightVoteSet.MarshalJSON` (`toAllRoundVotes`): rounds 0..=round with
+/// every validator's prevote and precommit (`VoteStrings`) and the bit
+/// arrays with the voted power (`BitArrayString`).
+fn height_vote_set_json(votes: &consensus::height_vote_set::HeightVoteSet) -> rpc::json::J {
+    use rpc::json::J;
+    let vote_set = |vs: Option<&consensus::vote_set::VoteSet>| {
+        vs.map_or_else(
+            || (J::Null, J::str("nil-BitArray")),
+            |vs| {
+                (
+                    J::Arr(vs.vote_strings().into_iter().map(J::str).collect()),
+                    J::str(vs.bit_array_string()),
+                )
+            },
+        )
+    };
+    J::Arr(
+        (0..=votes.round())
+            .map(|round| {
+                let (prevotes, prevotes_bits) = vote_set(votes.prevotes(round));
+                let (precommits, precommits_bits) = vote_set(votes.precommits(round));
+                J::obj([
+                    ("round", J::num(round)),
+                    ("prevotes", prevotes),
+                    ("prevotes_bit_array", prevotes_bits),
+                    ("precommits", precommits),
+                    ("precommits_bit_array", precommits_bits),
+                ])
+            })
+            .collect(),
+    )
+}
+
+/// `bits.BitArray.MarshalJSON` (`"x_x"`; Go's nil array is `null`).
+fn bit_array_json(b: &ctypes::BitArray) -> rpc::json::J {
+    if b.is_nil() {
+        return rpc::json::J::Null;
+    }
+    rpc::json::J::str(
+        b.0.iter()
+            .map(|&x| if x { 'x' } else { '_' })
+            .collect::<String>(),
+    )
+}
+
+/// `PartSet.MarshalJSON` (`count/total` and the parts' bit array; a nil
+/// set is `null`).
+fn part_set_json(p: Option<&ctypes::PartSet>) -> rpc::json::J {
+    use rpc::json::J;
+    p.map_or(J::Null, |p| {
+        J::obj([
+            (
+                "count/total",
+                J::str(format!("{}/{}", p.count(), p.total())),
+            ),
+            (
+                "parts_bit_array",
+                bit_array_json(&ctypes::BitArray(p.bit_array())),
+            ),
+        ])
+    })
+}
+
+/// `types.Proposal` under cmtjson (`Type` has no JSON tag).
+fn proposal_json(p: &ctypes::Proposal) -> rpc::json::J {
+    use rpc::json::J;
+    J::obj([
+        ("Type", J::num(p.msg_type)),
+        ("height", J::i64s(p.height)),
+        ("round", J::num(p.round)),
+        ("pol_round", J::num(p.pol_round)),
+        ("block_id", rpc::encode::block_id(&p.block_id)),
+        ("timestamp", J::time(&p.timestamp)),
+        ("signature", J::b64n(&p.signature)),
+    ])
+}
+
+/// `VoteSet.MarshalJSON` (`VoteSetJSON`). Go writes `peer_maj_23s` in map
+/// iteration order (random with more than one entry); here by peer id.
+fn vote_set_json(vs: Option<&consensus::VoteSet>) -> rpc::json::J {
+    use rpc::json::J;
+    vs.map_or(J::Null, |vs| {
+        J::obj([
+            (
+                "votes",
+                J::Arr(vs.vote_strings().into_iter().map(J::str).collect()),
+            ),
+            ("votes_bit_array", J::str(vs.bit_array_string())),
+            (
+                "peer_maj_23s",
+                J::Obj(
+                    vs.peer_maj23s()
+                        .iter()
+                        .map(|(k, b)| (k.clone(), rpc::encode::block_id(b)))
+                        .collect(),
+                ),
+            ),
+        ])
+    })
+}
+
+/// `cmtjson.Marshal(cs.RoundState)` (`GetRoundStateJSON`, the
+/// `round_state` of `/dump_consensus_state`).
+fn round_state_full_json(rs: &consensus::RoundState) -> String {
+    use rpc::json::J;
+    let block = |b: Option<&ctypes::Block>| b.map_or(J::Null, rpc::encode::block);
+    J::obj([
+        ("height", J::i64s(rs.height)),
+        ("round", J::num(rs.round)),
+        ("step", J::num(rs.step.as_u32())),
+        ("start_time", J::time(&rs.start_time)),
+        ("commit_time", J::time(&rs.commit_time)),
+        ("validators", rpc::encode::validator_set(&rs.validators)),
+        (
+            "proposal",
+            rs.proposal.as_ref().map_or(J::Null, proposal_json),
+        ),
+        ("proposal_block", block(rs.proposal_block.as_ref())),
+        (
+            "proposal_block_parts",
+            part_set_json(rs.proposal_block_parts.as_ref()),
+        ),
+        ("locked_round", J::num(rs.locked_round)),
+        ("locked_block", block(rs.locked_block.as_ref())),
+        (
+            "locked_block_parts",
+            part_set_json(rs.locked_block_parts.as_ref()),
+        ),
+        ("valid_round", J::num(rs.valid_round)),
+        ("valid_block", block(rs.valid_block.as_ref())),
+        (
+            "valid_block_parts",
+            part_set_json(rs.valid_block_parts.as_ref()),
+        ),
+        ("votes", height_vote_set_json(&rs.votes)),
+        ("commit_round", J::num(rs.commit_round)),
+        ("last_commit", vote_set_json(rs.last_commit.as_ref())),
+        (
+            "last_validators",
+            rpc::encode::validator_set(&rs.last_validators),
+        ),
+        (
+            "triggered_timeout_precommit",
+            J::Bool(rs.triggered_timeout_precommit),
+        ),
+    ])
+    .encode()
+}
+
+/// `PeerState.MarshalJSON`: the peer's round state and statistics (Go
+/// `int`s as strings under cmtjson).
+fn peer_state_json(ps: &consensus::peer_state::PeerState) -> String {
+    use rpc::json::J;
+    let (prs, stats) = ps.round_state_and_stats();
+    J::obj([
+        (
+            "round_state",
+            J::obj([
+                ("height", J::i64s(prs.height)),
+                ("round", J::num(prs.round)),
+                ("step", J::num(prs.step.as_u32())),
+                ("start_time", J::time(&prs.start_time)),
+                ("proposal", J::Bool(prs.proposal)),
+                (
+                    "proposal_block_part_set_header",
+                    rpc::encode::part_set_header(&prs.proposal_block_part_set_header),
+                ),
+                (
+                    "proposal_block_parts",
+                    bit_array_json(&prs.proposal_block_parts),
+                ),
+                ("proposal_pol_round", J::num(prs.proposal_pol_round)),
+                ("proposal_pol", bit_array_json(&prs.proposal_pol)),
+                ("prevotes", bit_array_json(&prs.prevotes)),
+                ("precommits", bit_array_json(&prs.precommits)),
+                ("last_commit_round", J::num(prs.last_commit_round)),
+                ("last_commit", bit_array_json(&prs.last_commit)),
+                ("catchup_commit_round", J::num(prs.catchup_commit_round)),
+                ("catchup_commit", bit_array_json(&prs.catchup_commit)),
+            ]),
+        ),
+        (
+            "stats",
+            J::obj([
+                ("votes", J::str(stats.votes.to_string())),
+                ("block_parts", J::str(stats.block_parts.to_string())),
+            ]),
+        ),
+    ])
+    .encode()
+}
+
+impl NodeShared {
+    fn lock(&self) -> std::sync::MutexGuard<'_, (String, String, String)> {
+        self.round_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Refreshes the round state from consensus.
+    pub fn update_round_state(&self, rs: &consensus::RoundState) {
+        let simple = rpc::json::J::obj([
+            (
+                "height/round/step",
+                rpc::json::J::str(format!("{}/{}/{}", rs.height, rs.round, rs.step.as_u32())),
+            ),
+            ("start_time", rpc::json::J::time(&rs.start_time)),
+            (
+                "proposal_block_hash",
+                rpc::json::J::hex(
+                    &rs.proposal_block
+                        .as_ref()
+                        .map_or_else(Vec::new, |b| b.clone().hash().unwrap_or_default()),
+                ),
+            ),
+            (
+                "locked_block_hash",
+                rpc::json::J::hex(
+                    &rs.locked_block
+                        .as_ref()
+                        .map_or_else(Vec::new, |b| b.clone().hash().unwrap_or_default()),
+                ),
+            ),
+            (
+                "valid_block_hash",
+                rpc::json::J::hex(
+                    &rs.valid_block
+                        .as_ref()
+                        .map_or_else(Vec::new, |b| b.clone().hash().unwrap_or_default()),
+                ),
+            ),
+            (
+                "height_vote_set",
+                rpc::json::J::Raw(HEIGHT_VOTE_SET_MARK.into()),
+            ),
+            (
+                "proposer",
+                rs.validators.proposer().map_or(rpc::json::J::Null, |p| {
+                    rpc::json::J::obj([
+                        ("address", rpc::json::J::hex(&p.address)),
+                        (
+                            "index",
+                            rpc::json::J::num(
+                                rs.validators
+                                    .get_by_address(&p.address)
+                                    .map_or(-1, |(i, _)| i),
+                            ),
+                        ),
+                    ])
+                }),
+            ),
+        ]);
+        // With the consensus reactor, `dump_consensus_state` encodes its
+        // snapshot on request (Go's `GetRoundStateJSON` under the lock).
+        let full = if self.consensus.get().is_some() {
+            String::new()
+        } else {
+            round_state_full_json(rs)
+        };
+        let votes = height_vote_set_json(&rs.votes).encode();
+        *self.lock() = (full, simple.encode(), votes);
+    }
+
+    /// Refreshes the votes of the round state (a vote was added).
+    pub fn update_round_votes(&self, rs: &consensus::RoundState) {
+        let votes = height_vote_set_json(&rs.votes).encode();
+        self.lock().2 = votes;
+    }
+}
+
+/// The app's ABCI query / mempool connections.
+struct AppQueries(Arc<Mutex<app::App>>);
+
+impl AppQuery for AppQueries {
+    fn info(&self) -> Result<abci::ResponseInfo, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned".to_owned())?
+            .info())
+    }
+    fn query(&self, req: abci::RequestQuery) -> Result<abci::ResponseQuery, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned".to_owned())?
+            .query(&req))
+    }
+    fn query_response(
+        &self,
+        req: abci::RequestQuery,
+    ) -> Result<Option<abci::ResponseQuery>, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned".to_owned())?
+            .query_response(&req))
+    }
+    fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String> {
+        self.0
+            .lock()
+            .map_err(|_| "app lock poisoned".to_owned())?
+            .check_tx(&abci::RequestCheckTx {
+                tx: tx.to_vec(),
+                ..Default::default()
+            })
+    }
+}
+
+/// The node's evidence pool as seen by `broadcast_evidence`.
+struct Evidence(evidence::Pool);
+
+impl rpc::EvidenceSink for Evidence {
+    fn add_evidence(&self, ev: ctypes::Evidence) -> Result<(), String> {
+        self.0.add_evidence(ev).map_err(|e| e.to_string())
+    }
+}
+
+/// Everything the node needs to serve RPC.
+pub struct Rpc {
+    /// The environment.
+    pub env: Arc<Environment>,
+    /// Block event sink for the executor.
+    pub publisher: Arc<BlockEventPublisher>,
+    /// Node status (updated by the consensus loop).
+    pub shared: Arc<NodeShared>,
+    /// Settings.
+    pub settings: RpcSettings,
+    app: Arc<Mutex<app::App>>,
+    /// Owned runtime when `start` runs outside of one (tests).
+    runtime: Option<tokio::runtime::Runtime>,
+}
+
+impl std::fmt::Debug for Rpc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Rpc").finish_non_exhaustive()
+    }
+}
+
+/// Inputs of [`Rpc::new`].
+#[derive(Debug)]
+pub struct RpcInputs<'a> {
+    /// Node home.
+    pub home: &'a Path,
+    /// Genesis.
+    pub genesis: &'a GenesisDoc,
+    /// Block store.
+    pub block_store: BlockStore,
+    /// State store.
+    pub state_store: StateStore,
+    /// The app.
+    pub app: Arc<Mutex<app::App>>,
+    /// The mempool.
+    pub mempool: Arc<mempool::TxPool>,
+    /// Evidence pool shared with consensus and the evidence reactor.
+    pub evidence: evidence::Pool,
+    /// Validator key.
+    pub pub_key: ctypes::PubKey,
+    /// Current app version (node info).
+    pub app_version: u64,
+}
+
+impl Rpc {
+    /// Builds the environment: indexers on `data/tx_index`, event bus,
+    /// genesis document.
+    pub fn new(i: RpcInputs<'_>) -> anyhow::Result<Self> {
+        let settings = RpcSettings::load(i.home)?;
+        let (txi, bi) = if settings.tx_index {
+            let db = kvdb::open_backend(
+                &i.home.join("data"),
+                "tx_index",
+                &kvdb::DbOptions::default(),
+            )
+            .map_err(|e| anyhow!("open tx_index: {e}"))?;
+            crate::memstats::register_db("tx_index", &db);
+            (
+                Some(Arc::new(TxIndexer::new(db.clone()))),
+                Some(Arc::new(BlockIndexer::new(db))),
+            )
+        } else {
+            (None, None)
+        };
+        let genesis_bytes = std::fs::read(i.home.join("config").join("genesis.json"))?;
+        let genesis = GenesisData::from_file(&genesis_bytes, i.genesis).map_err(|e| anyhow!(e))?;
+        let bus = Arc::new(EventBus::new());
+        // The switch can generate a missing key later, but RPC starts first.
+        // Load/generate it here so every listener advertises the same real ID.
+        let node_key = crate::net::node_key(i.home)?;
+        let shared = Arc::new(NodeShared {
+            info: NodeInfo {
+                p2p_version: 8,
+                block_version: 11,
+                app_version: i.app_version,
+                id: node_key.id().to_string(),
+                listen_addr: settings.p2p_laddr.clone(),
+                network: i.genesis.chain_id.clone(),
+                version: crate::version::node_version(),
+                channels: hex::decode("40202223303860613231505100").unwrap_or_default(),
+                moniker: settings.moniker.clone(),
+                tx_index: if settings.tx_index { "on" } else { "off" }.into(),
+                rpc_address: settings.rpc.laddr.clone(),
+            },
+            ..NodeShared::default()
+        });
+        let publisher = Arc::new(BlockEventPublisher {
+            bus: bus.clone(),
+            tx_indexer: txi.clone(),
+            block_indexer: bi.clone(),
+        });
+        let env = Environment::new(
+            i.block_store,
+            i.state_store.clone(),
+            Arc::new(AppQueries(i.app.clone())),
+            i.mempool,
+            shared.clone(),
+            Arc::new(Evidence(i.evidence)),
+            i.pub_key,
+            genesis,
+            txi,
+            bi,
+            bus,
+            settings.rpc.clone(),
+        );
+        Ok(Self {
+            env: Arc::new(env),
+            publisher,
+            shared,
+            settings,
+            app: i.app,
+            runtime: None,
+        })
+    }
+
+    /// Starts the listeners on the current tokio runtime (or on an owned
+    /// one when called outside of a runtime).
+    pub fn spawn(&mut self) -> anyhow::Result<()> {
+        let s = &self.settings;
+        if s.rpc.laddr.trim().is_empty()
+            && s.rpc.grpc_laddr.is_empty()
+            && s.app_grpc.is_empty()
+            && s.app_api.is_empty()
+        {
+            return Ok(());
+        }
+        let rt = if let Ok(h) = tokio::runtime::Handle::try_current() {
+            h
+        } else {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            let h = runtime.handle().clone();
+            self.runtime = Some(runtime);
+            h
+        };
+        let rt = &rt;
+        let _guard = rt.enter();
+        for laddr in self
+            .settings
+            .rpc
+            .laddr
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let Some(listener) = bind("RPC server", laddr) else {
+                continue;
+            };
+            // The app's RPC-backed query services (cmtservice, GetTx,
+            // BroadcastTx, TxStatus) call this node, like Go's in-process
+            // `local.New(node)` client.
+            if app::comet::rpc_address().is_none()
+                && let Ok(mut a) = listener.local_addr()
+            {
+                if a.ip().is_unspecified() {
+                    a.set_ip(if a.is_ipv4() {
+                        std::net::Ipv4Addr::LOCALHOST.into()
+                    } else {
+                        std::net::Ipv6Addr::LOCALHOST.into()
+                    });
+                }
+                app::comet::set_rpc_address(Some(format!("tcp://{a}")));
+            }
+            let env = self.env.clone();
+            rt.spawn(async move {
+                if let Err(e) = rpc::server::serve(listener, env).await {
+                    tracing::error!(error = %e, "RPC server failed");
+                }
+            });
+        }
+        if !self.settings.rpc.grpc_laddr.is_empty()
+            && let Some(listener) = bind("celestia-core gRPC", &self.settings.rpc.grpc_laddr)
+        {
+            let env = self.env.clone();
+            rt.spawn(async move {
+                if let Err(e) = rpc::grpc::serve(listener, env).await {
+                    tracing::error!(error = %e, "gRPC server failed");
+                }
+            });
+        }
+        let abci = Arc::new(app::AbciApp::from_shared(self.app.clone()));
+        if !self.settings.app_grpc.is_empty()
+            && let Some(listener) =
+                bind("gRPC query server (with BlockAPI)", &self.settings.app_grpc)
+        {
+            let limits = self.settings.app_grpc_limits;
+            let router = rpc::grpc::block_router_with_limits(self.env.clone(), limits)
+                .merge(api_server::grpc_router_with_limits(abci.clone(), limits));
+            rt.spawn(async move {
+                if let Err(e) = axum::serve(listener, router).await {
+                    tracing::error!(error = %e, "app gRPC server failed");
+                }
+            });
+        }
+        if !self.settings.app_api.is_empty()
+            && let Some(listener) = bind("REST API", &self.settings.app_api)
+        {
+            rt.spawn(async move {
+                if let Err(e) = api_server::serve_rest_on(listener, abci).await {
+                    tracing::error!(error = %e, "REST API failed");
+                }
+            });
+        }
+        Ok(())
+    }
+
+    /// Publishes a consensus event on the bus and refreshes the round state.
+    pub fn consensus_event(&self, ev: &consensus::Event, rs: &consensus::RoundState) {
+        let bus = &self.env.event_bus;
+        match ev {
+            consensus::Event::NewRoundStep {
+                height,
+                round,
+                step,
+                ..
+            } => {
+                bus.publish_type(
+                    "NewRoundStep",
+                    EventData::RoundState {
+                        height: *height,
+                        round: *round,
+                        step: step.as_str().into(),
+                    },
+                );
+                self.shared.update_round_state(rs);
+            }
+            consensus::Event::Vote(v) => {
+                bus.publish_type(
+                    "Vote",
+                    EventData::Vote {
+                        vote: Box::new(v.clone()),
+                    },
+                );
+                self.shared.update_round_votes(rs);
+            }
+            consensus::Event::ValidBlock { height, round, .. } => bus.publish_type(
+                "ValidBlock",
+                EventData::RoundState {
+                    height: *height,
+                    round: *round,
+                    step: rs.step.as_str().into(),
+                },
+            ),
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod grpc_limit_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn generated_quoted_limits_integer_limits_and_zero_fallbacks() {
+        let app: toml::Table = "[grpc]\nmax-recv-msg-size = \"123\"\nmax-send-msg-size = 456"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            grpc_limit(&app, "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            123
+        );
+        assert_eq!(
+            grpc_limit(&app, "max-send-msg-size", 64 << 20, i32::MAX as usize).unwrap(),
+            456
+        );
+        let zero: toml::Table = "[grpc]\nmax-recv-msg-size = 0\nmax-send-msg-size = \"0\""
+            .parse()
+            .unwrap();
+        assert_eq!(
+            grpc_limit(&zero, "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            10 << 20
+        );
+        assert_eq!(
+            grpc_limit(&zero, "max-send-msg-size", 64 << 20, i32::MAX as usize).unwrap(),
+            i32::MAX as usize
+        );
+        assert_eq!(
+            grpc_limit(&toml::Table::new(), "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            64 << 20
+        );
+    }
+
+    #[test]
+    fn invalid_limits_fail_configuration_loading() {
+        for value in ["-1", "\"-1\"", "true", "1.5", "\"invalid\""] {
+            let app: toml::Table = format!("[grpc]\nmax-recv-msg-size = {value}")
+                .parse()
+                .unwrap();
+            assert!(grpc_limit(&app, "max-recv-msg-size", 64 << 20, 10 << 20).is_err());
+        }
+    }
+
+    #[test]
+    fn production_settings_load_limits_from_app_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("config")).unwrap();
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            "[rpc]\nladdr = \"\"\nmax_header_bytes = 256",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("config/app.toml"),
+            "[grpc]\nenable = true\nmax-recv-msg-size = \"64\"\nmax-send-msg-size = \"32\"",
+        )
+        .unwrap();
+        let settings = RpcSettings::load(dir.path()).unwrap();
+        assert_eq!(
+            settings.app_grpc_limits,
+            api_server::GrpcLimits {
+                max_receive: 64,
+                max_send: 32
+            }
+        );
+        assert_eq!(settings.rpc.max_header_bytes, 256);
+    }
+}

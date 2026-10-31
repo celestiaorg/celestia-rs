@@ -1,7 +1,7 @@
 name: determinism
 
 # Determinism of the signing binary (MILESTONES.md C1.3 / F1.9): on
-# x86_64 Linux and aarch64 macOS (macos-14, the Mac Mini's target), with
+# x86_64 Linux and aarch64 macOS (macos-15, the Mac Mini's target), with
 # the `release` and `dist` profiles, `deliver` runs clean against Go and its
 # DELIVER_TRACE (a digest of every Rust ABCI response, per height) is
 # byte-identical under one square thread, the signature cache off, across
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     steps:
