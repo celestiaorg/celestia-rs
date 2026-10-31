@@ -264,6 +264,12 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
                 configs[generation][role]["config.toml"]["priv_validator_grpc_laddr"] == "",
                 f"{generation}/{role} priv_validator_grpc_laddr must be disabled",
             )
+            harness.require(
+                configs[generation][role]["config.toml"]["rpc.max_subscription_clients"] ==
+                harness.SUBSCRIPTION_CLIENT_LIMITS[role]
+                and configs[generation][role]["config.toml"]["rpc.max_subscriptions_per_client"] == 1,
+                f"{generation}/{role} effective external subscription capacity differs",
+            )
     harness.validate_config_delta(configs["normal"], configs["timeout"])
     harness.require(configs["restored"] == configs["normal"], "restored config differs from normal")
     for role in ROLES:
@@ -1200,7 +1206,8 @@ def write_payloads(state: State, resources_only: bool = False) -> None:
     maximum = state.checked["configs"]["normal"]["go"]["config.toml"]["mempool.max_txs_bytes"]
     write_new(output / "topology.json", {"generations": state.topology_generations, "pex": False,
                                           "mempool_broadcast": False, "validator_power": {"go": "1", "rs": "1"},
-                                          "max_txs_bytes": maximum, "max_subscription_clients": 1,
+                                          "max_txs_bytes": maximum,
+                                          "max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS,
                                           "max_subscriptions_per_client": 1})
     write_new(output / "inputs.json", {"cases": state.cases, "capacity": state.plan["capacity"],
                                         "lifecycle_inputs": state.plan["lifecycle_inputs"]})

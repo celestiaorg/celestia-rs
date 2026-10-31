@@ -234,7 +234,8 @@ def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
     require(topology["pex"] is False and topology["mempool_broadcast"] is False,
             "topology.isolation", "PEX or mempool propagation enabled")
     require(topology["validator_power"] == {"go": "1", "rs": "1"}, "topology.power", "validator power differs")
-    require(topology["max_subscription_clients"] == 1 and topology["max_subscriptions_per_client"] == 1,
+    require(topology["max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS and
+            topology["max_subscriptions_per_client"] == 1,
             "topology.capacity", "subscription capacity differs")
     require(isinstance(topology["max_txs_bytes"], int) and topology["max_txs_bytes"] > 0,
             "topology.capacity", "mempool capacity invalid")
@@ -347,7 +348,8 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
                     config["tx_index.indexer"] == "kv" and config["consensus.timeout_commit"] == "5s",
                     "config.isolation", f"{phase} {node}")
             require(config["mempool.max_txs_bytes"] == topology["max_txs_bytes"] and
-                    config["rpc.max_subscription_clients"] == 1 and config["rpc.max_subscriptions_per_client"] == 1,
+                    config["rpc.max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS[node] and
+                    config["rpc.max_subscriptions_per_client"] == 1,
                     "config.capacity", f"{phase} {node}")
             require(app["grpc.enable"] is True and app["api.enable"] is True and app["grpc-web.enable"] is False,
                     "config.listeners", f"{phase} {node}")

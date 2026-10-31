@@ -56,6 +56,12 @@ validator. The evidence preserves every complete parsed config and rejects any
 normal/timeout/restored delta except the declared commit timeout.
 The optional private-validator signer gRPC address is explicitly empty in both
 node configs, so it cannot add an unreviewed listener to the transport matrix.
+Go core gRPC owns one permanent EventBus client for its new-height fanout;
+Rust does not consume the public EventBus quota for that internal service.
+Accordingly, `max_subscription_clients` is two for Go and one for Rust, while
+`max_subscriptions_per_client` remains one on both. This gives each node one
+external subscription slot, preserving saturation/reclamation coverage without
+making every Go `BroadcastTxCommit` fail before it can subscribe.
 
 `verify.py` verifies a single explicitly named capture root. It never discovers
 or selects a convenient capture. It checks exact file inventory and hashes,

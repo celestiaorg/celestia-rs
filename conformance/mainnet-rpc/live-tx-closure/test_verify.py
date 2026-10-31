@@ -116,7 +116,8 @@ def fixture(root: pathlib.Path) -> None:
     dump(root / "topology.json", {
         "generations": topology_generations, "pex": False, "mempool_broadcast": False,
         "validator_power": {"go": "1", "rs": "1"}, "max_txs_bytes": 512,
-        "max_subscription_clients": 1, "max_subscriptions_per_client": 1,
+        "max_subscription_clients": copy.deepcopy(harness.SUBSCRIPTION_CLIENT_LIMITS),
+        "max_subscriptions_per_client": 1,
     })
     normal = {}
     for node in ("go", "rs"):
@@ -124,7 +125,8 @@ def fixture(root: pathlib.Path) -> None:
             "config.toml": {
                 "priv_validator_grpc_laddr": "",
                 "rpc.timeout_broadcast_tx_commit": "10s", "rpc.laddr": endpoint_values[f"{node}_rpc"],
-                "rpc.grpc_laddr": endpoint_values[f"{node}_core"], "rpc.max_subscription_clients": 1,
+                "rpc.grpc_laddr": endpoint_values[f"{node}_core"],
+                "rpc.max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS[node],
                 "rpc.max_subscriptions_per_client": 1, "p2p.pex": False, "mempool.broadcast": False,
                 "p2p.laddr": endpoint_values[f"{node}_p2p"],
                 "mempool.max_txs_bytes": 512, "tx_index.indexer": "kv", "consensus.timeout_commit": "5s",
@@ -643,6 +645,19 @@ class VerifyTest(unittest.TestCase):
                     value["full"][phase][node]["config.toml"]["priv_validator_grpc_laddr"] = "127.0.0.1:26669"
         self.rewrite("configs.json", mutate)
         self.reject("config.isolation", lambda: verify.verify(self.root))
+
+    def test_subscription_capacity_preserves_one_external_slot_per_role(self):
+        self.rewrite("topology.json", lambda value: value.__setitem__(
+            "max_subscription_clients", {"go": 1, "rs": 1}))
+        self.reject("topology.capacity", lambda: verify.verify(self.root))
+
+    def test_rust_subscription_limit_cannot_be_flattened_to_go_limit(self):
+        def mutate(value):
+            for phase in ("normal", "timeout", "restored"):
+                value[phase]["rs"]["config.toml"]["rpc.max_subscription_clients"] = 2
+                value["full"][phase]["rs"]["config.toml"]["rpc"]["max_subscription_clients"] = 2
+        self.rewrite("configs.json", mutate)
+        self.reject("config.capacity", lambda: verify.verify(self.root))
 
     def test_full_config_hidden_delta(self):
         self.rewrite("configs.json", lambda value: value["full"]["timeout"]["go"]["config.toml"].__setitem__(
