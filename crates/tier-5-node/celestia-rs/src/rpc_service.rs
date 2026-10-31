@@ -236,29 +236,6 @@ pub fn socket_addr(laddr: &str) -> anyhow::Result<SocketAddr> {
         .with_context(|| format!("invalid listen address {laddr:?}"))
 }
 
-/// The node id (`p2p.PubKeyToID`) of `config/node_key.json`.
-fn node_id(home: &Path) -> String {
-    use base64::Engine as _;
-    let Ok(bz) = std::fs::read(home.join("config").join("node_key.json")) else {
-        return String::new();
-    };
-    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bz) else {
-        return String::new();
-    };
-    let Some(Ok(key)) = v["priv_key"]["value"]
-        .as_str()
-        .map(|s| base64::engine::general_purpose::STANDARD.decode(s))
-    else {
-        return String::new();
-    };
-    if key.len() != 64 {
-        return String::new();
-    }
-    hex::encode(crypto::ed25519::address(
-        &key[32..].try_into().unwrap_or([0; 32]),
-    ))
-}
-
 /// Node status shared between the consensus loop and the RPC.
 #[derive(Default)]
 pub struct NodeShared {
@@ -819,15 +796,18 @@ impl Rpc {
         let genesis_bytes = std::fs::read(i.home.join("config").join("genesis.json"))?;
         let genesis = GenesisData::from_file(&genesis_bytes, i.genesis).map_err(|e| anyhow!(e))?;
         let bus = Arc::new(EventBus::new());
+        // The switch can generate a missing key later, but RPC starts first.
+        // Load/generate it here so every listener advertises the same real ID.
+        let node_key = crate::net::node_key(i.home)?;
         let shared = Arc::new(NodeShared {
             info: NodeInfo {
                 p2p_version: 8,
                 block_version: 11,
                 app_version: i.app_version,
-                id: node_id(i.home),
+                id: node_key.id().to_string(),
                 listen_addr: settings.p2p_laddr.clone(),
                 network: i.genesis.chain_id.clone(),
-                version: "0.38.17".into(),
+                version: crate::version::node_version(),
                 channels: hex::decode("40202223303860613231505100").unwrap_or_default(),
                 moniker: settings.moniker.clone(),
                 tx_index: if settings.tx_index { "on" } else { "off" }.into(),

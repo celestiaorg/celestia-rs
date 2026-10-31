@@ -267,7 +267,7 @@ impl App {
                     return ResponseQuery {
                         codespace: "sdk".into(),
                         height: req.height,
-                        value: Vec::new(),
+                        value: crate::COMPATIBILITY_VERSION.as_bytes().to_vec(),
                         ..ResponseQuery::default()
                     };
                 }

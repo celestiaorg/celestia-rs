@@ -405,6 +405,23 @@ fn normalize(norm: &str, body: &str) -> String {
     serde_json::to_string(&v).unwrap()
 }
 
+/// Adapt only the identity of the historical, unversioned Go build. Preserve
+/// every state, height and timeout field. The actual production identity is
+/// asserted independently by the node's `runtime_metadata` socket regression.
+fn legacy_abci_identity(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(body) else {
+        return body.to_owned();
+    };
+    if let Some(response) = value.pointer_mut("/result/response")
+        && response["data"] == "celestia-app"
+        && response.get("version").is_none()
+    {
+        response["data"] = Value::String(app::APPLICATION_NAME.into());
+        response["version"] = Value::String(app::COMPATIBILITY_VERSION.into());
+    }
+    serde_json::to_string(&value).unwrap()
+}
+
 fn normalize_decode_error(s: &str) -> String {
     let mut s = s.replace("proto:\u{a0}", "").replace("proto: ", "");
     if let (Some(a), Some(b)) = (s.find(" [celestiaorg/"), s.rfind(']')) {
@@ -640,7 +657,9 @@ async fn run_scenario(dir: &Path) -> Stats {
                 let go_status = e["status"].as_u64().unwrap_or(0);
                 let go_ct = e["content_type"].as_str().unwrap_or_default();
                 let go_cc = e["cache_control"].as_str().unwrap_or_default();
-                let (g, r) = if go.contains("tx parse error [") {
+                let (g, r) = if path == "/abci_info" {
+                    (legacy_abci_identity(go), legacy_abci_identity(&resp))
+                } else if go.contains("tx parse error [") {
                     // CheckTx of an undecodable tx: Go's error text embeds the
                     // Go binary's protobuf-go `detrand` separator after
                     // "proto:" and an error-stack location; compare the rest.

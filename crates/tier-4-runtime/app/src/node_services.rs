@@ -125,6 +125,7 @@ fn dispatch(env: &Env<'_>, path: &str, data: &[u8]) -> QResult<Vec<u8>> {
 
 /// The gRPC path: `CreateQueryContext(height)` under the lock, then the
 /// handler without it. `None` for other methods.
+#[must_use]
 pub fn grpc_query(
     app: &AbciApp,
     path: &str,
@@ -295,7 +296,7 @@ fn get_node_info() -> QResult<cmt::GetNodeInfoResponse> {
                 .get()
                 .cloned()
                 .unwrap_or_else(|| cmt::VersionInfo {
-                    name: "celestia-app".into(),
+                    name: crate::APPLICATION_NAME.into(),
                     app_name: "celestia-rs".into(),
                     version: env!("CARGO_PKG_VERSION").into(),
                     ..cmt::VersionInfo::default()
@@ -311,7 +312,7 @@ static BUILD_INFO: std::sync::OnceLock<cmt::VersionInfo> = std::sync::OnceLock::
 /// toolchain for `GetNodeInfo` (Go's `version.NewInfo()` fields).
 pub fn set_build_info(version: &str, git_commit: &str, build_tags: &str, toolchain: &str) {
     let _ = BUILD_INFO.set(cmt::VersionInfo {
-        name: "celestia-app".into(),
+        name: crate::APPLICATION_NAME.into(),
         app_name: "celestia-rs".into(),
         version: version.into(),
         git_commit: git_commit.into(),

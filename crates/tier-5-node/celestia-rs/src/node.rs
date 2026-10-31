@@ -310,6 +310,7 @@ pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
 /// `celestia-rs start`.
 #[allow(clippy::too_many_lines)]
 pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
+    crate::version::register_build_info();
     let home = &opts.home;
     let genesis = load_genesis(home)?;
     // Like Go's node: wait for the genesis time.
@@ -754,7 +755,7 @@ fn start_network(
     local_addr: &[u8],
     consensus: &ConsensusReactors,
 ) -> anyhow::Result<(p2p::Switch, crate::sync::SyncReactors)> {
-    let sw = crate::net::new_switch(home, chain_id, p2p_opts)?;
+    let sw = crate::net::new_switch(home, chain_id, p2p_opts, state.consensus_params.version.app)?;
     sw.add_reactor(consensus.reactor.clone())
         .map_err(|e| anyhow!("{e}"))?;
     sw.add_reactor(consensus.propagation.clone())

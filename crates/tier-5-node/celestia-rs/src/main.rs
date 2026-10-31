@@ -828,12 +828,7 @@ enum CometCmd {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    app::node_services::set_build_info(
-        env!("CARGO_PKG_VERSION"),
-        env!("CELESTIA_RS_GIT_COMMIT"),
-        env!("CELESTIA_RS_BUILD_PROFILE"),
-        env!("CELESTIA_RS_TOOLCHAIN"),
-    );
+    celestia_rs::version::register_build_info();
     let home = cli.home.clone().unwrap_or_else(util::default_home);
     let files = ConfigFiles::load(&home).ok();
     let level = cli.log_level.clone().unwrap_or_else(|| {
@@ -945,11 +940,14 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Version { long } => {
             if long {
                 util::out(format!(
-                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\napp_version: {}\ngo_parity: celestia-app v10.5.0, celestia-core v0.42.3",
+                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
                     env!("CARGO_PKG_VERSION"),
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
-                    app::upgrades::APP_VERSION
+                    env!("CELESTIA_RS_TOOLCHAIN"),
+                    app::upgrades::APP_VERSION,
+                    app::COMPATIBILITY_VERSION,
+                    celestia_rs::version::CORE_COMPATIBILITY_VERSION
                 ));
             } else {
                 util::out(env!("CARGO_PKG_VERSION"));
