@@ -1734,6 +1734,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "grpc-transport"
+version = "0.0.1"
+dependencies = [
+ "axum",
+ "bytes",
+ "futures-util",
+ "http-body-util",
+ "tokio",
+ "tonic",
+ "tower 0.5.3",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
