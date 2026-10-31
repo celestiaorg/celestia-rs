@@ -92,6 +92,7 @@ fn legacy_version_adapter_is_narrow() {
         data: hex::encode(request.encode_to_vec()),
         height: 15,
         prove: false,
+        missing_response: false,
         response: AbciResponse {
             value: hex::encode(recorded.encode_to_vec()),
             height: 15,
