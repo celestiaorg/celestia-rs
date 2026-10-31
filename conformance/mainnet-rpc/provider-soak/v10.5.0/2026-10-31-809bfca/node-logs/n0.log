@@ -1,0 +1,978 @@
+2:40AM INF Overriding min-retain-blocks to minimum configured=500 minimum=3000 module=server
+2:40AM INF starting node with ABCI CometBFT in-process module=server
+2:40AM INF service start impl=multiAppConn module=proxy msg={}
+2:40AM INF service start connection=query impl=localClient module=abci-client msg={}
+2:40AM INF service start connection=snapshot impl=localClient module=abci-client msg={}
+2:40AM INF service start connection=mempool impl=localClient module=abci-client msg={}
+2:40AM INF service start connection=consensus impl=localClient module=abci-client msg={}
+2:40AM INF service start impl=EventBus module=events msg={}
+2:40AM INF service start impl=PubSub module=pubsub msg={}
+2:40AM INF ABCI Handshake App Info hash={} height=0 module=consensus protocol-version=0 software-version=10.5.0
+2:40AM INF ABCI Replay Blocks appHeight=0 module=consensus stateHeight=0 storeHeight=0
+2:40AM INF InitChain chainID=rs-soak-1 initialHeight=1 module=server
+2:40AM INF initializing blockchain state from genesis.json module=server
+2:40AM INF created new capability module=ibc name=ports/transfer
+2:40AM INF port binded module=x/ibc/port port=transfer
+2:40AM INF claimed capability capability=1 module=transfer name=ports/transfer
+2:40AM INF created new capability module=ibc name=ports/icahost
+2:40AM INF port binded module=x/ibc/port port=icahost
+2:40AM INF claimed capability capability=2 module=icahost name=ports/icahost
+2:40AM INF Completed ABCI Handshake - CometBFT and App are synced appHash={} appHeight=0 module=consensus
+2:40AM INF Version info abci=2.0.0 block=11 commit_hash= module=server p2p=8 tendermint_version=0.38.17
+2:40AM INF This node is a validator addr=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9 module=consensus pubKey=d1vzhLTE38z2GILlxB3jPUKmBbbfnEoW7J6hO22rMT8=
+2:40AM INF Consensus reactor created module=server
+2:40AM INF P2P Node ID ID=e06a7b14bb39861dd7789f2ec912338ac9c314da file=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/config/node_key.json module=p2p
+2:40AM INF Adding persistent peers addrs=["b7fe0aec7259d3a1129669a0ce60823ab810bfb8@127.0.0.1:50157","f921d190b6b56487ff726a2f5f7b3f826e8f5e1a@127.0.0.1:50158","dbe5a26cd989fc37aef3c96c019fd4c93c4e840c@127.0.0.1:50159","9ce5a07e9f03d626680ac588a75066429e518b37@127.0.0.1:50160"] module=p2p
+2:40AM INF Adding unconditional peer ids ids=[] module=p2p
+2:40AM INF Add our address to book addr={"id":"e06a7b14bb39861dd7789f2ec912338ac9c314da","ip":"0.0.0.0","port":49656} book=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/config/addrbook.json module=p2p
+2:40AM INF service start impl=Node module=server msg={}
+2:40AM INF privval gRPC server running without TLS on loopback only addr=127.0.0.1:49669 module=server
+2:40AM INF Started privval gRPC server addr=127.0.0.1:49669 module=server
+2:40AM INF service start impl="P2P Switch" module=p2p msg={}
+2:40AM INF service start impl=CAT module=server msg={}
+2:40AM INF service start impl=BlockSync module=blocksync msg={}
+2:40AM INF service start impl=BlockPool module=blocksync msg={}
+2:40AM INF serve module=rpc-server msg={}
+2:40AM INF service start impl=ConsensusReactor module=consensus msg={}
+2:40AM INF Reactor  module=consensus waitSync=true
+2:40AM INF service start impl=Evidence module=evidence msg={}
+2:40AM INF service start impl=StateSync module=statesync msg={}
+2:40AM INF service start impl=Recovery module=propagation msg={}
+2:40AM INF starting gRPC server... address=127.0.0.1:32090 module=grpc-server
+2:40AM INF starting API server... address=tcp://127.0.0.1:24317 module=api-server
+2:40AM INF serve module=api-server msg={}
+2:40AM INF service start impl="Peer{MConn{127.0.0.1:50157} b7fe0aec7259d3a1129669a0ce60823ab810bfb8 out}" module=p2p msg={} peer={"id":"b7fe0aec7259d3a1129669a0ce60823ab810bfb8","ip":"127.0.0.1","port":50157}
+2:40AM INF service start impl=MConn{127.0.0.1:50157} module=p2p msg={} peer={"id":"b7fe0aec7259d3a1129669a0ce60823ab810bfb8","ip":"127.0.0.1","port":50157}
+2:40AM INF service start impl="Peer{MConn{127.0.0.1:45166} f921d190b6b56487ff726a2f5f7b3f826e8f5e1a in}" module=p2p msg={} peer={"id":"f921d190b6b56487ff726a2f5f7b3f826e8f5e1a","ip":"127.0.0.1","port":45166}
+2:40AM INF service start impl=MConn{127.0.0.1:45166} module=p2p msg={} peer={"id":"f921d190b6b56487ff726a2f5f7b3f826e8f5e1a","ip":"127.0.0.1","port":45166}
+2:40AM INF Time to switch to consensus reactor! height=1 module=blocksync
+2:40AM INF service stop impl={"Logger":{"Logger":{}}} module=blocksync msg={}
+2:40AM INF SwitchToConsensus module=consensus
+2:40AM INF service start impl=ConsensusState module=consensus msg={}
+2:40AM INF service start impl=baseWAL module=consensus msg={} wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:40AM INF service start impl=Group module=consensus msg={} wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:40AM INF service start impl=TimeoutTicker module=consensus msg={}
+2:40AM INF Searching for height height=1 max=0 min=0 module=consensus wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:40AM INF Searching for height height=0 max=0 min=0 module=consensus wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:40AM INF Found height=0 index=0 module=consensus wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:40AM INF Catchup by replaying consensus messages height=1 module=consensus
+2:40AM INF Replay: Done module=consensus
+2:40AM INF Timed out dur=-504.532113 height=1 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"81DFD9A6689461B78A30E98680FCF4FFF6024DA6047F0692C70CA3FA1FDA354D","parts":{"hash":"244CA90CC6E45AD4EED77179AB8A51ECC5AA473BE436E76291DD761E576AEE48","total":1}},"height":1,"pol_round":-1,"round":0,"signature":"yS/wlpaFzPfW8itHtzJ9ZdZUU+AzgG2Puk6AqE+oDLahNxC5si5q69CxuuE5ZY1vwEekL6c6ljlwOrw9SbRRBQ==","timestamp":"2026-10-31T02:40:30.631476265Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:40AM INF service start impl="Peer{MConn{127.0.0.1:45174} 9ce5a07e9f03d626680ac588a75066429e518b37 in}" module=p2p msg={} peer={"id":"9ce5a07e9f03d626680ac588a75066429e518b37","ip":"127.0.0.1","port":45174}
+2:40AM INF service start impl=MConn{127.0.0.1:45174} module=p2p msg={} peer={"id":"9ce5a07e9f03d626680ac588a75066429e518b37","ip":"127.0.0.1","port":45174}
+2:40AM INF received complete proposal block hash=81DFD9A6689461B78A30E98680FCF4FFF6024DA6047F0692C70CA3FA1FDA354D height=1 module=consensus
+2:40AM INF service start impl="Peer{MConn{127.0.0.1:45190} dbe5a26cd989fc37aef3c96c019fd4c93c4e840c in}" module=p2p msg={} peer={"id":"dbe5a26cd989fc37aef3c96c019fd4c93c4e840c","ip":"127.0.0.1","port":45190}
+2:40AM INF service start impl=MConn{127.0.0.1:45190} module=p2p msg={} peer={"id":"dbe5a26cd989fc37aef3c96c019fd4c93c4e840c","ip":"127.0.0.1","port":45190}
+2:40AM INF finalizing commit of block hash={} height=1 module=consensus num_txs=0 root=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2:40AM INF finalized block block_app_hash=DB8E9988B9DA49A31EAD975F3635817B072129114451A66A1F6CFCFC7CA5CD36 height=1 module=state num_txs_res=0 num_val_updates=0
+2:40AM INF Timed out dur=487.95662 height=2 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7AC5E99F611C1A60D65C67BFA71B32FCEEF4C86344F4E45CF4162D30E70F1E59","parts":{"hash":"71521C9BBE8AA9EF0D7FDEC99B0CF379C72ED415B75553EA5A88B87DAC1EF618","total":1}},"height":2,"pol_round":-1,"round":0,"signature":"rHGUi9+XIyg3MFuMlJiRaygvmxyA0kSvFTS5RHEB5c49+2Uh2ggCyLTC9FzUkp9dh+tMd7JdW5w8y4KxTBybAw==","timestamp":"2026-10-31T02:40:32.772755467Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:40AM INF received complete proposal block hash=7AC5E99F611C1A60D65C67BFA71B32FCEEF4C86344F4E45CF4162D30E70F1E59 height=2 module=consensus
+2:40AM INF finalizing commit of block hash={} height=2 module=consensus num_txs=0 root=DB8E9988B9DA49A31EAD975F3635817B072129114451A66A1F6CFCFC7CA5CD36
+2:40AM INF finalized block block_app_hash=3F36F4E58E0B6BB83FB14EDA4A66A3608891489341707695C94EF12FEB5792D1 height=2 module=state num_txs_res=0 num_val_updates=0
+2:40AM INF Timed out dur=492.535664 height=3 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"17C8BB068C454C2F175FBD6661B11102DD4334E92D99EAD17DA314FB8A5BE086","parts":{"hash":"7D685660FB8261199C9B4658D7532E6909A350E18B5EFB836C50CF950A04C699","total":1}},"height":3,"pol_round":-1,"round":0,"signature":"nGPflAYnvNKJHP6ffu90vQqDr1Iy/3QC5JygfnmwJOCjLEvmLw9YN3/bzPq/ultXzj8Nx4i+Q4ILdQrGJaNiAg==","timestamp":"2026-10-31T02:40:35.425096591Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:40AM INF received complete proposal block hash=17C8BB068C454C2F175FBD6661B11102DD4334E92D99EAD17DA314FB8A5BE086 height=3 module=consensus
+2:40AM INF finalizing commit of block hash={} height=3 module=consensus num_txs=0 root=3F36F4E58E0B6BB83FB14EDA4A66A3608891489341707695C94EF12FEB5792D1
+2:40AM INF finalized block block_app_hash=510A0D93B6B831BE246988D2960132059ECA803593C6366EE18042A626FEC0E6 height=3 module=state num_txs_res=0 num_val_updates=0
+2:40AM INF Timed out dur=494.830706 height=4 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BB9E15152F9E37A149FE4D7EA0F29FCCD265899F15FB6C9F0A60844D6AD4D4A7","parts":{"hash":"47DC7690843D29C2291B43EE1573634B310FF2B6CCAA320B2D929953865FAB3A","total":1}},"height":4,"pol_round":-1,"round":0,"signature":"nHXUi9T5vyCopQDFUieZ6rdy14BZg7wve9TMXaLsgUnsxChFnAvfhh9cyjQX5BlMDLz+MmJsVgG56s4sphX2Ag==","timestamp":"2026-10-31T02:40:38.043156699Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:40AM INF received complete proposal block hash=BB9E15152F9E37A149FE4D7EA0F29FCCD265899F15FB6C9F0A60844D6AD4D4A7 height=4 module=consensus
+2:40AM INF finalizing commit of block hash={} height=4 module=consensus num_txs=0 root=510A0D93B6B831BE246988D2960132059ECA803593C6366EE18042A626FEC0E6
+2:40AM INF finalized block block_app_hash=84FC79D3633D65A56F27A6ECF01465B2B891B4CBF2B52A8255A272C35E1CDDC5 height=4 module=state num_txs_res=0 num_val_updates=0
+2:40AM INF Timed out dur=494.785838 height=5 module=consensus round=0 step=1
+2:40AM INF applying cached proposal from catchup height=5 module=propagation peer=f921d190b6b56487ff726a2f5f7b3f826e8f5e1a round=0
+2:40AM INF applying cached compact block height=5 module=propagation round=0
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A40C3CEEFAF7893BC83A9959D5AB1F08C8511C7EC7C9EFAD4CB19351F3B8F943","parts":{"hash":"3E6F012653AE686975AECD532CC3D06E2D331C21959A8C9EB6F60CBCF25EA305","total":1}},"height":5,"pol_round":-1,"round":0,"signature":"WUCCsjsSBuTgiDSYKLlGGd3tmhzYYLCuZEBDBWFOrAwv/7ukuaP89wcfgTgRw0IyAphKE7p3/uiIHYRZvIpCAg==","timestamp":"2026-10-31T02:40:40.764750871Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:40AM INF received complete proposal block hash=A40C3CEEFAF7893BC83A9959D5AB1F08C8511C7EC7C9EFAD4CB19351F3B8F943 height=5 module=consensus
+2:40AM INF finalizing commit of block hash={} height=5 module=consensus num_txs=0 root=84FC79D3633D65A56F27A6ECF01465B2B891B4CBF2B52A8255A272C35E1CDDC5
+2:40AM INF finalized block block_app_hash=E01F19012439F4AEEC7F5262DD49418CC3737CDC0350D132FBD4474AF3627A84 height=5 module=state num_txs_res=0 num_val_updates=0
+2:40AM INF Timed out dur=492.501933 height=6 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BBBEB6D97B088F5874752CDA0B11C2ED94D58261E7B3BBFCE0A127097A2B5D23","parts":{"hash":"5C096BC77F0F9064217BE5A57D12F929B96E8B4A8DC52CFD14F0A43892D5CB63","total":1}},"height":6,"pol_round":-1,"round":0,"signature":"+AoYYkWsmLzqvD+d23O4Zz1tyaBr7Q8TH52D/v/fy/onlHDRen9Od40I8ZSrBQxhc/bLcozsrE6QjNPEofSHDw==","timestamp":"2026-10-31T02:40:43.397732787Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:40AM INF received complete proposal block hash=BBBEB6D97B088F5874752CDA0B11C2ED94D58261E7B3BBFCE0A127097A2B5D23 height=6 module=consensus
+2:40AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:45570
+2:40AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":45570,"Zone":""}
+2:40AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:45604
+2:40AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":45604,"Zone":""}
+2:40AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:45570
+2:40AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:45604
+2:40AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":45570,"Zone":""}
+2:40AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":45604,"Zone":""}
+2:40AM INF finalizing commit of block hash={} height=6 module=consensus num_txs=0 root=E01F19012439F4AEEC7F5262DD49418CC3737CDC0350D132FBD4474AF3627A84
+2:40AM INF finalized block block_app_hash=5FBA70B5473A8AC672417830698D78C2BD7AB686C22FF769FC398E6AE165F7B7 height=6 module=state num_txs_res=0 num_val_updates=0
+2:40AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":45570,"Zone":""}
+2:40AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":45570,"Zone":""}
+2:40AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:40AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":45604,"Zone":""}
+2:40AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":45604,"Zone":""}
+2:40AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:40AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:53974
+2:40AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":53974,"Zone":""}
+2:40AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:53974
+2:40AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":53974,"Zone":""}
+2:40AM INF Timed out dur=489.041252 height=7 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9D0D9F98FD822F13860111B5C3981EE773A9D30CD41F360C0CE844C2C50D15C9","parts":{"hash":"46EBD652D665E38FDCEC50783FEE7CF059BFE48093B88CEC5E2B446D03C1D53D","total":1}},"height":7,"pol_round":-1,"round":0,"signature":"csSLg4+FQkySp61wNcN+1BJt26/IJfnVEdnIRUr8+PxLV4PXkYp58mItpJ5QjmK8OzimT0Xd3ywBdhEITffNCQ==","timestamp":"2026-10-31T02:40:46.070866447Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:40AM INF received complete proposal block hash=9D0D9F98FD822F13860111B5C3981EE773A9D30CD41F360C0CE844C2C50D15C9 height=7 module=consensus
+2:40AM INF finalizing commit of block hash={} height=7 module=consensus num_txs=2 root=5FBA70B5473A8AC672417830698D78C2BD7AB686C22FF769FC398E6AE165F7B7
+2:40AM INF finalized block block_app_hash=603405B5E6B9F0320902A6923E5254E3643471336C82CE4853EA3AB0BFDAC45B height=7 module=state num_txs_res=2 num_val_updates=1
+2:40AM INF updates to validators module=state updates=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9:5075
+2:40AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":53974,"Zone":""}
+2:40AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":53974,"Zone":""}
+2:40AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:40AM INF Timed out dur=481.45491 height=8 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C3BE7B252343DE37EE4749A27E251EBF0A7617909370AFB0410A6F6966B70348","parts":{"hash":"9092906FA8B9F8A1DD812A73B107DFDCDD5B72DAA908023D5787085CBFFBE270","total":1}},"height":8,"pol_round":-1,"round":0,"signature":"8SA3mUtK6P2zKzpucLED5aByNldZdCxq8IwKQwuvHMKLeWW54lSrueScV4j2lEVwDv9SvLo3fMMLD9J0OYusDA==","timestamp":"2026-10-31T02:40:48.778596488Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:40AM INF received complete proposal block hash=C3BE7B252343DE37EE4749A27E251EBF0A7617909370AFB0410A6F6966B70348 height=8 module=consensus
+2:40AM INF finalizing commit of block hash={} height=8 module=consensus num_txs=6 root=603405B5E6B9F0320902A6923E5254E3643471336C82CE4853EA3AB0BFDAC45B
+2:40AM INF finalized block block_app_hash=3FC038FC03F3FF7A9A7708CCE86657A09BB99D445692CF85DF0685FDEFCDD516 height=8 module=state num_txs_res=6 num_val_updates=0
+2:40AM INF Timed out dur=490.130331 height=9 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E842283BCB55CB39ED92DF970C26B735DEDAAAD74D7E25669E5705AC268F3B5C","parts":{"hash":"B6B5DD993E5AF356B1C8C94A514F50CF48559A05CE7B4C3C8809F47B25161F37","total":1}},"height":9,"pol_round":-1,"round":0,"signature":"uz36n0TR6H4pveFm0g4fpPU+NB96RylOee179N5XsZgfTO/iyltTQBnOyxs7iliy4/5psYQlNsGsaDURiHd1AA==","timestamp":"2026-10-31T02:40:51.431576911Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:40AM INF received complete proposal block hash=E842283BCB55CB39ED92DF970C26B735DEDAAAD74D7E25669E5705AC268F3B5C height=9 module=consensus
+2:40AM INF finalizing commit of block hash={} height=9 module=consensus num_txs=5 root=3FC038FC03F3FF7A9A7708CCE86657A09BB99D445692CF85DF0685FDEFCDD516
+2:40AM INF finalized block block_app_hash=5C378CDB07E98E6EC70FF5782C03C2D6F330D04AA7DB84CA9A3E7DFBD9271A66 height=9 module=state num_txs_res=5 num_val_updates=0
+2:40AM INF Timed out dur=490.239934 height=10 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4B7ABE94FF7D2C4EB5CFCA6A2F05E5384FAD3C50D7E3B2CCD0DDBD18892150C6","parts":{"hash":"840D68711B404381B5BF9FBEC007D6F43700CA657E817C11B00F61680DB585AB","total":1}},"height":10,"pol_round":-1,"round":0,"signature":"OS3lQXdvy9EDFME3/ktbiyXVqC4OhHeaDHh4EN1KEI9PSBTBn6GXRLR7PRbKWaEt6+otAfX1llQWpGWUEw7qAg==","timestamp":"2026-10-31T02:40:54.135223983Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:40AM INF received complete proposal block hash=4B7ABE94FF7D2C4EB5CFCA6A2F05E5384FAD3C50D7E3B2CCD0DDBD18892150C6 height=10 module=consensus
+2:40AM INF finalizing commit of block hash={} height=10 module=consensus num_txs=1 root=5C378CDB07E98E6EC70FF5782C03C2D6F330D04AA7DB84CA9A3E7DFBD9271A66
+2:40AM INF finalized block block_app_hash=B65D5BE4314EF33C08C17FA02D91E0DEA30FE06F9FAC1F06362F40A9283D8ECB height=10 module=state num_txs_res=1 num_val_updates=0
+2:40AM INF Timed out dur=479.102608 height=11 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"F3E6714AAA000551EE37F6B2470D41761E3491CE32994392513942513591095B","parts":{"hash":"26262EEFA62F3DF1BACF51E6A5563FDAC9700E37AE0544B654F0CBAB92464AE0","total":4}},"height":11,"pol_round":-1,"round":0,"signature":"KHt1Q6G67SLnkrgRF3OcPmfbehQYrsJAblLb+eg5VRrL3sx5ZkJlPIHqoQwncax/UyvU1K02HCYPDVeqcxd/BA==","timestamp":"2026-10-31T02:40:56.937843476Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:40AM INF received complete proposal block hash=F3E6714AAA000551EE37F6B2470D41761E3491CE32994392513942513591095B height=11 module=consensus
+2:40AM INF finalizing commit of block hash={} height=11 module=consensus num_txs=4 root=B65D5BE4314EF33C08C17FA02D91E0DEA30FE06F9FAC1F06362F40A9283D8ECB
+2:40AM INF finalized block block_app_hash=EF0049B81D4B7F2F54B23BE6BDBD57A543E17B594E8C7D93E89048DB030578C9 height=11 module=state num_txs_res=4 num_val_updates=0
+2:40AM INF Timed out dur=470.334888 height=12 module=consensus round=0 step=1
+2:40AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0D48B1FF232C3EE2AA60638381836B98E1BF7213740D2545B169D292227ECAE6","parts":{"hash":"E5EA1D7E62FED3D8B3BCF77936FA05F88CD209AF7BCB2860E1E127254C6F6051","total":19}},"height":12,"pol_round":-1,"round":0,"signature":"rrsxIUwCGGvznfL1lrL1Fod3eivfHoe+jVxBbhH6p43AAXYkDtuvREEM7NmWBT89By0atSU3dX0WYFxhWcakBA==","timestamp":"2026-10-31T02:40:59.523577259Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:40AM INF received complete proposal block hash=0D48B1FF232C3EE2AA60638381836B98E1BF7213740D2545B169D292227ECAE6 height=12 module=consensus
+2:41AM INF finalizing commit of block hash={} height=12 module=consensus num_txs=4 root=EF0049B81D4B7F2F54B23BE6BDBD57A543E17B594E8C7D93E89048DB030578C9
+2:41AM INF finalized block block_app_hash=B30C87D86CD5EE8CAD15F719C567D7539FFCB7185BB8B2723E75B1DAD0B18506 height=12 module=state num_txs_res=4 num_val_updates=0
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:50414
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50414,"Zone":""}
+2:41AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50414,"Zone":""}
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50414,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50414,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=478.578526 height=13 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"44E491FDEB2C8F1066936BAAAEAECC944645914828A1A4A2EC8213C2147DE37D","parts":{"hash":"C9E29F8B2EDA0FAFE37533E4C82EEDDE3480383490E3F0D6587397B9B1A65F62","total":1}},"height":13,"pol_round":-1,"round":0,"signature":"9DM7/iZvFZuJOdwEBLqCG5uSbHExHk7NYCBtOtXGIkFaW7vx/RjDwh+c+TpJMiiTTBIkKiJMnkFJGFUFsdqnDQ==","timestamp":"2026-10-31T02:41:02.200242104Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=44E491FDEB2C8F1066936BAAAEAECC944645914828A1A4A2EC8213C2147DE37D height=13 module=consensus
+2:41AM INF finalizing commit of block hash={} height=13 module=consensus num_txs=2 root=B30C87D86CD5EE8CAD15F719C567D7539FFCB7185BB8B2723E75B1DAD0B18506
+2:41AM INF finalized block block_app_hash=8588019351157B6235ED53D859DD6C9E0B8569C892FF4115F241624E45905FC4 height=13 module=state num_txs_res=2 num_val_updates=0
+2:41AM INF Timed out dur=485.149972 height=14 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"F3BB977128EF6AB56B91CFE73635BDDCA679187882E06078DC8E420A94FC523E","parts":{"hash":"99EC82594A8E4F86733E3DBA781FED9AB4AC891D0E50EC528AEDAA7C0B562F96","total":1}},"height":14,"pol_round":-1,"round":0,"signature":"l6DA5xgFaibI9FIAmHaMa+UwdJekJmLQ4uzqOJJMbPxpejkIdVI0QuPMXzhfrucmFdn7y5Vi/ZD5VNSu/tQEAg==","timestamp":"2026-10-31T02:41:04.907389198Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:41AM INF received complete proposal block hash=F3BB977128EF6AB56B91CFE73635BDDCA679187882E06078DC8E420A94FC523E height=14 module=consensus
+2:41AM INF finalizing commit of block hash={} height=14 module=consensus num_txs=5 root=8588019351157B6235ED53D859DD6C9E0B8569C892FF4115F241624E45905FC4
+2:41AM INF finalized block block_app_hash=B3D92AE9E3A4034D48AB55D134197C6A7F1D557DEA8C5AE0880BCAE9F4AFE992 height=14 module=state num_txs_res=5 num_val_updates=1
+2:41AM INF updates to validators module=state updates=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550:5083
+2:41AM INF Timed out dur=468.565964 height=15 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"28C2FC210B6FC84B60DFA1C8CA156E608B78AAAD3B65E40609C5BEC7CAC4D290","parts":{"hash":"A5E2DEB4F11F449F6F962EF97E3105D31EC8157A25585827F2D17682726E5B47","total":19}},"height":15,"pol_round":-1,"round":0,"signature":"vWnjb+DUAfJYhVeQSRtUACJAsdtYm40vB46H1E9r/Wm0VeqJ1mOaWGZ5jcVUA4FnqAXIybMHclcIIKWmCRNjBA==","timestamp":"2026-10-31T02:41:07.997959919Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:41AM INF received complete proposal block hash=28C2FC210B6FC84B60DFA1C8CA156E608B78AAAD3B65E40609C5BEC7CAC4D290 height=15 module=consensus
+2:41AM INF finalizing commit of block hash={} height=15 module=consensus num_txs=2 root=B3D92AE9E3A4034D48AB55D134197C6A7F1D557DEA8C5AE0880BCAE9F4AFE992
+2:41AM INF finalized block block_app_hash=84689AE2C4A268AD7900FF61C241B8729B553910815DBEA4FCE0DCE33AD8DC38 height=15 module=state num_txs_res=2 num_val_updates=0
+2:41AM INF Timed out dur=458.439639 height=16 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4F3D0340BFBB0260779C718FF7F871C7E3C5935A02805017FF2C920CF4EFB8D4","parts":{"hash":"EB8FB537167CFEC4DB712243CD45A87ACBEE19226D34C6C12FA81EEFFE1795F1","total":13}},"height":16,"pol_round":-1,"round":0,"signature":"ZV8yA8Ge3u98gc+oJmp2N2XnJRD+20oSTg/4lGeNGmLFuFcOwbYrJZR8Yv1kbnPIQ4egMaOgy3l8CuiMcvRICw==","timestamp":"2026-10-31T02:41:10.341748606Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=4F3D0340BFBB0260779C718FF7F871C7E3C5935A02805017FF2C920CF4EFB8D4 height=16 module=consensus
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:56722
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56722,"Zone":""}
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:56746
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56746,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:56722
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56722,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:56746
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56746,"Zone":""}
+2:41AM INF finalizing commit of block hash={} height=16 module=consensus num_txs=7 root=84689AE2C4A268AD7900FF61C241B8729B553910815DBEA4FCE0DCE33AD8DC38
+2:41AM INF finalized block block_app_hash=8D1013E844DCB014F4F2C7FDD5967AB97749B03A6B542C6FF402177C55A419A7 height=16 module=state num_txs_res=7 num_val_updates=0
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56722,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56722,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=482.521051 height=17 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E7B400B773A2226D8400B9E10B79010E45E6C4C098A230BF93737DCDB53FFE9F","parts":{"hash":"0BE1FCA12C70BD9A04E73F314230D539C8A64D13C3626575EFD20303566A61CB","total":1}},"height":17,"pol_round":-1,"round":0,"signature":"vQPgDCEr3ODKj641SPjaFdATAKf+kHtNcmtv1SRCKWEv3cLMbGEq31XxXauAF7XuWUIojMg5DqZ4KzBjWnY0Bg==","timestamp":"2026-10-31T02:41:12.97288716Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=E7B400B773A2226D8400B9E10B79010E45E6C4C098A230BF93737DCDB53FFE9F height=17 module=consensus
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56746,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56746,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:56770
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56770,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:56770
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56770,"Zone":""}
+2:41AM INF finalizing commit of block hash={} height=17 module=consensus num_txs=3 root=8D1013E844DCB014F4F2C7FDD5967AB97749B03A6B542C6FF402177C55A419A7
+2:41AM INF finalized block block_app_hash=64DC3D5D99CE726F720A987DFFB6B96165602BCC767745C3A94F4CA7D22F7436 height=17 module=state num_txs_res=3 num_val_updates=0
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":56770,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":56770,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=479.667064 height=18 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9561AA7E1E12C39B4B3CBC63F7304A8609BEA9128039146050DDD7149470D91C","parts":{"hash":"DC38984F5257B6FDAE94653B1F28B4A7BCFDD8502C3C44DC453FBF65487A96B4","total":1}},"height":18,"pol_round":-1,"round":0,"signature":"/JP1W9sq0x8R9s7CgGT+YpaWQbT0MuMHaDD5VgZkX0ZCDA+cIrYwNLUsT+d75p16azpT8Mbw4pr7Y2zHDqqxCA==","timestamp":"2026-10-31T02:41:15.677964709Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=9561AA7E1E12C39B4B3CBC63F7304A8609BEA9128039146050DDD7149470D91C height=18 module=consensus
+2:41AM INF finalizing commit of block hash={} height=18 module=consensus num_txs=3 root=64DC3D5D99CE726F720A987DFFB6B96165602BCC767745C3A94F4CA7D22F7436
+2:41AM INF finalized block block_app_hash=69D106D9368EAABF4062912390011F91A4E6E0D696460731A673B9AF5E549A5A height=18 module=state num_txs_res=3 num_val_updates=0
+2:41AM INF Timed out dur=479.356243 height=19 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"17435FDD4E2B71386D37D5C9C49A7A7837C2800F439418E68C6BA833E5246ADF","parts":{"hash":"693331B69DC3BE2A6281896CB939816377432872E39710381115224039487D3C","total":1}},"height":19,"pol_round":-1,"round":0,"signature":"rUeEBI4I2W/wj2/K0Z5j4AFBRGI8gcDZRKnYOBGAg7uYNc7WcNTl9p5Ecj0Pafj5XcDNPBQ0yi/BbBtiWe8TCw==","timestamp":"2026-10-31T02:41:18.386826734Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:41AM INF received complete proposal block hash=17435FDD4E2B71386D37D5C9C49A7A7837C2800F439418E68C6BA833E5246ADF height=19 module=consensus
+2:41AM INF finalizing commit of block hash={} height=19 module=consensus num_txs=4 root=69D106D9368EAABF4062912390011F91A4E6E0D696460731A673B9AF5E549A5A
+2:41AM INF finalized block block_app_hash=844E0B08FB34F977010B479B2E7D87A2D16FECB24D5FFAA42311C4D162467A23 height=19 module=state num_txs_res=4 num_val_updates=0
+2:41AM INF Timed out dur=489.525784 height=20 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"AA715E7E414543A51F3A122C2CB11402F60576184B9D81C01BCAB5249B3BC3CF","parts":{"hash":"4B0E698B7D19F58E6F54481640EAEEBDEF8A97E22FEAEBBBA40BB0B91D39239E","total":1}},"height":20,"pol_round":-1,"round":0,"signature":"g/Y4J6wvHOsVBdOVSDnvkxvAahnLQ+PwkqtYyo6PiGbBx8l4cdjOIJ6qaG99McwSHdnWrGka14T1mLlVNd8aCA==","timestamp":"2026-10-31T02:41:21.090722981Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:41AM INF received complete proposal block hash=AA715E7E414543A51F3A122C2CB11402F60576184B9D81C01BCAB5249B3BC3CF height=20 module=consensus
+2:41AM INF finalizing commit of block hash={} height=20 module=consensus num_txs=2 root=844E0B08FB34F977010B479B2E7D87A2D16FECB24D5FFAA42311C4D162467A23
+2:41AM INF finalized block block_app_hash=F9955752C7187A4C851DC9D238853FCE9B0274513CEDB0BC15ED7813941D0079 height=20 module=state num_txs_res=2 num_val_updates=0
+2:41AM INF Timed out dur=461.548146 height=21 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"288683608A8AD70841F669A178E213676F988F55EB4B84876969C3B8FE3D66FB","parts":{"hash":"707C5FDEB421000FF978B3C5C608A4A9A493123157367442717E4AEBE477109A","total":1}},"height":21,"pol_round":-1,"round":0,"signature":"P7ui6wOj475i3B31DN6ViI2GOieFWTlgy1I1WZPFl1BubIi9AfGEhk+S65xd6k5kzItWNpdQL+CARB7tiFpaDQ==","timestamp":"2026-10-31T02:41:23.801002121Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=288683608A8AD70841F669A178E213676F988F55EB4B84876969C3B8FE3D66FB height=21 module=consensus
+2:41AM INF finalizing commit of block hash={} height=21 module=consensus num_txs=4 root=F9955752C7187A4C851DC9D238853FCE9B0274513CEDB0BC15ED7813941D0079
+2:41AM INF finalized block block_app_hash=C852F151621E291968849DA7F62B92D3BFDADD5567B65A12FD49BDD836C372E1 height=21 module=state num_txs_res=4 num_val_updates=0
+2:41AM INF Timed out dur=485.30545 height=22 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E771A7C555BB449904B7725DCF2915FBA08121ED783137E1B81399C72AAAB068","parts":{"hash":"336CE5E573825FA84AF845E41C66CD23997E061F0948E887C297E942E84CD16A","total":11}},"height":22,"pol_round":-1,"round":0,"signature":"L7v5Vl7Uoes30KlijZu6pthhq1rAZUV7Q5yEEd/ntrdZANvvujJu2AHq+sqCPrkou/q+ni8iPdpczSg73ZHfDw==","timestamp":"2026-10-31T02:41:26.477359431Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=E771A7C555BB449904B7725DCF2915FBA08121ED783137E1B81399C72AAAB068 height=22 module=consensus
+2:41AM INF finalizing commit of block hash={} height=22 module=consensus num_txs=7 root=C852F151621E291968849DA7F62B92D3BFDADD5567B65A12FD49BDD836C372E1
+2:41AM INF finalized block block_app_hash=7C198D2D97D47E8FB8C5A6D58EFA804C451257B2B18AC305AFDB6DF546AD6E12 height=22 module=state num_txs_res=7 num_val_updates=1
+2:41AM INF updates to validators module=state updates=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550:5089
+2:41AM INF Timed out dur=479.965606 height=23 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"396033942590AF19B70F42B48D12AE661D3DECCB3CD9A1E5F71B43B1B7883B22","parts":{"hash":"C2D1B3F49C3B129EA300BC0F0CB70B69BF9A28C3430173D9EBC0F67E05677E4D","total":1}},"height":23,"pol_round":-1,"round":0,"signature":"AhzapqvExA4qGL2PBgpjTX0MQDM2j4JBrytffvbcs7Xy8XDQK90+o13Z9fcql/5s6vzU5fGdGHE05tIIIlnYDg==","timestamp":"2026-10-31T02:41:29.294545554Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:41AM INF received complete proposal block hash=396033942590AF19B70F42B48D12AE661D3DECCB3CD9A1E5F71B43B1B7883B22 height=23 module=consensus
+2:41AM INF finalizing commit of block hash={} height=23 module=consensus num_txs=4 root=7C198D2D97D47E8FB8C5A6D58EFA804C451257B2B18AC305AFDB6DF546AD6E12
+2:41AM INF finalized block block_app_hash=1B8DA7A80A2FC6463F4BA81A1FA444410B07E228B73F53680DAB1499687544CE height=23 module=state num_txs_res=4 num_val_updates=0
+2:41AM INF Timed out dur=481.28311 height=24 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"617646E901D145EDDF81DDEB7FCCB7DC35D1DEF66463FA1134F74966F157CB54","parts":{"hash":"3648899CD456C5C120B1166D90E5A68FF92B96A4BC28F4449523120AEA8A2903","total":1}},"height":24,"pol_round":-1,"round":0,"signature":"E5rjgk21ZziWxsUFcVspabNJvjPQp9GIc9ijKAtdQZ+AxlTbVaiYhxaTGcI+adeII2vgVvzTWUKa3qoGTHvlDQ==","timestamp":"2026-10-31T02:41:31.936073472Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:41AM INF received complete proposal block hash=617646E901D145EDDF81DDEB7FCCB7DC35D1DEF66463FA1134F74966F157CB54 height=24 module=consensus
+2:41AM INF finalizing commit of block hash={} height=24 module=consensus num_txs=2 root=1B8DA7A80A2FC6463F4BA81A1FA444410B07E228B73F53680DAB1499687544CE
+2:41AM INF finalized block block_app_hash=38C35628523098D47CFAA99E2B7BCE801299818785FACBD4DEC5A6E7B0C1AC8C height=24 module=state num_txs_res=2 num_val_updates=0
+2:41AM INF Timed out dur=489.256801 height=25 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C4FD2B114EA3C9BEAE6C5CDD6631FAF17F7E0E8301BE4E0A93D33EFA1406213C","parts":{"hash":"B106CA2B7F6DD7A89CBD8025ECEEAA99960F0A42CFC13131319060AF530F8A89","total":1}},"height":25,"pol_round":-1,"round":0,"signature":"tDsP+0hDac7vQdRZrgjVfc5CeJ+tXYrm5DmNONL1JrY/Ev04dI3e+8gMCaArqT4QDcwm5hshCd4OnbngH6RvBQ==","timestamp":"2026-10-31T02:41:34.615718033Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=C4FD2B114EA3C9BEAE6C5CDD6631FAF17F7E0E8301BE4E0A93D33EFA1406213C height=25 module=consensus
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33570
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33570,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33570
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33570,"Zone":""}
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33582
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33582,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33582
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33582,"Zone":""}
+2:41AM INF finalizing commit of block hash={} height=25 module=consensus num_txs=5 root=38C35628523098D47CFAA99E2B7BCE801299818785FACBD4DEC5A6E7B0C1AC8C
+2:41AM INF finalized block block_app_hash=1D80B5407AD8633009F02BB88C679D570122B32ED287B784AC4E50001CEFEF97 height=25 module=state num_txs_res=5 num_val_updates=0
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33582,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33582,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=487.553142 height=26 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"31D32689FEF54DE7D974CAC72FD6BBA5F5AE3D631298377B95D9F9195C0868D4","parts":{"hash":"B6DDDD08C9D1339DF46AAAD3CA83417EDF59017E5D967E722437B9ED845F8794","total":1}},"height":26,"pol_round":-1,"round":0,"signature":"8MJYKP7xzqJY+yelC5jMrE4Sw6FyGm0BcxQQ7mjMgzbovZLzrBhpyOuC4rJVbYnQrc5jXrwX7m/8UeUIgDYiCQ==","timestamp":"2026-10-31T02:41:37.218828117Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=31D32689FEF54DE7D974CAC72FD6BBA5F5AE3D631298377B95D9F9195C0868D4 height=26 module=consensus
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33570,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33570,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33592
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33592,"Zone":""}
+2:41AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33592
+2:41AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33592,"Zone":""}
+2:41AM INF finalizing commit of block hash={} height=26 module=consensus num_txs=1 root=1D80B5407AD8633009F02BB88C679D570122B32ED287B784AC4E50001CEFEF97
+2:41AM INF finalized block block_app_hash=CE897AE26DB70281F5F659A5086BAE9ECB15C6862D1C1FDAF26588979D205C73 height=26 module=state num_txs_res=1 num_val_updates=0
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33592,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33592,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=489.560023 height=27 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2D4B6D1F887D1E43E3D1C889FBA86B31F21285E4C6B9B0F28FD3A72A0692FA8D","parts":{"hash":"062599E636B61006373C56427C1DB85235C6BD16F1ADE020C8EA075E7EE2BC16","total":13}},"height":27,"pol_round":-1,"round":0,"signature":"wENgmAKSWU0CP3vTm7244+99IyKPNxpLMyN6MyI2EZpl8jxYoEcHBDff2dd4azKoqk3l78+bzTd3F7p1GJjFBQ==","timestamp":"2026-10-31T02:41:40.274837658Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:41AM INF received complete proposal block hash=2D4B6D1F887D1E43E3D1C889FBA86B31F21285E4C6B9B0F28FD3A72A0692FA8D height=27 module=consensus
+2:41AM INF finalizing commit of block hash={} height=27 module=consensus num_txs=6 root=CE897AE26DB70281F5F659A5086BAE9ECB15C6862D1C1FDAF26588979D205C73
+2:41AM INF finalized block block_app_hash=7FA1CC6B97EAABD8084FECFF1C281750FE49F354775E94DDF0E0F823F6760FDF height=27 module=state num_txs_res=6 num_val_updates=0
+2:41AM INF Timed out dur=476.085992 height=28 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"DCD7C2302941831C9534BE1FD689D34CCDABE21663228B04C318DEACDA4A4246","parts":{"hash":"EF675F24A24AD5EE6FAAED783C1C265D99DB90C82559D45F8B66766638E0D1C4","total":1}},"height":28,"pol_round":-1,"round":0,"signature":"nqiAUTdBu2J0rKfoEedmqiA0ZgULqinVkpEj5lLaEk5xbmB4F5t0oSuVHRAGyMd7trnFWGlsgNE/lm8L3i7jDA==","timestamp":"2026-10-31T02:41:42.726673788Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:41AM INF received complete proposal block hash=DCD7C2302941831C9534BE1FD689D34CCDABE21663228B04C318DEACDA4A4246 height=28 module=consensus
+2:41AM INF finalizing commit of block hash={} height=28 module=consensus num_txs=3 root=7FA1CC6B97EAABD8084FECFF1C281750FE49F354775E94DDF0E0F823F6760FDF
+2:41AM INF finalized block block_app_hash=61B1A05EC7A2C65A11BC595AE57AFBDE98736A48F72DB3E071ADE67A5ADF3B59 height=28 module=state num_txs_res=3 num_val_updates=0
+2:41AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:41894
+2:41AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":41894,"Zone":""}
+2:41AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":41894,"Zone":""}
+2:41AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":41894,"Zone":""}
+2:41AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":41894,"Zone":""}
+2:41AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:41AM INF Timed out dur=488.819757 height=29 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CEFF3785432A8B3CFBBE64D2D37141BB21BE3C32CC98FAC1F3710AC58FDD73C1","parts":{"hash":"42ADA876BB4835D666BF2C4FC787936B608F43E8268F4B2AA78681E2914CE206","total":1}},"height":29,"pol_round":-1,"round":0,"signature":"d6BJI4iy1BMt4ZsRl+RfUXcQdfNpl3L+cz9VH9d0giXXWLcIw71pnUXVriR7bi45xupU2jJNQmLReJOj5W17AA==","timestamp":"2026-10-31T02:41:45.359389817Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=CEFF3785432A8B3CFBBE64D2D37141BB21BE3C32CC98FAC1F3710AC58FDD73C1 height=29 module=consensus
+2:41AM INF finalizing commit of block hash={} height=29 module=consensus num_txs=3 root=61B1A05EC7A2C65A11BC595AE57AFBDE98736A48F72DB3E071ADE67A5ADF3B59
+2:41AM INF finalized block block_app_hash=6EFF5B1B696C991BBA35B87FE86255272A59B5CD7E5CF2E2C4331FBD9676925B height=29 module=state num_txs_res=3 num_val_updates=0
+2:41AM INF Timed out dur=490.761875 height=30 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4D169DE8AF0AFA0A861EF97EA4EE0F8E000639897A0F042C84ABE6986290A406","parts":{"hash":"6E608A1ABB1C81E60FF49AF8F4C9B33FD71DEF1C7C29FDEB4CD2A5974CEBE68E","total":1}},"height":30,"pol_round":-1,"round":0,"signature":"qA962BvlYsdOJ4cyaCxZz/gkm0b/beFALmlBfMhaYHceATyzabzBTtWpwsveVDQxHzepQWgNin3yQBSH8r1rAQ==","timestamp":"2026-10-31T02:41:48.017217149Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=4D169DE8AF0AFA0A861EF97EA4EE0F8E000639897A0F042C84ABE6986290A406 height=30 module=consensus
+2:41AM INF finalizing commit of block hash={} height=30 module=consensus num_txs=3 root=6EFF5B1B696C991BBA35B87FE86255272A59B5CD7E5CF2E2C4331FBD9676925B
+2:41AM INF finalized block block_app_hash=9F05AF989A8354EEBC8B7C1E81DD858F0065EAEFCC4EEA0F679777518B0D7874 height=30 module=state num_txs_res=3 num_val_updates=0
+2:41AM INF Timed out dur=483.563648 height=31 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"39042B64356DA3BEED5D6051F8811B7898E5BBB66CD32FFADC736C96F02AAB28","parts":{"hash":"F1C62570CB07B9471CF4191D98B79D33B5D8CB937A018F20CB0D382763E017F1","total":1}},"height":31,"pol_round":-1,"round":0,"signature":"tbwJf4vpE+Fi+yQj4z64W8WRSAiv5/FYbj7YQfRGvsG/bBLohyQkniUWHcvRPfUDNzpZ64bPN9uHC57KbNhZDg==","timestamp":"2026-10-31T02:41:50.725868732Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:41AM INF received complete proposal block hash=39042B64356DA3BEED5D6051F8811B7898E5BBB66CD32FFADC736C96F02AAB28 height=31 module=consensus
+2:41AM INF finalizing commit of block hash={} height=31 module=consensus num_txs=2 root=9F05AF989A8354EEBC8B7C1E81DD858F0065EAEFCC4EEA0F679777518B0D7874
+2:41AM INF finalized block block_app_hash=EE2E0069B9B5EB62428C0711D28785B041580FD482B48BBEDE67A4EA2713142E height=31 module=state num_txs_res=2 num_val_updates=1
+2:41AM INF updates to validators module=state updates=029BFCF232F54E15ECC186612BA06722445A2941:5070
+2:41AM INF Timed out dur=446.85886 height=32 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7CE2A7E1716D861571357EE718AB6DB10A41FDD4050049EDACE10E6696108833","parts":{"hash":"C832B4804716001AD289EB3F88468B279AC2F37D46FBD68EF7ABBBCBA0F13325","total":11}},"height":32,"pol_round":-1,"round":0,"signature":"a7+ouSftdHrDelsC51/qWIs1RcyP9rN3JM0cagmNmLyGiLZOquK3pyXu4o3/8srVPgJNc/tp2IDMqbS2WTeKBQ==","timestamp":"2026-10-31T02:41:53.789569472Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:41AM INF received complete proposal block hash=7CE2A7E1716D861571357EE718AB6DB10A41FDD4050049EDACE10E6696108833 height=32 module=consensus
+2:41AM INF finalizing commit of block hash={} height=32 module=consensus num_txs=7 root=EE2E0069B9B5EB62428C0711D28785B041580FD482B48BBEDE67A4EA2713142E
+2:41AM INF finalized block block_app_hash=4403C245A793288EC8A0F9D184F29003281A3216AE3E71DF7E569917FB4D0AC6 height=32 module=state num_txs_res=7 num_val_updates=0
+2:41AM INF Timed out dur=470.79064 height=33 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A12CBC4BD4936A1BB93BBE647C597B5C3708363329B9458F7621A95A2AF1EB34","parts":{"hash":"BA9E31A82F450A7864E0720428FE35E4EBA1A8F9B5D2D25574E0A3675CF19A14","total":1}},"height":33,"pol_round":-1,"round":0,"signature":"GzWhMBA+GlrSiFnWsP9oHKZzSNC1bktfDlThbOPRLsAevzD7oOYM6KA3v9YJf0dRNoq9tI2BTTkX/uyU8LKAAA==","timestamp":"2026-10-31T02:41:56.106059529Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:41AM INF received complete proposal block hash=A12CBC4BD4936A1BB93BBE647C597B5C3708363329B9458F7621A95A2AF1EB34 height=33 module=consensus
+2:41AM INF finalizing commit of block hash={} height=33 module=consensus num_txs=3 root=4403C245A793288EC8A0F9D184F29003281A3216AE3E71DF7E569917FB4D0AC6
+2:41AM INF finalized block block_app_hash=51D58E01E43D842743052672DD8D082B39394D3AFC080B22A0D18FEB147B042C height=33 module=state num_txs_res=3 num_val_updates=0
+2:41AM INF Timed out dur=487.650438 height=34 module=consensus round=0 step=1
+2:41AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"11B73FDFDB21BAE26458D275B9F0FCF1257920CB600E4C5A2597823A547AEDA9","parts":{"hash":"A2D410B5094810AC8840AD1850D04B654E94161D3440B4978E32393EEEFB3832","total":1}},"height":34,"pol_round":-1,"round":0,"signature":"GcvwFDlW0wvMkjhSx0N3q78Y+S4L9kTopOnNn67gurryemP/xhICmN160DkkVpclcqqc34FBf+FdQUjBs/yzCg==","timestamp":"2026-10-31T02:41:58.796342234Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:41AM INF received complete proposal block hash=11B73FDFDB21BAE26458D275B9F0FCF1257920CB600E4C5A2597823A547AEDA9 height=34 module=consensus
+2:42AM INF finalizing commit of block hash={} height=34 module=consensus num_txs=3 root=51D58E01E43D842743052672DD8D082B39394D3AFC080B22A0D18FEB147B042C
+2:42AM INF finalized block block_app_hash=4B47C51972C1D518D2BE114329D1B41DFB6974CD4AFF463C8B4CBDA7C4AEFDAD height=34 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF Timed out dur=485.809948 height=35 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4C6FC109298CE24CFB304E82FBE828581642FB3D58404016CDEEB03EB756A5B1","parts":{"hash":"19A5A9D44FC8738E64D2B322BF7D4023078FD479623E9CD5B6BE0F7B2BEAF019","total":1}},"height":35,"pol_round":-1,"round":0,"signature":"75Svec7KaLBWBCnvH0CELvd/LuefQhly4zyOtwFZBDHWZrSRufajyg+P3KLYQEsH1DawiPXcsSgsqNtXJgJqCQ==","timestamp":"2026-10-31T02:42:01.504771081Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=4C6FC109298CE24CFB304E82FBE828581642FB3D58404016CDEEB03EB756A5B1 height=35 module=consensus
+2:42AM INF finalizing commit of block hash={} height=35 module=consensus num_txs=4 root=4B47C51972C1D518D2BE114329D1B41DFB6974CD4AFF463C8B4CBDA7C4AEFDAD
+2:42AM INF finalized block block_app_hash=9EDC72A28FAB0EF3309E27D1219EE21A6C69A4252FC3F5E3287B29DC1FA10823 height=35 module=state num_txs_res=4 num_val_updates=0
+2:42AM INF Timed out dur=473.750903 height=36 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"62E23555B7A8AE34146884C8453F905959CC947174A9A7D16CABACB79DC7ABF2","parts":{"hash":"798FC2A9CDD6C2A04B494C2EC3F0BCAFAA1800C479855FF799FB8522D16392C1","total":1}},"height":36,"pol_round":-1,"round":0,"signature":"PT+SQfL1KDGuXVEz+JH9AdPdfVMRCVR0OnfArbmhaLpiD75gax8rfoZZRvJ8zceVfgRCXhyc8VSEDzxtksF7Cg==","timestamp":"2026-10-31T02:42:04.209542919Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=62E23555B7A8AE34146884C8453F905959CC947174A9A7D16CABACB79DC7ABF2 height=36 module=consensus
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:43922
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43922,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:43922
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43922,"Zone":""}
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:43920
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43920,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:43920
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43920,"Zone":""}
+2:42AM INF finalizing commit of block hash={} height=36 module=consensus num_txs=3 root=9EDC72A28FAB0EF3309E27D1219EE21A6C69A4252FC3F5E3287B29DC1FA10823
+2:42AM INF finalized block block_app_hash=037AF8DBAD2C59450E980841E71326534C949C20702B08C1CF6A4619F65B7D18 height=36 module=state num_txs_res=3 num_val_updates=1
+2:42AM INF updates to validators module=state updates=111555C8C4138D4D4916FA46678563D99EA98774:5056
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43922,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43922,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=481.789704 height=37 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C0D0C902332B661DE8F3D7A0EF3D1A1597CF794B002DD56B68D9EA5AE6AFFB1C","parts":{"hash":"FB3C2D3F4E05B9419E3E0721BC785EF242E481308617E5E0EBE0C1A45595D4A4","total":1}},"height":37,"pol_round":-1,"round":0,"signature":"yszuZgXHcMXQPVZ+TToREiBwgEppveBSejwlIVkI67/tXQMh/YjW+noR1ia2drnCyjpYZ4s6Z25PFmb43ikYAQ==","timestamp":"2026-10-31T02:42:06.908962444Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=C0D0C902332B661DE8F3D7A0EF3D1A1597CF794B002DD56B68D9EA5AE6AFFB1C height=37 module=consensus
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43920,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43920,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:43948
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43948,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:43948
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43948,"Zone":""}
+2:42AM INF finalizing commit of block hash={} height=37 module=consensus num_txs=4 root=037AF8DBAD2C59450E980841E71326534C949C20702B08C1CF6A4619F65B7D18
+2:42AM INF finalized block block_app_hash=8F18AC97D60E730AD921C604FBC3E2A6D133C1B3B767F50EAC84773E69C53CB1 height=37 module=state num_txs_res=4 num_val_updates=0
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":43948,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":43948,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=482.953676 height=38 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"30F604F327925CCD93E9C71EB115226EF14A1AB22902EEF47F9963AD23BA3279","parts":{"hash":"1E2CE6F7FF1CAC4507BC1A3B8F0CD4230681748F019ED6EE45E7F1E4C39C306A","total":1}},"height":38,"pol_round":-1,"round":0,"signature":"optXoKzTCMYTbPPAMxpFc0yXPRxQvUTf7cstD53mbM+hHDWwa+jcTptJvyk3hPv4Tq7WrbHGT7407RY8T4IICA==","timestamp":"2026-10-31T02:42:09.606999452Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:42AM INF received complete proposal block hash=30F604F327925CCD93E9C71EB115226EF14A1AB22902EEF47F9963AD23BA3279 height=38 module=consensus
+2:42AM INF finalizing commit of block hash={} height=38 module=consensus num_txs=2 root=8F18AC97D60E730AD921C604FBC3E2A6D133C1B3B767F50EAC84773E69C53CB1
+2:42AM INF finalized block block_app_hash=34D238E0E4BF04D5BEB014077F93B260AB735AE32BF37B3EE017395082CB93D1 height=38 module=state num_txs_res=2 num_val_updates=0
+2:42AM INF Timed out dur=445.753965 height=39 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A19A49BCE22AD2EB3244227A0DC73DB1FBDA6A6189F15610DF57DCC7E36697DD","parts":{"hash":"6459456EA30D5284A8467B371F28F972E6481B7BE9918F155BDC454FF7AD6018","total":2}},"height":39,"pol_round":-1,"round":0,"signature":"nF+HGvJw/Jr/6d56dWpTMixq0LlxV7bD6xxS/IdX2Ixcuk97gjPhV8Sq3jLqPvZsRSb3M+LhPCdkDvWLDFPjCg==","timestamp":"2026-10-31T02:42:12.382767229Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=A19A49BCE22AD2EB3244227A0DC73DB1FBDA6A6189F15610DF57DCC7E36697DD height=39 module=consensus
+2:42AM INF finalizing commit of block hash={} height=39 module=consensus num_txs=8 root=34D238E0E4BF04D5BEB014077F93B260AB735AE32BF37B3EE017395082CB93D1
+2:42AM INF finalized block block_app_hash=250CC959A271544F57006E8E8746691FB127DA1B1BA48C74A04210880458AE64 height=39 module=state num_txs_res=8 num_val_updates=0
+2:42AM INF Timed out dur=479.889843 height=40 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2352E312692E9C077D9E459C0A4FE5905AD7A2E602525C4310F4BB3A30C1A5E0","parts":{"hash":"100CA73D7C933529B617895E870ADEA52A6448D77EB3CF0B5EAE790D02BA9771","total":1}},"height":40,"pol_round":-1,"round":0,"signature":"ujRptv8+Mwrh6KvSSNBnQG6wCYyCQbeR+qZR9epv0Ogo8+eksHpZ3KHp43EeoPgvheZw30kxmOg9fjQ2hG4ZCg==","timestamp":"2026-10-31T02:42:15.021768787Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=2352E312692E9C077D9E459C0A4FE5905AD7A2E602525C4310F4BB3A30C1A5E0 height=40 module=consensus
+2:42AM INF finalizing commit of block hash={} height=40 module=consensus num_txs=3 root=250CC959A271544F57006E8E8746691FB127DA1B1BA48C74A04210880458AE64
+2:42AM INF finalized block block_app_hash=CA0D221C4499937EC147D94DD71267E81596E63E7313627CE2B214929301CF03 height=40 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF Timed out dur=491.716001 height=41 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5E9E16145D7BDE657A9B6484403F3043E36450BCEF24A0586CE4018BE87FDBC6","parts":{"hash":"525D218DF9CA11308DED12A4E884302113BA4C3245AEC222A78CDAB0B8E5FD1E","total":1}},"height":41,"pol_round":-1,"round":0,"signature":"OaQSwjJ2sT7hHqV638Rd4VX1CsB/iAipA0txJGcg997yWkQrWQI9H8QOmEMg8geVZ06iFAJiSHw4LMUoVUR4AA==","timestamp":"2026-10-31T02:42:17.678850617Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=5E9E16145D7BDE657A9B6484403F3043E36450BCEF24A0586CE4018BE87FDBC6 height=41 module=consensus
+2:42AM INF finalizing commit of block hash={} height=41 module=consensus num_txs=5 root=CA0D221C4499937EC147D94DD71267E81596E63E7313627CE2B214929301CF03
+2:42AM INF finalized block block_app_hash=9E5E53D2E113CA490ED1D63ED8EA51234449BCAC5B556C3D82E80BD530CFA1E4 height=41 module=state num_txs_res=5 num_val_updates=0
+2:42AM INF Timed out dur=487.894058 height=42 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4B35A91A657D62A774BA0F5F1AB8A60A73F891C5A0FB32E63DE32C4BE528E150","parts":{"hash":"83DC33DBB2616AD1723ECB3A59A474FC6E324F9CACA27404FA42EA20A8E24D56","total":1}},"height":42,"pol_round":-1,"round":0,"signature":"JZ/WPFnKeeQkcHBYZ3EB3vsGiNr2wCAonIPGeBR4FdcNC9F+sliS33AHAhhSvCG2/S3WI08IquaJSr8SkTtqBA==","timestamp":"2026-10-31T02:42:20.283539653Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:42AM INF received complete proposal block hash=4B35A91A657D62A774BA0F5F1AB8A60A73F891C5A0FB32E63DE32C4BE528E150 height=42 module=consensus
+2:42AM INF finalizing commit of block hash={} height=42 module=consensus num_txs=1 root=9E5E53D2E113CA490ED1D63ED8EA51234449BCAC5B556C3D82E80BD530CFA1E4
+2:42AM INF finalized block block_app_hash=79C62ABE4B540E343BDAE2B8AB06D7B4910B496CFA3DFC57B8915029DCCBCCDA height=42 module=state num_txs_res=1 num_val_updates=0
+2:42AM INF Timed out dur=403.654359 height=43 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4A0EAB31710D371C9FC61C794438D38B5C521CBD6BFCB316C10F100B4B725469","parts":{"hash":"35FAF53CBCD443083AE1F181200D1829D51A7C983C8B6ABFAEDF1D6AE227E070","total":1}},"height":43,"pol_round":-1,"round":0,"signature":"j1cRQlLqf/BfVXuDFQ7ObbrbQKg+93asB9jaEHofyYzGVw7AMM+3BkIz+06Gr4M1z2y5iDv63Wzye/V6JiogAg==","timestamp":"2026-10-31T02:42:23.109782101Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=4A0EAB31710D371C9FC61C794438D38B5C521CBD6BFCB316C10F100B4B725469 height=43 module=consensus
+2:42AM INF finalizing commit of block hash={} height=43 module=consensus num_txs=3 root=79C62ABE4B540E343BDAE2B8AB06D7B4910B496CFA3DFC57B8915029DCCBCCDA
+2:42AM INF finalized block block_app_hash=4D89D5558C74295242BB7056F4E8E0B025452B54D1D3B14421A8C6F6715D2C11 height=43 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF Timed out dur=453.034133 height=44 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E930BF77C8BB368B19C03A6F410FA110B04516D841905E6959B14168BE67930F","parts":{"hash":"C052322644742C1AFC5D1F41B357771034D5DFA08C8427723784B11E8D08E2F9","total":1}},"height":44,"pol_round":-1,"round":0,"signature":"haFk0vFtfG18WLYxEkyt6SrqQNGGjmL3ige8pq4mXFSx4fY+HDMKV+GM+s56zoM4WZd1df3KERcpA3Cfnn4pCA==","timestamp":"2026-10-31T02:42:25.838482027Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=E930BF77C8BB368B19C03A6F410FA110B04516D841905E6959B14168BE67930F height=44 module=consensus
+2:42AM INF finalizing commit of block hash={} height=44 module=consensus num_txs=3 root=4D89D5558C74295242BB7056F4E8E0B025452B54D1D3B14421A8C6F6715D2C11
+2:42AM INF finalized block block_app_hash=6C3F433C7DBF560972F81B9AA6AF25372DE03B5B245D3EBED20839E98B1CD39A height=44 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:48102
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48102,"Zone":""}
+2:42AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48102,"Zone":""}
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48102,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48102,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=453.714633 height=45 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"4556A6D0221D124BE06EE50E6EF9D2920297A7DF8E9B19734C250333E275E7D4","parts":{"hash":"E530BBDBFF49AA1C2E91CBF35E66E40F407BC1E4ADFE731725CE8D7EEEE70405","total":1}},"height":45,"pol_round":-1,"round":0,"signature":"1HsT3yaERa2geV6RsCvOFqyhnb+q58LeHbwKiKbX0kzOENUoQMNDgPnKz2tbvKcoiCY+Bn1sTz7KBqqoH6VSCQ==","timestamp":"2026-10-31T02:42:28.582834521Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=4556A6D0221D124BE06EE50E6EF9D2920297A7DF8E9B19734C250333E275E7D4 height=45 module=consensus
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:48216
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:48234
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48234,"Zone":""}
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48216,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:48234
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48234,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:48216
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48216,"Zone":""}
+2:42AM INF finalizing commit of block hash={} height=45 module=consensus num_txs=5 root=6C3F433C7DBF560972F81B9AA6AF25372DE03B5B245D3EBED20839E98B1CD39A
+2:42AM INF finalized block block_app_hash=3E64E997FB112EA146D26CD1BC051D7DAEB60F5693CBA443C711E93AA26BE7F4 height=45 module=state num_txs_res=5 num_val_updates=0
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48234,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48234,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=480.397438 height=46 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0603791EF45BC44FA2E2D675004A42D717FF9FD4A33B19F1D64F7F33BDABA0A6","parts":{"hash":"7BB4AB95E94D502047E7676216B3DB2E23A8CEB24A46C6F230A7E5B9DB9DD50C","total":12}},"height":46,"pol_round":-1,"round":0,"signature":"luqKyYb1NnSey1rVhu8nw33qWw40EkmhoXTF1Los8QPGXmz9LF7uNYEIjeBejtZ91KYJcsLSFAGn96cjb/eiDw==","timestamp":"2026-10-31T02:42:31.275202709Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48216,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48216,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:48246
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48246,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:48246
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48246,"Zone":""}
+2:42AM INF received complete proposal block hash=0603791EF45BC44FA2E2D675004A42D717FF9FD4A33B19F1D64F7F33BDABA0A6 height=46 module=consensus
+2:42AM INF finalizing commit of block hash={} height=46 module=consensus num_txs=6 root=3E64E997FB112EA146D26CD1BC051D7DAEB60F5693CBA443C711E93AA26BE7F4
+2:42AM INF finalized block block_app_hash=974722B80F71486E73E1AA948441D84BE515C03B1E3E7E4262FCC083CD6D682F height=46 module=state num_txs_res=6 num_val_updates=1
+2:42AM INF updates to validators module=state updates=029BFCF232F54E15ECC186612BA06722445A2941:5161
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":48246,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":48246,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=468.495811 height=47 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"59F2AE58CFEC82A1B9296846DD91A467A2F6F589B5B85A044BDE61B4068E8B65","parts":{"hash":"F8C022F91F26CD4035F6D7124655EC2C260F06BADD5AD130A1EDA7AB495DECE8","total":1}},"height":47,"pol_round":-1,"round":0,"signature":"W0LzIYfdMlTGKR9yoE/n2ebaPnJHyGTYaPBAsgWk9jjgCJlDlSLV1g9GjWDxmLw9RIm5KIG+yWF6XRQ0yKQCDQ==","timestamp":"2026-10-31T02:42:34.062508143Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=59F2AE58CFEC82A1B9296846DD91A467A2F6F589B5B85A044BDE61B4068E8B65 height=47 module=consensus
+2:42AM INF finalizing commit of block hash={} height=47 module=consensus num_txs=6 root=974722B80F71486E73E1AA948441D84BE515C03B1E3E7E4262FCC083CD6D682F
+2:42AM INF finalized block block_app_hash=752687ED5A8E75DF2C9FC8972188AFF3A8B71AF1B2A2AAC1D22A138146B67D8D height=47 module=state num_txs_res=6 num_val_updates=0
+2:42AM INF Timed out dur=485.583884 height=48 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"80C2000900E107EDB20185BCF865EBB3FEAE6372A91BDC67ED58EE7503642970","parts":{"hash":"26F1A6C7E50A41F4408A1B2D0CAA01FADF893EC8EBD1A974614DE62A804EDDF5","total":1}},"height":48,"pol_round":-1,"round":0,"signature":"daN1ZKb6XvDHkG+2Jm16weeS2ok2mYydwMkWwWtNtboz+prNVsX43RWUN2QaGEwU5BVrZ2qngGUB9jGJTTmuCA==","timestamp":"2026-10-31T02:42:36.721931846Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=80C2000900E107EDB20185BCF865EBB3FEAE6372A91BDC67ED58EE7503642970 height=48 module=consensus
+2:42AM INF finalizing commit of block hash={} height=48 module=consensus num_txs=3 root=752687ED5A8E75DF2C9FC8972188AFF3A8B71AF1B2A2AAC1D22A138146B67D8D
+2:42AM INF finalized block block_app_hash=E6B96BA31BEFEB06CE387A97C09290B03A67F3804F5FB24672C434D24C8DB1DF height=48 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF Timed out dur=488.492327 height=49 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BBCE0342FC12F5B7F28C7471B1617F1C92C5AEF80E31D77772227A9CA32EA4AE","parts":{"hash":"369981B811A478AA5BB8F42DE7877E1FCE28D5D22AE419C1963D638D6387042A","total":1}},"height":49,"pol_round":-1,"round":0,"signature":"dTNYz4HyR1gDAbXb0bu4LaQ4YtZ8ehLvIsu0xcedWl/QX8bTJfHldWtN6YsS1LxxMaQ2y+uBf1J5SyE0/N/yAw==","timestamp":"2026-10-31T02:42:39.408362467Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=BBCE0342FC12F5B7F28C7471B1617F1C92C5AEF80E31D77772227A9CA32EA4AE height=49 module=consensus
+2:42AM INF finalizing commit of block hash={} height=49 module=consensus num_txs=3 root=E6B96BA31BEFEB06CE387A97C09290B03A67F3804F5FB24672C434D24C8DB1DF
+2:42AM INF finalized block block_app_hash=BBECB480DED243BF24344406469E3DD35763161402B53B92EFFB27E40DEBD116 height=49 module=state num_txs_res=3 num_val_updates=0
+2:42AM INF Timed out dur=486.405773 height=50 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"1D43DF4D2443518CF7D69B1142E158D108B47B8531752209711D38C821B708D0","parts":{"hash":"733CCCB4500751B38CBBBD61E4D59E9C0AFA2319B0D6D83BBDB1CE9ED974459A","total":10}},"height":50,"pol_round":-1,"round":0,"signature":"rBvXZp0VxBW+VN/5tj5VMUnIxgytBQ8loENn+OKrnTFYt9WsOxHpFUDbysVv9UjlT4pzYixKB6eQRUb0f2hABw==","timestamp":"2026-10-31T02:42:42.099564677Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:42AM INF received complete proposal block hash=1D43DF4D2443518CF7D69B1142E158D108B47B8531752209711D38C821B708D0 height=50 module=consensus
+2:42AM INF finalizing commit of block hash={} height=50 module=consensus num_txs=5 root=BBECB480DED243BF24344406469E3DD35763161402B53B92EFFB27E40DEBD116
+2:42AM INF finalized block block_app_hash=4A18C360553AF574D80732C562A9172D3F38967D5B4232C107EE8BB880913609 height=50 module=state num_txs_res=5 num_val_updates=0
+2:42AM INF Timed out dur=482.336298 height=51 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D4BB4416767D9B131DEFDF0B7198BB5B26C630833F81E3AE5B74B385C8C689B5","parts":{"hash":"F70B3B19B3F4CDAF012F5173CEBB8F21D607A627CE8A38634C6CA1B5337DB415","total":1}},"height":51,"pol_round":-1,"round":0,"signature":"pxU/UNiNafNJJd1GKOADgBNbXeGei748iPgsgXUBOA7E1pNSjTiakZ4W4ldRclShz7I8FLeGQaeNsicP2NSUAQ==","timestamp":"2026-10-31T02:42:44.894046607Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=D4BB4416767D9B131DEFDF0B7198BB5B26C630833F81E3AE5B74B385C8C689B5 height=51 module=consensus
+2:42AM INF finalizing commit of block hash={} height=51 module=consensus num_txs=4 root=4A18C360553AF574D80732C562A9172D3F38967D5B4232C107EE8BB880913609
+2:42AM INF finalized block block_app_hash=016043805B84167E57D19DD574C881384EC43A945346C60A541D8CBCA49BC396 height=51 module=state num_txs_res=4 num_val_updates=0
+2:42AM INF Timed out dur=481.851465 height=52 module=consensus round=0 step=1
+2:42AM INF applying cached proposal from catchup height=52 module=propagation peer=dbe5a26cd989fc37aef3c96c019fd4c93c4e840c round=0
+2:42AM INF applying cached compact block height=52 module=propagation round=0
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C9EAD2A89231BAE601CFECD7E146C7B39282BBF8982DF12829DE6DAF0D3A5719","parts":{"hash":"E884471EA823FCBDE3E061CF23C1A170E7DCD557A300B274CFBE97697F4B6AEA","total":1}},"height":52,"pol_round":-1,"round":0,"signature":"0Ol6MEhKqWOxK2TUgsRV/LWi3AMnOeub1vwiR0Q4e8SyL+BaQMlP5nNqVXFqj0Gk79JpDOeIsK0luV6T1Xh8Dg==","timestamp":"2026-10-31T02:42:47.51327325Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=C9EAD2A89231BAE601CFECD7E146C7B39282BBF8982DF12829DE6DAF0D3A5719 height=52 module=consensus
+2:42AM INF finalizing commit of block hash={} height=52 module=consensus num_txs=3 root=016043805B84167E57D19DD574C881384EC43A945346C60A541D8CBCA49BC396
+2:42AM INF finalized block block_app_hash=F31171605163F96BF6D7A761C40F10A71F629A7617F1B38AE10C23F57D12110F height=52 module=state num_txs_res=3 num_val_updates=1
+2:42AM INF updates to validators module=state updates=111555C8C4138D4D4916FA46678563D99EA98774:5146
+2:42AM INF Timed out dur=488.55273 height=53 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"996D1E229BC2D3BDE3A7E4CE2B6ECBE458C30D88F32608A6DE017BDEFCA37718","parts":{"hash":"8C4DCAAD03494A3CCE8A3C9270B1B37C3E2C5B4F59D1E1E0B090C1BDBC7A1743","total":1}},"height":53,"pol_round":-1,"round":0,"signature":"rv4UkXGlFApN/PHbar875zvwLTOM9Z2es3DWhYK3pIfr7WZIkwfHs/R8T1zhguMLYCCfSdcf2m5vOzh62u6rBg==","timestamp":"2026-10-31T02:42:48.333442742Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=996D1E229BC2D3BDE3A7E4CE2B6ECBE458C30D88F32608A6DE017BDEFCA37718 height=53 module=consensus
+2:42AM INF finalizing commit of block hash={} height=53 module=consensus num_txs=4 root=F31171605163F96BF6D7A761C40F10A71F629A7617F1B38AE10C23F57D12110F
+2:42AM INF finalized block block_app_hash=CC01D8EA090A168D159A8CE472B1567071251CA0FE4AAEB0645E8605B1F2F1D3 height=53 module=state num_txs_res=4 num_val_updates=0
+2:42AM INF Timed out dur=485.56253 height=54 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"203A9B8809E46234A2D11F6681888E4E02FE7E5C526B641B30C58BD3A1F4131D","parts":{"hash":"83C32CC37352B9FF97CBBC3AA124A40717FE347EF84BB008838DAF604D1DAE8A","total":1}},"height":54,"pol_round":-1,"round":0,"signature":"TraXoP+VTlNqOqGii/3I85D3fDMKbm0p5teHZDXGSgUfrcRTvXqw8UUm6hmwEWeCFeEPEiwTAJq26mgP169wAQ==","timestamp":"2026-10-31T02:42:51.036775595Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:42AM INF received complete proposal block hash=203A9B8809E46234A2D11F6681888E4E02FE7E5C526B641B30C58BD3A1F4131D height=54 module=consensus
+2:42AM INF finalizing commit of block hash={} height=54 module=consensus num_txs=2 root=CC01D8EA090A168D159A8CE472B1567071251CA0FE4AAEB0645E8605B1F2F1D3
+2:42AM INF finalized block block_app_hash=3894B08B2F1C3906E46CB5B774703D22649200090D1F5D3F5249E20F31B1F7AD height=54 module=state num_txs_res=2 num_val_updates=0
+2:42AM INF Timed out dur=483.374487 height=55 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3CF594DC43B3B67139D668F3FF5F16FE0FE1DDE8A6E2B09A493DFD67E19F3827","parts":{"hash":"6A8CE99C5AF05A52DDD4AD42A7F1F9A15122DF455B78964417C5C0677749887E","total":1}},"height":55,"pol_round":-1,"round":0,"signature":"NFXGP17hrYqbyCKfQH9H8t6gTcF2+N9NYndI1CjoLCE43L5SbneBcD26wOZOJoqimUietiFbBJn6cuHqpFqMDw==","timestamp":"2026-10-31T02:42:53.74392092Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:42AM INF received complete proposal block hash=3CF594DC43B3B67139D668F3FF5F16FE0FE1DDE8A6E2B09A493DFD67E19F3827 height=55 module=consensus
+2:42AM INF finalizing commit of block hash={} height=55 module=consensus num_txs=4 root=3894B08B2F1C3906E46CB5B774703D22649200090D1F5D3F5249E20F31B1F7AD
+2:42AM INF finalized block block_app_hash=ECAEF261597BE964142CB1811D533F6FF5973745C363480FF70F7DDF41172CA0 height=55 module=state num_txs_res=4 num_val_updates=0
+2:42AM INF Timed out dur=483.319206 height=56 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"1FF94BD345E8550C2C02696B866E33718EA2CFC3D0F9FD6D73072AC874D76619","parts":{"hash":"9A82F566A06EE3C8C199494D72AFBCCB04060D0210CE2D0BE0BAD0CE147F2811","total":1}},"height":56,"pol_round":-1,"round":0,"signature":"l3oQRybZaO40CSOX+Vf3Rgx8NSQBTgj/8/oUntRhj8aOogwE+v3/r5Q+Dm/4sH3C6mCqqYA4gypJDHamj7xbCQ==","timestamp":"2026-10-31T02:42:56.456213822Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:42AM INF received complete proposal block hash=1FF94BD345E8550C2C02696B866E33718EA2CFC3D0F9FD6D73072AC874D76619 height=56 module=consensus
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33254
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33254,"Zone":""}
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33258
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33258,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33258
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33258,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33254
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33254,"Zone":""}
+2:42AM INF finalizing commit of block hash={} height=56 module=consensus num_txs=2 root=ECAEF261597BE964142CB1811D533F6FF5973745C363480FF70F7DDF41172CA0
+2:42AM INF finalized block block_app_hash=A43D8DB17290A55905D83DAD1BFB9F6BC7C96E39E064743209731D392CE2A72D height=56 module=state num_txs_res=2 num_val_updates=0
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33254,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33254,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF Timed out dur=490.71127 height=57 module=consensus round=0 step=1
+2:42AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B5B9D594E6DD78CB4353273CB02C99FBAA181D7E9A9EC9BD3183DA0C1B45B0BF","parts":{"hash":"4F0E08103759C717215585B4B627456BE770B40AFFB672E02527610BD8976452","total":1}},"height":57,"pol_round":-1,"round":0,"signature":"WDnazrLigRud21wV6LkbdT8CxlDpaDfLQa1h9Y4hx3yAHLXtZYVaD1r4kcOj5lleQSc+18fWFPChRw1+It6aBg==","timestamp":"2026-10-31T02:42:59.160947407Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:42AM INF received complete proposal block hash=B5B9D594E6DD78CB4353273CB02C99FBAA181D7E9A9EC9BD3183DA0C1B45B0BF height=57 module=consensus
+2:42AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33258,"Zone":""}
+2:42AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33258,"Zone":""}
+2:42AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:42AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:33282
+2:42AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33282,"Zone":""}
+2:42AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:33282
+2:42AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33282,"Zone":""}
+2:43AM INF finalizing commit of block hash={} height=57 module=consensus num_txs=5 root=A43D8DB17290A55905D83DAD1BFB9F6BC7C96E39E064743209731D392CE2A72D
+2:43AM INF finalized block block_app_hash=A44152CE2CA211C55E8E5FCD77DC2EC0C1931F453EA597DFFE2FD7C2DC064A93 height=57 module=state num_txs_res=5 num_val_updates=0
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":33282,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":33282,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=488.415737 height=58 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"6F0592784176A07B72D009C6203F82BB12438C95EC9A6B47910124207E676346","parts":{"hash":"F3E36A9EE22B5D983C7EEC83CF6FCEE87D26303379AFAE984356CE87CF74FB39","total":17}},"height":58,"pol_round":-1,"round":0,"signature":"c6vqnvSEIKtRUndfF4JVuvoxmW4viArpjz60RCI8ngUZCb0PvozQ8AxU6Sd3HN2Hgo4b3/gAy0iXnqXly9hkBA==","timestamp":"2026-10-31T02:43:01.832123384Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=6F0592784176A07B72D009C6203F82BB12438C95EC9A6B47910124207E676346 height=58 module=consensus
+2:43AM INF finalizing commit of block hash={} height=58 module=consensus num_txs=5 root=A44152CE2CA211C55E8E5FCD77DC2EC0C1931F453EA597DFFE2FD7C2DC064A93
+2:43AM INF finalized block block_app_hash=F3A0558B7100585F2D54A47D77F7885054035D4A0F50F8C3B1A3A6A5D38FE818 height=58 module=state num_txs_res=5 num_val_updates=0
+2:43AM INF Timed out dur=476.50942 height=59 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5C009395853FD22E999A15B2D5A7010BFC866A8A808A21D837438A6A5E059316","parts":{"hash":"BB4D198C7377A940A86CCA9E57495E4C687640FC485E747AA509238583222FBD","total":1}},"height":59,"pol_round":-1,"round":0,"signature":"E1T46rZiUPBcZxuE9ofUy/C3jqgsR/m+U9h3JNMWBK26l+kdgac/nMVthMPDnMJf3cNMMc5KVsQr0vpz/htoDA==","timestamp":"2026-10-31T02:43:04.600079759Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=5C009395853FD22E999A15B2D5A7010BFC866A8A808A21D837438A6A5E059316 height=59 module=consensus
+2:43AM INF finalizing commit of block hash={} height=59 module=consensus num_txs=5 root=F3A0558B7100585F2D54A47D77F7885054035D4A0F50F8C3B1A3A6A5D38FE818
+2:43AM INF finalized block block_app_hash=B4C6C4778D31351F86BBD2C96575AC82E6857750AD4E9B7F70B1C80E6539FD75 height=59 module=state num_txs_res=5 num_val_updates=0
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:44096
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":44096,"Zone":""}
+2:43AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":44096,"Zone":""}
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":44096,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":44096,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=489.265309 height=60 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"129CD2F4ABD077C4025994A814642B434AEAC1B1AEF0D3AE05438ED26F0940B3","parts":{"hash":"22A78C118FC425DF7ACDE3ECBDF25BF0BFF97108BF7A2451C82593344508F145","total":1}},"height":60,"pol_round":-1,"round":0,"signature":"aolMcgzBWJkQ7uia0PDUPeRPvOyUsiq3LCdQmZWYN+ewTjsMmjcjMyOxByYlJUTc6XBdCqfPfP46Y3o9PHEPDQ==","timestamp":"2026-10-31T02:43:07.243175599Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:43AM INF received complete proposal block hash=129CD2F4ABD077C4025994A814642B434AEAC1B1AEF0D3AE05438ED26F0940B3 height=60 module=consensus
+2:43AM INF finalizing commit of block hash={} height=60 module=consensus num_txs=4 root=B4C6C4778D31351F86BBD2C96575AC82E6857750AD4E9B7F70B1C80E6539FD75
+2:43AM INF finalized block block_app_hash=C768E16403E08472AB4E56893C9F23B5C26CD2859CB4A6AC8228EA6010BB1307 height=60 module=state num_txs_res=4 num_val_updates=0
+2:43AM INF Timed out dur=453.762665 height=61 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E0539FB051021361D3471FE949D41C8CEC4861D7878AFA3867B7A2CA293C851D","parts":{"hash":"FC444FC070C0E3F04DBB631F9F1FBF7B993E16DA7F9F28600B45BA7DA2D83950","total":1}},"height":61,"pol_round":-1,"round":0,"signature":"SHezvCs0plDNPBZ2e1zZRLiLo8VIMarhbkxsdsg4RWqOIvKHL+H9y6igQAJCq40pnu3KlQTjMJ0ZKhH4ZopUBQ==","timestamp":"2026-10-31T02:43:09.951638539Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:43AM INF received complete proposal block hash=E0539FB051021361D3471FE949D41C8CEC4861D7878AFA3867B7A2CA293C851D height=61 module=consensus
+2:43AM INF finalizing commit of block hash={} height=61 module=consensus num_txs=4 root=C768E16403E08472AB4E56893C9F23B5C26CD2859CB4A6AC8228EA6010BB1307
+2:43AM INF finalized block block_app_hash=18552A49B06F7A0540624A541965210C5591A81AEAB4F4ACE559382F5DA1A61B height=61 module=state num_txs_res=4 num_val_updates=1
+2:43AM INF updates to validators module=state updates=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550:5088
+2:43AM INF Timed out dur=487.25647 height=62 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"607341FDFA807EF1E6E6B4FA8EC4CB29DE095633E7BBDF8A5F0868036FF0E22D","parts":{"hash":"753B5B447266532A62BE178169CD3D2E72982BE52FDE88BD18E7EFCD0F9375DC","total":1}},"height":62,"pol_round":-1,"round":0,"signature":"9gx1rcnN2/vDK97UrEfE9dcts/jHfSrhcJQl6Gse8qJ0UMAwI8L4EWrdR1jnmYpYXNnoV+n3/1V1/VzGEg2XDA==","timestamp":"2026-10-31T02:43:12.591506981Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=607341FDFA807EF1E6E6B4FA8EC4CB29DE095633E7BBDF8A5F0868036FF0E22D height=62 module=consensus
+2:43AM INF finalizing commit of block hash={} height=62 module=consensus num_txs=2 root=18552A49B06F7A0540624A541965210C5591A81AEAB4F4ACE559382F5DA1A61B
+2:43AM INF finalized block block_app_hash=DC4D2A75EA1B8EC71581F758455AECE903DC08E3A29EFA2B12D25C17C6F2B492 height=62 module=state num_txs_res=2 num_val_updates=0
+2:43AM INF Timed out dur=479.993237 height=63 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BEC5BBF1A1C533B8481D7E6A168591A88E3F10F88DFEB678C32BE5115CDA1F82","parts":{"hash":"D58DCF4AAF71655860709CB7DB4DC2671A642D9DCD961BBA89040F9DD7FB3BC5","total":5}},"height":63,"pol_round":-1,"round":0,"signature":"cyyV+y443+3+WvIHZljU31Eag4cjj1Agjow0ITtE9ZerrdXW+y7Wo0xVAGsi4NInIEKrImSjOVIfAvBbIlrrCQ==","timestamp":"2026-10-31T02:43:15.393935552Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=BEC5BBF1A1C533B8481D7E6A168591A88E3F10F88DFEB678C32BE5115CDA1F82 height=63 module=consensus
+2:43AM INF finalizing commit of block hash={} height=63 module=consensus num_txs=6 root=DC4D2A75EA1B8EC71581F758455AECE903DC08E3A29EFA2B12D25C17C6F2B492
+2:43AM INF proposal tallied expedited=false module=x/gov proposal=1 results=passed status=PROPOSAL_STATUS_PASSED title="soak 1"
+2:43AM INF finalized block block_app_hash=4B03DA92E57C4FDDFA0125B0C2BF0779D30C3D1A6FE7BBC9D41C21C01BAB381F height=63 module=state num_txs_res=6 num_val_updates=0
+2:43AM INF Timed out dur=486.719685 height=64 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"291E0ECC9967FE3BC83F936B2197773CD4C8560A198F49DDAB2AD3306D3DCD36","parts":{"hash":"D941924298FA3B3D97AF58914CF497EF28BB108B6521BC4F107C47D9CFB44AC5","total":1}},"height":64,"pol_round":-1,"round":0,"signature":"HD9B7qnT+CERkRwYBKfOXqFf21GllM23Z5p+6qm6BVvopsXQyT9vobQT8Y75zCXl010K3I3DyT3t/zIBDLhFAQ==","timestamp":"2026-10-31T02:43:18.033030012Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:43AM INF received complete proposal block hash=291E0ECC9967FE3BC83F936B2197773CD4C8560A198F49DDAB2AD3306D3DCD36 height=64 module=consensus
+2:43AM INF finalizing commit of block hash={} height=64 module=consensus num_txs=4 root=4B03DA92E57C4FDDFA0125B0C2BF0779D30C3D1A6FE7BBC9D41C21C01BAB381F
+2:43AM INF finalized block block_app_hash=FA685BA71D49D6BB7D678F8644885CE3E0EDB0327C64BBB4846D57BD2DDDA9AE height=64 module=state num_txs_res=4 num_val_updates=0
+2:43AM INF Timed out dur=484.804853 height=65 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7EC821443AE2229C165D805C559E563594FB16B8FE7149337AA517969B1A9D71","parts":{"hash":"DF3E9BC4303F4FA20796547B52E6A64724C89247C52F905B7852EBF2E47C40F6","total":1}},"height":65,"pol_round":-1,"round":0,"signature":"VMZorjWyp7QVAN50WftkrkKwhhRjpx0hwI6h1zfR2rSZ/yl97h257GhT9t5iAjDkGGMPlSQEb4AZFL/W9fN7CQ==","timestamp":"2026-10-31T02:43:20.750866166Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:43AM INF received complete proposal block hash=7EC821443AE2229C165D805C559E563594FB16B8FE7149337AA517969B1A9D71 height=65 module=consensus
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:36244
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36244,"Zone":""}
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:36238
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36238,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:36238
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36238,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:36244
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36244,"Zone":""}
+2:43AM INF finalizing commit of block hash={} height=65 module=consensus num_txs=2 root=FA685BA71D49D6BB7D678F8644885CE3E0EDB0327C64BBB4846D57BD2DDDA9AE
+2:43AM INF finalized block block_app_hash=D66072136C58A202A0DC700E7137C5075E0E4B357CF45605D75A3A7CE1ECE117 height=65 module=state num_txs_res=2 num_val_updates=0
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36238,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36238,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=491.342418 height=66 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"AB2721F3463FB40F42C7D238A48B13AD3BA6EF866FFF32CBA113705E4E8D9FC3","parts":{"hash":"840162FB32B5EE5764C98C4ADDBF5E094BBC93EF52841CB195749866F8AD87C5","total":1}},"height":66,"pol_round":-1,"round":0,"signature":"T0reaby+JURkqKfVUKlAm+WuNP59FKzGTjGZzZ7SIhLHD+qYR4q/cs6qQix8yHBvcepa52p5Gw7kyqiuOEazDg==","timestamp":"2026-10-31T02:43:23.382855014Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=AB2721F3463FB40F42C7D238A48B13AD3BA6EF866FFF32CBA113705E4E8D9FC3 height=66 module=consensus
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36244,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36244,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:36250
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36250,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:36250
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36250,"Zone":""}
+2:43AM INF finalizing commit of block hash={} height=66 module=consensus num_txs=4 root=D66072136C58A202A0DC700E7137C5075E0E4B357CF45605D75A3A7CE1ECE117
+2:43AM INF finalized block block_app_hash=9DC27A290A623529E0A30C2A64F2FB549CBC5568E93096B88E5534CCE90CF15D height=66 module=state num_txs_res=4 num_val_updates=0
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":36250,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":36250,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=483.765803 height=67 module=consensus round=0 step=1
+2:43AM INF applying cached proposal from catchup height=67 module=propagation peer=f921d190b6b56487ff726a2f5f7b3f826e8f5e1a round=0
+2:43AM INF applying cached compact block height=67 module=propagation round=0
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D21E89E69EC3A6C5EB1783895DB0E0B06F5329D1CDAA7B216B2E60E7165E8F6D","parts":{"hash":"B5092FFE25C1087854269E2A0CA445C3DEDBA06B5AB7468D18F058B063C543D6","total":1}},"height":67,"pol_round":-1,"round":0,"signature":"aiGb9gE9N9FNaeHSB7kzwlkVFqqggBUZYqICZQBhYmQy3bDLFNRYcjkqqwIk5DXz+ANXJdUP3H9xHM+qRIjUCQ==","timestamp":"2026-10-31T02:43:26.087495769Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=D21E89E69EC3A6C5EB1783895DB0E0B06F5329D1CDAA7B216B2E60E7165E8F6D height=67 module=consensus
+2:43AM INF finalizing commit of block hash={} height=67 module=consensus num_txs=2 root=9DC27A290A623529E0A30C2A64F2FB549CBC5568E93096B88E5534CCE90CF15D
+2:43AM INF finalized block block_app_hash=700855A5033B14E1DE7F7C67B5C0CA2F84B8286DD143434D90151A4769BCF3A4 height=67 module=state num_txs_res=2 num_val_updates=0
+2:43AM INF Timed out dur=489.847632 height=68 module=consensus round=0 step=1
+2:43AM INF applying cached proposal from catchup height=68 module=propagation peer=f921d190b6b56487ff726a2f5f7b3f826e8f5e1a round=0
+2:43AM INF applying cached compact block height=68 module=propagation round=0
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3394EB25C9AF461FDA1A15A49AF78113A2946FE0A404FDC22B086B6F7F2D6776","parts":{"hash":"B24227755B47595B13BB7D58F78286267D0CF1FCE4B18AA194646B84459E8C97","total":1}},"height":68,"pol_round":-1,"round":0,"signature":"LA0uvJDalC60IHK0FoD7BZkEgX3s+ELkcQ2tfATKtOjoo5HTqqnFbLEiHwLjmhuZGWFr6D094NdXfErWeyBlCQ==","timestamp":"2026-10-31T02:43:28.695389358Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:43AM INF received complete proposal block hash=3394EB25C9AF461FDA1A15A49AF78113A2946FE0A404FDC22B086B6F7F2D6776 height=68 module=consensus
+2:43AM INF finalizing commit of block hash={} height=68 module=consensus num_txs=3 root=700855A5033B14E1DE7F7C67B5C0CA2F84B8286DD143434D90151A4769BCF3A4
+2:43AM INF finalized block block_app_hash=8FF51BDECCBC60BC14E89D7DBB631EBED13C1652594670D89A492AAA7361D41D height=68 module=state num_txs_res=3 num_val_updates=0
+2:43AM INF Timed out dur=489.930135 height=69 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2315C78F43C8C366AF952A385FC624169048C3E7BE3D273E1055AB1B1C3698A5","parts":{"hash":"AE6D9CE6464A72A058B5CCB8A1E15289663B3523057F2E17D2FFE30B14AE3B07","total":1}},"height":69,"pol_round":-1,"round":0,"signature":"xbgvqknM5dqbBUxGjEnwmidgfnaP6MM4Kk4+Vfm5AjwGWzmB1jZaRJqEZCYvz+r32FKOQqXANRXg47pPFhsvBQ==","timestamp":"2026-10-31T02:43:31.386551576Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:43AM INF received complete proposal block hash=2315C78F43C8C366AF952A385FC624169048C3E7BE3D273E1055AB1B1C3698A5 height=69 module=consensus
+2:43AM INF finalizing commit of block hash={} height=69 module=consensus num_txs=4 root=8FF51BDECCBC60BC14E89D7DBB631EBED13C1652594670D89A492AAA7361D41D
+2:43AM INF finalized block block_app_hash=EAA21492C03ADCF21FDD6D8103DDBE48FF2C6CA00FD051B8CBBD20768C75ECA5 height=69 module=state num_txs_res=4 num_val_updates=1
+2:43AM INF updates to validators module=state updates=029BFCF232F54E15ECC186612BA06722445A2941:5212
+2:43AM INF Timed out dur=483.012096 height=70 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"29BD5A52ADD2C282865A22631F9A40B0A6681AE0E97CD95D25BFC99F172F2CC1","parts":{"hash":"12CFB568AF5EC370F113B660A9C01BF1DFB1DC718ED6B7BA96B0FECD0C86C519","total":7}},"height":70,"pol_round":-1,"round":0,"signature":"8f9rSrOOgax3DS0yZ2yOgKH4zcIXGBoLmVdT6/ieD5dJVpZyYvWFAoWXbPK5WiZnYtKk+lrUHfEGbzZOnDW9Bw==","timestamp":"2026-10-31T02:43:34.031817735Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=29BD5A52ADD2C282865A22631F9A40B0A6681AE0E97CD95D25BFC99F172F2CC1 height=70 module=consensus
+2:43AM INF finalizing commit of block hash={} height=70 module=consensus num_txs=6 root=EAA21492C03ADCF21FDD6D8103DDBE48FF2C6CA00FD051B8CBBD20768C75ECA5
+2:43AM INF finalized block block_app_hash=1A69E38488878205F37A455B74621577F0FF563B4064BEEFADA9663B9D374224 height=70 module=state num_txs_res=6 num_val_updates=0
+2:43AM INF Timed out dur=484.966105 height=71 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CF3FB806EEB75343EBC55F4D83B74FB0E2F14425431F5C8D7CBFFB1FB9A770AA","parts":{"hash":"9C109E3C81495D7A60D06FCD7555361F02B179F52EC46371F727A45D29601533","total":1}},"height":71,"pol_round":-1,"round":0,"signature":"VEdy2lpU+wYq66/fu4p4sLKSRqFZtbU0Al9epyd9BmPwCgiUqgwZyADX0BUVVhw7aiqcbZMlwcvI05+aBYDHBQ==","timestamp":"2026-10-31T02:43:36.798219964Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=CF3FB806EEB75343EBC55F4D83B74FB0E2F14425431F5C8D7CBFFB1FB9A770AA height=71 module=consensus
+2:43AM INF finalizing commit of block hash={} height=71 module=consensus num_txs=4 root=1A69E38488878205F37A455B74621577F0FF563B4064BEEFADA9663B9D374224
+2:43AM INF finalized block block_app_hash=3F5AB6E552CC0F1D4DA13A3569B4A47D4D88657C32FFF45721D5BBE4B49F0B90 height=71 module=state num_txs_res=4 num_val_updates=0
+2:43AM INF Timed out dur=480.808928 height=72 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A9BF695BAB4F03BA3EDC4122A76D0EBCABC9D65BF663FB8A2200A5E9645918A4","parts":{"hash":"E758B00996378A701DE536AF5AD98D403E63F873A0278446B51C0C7D2A25DBF6","total":1}},"height":72,"pol_round":-1,"round":0,"signature":"8TDhs4igVtslMYRRS7yBcOrJx43TESLrQXMRHprmk8lVPecNconZtnWSnceev+EE4j+LV4vGJv9dlkANa1NBBw==","timestamp":"2026-10-31T02:43:39.415487372Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:43AM INF received complete proposal block hash=A9BF695BAB4F03BA3EDC4122A76D0EBCABC9D65BF663FB8A2200A5E9645918A4 height=72 module=consensus
+2:43AM INF finalizing commit of block hash={} height=72 module=consensus num_txs=4 root=3F5AB6E552CC0F1D4DA13A3569B4A47D4D88657C32FFF45721D5BBE4B49F0B90
+2:43AM INF finalized block block_app_hash=477C450D2C9213E30CFF66D11643E5933CEDC2E1B826EAE56B83707705E22391 height=72 module=state num_txs_res=4 num_val_updates=0
+2:43AM INF Timed out dur=489.544276 height=73 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CB2DD58D26F8E8193328EA5992B3A7525D31A82AB6698F238FC811886438594A","parts":{"hash":"D3E5C2F840A4E04016CBBACF1D6C33C15E6ADDEA7BFE67B93CD64A8AEF41BB7F","total":1}},"height":73,"pol_round":-1,"round":0,"signature":"Qb6bGHk2xrqQhSWbWLPrzQkjGxxhRv5JIqshRrH77Xr3r6dPqjB4LnNrlaCsWUf3SAg+mfP6B5igFsq99W4cCQ==","timestamp":"2026-10-31T02:43:42.07385963Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=CB2DD58D26F8E8193328EA5992B3A7525D31A82AB6698F238FC811886438594A height=73 module=consensus
+2:43AM INF finalizing commit of block hash={} height=73 module=consensus num_txs=2 root=477C450D2C9213E30CFF66D11643E5933CEDC2E1B826EAE56B83707705E22391
+2:43AM INF finalized block block_app_hash=71C8509063B48DE3EC67143500CCE81E9B9FEEE7C34B16FA20C6730F11DAEF0C height=73 module=state num_txs_res=2 num_val_updates=0
+2:43AM INF Timed out dur=480.524228 height=74 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0E462B143D125E658332109BBC02D387001094E91FD4D2DA5F2ECA6B12E1D6E3","parts":{"hash":"2D3D04428D640CAF7C53955F28A45D6865336B8872CEEA022855C9790B1AF9F1","total":1}},"height":74,"pol_round":-1,"round":0,"signature":"z5y2CL4IU9YwkooN2iEP5WVhNUk1SH5t7qQvLb9Girc5+o+U2P7pHO1kc3ZBByN4YeldRHLVhvrhaKAoD7mVAg==","timestamp":"2026-10-31T02:43:44.753214898Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=0E462B143D125E658332109BBC02D387001094E91FD4D2DA5F2ECA6B12E1D6E3 height=74 module=consensus
+2:43AM INF finalizing commit of block hash={} height=74 module=consensus num_txs=5 root=71C8509063B48DE3EC67143500CCE81E9B9FEEE7C34B16FA20C6730F11DAEF0C
+2:43AM INF finalized block block_app_hash=32A25BD0FDAD1300AF1DD7855D9D5CCC2939CC8D3D8A6503009E887B52DE795C height=74 module=state num_txs_res=5 num_val_updates=0
+2:43AM INF Timed out dur=486.752396 height=75 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7F55E31D0647670314AE00D8DCBA40A48CE11E9A64BC8B93A5CD381FB6F73F55","parts":{"hash":"3ED1C6422B9FBBE76FA0A97EE09019A141A3D1E1DCBA8C374DA5CC748CE9468D","total":1}},"height":75,"pol_round":-1,"round":0,"signature":"3TZqTWoF7TtELc/1K0DHYvRWscaRTulgueZ0v541cBsPCzA6z7okYqgLHdL3IUqNAaurZdFgQFOsjPpv6/gUCQ==","timestamp":"2026-10-31T02:43:47.412013399Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:43AM INF received complete proposal block hash=7F55E31D0647670314AE00D8DCBA40A48CE11E9A64BC8B93A5CD381FB6F73F55 height=75 module=consensus
+2:43AM INF finalizing commit of block hash={} height=75 module=consensus num_txs=2 root=32A25BD0FDAD1300AF1DD7855D9D5CCC2939CC8D3D8A6503009E887B52DE795C
+2:43AM INF finalized block block_app_hash=A72C2B9DCA72A67AD9545EDF604CF636B15E4E2965E7A781F269E9A5260FDDE0 height=75 module=state num_txs_res=2 num_val_updates=0
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:50488
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50488,"Zone":""}
+2:43AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50488,"Zone":""}
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50488,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50488,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=478.982881 height=76 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7A716BDF491B4F7B8EC1FD51105820209DEAA0100D350C23FA93797834033F77","parts":{"hash":"62AE7BC041A3892624BDF5FF8BFC98088EB5C3BE0D3CCFFCF3A6D1CEF04D5009","total":1}},"height":76,"pol_round":-1,"round":0,"signature":"HvLF4t0a9mVvXiK37tgXHPNq8iDMcOWgqqmwPKYmvjtkgDugWyplVlSvoPx89Pgjin5NF6G7C5fl7by+3bJECQ==","timestamp":"2026-10-31T02:43:50.138488923Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:43AM INF received complete proposal block hash=7A716BDF491B4F7B8EC1FD51105820209DEAA0100D350C23FA93797834033F77 height=76 module=consensus
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:50558
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50558,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:50558
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50558,"Zone":""}
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:50522
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50522,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:50522
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50522,"Zone":""}
+2:43AM INF finalizing commit of block hash={} height=76 module=consensus num_txs=3 root=A72C2B9DCA72A67AD9545EDF604CF636B15E4E2965E7A781F269E9A5260FDDE0
+2:43AM INF finalized block block_app_hash=9C331E83E3A1044F56BFC83BBEF0C9F567B0906B308709F2B71DDA5F093A35FB height=76 module=state num_txs_res=3 num_val_updates=0
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50558,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50558,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=486.602185 height=77 module=consensus round=0 step=1
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50522,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50522,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:50562
+2:43AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50562,"Zone":""}
+2:43AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:50562
+2:43AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50562,"Zone":""}
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"6359814936FD4637B7E46A69B5BE403FD2D342E0505CA421B67AB34A2241E592","parts":{"hash":"A09F4DB0C7EFC554F6F5B6EFB14B3A96E64977F34322FE3D96EA16B26629A8E2","total":22}},"height":77,"pol_round":-1,"round":0,"signature":"00yeFPaZj3QaLDAR/J8zC3WKcfRy3ettZDaPk/3upRXzAw9lgsPISVPlUX10viovFbMORVcy4n8JhWM5RWVBCA==","timestamp":"2026-10-31T02:43:53.193329834Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:43AM INF received complete proposal block hash=6359814936FD4637B7E46A69B5BE403FD2D342E0505CA421B67AB34A2241E592 height=77 module=consensus
+2:43AM INF finalizing commit of block hash={} height=77 module=consensus num_txs=7 root=9C331E83E3A1044F56BFC83BBEF0C9F567B0906B308709F2B71DDA5F093A35FB
+2:43AM INF finalized block block_app_hash=0B72A311B2F7C21FE6CF52D14B22F107EB3233C7B94218C65FA18C373A57C735 height=77 module=state num_txs_res=7 num_val_updates=0
+2:43AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":50562,"Zone":""}
+2:43AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":50562,"Zone":""}
+2:43AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:43AM INF Timed out dur=457.715452 height=78 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CC0F6D1A6AEF55005A4DB7DBED8E244632C88CA8E9954D21C0234C1F1ABECEB0","parts":{"hash":"F2CED3E6A12B7A7733B58028865C2103E92323923292E3586E279C2F0029FB75","total":1}},"height":78,"pol_round":-1,"round":0,"signature":"PCpXAnOVMEal1dyyoiHMwYjWDC7TFF/TcTYVKJzgM3nRnObb5wUQRZcRUtS0yzSvqLc0Gb2ikSkquBqy+TYlBQ==","timestamp":"2026-10-31T02:43:55.489274504Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:43AM INF received complete proposal block hash=CC0F6D1A6AEF55005A4DB7DBED8E244632C88CA8E9954D21C0234C1F1ABECEB0 height=78 module=consensus
+2:43AM INF finalizing commit of block hash={} height=78 module=consensus num_txs=2 root=0B72A311B2F7C21FE6CF52D14B22F107EB3233C7B94218C65FA18C373A57C735
+2:43AM INF finalized block block_app_hash=243640B7A2B2D6BB85854862D68E7A4AA400B28F2F06B7F473DF5E5795686AC8 height=78 module=state num_txs_res=2 num_val_updates=0
+2:43AM INF Timed out dur=482.530056 height=79 module=consensus round=0 step=1
+2:43AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A54B48F1FD37C3A21FB809DBAA706E665816B3061651F9FD68F89AC2B48A8D2E","parts":{"hash":"B8FB2862A08325D24559881A0CAD691C494084D401C7F8C922AD180D77399AA2","total":1}},"height":79,"pol_round":-1,"round":0,"signature":"gJG/3+GC06r7M+iRGqOC5BTyyWBIP9/YRWzzfBohx2FS48GDDebrLh5OtjmmCxfV1n9jKwWOXdz8C+E25uZ9CA==","timestamp":"2026-10-31T02:43:58.188651878Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:43AM INF received complete proposal block hash=A54B48F1FD37C3A21FB809DBAA706E665816B3061651F9FD68F89AC2B48A8D2E height=79 module=consensus
+2:44AM INF finalizing commit of block hash={} height=79 module=consensus num_txs=4 root=243640B7A2B2D6BB85854862D68E7A4AA400B28F2F06B7F473DF5E5795686AC8
+2:44AM INF finalized block block_app_hash=D7DB637D3F8DF8105F475536B91F2E94BDFE000C76371E833174C6F833E89D96 height=79 module=state num_txs_res=4 num_val_updates=0
+2:44AM INF Timed out dur=487.933122 height=80 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C32FBA00CD626A99FB7F0A9D901A2814FB5C5FB1D3722CD9AE11132AC2A78794","parts":{"hash":"E8FAACBD209063290B515800FFFA30ABA4B917FC27F371652FE51D97C87FD1FE","total":2}},"height":80,"pol_round":-1,"round":0,"signature":"s0JnrWL3Wno+OoREeHlrt2pqnqITBIVi0EeTi1GZZcYVNabX/C3N5FRcJ3bzNuAxMvxdR4bwtSmNwELLm1uwCg==","timestamp":"2026-10-31T02:44:00.984209463Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=C32FBA00CD626A99FB7F0A9D901A2814FB5C5FB1D3722CD9AE11132AC2A78794 height=80 module=consensus
+2:44AM INF finalizing commit of block hash={} height=80 module=consensus num_txs=7 root=D7DB637D3F8DF8105F475536B91F2E94BDFE000C76371E833174C6F833E89D96
+2:44AM INF finalized block block_app_hash=12B4945E951422F1A29409751E3A193E4FF005038F67272F361BB1F2DDB2FE64 height=80 module=state num_txs_res=7 num_val_updates=0
+2:44AM INF Timed out dur=481.444989 height=81 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"1E3A323377A6F671548B639A2073954FE611CC75FF24B1E34E43440E2DBC29EB","parts":{"hash":"54CD79C555D6FDACB4D62B3C57CDC24AC1E01F7DBE78762329B0925E1720C718","total":1}},"height":81,"pol_round":-1,"round":0,"signature":"3jSnB7IHTQ4nmJzjg1djn6GqXapJqkwz1Jqoew06VfsuBuHqgc8DJrWMzSCHb4Q8Vd+YlVKMLXnzSBuusbXAAA==","timestamp":"2026-10-31T02:44:03.556176678Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=1E3A323377A6F671548B639A2073954FE611CC75FF24B1E34E43440E2DBC29EB height=81 module=consensus
+2:44AM INF finalizing commit of block hash={} height=81 module=consensus num_txs=2 root=12B4945E951422F1A29409751E3A193E4FF005038F67272F361BB1F2DDB2FE64
+2:44AM INF finalized block block_app_hash=AA8F6EAF06442F95F55C230AA5E139A2F6A683B550FC02A583385AB9FA6C3EE6 height=81 module=state num_txs_res=2 num_val_updates=0
+2:44AM INF Timed out dur=485.633605 height=82 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9EED9A7A7FC3BF41EDE4F4C9717CD9578E93E1BCB37B388771F81A96ED6847BD","parts":{"hash":"717789E0624BBF1A6C8DC5797D3E6FF1C27E206C8BC41A9605D9253E07E091B4","total":1}},"height":82,"pol_round":-1,"round":0,"signature":"jlRf5r+CoNoQo7ooObM2G1u0nFLZK2+oDaGHh9hsa1hSfAc2OLg/0Qu8Ly5xB09QfF1nhVVm4No20v+w3DxkDQ==","timestamp":"2026-10-31T02:44:06.204207013Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:44AM INF received complete proposal block hash=9EED9A7A7FC3BF41EDE4F4C9717CD9578E93E1BCB37B388771F81A96ED6847BD height=82 module=consensus
+2:44AM INF finalizing commit of block hash={} height=82 module=consensus num_txs=5 root=AA8F6EAF06442F95F55C230AA5E139A2F6A683B550FC02A583385AB9FA6C3EE6
+2:44AM INF finalized block block_app_hash=8EBA37BD981B9873AFEB58C0FD4737EAB3F1E47D265F6CEDC5E00B9ED72D963A height=82 module=state num_txs_res=5 num_val_updates=1
+2:44AM INF updates to validators module=state updates=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550:5134
+2:44AM INF Timed out dur=485.338542 height=83 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5802E01D46A4909F022F89B32E18C76F266538EB752D87E029C761F6371CD818","parts":{"hash":"DE2CA680E9594B67B1220BAD075CFB29F75AACEB125A7847BCB3C8B6241793F4","total":1}},"height":83,"pol_round":-1,"round":0,"signature":"is3yIs+buCfjsidYSiVyfhkSbUjxnZ6lXlfD3U44HktEjfZUegd/sgfMAKpni+3i2mGp187jXnzC6J7bP1y5AA==","timestamp":"2026-10-31T02:44:08.925147024Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:44AM INF received complete proposal block hash=5802E01D46A4909F022F89B32E18C76F266538EB752D87E029C761F6371CD818 height=83 module=consensus
+2:44AM INF finalizing commit of block hash={} height=83 module=consensus num_txs=2 root=8EBA37BD981B9873AFEB58C0FD4737EAB3F1E47D265F6CEDC5E00B9ED72D963A
+2:44AM INF finalized block block_app_hash=5E4D46BDD15D1F03E01EEABA973E90D4E2B5F135F6BC817BEBA81A44AFF8EBD6 height=83 module=state num_txs_res=2 num_val_updates=0
+2:44AM INF Timed out dur=492.340192 height=84 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"DD2CBCFBE746C563563ABA3D10E470477BA64F8E5A5D6E7EE9F36FED26C5122A","parts":{"hash":"65D0F75EFD483D7A9EF7F0437CBA4B93CCFFDEC2B643E9016C5120127F57F415","total":1}},"height":84,"pol_round":-1,"round":0,"signature":"/UOh+WurQxIF0+CQBMG8z6MqHboAAPcNH8ED5UoQ1FA4UF6N8nH7n36Jb88UjgMG98jjkuBInQyZCbPpWVzJDg==","timestamp":"2026-10-31T02:44:11.629606316Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=DD2CBCFBE746C563563ABA3D10E470477BA64F8E5A5D6E7EE9F36FED26C5122A height=84 module=consensus
+2:44AM INF finalizing commit of block hash={} height=84 module=consensus num_txs=5 root=5E4D46BDD15D1F03E01EEABA973E90D4E2B5F135F6BC817BEBA81A44AFF8EBD6
+2:44AM INF finalized block block_app_hash=5BAA7BAEC84305D0C35838DD7D6F6E65A147425E06A1B6D098F074A76543C9FA height=84 module=state num_txs_res=5 num_val_updates=0
+2:44AM INF Timed out dur=481.920765 height=85 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"11553FD78772C57E9F75D298B93579C439816BB73346CE83C183AEBC6E988F4A","parts":{"hash":"74E4A32836475715928E44D892BC9DFB9965BE0CC989A7F173DA98180B3832A2","total":1}},"height":85,"pol_round":-1,"round":0,"signature":"Zz43J7VlQOtnejtEemJaeJFlhSDwjjPRC5HA9nzqcIdTNwrDaYFx8kAkcaNwAWWK3otOH/Ojzwun8eyliMPcCg==","timestamp":"2026-10-31T02:44:14.275367966Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=11553FD78772C57E9F75D298B93579C439816BB73346CE83C183AEBC6E988F4A height=85 module=consensus
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:47376
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47376,"Zone":""}
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:47404
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47404,"Zone":""}
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:47404
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47404,"Zone":""}
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:47376
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47376,"Zone":""}
+2:44AM INF finalizing commit of block hash={} height=85 module=consensus num_txs=5 root=5BAA7BAEC84305D0C35838DD7D6F6E65A147425E06A1B6D098F074A76543C9FA
+2:44AM INF finalized block block_app_hash=B4F9C5ED367B657D5B346F14238F5909A8EF651539AB76F348C82F13207DD3F4 height=85 module=state num_txs_res=5 num_val_updates=0
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47404,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47404,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Timed out dur=487.003205 height=86 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"ED40DCD95A5848DC7A4D99672B09537E805D273967DA18EFA4D45B46D4757FCC","parts":{"hash":"3D50354DC064D97E21D2A8D2BBE328EEA4EB16532F288E809A1768F74EF76960","total":1}},"height":86,"pol_round":-1,"round":0,"signature":"NB5YJQEexjauianGm4T+WL28KjdGEbFosXHupcLiq4Jg2XGdfiJndd5UreTKZ7Zu6+zOpjvlJSpSP5BVKVhWDw==","timestamp":"2026-10-31T02:44:16.935649365Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:44AM INF received complete proposal block hash=ED40DCD95A5848DC7A4D99672B09537E805D273967DA18EFA4D45B46D4757FCC height=86 module=consensus
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:47426
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47426,"Zone":""}
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47376,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47376,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:47426
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47426,"Zone":""}
+2:44AM INF finalizing commit of block hash={} height=86 module=consensus num_txs=2 root=B4F9C5ED367B657D5B346F14238F5909A8EF651539AB76F348C82F13207DD3F4
+2:44AM INF finalized block block_app_hash=E4FED8E470F238900EFA86254AD5A925F8585D584578A0FE1841975830E78F68 height=86 module=state num_txs_res=2 num_val_updates=0
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":47426,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":47426,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Timed out dur=454.642411 height=87 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0352F2876D979B71F2CF3BEB63C8D5298374B5A095404FA77411AC63C94CB785","parts":{"hash":"8775B4FD22021D584528A7C39AD92B9AC57C5773DB1C10D7A050B0EFAD7CE41D","total":13}},"height":87,"pol_round":-1,"round":0,"signature":"OV/2nOMU8B3TV7F2We3ArRMwnewl8gEUylRGq2C/RQstIJglaLgsGLTSNOjxKSUKWlldxGdw/8ZiPJm1DtxiDA==","timestamp":"2026-10-31T02:44:19.765839667Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:44AM INF received complete proposal block hash=0352F2876D979B71F2CF3BEB63C8D5298374B5A095404FA77411AC63C94CB785 height=87 module=consensus
+2:44AM INF finalizing commit of block hash={} height=87 module=consensus num_txs=3 root=E4FED8E470F238900EFA86254AD5A925F8585D584578A0FE1841975830E78F68
+2:44AM INF finalized block block_app_hash=E3B6C1FA39341E3A32BC9FEACFDABD008A3A7E15E9254EAA2790E9B1CD5D0A16 height=87 module=state num_txs_res=3 num_val_updates=0
+2:44AM INF Timed out dur=483.700887 height=88 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CD32DF9DB410F6F7346D3B1CC43DA9AD71A709C187B0F796E364A3A37C1905A2","parts":{"hash":"65AE6057BFBB8F5BF7CB7341C0FE3AB23FDBB1FF4C38E455A5A4008A7787373E","total":19}},"height":88,"pol_round":-1,"round":0,"signature":"jtqwlQ3U2I/21VBwA021HEETi4MIXTeb8dNCgF/Vp/41RbQApdogBwofnGM1doDlYPU8W2qPXElC2DkeB3mEAg==","timestamp":"2026-10-31T02:44:22.810062868Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=CD32DF9DB410F6F7346D3B1CC43DA9AD71A709C187B0F796E364A3A37C1905A2 height=88 module=consensus
+2:44AM INF finalizing commit of block hash={} height=88 module=consensus num_txs=6 root=E3B6C1FA39341E3A32BC9FEACFDABD008A3A7E15E9254EAA2790E9B1CD5D0A16
+2:44AM INF finalized block block_app_hash=1BF7211BE57C4C1A84545E2783BEE95F5356E5023B322888AE06580CAC1943C8 height=88 module=state num_txs_res=6 num_val_updates=0
+2:44AM INF Timed out dur=473.320642 height=89 module=consensus round=0 step=1
+2:44AM INF applying cached proposal from catchup height=89 module=propagation peer=f921d190b6b56487ff726a2f5f7b3f826e8f5e1a round=0
+2:44AM INF applying cached compact block height=89 module=propagation round=0
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"30FD463C909FF3323E4B322A19C8C7A940F07A6B3849B972A6BE80C55A69C258","parts":{"hash":"0FEC16D6B24985E956D574114A71D794965B1E16899A170971DF4FBF139A4251","total":1}},"height":89,"pol_round":-1,"round":0,"signature":"ZYQGUJxO/Ej6lH1TuUYmV5bhuukkCdeXjUujiYCqf7SjiugLEJzVl/peWKA+Ji4XZPjYcFVYcBmgEe20D1p2DA==","timestamp":"2026-10-31T02:44:25.084659658Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=30FD463C909FF3323E4B322A19C8C7A940F07A6B3849B972A6BE80C55A69C258 height=89 module=consensus
+2:44AM INF finalizing commit of block hash={} height=89 module=consensus num_txs=3 root=1BF7211BE57C4C1A84545E2783BEE95F5356E5023B322888AE06580CAC1943C8
+2:44AM INF finalized block block_app_hash=7EA784E3E0E1F3C34001731498CD6909E22DA5BE1B6D615936BFF4BD6FB3848B height=89 module=state num_txs_res=3 num_val_updates=0
+2:44AM INF Timed out dur=487.602999 height=90 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"F62B21D89B138FF5383211F542DB7EB7CEB2E86BE4CE76386B4699CC710F1460","parts":{"hash":"F265784735DE8604D67CE44FCE6DBCD5947F385873E6F4081DF0F374C8707E6E","total":1}},"height":90,"pol_round":-1,"round":0,"signature":"8EB8P2Gi7BKHft3H/HD8umxTXTtFtkYy9Ru1iI/WWbbCfVmXKSXCL+i2D/oQ81PsyIa7T4GfdSKigD0OJH12BA==","timestamp":"2026-10-31T02:44:27.792032798Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:44AM INF received complete proposal block hash=F62B21D89B138FF5383211F542DB7EB7CEB2E86BE4CE76386B4699CC710F1460 height=90 module=consensus
+2:44AM INF finalizing commit of block hash={} height=90 module=consensus num_txs=3 root=7EA784E3E0E1F3C34001731498CD6909E22DA5BE1B6D615936BFF4BD6FB3848B
+2:44AM INF finalized block block_app_hash=7A2A0E814FE84F96EC2A1ADDDBFB9EAB3D198AEBC927BC1144DDDECAD9971C56 height=90 module=state num_txs_res=3 num_val_updates=0
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:54986
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":54986,"Zone":""}
+2:44AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":54986,"Zone":""}
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":54986,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":54986,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Timed out dur=481.91947 height=91 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"149A7B67AC55AB11AB33E0231246470C0CEA52732F366E55A827C7BA93AA4412","parts":{"hash":"CAD0A1DDC02C460F19047E6BF11D1C20EAFFD879F10F74CB2967CACCD67183C1","total":13}},"height":91,"pol_round":-1,"round":0,"signature":"JyugsFX6C1R1CzfzS49ov3xVthSXcixxeHQri876sz1YFXiqdX7QCkxn63ZUz0Ei2+1huhSj3z4UArZZychtDw==","timestamp":"2026-10-31T02:44:30.413842937Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:44AM INF received complete proposal block hash=149A7B67AC55AB11AB33E0231246470C0CEA52732F366E55A827C7BA93AA4412 height=91 module=consensus
+2:44AM INF finalizing commit of block hash={} height=91 module=consensus num_txs=7 root=7A2A0E814FE84F96EC2A1ADDDBFB9EAB3D198AEBC927BC1144DDDECAD9971C56
+2:44AM INF finalized block block_app_hash=F6D076A28C6D41F348B37B6C92BF8D173053264DA0BD891F84DDF74FAA01AB60 height=91 module=state num_txs_res=7 num_val_updates=1
+2:44AM INF updates to validators module=state updates=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550:5161
+2:44AM INF Timed out dur=469.583234 height=92 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"72DB32DB3CB5A0F518FD56898D39B327457D6DEAF70C043C5FB3C0B1E8BACD9A","parts":{"hash":"7E81480E915D6479E727E859451AB78C0DE051373BE6F87CC69020FF69F582FD","total":1}},"height":92,"pol_round":-1,"round":0,"signature":"c91dhzGf2HBYyPdFyQ50KoQjVbngOkSNCjw3BtVy1HrUDKMJ2PvnNWPZ2ZtGUvLZdmRJPUlIe9bUhaBtOoRTAQ==","timestamp":"2026-10-31T02:44:33.104799011Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=72DB32DB3CB5A0F518FD56898D39B327457D6DEAF70C043C5FB3C0B1E8BACD9A height=92 module=consensus
+2:44AM INF finalizing commit of block hash={} height=92 module=consensus num_txs=3 root=F6D076A28C6D41F348B37B6C92BF8D173053264DA0BD891F84DDF74FAA01AB60
+2:44AM INF finalized block block_app_hash=38D4AE332CA60F889706076108BE80B8C10C7B0DBC280F0AF99120720D592E5B height=92 module=state num_txs_res=3 num_val_updates=0
+2:44AM INF Timed out dur=489.039761 height=93 module=consensus round=0 step=1
+2:44AM INF applying cached proposal from catchup height=93 module=propagation peer=dbe5a26cd989fc37aef3c96c019fd4c93c4e840c round=0
+2:44AM INF applying cached compact block height=93 module=propagation round=0
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C4D42077B014B10CA59693C7135E96385FD5DEFF05AFB6CF801ECB8D71CCE6C7","parts":{"hash":"2EFEEC42F72536E487BE4CDB7FF6F12E54D42E38C86FF1D178E081227078D367","total":1}},"height":93,"pol_round":-1,"round":0,"signature":"Gdfv2aDokkQeEcxFrkLRd9ryMZDrh2k7uWO1g6+8jD8g0V/SvxWkhsMxwyzy3H8nG69Hxy4DFcLlK83diR4XDA==","timestamp":"2026-10-31T02:44:35.715527547Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=C4D42077B014B10CA59693C7135E96385FD5DEFF05AFB6CF801ECB8D71CCE6C7 height=93 module=consensus
+2:44AM INF finalizing commit of block hash={} height=93 module=consensus num_txs=5 root=38D4AE332CA60F889706076108BE80B8C10C7B0DBC280F0AF99120720D592E5B
+2:44AM INF finalized block block_app_hash=0F6DA615820A9B9AE612832A6C25968C433CD14761FF1A279BCBD571084D1DEE height=93 module=state num_txs_res=5 num_val_updates=0
+2:44AM INF Timed out dur=488.545707 height=94 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"F96DFC9673FF8AEF6080D4DE9DA99492B9417FF44FB89BDD2529756B613A89F1","parts":{"hash":"430463BAAC06EF024A91F51DA34F13D8AA7092EE5771740AFC0A99BCF2D97B77","total":1}},"height":94,"pol_round":-1,"round":0,"signature":"EN8fF6iFbJ5xn1XUsGdllSFyYBgEEH80fn9ZvboJ1gPIxX6b0VaYeooDlYSbq8H1Y2ozRc45rvwpCVDmlKSQBw==","timestamp":"2026-10-31T02:44:38.408767165Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:44AM INF received complete proposal block hash=F96DFC9673FF8AEF6080D4DE9DA99492B9417FF44FB89BDD2529756B613A89F1 height=94 module=consensus
+2:44AM INF finalizing commit of block hash={} height=94 module=consensus num_txs=1 root=0F6DA615820A9B9AE612832A6C25968C433CD14761FF1A279BCBD571084D1DEE
+2:44AM INF finalized block block_app_hash=B2470FEA5B4CAF9B47CA983B375BF16B5DA5CD1B4E23EFC276A7542DC36CF889 height=94 module=state num_txs_res=1 num_val_updates=0
+2:44AM INF Timed out dur=492.363379 height=95 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"8589AE91A6012721A274C639A8ADAA07A4E5FF354B8D550F63CBCAEE41AE9330","parts":{"hash":"BCB51707DC45F8A95CD6F14FE0D3512BE8F9D09F4F1D41EAEFED24BB59E142DB","total":1}},"height":95,"pol_round":-1,"round":0,"signature":"43Wg/hYa/WLF+MQ2a7BzN0RQD9MtD86JrK96bMV23+t6dEGPZLsVMPtykc+XwTkWjFluljw2bwDgwYd78qeSDA==","timestamp":"2026-10-31T02:44:41.1188327Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=8589AE91A6012721A274C639A8ADAA07A4E5FF354B8D550F63CBCAEE41AE9330 height=95 module=consensus
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:46610
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46610,"Zone":""}
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:46618
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46618,"Zone":""}
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:46618
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46618,"Zone":""}
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:46610
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46610,"Zone":""}
+2:44AM INF finalizing commit of block hash={} height=95 module=consensus num_txs=6 root=B2470FEA5B4CAF9B47CA983B375BF16B5DA5CD1B4E23EFC276A7542DC36CF889
+2:44AM INF finalized block block_app_hash=29131B1A078587C92DA489882FAAF709A24982261D5DD4FA9A52F69C9F682F49 height=95 module=state num_txs_res=6 num_val_updates=1
+2:44AM INF updates to validators module=state updates=029BFCF232F54E15ECC186612BA06722445A2941:5269
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46610,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46610,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Timed out dur=483.619862 height=96 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"81BD3202B65D009492570FCFFCD23603BBFEF67C95C6910E4C6CC5159A980950","parts":{"hash":"43C70FE55DB9DD93F91BD2D539B6E1A28B2A5B39D9380A5CBD45D51CF5514687","total":1}},"height":96,"pol_round":-1,"round":0,"signature":"zP15Z7uTEIGb97GQKWpYHiPB8dBpHAJgiDw47YToZLAO8ZrKn8zeFmQpqPcfAhszB7/xHzTbLv10C77Hj76OCQ==","timestamp":"2026-10-31T02:44:43.768753135Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:44AM INF received complete proposal block hash=81BD3202B65D009492570FCFFCD23603BBFEF67C95C6910E4C6CC5159A980950 height=96 module=consensus
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46618,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46618,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:46628
+2:44AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46628,"Zone":""}
+2:44AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:46628
+2:44AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46628,"Zone":""}
+2:44AM INF finalizing commit of block hash={} height=96 module=consensus num_txs=1 root=29131B1A078587C92DA489882FAAF709A24982261D5DD4FA9A52F69C9F682F49
+2:44AM INF finalized block block_app_hash=1132EC7BECE3802A3863D6F2A7E5058ED2E140CC662BEE3A8473E9B3E49FA5DA height=96 module=state num_txs_res=1 num_val_updates=0
+2:44AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":46628,"Zone":""}
+2:44AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":46628,"Zone":""}
+2:44AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:44AM INF Timed out dur=491.359315 height=97 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B3D7CB6BDC51DED5832299AEB4831AD9F45A5B0FEDECBD47BA58349FA1819E23","parts":{"hash":"8D79758045406127DE9EA4E19687CDA357DF63D1086CB8FC1180B5091C55F003","total":4}},"height":97,"pol_round":-1,"round":0,"signature":"blGbjUe1FTy1Lv3bxak47wIlShAA64RVuSKP7rhAu+tEq4ElAN7RbcD9uLkpAyFoLAK47ZV6V+0B+8c9QaijAA==","timestamp":"2026-10-31T02:44:46.556908116Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=B3D7CB6BDC51DED5832299AEB4831AD9F45A5B0FEDECBD47BA58349FA1819E23 height=97 module=consensus
+2:44AM INF finalizing commit of block hash={} height=97 module=consensus num_txs=5 root=1132EC7BECE3802A3863D6F2A7E5058ED2E140CC662BEE3A8473E9B3E49FA5DA
+2:44AM INF finalized block block_app_hash=F8180397FBC5A45382F9D4CFCEA26B4BC2B9BB42A26373F2455FFEDD2AA96A6E height=97 module=state num_txs_res=5 num_val_updates=0
+2:44AM INF Timed out dur=486.05446 height=98 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3EA0996589D838D1FA831847EA9B76F639D69A406C88D391618F462863BB8DD5","parts":{"hash":"A2253AE3F083BC12B8D349CAEEBFA21E6FFF948ADD8FA8CE0DA99474E2966506","total":1}},"height":98,"pol_round":-1,"round":0,"signature":"u7PdyT6V4y+w9YWvlhoIR2WvUacnEn+44ydw7IK/WCKs9lIWGAp4v1K9JlyldeL2jeymRlXVaYjPejbLv2bUAA==","timestamp":"2026-10-31T02:44:49.180604757Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:44AM INF received complete proposal block hash=3EA0996589D838D1FA831847EA9B76F639D69A406C88D391618F462863BB8DD5 height=98 module=consensus
+2:44AM INF finalizing commit of block hash={} height=98 module=consensus num_txs=2 root=F8180397FBC5A45382F9D4CFCEA26B4BC2B9BB42A26373F2455FFEDD2AA96A6E
+2:44AM INF finalized block block_app_hash=4B16FDBC69301777635B3C95DF21F01C59ED408FA7DAF9BEC36133692324845F height=98 module=state num_txs_res=2 num_val_updates=0
+2:44AM INF Timed out dur=484.218637 height=99 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A00D29612B159CAB8560B6E3F2C1D3841D8E46E6F0A5CA127F9FA585939F7CFE","parts":{"hash":"0612D24CB69B70EF40F6B5F0A41D9EA0C4C65EA80CDD0149091A25725B7E7392","total":1}},"height":99,"pol_round":-1,"round":0,"signature":"0UIIyUcRzB6H6GQUvnU5LIxle/xrBdy+WwgzSGLqb+six6KUeHOGdwDvZ3+U1eZjjfiGwL3s68NPnKV7C9TGDw==","timestamp":"2026-10-31T02:44:51.862432472Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:44AM INF received complete proposal block hash=A00D29612B159CAB8560B6E3F2C1D3841D8E46E6F0A5CA127F9FA585939F7CFE height=99 module=consensus
+2:44AM INF finalizing commit of block hash={} height=99 module=consensus num_txs=4 root=4B16FDBC69301777635B3C95DF21F01C59ED408FA7DAF9BEC36133692324845F
+2:44AM INF finalized block block_app_hash=7A32A1BA188708CB6A273FB3C3A62C53C3B21589DAA620B8F564555B2A01C60C height=99 module=state num_txs_res=4 num_val_updates=0
+2:44AM INF Timed out dur=484.361083 height=100 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"76464344CC30CD63FDFA83CB183DEED1A14E4353D14C181FED9F87582DCB9086","parts":{"hash":"F93EDBC2075F6C465845B87CAC37FB5F419799E3DD1ACBA2FE5ADE08112F39C8","total":1}},"height":100,"pol_round":-1,"round":0,"signature":"NkDvarO1IntkZSyJqGR+9MkjseT1xkSyBzPLGcvY11O8o+o/5+ZaGA8GuZherlZNX5uF+ChZa58MK4Sgj0aiAQ==","timestamp":"2026-10-31T02:44:54.520096765Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:44AM INF received complete proposal block hash=76464344CC30CD63FDFA83CB183DEED1A14E4353D14C181FED9F87582DCB9086 height=100 module=consensus
+2:44AM INF finalizing commit of block hash={} height=100 module=consensus num_txs=3 root=7A32A1BA188708CB6A273FB3C3A62C53C3B21589DAA620B8F564555B2A01C60C
+2:44AM INF finalized block block_app_hash=9C4C6C0B393B6BEDB8F249A2757AE0D620661EC63DF1CA899A1FA63DC494C028 height=100 module=state num_txs_res=3 num_val_updates=1
+2:44AM INF updates to validators module=state updates=029BFCF232F54E15ECC186612BA06722445A2941:5268
+2:44AM INF creating state snapshot height=100 module=server
+2:44AM INF completed state snapshot format=3 height=100 module=server
+2:44AM INF Timed out dur=480.422992 height=101 module=consensus round=0 step=1
+2:44AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0CB97791BB47A49634E1B8AB57B74116938DE741E41921B7A55A65D43752563D","parts":{"hash":"D0CD562D212C463C508C8D629E6EFD5E32472F526B31F8A874CC65B22BB89161","total":1}},"height":101,"pol_round":-1,"round":0,"signature":"WYxLo2mWisPNb8f9/hbJFrPijCxiz4sciK6j3YJHaEOt031bfSCDDWQlrbBbJ4IxNDmjJ8hcgEVRw0OeyUZVAg==","timestamp":"2026-10-31T02:44:57.413851068Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:44AM INF received complete proposal block hash=0CB97791BB47A49634E1B8AB57B74116938DE741E41921B7A55A65D43752563D height=101 module=consensus
+2:44AM INF finalizing commit of block hash={} height=101 module=consensus num_txs=3 root=9C4C6C0B393B6BEDB8F249A2757AE0D620661EC63DF1CA899A1FA63DC494C028
+2:44AM INF finalized block block_app_hash=8EDE1AAB7D3CDCBE4E691E5A00C33D984341E270EEF62773A3B37B9B923C6FB5 height=101 module=state num_txs_res=3 num_val_updates=0
+2:44AM INF Timed out dur=475.370559 height=102 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2A76CEEB989ACD931DB942BCD2F461BB5645F3A171C662D2443E4B5CB6511BB1","parts":{"hash":"605E300E3DE589BFF2338BC0E7475F1A66E0CA415738DB1E07F47D2AF11FF524","total":32}},"height":102,"pol_round":-1,"round":0,"signature":"94HYsefQDrJ8Zb+PD2QgUAMrdL05qNGa3Uv3BJz00sgqJJtCQ76QR9osj+xhQYmFMWKXb00UB49FI8KSZ96WAg==","timestamp":"2026-10-31T02:45:00.003815181Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:45AM INF received complete proposal block hash=2A76CEEB989ACD931DB942BCD2F461BB5645F3A171C662D2443E4B5CB6511BB1 height=102 module=consensus
+2:45AM INF Timed out dur=3000 height=102 module=consensus round=0 step=3
+2:45AM INF finalizing commit of block hash={} height=102 module=consensus num_txs=7 root=8EDE1AAB7D3CDCBE4E691E5A00C33D984341E270EEF62773A3B37B9B923C6FB5
+2:45AM INF finalized block block_app_hash=6EE7AD9485F2081A020F3A40B88A92A41907998B016AD08B372B919908614009 height=102 module=state num_txs_res=7 num_val_updates=0
+2:45AM INF Timed out dur=476.30312 height=103 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D051B03736D19B541E6B8031B04D95165778C395EAD326A2EC7815D999494B8B","parts":{"hash":"E1D4A1FC0D15A9B52D5B6AA138D75353C9457581F4AD1D37CA7EBD7D6DB9B5C6","total":1}},"height":103,"pol_round":-1,"round":0,"signature":"OdE66b7ek2WV6LgcIogCnmYqaXi60gw7CY/zODBnj8H91ba/xs0kMwd0Fg3/z30hga4HB4CIeIL6RGlAQ6REAw==","timestamp":"2026-10-31T02:45:04.807097071Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:45AM INF received complete proposal block hash=D051B03736D19B541E6B8031B04D95165778C395EAD326A2EC7815D999494B8B height=103 module=consensus
+2:45AM INF finalizing commit of block hash={} height=103 module=consensus num_txs=4 root=6EE7AD9485F2081A020F3A40B88A92A41907998B016AD08B372B919908614009
+2:45AM INF finalized block block_app_hash=05C3A4C41C46E6054F992A8A6586088ECA7CB72FAA33B6CC61335FA58AC3C55D height=103 module=state num_txs_res=4 num_val_updates=0
+2:45AM INF Timed out dur=478.913987 height=104 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9E07B1B902B59ADDB1DD80F015D62454ACA336C1FBF4A415D176F6F590DC53FA","parts":{"hash":"2F373A83BEB2387330BC7AC5EDF7F06374743892CE67E99356BEC2AC4B1861F2","total":1}},"height":104,"pol_round":-1,"round":0,"signature":"Jjufvdx/IQMCGg/jXMMmDp0PtDmHmxgjs3HqIFl8suklGPHB8pBYGMgHJvgp5E91EivspT7JCS3vkoZJyeekBw==","timestamp":"2026-10-31T02:45:07.469868559Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:45AM INF received complete proposal block hash=9E07B1B902B59ADDB1DD80F015D62454ACA336C1FBF4A415D176F6F590DC53FA height=104 module=consensus
+2:45AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:38442
+2:45AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38442,"Zone":""}
+2:45AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:38442
+2:45AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38442,"Zone":""}
+2:45AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:38404
+2:45AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38404,"Zone":""}
+2:45AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:38404
+2:45AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38404,"Zone":""}
+2:45AM INF finalizing commit of block hash={} height=104 module=consensus num_txs=2 root=05C3A4C41C46E6054F992A8A6586088ECA7CB72FAA33B6CC61335FA58AC3C55D
+2:45AM INF finalized block block_app_hash=1E59EC1014BACA3CAAFD755B57025762893CCDD636E3D2B1C9CCE3BE5BC1DBAF height=104 module=state num_txs_res=2 num_val_updates=0
+2:45AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38442,"Zone":""}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38442,"Zone":""}
+2:45AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:45AM INF Timed out dur=490.376918 height=105 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"DFDACDA36C727594EAE8F99100E0F8534DA282A45D9A9A4F3AA466CA1163F16C","parts":{"hash":"B64348528E4E64504248701B17463B3D3AE1CBD9082D910AE19CB60D71B4ACA4","total":1}},"height":105,"pol_round":-1,"round":0,"signature":"M4MgvGrluVuAGFX24aB/CYwDTkqzaBJCmIV3OdHLq/J3ffJeUWtNu11i+wtbUyqjjxfqIbBkWuYsP5KTuZfiAg==","timestamp":"2026-10-31T02:45:10.181730447Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:45AM INF received complete proposal block hash=DFDACDA36C727594EAE8F99100E0F8534DA282A45D9A9A4F3AA466CA1163F16C height=105 module=consensus
+2:45AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38404,"Zone":""}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38404,"Zone":""}
+2:45AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:45AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:38462
+2:45AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38462,"Zone":""}
+2:45AM INF Subscribe to query module=rpc query=tm.event='NewBlock' remote=127.0.0.1:38462
+2:45AM INF WSJSONRPC method=subscribe module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38462,"Zone":""}
+2:45AM INF finalizing commit of block hash={} height=105 module=consensus num_txs=3 root=1E59EC1014BACA3CAAFD755B57025762893CCDD636E3D2B1C9CCE3BE5BC1DBAF
+2:45AM INF finalized block block_app_hash=4B33AF3C35232069ABB4587A0D4F70F058EB63F3AF28C70F50839A126899825E height=105 module=state num_txs_res=3 num_val_updates=0
+2:45AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":38462,"Zone":""}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":38462,"Zone":""}
+2:45AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:45AM INF Timed out dur=481.224116 height=106 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B2D3854E8CBE044A80A4EA03196624DD582BC77754F67CCCE0A63950FEEA21A5","parts":{"hash":"08829BA19496B7759AB79F4ED7F9A6BF900787F0FF281E5C922795829D45EC32","total":10}},"height":106,"pol_round":-1,"round":0,"signature":"qH5OlxSvajYdQxuWJbGbXbSDDMLYOSvBrUTzvDFF0v7u/YAzYh2aFY0NYuYer+VL+WkSBnML/Uhg7bj695lMAA==","timestamp":"2026-10-31T02:45:12.887664355Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:45AM INF received complete proposal block hash=B2D3854E8CBE044A80A4EA03196624DD582BC77754F67CCCE0A63950FEEA21A5 height=106 module=consensus
+2:45AM INF finalizing commit of block hash={} height=106 module=consensus num_txs=7 root=4B33AF3C35232069ABB4587A0D4F70F058EB63F3AF28C70F50839A126899825E
+2:45AM INF finalized block block_app_hash=DA6314228C6C251AC4ED0415EEF8851F12D2A0B02F30BBAF8E0FCAB7E7C44840 height=106 module=state num_txs_res=7 num_val_updates=0
+2:45AM INF New websocket connection module=rpc-server protocol=websocket remote=127.0.0.1:60630
+2:45AM INF service start impl=wsConnection module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":60630,"Zone":""}
+2:45AM INF WSJSONRPC method=broadcast_tx_sync module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":60630,"Zone":""}
+2:45AM ERR Failed to read request err="websocket: close 1006 (abnormal closure): unexpected EOF" module=rpc-server protocol=websocket remote={"IP":"127.0.0.1","Port":60630,"Zone":""}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=rpc-server msg={} protocol=websocket remote={"IP":"127.0.0.1","Port":60630,"Zone":""}
+2:45AM ERR error while stopping connection error="already stopped" module=rpc-server protocol=websocket
+2:45AM INF Timed out dur=479.693491 height=107 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7B5C4F21569AB5FC8D560B6E709620B21D8A5B8882D80A3C35E9F640228B997C","parts":{"hash":"7A1E3D709F1C6E6F634FC002588A36F1AFA574DB1D18028AB4DCDCA695C8B468","total":1}},"height":107,"pol_round":-1,"round":0,"signature":"5QpZdCW1jTMa45KXDtfgnAYRpV0i/+VL56C0yiZgMHlBzQ08uJALGHreafARVK9nvg34EJGmZSpTcClx/9F0AA==","timestamp":"2026-10-31T02:45:15.619074837Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:45AM INF received complete proposal block hash=7B5C4F21569AB5FC8D560B6E709620B21D8A5B8882D80A3C35E9F640228B997C height=107 module=consensus
+2:45AM INF finalizing commit of block hash={} height=107 module=consensus num_txs=4 root=DA6314228C6C251AC4ED0415EEF8851F12D2A0B02F30BBAF8E0FCAB7E7C44840
+2:45AM INF finalized block block_app_hash=CDE9F5BB1A538A92AEFA8F5B8BCEA730F528D3ED7D31F258048E73E4951A3E27 height=107 module=state num_txs_res=4 num_val_updates=0
+2:45AM INF Timed out dur=473.399397 height=108 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"83A6892CE250C2C06A61DE6FDA919C31D576E23E96BCEBB5D5BB76F496E0F0C2","parts":{"hash":"53BEB831FDE404E1D576EE0A5024A07D24B61912A6204AE4CE55481EADE4FF1A","total":1}},"height":108,"pol_round":-1,"round":0,"signature":"eIcq5kcf2gOQO1QW1KKb5EPdicWrlv2q5c/4DVEl3M3/ua7QJ7Qk/5dI9nFNJdBGnidxWIZCIWddxUabEVfrDg==","timestamp":"2026-10-31T02:45:18.246789119Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:45AM INF received complete proposal block hash=83A6892CE250C2C06A61DE6FDA919C31D576E23E96BCEBB5D5BB76F496E0F0C2 height=108 module=consensus
+2:45AM INF finalizing commit of block hash={} height=108 module=consensus num_txs=3 root=CDE9F5BB1A538A92AEFA8F5B8BCEA730F528D3ED7D31F258048E73E4951A3E27
+2:45AM INF finalized block block_app_hash=82333FF5356C6C335F42D187BFF0FE672C935632180489FCCEDE8004B1B565DC height=108 module=state num_txs_res=3 num_val_updates=0
+2:45AM INF Timed out dur=488.452973 height=109 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BEB293D97E6F69C6D3EFE0D8AC623F675C24AD07F6F9711896222578B63463B5","parts":{"hash":"94C08170AB41F0C23A444F80ED06D471488EA5A7E3EFF9F4EFE87DDA3808F419","total":1}},"height":109,"pol_round":-1,"round":0,"signature":"C7g7yOYaLrfTyVIuAumqEGQtBIckG8pG2+uaX9G8KfdZoTEhprLvcfuVeqDvmwJkKFpSu9CkvHBeBVtKqcXZCw==","timestamp":"2026-10-31T02:45:20.957416771Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:45AM INF received complete proposal block hash=BEB293D97E6F69C6D3EFE0D8AC623F675C24AD07F6F9711896222578B63463B5 height=109 module=consensus
+2:45AM INF finalizing commit of block hash={} height=109 module=consensus num_txs=5 root=82333FF5356C6C335F42D187BFF0FE672C935632180489FCCEDE8004B1B565DC
+2:45AM INF finalized block block_app_hash=3604BDCE9E7B77C1207DEAFED050A3A2074ADF6F49A06DF41421A9D55C40F0DC height=109 module=state num_txs_res=5 num_val_updates=0
+2:45AM INF Timed out dur=470.540683 height=110 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B9F60E4DF10A2700AEA2E438068B07A6B7B3F602B2146ED20CB723702A027037","parts":{"hash":"8DD85909C6A41DC4B7B1479CAAA963A12C5E7108B77E055F1BA90A7CE8743A2A","total":1}},"height":110,"pol_round":-1,"round":0,"signature":"Gu2l9pZvr6lrXOOSlFkYO+trkZFVb8891MH+4ielr0tAAGF4oSq1Awjx4yNXYp/9922VxJRXT/rKKnxh+BVbCA==","timestamp":"2026-10-31T02:45:23.608893801Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:45AM INF received complete proposal block hash=B9F60E4DF10A2700AEA2E438068B07A6B7B3F602B2146ED20CB723702A027037 height=110 module=consensus
+2:45AM INF finalizing commit of block hash={} height=110 module=consensus num_txs=1 root=3604BDCE9E7B77C1207DEAFED050A3A2074ADF6F49A06DF41421A9D55C40F0DC
+2:45AM INF finalized block block_app_hash=F8155B0A42A4D44A4938B711167540C1C76DEFAB7228CE3D577897E59460D37D height=110 module=state num_txs_res=1 num_val_updates=0
+2:45AM INF Timed out dur=487.826547 height=111 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7C3029B46262174F1241D12C0464268056817BF68AA5F4AD05425340F74B3053","parts":{"hash":"FBE1057BEE0DFFB6F3713EB55F5692687F307FC2B819C51517C80FBFA7B5217D","total":1}},"height":111,"pol_round":-1,"round":0,"signature":"TbkOW2Qs/NloCSX5yD3doTje3Vr3qioXg1zFZUsOOTEyCRFC35wdLyct0mkd97GewLcrLch99RiXD4L0xHVJCQ==","timestamp":"2026-10-31T02:45:26.31801627Z"} proposer=111555C8C4138D4D4916FA46678563D99EA98774
+2:45AM INF received complete proposal block hash=7C3029B46262174F1241D12C0464268056817BF68AA5F4AD05425340F74B3053 height=111 module=consensus
+2:45AM INF finalizing commit of block hash={} height=111 module=consensus num_txs=5 root=F8155B0A42A4D44A4938B711167540C1C76DEFAB7228CE3D577897E59460D37D
+2:45AM INF finalized block block_app_hash=14B5A76973CEC735E2A694E4ED1D682A45044FDADCF7CBEC10A57CF30E75742B height=111 module=state num_txs_res=5 num_val_updates=0
+2:45AM INF Timed out dur=482.772347 height=112 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"94A16B2C9FBF25FF9977E711247349730DB1CE3E6B3E1828CA8E3BD8E7E861A9","parts":{"hash":"40F2758444F0295A908FB503B8CAEDAAA1B99847F5F4DCC73D8A5BB09391DEC4","total":4}},"height":112,"pol_round":-1,"round":0,"signature":"/Q6MkZ2rDJRi+qoyzejykxOIkR6j4gE4tDML43u0dUqHO4nyLLP58ZLpwcHaSglJhGrHDSpiRzuPqMkeUtKbDA==","timestamp":"2026-10-31T02:45:29.003938777Z"} proposer=ED3F884DA9DAC97504A6D11F624A72BB9DB9E6A9
+2:45AM INF received complete proposal block hash=94A16B2C9FBF25FF9977E711247349730DB1CE3E6B3E1828CA8E3BD8E7E861A9 height=112 module=consensus
+2:45AM INF finalizing commit of block hash={} height=112 module=consensus num_txs=4 root=14B5A76973CEC735E2A694E4ED1D682A45044FDADCF7CBEC10A57CF30E75742B
+2:45AM INF finalized block block_app_hash=273AD1D08FBD72F29A02D9D8D785855939724763548D3DC459F16696AEF3793C height=112 module=state num_txs_res=4 num_val_updates=0
+2:45AM INF Timed out dur=482.072629 height=113 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E987B214F1FD3B51BD63C842077802EF65376607A9457AD7A04DBED18527EDCA","parts":{"hash":"582A38A37701C1E8AC0066E373D74E17B7E14011B774F9EB3111A01FA389E85A","total":1}},"height":113,"pol_round":-1,"round":0,"signature":"bWJIH+jj3Ug0R/bx/uJ24Ccpb+pBew7PrSbVLtNjpuwowuCVcxSIOPH6MPlPjvjtSb33/Uu7KZauP9AK7zcwDw==","timestamp":"2026-10-31T02:45:31.667521739Z"} proposer=029BFCF232F54E15ECC186612BA06722445A2941
+2:45AM INF received complete proposal block hash=E987B214F1FD3B51BD63C842077802EF65376607A9457AD7A04DBED18527EDCA height=113 module=consensus
+2:45AM INF finalizing commit of block hash={} height=113 module=consensus num_txs=5 root=273AD1D08FBD72F29A02D9D8D785855939724763548D3DC459F16696AEF3793C
+2:45AM INF finalized block block_app_hash=03C59CEFADC9B0246152D074DB83A5DB3C39ACD6CCFDA65BA7B253042054586E height=113 module=state num_txs_res=5 num_val_updates=0
+2:45AM INF Timed out dur=487.768328 height=114 module=consensus round=0 step=1
+2:45AM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3F102D795A9C570880F258FBC5B2C7043931CDF56177FD91AA308925F1341EBA","parts":{"hash":"6DD3753D6EDF8FC0C36C281AD267B87241BBE41AC138B749E529E75604A0A0AB","total":1}},"height":114,"pol_round":-1,"round":0,"signature":"5OqJk+XrzFY8G+NjyOaNfBpdzRaGLAx978G8331ohjatgg1nL6j2arn9cz99PuYsOJ5QBYxDvS1NjWYy6eQGCg==","timestamp":"2026-10-31T02:45:34.36702398Z"} proposer=5286C299C234AA5ACC2C3D5088C2BFA1DFD19550
+2:45AM INF received complete proposal block hash=3F102D795A9C570880F258FBC5B2C7043931CDF56177FD91AA308925F1341EBA height=114 module=consensus
+2:45AM INF finalizing commit of block hash={} height=114 module=consensus num_txs=2 root=03C59CEFADC9B0246152D074DB83A5DB3C39ACD6CCFDA65BA7B253042054586E
+2:45AM INF finalized block block_app_hash=9AFCE75EE38104EA007256150302438C8C28DFEE4DAB2E8CF4A3E2B1D422AFF9 height=114 module=state num_txs_res=2 num_val_updates=0
+2:45AM INF caught signal module=server signal=terminated
+2:45AM INF stopping gRPC server... address=127.0.0.1:32090 module=grpc-server
+2:45AM INF stopping API server... address=tcp://127.0.0.1:24317 module=api-server
+2:45AM INF RPC HTTP server stopped err="accept tcp 127.0.0.1:24317: use of closed network connection" module=api-server
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=server msg={}
+2:45AM INF Stopping Node module=server
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=events msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=pubsub msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={}
+2:45AM ERR canceled grpc subscription. retrying module=rpc
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"b7fe0aec7259d3a1129669a0ce60823ab810bfb8","ip":"127.0.0.1","port":50157}
+2:45AM ERR Stopping peer for error err="read tcp 127.0.0.1:40180->127.0.0.1:50157: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:50157} b7fe0aec7259d3a1129669a0ce60823ab810bfb8 out}" reactor=p2p
+2:45AM INF service stop impl="Peer{MConn{127.0.0.1:50157} b7fe0aec7259d3a1129669a0ce60823ab810bfb8 out}" module=p2p msg={} peer={"id":"b7fe0aec7259d3a1129669a0ce60823ab810bfb8","ip":"127.0.0.1","port":50157}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"f921d190b6b56487ff726a2f5f7b3f826e8f5e1a","ip":"127.0.0.1","port":45166}
+2:45AM ERR Stopping peer for error err="read tcp 127.0.0.1:49656->127.0.0.1:45166: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:45166} f921d190b6b56487ff726a2f5f7b3f826e8f5e1a in}" reactor=p2p
+2:45AM INF service stop impl="Peer{MConn{127.0.0.1:45166} f921d190b6b56487ff726a2f5f7b3f826e8f5e1a in}" module=p2p msg={} peer={"id":"f921d190b6b56487ff726a2f5f7b3f826e8f5e1a","ip":"127.0.0.1","port":45166}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"9ce5a07e9f03d626680ac588a75066429e518b37","ip":"127.0.0.1","port":45174}
+2:45AM ERR Stopping peer for error err="read tcp 127.0.0.1:49656->127.0.0.1:45174: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:45174} 9ce5a07e9f03d626680ac588a75066429e518b37 in}" reactor=p2p
+2:45AM INF service stop impl="Peer{MConn{127.0.0.1:45174} 9ce5a07e9f03d626680ac588a75066429e518b37 in}" module=p2p msg={} peer={"id":"9ce5a07e9f03d626680ac588a75066429e518b37","ip":"127.0.0.1","port":45174}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"dbe5a26cd989fc37aef3c96c019fd4c93c4e840c","ip":"127.0.0.1","port":45190}
+2:45AM ERR Stopping peer for error err="read tcp 127.0.0.1:49656->127.0.0.1:45190: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:45190} dbe5a26cd989fc37aef3c96c019fd4c93c4e840c in}" reactor=p2p
+2:45AM INF service stop impl="Peer{MConn{127.0.0.1:45190} dbe5a26cd989fc37aef3c96c019fd4c93c4e840c in}" module=p2p msg={} peer={"id":"dbe5a26cd989fc37aef3c96c019fd4c93c4e840c","ip":"127.0.0.1","port":45190}
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=statesync msg={}
+2:45AM INF service stop impl={"BlockMaxBytes":33554432,"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=propagation msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=server msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=blocksync msg={}
+2:45AM ERR Error stopping pool err="already stopped" module=blocksync
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"Metrics":{"ApplicationRejectedProposals":{},"BlockGossipPartsReceived":{},"BlockIntervalSeconds":{},"BlockParts":{},"BlockSizeBytes":{},"BlockTimeSeconds":{},"ByzantineValidators":{},"ByzantineValidatorsPower":{},"ChainSizeBytes":{},"CommittedHeight":{},"DuplicateBlockPart":{},"DuplicateVote":{},"FullPrevoteDelay":{},"Height":{},"LateVotes":{},"MissingValidators":{},"MissingValidatorsPower":{},"NumTxs":{},"PrecommitsCounted":{},"PrecommitsStakingPercentage":{},"ProposalCreateCount":{},"ProposalReceiveCount":{},"ProposerMissedProposals":{},"QuorumPrecommitDelay":{},"QuorumPrevoteDelay":{},"RoundDurationSeconds":{},"RoundVotingPowerPercent":{},"Rounds":{},"StartHeight":{},"StepDurationSeconds":{},"TimedOutProposals":{},"TotalTxs":{},"ValidatorLastSignedHeight":{},"ValidatorMissedBlocks":{},"ValidatorPower":{},"Validators":{},"ValidatorsPower":{},"VoteExtensionReceiveCount":{}},"Switch":{"Logger":{"Logger":{}}}} module=consensus msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"StartedPrecommitSleep":{}} module=consensus msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=consensus msg={}
+2:45AM INF service stop impl={"Logger":{"Logger":{}}} module=consensus msg={} wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:45AM INF service stop impl={"Dir":"/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal","Head":{"ID":"EJDrG2Jjoys8:/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal","Path":"/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal"},"ID":"group:EJDrG2Jjoys8:/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal","Logger":{"Logger":{}}} module=consensus msg={} wal=/workspace/scratch/rpc-181/soak-final/run-809bfca-pass1/n0/data/cs.wal/wal
+2:45AM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=evidence msg={}
+2:45AM INF Closing rpc listener listener={"Listener":{}} module=server
+2:45AM INF RPC HTTP server stopped err="accept tcp 127.0.0.1:49657: use of closed network connection" module=rpc-server
+2:45AM ERR Error serving server err="accept tcp 127.0.0.1:49657: use of closed network connection" module=server
+2:45AM INF Closing rpc listener listener={"Listener":{}} module=server
+2:45AM ERR Stopped accept routine, as transport is closed module=p2p numPeers=0
+2:45AM INF Closing blockstore module=server
+2:45AM INF Closing statestore module=server
+2:45AM INF Closing evidencestore module=server
+2:45AM INF Closing application.db module=server
+2:45AM INF Closing snapshots/metadata.db module=server
