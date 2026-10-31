@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "oracle": {
+    "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+    "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "compiler": "go version go1.26.9 linux/amd64",
+    "build_tags": ["ledger"],
+    "build_recipe_sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835"
+  },
+  "chain": {
+    "chain_id": "rs-devnet-1",
+    "captured_height": 20,
+    "app_hash": "A24AED6D3E95DF951E9A37B40364623EA4AF5B5CD30BC231CB7CE98B19C9E853",
+    "genesis_sha256": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2"
+  },
+  "evidence": {
+    "capture_sha256": "c17e749d19d10740afce2cc74a95329c1c04ca92819e9431311ffc27a89d43fe",
+    "capture_source_sha256": "b1d84b0043daa079638984c3d7b1cdb8ef892fa3f47467d5a6e64f041f1a18c7",
+    "go_state_sha256": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70",
+    "mainnet_observation_sha256": "8444bd39fde4762043bf5b9f87245b667545db137b78648bc5fb1b1cabf15798"
+  }
+}
