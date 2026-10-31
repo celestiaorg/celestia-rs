@@ -41,6 +41,28 @@ jobs:
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
       - run: cargo test --workspace --all-features
 
+  rpc-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify RPC evidence accounting
+        run: python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
+      - name: Validate inventory and admitted current-release regressions
+        run: >-
+          python3 conformance/mainnet-rpc/coverage.py --run-current
+          --json ${{ runner.temp }}/rpc-coverage.json
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rpc-evidence-inventory
+          path: ${{ runner.temp }}/rpc-coverage.json
+          retention-days: 30
+
   # A small, deterministic budget protects the signer and socket boundary.
   # The complete per-crate report runs nightly, without a second PR workspace build.
   coverage-critical:
