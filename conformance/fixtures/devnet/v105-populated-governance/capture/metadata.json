@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T05:01:30.556864+00:00",
+  "method": "fresh tagged v10.5.0 governance workload and live four-transport capture on one isolated devnet",
+  "state_identity": {
+    "chain_id": "rs-devnet-1",
+    "tip_height": 35,
+    "query_height": 34,
+    "app_hash": "518B6626B2850F82A79D0EDD0F347A9ED475DB4E21BC52B42CEE92028E27B164"
+  },
+  "source_sha256": {
+    "Cargo.lock": "22deb8c40a615decae72af15bd1c10bffcc44009de06e272b12702422fbd3aac",
+    "Cargo.toml": "d2b5c1740effc5b513f8e77860c1146e2bdf72b5acc2df476522051613bfb689",
+    "conformance/devnet-oracle/go.mod": "06acdcd757d3d30f8d64ff2486e27622582c8fadda7ac7b71ed00d6a7560c5f1",
+    "conformance/devnet-oracle/go.sum": "59a4faeed3441a7c98604f902c7b3331f5a0f7d94ee5b2fcdcbf63694653375c",
+    "conformance/devnet-oracle/main.go": "663cd0247e73fdaed1ede493724b0c34b8c0d6e9895392f5560d0c06e80bb897",
+    "conformance/devnet/build-bins.sh": "031981d6ca5911c603e96305472cabab9384a455ec257ba0a58beedfababab39",
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "conformance/devnet/workloads/lib.sh": "5a4d7711a967cca8684149a84e43b1e0dac7c68c0ebf41b01fa30fb135289b86",
+    "conformance/devnet/workloads/populated-governance.genesis.py": "40e0e382743dd44d1f790ee08bb90cad822293852e2b273fdfa0d10201ee3666",
+    "conformance/devnet/workloads/populated-governance.sh": "0e34c3f2252b2d3478187742e8a3bd2690dc5bd3c1b9264189a293822ff84f02",
+    "conformance/devnet/workloads/wait_tx.py": "4c2b030c1a33d1f1a3c319d601ccdff5a21350de4aeda085b1fa431117c64b63",
+    "conformance/mainnet-rpc/observe-mainnet.py": "64cd57a4173175811c7f2e72d30d817484ffb9eedbafed2ebd607c458dc142f5",
+    "conformance/mainnet-rpc/populated-governance/README.md": "0f0e35a8db68e3778b5b53d574c94f275e523b034e91634a12ffd266c0ead628",
+    "conformance/mainnet-rpc/populated-governance/capture.sh": "dca1cfa5ec92f4a20b9a9f6009b76d4f3d821a55929b48fc51e91d7b74652861",
+    "conformance/mainnet-rpc/populated-governance/devnet-keys/node_key.json": "22724f2bec82615694df7eb435b70eeded93d83b1d71e3bacb2ed62e10a23d32",
+    "conformance/mainnet-rpc/populated-governance/devnet-keys/priv_validator_key.json": "5da16574f43331fa2f13e8c9122ba15d8e50c5efe20085dc42cf64134383f6cb",
+    "conformance/mainnet-rpc/populated-governance/record.sh": "63bfd66e31872553ca5da7838ed5301846d62344058fbba97103a2de20c5c7cf",
+    "conformance/mainnet-rpc/populated-governance/verify.py": "8bb8868be2e9376429b00fb37cd00cf9de70dfce07dfc3c3a1a58956a558e7cb",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "conformance/rpccorpus/recorder/cmd/populated-governance/main.go": "dd4d3de13804aa5da50fec0de71c989fbee0d50aebcfa69eb1111cf9f76607b6",
+    "conformance/rpccorpus/recorder/cmd/populated-governance/main_test.go": "e2b7377dc7b6fa027d3f1a7f711a0726dde8312d32ba6c90eaea1f8063d9e7d6",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65",
+    "conformance/rpccorpus/recorder/main.go": "887a212fe7cb733f38db9e35e3ab8fef1713bb1611680f105b4e1097a6bf89fc",
+    "conformance/rpccorpus/recorder/record.go": "75bbb1e5977ae4e80a40fa606b1fbd0a66247e1ffa9b1fe7514ee25de9cfaa42",
+    "conformance/rpccorpus/recorder/validation.go": "5e21afa58bcedb962bda04084be5bad2f669b78bb132a1e1eff22777c29769c3",
+    "crates/devnet-conformance/Cargo.toml": "3bb83163e2022b93fa8575ae45768501cc272dd8286466fad2fa02f758876b20",
+    "crates/devnet-conformance/tests/populated_governance_transports.rs": "4285631b72d9246e48120f79ace36ceed91a848a9c4744707e6fca4f4d1b3115",
+    "crates/tier-4-runtime/api-server/Cargo.toml": "8956ce8dc3cbcf29b2c703d4ba79cc325541d250e6490c1d352be8b564ca0f25",
+    "crates/tier-4-runtime/api-server/src/rest.rs": "cb4de117c7652f795a8d03e93028737bf90c8ff292925abf5a44c4a86e9d2191"
+  },
+  "artifact_sha256": {
+    "genesis.json": "ccc234280bb2a885730db721f84f6eb24ad8cfa87599960fd0b86b22ab8bf523",
+    "abci.rec": "7a8268b046a77e9f98656f60425bae10cb0f32d5c4b69260f027897b4a9813eb",
+    "blocks.bin.gz": "d55a27014f3cbead9c3819640177f47d3a2e93950a5cc4717ecca4306802ee6c",
+    "meta.json": "097ad89bc2df68fc072d431fccecc479be39f277dd4668b92d7e200528e7e652",
+    "capture/transports.json": "bd378f440b8d997ff67dd011a638fea75851caa370e8b9f9e76a8940e7161d0e",
+    "capture/mainnet-observation.json": "7c129cadb3c5c1f592d11db1cf25b5bdccf9a4c9b7ef79765f3d33a46bc9d3d4",
+    "capture/app-build.json": "4e2272cab4af628eda43184c447b8de505c062c26b788fb2f9cf21574155ace3",
+    "capture/core-build.json": "57d2c9fd9a84e9c97c7b4c6491956c7c20c02466152ffb5e846ff295e78d4d80",
+    "capture/app-build-info.txt": "06129c7a234172f3c3de9a4aa87917e17bdb86b022ab8ca514d8cd465e56c479",
+    "capture/core-build-info.txt": "c9c7232b063a7e2006fc233d6bc033d440d1f06bffdd83275c19741d78ea200e",
+    "go-build-info.txt": "4725bbc8151b3a9facfe2335e54765514723311d72587b112311309f15227f8d",
+    "capture/abci-recorder-build-info.txt": "9e6bfe09b838fa1e2038161734da2ecc71c331d28497dd9cf599624628e55d1a",
+    "capture/populated-governance-build-info.txt": "e3da1d9e3a512922c2c1e3953e679142a3ba511518051c908c5fffe5bbd7a3f0",
+    "capture/rpc-recorder-build-info.txt": "f3bda1b3e798d145b8a3ed250ed28f25b11d1b96f0b1ef83bc0248f3cee2d9b8",
+    "capture/devnet-oracle-build-info.txt": "d6aa7901fc23cbf7d96385588260bf22f4388a905c25888a948d7270e30da9da",
+    "state/1.json": "57bbdc7191645ede133afe7934ac127f5f528e0aaf0482d4f55f177e0338a82c",
+    "state/35.json": "0b9f8fc3c0adcd7f3e98233236f5ec9b413fdb088141e324c2f772fe89c1a849"
+  },
+  "generator_binaries": {
+    "abci-recorder": {
+      "sha256": "a112bbe3127c2ac5917d743f62f180bfc687c7505d45065c5b019dc2fc429c0a",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/abci-recorder-build-info.txt",
+      "build_info_sha256": "9e6bfe09b838fa1e2038161734da2ecc71c331d28497dd9cf599624628e55d1a"
+    },
+    "populated-governance": {
+      "sha256": "3573b4cd6dc352b1b196853446863a6a92f946175e696bbfa23f3de908faa215",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/populated-governance/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/populated-governance-build-info.txt",
+      "build_info_sha256": "e3da1d9e3a512922c2c1e3953e679142a3ba511518051c908c5fffe5bbd7a3f0"
+    },
+    "rpc-recorder": {
+      "sha256": "d78e375cbfd883d09d464365dce399dce8ffab36bc4196dd77b358700801166c",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/main.go",
+        "conformance/rpccorpus/recorder/record.go",
+        "conformance/rpccorpus/recorder/validation.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/rpc-recorder-build-info.txt",
+      "build_info_sha256": "f3bda1b3e798d145b8a3ed250ed28f25b11d1b96f0b1ef83bc0248f3cee2d9b8"
+    },
+    "devnet-oracle": {
+      "sha256": "fb5e8f4e4e36faf8bf234a2faf8543c0258d08dc546d17676ade3ab320256e6a",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/devnet-oracle",
+      "sources": [
+        "conformance/devnet-oracle/main.go",
+        "conformance/devnet-oracle/go.mod",
+        "conformance/devnet-oracle/go.sum"
+      ],
+      "build_info": "capture/devnet-oracle-build-info.txt",
+      "build_info_sha256": "d6aa7901fc23cbf7d96385588260bf22f4388a905c25888a948d7270e30da9da"
+    }
+  },
+  "omissions": [
+    "proof validity is not asserted by this transport capture",
+    "governance proposal completion, cancellation and expiry remain separate captures",
+    "failed historical governance queries remain a separate capture",
+    "historical pagination key and offset traversal remain a separate capture",
+    "invalid pagination cursors and malformed/error requests remain separate captures",
+    "governance v1beta1 compatibility remains a separate capture",
+    "non-governance module workloads remain separate captures",
+    "invalid UTF-8 remains a separate capture"
+  ],
+  "regenerate": "MAINNET_OBSERVATION=<fresh observation.json> conformance/mainnet-rpc/populated-governance/record.sh"
+}

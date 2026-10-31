@@ -1,0 +1,3295 @@
+{
+  "schema_version": 1,
+  "chain_id": "rs-devnet-1",
+  "tip_height": 35,
+  "query_height": 34,
+  "app_hash": "518B6626B2850F82A79D0EDD0F347A9ED475DB4E21BC52B42CEE92028E27B164",
+  "state": {
+    "abci_info": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "response": {
+          "data": "celestia-app",
+          "version": "10.5.0",
+          "app_version": "10",
+          "last_block_height": "35",
+          "last_block_app_hash": "upHcNmRXSjsv0xQJGGFpRucekAKwkHMw1x/a+yx3IDM=",
+          "timeout_info": {
+            "timeout_propose": "3000000000",
+            "timeout_propose_delta": "500000000",
+            "timeout_prevote": "2000000000",
+            "timeout_prevote_delta": "500000000",
+            "timeout_precommit": "3000000000",
+            "timeout_precommit_delta": "500000000",
+            "timeout_commit": "500000000",
+            "delayed_precommit_timeout": "2100000000"
+          }
+        }
+      }
+    },
+    "committing_block": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "block_id": {
+          "hash": "B86D55055E76588C123C7346F83060050B751C99D86A1D642BEA2158EA58BF1C",
+          "parts": {
+            "total": 1,
+            "hash": "B1CBFEC49E6A85A7E68B3E72527437C504D7EEB883F050E36E3671069EA45EBB"
+          }
+        },
+        "block": {
+          "header": {
+            "version": {
+              "block": "11",
+              "app": "10"
+            },
+            "chain_id": "rs-devnet-1",
+            "height": "35",
+            "time": "2026-10-31T05:01:23.342517969Z",
+            "last_block_id": {
+              "hash": "3D3186386CB9684CFFDDBF671B17D6B1B61C4D8DE01F8816F333904CE65B4FC0",
+              "parts": {
+                "total": 1,
+                "hash": "95B6DDE3FC53CE430905D9AD31A7B7F0FC8E30E5A559F610D5BFC22E3419336E"
+              }
+            },
+            "last_commit_hash": "D7E93FC6F38BB4764FD95D49FEA5160115A4DF3F358E4A6C653C949499B57FFD",
+            "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+            "validators_hash": "1969F168F2A7BC3B8982F2A8536912C0A1A38B0EA8506ECA594B949FE0870E10",
+            "next_validators_hash": "1969F168F2A7BC3B8982F2A8536912C0A1A38B0EA8506ECA594B949FE0870E10",
+            "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+            "app_hash": "518B6626B2850F82A79D0EDD0F347A9ED475DB4E21BC52B42CEE92028E27B164",
+            "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            "proposer_address": "B11A450E0B927371B53CAF7D9589486B52A20CC0"
+          },
+          "data": {
+            "txs": [],
+            "square_size": "1"
+          },
+          "evidence": {
+            "evidence": []
+          },
+          "last_commit": {
+            "height": "34",
+            "round": 0,
+            "block_id": {
+              "hash": "3D3186386CB9684CFFDDBF671B17D6B1B61C4D8DE01F8816F333904CE65B4FC0",
+              "parts": {
+                "total": 1,
+                "hash": "95B6DDE3FC53CE430905D9AD31A7B7F0FC8E30E5A559F610D5BFC22E3419336E"
+              }
+            },
+            "signatures": [
+              {
+                "block_id_flag": 2,
+                "validator_address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+                "timestamp": "2026-10-31T05:01:23.342517969Z",
+                "signature": "4JQutw5wXWBTD+cQ0sXT9DiupuBtC5zO6ZymfacbdvGSHMfBxE00z/En5kpjE3xYZtwlu93j9uiFmoBHcBSQDQ=="
+              }
+            ]
+          }
+        }
+      }
+    },
+    "status": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "node_info": {
+          "protocol_version": {
+            "p2p": "8",
+            "block": "11",
+            "app": "10"
+          },
+          "id": "1f32728dd4e508e8ff9a9233c5903e67babe9072",
+          "listen_addr": "tcp://0.0.0.0:33056",
+          "network": "rs-devnet-1",
+          "version": "0.38.17",
+          "channels": "40202223303860613231505100",
+          "moniker": "val0",
+          "other": {
+            "tx_index": "on",
+            "rpc_address": "tcp://127.0.0.1:33057"
+          }
+        },
+        "sync_info": {
+          "latest_block_hash": "B86D55055E76588C123C7346F83060050B751C99D86A1D642BEA2158EA58BF1C",
+          "latest_app_hash": "518B6626B2850F82A79D0EDD0F347A9ED475DB4E21BC52B42CEE92028E27B164",
+          "latest_block_height": "35",
+          "latest_block_time": "2026-10-31T05:01:23.342517969Z",
+          "earliest_block_hash": "A217FC8643D710E51354115CE264E42BE5C2A178A1B605FE0A241F7661A947F9",
+          "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+          "earliest_block_height": "1",
+          "earliest_block_time": "2026-01-01T00:00:00Z",
+          "catching_up": false
+        },
+        "validator_info": {
+          "address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+          "pub_key": {
+            "type": "tendermint/PubKeyEd25519",
+            "value": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+          },
+          "voting_power": "6000"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "proposal-voting",
+      "method": "/cosmos.gov.v1.Query/Proposal",
+      "request_hex": "0801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Yw==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "663"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Yw==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "887"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposal": {
+              "id": "1",
+              "messages": [
+                {
+                  "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                  "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                  "params": {
+                    "gas_per_blob_byte": 9,
+                    "gov_max_square_size": "64"
+                  }
+                }
+              ],
+              "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+              "final_tally_result": {
+                "yes_count": "0",
+                "abstain_count": "0",
+                "no_count": "0",
+                "no_with_veto_count": "0"
+              },
+              "submit_time": "2026-10-31T05:00:05.310859886Z",
+              "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+              "total_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "10000000"
+                }
+              ],
+              "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+              "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+              "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+              "title": "populated voting",
+              "summary": "populated voting summary",
+              "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+              "expedited": false,
+              "failed_reason": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposal-deposit",
+      "method": "/cosmos.gov.v1.Query/Proposal",
+      "request_hex": "0802",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/2",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWM=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "523"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWM=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "745"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposal": {
+              "id": "2",
+              "messages": [
+                {
+                  "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                  "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                  "params": {
+                    "gas_per_blob_byte": 10,
+                    "gov_max_square_size": "64"
+                  }
+                }
+              ],
+              "status": "PROPOSAL_STATUS_DEPOSIT_PERIOD",
+              "final_tally_result": {
+                "yes_count": "0",
+                "abstain_count": "0",
+                "no_count": "0",
+                "no_with_veto_count": "0"
+              },
+              "submit_time": "2026-10-31T05:00:13.113497760Z",
+              "deposit_end_time": "2026-10-31T05:10:13.113497760Z",
+              "total_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "7000000"
+                }
+              ],
+              "voting_start_time": null,
+              "voting_end_time": null,
+              "metadata": "ipfs://deposit",
+              "title": "populated deposits",
+              "summary": "populated deposits summary",
+              "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+              "expedited": false,
+              "failed_reason": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposal-expedited",
+      "method": "/cosmos.gov.v1.Query/Proposal",
+      "request_hex": "0803",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/3",
+      "transports": {
+        "abci": {
+          "response_hex": "0ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230767001",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CrUCCAMSYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAsQQBgCIgwKATASATAaATAiATAqDAji65XXBhDFor6WATIMCLrwldcGEMWivpYBOhAKBHV0aWESCDUwMDAwMDAwQgwI4uuV1wYQxaK+lgFKDAiO7pXXBhDFor6WAVIQaXBmczovL2V4cGVkaXRlZFoTcG9wdWxhdGVkIGV4cGVkaXRlZGIbcG9wdWxhdGVkIGV4cGVkaXRlZCBzdW1tYXJ5ai9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdnAB",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "571"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CrUCCAMSYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAsQQBgCIgwKATASATAaATAiATAqDAji65XXBhDFor6WATIMCLrwldcGEMWivpYBOhAKBHV0aWESCDUwMDAwMDAwQgwI4uuV1wYQxaK+lgFKDAiO7pXXBhDFor6WAVIQaXBmczovL2V4cGVkaXRlZFoTcG9wdWxhdGVkIGV4cGVkaXRlZGIbcG9wdWxhdGVkIGV4cGVkaXRlZCBzdW1tYXJ5ai9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdnAB",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230767001"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "804"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposal": {
+              "id": "3",
+              "messages": [
+                {
+                  "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                  "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                  "params": {
+                    "gas_per_blob_byte": 11,
+                    "gov_max_square_size": "64"
+                  }
+                }
+              ],
+              "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+              "final_tally_result": {
+                "yes_count": "0",
+                "abstain_count": "0",
+                "no_count": "0",
+                "no_with_veto_count": "0"
+              },
+              "submit_time": "2026-10-31T05:00:18.315593029Z",
+              "deposit_end_time": "2026-10-31T05:10:18.315593029Z",
+              "total_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "50000000"
+                }
+              ],
+              "voting_start_time": "2026-10-31T05:00:18.315593029Z",
+              "voting_end_time": "2026-10-31T05:05:18.315593029Z",
+              "metadata": "ipfs://expedited",
+              "title": "populated expedited",
+              "summary": "populated expedited summary",
+              "proposer": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+              "expedited": true,
+              "failed_reason": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposal-historical",
+      "method": "/cosmos.gov.v1.Query/Proposal",
+      "request_hex": "0801",
+      "height": 24,
+      "rest_path": "/cosmos/gov/v1/proposals/1",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Yw==",
+            "proofOps": null,
+            "height": "24",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "663"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Yw==",
+                "proofOps": null,
+                "height": "24",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "24"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "887"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "24"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposal": {
+              "id": "1",
+              "messages": [
+                {
+                  "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                  "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                  "params": {
+                    "gas_per_blob_byte": 9,
+                    "gov_max_square_size": "64"
+                  }
+                }
+              ],
+              "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+              "final_tally_result": {
+                "yes_count": "0",
+                "abstain_count": "0",
+                "no_count": "0",
+                "no_with_veto_count": "0"
+              },
+              "submit_time": "2026-10-31T05:00:05.310859886Z",
+              "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+              "total_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "10000000"
+                }
+              ],
+              "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+              "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+              "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+              "title": "populated voting",
+              "summary": "populated voting summary",
+              "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+              "expedited": false,
+              "failed_reason": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-first",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "220418012001",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000021003",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5YxIMCggAAAAAAAAAAhAD",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "679"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5YxIMCggAAAAAAAAAAhAD",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000021003"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "943"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "1",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 9,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:05.310859886Z",
+                "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "10000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+                "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+                "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+                "title": "populated voting",
+                "summary": "populated voting summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "AAAAAAAAAAI=",
+              "total": "3"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-next-key",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "220c0a0800000000000000021801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.key=AAAAAAAAAAI%3D\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120a0a080000000000000003",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSCgoIAAAAAAAAAAM=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "539"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSCgoIAAAAAAAAAAM=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120a0a080000000000000003"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "801"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "2",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 10,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_DEPOSIT_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:13.113497760Z",
+                "deposit_end_time": "2026-10-31T05:10:13.113497760Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "7000000"
+                  }
+                ],
+                "voting_start_time": null,
+                "voting_end_time": null,
+                "metadata": "ipfs://deposit",
+                "title": "populated deposits",
+                "summary": "populated deposits summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "AAAAAAAAAAM=",
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-offset",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "2206100118012001",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000031003",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSDAoIAAAAAAAAAAMQAw==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "543"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSDAoIAAAAAAAAAAMQAw==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000031003"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "801"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "2",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 10,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_DEPOSIT_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:13.113497760Z",
+                "deposit_end_time": "2026-10-31T05:10:13.113497760Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "7000000"
+                  }
+                ],
+                "voting_start_time": null,
+                "voting_end_time": null,
+                "metadata": "ipfs://deposit",
+                "title": "populated deposits",
+                "summary": "populated deposits summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "AAAAAAAAAAM=",
+              "total": "3"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-reverse",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "220418012801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.limit=1\u0026pagination.reverse=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230767001120a0a080000000000000002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CrUCCAMSYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAsQQBgCIgwKATASATAaATAiATAqDAji65XXBhDFor6WATIMCLrwldcGEMWivpYBOhAKBHV0aWESCDUwMDAwMDAwQgwI4uuV1wYQxaK+lgFKDAiO7pXXBhDFor6WAVIQaXBmczovL2V4cGVkaXRlZFoTcG9wdWxhdGVkIGV4cGVkaXRlZGIbcG9wdWxhdGVkIGV4cGVkaXRlZCBzdW1tYXJ5ai9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdnABEgoKCAAAAAAAAAAC",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "587"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CrUCCAMSYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAsQQBgCIgwKATASATAaATAiATAqDAji65XXBhDFor6WATIMCLrwldcGEMWivpYBOhAKBHV0aWESCDUwMDAwMDAwQgwI4uuV1wYQxaK+lgFKDAiO7pXXBhDFor6WAVIQaXBmczovL2V4cGVkaXRlZFoTcG9wdWxhdGVkIGV4cGVkaXRlZGIbcG9wdWxhdGVkIGV4cGVkaXRlZCBzdW1tYXJ5ai9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdnABEgoKCAAAAAAAAAAC",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230767001120a0a080000000000000002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "860"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "3",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 11,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:18.315593029Z",
+                "deposit_end_time": "2026-10-31T05:10:18.315593029Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "50000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:18.315593029Z",
+                "voting_end_time": "2026-10-31T05:05:18.315593029Z",
+                "metadata": "ipfs://expedited",
+                "title": "populated expedited",
+                "summary": "populated expedited summary",
+                "proposer": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "expedited": true,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "AAAAAAAAAAI=",
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-empty-page",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "220510e7071801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.offset=999\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "1200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "EgA=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "159"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "EgA=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "1200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "59"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-voting",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "0802",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?proposal_status=2",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Ywq1AggDEmAKJS9jZWxlc3RpYS5ibG9iLnYxLk1zZ1VwZGF0ZUJsb2JQYXJhbXMSNwovY2VsZXN0aWExMGQwN3kyNjVnbW11dnQ0ejB3OWF3ODgwam5zcjcwMGp0Z3o0djcSBAgLEEAYAiIMCgEwEgEwGgEwIgEwKgwI4uuV1wYQxaK+lgEyDAi68JXXBhDFor6WAToQCgR1dGlhEgg1MDAwMDAwMEIMCOLrldcGEMWivpYBSgwIju6V1wYQxaK+lgFSEGlwZnM6Ly9leHBlZGl0ZWRaE3BvcHVsYXRlZCBleHBlZGl0ZWRiG3BvcHVsYXRlZCBleHBlZGl0ZWQgc3VtbWFyeWovY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHZwARICEAI=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "1083"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Ywq1AggDEmAKJS9jZWxlc3RpYS5ibG9iLnYxLk1zZ1VwZGF0ZUJsb2JQYXJhbXMSNwovY2VsZXN0aWExMGQwN3kyNjVnbW11dnQ0ejB3OWF3ODgwam5zcjcwMGp0Z3o0djcSBAgLEEAYAiIMCgEwEgEwGgEwIgEwKgwI4uuV1wYQxaK+lgEyDAi68JXXBhDFor6WAToQCgR1dGlhEgg1MDAwMDAwMEIMCOLrldcGEMWivpYBSgwIju6V1wYQxaK+lgFSEGlwZnM6Ly9leHBlZGl0ZWRaE3BvcHVsYXRlZCBleHBlZGl0ZWRiG3BvcHVsYXRlZCBleHBlZGl0ZWQgc3VtbWFyeWovY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHZwARICEAI=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "1725"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "1",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 9,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:05.310859886Z",
+                "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "10000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+                "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+                "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+                "title": "populated voting",
+                "summary": "populated voting summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              },
+              {
+                "id": "3",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 11,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:18.315593029Z",
+                "deposit_end_time": "2026-10-31T05:10:18.315593029Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "50000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:18.315593029Z",
+                "voting_end_time": "2026-10-31T05:05:18.315593029Z",
+                "metadata": "ipfs://expedited",
+                "title": "populated expedited",
+                "summary": "populated expedited summary",
+                "proposer": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "expedited": true,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-deposit",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "0801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?proposal_status=1",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a677571306164327564396312021001",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSAhAB",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "527"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMSAhAB",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a677571306164327564396312021001"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "791"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "2",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 10,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_DEPOSIT_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:13.113497760Z",
+                "deposit_end_time": "2026-10-31T05:10:13.113497760Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "7000000"
+                  }
+                ],
+                "voting_start_time": null,
+                "voting_end_time": null,
+                "metadata": "ipfs://deposit",
+                "title": "populated deposits",
+                "summary": "populated deposits summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-voter",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "122f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?voter=celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Ywq1AggDEmAKJS9jZWxlc3RpYS5ibG9iLnYxLk1zZ1VwZGF0ZUJsb2JQYXJhbXMSNwovY2VsZXN0aWExMGQwN3kyNjVnbW11dnQ0ejB3OWF3ODgwam5zcjcwMGp0Z3o0djcSBAgLEEAYAiIMCgEwEgEwGgEwIgEwKgwI4uuV1wYQxaK+lgEyDAi68JXXBhDFor6WAToQCgR1dGlhEgg1MDAwMDAwMEIMCOLrldcGEMWivpYBSgwIju6V1wYQxaK+lgFSEGlwZnM6Ly9leHBlZGl0ZWRaE3BvcHVsYXRlZCBleHBlZGl0ZWRiG3BvcHVsYXRlZCBleHBlZGl0ZWQgc3VtbWFyeWovY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHZwARICEAI=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "1083"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5Ywq1AggDEmAKJS9jZWxlc3RpYS5ibG9iLnYxLk1zZ1VwZGF0ZUJsb2JQYXJhbXMSNwovY2VsZXN0aWExMGQwN3kyNjVnbW11dnQ0ejB3OWF3ODgwam5zcjcwMGp0Z3o0djcSBAgLEEAYAiIMCgEwEgEwGgEwIgEwKgwI4uuV1wYQxaK+lgEyDAi68JXXBhDFor6WAToQCgR1dGlhEgg1MDAwMDAwMEIMCOLrldcGEMWivpYBSgwIju6V1wYQxaK+lgFSEGlwZnM6Ly9leHBlZGl0ZWRaE3BvcHVsYXRlZCBleHBlZGl0ZWRiG3BvcHVsYXRlZCBleHBlZGl0ZWQgc3VtbWFyeWovY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHZwARICEAI=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "1725"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "1",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 9,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:05.310859886Z",
+                "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "10000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+                "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+                "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+                "title": "populated voting",
+                "summary": "populated voting summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              },
+              {
+                "id": "3",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 11,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:18.315593029Z",
+                "deposit_end_time": "2026-10-31T05:10:18.315593029Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "50000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:18.315593029Z",
+                "voting_end_time": "2026-10-31T05:05:18.315593029Z",
+                "metadata": "ipfs://expedited",
+                "title": "populated expedited",
+                "summary": "populated expedited summary",
+                "proposer": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "expedited": true,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-depositor",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "1a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals?depositor=celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMKtQIIAxJgCiUvY2VsZXN0aWEuYmxvYi52MS5Nc2dVcGRhdGVCbG9iUGFyYW1zEjcKL2NlbGVzdGlhMTBkMDd5MjY1Z21tdXZ0NHowdzlhdzg4MGpuc3I3MDBqdGd6NHY3EgQICxBAGAIiDAoBMBIBMBoBMCIBMCoMCOLrldcGEMWivpYBMgwIuvCV1wYQxaK+lgE6EAoEdXRpYRIINTAwMDAwMDBCDAji65XXBhDFor6WAUoMCI7uldcGEMWivpYBUhBpcGZzOi8vZXhwZWRpdGVkWhNwb3B1bGF0ZWQgZXhwZWRpdGVkYhtwb3B1bGF0ZWQgZXhwZWRpdGVkIHN1bW1hcnlqL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2cAESAhAC",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "943"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpACCAISYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAoQQBgBIgwKATASATAaATAiATAqCwjd65XXBhCgrY82MgsItfCV1wYQoK2PNjoPCgR1dGlhEgc3MDAwMDAwUg5pcGZzOi8vZGVwb3NpdFoScG9wdWxhdGVkIGRlcG9zaXRzYhpwb3B1bGF0ZWQgZGVwb3NpdHMgc3VtbWFyeWovY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMKtQIIAxJgCiUvY2VsZXN0aWEuYmxvYi52MS5Nc2dVcGRhdGVCbG9iUGFyYW1zEjcKL2NlbGVzdGlhMTBkMDd5MjY1Z21tdXZ0NHowdzlhdzg4MGpuc3I3MDBqdGd6NHY3EgQICxBAGAIiDAoBMBIBMBoBMCIBMCoMCOLrldcGEMWivpYBMgwIuvCV1wYQxaK+lgE6EAoEdXRpYRIINTAwMDAwMDBCDAji65XXBhDFor6WAUoMCI7uldcGEMWivpYBUhBpcGZzOi8vZXhwZWRpdGVkWhNwb3B1bGF0ZWQgZXhwZWRpdGVkYhtwb3B1bGF0ZWQgZXhwZWRpdGVkIHN1bW1hcnlqL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2cAESAhAC",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a9002080212600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080a10401801220c0a01301201301a01302201302a0b08ddeb95d70610a0ad8f36320b08b5f095d70610a0ad8f363a0f0a0475746961120737303030303030520e697066733a2f2f6465706f7369745a12706f70756c61746564206465706f73697473621a706f70756c61746564206465706f736974732073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439630ab502080312600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080b10401802220c0a01301201301a01302201302a0c08e2eb95d70610c5a2be9601320c08baf095d70610c5a2be96013a100a047574696112083530303030303030420c08e2eb95d70610c5a2be96014a0c088eee95d70610c5a2be96015210697066733a2f2f6578706564697465645a13706f70756c6174656420657870656469746564621b706f70756c61746564206578706564697465642073756d6d6172796a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076700112021002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "1583"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "2",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 10,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_DEPOSIT_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:13.113497760Z",
+                "deposit_end_time": "2026-10-31T05:10:13.113497760Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "7000000"
+                  }
+                ],
+                "voting_start_time": null,
+                "voting_end_time": null,
+                "metadata": "ipfs://deposit",
+                "title": "populated deposits",
+                "summary": "populated deposits summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              },
+              {
+                "id": "3",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 11,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:18.315593029Z",
+                "deposit_end_time": "2026-10-31T05:10:18.315593029Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "50000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:18.315593029Z",
+                "voting_end_time": "2026-10-31T05:05:18.315593029Z",
+                "metadata": "ipfs://expedited",
+                "title": "populated expedited",
+                "summary": "populated expedited summary",
+                "proposer": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "expedited": true,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "proposals-historical",
+      "method": "/cosmos.gov.v1.Query/Proposals",
+      "request_hex": "220418012001",
+      "height": 24,
+      "rest_path": "/cosmos/gov/v1/proposals?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000021003",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5YxIMCggAAAAAAAAAAhAD",
+            "proofOps": null,
+            "height": "24",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "679"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CvgCCAESYAolL2NlbGVzdGlhLmJsb2IudjEuTXNnVXBkYXRlQmxvYlBhcmFtcxI3Ci9jZWxlc3RpYTEwZDA3eTI2NWdtbXV2dDR6MHc5YXc4ODBqbnNyNzAwanRnejR2NxIECAkQQBgCIgwKATASATAaATAiATAqDAjV65XXBhDusJ2UATIMCK3wldcGEO6wnZQBOhAKBHV0aWESCDEwMDAwMDAwQgwI1euV1wYQ7rCdlAFKDAit8JXXBhDusJ2UAVJbeyJ0aXRsZSI6InBvcHVsYXRlZCB2b3RpbmciLCJzdW1tYXJ5IjoicG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5IiwiYXV0aG9ycyI6WyJhbGljZSIsImJvYiJdfVoQcG9wdWxhdGVkIHZvdGluZ2IYcG9wdWxhdGVkIHZvdGluZyBzdW1tYXJ5ai9jZWxlc3RpYTE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWQydWQ5YxIMCggAAAAAAAAAAhAD",
+                "proofOps": null,
+                "height": "24",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "24"
+            ]
+          },
+          "response_hex": "0af802080112600a252f63656c65737469612e626c6f622e76312e4d7367557064617465426c6f62506172616d7312370a2f63656c6573746961313064303779323635676d6d757674347a30773961773838306a6e73723730306a74677a3476371204080910401802220c0a01301201301a01302201302a0c08d5eb95d70610eeb09d9401320c08adf095d70610eeb09d94013a100a047574696112083130303030303030420c08d5eb95d70610eeb09d94014a0c08adf095d70610eeb09d9401525b7b227469746c65223a22706f70756c6174656420766f74696e67222c2273756d6d617279223a22706f70756c6174656420766f74696e672073756d6d617279222c22617574686f7273223a5b22616c696365222c22626f62225d7d5a10706f70756c6174656420766f74696e676218706f70756c6174656420766f74696e672073756d6d6172796a2f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963120c0a0800000000000000021003"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "943"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "24"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "proposals": [
+              {
+                "id": "1",
+                "messages": [
+                  {
+                    "@type": "/celestia.blob.v1.MsgUpdateBlobParams",
+                    "authority": "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7",
+                    "params": {
+                      "gas_per_blob_byte": 9,
+                      "gov_max_square_size": "64"
+                    }
+                  }
+                ],
+                "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+                "final_tally_result": {
+                  "yes_count": "0",
+                  "abstain_count": "0",
+                  "no_count": "0",
+                  "no_with_veto_count": "0"
+                },
+                "submit_time": "2026-10-31T05:00:05.310859886Z",
+                "deposit_end_time": "2026-10-31T05:10:05.310859886Z",
+                "total_deposit": [
+                  {
+                    "denom": "utia",
+                    "amount": "10000000"
+                  }
+                ],
+                "voting_start_time": "2026-10-31T05:00:05.310859886Z",
+                "voting_end_time": "2026-10-31T05:10:05.310859886Z",
+                "metadata": "{\"title\":\"populated voting\",\"summary\":\"populated voting summary\",\"authors\":[\"alice\",\"bob\"]}",
+                "title": "populated voting",
+                "summary": "populated voting summary",
+                "proposer": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "expedited": false,
+                "failed_reason": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "AAAAAAAAAAI=",
+              "total": "3"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "vote-weighted",
+      "method": "/cosmos.gov.v1.Query/Vote",
+      "request_hex": "0801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1/votes/celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+      "transports": {
+        "abci": {
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e313030303030303030303030303030303030",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAw",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "331"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAw",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e313030303030303030303030303030303030"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "298"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "vote": {
+              "proposal_id": "1",
+              "voter": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+              "options": [
+                {
+                  "option": "VOTE_OPTION_YES",
+                  "weight": "0.600000000000000000"
+                },
+                {
+                  "option": "VOTE_OPTION_NO",
+                  "weight": "0.300000000000000000"
+                },
+                {
+                  "option": "VOTE_OPTION_ABSTAIN",
+                  "weight": "0.100000000000000000"
+                }
+              ],
+              "metadata": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "votes-first",
+      "method": "/cosmos.gov.v1.Query/Votes",
+      "request_hex": "0801120418012001",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1/votes?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a4d0801122f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963221808011214312e30303030303030303030303030303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "Ck0IARIvY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMiGAgBEhQxLjAwMDAwMDAwMDAwMDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "299"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "Ck0IARIvY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMiGAgBEhQxLjAwMDAwMDAwMDAwMDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a4d0801122f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061643275643963221808011214312e30303030303030303030303030303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "245"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "votes": [
+              {
+                "proposal_id": "1",
+                "voter": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "options": [
+                  {
+                    "option": "VOTE_OPTION_YES",
+                    "weight": "1.000000000000000000"
+                  }
+                ],
+                "metadata": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "votes-next-key",
+      "method": "/cosmos.gov.v1.Query/Votes",
+      "request_hex": "080112190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1/votes?pagination.key=FOsQS%2FvExMpfS7WgKAPCByF2Oqqy\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e3130303030303030303030303030303030301200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAwEgA=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "335"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAwEgA=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e3130303030303030303030303030303030301200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "344"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "votes": [
+              {
+                "proposal_id": "1",
+                "voter": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "options": [
+                  {
+                    "option": "VOTE_OPTION_YES",
+                    "weight": "0.600000000000000000"
+                  },
+                  {
+                    "option": "VOTE_OPTION_NO",
+                    "weight": "0.300000000000000000"
+                  },
+                  {
+                    "option": "VOTE_OPTION_ABSTAIN",
+                    "weight": "0.100000000000000000"
+                  }
+                ],
+                "metadata": ""
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "votes-reverse",
+      "method": "/cosmos.gov.v1.Query/Votes",
+      "request_hex": "0801120418012801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1/votes?pagination.limit=1\u0026pagination.reverse=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e31303030303030303030303030303030303012170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAwEhcKFRQo/1xtV9jP1JK2+0JhRTbtZI4B/Q==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "367"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CoEBCAESL2NlbGVzdGlhMWF2Z3loNzd5Y245OTdqYTQ1cTVxOHNzOHk5bXI0MjRqM3NucjB2IhgIARIUMC42MDAwMDAwMDAwMDAwMDAwMDAiGAgDEhQwLjMwMDAwMDAwMDAwMDAwMDAwMCIYCAISFDAuMTAwMDAwMDAwMDAwMDAwMDAwEhcKFRQo/1xtV9jP1JK2+0JhRTbtZI4B/Q==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a81010801122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076221808011214302e363030303030303030303030303030303030221808031214302e333030303030303030303030303030303030221808021214302e31303030303030303030303030303030303012170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "370"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "votes": [
+              {
+                "proposal_id": "1",
+                "voter": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "options": [
+                  {
+                    "option": "VOTE_OPTION_YES",
+                    "weight": "0.600000000000000000"
+                  },
+                  {
+                    "option": "VOTE_OPTION_NO",
+                    "weight": "0.300000000000000000"
+                  },
+                  {
+                    "option": "VOTE_OPTION_ABSTAIN",
+                    "weight": "0.100000000000000000"
+                  }
+                ],
+                "metadata": ""
+              }
+            ],
+            "pagination": {
+              "next_key": "FCj/XG1X2M/Ukrb7QmFFNu1kjgH9",
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "deposit-secondary",
+      "method": "/cosmos.gov.v1.Query/Deposit",
+      "request_hex": "0802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/2/deposits/celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+      "transports": {
+        "abci": {
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a0475746961120732303030303030",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMA==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "251"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMA==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a0475746961120732303030303030"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "140"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "deposit": {
+              "proposal_id": "2",
+              "depositor": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+              "amount": [
+                {
+                  "denom": "utia",
+                  "amount": "2000000"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "deposits-first",
+      "method": "/cosmos.gov.v1.Query/Deposits",
+      "request_hex": "0802120418012001",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/2/deposits?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a440802122f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439631a0f0a047574696112073530303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CkQIAhIvY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMaDwoEdXRpYRIHNTAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "287"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CkQIAhIvY2VsZXN0aWExOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFkMnVkOWMaDwoEdXRpYRIHNTAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a440802122f63656c65737469613139726c34636d32686d7238616679346b6c6470787a33666b61346a67757130616432756439631a0f0a047574696112073530303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "212"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "deposits": [
+              {
+                "proposal_id": "2",
+                "depositor": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c",
+                "amount": [
+                  {
+                    "denom": "utia",
+                    "amount": "5000000"
+                  }
+                ]
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "deposits-next-key",
+      "method": "/cosmos.gov.v1.Query/Deposits",
+      "request_hex": "080212190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/2/deposits?pagination.key=FOsQS%2FvExMpfS7WgKAPCByF2Oqqy\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a04757469611207323030303030301200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMBIA",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "251"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMBIA",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a04757469611207323030303030301200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "186"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "deposits": [
+              {
+                "proposal_id": "2",
+                "depositor": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "amount": [
+                  {
+                    "denom": "utia",
+                    "amount": "2000000"
+                  }
+                ]
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "deposits-reverse",
+      "method": "/cosmos.gov.v1.Query/Deposits",
+      "request_hex": "0802120418012801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/2/deposits?pagination.limit=1\u0026pagination.reverse=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a047574696112073230303030303012170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMBIXChUUKP9cbVfYz9SStvtCYUU27WSOAf0=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "283"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CkQIAhIvY2VsZXN0aWExYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGozc25yMHYaDwoEdXRpYRIHMjAwMDAwMBIXChUUKP9cbVfYz9SStvtCYUU27WSOAf0=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a440802122f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e7230761a0f0a047574696112073230303030303012170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "212"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "deposits": [
+              {
+                "proposal_id": "2",
+                "depositor": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "amount": [
+                  {
+                    "denom": "utia",
+                    "amount": "2000000"
+                  }
+                ]
+              }
+            ],
+            "pagination": {
+              "next_key": "FCj/XG1X2M/Ukrb7QmFFNu1kjgH9",
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "tally-voting",
+      "method": "/cosmos.gov.v1.Query/TallyResult",
+      "request_hex": "0801",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/proposals/1/tally",
+      "transports": {
+        "abci": {
+          "response_hex": "0a250a0a3536303030303030303012093130303030303030301a09333030303030303030220130",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CiUKCjU2MDAwMDAwMDASCTEwMDAwMDAwMBoJMzAwMDAwMDAwIgEw",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "207"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CiUKCjU2MDAwMDAwMDASCTEwMDAwMDAwMBoJMzAwMDAwMDAwIgEw",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a250a0a3536303030303030303012093130303030303030301a09333030303030303030220130"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "112"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "tally": {
+              "yes_count": "5600000000",
+              "abstain_count": "100000000",
+              "no_count": "300000000",
+              "no_with_veto_count": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "params-voting",
+      "method": "/cosmos.gov.v1.Query/Params",
+      "request_hex": "0a06766f74696e67",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/params/voting",
+      "transports": {
+        "abci": {
+          "response_hex": "0a050a0308d80422d0010a100a047574696112083130303030303030120308d8041a0308d8042214302e3333343030303030303030303030303030302a14302e3530303030303030303030303030303030303214302e3333343030303030303030303030303030303a14302e3030303030303030303030303030303030304214302e353030303030303030303030303030303030520308ac025a14302e36363730303030303030303030303030303062100a0475746961120835303030303030307801820114302e303130303030303030303030303030303030",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CgUKAwjYBCLQAQoQCgR1dGlhEggxMDAwMDAwMBIDCNgEGgMI2AQiFDAuMzM0MDAwMDAwMDAwMDAwMDAwKhQwLjUwMDAwMDAwMDAwMDAwMDAwMDIUMC4zMzQwMDAwMDAwMDAwMDAwMDA6FDAuMDAwMDAwMDAwMDAwMDAwMDAwQhQwLjUwMDAwMDAwMDAwMDAwMDAwMFIDCKwCWhQwLjY2NzAwMDAwMDAwMDAwMDAwMGIQCgR1dGlhEgg1MDAwMDAwMHgBggEUMC4wMTAwMDAwMDAwMDAwMDAwMDA=",
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "447"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CgUKAwjYBCLQAQoQCgR1dGlhEggxMDAwMDAwMBIDCNgEGgMI2AQiFDAuMzM0MDAwMDAwMDAwMDAwMDAwKhQwLjUwMDAwMDAwMDAwMDAwMDAwMDIUMC4zMzQwMDAwMDAwMDAwMDAwMDA6FDAuMDAwMDAwMDAwMDAwMDAwMDAwQhQwLjUwMDAwMDAwMDAwMDAwMDAwMFIDCKwCWhQwLjY2NzAwMDAwMDAwMDAwMDAwMGIQCgR1dGlhEgg1MDAwMDAwMHgBggEUMC4wMTAwMDAwMDAwMDAwMDAwMDA=",
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          },
+          "response_hex": "0a050a0308d80422d0010a100a047574696112083130303030303030120308d8041a0308d8042214302e3333343030303030303030303030303030302a14302e3530303030303030303030303030303030303214302e3333343030303030303030303030303030303a14302e3030303030303030303030303030303030304214302e353030303030303030303030303030303030520308ac025a14302e36363730303030303030303030303030303062100a0475746961120835303030303030307801820114302e303130303030303030303030303030303030"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "699"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "voting_params": {
+              "voting_period": "600s"
+            },
+            "deposit_params": null,
+            "tally_params": null,
+            "params": {
+              "min_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "10000000"
+                }
+              ],
+              "max_deposit_period": "600s",
+              "voting_period": "600s",
+              "quorum": "0.334000000000000000",
+              "threshold": "0.500000000000000000",
+              "veto_threshold": "0.334000000000000000",
+              "min_initial_deposit_ratio": "0.000000000000000000",
+              "proposal_cancel_ratio": "0.500000000000000000",
+              "proposal_cancel_dest": "",
+              "expedited_voting_period": "300s",
+              "expedited_threshold": "0.667000000000000000",
+              "expedited_min_deposit": [
+                {
+                  "denom": "utia",
+                  "amount": "50000000"
+                }
+              ],
+              "burn_vote_quorum": false,
+              "burn_proposal_deposit_prevote": false,
+              "burn_vote_veto": true,
+              "min_deposit_ratio": "0.010000000000000000"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "constitution",
+      "method": "/cosmos.gov.v1.Query/Constitution",
+      "request_hex": "",
+      "height": 34,
+      "rest_path": "/cosmos/gov/v1/constitution",
+      "transports": {
+        "abci": {
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": null,
+            "proofOps": null,
+            "height": "34",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "157"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": null,
+                "proofOps": null,
+                "height": "34",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "34"
+            ]
+          }
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "19"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 05:01:27 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "34"
+            ],
+            "X-Server-Time": [
+              "1793422887"
+            ]
+          },
+          "body": {
+            "constitution": ""
+          }
+        }
+      }
+    }
+  ],
+  "normalizations": [],
+  "omissions": [
+    "proof validity is not asserted by this transport capture",
+    "governance proposal completion, cancellation and expiry remain separate captures",
+    "failed historical governance queries remain a separate capture",
+    "historical pagination key and offset traversal remain a separate capture",
+    "invalid pagination cursors and malformed/error requests remain separate captures",
+    "governance v1beta1 compatibility remains a separate capture",
+    "non-governance module workloads remain separate captures",
+    "invalid UTF-8 remains a separate capture"
+  ]
+}
