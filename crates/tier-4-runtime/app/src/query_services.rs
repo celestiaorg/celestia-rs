@@ -27,7 +27,7 @@ pub type AppHandler = fn(&mut App, &mut QueryState, &[u8]) -> QResult<Vec<u8>>;
 macro_rules! typed {
     ($f:path, $req:ty) => {{
         fn h(app: &mut App, state: &mut QueryState, data: &[u8]) -> QResult<Vec<u8>> {
-            let req = <$req>::decode(data).map_err(|e| QueryError::Plain(e.to_string()))?;
+            let req = <$req>::decode(data).map_err(|e| grpc_query::decode_error(&e))?;
             Ok($f(app, state, req)?.encode_to_vec())
         }
         h as AppHandler
@@ -141,7 +141,8 @@ fn simulate_grpc(
             format!(
                 // Go formats the error with `%v`, which appends the Go
                 // source location of the wrap (`[…/sigverify.go:290]`);
-                // that annotation has no Rust counterpart.
+                // that diagnostic build identity is the documented Simulate
+                // deviation in conformance/mainnet-rpc/simulation/README.md.
                 "{} with gas used: '{}'",
                 e.log, gas_info.gas_used
             ),
@@ -199,7 +200,7 @@ fn has_field_1(mut data: &[u8]) -> bool {
 
 /// `TxDecodeAmino`: the legacy amino codec of `StdTx` (`legacy-amino`).
 fn tx_decode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<u8>> {
-    let req = TxDecodeAminoRequest::decode(data).map_err(|e| QueryError::Plain(e.to_string()))?;
+    let req = TxDecodeAminoRequest::decode(data).map_err(|e| grpc_query::decode_error(&e))?;
     if req.amino_binary.is_empty() && !has_field_1(data) {
         return Err(QueryError::Status(
             Code::InvalidArgument,
@@ -213,7 +214,7 @@ fn tx_decode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<
 
 /// `TxEncodeAmino`.
 fn tx_encode_amino(_: &mut App, _: &mut QueryState, data: &[u8]) -> QResult<Vec<u8>> {
-    let req = TxEncodeAminoRequest::decode(data).map_err(|e| QueryError::Plain(e.to_string()))?;
+    let req = TxEncodeAminoRequest::decode(data).map_err(|e| grpc_query::decode_error(&e))?;
     if req.amino_json.is_empty() {
         return Err(QueryError::Status(
             Code::InvalidArgument,

@@ -107,9 +107,9 @@ impl Router {
 pub fn decode_error(e: &prost::DecodeError) -> QueryError {
     let s = e.to_string();
     if s.contains("buffer underflow") || s.contains("invalid varint") {
-        return QueryError::Plain("unexpected EOF".into());
+        return QueryError::Decode("unexpected EOF".into());
     }
-    QueryError::Plain(s)
+    QueryError::Decode(s)
 }
 
 /// The module query router (every service `RegisterServices` registers).

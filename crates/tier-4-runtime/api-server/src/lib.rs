@@ -169,6 +169,24 @@ pub fn grpc_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, St
     }
 }
 
+#[allow(clippy::result_large_err)] // tonic requires Status as the transport error.
+fn grpc_call_status(
+    app: &AbciApp,
+    path: &str,
+    data: &[u8],
+    height: i64,
+) -> Result<(Vec<u8>, i64), Status> {
+    app.grpc_query(path, data, height).map_err(|error| {
+        let response_height = error.response_height();
+        let (code, message) = grpc_error_status(path, error);
+        let mut status = Status::new(code_of(code), message);
+        if let Some(Ok(value)) = response_height.map(|h| h.to_string().parse()) {
+            status.metadata_mut().insert(BLOCK_HEIGHT_HEADER, value);
+        }
+        status
+    })
+}
+
 struct Unary {
     app: Arc<AbciApp>,
     path: String,
@@ -180,6 +198,7 @@ impl tonic::server::UnaryService<Vec<u8>> for Unary {
     type Response = Vec<u8>;
     type Future = BoxFut<Result<tonic::Response<Vec<u8>>, Status>>;
 
+    #[allow(clippy::result_large_err)] // The blocking task returns tonic's required Status.
     fn call(&mut self, request: tonic::Request<Vec<u8>>) -> Self::Future {
         let app = Arc::clone(&self.app);
         let path = self.path.clone();
@@ -191,10 +210,11 @@ impl tonic::server::UnaryService<Vec<u8>> for Unary {
             let height =
                 parse_height(height.as_deref()).map_err(|(c, m)| Status::new(code_of(c), m))?;
             let data = request.into_inner();
-            let res = tokio::task::spawn_blocking(move || grpc_call(&app, &path, &data, height))
-                .await
-                .map_err(|e| Status::internal(e.to_string()))?;
-            let (bytes, h) = res.map_err(|(c, m)| Status::new(code_of(c), m))?;
+            let res =
+                tokio::task::spawn_blocking(move || grpc_call_status(&app, &path, &data, height))
+                    .await
+                    .map_err(|e| Status::internal(e.to_string()))?;
+            let (bytes, h) = res?;
             let mut resp = tonic::Response::new(bytes);
             // A negative height: a service outside the query router (no header).
             if let Some(Ok(v)) = (h >= 0).then(|| h.to_string().parse()) {

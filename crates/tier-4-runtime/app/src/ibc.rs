@@ -157,7 +157,9 @@ fn module_query(ctx: &mut Context<'_>, path: &str, data: &[u8]) -> Option<Result
             sdk::error::internal(format!("rpc error: code = {} desc = {msg}", code.name()))
         }
         grpc_query::QueryError::Sdk(e) => e,
-        grpc_query::QueryError::Plain(s) => sdk::error::internal(s),
+        grpc_query::QueryError::Plain(s) | grpc_query::QueryError::Decode(s) => {
+            sdk::error::internal(s)
+        }
         grpc_query::QueryError::Panic(s) => sdk::error::go_panic(s),
     }))
 }

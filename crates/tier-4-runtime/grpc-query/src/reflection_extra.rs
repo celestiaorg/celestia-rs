@@ -115,7 +115,7 @@ pub fn v2alpha1(path: &str, data: &[u8], chain_id: &str) -> Option<Result<Vec<u8
     if let Err(e) = Empty::decode(data) {
         // grpc-go's codec failure (the service is not behind the router).
         let msg = match crate::decode_error(&e) {
-            QueryError::Plain(m) => m,
+            QueryError::Plain(m) | QueryError::Decode(m) => m,
             other => other.grpc_status().1,
         };
         return Some(Err(QueryError::Status(
