@@ -169,6 +169,7 @@ pub fn grpc_error_status(path: &str, e: GrpcQueryError) -> (grpc_query::Code, St
     }
 }
 
+#[allow(clippy::result_large_err)] // tonic requires Status as the transport error.
 fn grpc_call_status(
     app: &AbciApp,
     path: &str,
@@ -197,6 +198,7 @@ impl tonic::server::UnaryService<Vec<u8>> for Unary {
     type Response = Vec<u8>;
     type Future = BoxFut<Result<tonic::Response<Vec<u8>>, Status>>;
 
+    #[allow(clippy::result_large_err)] // The blocking task returns tonic's required Status.
     fn call(&mut self, request: tonic::Request<Vec<u8>>) -> Self::Future {
         let app = Arc::clone(&self.app);
         let path = self.path.clone();
