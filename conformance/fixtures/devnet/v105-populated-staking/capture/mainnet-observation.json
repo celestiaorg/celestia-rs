@@ -1,0 +1,16 @@
+{
+  "endpoint": "https://rpc.celestia.pops.one",
+  "observed_at": "2026-10-31T00:58:33.791586+00:00",
+  "version": "10.5.0",
+  "chain_id": "celestia",
+  "responses": {
+    "status": {
+      "sha256": "bb22ba2dfb8a9de6b1cdc887c45a479a0b1de2246f882207bb2a950ca400acb2",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"node_info\":{\"protocol_version\":{\"p2p\":\"8\",\"block\":\"11\",\"app\":\"10\"},\"id\":\"acca7837e4eb5f9dc7f5a94ed1d82edda6931ff8\",\"listen_addr\":\"tcp://0.0.0.0:26656\",\"network\":\"celestia\",\"version\":\"0.38.17\",\"channels\":\"40202223303860613231505100\",\"moniker\":\"rpc-pops\",\"other\":{\"tx_index\":\"on\",\"rpc_address\":\"tcp://127.0.0.1:26657\"}},\"sync_info\":{\"latest_block_hash\":\"A97CDF9F22DB55B8CED9BE9F4581371E3823AA9EB714CF86943573B6D8BACB56\",\"latest_app_hash\":\"DC4618EEC9DC74F3E1EFD118E7436C6A691436228222B6CC8DE95C476137E5E8\",\"latest_block_height\":\"15446466\",\"latest_block_time\":\"2026-10-31T00:58:30.15170183Z\",\"earliest_block_hash\":\"6BE39EFD10BA412A9DB5288488303F5DD32CF386707A5BEF33617F4C43301872\",\"earliest_app_hash\":\"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\",\"earliest_block_height\":\"1\",\"earliest_block_time\":\"2023-10-31T14:00:00Z\",\"catching_up\":false},\"validator_info\":{\"address\":\"B5C5C932831DA861591C4F0E504405AB44156111\",\"pub_key\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"U9Q4WGMr+VEs1WQ0zMsrwRvL0k9OEDh8QVku24Zh/w4=\"},\"voting_power\":\"0\"}}}"
+    },
+    "abci_info": {
+      "sha256": "491afd714ed737c4b7caa7536717d81fb7f9fc265d717caf6e4725201bd0d949",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"response\":{\"data\":\"celestia-app\",\"version\":\"10.5.0\",\"app_version\":\"10\",\"last_block_height\":\"15446466\",\"last_block_app_hash\":\"fmf/u7K3Aa0SDC5t7Jdcap8pQfERPPTJrXPUfk3SISI=\",\"timeout_info\":{\"timeout_propose\":\"3000000000\",\"timeout_propose_delta\":\"500000000\",\"timeout_prevote\":\"2000000000\",\"timeout_prevote_delta\":\"500000000\",\"timeout_precommit\":\"3000000000\",\"timeout_precommit_delta\":\"500000000\",\"timeout_commit\":\"500000000\",\"delayed_precommit_timeout\":\"2100000000\"}}}}"
+    }
+  }
+}

@@ -23,6 +23,14 @@
 #   meta.json           versions used
 # SAVE_BLOCKS=1 also retains blocks.bin.gz: the stopped Go node's complete
 # blocks and seen commits, for validated node-store / handshake replay.
+# DEVNET_CAPTURE names an optional executable capture hook. After the workload
+# and target height are complete, it runs while all four local transports are
+# still live. The hook receives HOME_DIR, CHAIN_ID, CAPTURE_DIR,
+# CAPTURE_HEIGHT, ABCI_ADDR, COMET_RPC, SDK_GRPC and REST_API. Its output is
+# copied to <scenario>/capture after the node stops.
+# DEVNET_DETERMINISTIC=1 fixes the two account mnemonics and genesis time and
+# reads devnet-only consensus/node keys from DEVNET_KEYS_DIR. This public test
+# material must never be used for funded networks.
 #
 # APP_V9=1 runs celestia-app v9.0.8 (app version 9; binary cached as
 # $DEVNET_BIN/v9/celestia-appd, which also serves the workload's CLI).
@@ -81,8 +89,18 @@ fi
 H=$WORK/home
 A="celestia-appd --home $H"
 $A init val0 --chain-id $CHAIN_ID >/dev/null 2>&1
-$A keys add val0 --keyring-backend test >/dev/null 2>&1
-$A keys add user0 --keyring-backend test >/dev/null 2>&1
+if [ -n "${DEVNET_DETERMINISTIC:-}" ]; then
+  : "${DEVNET_KEYS_DIR:?DEVNET_DETERMINISTIC requires DEVNET_KEYS_DIR}"
+  cp "$DEVNET_KEYS_DIR/priv_validator_key.json" "$H/config/priv_validator_key.json"
+  cp "$DEVNET_KEYS_DIR/node_key.json" "$H/config/node_key.json"
+  printf '%s\n' 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about' | \
+    $A keys add val0 --recover --keyring-backend test >/dev/null 2>&1
+  printf '%s\n' 'legal winner thank year wave sausage worth useful legal winner thank yellow' | \
+    $A keys add user0 --recover --keyring-backend test >/dev/null 2>&1
+else
+  $A keys add val0 --keyring-backend test >/dev/null 2>&1
+  $A keys add user0 --keyring-backend test >/dev/null 2>&1
+fi
 for k in val0 user0; do
   $A genesis add-genesis-account "$($A keys show $k -a --keyring-backend test)" 1000000000000utia >/dev/null 2>&1
 done
@@ -95,6 +113,14 @@ if [ -n "${GENESIS_SETUP:-}" ]; then
 fi
 $A genesis gentx val0 5000000000utia --chain-id $CHAIN_ID --keyring-backend test --fees 500000utia >/dev/null 2>&1
 $A genesis collect-gentxs >/dev/null 2>&1
+if [ -n "${DEVNET_DETERMINISTIC:-}" ]; then
+  python3 - "$H/config/genesis.json" <<'PY'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]);g=json.loads(p.read_text())
+g['genesis_time']='2026-01-01T00:00:00Z'
+p.write_text(json.dumps(g,indent=2)+'\n')
+PY
+fi
 if [ -n "${GENESIS_PATCH:-}" ]; then
   python3 "$GENESIS_PATCH" "$H/config/genesis.json"
 fi
@@ -106,6 +132,18 @@ sed -i.bak -e "s#tcp://127.0.0.1:26657#tcp://127.0.0.1:$P_RPC#" -e "s#tcp://0.0.
 rm -f "$H/config/config.toml.bak"
 sed -i.bak -e "s#localhost:9090#localhost:$P_GRPC#" -e "s#tcp://localhost:1317#tcp://localhost:$P_API#" -e "s#0.0.0.0:9090#0.0.0.0:$P_GRPC#" "$H/config/app.toml"
 rm -f "$H/config/app.toml.bak"
+if [ -n "${DEVNET_CAPTURE:-}" ]; then
+  python3 - "$H/config/app.toml" <<'PY'
+import pathlib,re,sys
+p=pathlib.Path(sys.argv[1]);s=p.read_text()
+for name in ('api','grpc'):
+ start=s.index('['+name+']');end=s.find('\n[',start+1);end=len(s) if end<0 else end
+ part=s[start:end]
+ part=re.sub(r'^enable = .*$', 'enable = true', part, count=1, flags=re.M)
+ s=s[:start]+part+s[end:]
+p.write_text(s)
+PY
+fi
 # Workloads that need tx results over RPC (e.g. the relayer) set
 # DEVNET_TX_INDEX=kv; indexing is node-local and does not change ABCI traffic.
 if [ -n "${DEVNET_TX_INDEX:-}" ]; then
@@ -173,6 +211,13 @@ until [ "$(height || echo 0)" -ge "$BLOCKS" ] 2>/dev/null; do
   [ -n "${ALLOW_HALT:-}" ] && [ -n "$WORKLOAD" ] && break
   sleep 1
 done
+if [ -n "${DEVNET_CAPTURE:-}" ]; then
+  mkdir -p "$WORK/capture"
+  HOME_DIR=$H CHAIN_ID=$CHAIN_ID CAPTURE_DIR=$WORK/capture \
+    CAPTURE_HEIGHT=$(height) ABCI_ADDR=127.0.0.1:$P_APP \
+    COMET_RPC=http://127.0.0.1:$P_RPC SDK_GRPC=127.0.0.1:$P_GRPC \
+    REST_API=http://127.0.0.1:$P_API "$DEVNET_CAPTURE"
+fi
 # Stop consensus first so the app commits nothing past what core saw.
 kill $CORE 2>/dev/null || true; sleep 2; cleanup
 if [ -n "${SAVE_BLOCKS:-}" ]; then
@@ -221,6 +266,7 @@ if [ -n "${SAVE_BLOCKS:-}" ]; then
 fi
 cp "$H/config/genesis.json" "$OUT/genesis.json"
 cp "$WORK/abci.rec" "$OUT/abci.rec"
+[ ! -d "$WORK/capture" ] || cp -r "$WORK/capture" "$OUT/capture"
 for h in 1 "$LAST"; do
   devnet-oracle statedump --db "$H/data/application.db" --height "$h" > "$OUT/state/$h.json"
 done

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T01:00:58.866157+00:00",
+  "method": "fresh tagged v10.5.0 staking workload and live four-transport capture on one isolated devnet",
+  "state_identity": {
+    "chain_id": "rs-devnet-1",
+    "tip_height": 40,
+    "query_height": 39,
+    "app_hash": "88E7DA9D3C88BDD365EA94167DB4EC05375A1C3271FAED8505E4560CBDB1B18B"
+  },
+  "source_sha256": {
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "conformance/devnet/build-bins.sh": "031981d6ca5911c603e96305472cabab9384a455ec257ba0a58beedfababab39",
+    "conformance/devnet/workloads/staking.sh": "7dc1941be775b034d88e3af1de22d68dbdf3dbebc9c2a1d7c518137f76c60a43",
+    "conformance/devnet/workloads/wait_tx.py": "4c2b030c1a33d1f1a3c319d601ccdff5a21350de4aeda085b1fa431117c64b63",
+    "conformance/mainnet-rpc/populated-staking/capture.sh": "5611b7676b62215fb29141f2b875ff18c8bbedc3ff1de885ffbcf12521cfc2fc",
+    "conformance/mainnet-rpc/populated-staking/record.sh": "238d6292419df434a98e5cc7faf21d77ee732cb6547339c62942e50eba1d7f1d",
+    "conformance/mainnet-rpc/observe-mainnet.py": "64cd57a4173175811c7f2e72d30d817484ffb9eedbafed2ebd607c458dc142f5",
+    "conformance/mainnet-rpc/populated-staking/devnet-keys/node_key.json": "22724f2bec82615694df7eb435b70eeded93d83b1d71e3bacb2ed62e10a23d32",
+    "conformance/mainnet-rpc/populated-staking/devnet-keys/priv_validator_key.json": "5da16574f43331fa2f13e8c9122ba15d8e50c5efe20085dc42cf64134383f6cb",
+    "conformance/rpccorpus/recorder/cmd/populated-queries/main.go": "6c475e759039a34b85c83eaa06c6cf7e8e04e7c170e6fed6bab964321b2e686a",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "conformance/rpccorpus/recorder/main.go": "887a212fe7cb733f38db9e35e3ab8fef1713bb1611680f105b4e1097a6bf89fc",
+    "conformance/rpccorpus/recorder/record.go": "75bbb1e5977ae4e80a40fa606b1fbd0a66247e1ffa9b1fe7514ee25de9cfaa42",
+    "conformance/rpccorpus/recorder/validation.go": "5e21afa58bcedb962bda04084be5bad2f669b78bb132a1e1eff22777c29769c3",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65",
+    "conformance/devnet-oracle/main.go": "663cd0247e73fdaed1ede493724b0c34b8c0d6e9895392f5560d0c06e80bb897",
+    "conformance/devnet-oracle/go.mod": "06acdcd757d3d30f8d64ff2486e27622582c8fadda7ac7b71ed00d6a7560c5f1",
+    "conformance/devnet-oracle/go.sum": "59a4faeed3441a7c98604f902c7b3331f5a0f7d94ee5b2fcdcbf63694653375c"
+  },
+  "artifact_sha256": {
+    "genesis.json": "a191d2e60a8a45c27caf38f8af682ecc570b8432556749e9156362971d0f8fc6",
+    "abci.rec": "1b67b3b8f1398709cbb957a0694bce9f604e4f1b35fd093c2b499859c22ed3ec",
+    "blocks.bin.gz": "082c7c3bbccffed11ccb17eb207bd01a73024e03b4b7187f7245c97da0b2fd96",
+    "meta.json": "a1d8355822b91b15fe281d35284b0b569331eb6c1fab30f854cb6574a6bb09d0",
+    "capture/transports.json": "4b86cc3709ba4970ba3068ea6cd022182784c589e6180deb371205fd2e2ae66d",
+    "capture/mainnet-observation.json": "5819e15ab6bace3f26886a49fcf6f64ceea296b9d5ba4a9c822a501295e0fada",
+    "capture/app-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "capture/core-build.json": "6ee1bf69127b84b0d7b1b86f464e15fa2bd987b1b6d7f57fb176ad894506ae7e",
+    "capture/app-build-info.txt": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "capture/core-build-info.txt": "ea78f3d97ff377573e71a95d598eb872d795525176107ea61c5934cc69c3e61a",
+    "go-build-info.txt": "a6b2dfe6409e716b1eec50e4101424f4b853bd6358982bbd8b60337cb21f5898",
+    "capture/abci-recorder-build-info.txt": "9c19cce9c900ab310ca5d3f14a8786d3bf08d5a09f506c82140862abd6b4565a",
+    "capture/populated-queries-build-info.txt": "86d81216ce8f0b41ffa52ea692bcf7843bd907c9a7d59ed980f00395b8fa8c1c",
+    "capture/rpc-recorder-build-info.txt": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753",
+    "capture/devnet-oracle-build-info.txt": "714df49cdfaa85dd18472e156dd8267ed249dd2dea62a87d1ef714b65ed26ad1",
+    "state/1.json": "946cd16e30ef3391e91a7a522d4246e3284d12ce99b83fae115a6946412d6f90",
+    "state/40.json": "b48b3967a4e672ee5daa810b98d9f552d3033a93963094ebd9002fa10e7a65d3"
+  },
+  "generator_binaries": {
+    "abci-recorder": {
+      "sha256": "a112bbe3127c2ac5917d743f62f180bfc687c7505d45065c5b019dc2fc429c0a",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/abci-recorder-build-info.txt",
+      "build_info_sha256": "9c19cce9c900ab310ca5d3f14a8786d3bf08d5a09f506c82140862abd6b4565a"
+    },
+    "populated-queries": {
+      "sha256": "5ac7fa0e56f388bbb7662dfb1904313d9acee58a484b9927892f034d729c080a",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/populated-queries/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/populated-queries-build-info.txt",
+      "build_info_sha256": "86d81216ce8f0b41ffa52ea692bcf7843bd907c9a7d59ed980f00395b8fa8c1c"
+    },
+    "rpc-recorder": {
+      "sha256": "d78e375cbfd883d09d464365dce399dce8ffab36bc4196dd77b358700801166c",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/main.go",
+        "conformance/rpccorpus/recorder/record.go",
+        "conformance/rpccorpus/recorder/validation.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/rpc-recorder-build-info.txt",
+      "build_info_sha256": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753"
+    },
+    "devnet-oracle": {
+      "sha256": "fb5e8f4e4e36faf8bf234a2faf8543c0258d08dc546d17676ade3ab320256e6a",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/devnet-oracle",
+      "sources": [
+        "conformance/devnet-oracle/main.go",
+        "conformance/devnet-oracle/go.mod",
+        "conformance/devnet-oracle/go.sum"
+      ],
+      "build_info": "capture/devnet-oracle-build-info.txt",
+      "build_info_sha256": "714df49cdfaa85dd18472e156dd8267ed249dd2dea62a87d1ef714b65ed26ad1"
+    }
+  },
+  "omissions": [
+    "proof validity is not asserted by this transport capture",
+    "non-staking module workloads remain separate captures",
+    "invalid UTF-8 and Any/JSON edge cases remain separate captures",
+    "pagination proof validity is deferred to the proof-focused capture",
+    "staking lifecycle completion times beyond height 40 are not covered"
+  ],
+  "regenerate": "MAINNET_OBSERVATION=<fresh observation.json> conformance/mainnet-rpc/populated-staking/record.sh"
+}

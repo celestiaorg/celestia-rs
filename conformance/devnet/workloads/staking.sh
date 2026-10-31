@@ -41,7 +41,11 @@ tx() {
 
 # A second validator operated by user0 with a fresh consensus key; small
 # power so val0 alone keeps > 2/3 of the voting power.
-PK=$(python3 -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
+if [ -n "${DEVNET_DETERMINISTIC:-}" ]; then
+  PK=NwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8=
+else
+  PK=$(python3 -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
+fi
 cat > "$HOME_DIR/val1.json" <<JSON
 {
   "pubkey": {"@type": "/cosmos.crypto.ed25519.PubKey", "key": "$PK"},
