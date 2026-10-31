@@ -27,22 +27,27 @@ bytes = "1"
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 hex = "0.4"
-hyper = { version = "1", features = ["http1", "server"] }
+hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service", "http1", "http2"] }
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
 mempool = { path = "../mempool" }
 nodestore = { path = "../nodestore" }
 pbjson-types = "0.7"
 prost = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1", features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tonic = { version = "=0.12.3", default-features = false }
 tracing = "0.1"
 
 [dev-dependencies]
 app = { path = "../app", default-features = false }
 flate2 = "1"
+h2 = "0.4"
 sdk = { path = "../../tier-3-app-modules/sdk" }
 serde_json = "1"
+tokio = { version = "1", features = ["io-util"] }
 tokio-tungstenite = "0.30"
 tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
 tower = { version = "0.5", features = ["util"] }

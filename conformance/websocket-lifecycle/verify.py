@@ -9,10 +9,67 @@ import pathlib
 from datetime import datetime, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent
+EXPECTED_ARTIFACTS = {
+    "README.md", "go.mod", "go.sum", "main.go", "main_test.go", "record.sh",
+    "verify.py", "testdata/go-v10.5.0.json",
+    "testdata/go-v10.5.0-cors-disabled.json",
+    "testdata/go-v10.5.0.build-info.txt", "testdata/release.json",
+    "testdata/mainnet-status.json", "testdata/mainnet-abci-info.json",
+    "testdata/mainnet-observation.json", "testdata/oracle/genesis.json",
+    "testdata/oracle/config-cors-enabled.toml",
+    "testdata/oracle/config-cors-disabled.toml", "testdata/oracle/app.toml",
+}
+SUPPORT_FILES = {
+    "closure-review.json", "verify-closure.py", "testdata/manifest.json",
+}
 
 
-def load(name: str):
-    return json.loads((ROOT / name).read_text())
+def load(name: str, root: pathlib.Path = ROOT):
+    return json.loads((root / name).read_text())
+
+
+def tree_inventory(root: pathlib.Path) -> set[str]:
+    """Return regular files without following or accepting any symlink."""
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("WebSocket evidence root must be a real directory")
+    files = set()
+
+    def visit(directory: pathlib.Path) -> None:
+        for entry in directory.iterdir():
+            name = entry.relative_to(root).as_posix()
+            if entry.is_symlink():
+                raise ValueError(f"symlinked WebSocket evidence path: {name}")
+            if entry.is_dir():
+                visit(entry)
+            elif entry.is_file():
+                files.add(name)
+            else:
+                raise ValueError(f"non-regular WebSocket evidence path: {name}")
+
+    visit(root)
+    return files
+
+
+def verify_inventory(root: pathlib.Path = ROOT) -> dict[str, str]:
+    files = tree_inventory(root)
+    expected_files = EXPECTED_ARTIFACTS | SUPPORT_FILES
+    if files != expected_files:
+        missing = sorted(expected_files - files)
+        extra = sorted(files - expected_files)
+        raise ValueError(f"WebSocket evidence inventory changed; missing={missing}, extra={extra}")
+    manifest = load("testdata/manifest.json", root)
+    if set(manifest) != {"schema", "artifacts_sha256"} or manifest["schema"] != 1:
+        raise ValueError("unexpected WebSocket evidence manifest schema")
+    artifacts = manifest["artifacts_sha256"]
+    if set(artifacts) != EXPECTED_ARTIFACTS:
+        missing = sorted(EXPECTED_ARTIFACTS - set(artifacts))
+        extra = sorted(set(artifacts) - EXPECTED_ARTIFACTS)
+        raise ValueError(f"WebSocket manifest inventory changed; missing={missing}, extra={extra}")
+    for name, want in artifacts.items():
+        got = hashlib.sha256((root / name).read_bytes()).hexdigest()
+        if got != want:
+            raise ValueError(f"{name}: {got} != {want}")
+    return artifacts
 
 
 def instant(value: str) -> datetime:
@@ -20,21 +77,7 @@ def instant(value: str) -> datetime:
 
 
 def main() -> None:
-    manifest = load("testdata/manifest.json")
-    artifacts = manifest["artifacts_sha256"]
-    required = {
-        "go.mod", "go.sum", "main.go", "main_test.go", "record.sh", "verify.py",
-        "testdata/go-v10.5.0.json", "testdata/go-v10.5.0-cors-disabled.json",
-        "testdata/go-v10.5.0.build-info.txt", "testdata/release.json",
-        "testdata/mainnet-status.json", "testdata/mainnet-abci-info.json",
-        "testdata/mainnet-observation.json", "testdata/oracle/genesis.json",
-        "testdata/oracle/config-cors-enabled.toml",
-        "testdata/oracle/config-cors-disabled.toml", "testdata/oracle/app.toml",
-    }
-    assert required <= artifacts.keys(), required - artifacts.keys()
-    for name, want in artifacts.items():
-        got = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-        assert got == want, f"{name}: {got} != {want}"
+    artifacts = verify_inventory()
 
     full = load("testdata/go-v10.5.0.json")
     disabled = load("testdata/go-v10.5.0-cors-disabled.json")

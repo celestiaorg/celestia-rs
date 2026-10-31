@@ -402,6 +402,40 @@ fn wait_for_height(node: &mut Node, rpc: SocketAddr, wanted: i64, log_path: &Pat
     }
 }
 
+fn wait_for_application_height(
+    node: &mut Node,
+    rpc: SocketAddr,
+    wanted: i64,
+    log_path: &Path,
+) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last = Value::Null;
+    loop {
+        assert!(
+            node.0.try_wait().unwrap().is_none(),
+            "node exited: {}",
+            std::fs::read_to_string(log_path).unwrap_or_default()
+        );
+        if let Ok(response) = http(rpc, "GET", "/abci_info", &[], Duration::from_secs(2))
+            && response.status == 200
+        {
+            last = response.json();
+            let height = last["result"]["response"]["last_block_height"]
+                .as_str()
+                .and_then(|value| value.parse::<i64>().ok());
+            if height.is_some_and(|height| height >= wanted) {
+                return last;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "application did not reach height {wanted}; last response={last}: {}",
+            std::fs::read_to_string(log_path).unwrap_or_default()
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 fn wait_for_listener(node: &mut Node, address: SocketAddr, log_path: &Path) {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
@@ -501,6 +535,17 @@ fn recursive_sequence(value: &Value) -> Option<&str> {
     }
 }
 
+fn recursive_account_number(value: &Value) -> Option<&str> {
+    match value {
+        Value::Object(fields) => fields
+            .get("account_number")
+            .and_then(Value::as_str)
+            .or_else(|| fields.values().find_map(recursive_account_number)),
+        Value::Array(items) => items.iter().find_map(recursive_account_number),
+        _ => None,
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn admitted_live_transactions_match_rust_production_transports() {
     let sockets: Vec<_> = (0..5)
@@ -555,6 +600,22 @@ async fn admitted_live_transactions_match_rust_production_transports() {
     let mut app_client = tonic::client::Grpc::new(app_channel);
     let mut core_client = tonic::client::Grpc::new(core_channel);
     wait_for_listener(&mut node, rest, &log_path);
+    // `/status` can expose the successor height while CheckTx still has a
+    // height-zero context, which intentionally forces signer account number
+    // zero. Gate broadcasts on the application commit that makes the frozen
+    // account-number-one error string deterministic.
+    let info = wait_for_application_height(&mut node, rpc, 11, &log_path);
+    assert!(
+        info["result"]["response"]["last_block_height"]
+            .as_str()
+            .unwrap()
+            .parse::<i64>()
+            .unwrap()
+            >= 11
+    );
+    let account = get_json(rest, &format!("/cosmos/auth/v1beta1/accounts/{SENDER}"));
+    assert_eq!(recursive_account_number(&account), Some("1"));
+    assert_eq!(recursive_sequence(&account), Some("0"));
 
     let malformed = capture_case(&captured, "malformed-rest-encoding");
     let response = post_json(

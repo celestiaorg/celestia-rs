@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "issue": 191,
+  "acceptance_slice": "provider-relevant proxy/TLS handling and malformed HTTP framing with bounded local tests",
+  "oracles": {
+    "cert_only": {
+      "endpoint": "http://127.0.0.1:6340",
+      "tls_cert_file": "ignored.crt",
+      "tls_key_file": "",
+      "purpose": "prove Go remains plaintext unless both TLS fields are nonempty"
+    },
+    "relative": {
+      "endpoint": "https://localhost:6350",
+      "tls_cert_file": "localhost.crt",
+      "tls_key_file": "localhost.key",
+      "purpose": "prove relative paths resolve under the node config directory"
+    }
+  },
+  "dynamic_response_headers_excluded_from_stable_projection": [
+    "connection",
+    "content-length",
+    "date",
+    "transfer-encoding",
+    "x-server-time"
+  ],
+  "categories": {
+    "tls": [
+      "tls-health-http1",
+      "tls-health-http2",
+      "tls-jsonrpc-health-http1",
+      "tls-cors-preflight-http1",
+      "tls-wss-jsonrpc-clean-close",
+      "tls-node-rest-get-latest-block",
+      "tls-certificate-name-mismatch",
+      "plaintext-on-tls-port",
+      "tls-on-plaintext-port"
+    ],
+    "proxy": [
+      "proxy-root-internal-host",
+      "proxy-root-public-host",
+      "proxy-forwarded-headers-inert",
+      "proxy-cors-forwarded-headers-inert",
+      "proxy-health-forwarded-headers-inert",
+      "proxy-absolute-form-target"
+    ],
+    "framing-valid-controls": [
+      "framing-content-length-duplicate-same",
+      "framing-content-length-comma-same",
+      "framing-transfer-encoding-with-content-length",
+      "framing-chunk-extension",
+      "framing-declared-trailer"
+    ],
+    "framing-malformed-inputs": [
+      "framing-missing-host",
+      "framing-duplicate-host",
+      "framing-header-name-space",
+      "framing-header-without-colon",
+      "framing-obs-fold",
+      "framing-nul-header-value",
+      "framing-invalid-method-token",
+      "framing-invalid-http-version",
+      "framing-invalid-target-control",
+      "framing-content-length-different",
+      "framing-content-length-negative",
+      "framing-content-length-plus",
+      "framing-content-length-nondigit",
+      "framing-transfer-encoding-gzip",
+      "framing-transfer-encoding-nonfinal-chunked",
+      "framing-transfer-encoding-duplicate-chunked",
+      "framing-invalid-chunk-size",
+      "framing-invalid-chunk-terminator",
+      "framing-forbidden-trailer",
+      "framing-truncated-content-length",
+      "framing-truncated-chunk"
+    ],
+    "framing-connection": [
+      "framing-transfer-length-keepalive",
+      "framing-conflicting-length-closes",
+      "framing-invalid-chunk-closes"
+    ],
+    "tls-config": [
+      "config-cert-only-plaintext",
+      "config-key-only-plaintext",
+      "config-relative-path-tls",
+      "config-absolute-path-tls",
+      "config-missing-pair-no-plaintext-fallback",
+      "config-mismatched-pair-no-plaintext-fallback"
+    ]
+  },
+  "explicit_omissions": [
+    "public-provider parity: the public endpoint only selects the active release",
+    "PROXY protocol v1/v2, which neither tagged Go nor current Rust RPC enables",
+    "mutual TLS and client-certificate authorization, which tagged Go RPC does not configure",
+    "certificate rotation without restart and ACME automation",
+    "external load-balancer timeout, retry, rate-limit and header-rewrite policy",
+    "slowloris timing/resource growth and unbounded malformed-input fuzzing",
+    "HTTP/2 malformed frame and HPACK behavior below the HTTP request abstraction"
+  ]
+}

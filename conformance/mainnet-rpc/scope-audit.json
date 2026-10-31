@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "8999f9a7e700190a9b490bf8e2f846ee754d9347",
+  "audited_main": "0c7ed88c850b335a93e85a48dba4e502aef7d443",
   "provider_ready": false,
   "packages": [
     {
@@ -245,7 +245,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs",
-            "sha256": "ccbef79a4591f17998033608891c2a31f45141799087a78886723f9890bb518b"
+            "sha256": "3d0040461d1e8c3154258020983cff96c560cbd4dda5b904c55fb73c2873c83f"
           },
           "function": "admitted_live_transactions_match_rust_production_transports"
         }
@@ -298,38 +298,58 @@
       "issue": 190,
       "comparison": "relational-go-plus-rust-regressions",
       "receipt": {
-        "path": "conformance/websocket-lifecycle/testdata/manifest.json",
-        "sha256": "e79820e963f705b747a06736d86563ff58cfd9294f056682e89695b06e731ce6"
+        "path": "conformance/websocket-lifecycle/closure-review.json",
+        "sha256": "a49de6cb8347d59f31df52c41de954d80e9cdda0651f65c59067bb937a017b62"
       },
       "documentation": {
         "path": "conformance/websocket-lifecycle/README.md",
-        "sha256": "5f1883e11a50bba0861f26093102a12f81938ec03465764254949cb873f90b4f"
+        "sha256": "22a2f2c60654f03fdfbde0f6b3aeae13f10cbca8e0915ddadf44833440181c64"
       },
       "verifier": {
-        "path": "conformance/websocket-lifecycle/verify.py",
-        "sha256": "0b50ecc6c1d4460c05f4f7eefcf097c3191d9ff79f6acef905c08d5df4ff782f"
+        "path": "conformance/websocket-lifecycle/verify-closure.py",
+        "sha256": "6a1b757572edbbf46d2ba4d20bc6273f820796caec6594a06eb35c68c2a887b6"
       },
       "transports": [
         "comet-websocket"
       ],
-      "scope": "Go upgrades, quota/reclaim, event payloads, reconnect, idle/write deadlines and one large-frame/resource cycle",
+      "scope": "Focused Go lifecycle behavior composed with a bounded 310-second five-node mixed Go/Rust provider soak: upgrades and Origin handling, subscription lifecycle and quotas, event relations, reconnect/no replay, deadlines and pressure, large frames, concurrent transactions and sampled OS resources",
       "normalizations": [
-        "Relational height/hash/order invariants; timing and cleanup bounds rather than literal runtime counts"
+        "The HTTP Connection upgrade token is compared ASCII-case-insensitively; exact Go and Rust header values remain recorded",
+        "Nonce- and clock-dependent Sec-WebSocket-Accept, Date and X-Server-Time values are retained but excluded from stable header comparison",
+        "Tx and NewBlock delivery order is relational; timing, cleanup and sampled resource evidence is compared by documented bounds rather than literal schedules"
       ],
       "known_mismatches": [],
       "exclusions": [
-        "Long concurrent provider/resource campaign and exhaustive missed-event or frame-boundary semantics remain incomplete"
+        "The mixed-node run is one bounded local capture and does not establish unbounded-duration or production-load behavior",
+        "TLS, reverse proxies, external provider SDKs and browser implementations are excluded",
+        "Subscription quota and full outbound-pressure saturation are covered by the focused lifecycle capture rather than repeated in the mixed-node soak",
+        "Exact matched-state Go/Rust event-payload equivalence is excluded"
       ],
       "provenance_limits": [
-        "Pinned Go capture and Rust regressions are distinct; no paired exact stream/matched-state response receipt"
+        "The pinned actual-Go v10.5.0 focused capture and the mixed Go/Rust soak are distinct runs; no paired exact stream at matched state is claimed",
+        "The mixed-node evidence binds a meaningful Rust candidate commit and sampled local OS telemetry, not universal resource ceilings"
       ],
       "runtime_regressions": [
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/src/server.rs",
-            "sha256": "8ce33b90a9693de1a7f488189d12fdd6c94a75bba1deeaaee3f0cba75104051d"
+            "sha256": "04ba11d228910690c9d06b8c2fbc71b0460e5dfc3ee924954d124aeb0ff50547"
           },
           "function": "websocket_write_is_bounded"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
+            "sha256": "9f199b368af88055eb4801b3d048cbd8bf315a37fd13b16ae1b93660d28e60c6"
+          },
+          "function": "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
+            "sha256": "9f199b368af88055eb4801b3d048cbd8bf315a37fd13b16ae1b93660d28e60c6"
+          },
+          "function": "websocket_origins_match_go_and_deliver_events"
         }
       ]
     },
@@ -475,9 +495,78 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
-            "sha256": "a800ed00254aba030b80f5f337935f2ab85d7f0c412949e650cc2da5a25a063e"
+            "sha256": "7752f5e444fdc6826a366da056d056543951be738452c500ddb36e83eee1c900"
           },
           "function": "tagged_go_comet_http_boundaries_match_over_real_sockets"
+        }
+      ]
+    },
+    {
+      "id": "proxy-tls-framing",
+      "issue": 191,
+      "comparison": "normalized-runtime-comparison",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/provenance.json",
+        "sha256": "75d95311e78695991f5cc696791a1447b99302a663e2594f1a60aa793410258e"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/README.md",
+        "sha256": "d6912f5096be8da148ca62e4bc4c3747c1d8d3f105d1f927de3e8126657da007"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/verify.py",
+        "sha256": "ef5c18358a68b12df67b868efef56a15f2b36c8b56131582c07226a41e91e459"
+      },
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc",
+        "comet-websocket",
+        "rest"
+      ],
+      "scope": "Fifty exact tagged-Go cases covering H1/H2 TLS, WSS close, TLS configuration, REST self-query, proxy headers/Host, malformed H1 framing and connection reuse/closure, with actual Rust socket regressions",
+      "normalizations": [
+        "Response header names are lowercased and values compared as exact duplicate-preserving multisets; raw casing and order remain hash-bound",
+        "Stable projections exclude only Connection, Content-Length, Date, Transfer-Encoding and X-Server-Time; connection reuse or closure is asserted separately"
+      ],
+      "known_mismatches": [
+        "Hyper pre-application parser responses omit Go text/plain diagnostic bodies and Content-Type",
+        "Hyper rejects obsolete line folding and HTTP/1.2 with 400 where Go accepts them",
+        "Hyper returns 400 for gzip or non-final chunked transfer codings where Go returns 501",
+        "Hyper closes after a request with Transfer-Encoding plus Content-Length where Go permits one more request",
+        "rustls closes or alerts a plaintext client on a TLS port instead of returning Go's HTTP/1.0 diagnostic",
+        "After the matching WSS close code 1000, the upgraded Rust TLS stream may report UnexpectedEof because it sends no separate TLS close_notify"
+      ],
+      "exclusions": [
+        "Public-provider response parity and provider-specific proxy rewrites, retries, rate limits and load-balancer timeouts are not established",
+        "PROXY protocol, mTLS, certificate rotation without restart and ACME are outside this RPC configuration",
+        "Slowloris/resource fuzzing and malformed HTTP/2 or HPACK below the request abstraction remain excluded"
+      ],
+      "provenance_limits": [
+        "The oracle is an isolated tagged-Go v10.5.0 single-validator campaign, not a public-provider capture",
+        "The exact Go1.26.9 compiler drift from the issue's Go1.26.6 baseline is disclosed and source, binary, config, request and response hashes are bound",
+        "Actual Rust socket regressions and production source are bound, but there is no committed paired Rust binary or response capture"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
+            "sha256": "7752f5e444fdc6826a366da056d056543951be738452c500ddb36e83eee1c900"
+          },
+          "function": "tagged_go_proxy_and_framing_boundaries_match_or_are_bounded"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
+            "sha256": "7752f5e444fdc6826a366da056d056543951be738452c500ddb36e83eee1c900"
+          },
+          "function": "tagged_go_tls_and_config_boundaries_match_or_are_bounded"
+        },
+        {
+          "source": {
+            "path": "crates/tier-5-node/celestia-rs/src/rpc_service.rs",
+            "sha256": "fc5a345f5b7c82d7ee7cded296e7b71967cbc795dc4bcd4ca1a0e97eb693ba01"
+          },
+          "function": "tls_public_rpc_keeps_app_get_latest_block_on_private_loopback"
         }
       ]
     }
@@ -559,18 +648,19 @@
         "websocket-lifecycle"
       ],
       "remaining_gaps": [
-        "Complete sustained concurrent subscriptions/reconnect/backpressure/resource bounds; avoid promoting the single Go lifecycle cycle to general parity"
+        "The acceptance criteria are covered by bounded local evidence; unbounded production-duration behavior, TLS/proxy/browser/external-SDK clients and exact matched-state Go/Rust payload parity remain outside scope"
       ]
     },
     {
       "issue": 191,
       "packages": [
         "comet-http",
+        "proxy-tls-framing",
         "rest-heights",
         "rest-post"
       ],
       "remaining_gaps": [
-        "Add Rust REST POST replay and remaining malformed HTTP/proxy/TLS/timeout behavior; preserve explicit431 diagnostic deviation"
+        "Issue #191 acceptance is covered by the four scoped packages; exact paired Rust REST POST replay and public-provider infrastructure policies remain explicit evidence exclusions rather than acceptance gaps"
       ]
     },
     {
