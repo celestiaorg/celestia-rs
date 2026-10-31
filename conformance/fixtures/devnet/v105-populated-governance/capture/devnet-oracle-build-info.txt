@@ -1,0 +1,72 @@
+/workspace/scratch/rpc-181/issue188-finish/accepted2-d259aa9/bin/devnet-oracle: go1.26.9
+	path	github.com/celestiaorg/celestia-rs/conformance/devnet-oracle
+	mod	github.com/celestiaorg/celestia-rs/conformance/devnet-oracle	(devel)	
+	dep	cosmossdk.io/errors	v1.0.0	h1:nxF07lmlBbB8NKQhtJ+sJm6ef5uV1XkvPXG2bUntb04=
+	dep	cosmossdk.io/log	v1.4.1
+	=>	github.com/celestiaorg/cosmos-sdk/log	v1.3.0	h1:DfckA2UihWckeKHBQU3UXkF2G/qEmsPxd3LtGYB9HeM=
+	
+	dep	cosmossdk.io/math	v1.4.0	h1:XbgExXFnXmF/CccPPEto40gOO7FpWu9yWNAZPN3nkNQ=
+	dep	cosmossdk.io/store	v1.1.2
+	=>	github.com/celestiaorg/cosmos-sdk/store	v1.1.3-celestia.3	h1:REVugKBjd8NeveAtmIfMaMUZ2pKZIfsTveumGvX8cKY=
+	
+	dep	github.com/DataDog/zstd	v1.5.5	h1:oWf5W7GtOLgp6bciQYDmhHHjdhYkALu6S/5Ni9ZgSvQ=
+	dep	github.com/beorn7/perks	v1.0.1	h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
+	dep	github.com/cespare/xxhash/v2	v2.3.0	h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
+	dep	github.com/cockroachdb/errors	v1.11.3	h1:5bA+k2Y6r+oz/6Z/RFlNeVCesGARKuC6YymtcDrbC/I=
+	dep	github.com/cockroachdb/fifo	v0.0.0-20240606204812-0bbfbd93a7ce	h1:giXvy4KSc/6g/esnpM7Geqxka4WSqI1SZc7sMJFd3y4=
+	dep	github.com/cockroachdb/logtags	v0.0.0-20230118201751-21c54148d20b	h1:r6VH0faHjZeQy818SGhaone5OnYfxFR/+AzdY3sf5aE=
+	dep	github.com/cockroachdb/pebble	v1.1.5	h1:5AAWCBWbat0uE0blr8qzufZP5tBjkRyy/jWe1QWLnvw=
+	dep	github.com/cockroachdb/redact	v1.1.5	h1:u1PMllDkdFfPWaNGMyLD1+so+aq3uUItthCFqzwPJ30=
+	dep	github.com/cockroachdb/tokenbucket	v0.0.0-20230807174530-cc333fc44b06	h1:zuQyyAKVxetITBuuhv3BI9cMrmStnpT18zmgmTxunpo=
+	dep	github.com/cometbft/cometbft	v0.38.21	h1:qcIJSH9LiwU5s6ZgKR5eRbsLNucbubfraDs5bzgjtOI=
+	dep	github.com/cosmos/cosmos-db	v1.1.3	h1:7QNT77+vkefostcKkhrzDK9uoIEryzFrU9eoMeaQOPY=
+	dep	github.com/cosmos/gogoproto	v1.7.0	h1:79USr0oyXAbxg3rspGh/m4SWNyoz/GLaAh0QlCe2fro=
+	dep	github.com/cosmos/iavl	v1.2.0	h1:kVxTmjTh4k0Dh1VNL046v6BXqKziqMDzxo93oh3kOfM=
+	dep	github.com/cosmos/ics23/go	v0.11.0	h1:jk5skjT0TqX5e5QJbEnwXIS2yI2vnmLOgpQPeM5RtnU=
+	dep	github.com/decred/dcrd/dcrec/secp256k1/v4	v4.4.0	h1:NMZiJj8QnKe1LgsbDayM4UoHwbvwDRwnI3hwNaAHRnc=
+	dep	github.com/emicklei/dot	v1.6.1	h1:ujpDlBkkwgWUY+qPId5IwapRW/xEoligRSYjioR6DFI=
+	dep	github.com/getsentry/sentry-go	v0.27.0	h1:Pv98CIbtB3LkMWmXi4Joa5OOcwbmnX88sF5qbK3r3Ps=
+	dep	github.com/gogo/protobuf	v1.3.2	h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/golang/snappy	v0.0.4	h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/google/go-cmp	v0.7.0	h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+	dep	github.com/hashicorp/go-immutable-radix	v1.0.0	h1:AKDB1HM5PWEA7i4nhcpwOrO2byshxBjXVn/J/3+z5/0=
+	dep	github.com/hashicorp/go-metrics	v0.5.1	h1:rfPwUqFU6uZXNvGl4hzjY8LEBsqFVU4si1H9/Hqck/U=
+	dep	github.com/hashicorp/golang-lru	v1.0.2	h1:dV3g9Z/unq5DpblPpw+Oqcv4dU/1omnb4Ok8iPY6p1c=
+	dep	github.com/kr/pretty	v0.3.1	h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
+	dep	github.com/kr/text	v0.2.0	h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+	dep	github.com/mattn/go-colorable	v0.1.13	h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
+	dep	github.com/mattn/go-isatty	v0.0.20	h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+	dep	github.com/munnerz/goautoneg	v0.0.0-20191010083416-a7dc8b61c822	h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
+	dep	github.com/oasisprotocol/curve25519-voi	v0.0.0-20220708102147-0a8a51822cae	h1:FatpGJD2jmJfhZiFDElaC0QhZUDQnxUeAwTGkfAHN3I=
+	dep	github.com/pkg/errors	v0.9.1	h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+	dep	github.com/prometheus/client_golang	v1.21.0	h1:DIsaGmiaBkSangBgMtWdNfxbMNdku5IK6iNhrEqWvdA=
+	dep	github.com/prometheus/client_model	v0.6.1	h1:ZKSh/rekM+n3CeS952MLRAdFwIKqeY8b62p8ais2e9E=
+	dep	github.com/prometheus/common	v0.62.0	h1:xasJaQlnWAeyHdUBeGjXmutelfJHWMRr+Fg4QszZ2Io=
+	dep	github.com/prometheus/procfs	v0.15.1	h1:YagwOFzUgYfKKHX6Dr+sHT7km/hxC76UB0learggepc=
+	dep	github.com/rogpeppe/go-internal	v1.12.0	h1:exVL4IDcn6na9z1rAb56Vxr+CgyK3nn3O+epU5NdKM8=
+	dep	github.com/rs/zerolog	v1.33.0	h1:1cU2KZkvPxNyfgEmhHAz/1A9Bz+llsdYzklWFzgp0r8=
+	dep	github.com/spf13/cast	v1.8.0	h1:gEN9K4b8Xws4EX0+a0reLmhq8moKn7ntRlQYgjPeCDk=
+	dep	github.com/syndtr/goleveldb	v1.0.1-0.20220721030215-126854af5e6d
+	=>	github.com/syndtr/goleveldb	v1.0.1-0.20210819022825-2ae1ddf74ef7	h1:epCh84lMvA70Z7CTTCmYQn2CKbY8j86K7/FAIr141uY=
+	
+	dep	github.com/tidwall/btree	v1.7.0	h1:L1fkJH/AuEh5zBnnBbmTwQ5Lt+bRJ5A8EWecslvo9iI=
+	dep	golang.org/x/crypto	v0.57.0	h1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=
+	dep	golang.org/x/exp	v0.0.0-20240719175910-8a7402abbf56	h1:2dVuKD2vS7b0QIHQbpyTISPd0LeHDbnYEryqj5Q1ug8=
+	dep	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
+	dep	golang.org/x/sys	v0.48.0	h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+	dep	golang.org/x/text	v0.42.0	h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260526163538-3dc84a4a5aaa	h1:mZHHdPZl0dbGHCflZgAq/Q468DWVFcU2whhB2KAo8fk=
+	dep	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
