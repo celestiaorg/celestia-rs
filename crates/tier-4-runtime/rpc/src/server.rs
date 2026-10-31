@@ -20,6 +20,10 @@ use crate::json::{self, J, Node, Val};
 use crate::params::{self, Arg};
 use crate::query::Query;
 
+const WS_WRITE_WAIT: Duration = Duration::from_secs(10);
+const WS_READ_WAIT: Duration = Duration::from_secs(30);
+const WS_PING_PERIOD: Duration = Duration::from_secs(27);
+
 /// A JSON-RPC id (`JSONRPCIntID` / `JSONRPCStringID`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Id {
@@ -992,20 +996,33 @@ pub fn event_frame(id: &Option<Id>, query: &str, msg: &crate::events::Message) -
 async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<String>(env.config.websocket_write_buffer_size.max(1));
-    let writer = tokio::spawn(async move {
-        let mut ping = tokio::time::interval(Duration::from_secs(27));
+    let mut writer = tokio::spawn(async move {
+        let mut ping = tokio::time::interval(WS_PING_PERIOD);
         ping.tick().await;
         loop {
             tokio::select! {
                 m = rx.recv() => match m {
-                    Some(m) => if sink.send(WsMessage::Text(m)).await.is_err() { break },
+                    Some(m) => if !ws_write(&mut sink, WsMessage::Text(m)).await { break },
                     None => break,
                 },
-                _ = ping.tick() => if sink.send(WsMessage::Ping(Vec::new())).await.is_err() { break },
+                _ = ping.tick() => if !ws_write(&mut sink, WsMessage::Ping(Vec::new())).await { break },
             }
         }
     });
-    while let Some(msg) = stream.next().await {
+    let mut writer_finished = false;
+    loop {
+        let msg = tokio::select! {
+            _ = &mut writer => {
+                writer_finished = true;
+                break;
+            }
+            read = tokio::time::timeout(WS_READ_WAIT, stream.next()) => {
+                match read {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        };
         let text = match msg {
             Ok(WsMessage::Text(t)) => t,
             Ok(WsMessage::Binary(b)) => json::go_string(&b),
@@ -1020,7 +1037,27 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
     }
     let _ = env.event_bus.unsubscribe_all(&remote);
     drop(tx);
-    let _ = writer.await;
+    if !writer_finished {
+        writer.abort();
+        let _ = writer.await;
+    }
+}
+
+async fn ws_write(
+    sink: &mut futures_util::stream::SplitSink<WebSocket, WsMessage>,
+    message: WsMessage,
+) -> bool {
+    ws_write_with_timeout(sink, message, WS_WRITE_WAIT).await
+}
+
+async fn ws_write_with_timeout<S>(sink: &mut S, message: WsMessage, wait: Duration) -> bool
+where
+    S: futures_util::Sink<WsMessage> + Unpin,
+{
+    matches!(
+        tokio::time::timeout(wait, sink.send(message)).await,
+        Ok(Ok(()))
+    )
 }
 
 /// Handles one WebSocket message; `None` when nothing is written back
@@ -1506,5 +1543,60 @@ pub(crate) mod broadcast_tests {
         task.abort();
         let _ = task.await;
         assert_eq!(env.event_bus.num_clients(), 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+
+    use super::*;
+
+    struct BlockedSink;
+
+    impl Sink<WsMessage> for BlockedSink {
+        type Error = Infallible;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn start_send(self: Pin<&mut Self>, _item: WsMessage) -> Result<(), Self::Error> {
+            unreachable!("a blocked sink never accepts a message")
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn websocket_write_is_bounded() {
+        let mut sink = BlockedSink;
+        assert!(
+            !ws_write_with_timeout(
+                &mut sink,
+                WsMessage::Ping(Vec::new()),
+                Duration::from_millis(1),
+            )
+            .await
+        );
     }
 }

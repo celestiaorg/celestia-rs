@@ -1,0 +1,12 @@
+{
+  "repository": "celestiaorg/celestia-app",
+  "latest_release": "v10.5.0",
+  "published_at": "2026-10-22T13:33:56Z",
+  "target_commitish": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+  "tag_object": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+  "verified_at": "2026-10-31T00:47:00Z",
+  "commands": [
+    "gh api repos/celestiaorg/celestia-app/releases/latest",
+    "git ls-remote https://github.com/celestiaorg/celestia-app.git refs/tags/v10.5.0"
+  ]
+}
