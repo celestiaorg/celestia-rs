@@ -832,6 +832,7 @@ dependencies = [
  "ctypes",
  "encoding",
  "evidence",
+ "flate2",
  "futures-util",
  "hash",
  "hex",
