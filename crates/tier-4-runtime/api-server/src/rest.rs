@@ -441,6 +441,47 @@ fn set_field_as(
     Ok(())
 }
 
+/// Validates JSON byte fields with grpc-gateway's Go base64 decoder before
+/// pbjson turns the request into protobuf bytes. This preserves Go's exact
+/// corrupt-input offset and message for request bodies as well as URL/query
+/// parameters.
+fn validate_body_bytes(msg: &str, value: &Value) -> Result<(), String> {
+    let (Some(schema), Value::Object(obj)) = (services::message(msg), value) else {
+        return Ok(());
+    };
+    for (name, value) in obj {
+        let Some(field) = schema.field(name) else {
+            continue;
+        };
+        match field.ty {
+            ty::BYTES if field.repeated => {
+                if let Value::Array(values) = value {
+                    for value in values {
+                        if let Value::String(value) = value {
+                            gateway_bytes(value)?;
+                        }
+                    }
+                }
+            }
+            ty::BYTES => {
+                if let Value::String(value) = value {
+                    gateway_bytes(value)?;
+                }
+            }
+            ty::MESSAGE if field.repeated => {
+                if let Value::Array(values) = value {
+                    for value in values {
+                        validate_body_bytes(field.type_name, value)?;
+                    }
+                }
+            }
+            ty::MESSAGE => validate_body_bytes(field.type_name, value)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Handles one REST request.
 pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
     handle_with_metadata(req, &mut |path, data, height| {
@@ -491,6 +532,9 @@ pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> De
                 return error_reply(grpc_query::Code::InvalidArgument, &e).into();
             }
         }
+    }
+    if let Err(e) = validate_body_bytes(method.input, &Value::Object(obj.clone())) {
+        return error_reply(grpc_query::Code::InvalidArgument, &e).into();
     }
     let data = match celestia_proto::registry::json_to_any_value(
         &format!("/{}", method.input),
@@ -570,6 +614,31 @@ mod tests {
         assert_eq!(
             gateway_bytes("celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7").unwrap_err(),
             "illegal base64 data at input byte 44"
+        );
+    }
+
+    #[test]
+    fn request_body_bytes_use_go_base64_errors() {
+        let reply = handle(
+            &Request {
+                method: "POST",
+                path: "/cosmos/tx/v1beta1/txs",
+                query: "",
+                height: None,
+                body: br#"{"tx_bytes":"%%%","mode":"BROADCAST_MODE_SYNC"}"#,
+            },
+            &mut |_, _, _| panic!("invalid bytes must fail before dispatch"),
+        );
+        assert_eq!(
+            reply,
+            Reply {
+                status: 400,
+                body: json!({
+                    "code": 3,
+                    "message": "illegal base64 data at input byte 0",
+                    "details": []
+                }),
+            }
         );
     }
 
