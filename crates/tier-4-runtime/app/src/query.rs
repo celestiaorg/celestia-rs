@@ -56,6 +56,13 @@ pub enum GrpcQueryError {
     Context(SdkError),
     /// The handler failed.
     Handler(QueryError),
+    /// A handler failed after its query context established response metadata.
+    HandlerAtHeight {
+        /// The error returned by the handler.
+        error: QueryError,
+        /// The committed query context height.
+        height: i64,
+    },
 }
 
 /// Whether the query service of `path` is absent at `app_version`:
@@ -69,6 +76,23 @@ fn absent_at(app_version: u64, path: &str) -> bool {
 }
 
 impl GrpcQueryError {
+    /// Keeps the height only after a decoded request reaches its handler.
+    pub(crate) fn handler_at_height(error: QueryError, height: i64) -> Self {
+        if matches!(error, QueryError::Decode(_)) {
+            Self::Handler(error)
+        } else {
+            Self::HandlerAtHeight { error, height }
+        }
+    }
+
+    /// The header established by a successfully created query context.
+    #[must_use]
+    pub fn response_height(&self) -> Option<i64> {
+        match self {
+            Self::HandlerAtHeight { height, .. } => Some(*height),
+            _ => None,
+        }
+    }
     /// The gRPC status (code, message) Go's gRPC server would return.
     #[must_use]
     pub fn grpc_status(&self) -> (grpc_query::Code, String) {
@@ -82,7 +106,11 @@ impl GrpcQueryError {
                 format!("unknown service {svc}"),
             ),
             Self::Context(e) => QueryError::Sdk(e.clone()).grpc_status(),
-            Self::Handler(e) => e.grpc_status(),
+            Self::Handler(QueryError::Decode(message)) => (
+                grpc_query::Code::Internal,
+                format!("grpc: error unmarshalling request: {message}"),
+            ),
+            Self::Handler(e) | Self::HandlerAtHeight { error: e, .. } => e.grpc_status(),
         }
     }
 }
@@ -172,7 +200,7 @@ impl App {
             let h = state.header.height;
             return handler(self, &mut state, data)
                 .map(|v| (v, h))
-                .map_err(GrpcQueryError::Handler);
+                .map_err(|error| GrpcQueryError::handler_at_height(error, h));
         }
         let Some(handler) = grpc_query::router().route(path) else {
             return Err(GrpcQueryError::Unimplemented(path.to_owned()));
@@ -184,7 +212,7 @@ impl App {
         let mut ctx = state.context();
         handler(&mut ctx, data)
             .map(|v| (v, h))
-            .map_err(GrpcQueryError::Handler)
+            .map_err(|error| GrpcQueryError::handler_at_height(error, h))
     }
 
     /// `Query`.

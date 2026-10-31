@@ -1,0 +1,26 @@
+[
+  {
+    "Path": "github.com/celestiaorg/celestia-core",
+    "Version": "v0.42.3",
+    "Sum": "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM=",
+    "GoModSum": "h1:znDAw/NFVo/oZKG7Q70cHxRRLUVzi2/K9qJ911+lpYg=",
+    "Origin": {
+      "VCS": "git",
+      "URL": "https://github.com/celestiaorg/celestia-core",
+      "Hash": "a5537d84a008d566abc503d2ea41e30f2301403d",
+      "Ref": "refs/tags/v0.42.3"
+    }
+  },
+  {
+    "Path": "github.com/celestiaorg/cosmos-sdk",
+    "Version": "v0.52.12",
+    "Sum": "h1:muIDlBLLXeuKiIrGA/t+k9ZLpjjRVs460XRzwh1dgqU=",
+    "GoModSum": "h1:skeian5w7HTw2jmUxjGudtu6wzKLcgBh8t+LYvVvzfI=",
+    "Origin": {
+      "VCS": "git",
+      "URL": "https://github.com/celestiaorg/cosmos-sdk",
+      "Hash": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+      "Ref": "refs/tags/v0.52.12"
+    }
+  }
+]

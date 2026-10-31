@@ -151,7 +151,7 @@ pub fn grpc_query(
     Some(
         dispatch(&env, path, data)
             .map(|v| (v, h))
-            .map_err(GrpcQueryError::Handler),
+            .map_err(|error| GrpcQueryError::handler_at_height(error, h)),
     )
 }
 
