@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "case_count": 82,
+  "categories": {
+    "content-type": [
+      "content-type-absent",
+      "content-type-empty",
+      "content-type-json",
+      "content-type-json-charset",
+      "content-type-octet",
+      "content-type-repeated",
+      "content-type-text"
+    ],
+    "escaping": [
+      "escape-get-pagination",
+      "escape-get-unknown",
+      "escape-path-encoded-slash",
+      "escape-path-percent",
+      "escape-path-plus",
+      "escape-post-field",
+      "escape-post-unused",
+      "escape-query-repeated"
+    ],
+    "method": [
+      "method-delete",
+      "method-get",
+      "method-head",
+      "method-options",
+      "method-patch",
+      "method-post",
+      "method-put"
+    ],
+    "protobuf-json": [
+      "amino-binary-empty",
+      "amino-json-object",
+      "amino-json-value",
+      "broadcast-bytes-invalid",
+      "broadcast-enum-float",
+      "broadcast-enum-large",
+      "broadcast-enum-null",
+      "broadcast-enum-unknown",
+      "encode-empty-tx",
+      "encode-nested-unknown",
+      "ibc-int-number",
+      "ibc-int-overflow",
+      "ibc-int-string",
+      "json-array",
+      "json-boolean",
+      "json-bytes-array",
+      "json-bytes-invalid-base64",
+      "json-bytes-null",
+      "json-bytes-number",
+      "json-bytes-object",
+      "json-bytes-space",
+      "json-bytes-unpadded",
+      "json-bytes-url-base64",
+      "json-camel-empty",
+      "json-duplicate-alias",
+      "json-malformed",
+      "json-null",
+      "json-number",
+      "json-snake-empty",
+      "json-string",
+      "json-trailing-json",
+      "json-unknown-field"
+    ],
+    "success-control": [
+      "decode-valid-tx",
+      "encode-decoded-roundtrip",
+      "simulate-valid-tx"
+    ],
+    "supported-route": [
+      "route-batch-empty-body",
+      "route-batch-empty-object",
+      "route-broadcast-empty-body",
+      "route-broadcast-empty-object",
+      "route-decode-amino-empty-body",
+      "route-decode-amino-empty-object",
+      "route-decode-empty-body",
+      "route-decode-empty-object",
+      "route-encode-amino-empty-body",
+      "route-encode-amino-empty-object",
+      "route-encode-empty-body",
+      "route-encode-empty-object",
+      "route-fibre-validate-empty-body",
+      "route-fibre-validate-empty-object",
+      "route-ibc-membership-empty-body",
+      "route-ibc-membership-empty-object",
+      "route-simulate-empty-body",
+      "route-simulate-empty-object"
+    ],
+    "unknown-route": [
+      "unknown-double-slash",
+      "unknown-encoded-name",
+      "unknown-encoded-slash",
+      "unknown-invalid-percent",
+      "unknown-known-service",
+      "unknown-root",
+      "unknown-trailing-slash"
+    ]
+  }
+}

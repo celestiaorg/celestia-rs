@@ -1,0 +1,10 @@
+{
+  "replayed_requests": 194,
+  "abci_info_hex": "22730a0c63656c65737469612d617070120631302e352e30180a20142a20a24aed6d3e95df951e9a37b40364623ea4af5b5cd30bc231cb7ce98b19c9e85332350a02080312061080cab5ee011a02080222061080cab5ee012a02080332061080cab5ee013a061080cab5ee01420708021080c2d72f",
+  "data": "celestia-app",
+  "version": "10.5.0",
+  "app_version": 10,
+  "height": 20,
+  "app_hash": "A24AED6D3E95DF951E9A37B40364623EA4AF5B5CD30BC231CB7CE98B19C9E853",
+  "chain_id": "rs-devnet-1"
+}

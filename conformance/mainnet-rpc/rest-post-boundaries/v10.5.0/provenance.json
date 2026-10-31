@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "oracle": {
+    "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+    "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "compiler": "go version go1.26.9 linux/amd64",
+    "build_tags": [
+      "ledger"
+    ],
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "build_recipe_sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "build_info_sha256": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "module_file_sha256": "c5b3b47f59f423604a8fe2306206cf73bb7a6305e104a572777e4482253e8cde",
+    "standalone": true,
+    "with_comet": false
+  },
+  "release_selection": {
+    "endpoint": "https://rpc.celestia.pops.one",
+    "observed_at": "2026-10-31T01:31:22.691457+00:00",
+    "chain_id": "celestia",
+    "version": "10.5.0",
+    "observation_sha256": "f068857550bd48d6aec2fa2005b7b6ec4c3ffb0c371c6f53e79bf238c228a0e0",
+    "purpose": "select the active mainnet application release; not provider parity evidence"
+  },
+  "state": {
+    "chain_id": "rs-devnet-1",
+    "version": "10.5.0",
+    "height": 20,
+    "app_hash": "A24AED6D3E95DF951E9A37B40364623EA4AF5B5CD30BC231CB7CE98B19C9E853",
+    "replayed_requests": 194,
+    "state_sha256": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70",
+    "genesis_sha256": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2",
+    "app_config_sha256": "fb633da2e9f77215d3169cf5828bf741254db0507621e3be214f9d8fa7c7152d"
+  },
+  "replay": {
+    "receipt_sha256": "145655d2f895e71900c48d1b684235655eee675e2981d928ce04b13d0f3c8876",
+    "capture_state_source_sha256": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83",
+    "frozen_source_sha256": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83"
+  },
+  "rpc_recorder": {
+    "binary_sha256": "332dd420d7b42a4564427c73f4750010b934e0a8838df18a1ea63fbc8e72b8d9",
+    "build_receipt_sha256": "0c918e26eb09bfec35a1e1db604f44e3850f602fe6664a76f16238cf7e8bd473",
+    "build_info_sha256": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753"
+  },
+  "capture": {
+    "captured_at": "2026-10-31T01:34:32.548836+00:00",
+    "case_count": 82,
+    "capture_sha256": "85768d43c369625aa96fcf7a1267f9fc20c4e8e90cb3982f13bdde10b03c72b3",
+    "source_sha256": "d45076bbe4eab6e56e3ae2d634a9d9cd8e0a75bc099208afba5f6dbf3fcf5b70",
+    "start_source_sha256": "e2bd34e0b5936cae04f8516d6394f0f7fc23fffb022783a92670c27b744bb9c5"
+  },
+  "files": {
+    "rest-post-boundaries.json": "85768d43c369625aa96fcf7a1267f9fc20c4e8e90cb3982f13bdde10b03c72b3",
+    "case-inventory.json": "cfdee278be7d19c040eb10d11423c05be656cad91ad2f12b217d52cfc7961647",
+    "capture-source.py": "d45076bbe4eab6e56e3ae2d634a9d9cd8e0a75bc099208afba5f6dbf3fcf5b70",
+    "start-source.sh": "e2bd34e0b5936cae04f8516d6394f0f7fc23fffb022783a92670c27b744bb9c5",
+    "app.toml.gz": "ffaaae10ab671c715dfc5fc49f6ab8bcd4eb2d607a8dad74ec7a75f61f49dc4a",
+    "genesis.json": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2",
+    "go-state.json": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70",
+    "mainnet-observation.json": "f068857550bd48d6aec2fa2005b7b6ec4c3ffb0c371c6f53e79bf238c228a0e0",
+    "oracle-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "oracle-build-info.txt.gz": "ce4eee8ca45a6a646639332cd309c3cb464938d83df73dcc421beb401e984df5",
+    "oracle-module.txt": "c5b3b47f59f423604a8fe2306206cf73bb7a6305e104a572777e4482253e8cde",
+    "replay-receipt.json": "145655d2f895e71900c48d1b684235655eee675e2981d928ce04b13d0f3c8876",
+    "replay-source.py": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83",
+    "rpc-recorder-build.json": "0c918e26eb09bfec35a1e1db604f44e3850f602fe6664a76f16238cf7e8bd473",
+    "rpc-recorder-build-info.txt.gz": "71acefa78bdbab513e76b4e1dd69fec1669aa30dad022cfdd3d5b35446096204"
+  },
+  "repository_inputs": {
+    "conformance/mainnet-rpc/simulation/requests.json": "55a53eda607d712f1620ccb2ab2f76254fc60f173d7798d0f04b224e521ddfc9",
+    "conformance/fixtures/devnet/empty/abci.rec": "d89d04f89b4ceaf90fb6b64697da07c0fd18bad8eeb6e22abc845de015a4089c",
+    "conformance/fixtures/devnet/empty/genesis.json": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2",
+    "conformance/mainnet-rpc/simulation/capture-state.py": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83",
+    "conformance/fixtures/devnet/empty/meta.json": "b5419787135923b36f785f3ab6e51d643b227a732c0913d16cd38b82b821e8d8",
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d"
+  }
+}
