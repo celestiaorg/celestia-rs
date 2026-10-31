@@ -27,6 +27,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use base64::Engine as _;
 use ctypes::proto::abci;
 use ctypes::proto::types as ptypes;
 use kvdb::{KvBackend, MemBackend};
@@ -422,6 +423,45 @@ fn legacy_abci_identity(body: &str) -> String {
     serde_json::to_string(&value).unwrap()
 }
 
+/// The frozen corpora predate celestia-app's `/app/version` value. Adapt only
+/// that successful legacy response; every envelope and response field remains
+/// part of the byte-for-byte corpus comparison.
+fn legacy_app_version(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(body) else {
+        return body.to_owned();
+    };
+    if let Some(response) = value.pointer_mut("/result/response")
+        && response["code"] == 0
+        && response["codespace"] == "sdk"
+        && response["value"] == ""
+    {
+        response["value"] = Value::String(
+            base64::engine::general_purpose::STANDARD.encode(app::COMPATIBILITY_VERSION),
+        );
+    }
+    serde_json::to_string(&value).unwrap()
+}
+
+#[test]
+fn legacy_app_version_adapter_is_narrow() {
+    let legacy = r#"{"jsonrpc":"2.0","id":-1,"result":{"response":{"code":0,"log":"","info":"kept","value":"","height":"30","codespace":"sdk"}},"extra":7}"#;
+    let adapted: Value = serde_json::from_str(&legacy_app_version(legacy)).unwrap();
+    let mut expected: Value = serde_json::from_str(legacy).unwrap();
+    expected["result"]["response"]["value"] = Value::String("MTAuNS4w".into());
+    assert_eq!(adapted, expected);
+
+    for unchanged in [
+        legacy.replace(r#""code":0"#, r#""code":7"#),
+        legacy.replace(r#""codespace":"sdk""#, r#""codespace":"other""#),
+        legacy.replace(r#""value":"""#, r#""value":"existing""#),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<Value>(&legacy_app_version(&unchanged)).unwrap(),
+            serde_json::from_str::<Value>(&unchanged).unwrap()
+        );
+    }
+}
+
 fn normalize_decode_error(s: &str) -> String {
     let mut s = s.replace("proto:\u{a0}", "").replace("proto: ", "");
     if let (Some(a), Some(b)) = (s.find(" [celestiaorg/"), s.rfind(']')) {
@@ -659,6 +699,8 @@ async fn run_scenario(dir: &Path) -> Stats {
                 let go_cc = e["cache_control"].as_str().unwrap_or_default();
                 let (g, r) = if path == "/abci_info" {
                     (legacy_abci_identity(go), legacy_abci_identity(&resp))
+                } else if path == "/abci_query?path=%22app%2Fversion%22" {
+                    (legacy_app_version(go), legacy_app_version(&resp))
                 } else if go.contains("tx parse error [") {
                     // CheckTx of an undecodable tx: Go's error text embeds the
                     // Go binary's protobuf-go `detrand` separator after
