@@ -245,7 +245,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs",
-            "sha256": "ccbef79a4591f17998033608891c2a31f45141799087a78886723f9890bb518b"
+            "sha256": "3d0040461d1e8c3154258020983cff96c560cbd4dda5b904c55fb73c2873c83f"
           },
           "function": "admitted_live_transactions_match_rust_production_transports"
         }
