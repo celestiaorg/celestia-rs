@@ -1,0 +1,299 @@
+{
+  "transport": "celestia-appd CLI using Comet broadcast_tx_sync",
+  "mode": "sync",
+  "tx_file": "inputs/blob.tx",
+  "tx_sha256": "7f216b0da08d2d379a7b46e36ceaee334f101c732d56343458918cf862c15e2b",
+  "cli_response": {
+    "height": "0",
+    "txhash": "7F216B0DA08D2D379A7B46E36CEAEE334F101C732D56343458918CF862C15E2B",
+    "codespace": "",
+    "code": 0,
+    "data": "",
+    "raw_log": "",
+    "logs": [],
+    "info": "",
+    "gas_wanted": "0",
+    "gas_used": "0",
+    "tx": null,
+    "timestamp": "",
+    "events": [],
+    "signers": []
+  },
+  "inclusion": {
+    "jsonrpc": "2.0",
+    "id": -1,
+    "result": {
+      "hash": "7F216B0DA08D2D379A7B46E36CEAEE334F101C732D56343458918CF862C15E2B",
+      "height": "23",
+      "index": 0,
+      "tx_result": {
+        "code": 0,
+        "data": "EioKKC9jZWxlc3RpYS5ibG9iLnYxLk1zZ1BheUZvckJsb2JzUmVzcG9uc2U=",
+        "log": "",
+        "info": "",
+        "gas_wanted": "500000",
+        "gas_used": "54490",
+        "events": [
+          {
+            "type": "coin_spent",
+            "attributes": [
+              {
+                "key": "spender",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "index": true
+              },
+              {
+                "key": "amount",
+                "value": "2000utia",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "coin_received",
+            "attributes": [
+              {
+                "key": "receiver",
+                "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                "index": true
+              },
+              {
+                "key": "amount",
+                "value": "2000utia",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "transfer",
+            "attributes": [
+              {
+                "key": "recipient",
+                "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                "index": true
+              },
+              {
+                "key": "sender",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "index": true
+              },
+              {
+                "key": "amount",
+                "value": "2000utia",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "attributes": [
+              {
+                "key": "sender",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "tx",
+            "attributes": [
+              {
+                "key": "fee",
+                "value": "2000utia",
+                "index": true
+              },
+              {
+                "key": "fee_payer",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "tx",
+            "attributes": [
+              {
+                "key": "acc_seq",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v/10",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "tx",
+            "attributes": [
+              {
+                "key": "signature",
+                "value": "2RYBtZ4w/9B/5lThQWC+Od4Mbnv0MzA7IzXlOaykhbkKUox0cVFazmIKyigVBBCPwY3CozQjrdK3lN7CscJV1g==",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "attributes": [
+              {
+                "key": "action",
+                "value": "/celestia.blob.v1.MsgPayForBlobs",
+                "index": true
+              },
+              {
+                "key": "sender",
+                "value": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                "index": true
+              },
+              {
+                "key": "module",
+                "value": "blob",
+                "index": true
+              },
+              {
+                "key": "msg_index",
+                "value": "0",
+                "index": true
+              }
+            ]
+          },
+          {
+            "type": "celestia.blob.v1.EventPayForBlobs",
+            "attributes": [
+              {
+                "key": "blob_sizes",
+                "value": "[19]",
+                "index": true
+              },
+              {
+                "key": "namespaces",
+                "value": "[\"AAAAAAAAAAAAAAAAAAAAAAAAAAABAgMEBQYHCAk=\"]",
+                "index": true
+              },
+              {
+                "key": "signer",
+                "value": "\"celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v\"",
+                "index": true
+              },
+              {
+                "key": "msg_index",
+                "value": "0",
+                "index": true
+              }
+            ]
+          }
+        ],
+        "codespace": "",
+        "signers": [
+          "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v"
+        ]
+      },
+      "tx": "Cq0BCpwBCiAvY2VsZXN0aWEuYmxvYi52MS5Nc2dQYXlGb3JCbG9icxJ4Ci9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdhIdAAAAAAAAAAAAAAAAAAAAAAAAAAABAgMEBQYHCAkaARMiIKE7CLWNLhOHrIi5L6OPkDj1V5UWt4/uaMwofhYKfSlUQgEAEgxsaXZlLXR4LWJsb2ISZgpQCkYKHy9jb3Ntb3MuY3J5cHRvLnNlY3AyNTZrMS5QdWJLZXkSIwohA1EMaeYmBD7aKTzNOuz0mlaKmqtiFz53VA/jhaRU5hUTEgQKAggBGAoSEgoMCgR1dGlhEgQyMDAwEKDCHhpA2RYBtZ4w/9B/5lThQWC+Od4Mbnv0MzA7IzXlOaykhbkKUox0cVFazmIKyigVBBCPwY3CozQjrdK3lN7CscJV1g=="
+    }
+  },
+  "before": {
+    "status": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "node_info": {
+          "protocol_version": {
+            "p2p": "8",
+            "block": "11",
+            "app": "10"
+          },
+          "id": "1f32728dd4e508e8ff9a9233c5903e67babe9072",
+          "listen_addr": "tcp://0.0.0.0:36256",
+          "network": "rs-devnet-1",
+          "version": "0.38.17",
+          "channels": "40202223303860613231505100",
+          "moniker": "val0",
+          "other": {
+            "tx_index": "on",
+            "rpc_address": "tcp://127.0.0.1:36257"
+          }
+        },
+        "sync_info": {
+          "latest_block_hash": "FAFE37B7304712115615EB2BAC1D353715C46D2168BC60C668AEA81B44478272",
+          "latest_app_hash": "D1CCD8E662CE343310EABBDF1D236AFFC39A9F1837036308F9B28A99C1415E24",
+          "latest_block_height": "21",
+          "latest_block_time": "2026-10-31T01:32:23.127191749Z",
+          "earliest_block_hash": "A217FC8643D710E51354115CE264E42BE5C2A178A1B605FE0A241F7661A947F9",
+          "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+          "earliest_block_height": "1",
+          "earliest_block_time": "2026-01-01T00:00:00Z",
+          "catching_up": false
+        },
+        "validator_info": {
+          "address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+          "pub_key": {
+            "type": "tendermint/PubKeyEd25519",
+            "value": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+          },
+          "voting_power": "5000"
+        }
+      }
+    },
+    "unconfirmed": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "n_txs": "0",
+        "total": "0",
+        "total_bytes": "0",
+        "txs": null
+      }
+    }
+  },
+  "after": {
+    "status": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "node_info": {
+          "protocol_version": {
+            "p2p": "8",
+            "block": "11",
+            "app": "10"
+          },
+          "id": "1f32728dd4e508e8ff9a9233c5903e67babe9072",
+          "listen_addr": "tcp://0.0.0.0:36256",
+          "network": "rs-devnet-1",
+          "version": "0.38.17",
+          "channels": "40202223303860613231505100",
+          "moniker": "val0",
+          "other": {
+            "tx_index": "on",
+            "rpc_address": "tcp://127.0.0.1:36257"
+          }
+        },
+        "sync_info": {
+          "latest_block_hash": "751467963E3261D06AD011AEE63A0AF946DAABC9C2EA0CFDCAD11382DD4527D1",
+          "latest_app_hash": "2BC127FE2356E630A75BC59C8FACE3567DF7324A35FDB0C2D591CB94DDC17D18",
+          "latest_block_height": "23",
+          "latest_block_time": "2026-10-31T01:32:28.330026134Z",
+          "earliest_block_hash": "A217FC8643D710E51354115CE264E42BE5C2A178A1B605FE0A241F7661A947F9",
+          "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+          "earliest_block_height": "1",
+          "earliest_block_time": "2026-01-01T00:00:00Z",
+          "catching_up": false
+        },
+        "validator_info": {
+          "address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+          "pub_key": {
+            "type": "tendermint/PubKeyEd25519",
+            "value": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+          },
+          "voting_power": "5000"
+        }
+      }
+    },
+    "unconfirmed": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "n_txs": "0",
+        "total": "0",
+        "total_bytes": "0",
+        "txs": null
+      }
+    }
+  }
+}

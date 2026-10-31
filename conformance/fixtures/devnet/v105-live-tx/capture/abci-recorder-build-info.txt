@@ -1,0 +1,13 @@
+/workspace/scratch/rpc-181/bin-populated/abci-recorder: go1.26.9
+	path	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/abci-frame-recorder
+	mod	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder	(devel)	
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1

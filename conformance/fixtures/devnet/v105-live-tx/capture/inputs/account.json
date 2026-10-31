@@ -1,0 +1,9 @@
+{
+  "account": {
+    "type": "/cosmos.auth.v1beta1.BaseAccount",
+    "value": {
+      "address": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+      "account_number": "1"
+    }
+  }
+}
