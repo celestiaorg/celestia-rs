@@ -1004,6 +1004,9 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             derived = [int((right - left).total_seconds() * 1000) for left, right in zip(parsed_times, parsed_times[1:])]
             require(intervals == derived and len(intervals) == 3 and all(value > 1000 for value in intervals),
                     "cleanup.timing", "server timeout intervals do not match raw common blocks")
+            require(pair["go"][4]["status_height"] > blocks[-1]["go"]["height"] and
+                    pair["rs"][4]["status_height"] > blocks[-1]["rs"]["height"],
+                    "cleanup.link", "restored generation did not advance beyond timeout blocks")
             observed_start = min(blocks[0][side]["observed_monotonic_ms"] for side in ("go", "rs"))
             observed_end = max(blocks[-1][side]["observed_monotonic_ms"] for side in ("go", "rs"))
             require(observed_start <= pair["go"][0]["monotonic_ms"] <= pair["go"][1]["monotonic_ms"] <= observed_end,

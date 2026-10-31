@@ -1135,11 +1135,20 @@ def timeout_lifecycle_prefix(state: State, source: dict[str, Any], response: dic
 
 def timeout_lifecycle_suffix(state: State, pending: dict[str, Any]) -> None:
     events, previous = pending["events"], pending["previous"]
+    restored_block = common_block(state.plan["endpoints"], pending["blocks"][-1]["go"]["height"] + 1,
+                                  state.checked["freshness_bound_ms"])
+    harness.require(restored_block["go"]["height"] == restored_block["rs"]["height"],
+                    "restored generation block height differs")
     events.append(event(state, "restored", "normal-config-restored", "restored", None, None, None,
                         previous, expected_pool=0))
     previous = events[-1]["go"]["monotonic_ms"]
     follow_bytes = harness.decode_blob(state.plan["lifecycle_inputs"]["server_timeout_followup"], "timeout followup")
     follow = paired_operation(state, follow_bytes, "core-grpc", "commit", "lifecycle-timeout-followup")
+    for side in ROLES:
+        check = response_result(follow[side])
+        detail = follow[side].get("grpc_message") or follow[side].get("client_error") or "missing CheckTx result"
+        harness.require(check is not None and check["code"] == 0,
+                        f"timeout followup {side} failed CheckTx: {detail}")
     inclusion = wait_inclusion(state, follow["digest"], {side: follow[side] for side in ROLES})
     events.append(event(state, "restored", "followup-succeeded", "included", follow["digest"], follow,
                         follow["receipts"], previous, expected_pool=0,

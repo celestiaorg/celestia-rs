@@ -449,6 +449,8 @@ def fixture(root: pathlib.Path) -> None:
         else:
             status_heights = [pre_height, pre_height, post_height, post_height, post_height,
                               indexed_heights[0], indexed_heights[0]]
+            for status_index in range(4, len(status_heights)):
+                status_heights[status_index] = max(status_heights[status_index], 84)
         initial_delay = 120 if lifecycle_name == "mempool_capacity" else 10
         for offset, phase in enumerate(phases):
             tx_hash = lifecycle_hashes[lifecycle_name][offset]
@@ -1193,6 +1195,14 @@ class VerifyTest(unittest.TestCase):
     def test_server_timeout_block_intervals(self):
         self.rewrite("cleanup.json", lambda value: value["server_timeout"].__setitem__("block_intervals_ms", [900, 1300, 1400]))
         self.reject("cleanup.timing", lambda: verify.verify(self.root))
+
+    def test_restored_generation_must_advance_after_timeout_blocks(self):
+        def mutate(value):
+            timeout = value["server_timeout"]
+            for side in ("go", "rs"):
+                timeout[side][4]["status_height"] = timeout["blocks"][-1][side]["height"]
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.link", lambda: verify.verify(self.root))
 
     def test_server_timeout_raw_block_time(self):
         def mutate(value):
