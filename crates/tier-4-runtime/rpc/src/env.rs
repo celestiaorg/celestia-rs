@@ -196,6 +196,10 @@ pub struct RpcConfig {
     pub max_body_bytes: usize,
     /// `max_header_bytes` (0 uses Go `net/http`'s 1 MiB default).
     pub max_header_bytes: usize,
+    /// Resolved `tls_cert_file` (empty unless configured).
+    pub tls_cert_file: String,
+    /// Resolved `tls_key_file` (empty unless configured).
+    pub tls_key_file: String,
     /// `max_concurrent_heavy_requests` (0 = default 20, <0 = unlimited).
     pub max_concurrent_heavy_requests: i64,
 }
@@ -226,8 +230,18 @@ impl Default for RpcConfig {
             max_request_batch_size: 10,
             max_body_bytes: 1_000_000,
             max_header_bytes: 1 << 20,
+            tls_cert_file: String::new(),
+            tls_key_file: String::new(),
             max_concurrent_heavy_requests: 20,
         }
+    }
+}
+
+impl RpcConfig {
+    /// Go enables RPC TLS only when both file fields are nonempty.
+    #[must_use]
+    pub fn tls_enabled(&self) -> bool {
+        !self.tls_cert_file.is_empty() && !self.tls_key_file.is_empty()
     }
 }
 

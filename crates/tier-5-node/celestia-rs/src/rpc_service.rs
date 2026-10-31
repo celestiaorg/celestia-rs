@@ -67,6 +67,31 @@ fn get_list(t: &toml::Table, section: &str, key: &str) -> Option<Vec<String>> {
     )
 }
 
+fn rpc_file(home: &Path, value: String) -> String {
+    if value.is_empty() {
+        value
+    } else {
+        let path = Path::new(&value);
+        if path.is_absolute() {
+            value
+        } else {
+            home.join("config")
+                .join(path)
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+}
+
+fn load_rpc_tls(rpc: &mut RpcConfig, cfg: &toml::Table, home: &Path) {
+    if let Some(value) = get_str(cfg, "rpc", "tls_cert_file") {
+        rpc.tls_cert_file = rpc_file(home, value);
+    }
+    if let Some(value) = get_str(cfg, "rpc", "tls_key_file") {
+        rpc.tls_key_file = rpc_file(home, value);
+    }
+}
+
 /// Go `time.ParseDuration` for the simple forms config files use
 /// (`10s`, `500ms`, `1m30s`); milliseconds.
 fn parse_duration_ms(s: &str) -> Option<u64> {
@@ -207,6 +232,7 @@ impl RpcSettings {
         if let Some(v) = get_int(&cfg, "rpc", "max_header_bytes") {
             rpc.max_header_bytes = n(v);
         }
+        load_rpc_tls(&mut rpc, &cfg, home);
         if let Some(v) = get_int(&cfg, "rpc", "max_concurrent_heavy_requests") {
             rpc.max_concurrent_heavy_requests = v;
         }
@@ -918,6 +944,22 @@ impl Rpc {
         };
         let rt = &rt;
         let _guard = rt.enter();
+        if self.settings.rpc.tls_enabled() && app::comet::rpc_address().is_none() {
+            // Go's SDK queries use an in-process local client and never dial
+            // the public TLS listener. The Rust adapter is HTTP-based, so give
+            // it a private loopback listener whose certificate name cannot
+            // conflict with the public listener's bind address.
+            let listener = bind("internal RPC query client", "127.0.0.1:0")
+                .ok_or_else(|| anyhow!("failed to bind internal RPC query client"))?;
+            let address = listener.local_addr()?;
+            app::comet::set_rpc_address(Some(format!("tcp://{address}")));
+            let env = self.env.clone();
+            rt.spawn(async move {
+                if let Err(e) = rpc::server::serve_plain(listener, env).await {
+                    tracing::error!(error = %e, "internal RPC query client failed");
+                }
+            });
+        }
         for laddr in self
             .settings
             .rpc
@@ -1032,7 +1074,47 @@ impl Rpc {
 #[cfg(test)]
 mod grpc_limit_tests {
     #![allow(clippy::unwrap_used)]
+    use std::io::{Read as _, Write as _};
+
+    use flate2::read::GzDecoder;
+    use kvdb::MemBackend;
+
     use super::*;
+
+    struct NoMempool;
+
+    impl mempool::AppConnMempool for NoMempool {
+        fn check_tx(&self, _: abci::RequestCheckTx) -> Result<abci::ResponseCheckTx, String> {
+            Ok(abci::ResponseCheckTx::default())
+        }
+
+        fn query_sequence(&self, _: &[u8]) -> Result<u64, String> {
+            Ok(0)
+        }
+    }
+
+    struct NoEvidence;
+
+    impl rpc::EvidenceSink for NoEvidence {
+        fn add_evidence(&self, _: ctypes::Evidence) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct RpcAddressReset;
+
+    impl Drop for RpcAddressReset {
+        fn drop(&mut self) {
+            app::comet::set_rpc_address(None);
+        }
+    }
+
+    fn free_address() -> SocketAddr {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+    }
 
     #[test]
     fn generated_quoted_limits_integer_limits_and_zero_fallbacks() {
@@ -1097,5 +1179,180 @@ mod grpc_limit_tests {
             }
         );
         assert_eq!(settings.rpc.max_header_bytes, 256);
+    }
+
+    #[test]
+    fn rpc_tls_paths_match_go_config_resolution_and_pair_rule() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("config")).unwrap();
+        let absolute = dir.path().join("absolute.key");
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            format!(
+                "[rpc]\nladdr = \"\"\ntls_cert_file = \"relative.crt\"\ntls_key_file = {:?}",
+                absolute.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        let settings = RpcSettings::load(dir.path()).unwrap();
+        assert_eq!(
+            settings.rpc.tls_cert_file,
+            dir.path().join("config/relative.crt").to_string_lossy()
+        );
+        assert_eq!(settings.rpc.tls_key_file, absolute.to_string_lossy());
+        assert!(settings.rpc.tls_enabled());
+
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            "[rpc]\nladdr = \"\"\ntls_cert_file = \"relative.crt\"\ntls_key_file = \"\"",
+        )
+        .unwrap();
+        assert!(!RpcSettings::load(dir.path()).unwrap().rpc.tls_enabled());
+
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            "[rpc]\nladdr = \"\"\ntls_cert_file = \"\"\ntls_key_file = \"relative.key\"",
+        )
+        .unwrap();
+        assert!(!RpcSettings::load(dir.path()).unwrap().rpc.tls_enabled());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[allow(clippy::too_many_lines)]
+    async fn tls_public_rpc_keeps_app_get_latest_block_on_private_loopback() {
+        const CERT: &str = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/localhost.crt"
+        );
+        const KEY: &str = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/localhost.key"
+        );
+
+        app::comet::set_rpc_address(None);
+        let _reset = RpcAddressReset;
+        let block_store = BlockStore::new(Arc::new(MemBackend::new())).unwrap();
+        let mut block = ctypes::Block::make(
+            1,
+            ctypes::Data::default(),
+            Some(ctypes::Commit::default()),
+            Vec::new(),
+        );
+        block.header.chain_id = "tls-loopback-test".into();
+        block.header.proposer_address = vec![0; ctypes::header::ADDRESS_SIZE];
+        let parts = block.make_part_set(ctypes::BLOCK_PART_SIZE_BYTES).unwrap();
+        block_store
+            .save_block(
+                &mut block,
+                &parts,
+                &ctypes::Commit {
+                    height: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let mut application = app::App::new();
+        let genesis: serde_json::Value = serde_json::from_reader(GzDecoder::new(&include_bytes!(
+            "../../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/relative-genesis.json.gz"
+        )[..]))
+        .unwrap();
+        application
+            .init_chain(abci::RequestInitChain {
+                chain_id: genesis["chain_id"].as_str().unwrap().into(),
+                initial_height: 1,
+                app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        application
+            .finalize_block(abci::RequestFinalizeBlock {
+                height: 1,
+                ..Default::default()
+            })
+            .unwrap();
+        application.commit().unwrap();
+        let app = Arc::new(Mutex::new(application));
+        let query = Arc::new(AppQueries(app.clone()));
+        let pool = Arc::new(mempool::TxPool::new(
+            mempool::MempoolConfig::celestia_app(),
+            Arc::new(NoMempool),
+            1,
+        ));
+        let bus = Arc::new(EventBus::new());
+        let public = free_address();
+        let grpc = free_address();
+        let rest = free_address();
+        let config = RpcConfig {
+            laddr: format!("tcp://{public}"),
+            tls_cert_file: CERT.into(),
+            tls_key_file: KEY.into(),
+            ..Default::default()
+        };
+        let shared = Arc::new(NodeShared::default());
+        let env = Arc::new(Environment::new(
+            block_store,
+            StateStore::new(Arc::new(MemBackend::new())),
+            query,
+            pool,
+            shared.clone(),
+            Arc::new(NoEvidence),
+            ctypes::PubKey::Ed25519([0; 32]),
+            GenesisData::default(),
+            None,
+            None,
+            bus.clone(),
+            config.clone(),
+        ));
+        let mut rpc = Rpc {
+            env,
+            publisher: Arc::new(BlockEventPublisher {
+                bus,
+                tx_indexer: None,
+                block_indexer: None,
+            }),
+            shared,
+            settings: RpcSettings {
+                rpc: config,
+                app_grpc: grpc.to_string(),
+                app_api: rest.to_string(),
+                ..Default::default()
+            },
+            app,
+            runtime: None,
+        };
+        rpc.spawn().unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let internal = app::comet::rpc_address().unwrap();
+        assert!(internal.starts_with("tcp://127.0.0.1:"));
+        assert_ne!(internal, format!("tcp://{public}"));
+
+        let raw = tokio::task::spawn_blocking(move || {
+            let mut stream = std::net::TcpStream::connect(rest).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                .unwrap();
+            stream
+                .write_all(b"GET /cosmos/base/tendermint/v1beta1/blocks/latest HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            let mut raw = Vec::new();
+            stream.read_to_end(&mut raw).unwrap();
+            raw
+        })
+        .await
+        .unwrap();
+        assert!(
+            raw.starts_with(b"HTTP/1.1 200"),
+            "{}",
+            String::from_utf8_lossy(&raw)
+        );
+        let body = raw
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|position| &raw[position + 4..])
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(body["block"]["header"]["height"], "1");
     }
 }
