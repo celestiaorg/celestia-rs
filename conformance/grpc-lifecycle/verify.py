@@ -946,7 +946,10 @@ def verify_sdk_capture(capture: dict, implementation: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("capture", type=Path)
+    parser.add_argument(
+        "capture", nargs="?", type=Path,
+        default=Path(__file__).with_name("v10.5.0"),
+    )
     args = parser.parse_args()
     root = args.capture.resolve()
     meta = load(root / "meta.json")

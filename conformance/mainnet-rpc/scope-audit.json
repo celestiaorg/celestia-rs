@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "0c7ed88c850b335a93e85a48dba4e502aef7d443",
+  "audited_main": "94812c70512a1c4a817c7bf6417683f8120528f4",
   "provider_ready": false,
   "packages": [
     {
@@ -91,6 +91,49 @@
           "function": "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"
         }
       ]
+    },
+    {
+      "id": "grpc-lifecycle",
+      "issue": 183,
+      "comparison": "relational-go-plus-rust-captures",
+      "receipt": {
+        "path": "conformance/grpc-lifecycle/v10.5.0/meta.json",
+        "sha256": "0abc1cc0c0444050ebc186dcfd2e89be4345fe3c39a53f0da0f0dce21262e04a"
+      },
+      "documentation": {
+        "path": "conformance/grpc-lifecycle/README.md",
+        "sha256": "c78c485047a4b3066814190c8a7dcca4ac4b4fd265d16785d5a180f9ac3325a1"
+      },
+      "verifier": {
+        "path": "conformance/grpc-lifecycle/verify.py",
+        "sha256": "bb84b0ba0d2e00150d34c7e1effd8db1eff0d4a0fbe4da8b966e45433d78da5d"
+      },
+      "transports": [
+        "core-grpc",
+        "cosmos-grpc"
+      ],
+      "scope": "Six ordered actual-Go and actual-Rust transport campaigns covering core quota0/2, SDK/core cancellation recovery, slow-reader capacity recovery, decompressed message limits, Go keepalive/no-pong and setup deadlines, exact metadata and bounded process resources",
+      "normalizations": [
+        "The exact RS RFC1123 Date is retained and hash-bound; semantic comparison accepts only canonical IMF-fixdate inside the recorded campaign interval"
+      ],
+      "known_mismatches": [
+        "Go core uses application/grpc+proto while Go SDK and RS use application/grpc; RS adds Date and advertises identity when rejecting gzip",
+        "Go applies gzip receive limits while RS rejects gzip as Unimplemented",
+        "Go core configures30/10 keepalive and a120-second setup deadline while RS configures neither"
+      ],
+      "exclusions": [
+        "SDK connection quota is unsupported by both app listeners",
+        "Core message-size operator settings are unsupported; both core listeners use fixed defaults",
+        "The two-hour Go SDK default keepalive is source-audited rather than live-soaked",
+        "Same grpc.ClientConn reuse is proved; physical-socket reuse is not claimed",
+        "#203 oversized unary/streaming response evidence is authoritative and is not relabeled as this campaign"
+      ],
+      "provenance_limits": [
+        "The fresh public mainnet observation selects v10.5.0 only; all captures use isolated loopback local genesis and perform no production writes",
+        "Go/Rust resources come from one bounded local run and are not universal production ceilings",
+        "Capture source is signed historical commit399f57e; the later verifier reads and hashes those captured Git blobs"
+      ],
+      "runtime_regressions": []
     },
     {
       "id": "runtime-identity",
@@ -584,10 +627,11 @@
     {
       "issue": 183,
       "packages": [
+        "grpc-lifecycle",
         "grpc-limits"
       ],
       "remaining_gaps": [
-        "Keepalive/handshake/compression/saturation/cancellation/resource-growth campaign still unmerged; existing current Go/Rust operator-limit tests have unmatched state"
+        "Acceptance is covered by merged production wiring plus bounded local evidence; unbounded production-duration load, the two-hour SDK keepalive default and physical-socket reuse remain outside scope"
       ]
     },
     {
