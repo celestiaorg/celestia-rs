@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "release_selection": {
+    "network": "celestia",
+    "observed_version": "10.5.0",
+    "observed_protocol_app": "10",
+    "observed_height": "15447466",
+    "observation": "mainnet-observation.json",
+    "rule": "A read-only /status and /abci_info pair from the active celestia network agreed on height, protocol app version, and celestia-app version before the local oracle was selected."
+  },
+  "oracle": {
+    "app_release": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+    "app_source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "comet_release": "github.com/celestiaorg/celestia-core@v0.42.3",
+    "comet_reported_version": "0.38.17",
+    "compiler": "go version go1.26.9 linux/amd64",
+    "binary_path_at_capture": "/workspace/scratch/rpc-181/bin-release/celestia-appd",
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "build_manifest": "oracle-build.json",
+    "build_info": "oracle-build-info.txt.gz",
+    "module_receipt": "oracle-module.txt"
+  },
+  "runs": {
+    "zero": {
+      "chain_id": "rs-zero-1",
+      "rpc_endpoint": "http://127.0.0.1:6320",
+      "limits": {"max_request_batch_size": 0, "max_body_bytes": 4096, "max_header_bytes": 256},
+      "config": "zero-config.toml.gz",
+      "app_config": "app.toml.gz",
+      "genesis": "zero-genesis.json.gz",
+      "identity": "zero-identity.json"
+    },
+    "custom": {
+      "chain_id": "rs-custom-1",
+      "rpc_endpoint": "http://127.0.0.1:6330",
+      "limits": {"max_request_batch_size": 3, "max_body_bytes": 512, "max_header_bytes": 256},
+      "config": "custom-config.toml.gz",
+      "app_config": "app.toml.gz",
+      "genesis": "custom-genesis.json.gz",
+      "identity": "custom-identity.json"
+    }
+  },
+  "commands": {
+    "zero_oracle": ["./start-source.sh", "zero", "6320", "6321", "0", "4096", "256"],
+    "custom_oracle": ["./start-source.sh", "custom", "6330", "6331", "3", "512", "256"],
+    "capture": ["python3", "capture-source.py"],
+    "local_identity": ["python3", "observe-local-source.py"]
+  },
+  "source_origins": {
+    "go-source/core-config.go.gz": "github.com/celestiaorg/celestia-core@v0.42.3/config/config.go",
+    "go-source/core-http-json-handler.go.gz": "github.com/celestiaorg/celestia-core@v0.42.3/rpc/jsonrpc/server/http_json_handler.go",
+    "go-source/core-http-server.go.gz": "github.com/celestiaorg/celestia-core@v0.42.3/rpc/jsonrpc/server/http_server.go",
+    "go-source/core-node.go.gz": "github.com/celestiaorg/celestia-core@v0.42.3/node/node.go",
+    "go-source/core-toml.go.gz": "github.com/celestiaorg/celestia-core@v0.42.3/config/toml.go",
+    "go-source/cors-utils.go.gz": "github.com/rs/cors@v1.11.1/utils.go",
+    "go-source/cors.go.gz": "github.com/rs/cors@v1.11.1/cors.go"
+  },
+  "dynamic_response_headers_excluded_from_stable_projection": [
+    "connection",
+    "content-length",
+    "date",
+    "transfer-encoding",
+    "x-server-time"
+  ],
+  "files": {
+    "app.toml.gz": {"sha256": "cf4f87f36cbf5ed1aeb567eed7a54ea42cdfd1d7eb634db15359bf94869bb35f", "size": 3069, "uncompressed_sha256": "6dce70880cb59e3f0b754949b99bcd3891eee1860bba60abb5c860806a4886a6", "uncompressed_size": 9145},
+    "capture-source.py": {"sha256": "851ec2fa2774e6887321fbe4f91cdf666339c5256d619728ceaf5513a4017544", "size": 14665},
+    "comet-http-boundaries.json": {"sha256": "af79e0e94a5ab5646eadc846e81a7fc378a5c971d0ff9424a64a4f4bf46763d9", "size": 194958},
+    "custom-config.toml.gz": {"sha256": "53fc1df1cfb60b15e913fb3411d1a82aab6a7a1fd1994cd84e50c0cc32eb8d58", "size": 8880, "uncompressed_sha256": "896cb78452bec165a445a997b21c5ee12ec41b6027beb9d41b1a1787d1966b67", "uncompressed_size": 26898},
+    "custom-genesis.json.gz": {"sha256": "b6266e132cc3ce0b36c364977bad6b5513714ddaa58009290fa41c05a2f2e26b", "size": 3132, "uncompressed_sha256": "19ccd97302332fabfef4083799a2bb8cd86a1307a4fbbc5711fa2fbc7aac4c8b", "uncompressed_size": 11681},
+    "custom-identity.json": {"sha256": "22020c0f04c51b8a0c4a565b3b9ef9a3777e742fc3e40d71a6d9371b5a535493", "size": 2315},
+    "go-source/core-config.go.gz": {"sha256": "85319ec1e7326d4fa67798e349d4617b03193cb79437645a1974961ae604e1e9", "size": 16465, "uncompressed_sha256": "f75e9a79c8de981cef4be4db2d3f30835567512bb2b088e9c0fe861ec3bad5c1", "uncompressed_size": 65278},
+    "go-source/core-http-json-handler.go.gz": {"sha256": "c103ae3b0cd030bee2fbe4820a4fbcbcee8e1b827d48e08f03db37de9c485bc2", "size": 2690, "uncompressed_sha256": "00fbc8e3e5c393363b96e1b65409298ab18cabd71823a7afb7dd090fc866e325", "uncompressed_size": 7757},
+    "go-source/core-http-server.go.gz": {"sha256": "1375b043324e46dfd63af104bd3ae6321fe593f3d089664d56a30c5bfa80edd4", "size": 3510, "uncompressed_sha256": "762299ec1383f8c5eab150116e558492a98840303628a659f578ce805dddc5f8", "uncompressed_size": 10660},
+    "go-source/core-node.go.gz": {"sha256": "e6c5d518c38074e25fe38334eb488e7b46df60a1fa5f5a25ea2034133b0d7b7a", "size": 10818, "uncompressed_sha256": "61607a6bef085f96863786e7d597c364d9e1d0e732a7128a713e65450e418215", "uncompressed_size": 38380},
+    "go-source/core-toml.go.gz": {"sha256": "673bf35dc6cf83b8317bef2e62aecc10b930c23fe0ccc2be7c0e6e1a2ed0e2bb", "size": 10040, "uncompressed_sha256": "432466ae08870fa59f095d6346201ef8aa06941c215cfd6489a6fce3e98ba65a", "uncompressed_size": 31704},
+    "go-source/cors-utils.go.gz": {"sha256": "f35d2438d63b51b8b3ea3bbd17a4b3ee8bafab65e4e02291f223e88b0f1095ad", "size": 278, "uncompressed_sha256": "2bb7f2bf283cbed194c796e84dc1e9e10dd437c8939cb4e43c8ce7d5e526f297", "uncompressed_size": 474},
+    "go-source/cors.go.gz": {"sha256": "3a9bedebda398289143f73844e778dc6f0204264007e488a753099e6ef0ad918", "size": 4784, "uncompressed_sha256": "c28a470d8a64dc229f4014866260e1885ee62f3c726251e112254e3d0f796483", "uncompressed_size": 17650},
+    "mainnet-observation.json": {"sha256": "c90b83f37b7893bd6be2fcbfd4d672f1f47cee31660336113a389e7f691ad6f5", "size": 2191},
+    "observe-local-source.py": {"sha256": "7b48e2e5a5151f7d5386c2039b1ee9102786c3fafbdeacf87b4b8887f50e3290", "size": 1932},
+    "oracle-build-info.txt.gz": {"sha256": "ce4eee8ca45a6a646639332cd309c3cb464938d83df73dcc421beb401e984df5", "size": 12605, "uncompressed_sha256": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25", "uncompressed_size": 24287},
+    "oracle-build.json": {"sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835", "size": 1064},
+    "oracle-module.txt": {"sha256": "c5b3b47f59f423604a8fe2306206cf73bb7a6305e104a572777e4482253e8cde", "size": 48},
+    "start-source.sh": {"sha256": "92b65673de8f13370889dba78a797e88dd456156165c84ea028f72a36ae9deb0", "size": 2978},
+    "zero-config.toml.gz": {"sha256": "f53c9d85f6e6135fe076fc25fcc6efd600104871258cac9251538fbc251c6a32", "size": 8882, "uncompressed_sha256": "6c6891c162ea1846c127063ea47c6c89c478367977d0a7a7b0ad1f6b83c5be6c", "uncompressed_size": 26897},
+    "zero-genesis.json.gz": {"sha256": "45685085204b2fb9839985821abcb2bca46e3c4eb11112fa589e4a0d511e56e4", "size": 3134, "uncompressed_sha256": "294754b7f25cc3cb41d92910c292915cd31edb3b344217a2973f8e0601965d03", "uncompressed_size": 11677},
+    "zero-identity.json": {"sha256": "e18bff4a7997a3fb286ab3233238531ab1ba09d44280c3895b7aa55b4ce4b8e3", "size": 2309}
+  }
+}

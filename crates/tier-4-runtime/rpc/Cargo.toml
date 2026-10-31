@@ -27,6 +27,7 @@ bytes = "1"
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 hex = "0.4"
+hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service", "http1", "http2"] }
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
 mempool = { path = "../mempool" }

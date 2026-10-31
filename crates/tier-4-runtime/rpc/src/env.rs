@@ -194,6 +194,8 @@ pub struct RpcConfig {
     pub max_request_batch_size: usize,
     /// `max_body_bytes`.
     pub max_body_bytes: usize,
+    /// `max_header_bytes` (0 uses Go `net/http`'s 1 MiB default).
+    pub max_header_bytes: usize,
     /// `max_concurrent_heavy_requests` (0 = default 20, <0 = unlimited).
     pub max_concurrent_heavy_requests: i64,
 }
@@ -223,6 +225,7 @@ impl Default for RpcConfig {
             timeout_broadcast_tx_commit_ms: 10_000,
             max_request_batch_size: 10,
             max_body_bytes: 1_000_000,
+            max_header_bytes: 1 << 20,
             max_concurrent_heavy_requests: 20,
         }
     }
