@@ -101,7 +101,7 @@ no merged current-release campaign.
 | #184 | Production identity and consensus schema | Build identity intentionally differs; asynchronous values unconstrained |
 | #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
 | #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
-| #187 | Seventeen live Go submission exchanges and blob inclusion | Paired live Rust replay and broader mode/message/resource matrix remain open |
+| #187 | Seventeen Go exchanges replayed in sequence through Rust production listeners after two admitted state roots | Explicit cleanup CheckTx 12-gas difference; original envelope bytes and final root/balance equality excluded; broader matrix remains open |
 | #188 | Eleven populated staking/reward cases across transports, Rust committed-root proof check | One list-order normalization; other modules and Go proof bytes remain open |
 | #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
 | #190 | One bounded Go subscription/quota/deadline/reconnect cycle plus Rust cleanup regressions | Relational timing/order/resource checks; sustained workload remains open |

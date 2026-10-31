@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "19721fcbfb1db4458711e0cdcba244d3338b7fb8",
+  "audited_main": "8999f9a7e700190a9b490bf8e2f846ee754d9347",
   "provider_ready": false,
   "packages": [
     {
@@ -206,14 +206,14 @@
     {
       "id": "live-transactions",
       "issue": 187,
-      "comparison": "go-transports-only",
+      "comparison": "normalized-runtime-comparison",
       "receipt": {
         "path": "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json",
         "sha256": "6aa37a8c13820dd411cb1c70e85a5631c66102ac012193624a3f5061042da398"
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/live-tx/README.md",
-        "sha256": "a48528b2da808fcdb150243d779b6580149463c694e53218b4d248689ca66568"
+        "sha256": "58925b644a718b4e1f4ee7fe88326687c23bce5a2baf9e1237205b03a2d7307a"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx.py",
@@ -225,16 +225,31 @@
         "cosmos-grpc",
         "rest"
       ],
-      "scope": "Seventeen Go submission/admission/inclusion/cancellation exchanges plus blob capture and persistent replay inputs",
-      "normalizations": [],
-      "known_mismatches": [],
+      "scope": "Seventeen Go submission exchanges and blob input, replayed in signed sequence through Rust production Comet JSON-RPC, core gRPC, Cosmos gRPC and REST after checking two admitted pre-submission state roots",
+      "normalizations": [
+        "Only the final cleanup bank-send CheckTx gas after canceled-commit/retry accepts the recorded 50319 or observed 50307; DeliverTx gas and every other recorded result field remain required"
+      ],
+      "known_mismatches": [
+        "The timing-dependent 12-gas cleanup CheckTx difference has an unresolved cause"
+      ],
       "exclusions": [
-        "URI/WebSocket counterparts, gRPC cancellation, malformed raw tx protobuf, gas/mempool saturation and all families per transport remain unproved"
+        "URI/WebSocket counterparts, gRPC cancellation, malformed raw tx protobuf, gas/mempool saturation and all families per transport remain unproved",
+        "The original BlobTx envelope bytes were not retained; replay reconstructs a canonical v0 envelope and checks its inner signed bytes/blob instead",
+        "Final Go/Rust app-root and balance equality are not checked; state claims cover two pre-submission roots, outcomes/order, empty mempool and final sequence 11",
+        "Live block times and resulting inclusion heights are not byte-parity inputs"
       ],
       "provenance_limits": [
-        "Merged Go response provenance exists; paired Rust transport replay is still absent from merged main"
+        "Committed Go receipts and Rust production-replay source/CI evidence exist; no committed paired Rust binary or response capture"
       ],
-      "runtime_regressions": []
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs",
+            "sha256": "ccbef79a4591f17998033608891c2a31f45141799087a78886723f9890bb518b"
+          },
+          "function": "admitted_live_transactions_match_rust_production_transports"
+        }
+      ]
     },
     {
       "id": "populated-staking",
@@ -350,7 +365,7 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/api-server/src/rest.rs",
-            "sha256": "b80c68ac7255b7274ba0c562d5460a4feb7fa9a7c98729fa2776f77863888248"
+            "sha256": "efc3b24aeaa88869d0e4ffe18e4d864b7d1dc5527c590550f5bf4a7d16b19282"
           },
           "function": "go_rest_height_boundaries"
         }
@@ -519,7 +534,7 @@
         "live-transactions"
       ],
       "remaining_gaps": [
-        "Complete paired live Rust replay, every required mode/transport/message/error case, cleanup, retries and bounded admission/resource limits"
+        "Complete remaining URI/WebSocket/gRPC cancellation, mode/message/error and resource coverage; resolve the 12-gas cleanup CheckTx difference; retain the explicit missing final-root/balance comparison and original-envelope byte limitations"
       ]
     },
     {

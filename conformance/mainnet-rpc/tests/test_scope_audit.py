@@ -28,10 +28,24 @@ class ScopedEvidenceAudit(unittest.TestCase):
                 audit.validate(self.value)
 
     def test_go_only_capture_cannot_be_promoted_to_parity(self):
-        row = next(row for row in self.value["packages"] if row["id"] == "live-transactions")
+        row = next(row for row in self.value["packages"] if row["id"] == "rest-post")
         row["comparison"] = "exact"
         with self.assertRaisesRegex(ValueError, "comparison class"):
             audit.validate(self.value)
+
+    def test_merged_live_transaction_replay_stays_bound_with_its_limits(self):
+        result = audit.validate(self.value)
+        row = next(row for row in result["packages"] if row["id"] == "live-transactions")
+        self.assertEqual(row["comparison"], "normalized-runtime-comparison")
+        self.assertEqual(row["runtime_regressions"][0]["source"]["path"],
+                         "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs")
+        self.assertEqual(row["runtime_regressions"][0]["function"],
+                         "admitted_live_transactions_match_rust_production_transports")
+        self.assertIn("50319", row["normalizations"][0])
+        self.assertIn("50307", row["normalizations"][0])
+        self.assertTrue(row["known_mismatches"])
+        self.assertTrue(any("Final Go/Rust app-root" in item for item in row["exclusions"]))
+        self.assertFalse(result["provider_ready"])
 
     def test_provider_readiness_and_missing_issue_cannot_be_hidden(self):
         self.value["provider_ready"] = True

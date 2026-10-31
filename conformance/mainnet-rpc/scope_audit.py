@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "0adce58358e1ca46adda5575cc129c43d930d725333b394a4b56f4e41a49fc9c"
+REVIEWED_AUDIT_SHA256 = "3aa98fe0712b80e75e0bd30e58235fa6e5194bd285fe3344d261345de1e87907"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
@@ -21,7 +21,7 @@ CONTRACTS = {
     "runtime-identity": (184, "schema-only", "conformance/node-metadata/v10.5.0/consensus.json", "docs/rpc-version-identity.md", None),
     "simulation": (185, "normalized-runtime-comparison", "conformance/mainnet-rpc/simulation/metadata.json", "conformance/mainnet-rpc/simulation/README.md", None),
     "empty-query": (186, "runtime-exact-unrecorded", "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "conformance/mainnet-rpc/empty-query/README.md", None),
-    "live-transactions": (187, "go-transports-only", "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json", "conformance/mainnet-rpc/live-tx/README.md", "conformance/mainnet-rpc/tests/test_live_tx.py"),
+    "live-transactions": (187, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json", "conformance/mainnet-rpc/live-tx/README.md", "conformance/mainnet-rpc/tests/test_live_tx.py"),
     "populated-staking": (188, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json", "conformance/mainnet-rpc/populated-staking/README.md", "conformance/mainnet-rpc/tests/test_populated_staking.py"),
     "websocket-lifecycle": (190, "relational-go-plus-rust-regressions", "conformance/websocket-lifecycle/testdata/manifest.json", "conformance/websocket-lifecycle/README.md", "conformance/websocket-lifecycle/verify.py"),
     "rest-heights": (191, "rust-with-stand-in-only", "conformance/mainnet-rpc/rest-boundaries/v10.5.0/provenance.json", "conformance/mainnet-rpc/rest-boundaries/README.md", "conformance/mainnet-rpc/rest-boundaries/verify.py"),
@@ -35,7 +35,7 @@ RUNTIME_CONTRACTS = {
     "runtime-identity": (("crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "production_listeners_report_build_and_compatibility_separately"),),
     "simulation": (("crates/devnet-conformance/tests/simulation_errors.rs", "current_release_simulation_errors"),),
     "empty-query": (("crates/tier-4-runtime/rpc/tests/empty_query.rs", "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"),),
-    "live-transactions": (),
+    "live-transactions": (("crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs", "admitted_live_transactions_match_rust_production_transports"),),
     "populated-staking": (("crates/devnet-conformance/tests/populated_staking_transports.rs", "admitted_populated_inputs_match_all_rust_transports"),),
     "websocket-lifecycle": (("crates/tier-4-runtime/rpc/src/server.rs", "websocket_write_is_bounded"),),
     "rest-heights": (("crates/tier-4-runtime/api-server/src/rest.rs", "go_rest_height_boundaries"),),
