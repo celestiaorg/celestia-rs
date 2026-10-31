@@ -35,7 +35,7 @@
 #        [SOAK_MIN_HEIGHTS=1500] [SOAK_SEED=n] [CELESTIA_RS=path]
 #        [SOAK_DIR=dir] [SOAK_PROFILE=chaos|memory] [SOAK_MEM_SAMPLE=30]
 #        [SOAK_RS_N<i>=path] [SOAK_ENV_N<i>="K=V;K2=V2"] conformance/devnet/soak.sh
-#        [SOAK_PROVIDER_APIS=1] [SOAK_MAINNET_OBSERVATION=/path/to/abci_info.json]
+#        [SOAK_PROVIDER_APIS=1] [SOAK_MAINNET_OBSERVATION=/path/to/observe-mainnet.json]
 # Provider mode exercises all six native transports and requires fresh oracle
 # provenance. See soak/README.md for coverage limits and reproducible commands.
 #
@@ -74,7 +74,7 @@ RS=$CELESTIA_RS
 W=${SOAK_DIR:-$(mktemp -d)}
 mkdir -p "$W"
 if [ "${SOAK_PROVIDER_APIS:-0}" = 1 ]; then
-  : "${SOAK_MAINNET_OBSERVATION:?provider mode requires an independently captured mainnet abci_info response}"
+  : "${SOAK_MAINNET_OBSERVATION:?provider mode requires a fresh validated observe-mainnet artifact}"
   export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.9}
   SOAK_PROVIDER_CLIENT=${SOAK_PROVIDER_CLIENT:-$BIN/provider-client}
   export SOAK_PROVIDER_CLIENT

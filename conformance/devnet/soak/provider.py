@@ -5,6 +5,8 @@ byte-for-byte Go/Rust parity evidence or proof-validity assertions.
 """
 
 import hashlib
+import datetime
+import ipaddress
 import json
 import os
 import pathlib
@@ -12,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 
 TRANSPORTS = ("jsonrpc", "uri", "websocket", "cosmos-grpc", "rest", "core-grpc")
 OPERATIONS = (
@@ -80,13 +83,63 @@ def configure_network(directory, offset):
             for home in pathlib.Path(directory).glob("n[0-9]*") if (home / "kind").is_file()}
 
 
+def validate_mainnet_observation(observation, now=None):
+    """Validate the complete observe-mainnet artifact before a fresh capture.
+
+    File timestamps and a standalone abci_info response cannot establish when
+    mainnet identity was observed. Preserve both raw responses and their hashes.
+    """
+    if not isinstance(observation, dict):
+        raise ValueError("mainnet observation must be an observe-mainnet object")
+    endpoint = urllib.parse.urlsplit(observation.get("endpoint", ""))
+    if endpoint.scheme != "https" or not endpoint.hostname:
+        raise ValueError("mainnet observation needs a public HTTPS source endpoint")
+    if endpoint.hostname.lower() == "localhost" or endpoint.hostname.lower().endswith(".localhost"):
+        raise ValueError("mainnet observation source must be public")
+    try:
+        source_ip = ipaddress.ip_address(endpoint.hostname)
+    except ValueError:
+        # A DNS hostname is validated without making another network request.
+        source_ip = None
+    if source_ip is not None and not source_ip.is_global:
+        raise ValueError("mainnet observation source must be public")
+    if observation.get("chain_id") != "celestia" or observation.get("version") != "10.5.0":
+        raise ValueError("mainnet observation must identify celestia chain and app 10.5.0")
+    try:
+        observed = datetime.datetime.fromisoformat(observation["observed_at"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("mainnet observation requires an ISO observed_at timestamp") from error
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        raise ValueError("mainnet observed_at must include its timezone")
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    age = (now - observed).total_seconds()
+    if age < 0 or age > 24 * 3600:
+        raise ValueError("mainnet observation must precede capture by no more than 24 hours")
+    parsed = {}
+    for name in ("status", "abci_info"):
+        try:
+            response = observation["responses"][name]
+            body = response["body"]
+            if not isinstance(body, str) or hashlib.sha256(body.encode()).hexdigest() != response["sha256"]:
+                raise ValueError(f"mainnet {name} raw response SHA-256 mismatch")
+            parsed[name] = json.loads(body)["result"]
+        except (KeyError, TypeError, json.JSONDecodeError) as error:
+            raise ValueError(f"mainnet observation requires hashed raw {name} response") from error
+    try:
+        chain = parsed["status"]["node_info"]["network"]
+        version = parsed["abci_info"]["response"]["version"]
+    except (KeyError, TypeError) as error:
+        raise ValueError("mainnet raw responses lack chain/version identity") from error
+    if chain != observation["chain_id"] or version != observation["version"]:
+        raise ValueError("mainnet raw responses disagree with summarized chain/version")
+    return observation
+
+
 def provenance(directory, rust_binary, go_binary, client, observation):
     """Capture public artifacts only; node/keyring databases never enter this file."""
     root = pathlib.Path(directory)
     observation = pathlib.Path(observation)
-    raw = json.loads(observation.read_text())
-    if "result" not in raw or raw["result"].get("response", {}).get("version") != "10.5.0":
-        raise ValueError("this soak oracle is pinned to independently observed celestia-app 10.5.0")
+    raw = validate_mainnet_observation(json.loads(observation.read_text()))
     binaries = {}
     for label, binary in (("celestia_rs", rust_binary), ("celestia_app", go_binary), ("provider_client", client)):
         path = pathlib.Path(binary).resolve()

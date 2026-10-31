@@ -76,8 +76,9 @@ repository root with the usual build dependencies and Python `cryptography`:
 ```sh
 GOTOOLCHAIN=go1.26.9 APPD_ONLY=1 conformance/devnet/build-bins.sh
 cargo build --locked --no-default-features -p celestia-rs
-curl --fail --max-time 30 https://rpc.celestia.pops.one/abci_info > /tmp/current-mainnet-abci-info.json
-SOAK_PROVIDER_APIS=1 SOAK_MAINNET_OBSERVATION=/tmp/current-mainnet-abci-info.json \
+python3 conformance/mainnet-rpc/observe-mainnet.py \
+  --endpoint https://rpc.celestia.pops.one --out /tmp/current-mainnet-observation.json
+SOAK_PROVIDER_APIS=1 SOAK_MAINNET_OBSERVATION=/tmp/current-mainnet-observation.json \
   SOAK_PROFILE=memory SOAK_SECS=300 SOAK_MIN_HEIGHTS=0 \
   SOAK_TX_RATE=10 SOAK_LOAD_ACCOUNTS=48 DEVNET_PORT_OFFSET=1000 \
   CELESTIA_RS="$PWD/target/debug/celestia-rs" SOAK_DIR=/tmp/provider-soak \
@@ -86,7 +87,11 @@ SOAK_PROVIDER_APIS=1 SOAK_MAINNET_OBSERVATION=/tmp/current-mainnet-abci-info.jso
 
 Use an empty `SOAK_DIR`. Check the independently observed active app version
 before building: this scenario currently requires version `10.5.0` and the
-builder's matching successful module stamp. Source commits, compiler, build
+builder's matching successful module stamp. The observer artifact must identify
+chain `celestia` and app `10.5.0`, include an aware observation timestamp within
+the preceding 24 hours, and contain SHA-256-verified raw `/status` and
+`/abci_info` responses agreeing with those identities. An old standalone
+`abci_info` JSON file or its filesystem timestamp is insufficient. Source commits, compiler, build
 flags and binary hashes must describe the binaries actually used; a module stamp
 alone is rejected. The oracle's `.build.json` must match the binary hash,
 pinned source commit and ledger build. `provider-provenance.json` records binary

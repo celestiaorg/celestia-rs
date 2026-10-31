@@ -1,6 +1,9 @@
 """Provider harness configuration, accounting and uncertain-admission regressions."""
 
 import json
+import copy
+import datetime
+import hashlib
 import pathlib
 import subprocess
 import tempfile
@@ -13,6 +16,61 @@ import provider
 
 
 class ProviderTests(unittest.TestCase):
+    def observation(self):
+        now = datetime.datetime(2026, 10, 31, 1, 0, tzinfo=datetime.timezone.utc)
+        bodies = {"status": {"result": {"node_info": {"network": "celestia"}}},
+                  "abci_info": {"result": {"response": {"version": "10.5.0"}}}}
+        observation = {"endpoint": "https://rpc.celestia.pops.one", "observed_at": now.isoformat(),
+                       "chain_id": "celestia", "version": "10.5.0", "responses": {}}
+        for name, body in bodies.items():
+            text = json.dumps(body)
+            observation["responses"][name] = {"body": text, "sha256": hashlib.sha256(text.encode()).hexdigest()}
+        return observation, now
+
+    def test_mainnet_observation_accepts_fresh_hashed_matching_identity(self):
+        observation, now = self.observation()
+        self.assertEqual(provider.validate_mainnet_observation(observation, now), observation)
+
+    def test_mainnet_observation_rejects_stale_future_naive_and_raw_abci_only(self):
+        observation, now = self.observation()
+        for timestamp in ((now - datetime.timedelta(hours=25)).isoformat(),
+                          (now + datetime.timedelta(seconds=1)).isoformat(),
+                          now.replace(tzinfo=None).isoformat()):
+            with self.subTest(timestamp=timestamp):
+                invalid = {**observation, "observed_at": timestamp}
+                with self.assertRaises(ValueError):
+                    provider.validate_mainnet_observation(invalid, now)
+        with self.assertRaises(ValueError):
+            provider.validate_mainnet_observation({"result": {"response": {"version": "10.5.0"}}}, now)
+
+    def test_mainnet_observation_requires_raw_hashes_and_matching_chain_version(self):
+        observation, now = self.observation()
+        variants = []
+        for field, value in (("chain_id", "arabica-11"), ("version", "10.4.0"),
+                             ("endpoint", "http://rpc.celestia.pops.one"), ("endpoint", "https://127.0.0.1:1234")):
+            variants.append({**observation, field: value})
+        for name in ("status", "abci_info"):
+            invalid = copy.deepcopy(observation)
+            invalid["responses"][name]["sha256"] = "0" * 64
+            variants.append(invalid)
+            invalid = copy.deepcopy(observation)
+            del invalid["responses"][name]
+            variants.append(invalid)
+        for name in ("status", "abci_info"):
+            invalid = copy.deepcopy(observation)
+            body = json.loads(invalid["responses"][name]["body"])
+            if name == "status":
+                body["result"]["node_info"]["network"] = "arabica-11"
+            else:
+                body["result"]["response"]["version"] = "10.4.0"
+            text = json.dumps(body)
+            invalid["responses"][name] = {"body": text, "sha256": hashlib.sha256(text.encode()).hexdigest()}
+            variants.append(invalid)
+        for index, invalid in enumerate(variants):
+            with self.subTest(index=index):
+                with self.assertRaises(ValueError):
+                    provider.validate_mainnet_observation(invalid, now)
+
     def test_configures_unique_loopback_sockets_without_changing_p2p(self):
         with tempfile.TemporaryDirectory() as directory:
             for i in range(2):
