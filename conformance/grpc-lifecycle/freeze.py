@@ -72,6 +72,7 @@ def go_source_audit(repo: Path) -> dict:
     files = {
         "go_core_keepalive": cache / "github.com/celestiaorg/celestia-core@v0.42.3/rpc/grpc/client_server.go",
         "grpc_go_setup_timeout": cache / "google.golang.org/grpc@v1.83.2/server.go",
+        "grpc_go_initial_settings": cache / "google.golang.org/grpc@v1.83.2/internal/transport/http2_server.go",
         "grpc_go_keepalive_defaults": cache / "google.golang.org/grpc@v1.83.2/internal/transport/defaults.go",
         "cosmos_sdk_grpc_server": cache / "github.com/celestiaorg/cosmos-sdk@v0.52.12/server/grpc/server.go",
     }
@@ -93,6 +94,12 @@ def go_source_audit(repo: Path) -> dict:
             "module": "google.golang.org/grpc@v1.83.2",
             "path": "server.go", "sha256": digest(files["grpc_go_setup_timeout"]),
             "default_seconds": 120,
+        },
+        "grpc_go_initial_settings": {
+            "module": "google.golang.org/grpc@v1.83.2",
+            "path": "internal/transport/http2_server.go",
+            "sha256": digest(files["grpc_go_initial_settings"]),
+            "first_frame": "SETTINGS", "max_frame_size": 16_384,
         },
         "grpc_go_keepalive_defaults": {
             "module": "google.golang.org/grpc@v1.83.2",

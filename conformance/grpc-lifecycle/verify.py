@@ -459,7 +459,8 @@ def verify_resource_artifacts(root: Path, meta: dict) -> None:
 def verify_source_audit(meta: dict, source_root: Path) -> None:
     audit = meta["source_audit"]
     assert set(audit) == {
-        "go_core_keepalive", "grpc_go_setup_timeout", "grpc_go_keepalive_defaults",
+        "go_core_keepalive", "grpc_go_setup_timeout", "grpc_go_initial_settings",
+        "grpc_go_keepalive_defaults",
         "cosmos_sdk_grpc_server", "rs_core_keepalive", "rs_setup_deadline",
     }
     assert audit["go_core_keepalive"] == {
@@ -473,6 +474,12 @@ def verify_source_audit(meta: dict, source_root: Path) -> None:
         "module": "google.golang.org/grpc@v1.83.2", "path": "server.go",
         "sha256": "a09f192cb707172d7b9004813f300697e0eab8eb781389978683460ed0ddc49e",
         "default_seconds": 120,
+    }
+    assert audit["grpc_go_initial_settings"] == {
+        "module": "google.golang.org/grpc@v1.83.2",
+        "path": "internal/transport/http2_server.go",
+        "sha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093",
+        "first_frame": "SETTINGS", "max_frame_size": 16_384,
     }
     assert audit["grpc_go_keepalive_defaults"] == {
         "module": "google.golang.org/grpc@v1.83.2",
@@ -639,6 +646,31 @@ def verify_grpc_envelope(wire: dict, expected_message: bytes) -> None:
     assert bytes(data[5:]) == expected_message
 
 
+def verify_silent_handshake(handshake: dict) -> None:
+    assert set(handshake) == {
+        "closed_ms", "close_error", "client_bytes_hex", "received_bytes_hex",
+    }
+    assert 115_000 <= handshake["closed_ms"] <= 130_000
+    assert handshake["close_error"]
+    assert handshake["client_bytes_hex"] == ""
+    raw = bytes.fromhex(handshake["received_bytes_hex"])
+    assert 0 < len(raw) <= 1 << 20
+    decoded = frames(raw)
+    assert 1 <= len(decoded) <= 64
+    first_type, first_flags, first_stream, first_raw = decoded[0]
+    assert (first_type, first_flags, first_stream) == (4, 0, 0)
+    payload = first_raw[9:]
+    assert len(payload) % 6 == 0
+    settings = {
+        int.from_bytes(payload[offset:offset + 2], "big"):
+        int.from_bytes(payload[offset + 2:offset + 6], "big")
+        for offset in range(0, len(payload), 6)
+    }
+    assert settings[5] == 16_384  # SETTINGS_MAX_FRAME_SIZE
+    for kind, _, stream, _ in decoded:
+        assert stream == 0 and kind in {4, 6, 7, 8}
+
+
 def verify_capture(capture: dict, implementation: str, quota: int) -> None:
     expected_keys = {
         "schema_version", "implementation", "endpoint", "quota", "started_at",
@@ -764,14 +796,7 @@ def verify_capture(capture: dict, implementation: str, quota: int) -> None:
         assert bytes.fromhex(ping_frames[0]["raw_hex"])[9:].hex() == keepalive["ping_data_hex"]
         client_frames = frames(bytes.fromhex(keepalive["wire"]["client_bytes_hex"]), preface=True)
         assert not any(kind == 6 and flags & 1 for kind, flags, _, _ in client_frames)
-        handshake = capture["silent_handshake"]
-        assert set(handshake) == {
-            "closed_ms", "close_error", "client_bytes_hex", "received_bytes_hex",
-        }
-        assert 115_000 <= handshake["closed_ms"] <= 130_000
-        assert handshake["close_error"]
-        assert handshake["client_bytes_hex"] == ""
-        assert handshake["received_bytes_hex"] == ""
+        verify_silent_handshake(capture["silent_handshake"])
     else:
         assert "keepalive_no_pong" not in capture
         assert "silent_handshake" not in capture

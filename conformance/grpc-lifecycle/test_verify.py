@@ -49,6 +49,37 @@ class RawFrameVerification(unittest.TestCase):
         with self.assertRaises(AssertionError):
             VERIFY.verify_wire(wire, slow_reader=False)
 
+    def test_silent_handshake_requires_exact_initial_settings(self):
+        settings = frame(4, 0, 0, b"\x00\x05\x00\x00\x40\x00")
+        capture = {
+            "closed_ms": 120_000, "close_error": "EOF", "client_bytes_hex": "",
+            "received_bytes_hex": settings.hex(),
+        }
+        VERIFY.verify_silent_handshake(capture)
+        mutations = []
+        wrong_setting = copy.deepcopy(capture)
+        wrong_setting["received_bytes_hex"] = frame(
+            4, 0, 0, b"\x00\x05\x00\x00\x80\x00").hex()
+        mutations.append(wrong_setting)
+        stream_frame = copy.deepcopy(capture)
+        stream_frame["received_bytes_hex"] += frame(0, 0, 1).hex()
+        mutations.append(stream_frame)
+        truncated = copy.deepcopy(capture)
+        truncated["received_bytes_hex"] = settings[:-1].hex()
+        mutations.append(truncated)
+        early_close = copy.deepcopy(capture)
+        early_close["closed_ms"] = 114_999
+        mutations.append(early_close)
+        late_close = copy.deepcopy(capture)
+        late_close["closed_ms"] = 130_001
+        mutations.append(late_close)
+        client_write = copy.deepcopy(capture)
+        client_write["client_bytes_hex"] = "00"
+        mutations.append(client_write)
+        for mutation in mutations:
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_silent_handshake(mutation)
+
 
 class ListenerSafety(unittest.TestCase):
     def configs(self):

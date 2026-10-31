@@ -2,12 +2,50 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"errors"
+	"io"
+	"net"
 	"testing"
+	"time"
 )
 
 func fieldVarint(field, value uint64) []byte {
 	out := binary.AppendUvarint(nil, field<<3)
 	return binary.AppendUvarint(out, value)
+}
+
+func TestSilentClientRecordsInitialSettingsUntilClose(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	settings := []byte{0, 0, 6, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 64, 0}
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			_, err = conn.Write(settings)
+		}
+		if conn != nil {
+			err = errors.Join(err, conn.Close())
+		}
+		serverErr <- err
+	}()
+	got, err := captureHandshakeWithBound(listener.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverErr; err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+	if got.ClientBytesHex != "" || got.ReceivedBytesHex != hex.EncodeToString(settings) {
+		t.Fatalf("unexpected capture: %+v", got)
+	}
+	if got.CloseError == "" {
+		t.Fatal("missing bounded close result")
+	}
 }
 
 func fieldBytes(field uint64, value []byte) []byte {

@@ -617,30 +617,93 @@ func captureKeepalive(endpoint string) (keepalive, error) {
 	}
 }
 
-func captureHandshake(endpoint string) (handshake, error) {
+func validateSilentServerFrames(received []byte) error {
+	framer := http2.NewFramer(io.Discard, bytes.NewReader(received))
+	count := 0
+	for {
+		frame, err := framer.ReadFrame()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("decode server HTTP/2 frame: %w", err)
+		}
+		count++
+		if count > 64 || frame.Header().StreamID != 0 {
+			return errors.New("silent client received an unbounded or stream-level frame")
+		}
+		switch typed := frame.(type) {
+		case *http2.SettingsFrame:
+			if count == 1 {
+				if typed.IsAck() {
+					return errors.New("initial server SETTINGS was an ACK")
+				}
+				foundMaxFrameSize := false
+				err := typed.ForeachSetting(func(setting http2.Setting) error {
+					if setting.ID == http2.SettingMaxFrameSize && setting.Val == 1<<14 {
+						foundMaxFrameSize = true
+					}
+					return nil
+				})
+				if err != nil || !foundMaxFrameSize {
+					return errors.New("initial server SETTINGS omitted MAX_FRAME_SIZE=16384")
+				}
+			}
+		case *http2.PingFrame, *http2.WindowUpdateFrame, *http2.GoAwayFrame:
+			if count == 1 {
+				return errors.New("first server frame was not SETTINGS")
+			}
+		default:
+			return fmt.Errorf("silent client received disallowed connection frame %T", frame)
+		}
+	}
+	if count == 0 {
+		return errors.New("server closed without its HTTP/2 SETTINGS preface")
+	}
+	return nil
+}
+
+func captureHandshakeWithBound(endpoint string, bound time.Duration) (handshake, error) {
 	conn, err := net.DialTimeout("tcp", endpoint, 2*time.Second)
 	if err != nil {
 		return handshake{}, err
 	}
 	defer conn.Close()
 	started := time.Now()
-	if err := conn.SetReadDeadline(started.Add(135 * time.Second)); err != nil {
+	if err := conn.SetReadDeadline(started.Add(bound)); err != nil {
 		return handshake{}, err
 	}
-	one := make([]byte, 1)
-	n, err := conn.Read(one)
-	result := handshake{ClosedMS: time.Since(started).Milliseconds(), ClientBytesHex: "", ReceivedBytesHex: hex.EncodeToString(one[:n])}
-	if err != nil {
-		result.CloseError = err.Error()
+	const maxServerBytes = 1 << 20
+	buf := make([]byte, 4<<10)
+	var received []byte
+	for {
+		n, readErr := conn.Read(buf)
+		received = append(received, buf[:n]...)
+		result := handshake{
+			ClosedMS:         time.Since(started).Milliseconds(),
+			ClientBytesHex:   "",
+			ReceivedBytesHex: hex.EncodeToString(received),
+		}
+		if len(received) > maxServerBytes {
+			return result, errors.New("silent client received more than the 1 MiB campaign bound")
+		}
+		if readErr == nil {
+			continue
+		}
+		result.CloseError = readErr.Error()
+		var netErr net.Error
+		if errors.As(readErr, &netErr) && netErr.Timeout() {
+			return result, fmt.Errorf("silent client outlived the %s campaign bound", bound)
+		}
+		if err := validateSilentServerFrames(received); err != nil {
+			return result, err
+		}
+		return result, nil
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return result, errors.New("silent connection outlived the 135s campaign bound")
-	}
-	if err == nil {
-		return result, errors.New("silent connection unexpectedly returned data")
-	}
-	return result, nil
+}
+
+func captureHandshake(endpoint string) (handshake, error) {
+	return captureHandshakeWithBound(endpoint, 135*time.Second)
 }
 
 func captureCompression(endpoint string) (compression, error) {
