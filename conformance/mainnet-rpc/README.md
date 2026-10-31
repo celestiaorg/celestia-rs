@@ -104,7 +104,7 @@ no merged current-release campaign.
 | #187 | Seventeen Go exchanges replayed in sequence through Rust production listeners after two admitted state roots | Explicit cleanup CheckTx 12-gas difference; original envelope bytes and final root/balance equality excluded; broader matrix remains open |
 | #188 | Eleven populated staking/reward cases across transports, Rust committed-root proof check | One list-order normalization; other modules and Go proof bytes remain open |
 | #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
-| #190 | One bounded Go subscription/quota/deadline/reconnect cycle plus Rust cleanup regressions | Relational timing/order/resource checks; sustained workload remains open |
+| #190 | Focused actual-Go lifecycle capture composed with a 310-second five-node mixed soak and three Rust production regressions | Bounded local evidence with documented header/order/resource normalizations; TLS/proxy/external clients and exact matched-state payload parity excluded |
 | #191 | REST height/POST plus Comet/proxy/TLS/framing packages | Acceptance covered with explicit native parser/TLS deviations and local-oracle/provider exclusions |
 | #192 | Merged310-second mixed-node all-API soak:111 heights,990 provider operations | Candidate809bfca, explicit disabled scenarios and cutoff accounting; no exact paired response parity |
 

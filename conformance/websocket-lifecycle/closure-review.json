@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "issue": 190,
+  "lifecycle_capture": {
+    "merge_commit": "3f129c8d214fecae5aa1a942d7fa1a5304ef93cf",
+    "manifest": "conformance/websocket-lifecycle/testdata/manifest.json",
+    "manifest_sha256": "f3eba1a5843db79a44be178fe7f4d7730183c7ad995d9131302fab83d8917697",
+    "cors_enabled": "conformance/websocket-lifecycle/testdata/go-v10.5.0.json",
+    "cors_enabled_sha256": "fab1006a449583948a01609632d82e1083f4b6bd43cf179faf862c56f4bfc72e",
+    "cors_disabled": "conformance/websocket-lifecycle/testdata/go-v10.5.0-cors-disabled.json",
+    "cors_disabled_sha256": "4b71bca15982f8fef9d475f5ac39749a9c4ef6e053303bd10d42236da2fb3b0a"
+  },
+  "mixed_node_soak": {
+    "capture_commit": "809bfca7b374bf7463604a851b227dc9452fceb2",
+    "directory": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca",
+    "sha256sums_sha256": "1d8287797084b37ad435f9360e09baab142cf01b0484f0b6e720ec5a97b92764",
+    "report_sha256": "b89f076c0bd18080293331a950c48e45118a0ea52dd3d9018ed8e66e33f3d10e",
+    "events_sha256": "5c8c7ac48991b02a650cf246bdbd95d7a393d633fdf518d3fe36ffd0c099ec8e",
+    "memory_sha256": "017a712e0a13c78b1e752b4e338deaef237ba6a9e27a864a7ef543c60b2c4b33",
+    "provenance_sha256": "13ea54964fc445e3992b2fc92eac53c409f2b9ac159bd8ec8813ca7cd98ec10c",
+    "duration_seconds": 310,
+    "height_advances": 111,
+    "transactions": 408,
+    "websocket_results": {
+      "comet-ws-subscribe": 55,
+      "comet-ws-slow-reconnect": 55
+    },
+    "peak_aggregate_rss_mb": 1955,
+    "nodes": [
+      {
+        "node": 0,
+        "kind": "go",
+        "samples": 29,
+        "rss_first_mb": 297.6,
+        "rss_last_mb": 501.6,
+        "rss_max_mb": 502.1,
+        "threads_first": 9,
+        "threads_last": 11,
+        "threads_max": 11,
+        "fds_first": 55,
+        "fds_last": 58,
+        "fds_max": 64,
+        "go_goroutines_first": 126,
+        "go_goroutines_last": 126,
+        "go_goroutines_max": 142
+      },
+      {
+        "node": 1,
+        "kind": "go",
+        "samples": 29,
+        "rss_first_mb": 299.0,
+        "rss_last_mb": 539.0,
+        "rss_max_mb": 539.3,
+        "threads_first": 9,
+        "threads_last": 10,
+        "threads_max": 10,
+        "fds_first": 63,
+        "fds_last": 65,
+        "fds_max": 71,
+        "go_goroutines_first": 136,
+        "go_goroutines_last": 141,
+        "go_goroutines_max": 150
+      },
+      {
+        "node": 2,
+        "kind": "rs",
+        "samples": 29,
+        "rss_first_mb": 112.2,
+        "rss_last_mb": 315.4,
+        "rss_max_mb": 344.7,
+        "threads_first": 11,
+        "threads_last": 19,
+        "threads_max": 21,
+        "fds_first": 24,
+        "fds_last": 24,
+        "fds_max": 30
+      },
+      {
+        "node": 3,
+        "kind": "rs",
+        "samples": 29,
+        "rss_first_mb": 111.2,
+        "rss_last_mb": 284.7,
+        "rss_max_mb": 317.7,
+        "threads_first": 10,
+        "threads_last": 18,
+        "threads_max": 20,
+        "fds_first": 24,
+        "fds_last": 31,
+        "fds_max": 31
+      },
+      {
+        "node": 4,
+        "kind": "rs",
+        "samples": 29,
+        "rss_first_mb": 112.1,
+        "rss_last_mb": 309.1,
+        "rss_max_mb": 309.1,
+        "threads_first": 10,
+        "threads_last": 18,
+        "threads_max": 21,
+        "fds_first": 24,
+        "fds_last": 25,
+        "fds_max": 32
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "subscription-lifecycle",
+      "evidence": [
+        "go-v10.5.0.json.sequence",
+        "go-v10.5.0.json.events"
+      ]
+    },
+    {
+      "id": "pressure-and-deadlines",
+      "evidence": [
+        "go-v10.5.0.json.quota",
+        "go-v10.5.0.json.timing",
+        "go-v10.5.0.json.pressure",
+        "rpc::websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"
+      ]
+    },
+    {
+      "id": "reconnect-and-resource-bounds",
+      "evidence": [
+        "go-v10.5.0.json.events",
+        "go-v10.5.0.json.quota",
+        "provider-soak events.log",
+        "provider-soak mem.jsonl"
+      ]
+    },
+    {
+      "id": "cors-upgrade-lifetimes",
+      "evidence": [
+        "go-v10.5.0.json.upgrade",
+        "go-v10.5.0-cors-disabled.json.upgrade",
+        "rpc::websocket_origins_match_go_and_deliver_events"
+      ]
+    },
+    {
+      "id": "cancellation-capacity-recovery",
+      "evidence": [
+        "rpc::websocket_disconnects_reclaim_subscriptions_and_allow_reconnect",
+        "provider-soak events.log"
+      ]
+    },
+    {
+      "id": "normalization-and-representative-clients",
+      "evidence": [
+        "go-v10.5.0.json.events.ordering_note",
+        "go-v10.5.0.json.timing.normalization",
+        "provider-soak provider-provenance.json"
+      ]
+    }
+  ],
+  "limitations": [
+    "The mixed-node run is a bounded 310-second local capture, not an unbounded soak.",
+    "Subscription quota and full outbound-pressure saturation were exercised in the focused lifecycle capture, not repeated during the mixed-node soak.",
+    "The captures exclude TLS, reverse proxies, external provider SDKs and browser implementations.",
+    "Exact matched-state Go/Rust event-payload equivalence is not claimed; only the stated lifecycle relations and stable upgrade metadata are compared."
+  ],
+  "normalizations": [
+    "The HTTP Connection upgrade token is compared ASCII-case-insensitively; the exact Go and Rust header values remain in events.log.",
+    "Sec-WebSocket-Accept, Date and X-Server-Time are retained but excluded from stable header comparison because they depend on the request nonce or wall clock.",
+    "Tx and NewBlock event order is relational because independent subscription goroutines may interleave; both events must identify the transaction height."
+  ]
+}

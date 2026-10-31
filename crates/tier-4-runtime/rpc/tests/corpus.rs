@@ -894,6 +894,113 @@ async fn ws_exchange(
     }
 }
 
+async fn websocket_origin_matrix(cors_allowed_origins: Vec<String>) {
+    use futures_util::StreamExt as _;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
+    use tokio_tungstenite::tungstenite::http::HeaderValue;
+
+    let dir = corpus_root().join("blob");
+    let corpus: Value = serde_json::from_slice(&gunzip(&dir.join("corpus.json.gz"))).unwrap();
+    let status = corpus["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "/status")
+        .map(|entry| serde_json::from_str::<Value>(entry["resp"].as_str().unwrap()).unwrap())
+        .unwrap();
+    let frozen =
+        nodestore::genesis::pub_key_from_json(&status["result"]["validator_info"]["pub_key"])
+            .unwrap();
+    let mut chain = tokio::task::spawn_blocking(move || build_chain(&dir, &status, frozen))
+        .await
+        .unwrap();
+    Arc::get_mut(&mut chain.env)
+        .unwrap()
+        .config
+        .cors_allowed_origins = cors_allowed_origins;
+    let env = Arc::clone(&chain.env);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(listener, Arc::clone(&env)));
+    let endpoint = format!("ws://{addr}/websocket");
+    let subscribe =
+        r#"{"jsonrpc":"2.0","id":1,"method":"subscribe","params":{"query":"tm.event = 'Tx'"}}"#;
+
+    for (case, origin) in ["", "https://allowed.example", "https://denied.example"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut request = endpoint.clone().into_client_request().unwrap();
+        if !origin.is_empty() {
+            request
+                .headers_mut()
+                .insert("Origin", HeaderValue::from_str(origin).unwrap());
+        }
+        let (mut ws, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert_eq!(response.status().as_u16(), 101, "origin {origin:?}");
+        assert_eq!(
+            response
+                .headers()
+                .get("Connection")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_ascii_lowercase(),
+            "upgrade"
+        );
+        assert_eq!(
+            response.headers().get("Upgrade").unwrap().to_str().unwrap(),
+            "websocket"
+        );
+        assert!(
+            !response
+                .headers()
+                .contains_key("Access-Control-Allow-Origin")
+        );
+        assert!(!response.headers().contains_key("Vary"));
+        assert!(
+            ws_exchange(&mut ws, subscribe)
+                .await
+                .contains(r#""result":{}"#),
+            "origin {origin:?} did not subscribe"
+        );
+        wait_for_clients(&env.event_bus, 1, std::time::Duration::from_secs(1)).await;
+
+        let height = 100 + i64::try_from(case).unwrap();
+        env.event_bus.publish_tx(abci::TxResult {
+            height,
+            index: 0,
+            tx: format!("origin-{case}").into_bytes(),
+            result: Some(abci::ExecTxResult::default()),
+        });
+        let event = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let frame = ws.next().await.unwrap().unwrap();
+                if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
+                    break text;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let event: Value = serde_json::from_str(&event).unwrap();
+        assert_eq!(event["result"]["query"], "tm.event = 'Tx'");
+        assert_eq!(
+            event["result"]["data"]["value"]["TxResult"]["height"],
+            height.to_string()
+        );
+        ws.close(None).await.unwrap();
+        wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+    }
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn websocket_origins_match_go_and_deliver_events() {
+    websocket_origin_matrix(vec!["https://allowed.example".into()]).await;
+    websocket_origin_matrix(Vec::new()).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn websocket_disconnects_reclaim_subscriptions_and_allow_reconnect() {
     use futures_util::{SinkExt as _, StreamExt as _};

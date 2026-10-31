@@ -86,9 +86,51 @@ internal event-bus clients, so the capture records the number of external
 clients admitted instead of assuming all configured slots are externally
 available.
 
-This is a partial step for issue #190. It fixes and locally tests bounded
-socket writes, idle reads, peer-task abort cleanup, subscription capacity
-reclamation, and healthy reconnects. A longer multi-provider soak with
-concurrent transaction bursts and OS-level memory/task telemetry remains for
-the issue; the checked-in Go run bounds one lifecycle cycle and does not claim
-that soak coverage.
+## Mixed-node completion evidence
+
+The focused capture above is composed with the bounded mixed-node provider
+soak in
+`conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca`.
+That run lasted 310 seconds and 111 observed height advances while two Go
+validators, two Rust validators and one Rust full node processed 408
+transactions. It completed 55 `comet-ws-subscribe` and 55
+`comet-ws-slow-reconnect` operations: exactly 11 of each on every node, with
+no provider error, stall or hash mismatch.
+
+The soak recorded 29 OS samples for every node at ten-second intervals. The
+samples bind RSS, thread and file-descriptor counts, plus Go goroutines and
+heap metrics. Observed per-node maxima were 540 MiB RSS, 21 threads, 71 file
+descriptors and 150 Go goroutines; aggregate RSS peaked at 1,955 MiB. These
+are bounds from one local run. They do not predict unbounded duration or
+production load.
+
+`closure-review.json` maps the six #190 acceptance criteria to the focused
+lifecycle and mixed-node artifacts. `verify-closure.py` first runs both
+underlying fail-closed verifiers, then checks the exact evidence hashes,
+operation distribution, active upgrade metadata, concurrent broadcast count,
+candidate identity and resource summaries. The focused manifest and evidence
+tree use exact file inventories; missing, extra or symlinked files and symlinked
+path components are rejected. Run it with:
+
+```sh
+python3 conformance/websocket-lifecycle/verify-closure.py
+```
+
+The Rust socket regression
+`websocket_origins_match_go_and_deliver_events` repeats the focused Go
+upgrade matrix against the production router: CORS enabled and disabled,
+each with empty, allowed and denied Origin. All six connections must return
+101 without `Access-Control-Allow-Origin` or `Vary`, accept a subscription,
+deliver a published transaction event at the asserted height, and release
+their subscription capacity after close.
+
+The mixed-node run excludes TLS, reverse proxies, external provider SDKs and
+browser implementations. Subscription quota and full outbound-pressure
+saturation were covered by the focused lifecycle capture rather than repeated
+in the soak. Exact matched-state Go/Rust event-payload equivalence is not
+claimed. The `Connection: upgrade` token is compared without ASCII case,
+because Go emitted `Upgrade` and Rust emitted `upgrade`; both exact values are
+retained. `Sec-WebSocket-Accept`, `Date` and `X-Server-Time` remain in the raw
+events but are excluded from stable header comparison because they depend on
+the request nonce or wall clock. Event ordering and timing are normalized only
+as documented above.

@@ -116,6 +116,30 @@ class ScopedEvidenceAudit(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "runtime selector set"):
             audit.validate(self.value)
 
+    def test_websocket_closure_bindings_and_limits_cannot_regress(self):
+        row = next(row for row in self.value["packages"] if row["id"] == "websocket-lifecycle")
+        row["receipt"]["path"] = "conformance/websocket-lifecycle/testdata/manifest.json"
+        with self.assertRaisesRegex(ValueError, "receipt/documentation class"):
+            audit.validate(self.value)
+
+        self.value = json.loads(audit.AUDIT.read_text())
+        row = next(row for row in self.value["packages"] if row["id"] == "websocket-lifecycle")
+        row["verifier"]["path"] = "conformance/websocket-lifecycle/verify.py"
+        with self.assertRaisesRegex(ValueError, "verifier path changed"):
+            audit.validate(self.value)
+
+        self.value = json.loads(audit.AUDIT.read_text())
+        row = next(row for row in self.value["packages"] if row["id"] == "websocket-lifecycle")
+        row["runtime_regressions"].pop()
+        with self.assertRaisesRegex(ValueError, "runtime selector set"):
+            audit.validate(self.value)
+
+        self.value = json.loads(audit.AUDIT.read_text())
+        row = next(row for row in self.value["behaviors"] if row["issue"] == 190)
+        row["remaining_gaps"] = ["complete exact parity"]
+        with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
+            audit.validate(self.value)
+
     def test_transport_scope_cannot_be_broadened(self):
         row = next(row for row in self.value["packages"] if row["id"] == "simulation")
         row["transports"].append("rest")
