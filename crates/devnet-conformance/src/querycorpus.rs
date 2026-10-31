@@ -338,7 +338,8 @@ pub fn comparable(path: &str, r: &AbciResponse) -> AbciResponse {
 pub struct Report {
     /// ABCI cases compared.
     pub compared: usize,
-    /// ABCI cases skipped ([`NEEDS_CONSENSUS`]).
+    /// ABCI cases skipped: unavailable consensus-backed routes or exact legacy
+    /// P2P-filter placeholders fabricated by the old recorder.
     pub skipped: usize,
     /// Mismatches: (case, Rust response).
     pub mismatches: Vec<(AbciCase, AbciResponse)>,
@@ -357,15 +358,25 @@ pub fn check_abci(scenario: &str) -> anyhow::Result<Report> {
             report.skipped += 1;
             continue;
         }
-        anyhow::ensure!(
-            !case.missing_response,
-            "empty ABCI response envelope requires explicit transport comparison: {}",
-            case.path
-        );
+        // The pre-integrity recorders substituted a default successful Query
+        // for a missing response. These exact legacy placeholders carry no
+        // response evidence; fresh missing_response cases are compared below.
+        if !case.missing_response
+            && case.path == "/p2p/filter/other/x"
+            && case.response == AbciResponse::default()
+        {
+            report.skipped += 1;
+            continue;
+        }
         report.compared += 1;
-        let ours = match app.handle(request::Value::Query(case.request())) {
-            response::Value::Query(q) => AbciResponse::from(&q),
-            other => anyhow::bail!("unexpected response {other:?}"),
+        let ours = match app.handle_envelope(request::Value::Query(case.request())) {
+            None if case.missing_response => continue,
+            Some(response::Value::Query(q)) if !case.missing_response => AbciResponse::from(&q),
+            other => anyhow::bail!(
+                "unexpected response envelope for {} (missing_response={}): {other:?}",
+                case.path,
+                case.missing_response
+            ),
         };
         if comparable(&case.path, &ours) != comparable(&case.path, &case.response) {
             report.mismatches.push((case.clone(), ours));

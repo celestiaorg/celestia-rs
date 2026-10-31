@@ -1116,6 +1116,21 @@ fn exception(e: &SdkError) -> response::Value {
 }
 
 impl Application for AbciApp {
+    fn handle_envelope(&self, request: request::Value) -> Option<response::Value> {
+        let request::Value::Query(req) = request else {
+            return Some(self.handle(request));
+        };
+        if let Some(resp) = node_services::abci_query(self, &req) {
+            return Some(response::Value::Query(resp));
+        }
+        match self.inner.lock() {
+            Ok(mut app) => app.query_response(&req).map(response::Value::Query),
+            Err(_) => Some(response::Value::Exception(ResponseException {
+                error: "poisoned".into(),
+            })),
+        }
+    }
+
     fn handle(&self, request: request::Value) -> response::Value {
         // celestia-core-backed queries run outside the lock (see
         // `node_services`).

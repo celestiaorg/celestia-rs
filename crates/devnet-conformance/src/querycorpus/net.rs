@@ -398,3 +398,76 @@ mod query_tests {
         task.join().unwrap();
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod app_envelope_tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn real_app_empty_query_and_flush_leave_abci_connection_usable() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(abci_server::serve(
+            listener,
+            Arc::new(app::AbciApp::new(app::App::new())),
+        ));
+        tokio::task::spawn_blocking(move || {
+            let mut stream = TcpStream::connect(addr).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
+            let fixture: Value = serde_json::from_str(include_str!(
+                "../../../../conformance/mainnet-rpc/v10.5.0/empty-query-abci.json"
+            ))
+            .unwrap();
+            for case in fixture["cases"].as_array().unwrap() {
+                stream
+                    .write_all(&hex::decode(case["request_wire_hex"].as_str().unwrap()).unwrap())
+                    .unwrap();
+                stream
+                    .write_all(&hex::decode(case["flush_wire_hex"].as_str().unwrap()).unwrap())
+                    .unwrap();
+                let raw = read_frame(&mut stream).unwrap();
+                assert_eq!(
+                    hex::encode(&raw),
+                    case["response"]["payload_hex"].as_str().unwrap(),
+                    "{}",
+                    case["query_path"]
+                );
+                assert_eq!(
+                    Response::decode(raw.as_slice()).unwrap().value.is_none(),
+                    case["missing_response"].as_bool().unwrap()
+                );
+                assert_eq!(
+                    hex::encode(read_frame(&mut stream).unwrap()),
+                    case["flush_response"]["payload_hex"].as_str().unwrap()
+                );
+            }
+            stream
+                .write_all(
+                    &hex::decode(fixture["echo_request_wire_hex"].as_str().unwrap()).unwrap(),
+                )
+                .unwrap();
+            write_frame(
+                &mut stream,
+                &Request {
+                    value: Some(request::Value::Flush(RequestFlush {})),
+                }
+                .encode_to_vec(),
+            )
+            .unwrap();
+            assert_eq!(
+                hex::encode(read_frame(&mut stream).unwrap()),
+                fixture["echo_after"]["payload_hex"].as_str().unwrap()
+            );
+            assert_eq!(
+                hex::encode(read_frame(&mut stream).unwrap()),
+                fixture["flush_after"]["payload_hex"].as_str().unwrap()
+            );
+        })
+        .await
+        .unwrap();
+        server.abort();
+    }
+}

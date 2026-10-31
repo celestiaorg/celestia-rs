@@ -732,6 +732,16 @@ impl AppQuery for AppQueries {
             .map_err(|_| "app lock poisoned".to_owned())?
             .query(&req))
     }
+    fn query_response(
+        &self,
+        req: abci::RequestQuery,
+    ) -> Result<Option<abci::ResponseQuery>, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned".to_owned())?
+            .query_response(&req))
+    }
     fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String> {
         self.0
             .lock()
