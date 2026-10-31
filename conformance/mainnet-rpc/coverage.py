@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 import gzip
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -625,10 +626,18 @@ def validate_reviews(review_ledger, policy, root=ROOT):
     return reviews
 
 
+def scope_module():
+    spec = importlib.util.spec_from_file_location("rpc_scope_audit", POLICY.with_name("scope_audit.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def inventory(policy):
     if policy["schema_version"] != 1 or set(v["issue"] for v in policy["behaviors"].values()) != set(range(182, 193)):
         raise ValueError("policy must account for every tracked behavior issue #182–192")
     reviews = validate_reviews(read_json(checked_path(ROOT, policy["reviewed_evidence"])), policy)
+    scoped = scope_module().validate(read_json(checked_path(ROOT, policy["scoped_evidence"])), ROOT)
     admitted = []
     for name in policy["current_evidence"]:
         admitted.append(validate_evidence(read_json(checked_path(ROOT, name)), policy))
@@ -656,6 +665,7 @@ def inventory(policy):
             "readiness_reason": "Requires complete behavior coverage, reviewed deviations and the bounded all-API soak; ledger validation alone never qualifies a provider.",
             "current_evidence_manifests": len(admitted), "current_cases": dict(Counter(c["outcome"] for c in cases)),
             "reviewed_not_admitted": reviews,
+            "scoped_current_release": scoped,
             "endpoints": declared, "behaviors": policy["behaviors"],
             "comparison_policies": policy["comparison_policies"], "known_mismatches": policy["known_mismatches"],
             "exclusions": policy["exclusions"], "legacy_fixtures": legacy_fixtures()}
@@ -665,13 +675,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", type=Path, help="Write source/evidence inventory as JSON")
     parser.add_argument("--run-current", action="store_true", help="Run only admitted current-release regression selectors (no capture/network)")
+    parser.add_argument("--verify-scoped", action="store_true", help="Run hash-bound offline verifiers for scoped current-release packages (no Cargo or capture)")
     args = parser.parse_args()
     try:
         report = inventory(read_json(POLICY))
         if args.json:
             args.json.write_text(json.dumps(report, indent=2) + "\n")
         print(f"{len(report['endpoints'])} source endpoint candidates; {report['current_evidence_manifests']} admitted current-release manifests; {len(report['legacy_fixtures'])} regression-only fixtures")
+        print(f"{len(report.get('scoped_current_release', {}).get('packages', []))} scoped current-release packages; exact parity admission remains separate")
         print("Provider readiness: NOT ESTABLISHED (see #181 and policy.json)")
+        if args.verify_scoped:
+            scope_module().verify_scoped(report["scoped_current_release"], ROOT)
         if args.run_current:
             tests = {tuple(c["test"][k] for k in ("package", "target", "filter"))
                      for endpoint in report["endpoints"] for c in endpoint["evidence"]}

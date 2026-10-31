@@ -54,9 +54,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Verify RPC evidence accounting
         run: python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
-      - name: Validate inventory and admitted current-release regressions
+      - name: Validate scoped evidence and admitted current-release regressions
         run: >-
-          python3 conformance/mainnet-rpc/coverage.py --run-current
+          python3 conformance/mainnet-rpc/coverage.py --run-current --verify-scoped
           --json ${{ runner.temp }}/rpc-coverage.json
       - if: always()
         uses: actions/upload-artifact@v7

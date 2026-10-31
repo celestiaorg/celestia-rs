@@ -91,7 +91,7 @@
     {
       "issue": 185,
       "source": "crates/devnet-conformance/tests/query_corpus.rs",
-      "description": "KNOWN_DIVERGENCES defers malformed bank Params and undecodable Simulate inputs; these historical assertions do not reproduce a current-release result"
+      "description": "Legacy KNOWN_DIVERGENCES still defers malformed bank Params and Simulate bytes1203616263 (including a stale gas-zero rationale); these retained historical skips are separate from the merged current14-case Simulate contract and do not establish a current mismatch"
     }
   ],
   "exclusions": [
@@ -121,5 +121,6 @@
       "description": "Historical recording used query(...).unwrap_or_default(); an empty ABCI Query envelope at /p2p/filter/other/x may appear as fabricated default success and is not evidence of public transport behavior"
     }
   ],
-  "current_evidence": []
+  "current_evidence": [],
+  "scoped_evidence": "conformance/mainnet-rpc/scope-audit.json"
 }
