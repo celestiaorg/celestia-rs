@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "oracle_profiles": {
+    "v10.5.0-ledger": {
+      "celestia_app": "v10.5.0",
+      "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+      "celestia_core": "v0.42.3",
+      "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+      "cosmos_sdk": "v0.52.12",
+      "cosmos_sdk_commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+      "compiler": "go1.26.9",
+      "build_tags": ["ledger"]
+    }
+  },
+  "reviews": [
+    {
+      "issue": 182,
+      "scope": "Go streaming-reflection transcripts replayed by the Rust listener",
+      "status": "not-admitted",
+      "capture_times": ["2026-10-31T00:17:23Z"],
+      "oracle_profile": "v10.5.0-ledger",
+      "binary_sha256": {
+        "go": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+        "rs": null
+      },
+      "bindings": {
+        "oracle_build": {"path": "conformance/grpc-reflection/v10.5.0/go-build.json", "sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835"},
+        "dependency_receipts": [
+          {"path": "conformance/grpc-reflection/v10.5.0/meta.json", "sha256": "5841f957ee0a8c497aa6623b955bf9af41af74d13612685a86f973b5b34518b4"}
+        ],
+        "genesis": null,
+        "workload": null,
+        "capture_source": {"path": "conformance/grpc-reflection/capture.go", "sha256": "56399165464a3b4da027b395bd45f4fa7463946837a82c03dce1f81353aad0d2"},
+        "mainnet_observation": null,
+        "go_responses": [
+          {"path": "conformance/grpc-reflection/v10.5.0/app.json.gz", "sha256": "8cc9af4a1a94543e6a12a41d970848304068d28f98929bd39310b73e490a228b"},
+          {"path": "conformance/grpc-reflection/v10.5.0/core.json.gz", "sha256": "ec582e60a5cd566b24a2ecf14bb15eb69fca20561f6a80c97e1a6cf6211d93dc"},
+          {"path": "conformance/grpc-reflection/v10.5.0/app-limits.json.gz", "sha256": "861c65e619ca27d0388ad2df1bf5d0a8f601fd15fb5cf2b55150e6b2ab76446b"}
+        ],
+        "rs_responses": []
+      },
+      "matched_state": {"go": null, "rs": null},
+      "endpoints": [
+        {"transport": "core-grpc", "endpoint": "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo"},
+        {"transport": "core-grpc", "endpoint": "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo"},
+        {"transport": "cosmos-grpc", "endpoint": "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo"}
+      ],
+      "comparison": {
+        "outcome": "normalized-runtime-comparison",
+        "normalizations": [
+          "sort SDK extension-number enumeration produced by Go map iteration",
+          "treat ASCII space and NBSP immediately after the proto: prefix as equivalent"
+        ],
+        "exclusions": [
+          "the captured Go extension 65003 panic is retained as a diagnostic; Rust returns a bounded NotFound response and it is not relabelled parity"
+        ]
+      },
+      "regressions": [
+        {"runner": "cargo", "package": "grpc-reflection", "target": "transport", "filter": "sdk_v1alpha_matches_go_socket_streams", "source": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "source_sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"},
+        {"runner": "cargo", "package": "grpc-reflection", "target": "transport", "filter": "core_v1_and_v1alpha_match_go_socket_streams", "source": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "source_sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"}
+      ],
+      "admission_blockers": [
+        "missing-rs-binary-hash",
+        "missing-go-matched-state",
+        "missing-rs-matched-state",
+        "missing-committed-rs-response",
+        "missing-committed-genesis",
+        "missing-committed-workload",
+        "missing-complete-mainnet-observation",
+        "comparison-not-exact"
+      ]
+    },
+    {
+      "issue": 184,
+      "scope": "Go consensus and node identity field-set exemplars checked against a production Rust process",
+      "status": "not-admitted",
+      "capture_times": ["2026-10-31T00:10:58.533764+00:00"],
+      "oracle_profile": null,
+      "observed_release": {
+        "celestia_app": "v10.5.0",
+        "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+        "celestia_core": "v0.42.3",
+        "cosmos_sdk": "v0.52.12",
+        "compiler": "go1.26.9",
+        "build_tags": ["ledger"]
+      },
+      "binary_sha256": {
+        "go": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+        "rs": null
+      },
+      "bindings": {
+        "oracle_build": {"path": "conformance/node-metadata/v10.5.0/consensus.json", "sha256": "2707d1f08740929c9631d5db398a7675b5451c953dcee32eb15216fee728a1b0"},
+        "dependency_receipts": [],
+        "genesis": null,
+        "workload": null,
+        "capture_source": {"path": "conformance/node-metadata/record.py", "sha256": "90733eae145d3bd28c0cf7953ba8bde9c3f56b277e9fe9081141edb51d62ffa1"},
+        "mainnet_observation": null,
+        "go_responses": [
+          {"path": "conformance/node-metadata/v10.5.0/consensus.json", "sha256": "2707d1f08740929c9631d5db398a7675b5451c953dcee32eb15216fee728a1b0"}
+        ],
+        "rs_responses": []
+      },
+      "matched_state": {"go": null, "rs": null},
+      "endpoints": [
+        {"transport": "comet-uri", "endpoint": "status"},
+        {"transport": "comet-uri", "endpoint": "net_info"},
+        {"transport": "comet-uri", "endpoint": "consensus_state"},
+        {"transport": "comet-uri", "endpoint": "dump_consensus_state"},
+        {"transport": "comet-uri", "endpoint": "abci_info"},
+        {"transport": "comet-uri", "endpoint": "abci_query"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo"},
+        {"transport": "rest", "endpoint": "GET /cosmos/base/tendermint/v1beta1/node_info"}
+      ],
+      "comparison": {
+        "outcome": "schema-only",
+        "normalizations": [],
+        "exclusions": [
+          "asynchronous consensus values are deliberately unconstrained; only field sets and scalar types are compared",
+          "the fixture scope explicitly disclaims matched-state equality"
+        ]
+      },
+      "regressions": [
+        {"runner": "cargo", "package": "celestia-rs", "target": "runtime_metadata", "filter": "production_listeners_report_build_and_compatibility_separately", "source": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "source_sha256": "dc50b93017fd9fd6a21e2592b0590d58c8657cf82a7a2537f47cc92e98aabce2"}
+      ],
+      "admission_blockers": [
+        "missing-exact-dependency-commits",
+        "missing-dependency-receipts",
+        "missing-rs-binary-hash",
+        "missing-go-matched-state",
+        "missing-rs-matched-state",
+        "missing-committed-rs-response",
+        "missing-committed-genesis",
+        "missing-committed-workload",
+        "missing-complete-mainnet-observation",
+        "comparison-not-exact"
+      ]
+    },
+    {
+      "issue": 185,
+      "scope": "Current-release Cosmos gRPC Simulate error and metadata contract",
+      "status": "not-admitted",
+      "capture_times": ["2026-10-31T00:00:08.178738+00:00"],
+      "oracle_profile": "v10.5.0-ledger",
+      "binary_sha256": {
+        "go": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+        "rs": null
+      },
+      "bindings": {
+        "oracle_build": {"path": "conformance/mainnet-rpc/simulation/oracle-build.json", "sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835"},
+        "dependency_receipts": [
+          {"path": "conformance/mainnet-rpc/simulation/dependencies.json", "sha256": "4bce8cec77e70211ba32e3a68cd9d2b122e79bdf352dbe1171b938f9ce7b5a46"},
+          {"path": "conformance/mainnet-rpc/simulation/metadata.json", "sha256": "e79fb36cd98b5e00114ab3878ee9f1c2f400158a19e6896cf2a694b7390890dd"}
+        ],
+        "genesis": {"path": "conformance/fixtures/devnet/empty/genesis.json", "sha256": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2"},
+        "workload": {"path": "conformance/fixtures/devnet/empty/abci.rec", "sha256": "d89d04f89b4ceaf90fb6b64697da07c0fd18bad8eeb6e22abc845de015a4089c"},
+        "capture_source": {"path": "conformance/mainnet-rpc/simulation/record.sh", "sha256": "2714ef4278d43763085ef6f9962b32a090e5e53dda571c06767c751cca7cdb5d"},
+        "mainnet_observation": {"path": "conformance/mainnet-rpc/simulation/mainnet-observation.json", "sha256": "fed404910eb9a2ae80491cb919fdd257367c0625224f3d8cdb893d2a050d8d23"},
+        "go_responses": [
+          {"path": "conformance/mainnet-rpc/simulation/go-errors.json", "sha256": "49cc11c6afc9120c4d9eae14718a6e7c573c95b64ed4ea59123dc92b84d64045"}
+        ],
+        "rs_responses": []
+      },
+      "matched_state": {
+        "go": {"chain_id": "rs-devnet-1", "height": 20, "app_hash": "A24AED6D3E95DF951E9A37B40364623EA4AF5B5CD30BC231CB7CE98B19C9E853", "source": {"path": "conformance/mainnet-rpc/simulation/go-state.json", "sha256": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70"}},
+        "rs": null
+      },
+      "endpoints": [
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.tx.v1beta1.Service/Simulate"}
+      ],
+      "comparison": {
+        "outcome": "normalized-runtime-comparison",
+        "normalizations": [
+          "remove only syntactically identified bracketed Go source frames from expected diagnostic text"
+        ],
+        "exclusions": [
+          "raw HTTP/2 header-versus-trailer placement is outside this scoped regression"
+        ]
+      },
+      "regressions": [
+        {"runner": "cargo", "package": "devnet-conformance", "target": "simulation_errors", "filter": "current_release_simulation_errors", "source": "crates/devnet-conformance/tests/simulation_errors.rs", "source_sha256": "eea6a471de30d7bcdffcb268e4ac51f9f105dd58575ffb7e43725b640298dc49"}
+      ],
+      "admission_blockers": [
+        "missing-rs-binary-hash",
+        "missing-rs-matched-state",
+        "missing-committed-rs-response",
+        "comparison-not-exact"
+      ]
+    },
+    {
+      "issue": 186,
+      "scope": "Current-release empty P2P filter envelopes and connection survival",
+      "status": "not-admitted",
+      "capture_times": [
+        "2026-10-31T00:11:16.791081+00:00",
+        "2026-10-31T00:11:18.691634+00:00"
+      ],
+      "oracle_profile": "v10.5.0-ledger",
+      "binary_sha256": {
+        "go": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+        "rs": null
+      },
+      "bindings": {
+        "oracle_build": {"path": "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "sha256": "b7ba4357f0b675b58d69c033f4c9427a26dacc021470c05ff267cd20cb4be9d9"},
+        "dependency_receipts": [
+          {"path": "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "sha256": "b7ba4357f0b675b58d69c033f4c9427a26dacc021470c05ff267cd20cb4be9d9"}
+        ],
+        "genesis": null,
+        "workload": null,
+        "capture_source": {"path": "conformance/mainnet-rpc/empty-query/record.sh", "sha256": "3cc4bf8e4313024b0d2824665203724dc8210f678813df2d2b1b3f77d3f8eb9e"},
+        "mainnet_observation": null,
+        "go_responses": [
+          {"path": "conformance/mainnet-rpc/v10.5.0/empty-query.json", "sha256": "6b79c4f3cb272f2e1b07a2b8d6f495a1911044fffd67ef308a9b0c89016d5349"},
+          {"path": "conformance/mainnet-rpc/v10.5.0/empty-query-abci.json", "sha256": "ccd6f73b4015e058fccb37fbd97ed40d7c4e90f2f52e27947a772e4b2b4845da"}
+        ],
+        "rs_responses": []
+      },
+      "matched_state": {"go": null, "rs": null},
+      "endpoints": [
+        {"transport": "comet-uri", "endpoint": "abci_query"},
+        {"transport": "comet-jsonrpc", "endpoint": "abci_query"},
+        {"transport": "comet-websocket", "endpoint": "abci_query"}
+      ],
+      "comparison": {
+        "outcome": "runtime-exact-unrecorded",
+        "normalizations": [
+          "HTTP Date and X-Server-Time values are dynamic and are checked only for presence where applicable"
+        ],
+        "exclusions": [
+          "custom peer-filter callbacks",
+          "the embedded release observation lacks a raw status response, public endpoint and observation time"
+        ]
+      },
+      "regressions": [
+        {"runner": "cargo", "package": "rpc", "target": "empty_query", "filter": "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket", "source": "crates/tier-4-runtime/rpc/tests/empty_query.rs", "source_sha256": "6c06cd5abc93d17533af6ff8916701c9bb8440b8214f29f6117e589d6a39c3c9"}
+      ],
+      "admission_blockers": [
+        "missing-rs-binary-hash",
+        "missing-go-matched-state",
+        "missing-rs-matched-state",
+        "missing-committed-rs-response",
+        "missing-committed-genesis",
+        "missing-committed-workload",
+        "missing-complete-mainnet-observation"
+      ]
+    },
+    {
+      "issue": 187,
+      "scope": "Partial BroadcastTx routing and CheckTx propagation regressions",
+      "status": "not-admitted",
+      "capture_times": [],
+      "oracle_profile": null,
+      "binary_sha256": {"go": null, "rs": null},
+      "bindings": {
+        "oracle_build": null,
+        "dependency_receipts": [],
+        "genesis": null,
+        "workload": null,
+        "capture_source": null,
+        "mainnet_observation": null,
+        "go_responses": [],
+        "rs_responses": []
+      },
+      "matched_state": {"go": null, "rs": null},
+      "endpoints": [
+        {"transport": "core-grpc", "endpoint": "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.tx.v1beta1.Service/BroadcastTx"}
+      ],
+      "comparison": {
+        "outcome": "rust-with-stand-in-only",
+        "normalizations": [],
+        "exclusions": [
+          "the Cosmos regression uses a local celestia-core stand-in rather than a captured pinned Go oracle",
+          "inclusion, execution failure, duplicates, timeout, disconnect and retry remain uncovered"
+        ]
+      },
+      "regressions": [
+        {"runner": "cargo", "package": "devnet-conformance", "target": "grpc_server", "filter": "broadcast_tx_reaches_check_tx", "source": "crates/devnet-conformance/tests/grpc_server.rs", "source_sha256": "94cb76bf854a42dbdbe3dfda261c6b43c691b2490db78705ece5e25cea3869d8"},
+        {"runner": "cargo", "package": "rpc", "target": "lib", "filter": "core_broadcast_projects_the_go_response_fields", "source": "crates/tier-4-runtime/rpc/src/grpc.rs", "source_sha256": "8e59ad305f37400d0a89af17b2b958c3a294c21d198a99e5da4607f726ef9c5f"},
+        {"runner": "cargo", "package": "rpc", "target": "lib", "filter": "core_broadcast_is_served_over_http2", "source": "crates/tier-4-runtime/rpc/src/grpc.rs", "source_sha256": "8e59ad305f37400d0a89af17b2b958c3a294c21d198a99e5da4607f726ef9c5f"}
+      ],
+      "admission_blockers": [
+        "missing-exact-oracle-identity",
+        "missing-go-binary-hash",
+        "missing-rs-binary-hash",
+        "missing-go-matched-state",
+        "missing-rs-matched-state",
+        "missing-oracle-build-receipt",
+        "missing-dependency-receipts",
+        "missing-committed-go-response",
+        "missing-committed-rs-response",
+        "missing-committed-genesis",
+        "missing-committed-workload",
+        "missing-capture-source",
+        "missing-capture-time",
+        "missing-complete-mainnet-observation",
+        "comparison-not-exact"
+      ]
+    },
+    {
+      "issue": 188,
+      "scope": "Partial populated staking query capture over direct ABCI, Comet JSON-RPC, Cosmos gRPC and REST",
+      "status": "not-admitted",
+      "capture_times": ["2026-10-31T01:00:58.866157+00:00"],
+      "oracle_profile": null,
+      "observed_release": {
+        "celestia_app": "v10.5.0",
+        "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+        "celestia_core": "v0.42.3",
+        "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+        "cosmos_sdk": "v0.52.12",
+        "compiler": "go1.26.9",
+        "build_tags": ["ledger"]
+      },
+      "binary_sha256": {
+        "go": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+        "rs": null
+      },
+      "bindings": {
+        "oracle_build": {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/app-build.json", "sha256": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835"},
+        "dependency_receipts": [
+          {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/core-build.json", "sha256": "6ee1bf69127b84b0d7b1b86f464e15fa2bd987b1b6d7f57fb176ad894506ae7e"},
+          {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/app-build-info.txt", "sha256": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25"},
+          {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json", "sha256": "164bee6d21c3a4b34fc37ffdfd8b2b41de65638890805917959f3b282f5ef9c4"}
+        ],
+        "genesis": {"path": "conformance/fixtures/devnet/v105-populated-staking/genesis.json", "sha256": "a191d2e60a8a45c27caf38f8af682ecc570b8432556749e9156362971d0f8fc6"},
+        "workload": {"path": "conformance/devnet/workloads/staking.sh", "sha256": "7dc1941be775b034d88e3af1de22d68dbdf3dbebc9c2a1d7c518137f76c60a43"},
+        "capture_source": {"path": "conformance/mainnet-rpc/populated-staking/record.sh", "sha256": "238d6292419df434a98e5cc7faf21d77ee732cb6547339c62942e50eba1d7f1d"},
+        "mainnet_observation": {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/mainnet-observation.json", "sha256": "5819e15ab6bace3f26886a49fcf6f64ceea296b9d5ba4a9c822a501295e0fada"},
+        "go_responses": [
+          {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/transports.json", "sha256": "4b86cc3709ba4970ba3068ea6cd022182784c589e6180deb371205fd2e2ae66d"}
+        ],
+        "rs_responses": []
+      },
+      "matched_state": {
+        "go": {"chain_id": "rs-devnet-1", "height": 39, "app_hash": "88E7DA9D3C88BDD365EA94167DB4EC05375A1C3271FAED8505E4560CBDB1B18B", "source": {"path": "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json", "sha256": "164bee6d21c3a4b34fc37ffdfd8b2b41de65638890805917959f3b282f5ef9c4"}},
+        "rs": null
+      },
+      "endpoints": [
+        {"transport": "comet-jsonrpc", "endpoint": "abci_query"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.staking.v1beta1.Query/Validators"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.staking.v1beta1.Query/Validator"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.staking.v1beta1.Query/DelegatorDelegations"},
+        {"transport": "cosmos-grpc", "endpoint": "/cosmos.distribution.v1beta1.Query/DelegationTotalRewards"},
+        {"transport": "rest", "endpoint": "GET /cosmos/staking/v1beta1/validators"},
+        {"transport": "rest", "endpoint": "GET /cosmos/staking/v1beta1/validators/{validator_addr}"},
+        {"transport": "rest", "endpoint": "GET /cosmos/staking/v1beta1/delegations/{delegator_addr}"},
+        {"transport": "rest", "endpoint": "GET /cosmos/distribution/v1beta1/delegators/{delegator_address}/rewards"}
+      ],
+      "comparison": {
+        "outcome": "go-transports-only",
+        "normalizations": [
+          "sort delegation reward entries by validator address because Go iterates the rewards map independently per transport"
+        ],
+        "exclusions": [
+          "proof validity, non-staking modules, invalid UTF-8, Any/JSON edge cases and staking lifecycle completion remain outside this partial capture"
+        ]
+      },
+      "regressions": [
+        {"runner": "python-unittest", "package": "conformance.mainnet-rpc.tests", "target": "test_populated_staking", "filter": "PopulatedStakingEvidence.test_abci_comet_and_grpc_return_identical_protobuf", "source": "conformance/mainnet-rpc/tests/test_populated_staking.py", "source_sha256": "32f3baba474c390663f46125e8edfd9889a398d8de6698f558db8e1204397cd1"}
+      ],
+      "admission_blockers": [
+        "missing-exact-dependency-commits",
+        "missing-rs-binary-hash",
+        "missing-rs-matched-state",
+        "missing-committed-rs-response",
+        "comparison-not-exact"
+      ]
+    }
+  ]
+}

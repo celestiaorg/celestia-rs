@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "tracking_issue": 181,
+  "reviewed_evidence": "conformance/mainnet-rpc/evidence-reviews.json",
   "oracle": {
     "celestia_app": "v10.5.0",
     "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
@@ -107,7 +108,7 @@
     {
       "issue": 193,
       "source": "conformance/mainnet-rpc",
-      "description": "The tracking issue's unpublished compatibility branch and v10.5 fixture suite are not present on main; no result from them is admitted here"
+      "description": "Merged v10.5 packages are hash-checked in evidence-reviews.json. They remain unadmitted where an exact dependency receipt, RS binary/matched-state/response capture, complete mainnet observation or exact comparison is missing"
     },
     {
       "issue": 191,
