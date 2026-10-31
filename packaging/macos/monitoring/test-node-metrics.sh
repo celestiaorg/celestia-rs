@@ -127,8 +127,10 @@ collect
 expect "$f" 'celestia_rs_sign_refusals_total{network="mocha"} 5'
 
 # --- apphash -----------------------------------------------------------------
+# The reference RPC must arrive alone, not with the log column after it.
 cat >"$t/check-apphash.sh" <<'EOF'
 #!/usr/bin/env bash
+[[ $# == 2 && $2 == https://ref.invalid ]] || exit 2
 case $1 in
   http://127.0.0.1:1111) echo OK; exit 0 ;;
   http://127.0.0.1:2222) echo MISMATCH >&2; exit 1 ;;
