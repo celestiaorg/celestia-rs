@@ -468,6 +468,42 @@ fn legacy_app_version_adapter_is_narrow() {
     }
 }
 
+/// Go may retain a nil empty `ResponseCheckTx.data` slice on rejected legacy
+/// transactions. ABCI protobuf preserves only the empty bytes, so canonicalize
+/// that allocation-only distinction on the direct CheckTx regression route.
+fn legacy_rejected_check_tx_data(body: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return body.to_owned();
+    };
+    if let Some(result) = value.pointer("/result")
+        && result["code"].as_u64().is_some_and(|code| code != 0)
+        && result["data"].is_null()
+        && body.matches(r#""data":null"#).count() == 1
+    {
+        return body.replacen(r#""data":null"#, r#""data":"""#, 1);
+    }
+    body.to_owned()
+}
+
+#[test]
+fn legacy_rejected_check_tx_data_adapter_is_narrow() {
+    let rejected =
+        r#"{"jsonrpc":"2.0","id":-1,"result":{"code":32,"data":null,"log":"kept"},"extra":7}"#;
+    assert_eq!(
+        legacy_rejected_check_tx_data(rejected),
+        rejected.replacen(r#""data":null"#, r#""data":"""#, 1)
+    );
+
+    for unchanged in [
+        rejected.replace(r#""code":32"#, r#""code":0"#),
+        rejected.replace(r#""data":null"#, r#""data":"AQ==""#),
+        rejected.replace(r#""result":{"code":32"#, r#""result":{"status":32"#),
+        rejected.replace(r#""extra":7"#, r#""extra":{"data":null}"#),
+    ] {
+        assert_eq!(legacy_rejected_check_tx_data(&unchanged), unchanged);
+    }
+}
+
 fn normalize_decode_error(s: &str) -> String {
     let mut s = s.replace("proto:\u{a0}", "").replace("proto: ", "");
     if let (Some(a), Some(b)) = (s.find(" [celestiaorg/"), s.rfind(']')) {
@@ -703,6 +739,7 @@ async fn run_scenario(dir: &Path) -> Stats {
                 let go_status = e["status"].as_u64().unwrap_or(0);
                 let go_ct = e["content_type"].as_str().unwrap_or_default();
                 let go_cc = e["cache_control"].as_str().unwrap_or_default();
+                let route_path = path.split('?').next().unwrap_or(path);
                 let (g, r) = if path == "/abci_info" {
                     (legacy_abci_identity(go), legacy_abci_identity(&resp))
                 } else if path == "/abci_query?path=%22app%2Fversion%22" {
@@ -712,6 +749,11 @@ async fn run_scenario(dir: &Path) -> Stats {
                     // Go binary's protobuf-go `detrand` separator after
                     // "proto:" and an error-stack location; compare the rest.
                     (normalize_decode_error(go), normalize_decode_error(&resp))
+                } else if route_path == "/check_tx" {
+                    (
+                        legacy_rejected_check_tx_data(go),
+                        legacy_rejected_check_tx_data(&resp),
+                    )
                 } else if norm.is_empty() {
                     (go.to_owned(), resp.clone())
                 } else {

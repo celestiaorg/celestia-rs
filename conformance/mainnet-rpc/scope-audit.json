@@ -305,7 +305,7 @@
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/live-tx-closure/README.md",
-        "sha256": "53340f65c5a094024935cd0f2d316fb3300d35a9a7c75573221c140d89eff94b"
+        "sha256": "7af7fc7696b5b39a7a20d4982327941ac3382761a3a7dd9d5c052b1362bf2196"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",
@@ -473,14 +473,14 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "9f199b368af88055eb4801b3d048cbd8bf315a37fd13b16ae1b93660d28e60c6"
+            "sha256": "eaf64fab565b8665a55e6ae8102dd5abff239085919937a16109b2e5d48cc42c"
           },
           "function": "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"
         },
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "9f199b368af88055eb4801b3d048cbd8bf315a37fd13b16ae1b93660d28e60c6"
+            "sha256": "eaf64fab565b8665a55e6ae8102dd5abff239085919937a16109b2e5d48cc42c"
           },
           "function": "websocket_origins_match_go_and_deliver_events"
         }

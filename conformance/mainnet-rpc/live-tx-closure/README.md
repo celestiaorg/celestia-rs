@@ -111,6 +111,12 @@ and normalizes only those two known successful CheckTx fields. This legacy
 cross-capture normalization is separate from the fresh paired verifier, where
 successful CheckTx data remains exact.
 
+The older differential RPC corpora expose the same erased allocation detail on
+rejected direct `/check_tx` responses. Their replay canonicalizes only a
+nonzero CheckTx result whose `data` is explicitly null to the empty base64
+string. Successful results, nonempty data, every other field and every other
+route remain exact.
+
 The lifecycle artifact is event based. It records every capacity,
 disconnect, cancellation and timeout phase with monotonic time, transaction
 hash, local mempool size, status height and the complete transport response
