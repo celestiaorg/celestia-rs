@@ -392,14 +392,24 @@ def assert_boundary(boundary: dict[str, Any], label: str) -> None:
 
 def assert_admission(admission: dict[str, Any], boundary_height: int, expected: str, label: str) -> None:
     require_fields(admission, {"go", "rs"}, f"{label}: admission")
-    fields = {"outcome", "completed_after_barrier_ms", "status_height", "mempool_present", "tx_hash"}
+    fields = {"outcome", "completed_after_barrier_ms", "status_height", "mempool_present", "proof", "indexed_height", "tx_hash"}
     rows = [require_fields(admission[side], fields, f"{label}: {side} admission") for side in ("go", "rs")]
     expected_admission = "rejected" if expected in {"rejected", "policy-difference"} else "admitted"
     for row in rows:
         require(row["outcome"] == expected_admission, f"{label}: unexpected admission outcome")
         require(0 <= row["completed_after_barrier_ms"] <= 1000, f"{label}: admission outside 1 second")
-        require(row["status_height"] == boundary_height, f"{label}: height advanced during admission")
-        require(row["mempool_present"] is (expected_admission == "admitted"), f"{label}: mempool proof differs")
+        if expected_admission == "rejected":
+            require(row["proof"] == "mempool-absent" and row["mempool_present"] is False and
+                    row["indexed_height"] is None and row["status_height"] == boundary_height,
+                    f"{label}: rejection proof differs")
+        elif row["proof"] == "mempool-present":
+            require(row["mempool_present"] is True and row["indexed_height"] is None and
+                    row["status_height"] == boundary_height, f"{label}: mempool proof differs")
+        else:
+            require(row["proof"] == "indexed-inclusion" and row["mempool_present"] is False and
+                    row["indexed_height"] == boundary_height + 1 and
+                    row["status_height"] == row["indexed_height"],
+                    f"{label}: inclusion-race proof differs")
     require(rows[0]["tx_hash"] == rows[1]["tx_hash"], f"{label}: transaction hash differs")
 
 

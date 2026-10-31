@@ -669,21 +669,33 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
         inclusion = harness.require_fields(inclusion_pair["go"], inclusion_fields, f"Go inclusion {name}")
         rs_inclusion = harness.require_fields(inclusion_pair["rs"], inclusion_fields, f"Rust inclusion {name}")
         require(inclusion == rs_inclusion, "inclusion.exact", name)
+        for side in ("go", "rs"):
+            admission = response["admission"][side]
+            if admission["proof"] == "indexed-inclusion":
+                require(inclusion_pair[side]["included_count"] == 1 and
+                        isinstance(inclusion_pair[side]["post_state"], dict) and
+                        inclusion_pair[side]["post_state"]["height"] == admission["indexed_height"],
+                        "inclusion.admission", f"indexed admission proof differs: {name}/{side}")
         if expected in {"included", "execution-failed"}:
             require(inclusion["included_count"] == 1, "inclusion.count", name)
             require(inclusion["tx_hash"] == response["admission"]["go"]["tx_hash"], "inclusion.hash", name)
             post = harness.require_fields(inclusion["post_state"], {"height", "app_hash", "balance", "sequence", "delegation"}, f"post-state {name}")
             require(post["height"] > pre["height"], "inclusion.height", name)
-            require(inclusion["check_tx_source"] in {"broadcast-response", "mempool-admission"} and
+            require(inclusion["check_tx_source"] in {"broadcast-response", "mempool-admission", "indexed-inclusion"} and
                     isinstance(inclusion["deliver_tx"], dict), "inclusion.result", name)
             admission_only_names = {"comet-commit-disconnect", "core-grpc-cancel", "server-timeout"}
-            require(inclusion["check_tx_source"] == ("mempool-admission" if name in admission_only_names else "broadcast-response"),
+            admission_proofs = {response["admission"][side]["proof"] for side in ("go", "rs")}
+            expected_source = ("indexed-inclusion" if name in admission_only_names and
+                               "indexed-inclusion" in admission_proofs else
+                               "mempool-admission" if name in admission_only_names else "broadcast-response")
+            require(inclusion["check_tx_source"] == expected_source,
                     "inclusion.result", f"CheckTx evidence source differs: {name}")
             if inclusion["check_tx_source"] == "broadcast-response":
                 require(isinstance(inclusion["check_tx"], dict), "inclusion.result", f"missing CheckTx response: {name}")
                 check = harness.require_fields(inclusion["check_tx"], {"code", "gas_wanted", "gas_used", "events", "codespace", "log", "data"}, f"CheckTx {name}")
             else:
-                require(name in {"comet-commit-disconnect", "core-grpc-cancel", "server-timeout"} and
+                require(name in admission_only_names and inclusion["check_tx_source"] in
+                        {"mempool-admission", "indexed-inclusion"} and
                         inclusion["check_tx"] is None and response["admission"]["go"]["outcome"] == "admitted",
                         "inclusion.result", f"admission-only CheckTx is not allowed: {name}")
                 check = None

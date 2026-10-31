@@ -107,6 +107,12 @@ duplicate or sequence/capacity outcome. Capacity B and every successful
 follow-up have paired indexed inclusion/result/post-state records that advance
 the state consumed by the next main case.
 
+Admission records distinguish a hash observed in the mempool from the narrow
+race where it is already indexed at exactly the next height. The latter must
+be observed within the same one-second admission window and is cross-bound to
+the later exact inclusion and post-state height. Rejections prove both mempool
+and index absence.
+
 The mempool recovery case records configured `mempool.size = 0` separately
 from its effective one-transaction CAT boundary: Go and Rust both check the
 current count with strict `numTxs > size` before insertion. It also records the

@@ -234,7 +234,7 @@ def fixture(root: pathlib.Path) -> None:
         })
         admitted = expected not in {"rejected", "policy-difference"}
         tx_hash = hashlib.sha256(request).hexdigest()
-        admission = {side: {"outcome": "admitted" if admitted else "rejected", "completed_after_barrier_ms": 100, "status_height": pre["height"], "mempool_present": admitted, "tx_hash": tx_hash} for side in ("go", "rs")}
+        admission = {side: {"outcome": "admitted" if admitted else "rejected", "completed_after_barrier_ms": 100, "status_height": pre["height"], "mempool_present": admitted, "proof": "mempool-present" if admitted else "mempool-absent", "indexed_height": None, "tx_hash": tx_hash} for side in ("go", "rs")}
         is_grpc = "grpc" in transport
         is_websocket = transport == "comet-websocket"
         go_response = {
@@ -1053,6 +1053,45 @@ class VerifyTest(unittest.TestCase):
                                           "codespace": "", "log": "", "data": ""}
         self.rewrite("inclusions.json", mutate)
         self.reject("inclusion.result", lambda: verify.verify(self.root))
+
+    def test_indexed_inclusion_closes_admission_poll_race(self):
+        inclusions = json.loads((self.root / "inclusions.json").read_text())
+        row = next(item for item in inclusions["cases"] if item["name"] == "comet-commit-disconnect")
+        indexed_height = row["go"]["post_state"]["height"]
+
+        def mutate_response(value):
+            item = next(row for row in value["cases"] if row["name"] == "comet-commit-disconnect")
+            proof = item["admission"]["go"]
+            proof.update(proof="indexed-inclusion", indexed_height=indexed_height,
+                         status_height=indexed_height, mempool_present=False)
+
+        def mutate_inclusion(value):
+            item = next(row for row in value["cases"] if row["name"] == "comet-commit-disconnect")
+            for side in ("go", "rs"):
+                item[side]["check_tx_source"] = "indexed-inclusion"
+
+        self.rewrite("paired-responses.json", mutate_response)
+        self.rewrite("inclusions.json", mutate_inclusion)
+        verify.EXPECTED_SEMANTIC_DIGEST = verify.semantic_digest(self.root)
+        verify.verify(self.root)
+
+    def test_indexed_admission_height_is_cross_bound(self):
+        def mutate(value):
+            item = next(row for row in value["cases"] if row["name"] == "comet-commit-disconnect")
+            proof = item["admission"]["go"]
+            proof.update(proof="indexed-inclusion", indexed_height=proof["status_height"] + 2,
+                         status_height=proof["status_height"] + 2, mempool_present=False)
+        self.rewrite("paired-responses.json", mutate)
+        self.reject("response.admission|inclusion.admission", lambda: verify.verify(self.root))
+
+    def test_rejected_case_cannot_claim_indexed_admission(self):
+        def mutate(value):
+            item = next(row for row in value["cases"] if row["name"] == "rest-invalid-base64")
+            proof = item["admission"]["go"]
+            proof.update(proof="indexed-inclusion", indexed_height=proof["status_height"] + 1,
+                         status_height=proof["status_height"] + 1)
+        self.rewrite("paired-responses.json", mutate)
+        self.reject("response.admission", lambda: verify.verify(self.root))
 
     def test_lifecycle_inclusion_height_link(self):
         def mutate(value):

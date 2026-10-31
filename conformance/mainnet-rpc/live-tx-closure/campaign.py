@@ -809,14 +809,24 @@ def wait_inclusion(state: State, digest: str, responses: dict[str, dict[str, Any
 
 
 def admission_watch(state: State, digest: str, stopping: threading.Event,
-                    observed: dict[str, tuple[int, int] | None]) -> None:
+                    observed: dict[str, dict[str, Any] | None]) -> None:
     while not stopping.is_set():
         for side in ROLES:
             if observed[side] is None:
                 try:
                     hashes, _ = mempool(state.plan["endpoints"][f"{side}_rpc"])
                     if digest in hashes:
-                        observed[side] = (now_ms(), status(state.plan["endpoints"][f"{side}_rpc"])[0])
+                        height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
+                        observed[side] = {"proof": "mempool-present", "completed_ms": now_ms(),
+                                          "status_height": height, "indexed_height": None}
+                    else:
+                        indexed = indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest)
+                        if indexed is not None:
+                            result, _ = indexed
+                            height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
+                            observed[side] = {"proof": "indexed-inclusion", "completed_ms": now_ms(),
+                                              "status_height": height,
+                                              "indexed_height": int(result["height"])}
                 except (OSError, KeyError, ValueError, harness.HarnessError):
                     pass
         stopping.wait(0.005)
@@ -846,7 +856,7 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
         harness.require(all(indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest) is None for side in ROLES),
                         "BlobTx envelope was already indexed before paired submission")
         capture_blob_artifact(state, prestates["go"])
-    observed: dict[str, tuple[int, int] | None] = {side: None for side in ROLES}
+    observed: dict[str, dict[str, Any] | None] = {side: None for side in ROLES}
     stopping = threading.Event()
     watcher = threading.Thread(target=admission_watch, args=(state, digest, stopping, observed), daemon=True)
     watcher.start()
@@ -867,18 +877,32 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
     admission = {}
     for side in ROLES:
         if admitted:
-            harness.require(observed[side] is not None, f"{name}/{side} was not observed in mempool")
-            completed_ms, observed_height = observed[side]  # type: ignore[misc]
+            harness.require(observed[side] is not None, f"{name}/{side} admission was not observed")
+            proof_row = observed[side]  # type: ignore[assignment]
+            completed_ms = proof_row["completed_ms"]
+            observed_height = proof_row["status_height"]
+            proof = proof_row["proof"]
+            indexed_height = proof_row["indexed_height"]
+            present = proof == "mempool-present"
+            if proof == "indexed-inclusion":
+                harness.require(indexed_height == common[side]["height"] + 1 and
+                                observed_height == indexed_height,
+                                f"{name}/{side} indexed admission height differs")
         else:
-            completed_ms = driver["pair_completed_monotonic_ns"] // 1_000_000
-            observed_height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
             hashes, _ = mempool(state.plan["endpoints"][f"{side}_rpc"])
             harness.require(digest not in hashes, f"{name}/{side} rejection entered mempool")
-        harness.require(observed_height == common[side]["height"],
-                        f"{name}/{side} height advanced during admission")
+            harness.require(indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest) is None,
+                            f"{name}/{side} rejection was indexed")
+            observed_height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
+            completed_ms = now_ms()
+            proof, present, indexed_height = "mempool-absent", False, None
+        if proof != "indexed-inclusion":
+            harness.require(observed_height == common[side]["height"],
+                            f"{name}/{side} height advanced during admission")
         admission[side] = {"outcome": "admitted" if admitted else "rejected",
                            "completed_after_barrier_ms": completed_ms - release_ms,
-                           "status_height": observed_height, "mempool_present": admitted, "tx_hash": digest}
+                           "status_height": observed_height, "mempool_present": present,
+                           "proof": proof, "indexed_height": indexed_height, "tx_hash": digest}
     input_row = {
         "name": name, "generation": generation, "transport": transport, "mode": mode, "family": family,
         "expected_outcome": expected, "pre_state": prestates,
@@ -957,6 +981,12 @@ def record_main_inclusion(state: State, source: dict[str, Any], response: dict[s
     digest = source["requests"]["go"]["sha256"]
     if expected in {"included", "execution-failed"}:
         pair = wait_inclusion(state, digest, {side: response[side] for side in ROLES})
+        admission_only = {"comet-commit-disconnect", "core-grpc-cancel", "server-timeout"}
+        if name in admission_only and any(
+            response["admission"][side]["proof"] == "indexed-inclusion" for side in ROLES
+        ):
+            for side in ROLES:
+                pair[side]["check_tx_source"] = "indexed-inclusion"
     else:
         rejected = {"included_count": 0, "tx_hash": digest, "check_tx": None, "check_tx_source": None,
                     "deliver_tx": None, "post_state": None}
