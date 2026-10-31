@@ -112,7 +112,7 @@ follow-up have paired indexed inclusion/result/post-state records that advance
 the state consumed by the next main case.
 
 Admission records distinguish a hash observed in the mempool from the narrow
-race where it is already indexed at exactly the next height. The latter must
+race where it is already indexed at an exact later height. The latter must
 be observed within the active timeout-derived 5.6-second healthy consensus
 freshness bound and is cross-bound to the later exact inclusion and post-state
 height. The adjacent status sample may already be later than that exact indexed

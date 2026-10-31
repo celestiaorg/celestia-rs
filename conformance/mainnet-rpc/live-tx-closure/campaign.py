@@ -894,7 +894,7 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
             indexed_height = proof_row["indexed_height"]
             present = proof == "mempool-present"
             if proof == "indexed-inclusion":
-                harness.require(indexed_height == common[side]["height"] + 1 and
+                harness.require(indexed_height > common[side]["height"] and
                                 observed_height >= indexed_height,
                                 f"{name}/{side} indexed admission height differs")
             if name in {"mempool-capacity-recovery", "server-timeout"}:

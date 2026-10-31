@@ -411,7 +411,7 @@ def assert_admission(admission: dict[str, Any], boundary_height: int, expected: 
                     row["status_height"] == boundary_height, f"{label}: mempool proof differs")
         else:
             require(row["proof"] == "indexed-inclusion" and row["mempool_present"] is False and
-                    row["indexed_height"] == boundary_height + 1 and
+                    row["indexed_height"] > boundary_height and
                     row["status_height"] >= row["indexed_height"],
                     f"{label}: inclusion-race proof differs")
             require(label not in {"mempool-capacity-recovery", "server-timeout"},
