@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "94812c70512a1c4a817c7bf6417683f8120528f4",
+  "audited_main": "ee294f45794be53bc87efe086c675f122c4433fb",
   "provider_ready": false,
   "packages": [
     {
@@ -98,15 +98,15 @@
       "comparison": "relational-go-plus-rust-captures",
       "receipt": {
         "path": "conformance/grpc-lifecycle/v10.5.0/meta.json",
-        "sha256": "0abc1cc0c0444050ebc186dcfd2e89be4345fe3c39a53f0da0f0dce21262e04a"
+        "sha256": "8d280b7a269407e19158e7e6c0e8f80d35d99d8591fc466c58df9e0defe050a2"
       },
       "documentation": {
         "path": "conformance/grpc-lifecycle/README.md",
-        "sha256": "c78c485047a4b3066814190c8a7dcca4ac4b4fd265d16785d5a180f9ac3325a1"
+        "sha256": "9268e7870ecb8a67c716d2b32b731facaaf4255bfe63ad03a18dfb6debf41e0c"
       },
       "verifier": {
         "path": "conformance/grpc-lifecycle/verify.py",
-        "sha256": "ef1b5be075dd4c69b9ea7a317c22f674b4448bc5126130a5ec6fef9a2df9baf5"
+        "sha256": "fe499dd2fbee757f8bd21eb122aee525ef5e6e3b01901f689a10b6f1566f5217"
       },
       "transports": [
         "core-grpc",
@@ -131,7 +131,7 @@
       "provenance_limits": [
         "The fresh public mainnet observation selects v10.5.0 only; all captures use isolated loopback local genesis and perform no production writes",
         "Go/Rust resources come from one bounded local run and are not universal production ceilings",
-        "Capture source is signed historical commit399f57e; the later verifier reads and hashes those captured Git blobs"
+        "The self-contained evidence carries signed historical commit 399f57e, its required raw tree objects, and exact reviewed source snapshots; the verifier rebuilds and verifies that graph without relying on an ambient repository ref"
       ],
       "runtime_regressions": []
     },

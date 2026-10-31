@@ -7,6 +7,7 @@ import copy
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -20,6 +21,11 @@ SPEC = importlib.util.spec_from_file_location("grpc_lifecycle_verify", PATH)
 VERIFY = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(VERIFY)
+FREEZE_PATH = Path(__file__).with_name("freeze.py")
+FREEZE_SPEC = importlib.util.spec_from_file_location("grpc_lifecycle_freeze", FREEZE_PATH)
+FREEZE = importlib.util.module_from_spec(FREEZE_SPEC)
+assert FREEZE_SPEC.loader is not None
+FREEZE_SPEC.loader.exec_module(FREEZE)
 
 
 def frame(kind: int, flags: int, stream: int, payload: bytes = b"") -> bytes:
@@ -303,19 +309,105 @@ class SDKLifecycleVerification(unittest.TestCase):
 
 
 class ProvenanceMutationResistance(unittest.TestCase):
+    def test_freezer_exports_a_repository_independent_source_graph(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = base / "source"
+            capture = base / "capture"
+            source.mkdir()
+            capture.mkdir()
+            subprocess.run(["git", "init", "--quiet", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "test"],
+                           check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.email",
+                            "test@example.invalid"], check=True)
+            for index, name in enumerate(FREEZE.SOURCE_NAMES):
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"source {index}: {name}\n")
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m",
+                            "synthetic capture"], check=True)
+            commit = subprocess.check_output(
+                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True,
+            ).strip()
+
+            names = FREEZE.freeze_capture_source(source, capture, commit)
+            self.assertEqual(names[0], FREEZE.SOURCE_COMMIT_NAME)
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(
+                hashlib.sha1(b"commit " + str(len((capture / names[0]).read_bytes())).encode()
+                             + b"\0" + (capture / names[0]).read_bytes()).hexdigest(),
+                commit,
+            )
+            for name in FREEZE.SOURCE_NAMES:
+                self.assertEqual(
+                    (capture / FREEZE.SOURCE_SNAPSHOT_PREFIX / name).read_bytes(),
+                    subprocess.check_output(
+                        ["git", "-C", str(source), "show", f"{commit}:{name}"]
+                    ),
+                )
+
     def test_capture_signature_is_self_contained_and_key_bound(self):
-        repository = Path(__file__).resolve().parents[2]
-        commit = "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059"
+        evidence = Path(__file__).with_name("v10.5.0")
         with tempfile.TemporaryDirectory() as empty_home:
             with patch.dict(os.environ, {"HOME": empty_home}):
-                VERIFY.verify_source_commit_signature(repository, commit)
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
                 with patch.object(
                     VERIFY,
                     "CAPTURE_ALLOWED_SIGNER",
                     VERIFY.CAPTURE_ALLOWED_SIGNER.replace("IOth0", "IAAAA"),
                 ):
                     with self.assertRaises(subprocess.CalledProcessError):
-                        VERIFY.verify_source_commit_signature(repository, commit)
+                        VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+    def copied_evidence(self, base: Path) -> Path:
+        destination = base / "evidence"
+        shutil.copytree(Path(__file__).with_name("v10.5.0"), destination)
+        return destination
+
+    def test_capture_source_verifies_when_commit_is_unreachable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            evidence = self.copied_evidence(base)
+            fresh = base / "fresh-repository"
+            subprocess.run(["git", "init", "--quiet", str(fresh)], check=True)
+            missing = subprocess.run(
+                ["git", "-C", str(fresh), "cat-file", "-e",
+                 f"{VERIFY.CAPTURE_SOURCE_COMMIT}^{{commit}}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+    def test_commit_object_signature_and_snapshot_tampering_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+
+            evidence = self.copied_evidence(base / "commit")
+            commit_path = evidence / VERIFY.SOURCE_COMMIT_NAME
+            commit_path.write_bytes(commit_path.read_bytes().replace(
+                b"record gRPC setup frames", b"record gRPC setup FRAME", 1
+            ))
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
+
+            evidence = self.copied_evidence(base / "signature")
+            commit_path = evidence / VERIFY.SOURCE_COMMIT_NAME
+            raw = commit_path.read_bytes().replace(b"XeRbT", b"XeRcT", 1)
+            self.assertNotEqual(raw, commit_path.read_bytes())
+            commit_path.write_bytes(raw)
+            rebound = subprocess.check_output(
+                ["git", "hash-object", "-t", "commit", "--stdin"], input=raw,
+            ).decode().strip()
+            with self.assertRaises(subprocess.CalledProcessError):
+                VERIFY.verify_capture_source(evidence, rebound)
+
+            evidence = self.copied_evidence(base / "snapshot")
+            snapshot = evidence / VERIFY.SOURCE_SNAPSHOT_NAMES[0]
+            snapshot.write_bytes(snapshot.read_bytes() + b"tampered\n")
+            with self.assertRaises(subprocess.CalledProcessError):
+                VERIFY.verify_capture_source(evidence, VERIFY.CAPTURE_SOURCE_COMMIT)
 
     def rs_receipt(self):
         commit = "1" * 40
@@ -356,23 +448,29 @@ class ProvenanceMutationResistance(unittest.TestCase):
                                          receipt["version_long"])
 
     def fixture(self, base: Path):
-        capture, source = base / "capture", base / "source"
+        capture = base / "capture"
         capture.mkdir()
-        source.mkdir()
+        source = capture / VERIFY.SOURCE_SNAPSHOT_PREFIX
         for name in VERIFY.SOURCE_NAMES:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"source:{name}\n")
-        artifacts = (VERIFY.INPUT_NAMES + VERIFY.CAPTURE_NAMES + VERIFY.RESOURCE_NAMES
-                     + VERIFY.BUILD_NAMES + VERIFY.OBSERVATION_NAMES)
-        for name in artifacts:
-            (capture / name).write_text(f"artifact:{name}\n")
+        for name in VERIFY.ARTIFACT_NAMES:
+            path = capture / name
+            if path.exists():
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"artifact:{name}\n")
         (capture / "meta.json").write_text("{}\n")
         meta = {
-            "inventory": {"sources": VERIFY.SOURCE_NAMES, **VERIFY.INVENTORY},
+            "inventory": {
+                "sources": VERIFY.SOURCE_NAMES,
+                **VERIFY.INVENTORY,
+                "source_support": VERIFY.SOURCE_SUPPORT_NAMES,
+            },
             "artifact_sha256": {
                 name: hashlib.sha256((capture / name).read_bytes()).hexdigest()
-                for name in artifacts
+                for name in VERIFY.ARTIFACT_NAMES
             },
             "input_sha256": {
                 name: hashlib.sha256((capture / name).read_bytes()).hexdigest()
@@ -393,28 +491,21 @@ class ProvenanceMutationResistance(unittest.TestCase):
     def test_source_hashes_remain_bound_to_captured_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             capture, source, meta = self.fixture(Path(directory))
-            subprocess.run(["git", "init", "-q", str(source)], check=True)
-            subprocess.run(["git", "-C", str(source), "config", "user.name", "test"],
-                           check=True)
-            subprocess.run(["git", "-C", str(source), "config", "user.email",
-                            "test@example.invalid"], check=True)
-            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
-            subprocess.run(["git", "-C", str(source), "commit", "-qm", "captured"],
-                           check=True)
-            captured = subprocess.check_output(
-                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
-            VERIFY.verify_inventory(capture, meta, source, captured)
-
             changed = source / VERIFY.SOURCE_NAMES[0]
             changed.write_text("later adjudication source\n")
-            VERIFY.verify_inventory(capture, meta, source, captured)
-            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
-            subprocess.run(["git", "-C", str(source), "commit", "-qm", "later"],
-                           check=True)
-            later = subprocess.check_output(
-                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
             with self.assertRaises(AssertionError):
-                VERIFY.verify_inventory(capture, meta, source, later)
+                VERIFY.verify_inventory(capture, meta, source)
+
+    def test_symlinked_source_support_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture, source, meta = self.fixture(Path(directory))
+            snapshot = source / VERIFY.SOURCE_NAMES[0]
+            outside = Path(directory) / "same-bytes"
+            outside.write_bytes(snapshot.read_bytes())
+            snapshot.unlink()
+            snapshot.symlink_to(outside)
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_inventory(capture, meta, source)
 
     def test_deletion_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
