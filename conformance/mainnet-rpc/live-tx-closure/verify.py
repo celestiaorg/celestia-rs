@@ -652,8 +652,13 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
         require(pre["height"] > last_height, "case.order", f"case heights do not increase: {name}")
         last_height = pre["height"]
         if last_state is not None:
-            for field in ("app_hash", "account_number", "sequence", "balance", "delegation"):
+            require(pre["height"] >= last_state["height"], "case.continuity",
+                    f"{name}: height precedes last indexed state")
+            for field in ("account_number", "sequence", "balance", "delegation"):
                 require(pre[field] == last_state[field], "case.continuity", f"{name}: {field} disconnect")
+            if pre["height"] == last_state["height"]:
+                require(pre["app_hash"] == last_state["app_hash"], "case.continuity",
+                        f"{name}: app_hash differs at the same height")
         try:
             harness.assert_boundary(source["boundary"], name)
             request_bytes = harness.assert_request_identity(source["requests"], name)

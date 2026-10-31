@@ -981,6 +981,20 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("inputs.json", mutate)
         self.reject("case.continuity", lambda: verify.verify(self.root))
 
+    def test_state_root_continuity_is_height_scoped(self):
+        inclusions = json.loads((self.root / "inclusions.json").read_text())
+        last = inclusions["cases"][5]["go"]["post_state"]
+
+        def mutate(value):
+            row = value["cases"][6]
+            for side in ("go", "rs"):
+                row["pre_state"][side]["height"] = last["height"]
+                row["pre_state"][side]["app_hash"] = "different-root-at-same-height"
+                row["boundary"][side]["height"] = last["height"]
+                row["boundary"][side]["app_hash"] = "different-root-at-same-height"
+        self.rewrite("inputs.json", mutate)
+        self.reject("case.continuity", lambda: verify.verify(self.root))
+
     def test_jsonrpc_id(self):
         def mutate(value):
             value["cases"][3]["go"]["json"]["id"] = 9
