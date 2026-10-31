@@ -69,6 +69,31 @@ fn restart_refuses_missing_signing_state() {
 }
 
 #[test]
+fn discarded_finalize_responses_keep_only_the_restart_response() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    let mut options = opts(home, 2);
+    options.discard_abci_responses = true;
+    node::start(&options).unwrap();
+    options.stop_height = 4;
+    node::start(&options).unwrap();
+    node::start(&options).unwrap();
+
+    let out = home.join("discarded-blocks.json");
+    node::export_blocks(home, &out).unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(out).unwrap()).unwrap();
+    let blocks = doc["blocks"].as_array().unwrap();
+    assert_eq!(blocks.len(), 4);
+    assert!(
+        blocks[..3]
+            .iter()
+            .all(|block| block["finalize_response"].is_null())
+    );
+    assert!(blocks[3]["finalize_response"].is_string());
+}
+
+#[test]
 fn single_validator_node_produces_verifiable_blocks() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();

@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "0bb351657fe0aec59dcd4a433f6018330923cd812307f249816e3a368b7686be"
+REVIEWED_AUDIT_SHA256 = "cb2dd6b5e955983666000d8b408c5a35440cf5baf6d96401fe794d973f8c58f5"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.

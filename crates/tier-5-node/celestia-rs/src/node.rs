@@ -160,6 +160,8 @@ pub struct StartOptions {
     pub p2p: Option<crate::net::P2pOptions>,
     /// `block_sync`: catch up from peers before consensus (Go default).
     pub block_sync: bool,
+    /// `[storage] discard_abci_responses`: retain only the last response.
+    pub discard_abci_responses: bool,
     /// `[statesync]` (fresh nodes only).
     pub state_sync: Option<crate::sync::StateSyncOptions>,
     /// App state options (pruning, caches, snapshots, block retention,
@@ -184,6 +186,7 @@ impl StartOptions {
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
             block_sync: true,
+            discard_abci_responses: false,
             state_sync: None,
             app: app::AppOptions::default(),
             min_gas_price: None,
@@ -343,7 +346,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         #[allow(clippy::cast_precision_loss)]
         crate::memstats::register_gauge("iavl_node_cache_nodes", move || nc.stats().len as f64);
     }
-    let (bs, ss) = open_stores(home)?;
+    let (bs, mut ss) = open_stores(home)?;
+    ss.discard_abci_responses = opts.discard_abci_responses;
     let state = ss
         .load_from_db_or_genesis(&genesis)
         .map_err(|e| anyhow!("load state: {e}"))?;

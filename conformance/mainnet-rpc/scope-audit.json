@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "7627127a36b87eb7ce3770c88eda7de866ecff56",
+  "audited_main": "4fa4ec7ba1952fec917da6a7ae4d534c87eb050d",
   "provider_ready": false,
   "packages": [
     {
@@ -466,7 +466,7 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/src/server.rs",
-            "sha256": "04ba11d228910690c9d06b8c2fbc71b0460e5dfc3ee924954d124aeb0ff50547"
+            "sha256": "bbd2b4f1968359e6a0b84447cfdb838da7d608f93cff8886ce723180500fdbd7"
           },
           "function": "websocket_write_is_bounded"
         },
