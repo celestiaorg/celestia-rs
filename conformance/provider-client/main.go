@@ -189,6 +189,33 @@ func checkLoopback(address string, isURL bool) error {
 	}
 	return nil
 }
+func checkExactEndpoint(address, transport string) error {
+	switch transport {
+	case "comet-websocket":
+		u, err := url.Parse(address)
+		if err != nil {
+			return err
+		}
+		if u.Scheme != "ws" || u.Path != "/websocket" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return errors.New("comet-websocket requires an isolated ws loopback /websocket endpoint")
+		}
+		return checkLoopback(u.Host, false)
+	case "rest", "comet-jsonrpc", "comet-uri":
+		u, err := url.Parse(address)
+		if err != nil {
+			return err
+		}
+		if u.Scheme != "http" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return fmt.Errorf("%s requires an isolated HTTP loopback endpoint", transport)
+		}
+		return checkLoopback(u.Host, false)
+	case "cosmos-grpc", "core-grpc":
+		return checkLoopback(address, false)
+	default:
+		return fmt.Errorf("unsupported exact transport %q", transport)
+	}
+}
+
 func (e endpoints) validate() error {
 	for _, a := range []string{e.RPC, e.REST} {
 		if x := checkLoopback(a, true); x != nil {
@@ -899,7 +926,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, x)
 			os.Exit(2)
 		}
-	} else if x := checkLoopback(*exactEndpoint, *transport != "cosmos-grpc" && *transport != "core-grpc"); x != nil {
+	} else if x := checkExactEndpoint(*exactEndpoint, *transport); x != nil {
 		fmt.Fprintln(os.Stderr, x)
 		os.Exit(2)
 	}

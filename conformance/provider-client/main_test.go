@@ -25,6 +25,49 @@ func TestLoopbackValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestExactEndpointValidation(t *testing.T) {
+	accepted := []struct {
+		transport string
+		endpoint  string
+	}{
+		{"comet-websocket", "ws://127.0.0.1:26657/websocket"},
+		{"comet-jsonrpc", "http://127.0.0.1:26657"},
+		{"comet-uri", "http://127.0.0.1:26657"},
+		{"rest", "http://127.0.0.1:1317"},
+		{"cosmos-grpc", "127.0.0.1:9090"},
+		{"core-grpc", "127.0.0.1:9098"},
+	}
+	for _, test := range accepted {
+		if err := checkExactEndpoint(test.endpoint, test.transport); err != nil {
+			t.Errorf("rejected %s endpoint %q: %v", test.transport, test.endpoint, err)
+		}
+	}
+
+	rejected := []struct {
+		transport string
+		endpoint  string
+	}{
+		{"comet-websocket", "http://127.0.0.1:26657/websocket"},
+		{"comet-websocket", "wss://127.0.0.1:26657/websocket"},
+		{"comet-websocket", "ws://127.0.0.1:26657"},
+		{"comet-websocket", "ws://127.0.0.1:26657/other"},
+		{"comet-websocket", "ws://127.0.0.1:26657/websocket?query=1"},
+		{"comet-websocket", "ws://8.8.8.8:26657/websocket"},
+		{"comet-jsonrpc", "ws://127.0.0.1:26657/websocket"},
+		{"comet-uri", "https://127.0.0.1:26657"},
+		{"rest", "http://127.0.0.1:1317/path"},
+		{"rest", "http://user@127.0.0.1:1317"},
+		{"core-grpc", "http://127.0.0.1:9098"},
+		{"cosmos-grpc", "8.8.8.8:9090"},
+		{"unknown", "http://127.0.0.1:1234"},
+	}
+	for _, test := range rejected {
+		if err := checkExactEndpoint(test.endpoint, test.transport); err == nil {
+			t.Errorf("accepted %s endpoint %q", test.transport, test.endpoint)
+		}
+	}
+}
+
 func TestHTTPFailureAndRedirectRemainFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
