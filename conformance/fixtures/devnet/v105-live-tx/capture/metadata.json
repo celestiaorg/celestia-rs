@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T01:32:34.444042+00:00",
+  "method": "fresh tagged v10.5.0 live transaction submission on one isolated Go devnet",
+  "state_identity": {
+    "chain_id": "rs-devnet-1",
+    "initial_height": 10,
+    "final_height": 21,
+    "committed_heights": 23
+  },
+  "source_sha256": {
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "conformance/devnet/build-bins.sh": "031981d6ca5911c603e96305472cabab9384a455ec257ba0a58beedfababab39",
+    "conformance/mainnet-rpc/observe-mainnet.py": "64cd57a4173175811c7f2e72d30d817484ffb9eedbafed2ebd607c458dc142f5",
+    "conformance/mainnet-rpc/live-tx/capture.sh": "9d6a209553488250dc8f4e29dba26d49326995a2dbcf1bc2ea2b3cc06cf7e1a2",
+    "conformance/mainnet-rpc/live-tx/record.sh": "283efb4ccc3bfeacadc14b74b901e86f8188bfbd3d8df06807386511cc70e2a8",
+    "conformance/mainnet-rpc/live-tx/devnet-keys/node_key.json": "22724f2bec82615694df7eb435b70eeded93d83b1d71e3bacb2ed62e10a23d32",
+    "conformance/mainnet-rpc/live-tx/devnet-keys/priv_validator_key.json": "5da16574f43331fa2f13e8c9122ba15d8e50c5efe20085dc42cf64134383f6cb",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "conformance/rpccorpus/recorder/cmd/live-tx/main.go": "95f6a6e804fd04e959236194b82032beda24e9093965c8c86ff17ba9ec0d9c33",
+    "conformance/rpccorpus/recorder/main.go": "887a212fe7cb733f38db9e35e3ab8fef1713bb1611680f105b4e1097a6bf89fc",
+    "conformance/rpccorpus/recorder/record.go": "75bbb1e5977ae4e80a40fa606b1fbd0a66247e1ffa9b1fe7514ee25de9cfaa42",
+    "conformance/rpccorpus/recorder/validation.go": "5e21afa58bcedb962bda04084be5bad2f669b78bb132a1e1eff22777c29769c3",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65",
+    "conformance/devnet-oracle/main.go": "663cd0247e73fdaed1ede493724b0c34b8c0d6e9895392f5560d0c06e80bb897",
+    "conformance/devnet-oracle/go.mod": "06acdcd757d3d30f8d64ff2486e27622582c8fadda7ac7b71ed00d6a7560c5f1",
+    "conformance/devnet-oracle/go.sum": "59a4faeed3441a7c98604f902c7b3331f5a0f7d94ee5b2fcdcbf63694653375c"
+  },
+  "artifact_sha256": {
+    "genesis.json": "a191d2e60a8a45c27caf38f8af682ecc570b8432556749e9156362971d0f8fc6",
+    "abci.rec": "a34e572436c3a09aaac82ccaea8b1db19a5f492547bde6d52e55fb069f99bc77",
+    "blocks.bin.gz": "13dd4c5f7d4399508207825dac2a472f2a789cc541bcb32cf8993a8b4a2c7eee",
+    "meta.json": "b9ba9609ce363a8f754fd44dc7019ae64b38450c68863058fa4f81d310ca037f",
+    "go-build-info.txt": "a6b2dfe6409e716b1eec50e4101424f4b853bd6358982bbd8b60337cb21f5898",
+    "capture/transactions.json": "1ee411655c4fe8fb609d9ed7ac96fa4b1d16287282462fbade789eedc1f8f938",
+    "capture/inputs/account.json": "40feb0034d6f9918fce2dd5555516e01eb158ecdf16bc6d79365bb436735dc8a",
+    "capture/inputs/account-rest.json": "90e58d0d461972573eabb0387cb940bc04de4f4c7946d9153edb8dadcadc154f",
+    "capture/inputs/manifest.json": "b776d2324944fe2a6e0550110af3ca6e78a73c32f17bc7c4b5a83706682d6397",
+    "capture/blob-submission.json": "b44e88ff3ed7c99ffc9aba020608a6b15883bdd5ce1b903b0c83be8cd313690d",
+    "capture/blob-cli-response.json": "9287f8f63d4d9ee24473955f68e8318f068a912d54324530fbc82f6253549d54",
+    "capture/blob-inclusion.json": "830c5ddc59a35ecc30706108dd1ebed06e8510b7c9f4f8442416750f13381b29",
+    "capture/blob-before-status.json": "7028accf62febde9959eb974fdcb2c0280e966bc84a9a6763b516a88d8626f47",
+    "capture/blob-before-unconfirmed.json": "01c42aab0917aa8b0ccb13a7d533a1d4ebe672cd67b7af1de221b3e1f4c7038d",
+    "capture/blob-after-status.json": "d4219df492c67082a35dc18dcaa31d0891493dbdec29b1e039fa82ff0d75a646",
+    "capture/blob-after-unconfirmed.json": "01c42aab0917aa8b0ccb13a7d533a1d4ebe672cd67b7af1de221b3e1f4c7038d",
+    "capture/final-abci-info.json": "b110519c5edd493341016560801f8777c925a34c087d1f79ee72d90166105eee",
+    "capture/mainnet-observation.json": "5819e15ab6bace3f26886a49fcf6f64ceea296b9d5ba4a9c822a501295e0fada",
+    "capture/app-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "capture/core-build.json": "6ee1bf69127b84b0d7b1b86f464e15fa2bd987b1b6d7f57fb176ad894506ae7e",
+    "capture/app-build-info.txt": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "capture/core-build-info.txt": "ea78f3d97ff377573e71a95d598eb872d795525176107ea61c5934cc69c3e61a",
+    "capture/abci-recorder-build-info.txt": "9c19cce9c900ab310ca5d3f14a8786d3bf08d5a09f506c82140862abd6b4565a",
+    "capture/live-tx-build-info.txt": "f6991a504713a067a66b235c4dac54e24c92b0a98ebbe070d4802bd16916de28",
+    "capture/rpc-recorder-build-info.txt": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753",
+    "capture/devnet-oracle-build-info.txt": "714df49cdfaa85dd18472e156dd8267ed249dd2dea62a87d1ef714b65ed26ad1",
+    "state/1.json": "946cd16e30ef3391e91a7a522d4246e3284d12ce99b83fae115a6946412d6f90",
+    "state/23.json": "f380da6f319e2bd7d600d03d3d1c2804d7147de084cfda7935c4905fb90079aa",
+    "capture/inputs/bad-signature.tx": "bc99aac1dc2bfe022529f74542cab542e430b55f5e06fe779ea6c17eccbd906f",
+    "capture/inputs/blob.tx": "7f216b0da08d2d379a7b46e36ceaee334f101c732d56343458918cf862c15e2b",
+    "capture/inputs/cancel.tx": "d22f101f2a3efb90b59d4f7da2c8106833511214b3bb3382e722ea22edde016c",
+    "capture/inputs/cleanup.tx": "a2679f11e039ea7362d41ffa40ba8db65e9652a04481614aee219d4682aa956d",
+    "capture/inputs/comet-async.tx": "115f3b215e50fac3b2fe8a66133a29e02122454d55b85b2d88006a3d731bd8c3",
+    "capture/inputs/comet-commit.tx": "ecc7aa5e70f1a141d702c613cc2cdf585a4b07d7849abccec1318c332c8f47df",
+    "capture/inputs/core-grpc.tx": "137ac0c0cb25e24dda8c69bbd59f2b608e6ce457000f6915d4b03de74c90440a",
+    "capture/inputs/cosmos-async.tx": "a30ecb12598bfc015fc68637c75c5ab23320943ba17b0abd044fc04be31abe2b",
+    "capture/inputs/cosmos-sync.tx": "98aa0b71c2aa78b6eaddee146b191fecc746d1ac5ae9f6de497c146ad4062f76",
+    "capture/inputs/duplicate.tx": "b3b5e679f26b499a57ccf9cf30776fa8e8c79af6dc4df7d5bc230e76da47983b",
+    "capture/inputs/execution-failure.tx": "a74a0c151abfb31d49708d3a16d751fa726386e48d24dfccbf6d34d84772ea02",
+    "capture/inputs/future-sequence.tx": "898cd9f5fb9aac0897bb3a09efab63012519ebb828c33519eb41734469954eb2",
+    "capture/inputs/low-gas.tx": "f76184516122f9ff078c0f83eb6815264ea4b806d68dea20f292c1484a89141c",
+    "capture/inputs/no-message.tx": "477e90cdabb1d17e9963b1f1986c720c3f10c9acdbebf085248aa146edc87ffb",
+    "capture/inputs/rest-async.tx": "3a07ca30d6182e3237009b8b9ccc497b752bb04e52012ba2eaa2ef47be0bddbd"
+  },
+  "generator_binaries": {
+    "abci-recorder": {
+      "sha256": "25f3ed48c6ec8825e30061a202eb314db5535a5498ee1c7f79dcab86d7b8a428",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/abci-recorder-build-info.txt",
+      "build_info_sha256": "9c19cce9c900ab310ca5d3f14a8786d3bf08d5a09f506c82140862abd6b4565a"
+    },
+    "live-tx": {
+      "sha256": "8dbc9e4804627f0b816bdd5e40cc61200ebe3ff284a7ff1d4167806a7cd21ba9",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/cmd/live-tx/main.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/live-tx-build-info.txt",
+      "build_info_sha256": "f6991a504713a067a66b235c4dac54e24c92b0a98ebbe070d4802bd16916de28"
+    },
+    "rpc-recorder": {
+      "sha256": "332dd420d7b42a4564427c73f4750010b934e0a8838df18a1ea63fbc8e72b8d9",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+      "sources": [
+        "conformance/rpccorpus/recorder/main.go",
+        "conformance/rpccorpus/recorder/record.go",
+        "conformance/rpccorpus/recorder/validation.go",
+        "conformance/rpccorpus/recorder/go.mod",
+        "conformance/rpccorpus/recorder/go.sum"
+      ],
+      "build_info": "capture/rpc-recorder-build-info.txt",
+      "build_info_sha256": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753"
+    },
+    "devnet-oracle": {
+      "sha256": "e998ae3ae06e27a33c3b606c6dcb51661f5bffb25128e2990f30bb5aa9831b2b",
+      "module": "github.com/celestiaorg/celestia-rs/conformance/devnet-oracle",
+      "sources": [
+        "conformance/devnet-oracle/main.go",
+        "conformance/devnet-oracle/go.mod",
+        "conformance/devnet-oracle/go.sum"
+      ],
+      "build_info": "capture/devnet-oracle-build-info.txt",
+      "build_info_sha256": "714df49cdfaa85dd18472e156dd8267ed249dd2dea62a87d1ef714b65ed26ad1"
+    }
+  },
+  "covered": [
+    "Cosmos gRPC sync/async/block and grpc-gateway REST sync/async",
+    "celestia-core gRPC BroadcastTx and Comet async/sync/commit",
+    "malformed REST encoding, no-message, bad-signature, low-gas, future-sequence, duplicate and execution-failure inputs",
+    "client timeout/disconnect followed by inclusion, retry and subsequent successful capacity use",
+    "successful bank sends across every requested submission transport",
+    "representative pay-for-blob transaction through Comet sync via the v10.5 CLI"
+  ],
+  "omissions": [
+    "raw malformed transaction protobuf is omitted because celestia-app v10.5 closes the standalone ABCI socket on decoder exceptions",
+    "gRPC cancellation and slow-reader resource campaigns remain separate stress coverage",
+    "the message-family scope is bank sends plus one pay-for-blob submitted by the capture hook",
+    "this Go-only oracle batch does not claim Rust transport parity"
+  ],
+  "regenerate": "MAINNET_OBSERVATION=<fresh observation.json> conformance/mainnet-rpc/live-tx/record.sh"
+}
