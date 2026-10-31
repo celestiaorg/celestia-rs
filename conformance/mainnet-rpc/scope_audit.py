@@ -11,13 +11,14 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "98be8b4296ac79071c935defc53dd6ba232dc36abb5980526b57c0a7620551fb"
+REVIEWED_AUDIT_SHA256 = "03d677ef308346984e73b617aa572404012d16c13782a59cc336ca3c7eb37707"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
 CONTRACTS = {
     "reflection": (182, "normalized-runtime-comparison", "conformance/grpc-reflection/v10.5.0/meta.json", "conformance/grpc-reflection/README.md", None),
     "grpc-limits": (183, "unmatched-runtime-comparison", "conformance/grpc-limits/v10.5.0/meta.json", "conformance/grpc-limits/README.md", "conformance/grpc-limits/verify.py"),
+    "grpc-lifecycle": (183, "relational-go-plus-rust-captures", "conformance/grpc-lifecycle/v10.5.0/meta.json", "conformance/grpc-lifecycle/README.md", "conformance/grpc-lifecycle/verify.py"),
     "runtime-identity": (184, "schema-only", "conformance/node-metadata/v10.5.0/consensus.json", "docs/rpc-version-identity.md", None),
     "simulation": (185, "normalized-runtime-comparison", "conformance/mainnet-rpc/simulation/metadata.json", "conformance/mainnet-rpc/simulation/README.md", None),
     "empty-query": (186, "runtime-exact-unrecorded", "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "conformance/mainnet-rpc/empty-query/README.md", None),
@@ -33,6 +34,7 @@ CONTRACTS = {
 RUNTIME_CONTRACTS = {
     "reflection": (("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "sdk_v1alpha_matches_go_socket_streams"), ("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "core_v1_and_v1alpha_match_go_socket_streams")),
     "grpc-limits": (("crates/tier-5-node/celestia-rs/tests/grpc_limits.rs", "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"),),
+    "grpc-lifecycle": (),
     "runtime-identity": (("crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "production_listeners_report_build_and_compatibility_separately"),),
     "simulation": (("crates/devnet-conformance/tests/simulation_errors.rs", "current_release_simulation_errors"),),
     "empty-query": (("crates/tier-4-runtime/rpc/tests/empty_query.rs", "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"),),
@@ -55,6 +57,7 @@ RUNTIME_CONTRACTS = {
 }
 TRANSPORT_CONTRACTS = {
     "reflection": {"core-grpc", "cosmos-grpc"}, "grpc-limits": {"core-grpc", "cosmos-grpc"},
+    "grpc-lifecycle": {"core-grpc", "cosmos-grpc"},
     "runtime-identity": {"comet-uri", "cosmos-grpc", "rest"}, "simulation": {"cosmos-grpc"},
     "empty-query": {"comet-uri", "comet-jsonrpc", "comet-websocket"},
     "live-transactions": {"comet-jsonrpc", "core-grpc", "cosmos-grpc", "rest"},

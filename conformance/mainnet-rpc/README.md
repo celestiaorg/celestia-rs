@@ -97,7 +97,7 @@ no merged current-release campaign.
 | Issue | Current capture/test scope | Comparison limit |
 | --- | --- | --- |
 | #182 | Port-specific reflection streams and descriptors | Narrow ordering/whitespace normalization; upstream crash diagnostic excluded |
-| #183 | Custom unary/streaming byte limits and listener configuration | Current Go capture and unmatched Rust operator tests; resource campaign incomplete |
+| #183 | #203 custom unary/streaming limits plus six actual Go/Rust quota, cancellation, slow-reader, compression, keepalive/setup-deadline and resource campaigns | Bounded local transport evidence with explicit unsupported settings and metadata/compression/keepalive deviations; unbounded load, two-hour SDK keepalive and physical-socket reuse excluded |
 | #184 | Production identity and consensus schema | Build identity intentionally differs; asynchronous values unconstrained |
 | #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
 | #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
