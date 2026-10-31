@@ -651,11 +651,19 @@ class VerifyTest(unittest.TestCase):
             "max_subscription_clients", {"go": 1, "rs": 1}))
         self.reject("topology.capacity", lambda: verify.verify(self.root))
 
+    def test_go_subscription_limit_reserves_three_internal_clients(self):
+        def mutate(value):
+            for phase in ("normal", "timeout", "restored"):
+                value[phase]["go"]["config.toml"]["rpc.max_subscription_clients"] = 3
+                value["full"][phase]["go"]["config.toml"]["rpc"]["max_subscription_clients"] = 3
+        self.rewrite("configs.json", mutate)
+        self.reject("config.capacity", lambda: verify.verify(self.root))
+
     def test_rust_subscription_limit_cannot_be_flattened_to_go_limit(self):
         def mutate(value):
             for phase in ("normal", "timeout", "restored"):
-                value[phase]["rs"]["config.toml"]["rpc.max_subscription_clients"] = 2
-                value["full"][phase]["rs"]["config.toml"]["rpc"]["max_subscription_clients"] = 2
+                value[phase]["rs"]["config.toml"]["rpc.max_subscription_clients"] = 4
+                value["full"][phase]["rs"]["config.toml"]["rpc"]["max_subscription_clients"] = 4
         self.rewrite("configs.json", mutate)
         self.reject("config.capacity", lambda: verify.verify(self.root))
 
