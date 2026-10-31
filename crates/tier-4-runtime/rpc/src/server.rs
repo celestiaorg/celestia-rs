@@ -1698,6 +1698,19 @@ pub(crate) mod broadcast_tests {
         ))
     }
 
+    #[test]
+    fn block_results_reports_disabled_response_persistence_exactly() {
+        let mut env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
+        Arc::get_mut(&mut env)
+            .expect("unshared test environment")
+            .state_store
+            .discard_abci_responses = true;
+        assert_eq!(
+            env.call("block_results", &[]).unwrap_err(),
+            "node is not persisting finalize block responses"
+        );
+    }
+
     async fn wait_for_subscription(env: &Environment, client: &str) {
         tokio::time::timeout(Duration::from_secs(1), async {
             while env.event_bus.num_client_subscriptions(client) == 0 {

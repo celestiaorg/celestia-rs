@@ -1186,6 +1186,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     );
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;
+    opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
     let laddr = match &a.p2p_laddr {
         Some(l) => strip_tcp(l),
         None if configured => strip_tcp(&cfg("p2p.laddr")),
@@ -1270,6 +1271,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         home = %home.display(),
         pruning = ?opts.app.store.pruning,
         min_retain_blocks = opts.app.node.min_retain_blocks,
+        discard_abci_responses = opts.discard_abci_responses,
         halt_height = opts.app.node.halt_height,
         halt_time = opts.app.node.halt_time,
         "starting node"

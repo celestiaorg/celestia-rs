@@ -376,6 +376,45 @@ fn mem() -> Arc<dyn kvdb::KvBackend> {
 }
 
 #[test]
+fn finalize_block_response_retention_survives_store_reopen() {
+    let retained_db = mem();
+    let retained = StateStore::new(Arc::clone(&retained_db));
+    let first = abci::ResponseFinalizeBlock {
+        app_hash: vec![1; 32],
+        ..Default::default()
+    };
+    let second = abci::ResponseFinalizeBlock {
+        app_hash: vec![2; 32],
+        ..Default::default()
+    };
+    retained.save_finalize_block_response(1, &first).unwrap();
+    retained.save_finalize_block_response(2, &second).unwrap();
+    let reopened = StateStore::new(retained_db);
+    assert_eq!(
+        reopened.load_finalize_block_response(1).unwrap(),
+        Some(first)
+    );
+    assert_eq!(
+        reopened.load_finalize_block_response(2).unwrap(),
+        Some(second.clone())
+    );
+
+    let discarded_db = mem();
+    let mut discarded = StateStore::new(Arc::clone(&discarded_db));
+    discarded.discard_abci_responses = true;
+    discarded
+        .save_finalize_block_response(1, &abci::ResponseFinalizeBlock::default())
+        .unwrap();
+    discarded.save_finalize_block_response(2, &second).unwrap();
+    let reopened = StateStore::new(discarded_db);
+    assert_eq!(reopened.load_finalize_block_response(1).unwrap(), None);
+    assert_eq!(
+        reopened.load_finalize_block_response(2).unwrap(),
+        Some(second)
+    );
+}
+
+#[test]
 fn produce_and_validate_chain() {
     let disk = Arc::new(Mutex::new(AppDisk::default()));
     let mut node = open_node(mem(), mem(), TestApp::new(disk.clone()), 4);

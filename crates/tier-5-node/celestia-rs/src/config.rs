@@ -493,6 +493,27 @@ mod tests {
             mempool_options(&f).unwrap(),
             mempool::MempoolConfig::celestia_app()
         );
+        assert!(f.bool(File::Config, "storage.discard_abci_responses"));
+    }
+
+    #[test]
+    fn discard_abci_responses_reads_the_effective_config() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            CONFIG_TEMPLATE.replace("{{MONIKER}}", "m"),
+        )
+        .unwrap();
+        set(
+            dir.path(),
+            File::Config,
+            "storage.discard_abci_responses",
+            "false",
+        )
+        .unwrap();
+        let files = ConfigFiles::load(dir.path()).unwrap();
+        assert!(!files.bool(File::Config, "storage.discard_abci_responses"));
     }
 
     #[test]
