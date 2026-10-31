@@ -19,6 +19,7 @@ rocksdb = ["app/rocksdb"]
 
 [dependencies]
 grpc-reflection = { path = "../grpc-reflection" }
+grpc-transport = { path = "../grpc-transport" }
 gostr = { path = "../../tier-0-primitives/gostr" }
 app = { path = "../app", default-features = false }
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
