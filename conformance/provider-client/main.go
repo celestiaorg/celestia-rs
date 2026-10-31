@@ -196,7 +196,7 @@ func checkExactEndpoint(address, transport string) error {
 		if err != nil {
 			return err
 		}
-		if u.Scheme != "ws" || u.Path != "/websocket" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		if u.Scheme != "ws" || u.Path != "/websocket" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || u.RawPath != "" || u.ForceQuery {
 			return errors.New("comet-websocket requires an isolated ws loopback /websocket endpoint")
 		}
 		return checkLoopback(u.Host, false)
@@ -205,7 +205,7 @@ func checkExactEndpoint(address, transport string) error {
 		if err != nil {
 			return err
 		}
-		if u.Scheme != "http" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		if u.Scheme != "http" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || u.RawPath != "" || u.ForceQuery {
 			return fmt.Errorf("%s requires an isolated HTTP loopback endpoint", transport)
 		}
 		return checkLoopback(u.Host, false)
@@ -680,6 +680,9 @@ func readWebSocketFrame(reader *bufio.Reader) (byte, []byte, error) {
 }
 
 func exactWebSocket(ctx context.Context, endpoint, method string, tx []byte, requestID int) ([]exactFrame, *exactHandshake, []byte, error) {
+	if err := checkExactEndpoint(endpoint, "comet-websocket"); err != nil {
+		return nil, nil, nil, err
+	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, nil, nil, err
@@ -694,10 +697,7 @@ func exactWebSocket(ctx context.Context, endpoint, method string, tx []byte, req
 	if ok {
 		_ = conn.SetDeadline(deadline)
 	}
-	requestPath := strings.TrimSuffix(parsed.EscapedPath(), "/") + "/websocket"
-	if requestPath == "" {
-		requestPath = "/websocket"
-	}
+	requestPath := parsed.EscapedPath()
 	handshakeRequest := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", requestPath, parsed.Host, fixedWebSocketKey)
 	if _, err := io.WriteString(conn, handshakeRequest); err != nil {
 		return nil, nil, nil, err
