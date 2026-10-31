@@ -117,7 +117,7 @@ class ListenerSafety(unittest.TestCase):
 
 class MetadataVerification(unittest.TestCase):
     def test_stable_headers_are_exact_and_only_rs_date_is_dynamic(self):
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime(2026, 10, 31, 4, 22, 28, tzinfo=timezone.utc)
         started, completed = now - timedelta(seconds=1), now + timedelta(seconds=1)
         go_core = {"content-type": ["application/grpc+proto"]}
         VERIFY.verify_metadata(go_core, "go", "core", started, completed)
@@ -156,10 +156,11 @@ class MetadataVerification(unittest.TestCase):
             VERIFY.verify_metadata(stale_date, "rs", "sdk", started, completed,
                                    rejected_compression=True)
         canonical = format_datetime(now, usegmt=True)
+        wrong_weekday = ("Mon" if canonical.startswith("Sun,") else "Sun") + canonical[3:]
         for noncanonical in (
             canonical.split(", ", 1)[1],
             canonical.removesuffix("GMT") + "+0000",
-            "Sun" + canonical[3:],
+            wrong_weekday,
         ):
             mutated_date = copy.deepcopy(rs)
             mutated_date["date"] = [noncanonical]
