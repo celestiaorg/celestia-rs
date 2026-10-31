@@ -220,7 +220,7 @@ def fixture(root: pathlib.Path) -> None:
             "name": name, "generation": "timeout" if name == "server-timeout" else "restored" if name == "raw-malformed-protobuf" else "normal",
             "transport": transport, "mode": mode, "family": family, "expected_outcome": expected,
             "pre_state": {"go": pre, "rs": copy.deepcopy(pre)},
-            "boundary": {"go": boundary_row, "rs": dict(boundary_row, received_monotonic_ms=boundary_row["received_monotonic_ms"] + 20), "barrier_release_monotonic_ms": boundary_row["received_monotonic_ms"] + 30, "commit_window_remaining_ms": 4000},
+            "boundary": {"go": boundary_row, "rs": dict(boundary_row, received_monotonic_ms=boundary_row["received_monotonic_ms"] + 20), "barrier_release_monotonic_ms": boundary_row["received_monotonic_ms"] + 30, "commit_window_remaining_ms": 2590},
             "requests": {"go": blob(request), "rs": blob(request)},
             "request_semantics": {"jsonrpc_id": None if transport == "comet-uri" else 187, "method": {"async": "broadcast_tx_async", "sync": "broadcast_tx_sync", "commit": "broadcast_tx_commit", "commit-disconnect": "broadcast_tx_commit"}.get(mode)} if transport.startswith("comet-") else None,
         })
@@ -718,6 +718,27 @@ class VerifyTest(unittest.TestCase):
     def test_consensus_freshness_bound_uses_active_round_zero_timeouts(self):
         timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
         self.assertEqual(harness.consensus_freshness_bound_ms(timeout_info), 5600)
+        self.assertEqual(harness.consensus_commit_window_ms(timeout_info), 2600)
+
+    def test_common_block_requires_a_post_call_height(self):
+        self.assertEqual(campaign.next_common_height(10, [12, 11]), 13)
+        self.assertEqual(campaign.next_common_height(20, [12, 11]), 20)
+        self.reject("initial heights are invalid", lambda: campaign.next_common_height(1, [12]))
+
+    def test_boundary_commit_window_is_bound_to_chronology(self):
+        inputs = harness.strict_json((self.root / "inputs.json").read_bytes())
+        boundary = inputs["cases"][0]["boundary"]
+        harness.assert_boundary(boundary, "boundary")
+        boundary["commit_window_remaining_ms"] += 1
+        self.reject("window chronology differs", lambda: harness.assert_boundary(boundary, "boundary"))
+
+    def test_boundary_preserves_one_second_for_admission(self):
+        inputs = harness.strict_json((self.root / "inputs.json").read_bytes())
+        boundary = inputs["cases"][0]["boundary"]
+        observed = max(boundary[side]["received_monotonic_ms"] for side in ("go", "rs"))
+        boundary["barrier_release_monotonic_ms"] = observed + 1601
+        boundary["commit_window_remaining_ms"] = 999
+        self.reject("window below 1 second", lambda: harness.assert_boundary(boundary, "boundary"))
 
     def test_consensus_timeout_rebinding_is_rejected(self):
         def mutate(value):
@@ -733,7 +754,7 @@ class VerifyTest(unittest.TestCase):
         value = observation()
         response = harness.strict_json(value["responses"]["abci_info"]["body"])["result"]["response"]
         self.assertEqual(set(response), harness.ABCI_INFO_RESPONSE_FIELDS)
-        self.assertEqual(campaign.freshness_bound_from_observation(value), 5600)
+        self.assertEqual(campaign.consensus_bounds_from_observation(value), (5600, 2600))
         verify.verify_observation(value, NOW)
 
     def test_missing_real_abci_response_field_is_rejected(self):
@@ -746,7 +767,7 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("mainnet-observation.json", mutate)
         mutated = harness.strict_json((self.root / "mainnet-observation.json").read_bytes())
         self.reject("mainnet observation ABCI payload.*fields differ",
-                    lambda: campaign.freshness_bound_from_observation(mutated))
+                    lambda: campaign.consensus_bounds_from_observation(mutated))
         self.reject("observation ABCI response.*fields differ", lambda: verify.verify(self.root))
 
     def test_extra_abci_response_field_is_rejected(self):
@@ -759,7 +780,7 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("mainnet-observation.json", mutate)
         mutated = harness.strict_json((self.root / "mainnet-observation.json").read_bytes())
         self.reject("mainnet observation ABCI payload.*fields differ",
-                    lambda: campaign.freshness_bound_from_observation(mutated))
+                    lambda: campaign.consensus_bounds_from_observation(mutated))
         self.reject("observation ABCI response.*fields differ", lambda: verify.verify(self.root))
 
     def test_consensus_timeout_inventory_is_exact(self):
@@ -801,6 +822,7 @@ class VerifyTest(unittest.TestCase):
             value["cases"][0]["boundary"]["go"]["received_monotonic_ms"] = 16000
             value["cases"][0]["boundary"]["rs"]["received_monotonic_ms"] = 16000
             value["cases"][0]["boundary"]["barrier_release_monotonic_ms"] = 16000
+            value["cases"][0]["boundary"]["commit_window_remaining_ms"] = 2600
         self.rewrite("inputs.json", mutate)
         self.reject("case.capture", lambda: verify.verify(self.root))
 

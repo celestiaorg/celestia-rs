@@ -107,6 +107,11 @@ inventory captured in the read-only mainnet observation. The maximum age is
 the delayed-precommit wait plus commit wait plus one round-zero proposal
 window (5.6 seconds for 10.5.0); changing or extending that reviewed timeout
 inventory fails closed instead of silently widening the window.
+Each case waits for a common height committed after the query begins. Its
+release budget is the active commit wait plus delayed-precommit wait (2.6
+seconds for 10.5.0), measured from paired block observation, and preserves one
+second for the already enforced admission observation. The recorded remainder
+must exactly match those monotonic timestamps.
 
 `capture.py` accepts only the local `campaign.py` source with its exact SHA-256
 and fixed Python entry point. The campaign remains unexecuted until its exact

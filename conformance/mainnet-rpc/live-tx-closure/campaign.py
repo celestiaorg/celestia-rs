@@ -181,7 +181,7 @@ def validate_home_provenance(homes: dict[str, pathlib.Path], genesis: dict[str, 
                         f"{role} validator key does not match public genesis")
 
 
-def freshness_bound_from_observation(observation: dict[str, Any]) -> int:
+def consensus_bounds_from_observation(observation: dict[str, Any]) -> tuple[int, int]:
     observation_responses = harness.require_fields(observation.get("responses"), {"status", "abci_info"},
                                                    "mainnet observation responses")
     abci_record = harness.require_fields(observation_responses["abci_info"], {"body", "sha256"},
@@ -191,7 +191,16 @@ def freshness_bound_from_observation(observation: dict[str, Any]) -> int:
                                          "mainnet observation ABCI result")
     abci_response = harness.require_fields(abci_result["response"], harness.ABCI_INFO_RESPONSE_FIELDS,
                                            "mainnet observation ABCI payload")
-    return harness.consensus_freshness_bound_ms(abci_response["timeout_info"])
+    return (harness.consensus_freshness_bound_ms(abci_response["timeout_info"]),
+            harness.consensus_commit_window_ms(abci_response["timeout_info"]))
+
+
+def next_common_height(minimum: int, initial_heights: list[int]) -> int:
+    harness.require(isinstance(minimum, int) and minimum > 0 and
+                    len(initial_heights) == len(ROLES) and
+                    all(isinstance(height, int) and height >= 0 for height in initial_heights),
+                    "common block initial heights are invalid")
+    return max(minimum, max(initial_heights) + 1)
 
 
 def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -235,7 +244,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
 
     seeds = {name: checked_seed(plan["seed_artifacts"][name], f"seed {name}") for name in SEED_FILES}
     observation = harness.strict_json(seeds["mainnet-observation.json"].read_bytes())
-    freshness_bound_ms = freshness_bound_from_observation(observation)
+    freshness_bound_ms, commit_window_ms = consensus_bounds_from_observation(observation)
     configs = harness.strict_json(seeds["configs.json"].read_bytes())
     harness.require_fields(configs, {*GENERATIONS, "full"}, "configs receipt")
     full_configs = harness.require_fields(configs["full"], GENERATIONS, "full configs receipt")
@@ -300,7 +309,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return {"binaries": binaries, "client": client, "driver": driver, "output": output,
             "driver_module": driver_module, "blob_proxy_module": blob_proxy_module,
             "homes": homes, "seeds": seeds, "configs": configs, "receipts": receipts,
-            "freshness_bound_ms": freshness_bound_ms}
+            "freshness_bound_ms": freshness_bound_ms, "commit_window_ms": commit_window_ms}
 
 
 def rpc_url(endpoint: str, path: str, query: dict[str, str] | None = None) -> str:
@@ -342,10 +351,12 @@ def common_block(endpoints: dict[str, str], minimum: int, freshness_bound_ms: in
                  timeout: float = 30) -> dict[str, Any]:
     harness.require(isinstance(freshness_bound_ms, int) and freshness_bound_ms > 0,
                     "common block freshness bound is invalid")
+    initial_heights = [status(endpoints[f"{side}_rpc"])[0] for side in ROLES]
+    target = next_common_height(minimum, initial_heights)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         height = min(status(endpoints[f"{side}_rpc"])[0] for side in ROLES)
-        if height >= minimum:
+        if height >= target:
             rows = {side: block(endpoints[f"{side}_rpc"], height)[0] for side in ROLES}
             stable = lambda row: {key: row[key] for key in ("height", "block_hash", "app_hash", "time")}
             block_time = dt.datetime.fromisoformat(rows["go"]["time"].replace("Z", "+00:00"))
@@ -812,10 +823,9 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
         stopping.set()
         watcher.join(timeout=2)
     release_ms = driver["barrier_release_monotonic_ns"] // 1_000_000
-    block_time = dt.datetime.fromisoformat(common["go"]["time"].replace("Z", "+00:00"))
-    age_at_observation = int((common["go"]["_observed_wall"] - block_time).total_seconds() * 1000)
-    remaining = 5000 - age_at_observation - max(0, release_ms - common["go"]["observed_monotonic_ms"])
-    harness.require(remaining >= 3000, f"{name} release missed the three-second commit window")
+    observed_ms = max(common[side]["observed_monotonic_ms"] for side in ROLES)
+    remaining = state.checked["commit_window_ms"] - max(0, release_ms - observed_ms)
+    harness.require(remaining >= 1000, f"{name} release missed the one-second admission window")
     admitted = expected not in {"rejected", "policy-difference"}
     admission = {}
     for side in ROLES:
@@ -824,9 +834,11 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
             completed_ms, observed_height = observed[side]  # type: ignore[misc]
         else:
             completed_ms = driver["pair_completed_monotonic_ns"] // 1_000_000
-            observed_height = prestates[side]["height"]
+            observed_height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
             hashes, _ = mempool(state.plan["endpoints"][f"{side}_rpc"])
             harness.require(digest not in hashes, f"{name}/{side} rejection entered mempool")
+        harness.require(observed_height == common[side]["height"],
+                        f"{name}/{side} height advanced during admission")
         admission[side] = {"outcome": "admitted" if admitted else "rejected",
                            "completed_after_barrier_ms": completed_ms - release_ms,
                            "status_height": observed_height, "mempool_present": admitted, "tx_hash": digest}

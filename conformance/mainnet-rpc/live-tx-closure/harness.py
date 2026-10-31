@@ -98,6 +98,16 @@ def consensus_freshness_bound_ms(timeout_info: Any) -> int:
     return nanoseconds // 1_000_000
 
 
+def consensus_commit_window_ms(timeout_info: Any) -> int:
+    """Return the minimum current-commit to next round-zero precommit window."""
+    consensus_freshness_bound_ms(timeout_info)
+    nanoseconds = (ACTIVE_TIMEOUT_INFO_NS["timeout_commit"] +
+                   ACTIVE_TIMEOUT_INFO_NS["delayed_precommit_timeout"])
+    require(nanoseconds > 0 and nanoseconds % 1_000_000 == 0,
+            "active consensus commit window is invalid")
+    return nanoseconds // 1_000_000
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise HarnessError(message)
@@ -368,9 +378,14 @@ def assert_boundary(boundary: dict[str, Any], label: str) -> None:
     require(abs(go["received_monotonic_ms"] - rs["received_monotonic_ms"]) <= 250,
             f"{label}: boundary receipt skew exceeds 250 ms")
     release = boundary["barrier_release_monotonic_ms"]
-    require(release >= max(go["received_monotonic_ms"], rs["received_monotonic_ms"]),
+    observed = max(go["received_monotonic_ms"], rs["received_monotonic_ms"])
+    require(release >= observed,
             f"{label}: barrier predates boundary")
-    require(boundary["commit_window_remaining_ms"] >= 3000, f"{label}: admission window below 3 seconds")
+    timeout_info = {name: str(value) for name, value in ACTIVE_TIMEOUT_INFO_NS.items()}
+    expected_remaining = consensus_commit_window_ms(timeout_info) - (release - observed)
+    require(boundary["commit_window_remaining_ms"] == expected_remaining,
+            f"{label}: admission window chronology differs")
+    require(expected_remaining >= 1000, f"{label}: admission window below 1 second")
 
 
 def assert_admission(admission: dict[str, Any], boundary_height: int, expected: str, label: str) -> None:
