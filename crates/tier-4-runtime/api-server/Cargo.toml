@@ -18,6 +18,7 @@ default = ["rocksdb"]
 rocksdb = ["app/rocksdb"]
 
 [dependencies]
+grpc-reflection = { path = "../grpc-reflection" }
 gostr = { path = "../../tier-0-primitives/gostr" }
 app = { path = "../app", default-features = false }
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
@@ -32,5 +33,6 @@ tonic = { version = "=0.12.3", default-features = false }
 tracing = "0.1"
 
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 prost = "0.13"
 tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }

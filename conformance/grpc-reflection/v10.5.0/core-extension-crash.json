@@ -1,0 +1,33 @@
+{
+  "issue": 182,
+  "scenario": "core reflection extension lookup with no descriptor ParentFile",
+  "oracle": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+    "cosmos_sdk": "v0.52.12",
+    "cosmos_sdk_commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+    "compiler": "go1.26.9",
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "build_tags": [
+      "ledger"
+    ],
+    "release_version_stamp": "10.5.0",
+    "build_manifest": "go-build.json"
+  },
+  "method": "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+  "request": "2a220a1c676f6f676c652e70726f746f6275662e4669656c644f7074696f6e7310ebfb03",
+  "response": {
+    "request": "2a220a1c676f6f676c652e70726f746f6275662e4669656c644f7074696f6e7310ebfb03",
+    "code": 14,
+    "message": "error reading from server: connection reset by peer"
+  },
+  "terminal": {
+    "code": 14,
+    "message": "error reading from server: connection reset by peer"
+  },
+  "result": "isolated Go node process panicked; no recovery in reflection handler",
+  "intentional_rs_behavior": "in-band NotFound proto: not found, stream/connection remain usable",
+  "reproduction_command": "reflection-capture core against isolated ledger-tagged v10.5.0 node, FileContainingExtension google.protobuf.FieldOptions 65003"
+}

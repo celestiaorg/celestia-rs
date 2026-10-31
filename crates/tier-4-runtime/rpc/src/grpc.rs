@@ -434,17 +434,19 @@ pub async fn serve(
     listener: tokio::net::TcpListener,
     env: Arc<Environment>,
 ) -> std::io::Result<()> {
-    let app = router(env).fallback(|req: Request<Body>| async move {
-        let path = req.uri().path().to_owned();
-        let svc = path
-            .trim_start_matches('/')
-            .split('/')
-            .next()
-            .unwrap_or("")
-            .to_owned();
-        let status = Status::unimplemented(format!("unknown service {svc}"));
-        status.into_http().map(Body::new)
-    });
+    let app = router(env)
+        .merge(grpc_reflection::router(grpc_reflection::Profile::Core))
+        .fallback(|req: Request<Body>| async move {
+            let path = req.uri().path().to_owned();
+            let svc = path
+                .trim_start_matches('/')
+                .split('/')
+                .next()
+                .unwrap_or("")
+                .to_owned();
+            let status = Status::unimplemented(format!("unknown service {svc}"));
+            status.into_http().map(Body::new)
+        });
     axum::serve(listener, app).await
 }
 

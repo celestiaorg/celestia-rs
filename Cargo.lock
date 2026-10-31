@@ -170,8 +170,10 @@ dependencies = [
  "axum",
  "bytes",
  "celestia-proto",
+ "futures-util",
  "gostr",
  "grpc-query",
+ "grpc-reflection",
  "math",
  "prost",
  "sdk",
@@ -1731,6 +1733,23 @@ dependencies = [
  "x-valaddr",
  "x-warp",
  "x-zkism",
+]
+
+[[package]]
+name = "grpc-reflection"
+version = "0.0.1"
+dependencies = [
+ "axum",
+ "flate2",
+ "futures-util",
+ "grpc-transport",
+ "hash",
+ "hex",
+ "prost",
+ "prost-types",
+ "serde_json",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
@@ -3330,6 +3349,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "gostr",
+ "grpc-reflection",
  "hex",
  "hyper-util",
  "kvdb",

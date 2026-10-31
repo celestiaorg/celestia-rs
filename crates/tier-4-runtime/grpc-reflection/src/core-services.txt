@@ -1,0 +1,5 @@
+grpc.reflection.v1.ServerReflection
+grpc.reflection.v1alpha.ServerReflection
+tendermint.rpc.grpc.BlobstreamAPI
+tendermint.rpc.grpc.BlockAPI
+tendermint.rpc.grpc.BroadcastAPI
