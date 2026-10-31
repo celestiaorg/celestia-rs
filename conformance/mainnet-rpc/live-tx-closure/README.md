@@ -81,7 +81,9 @@ free-space samples. Parsed HTTP and WebSocket JSON is compared strictly while
 the original wire remains hash-bound. The verifier validates a unique decimal
 `content-length` when present before omitting it, merges and binds gRPC status
 and message metadata across initial and trailing metadata, and lowercases only
-WebSocket `connection` and `upgrade` token values. The only allowed response
+WebSocket `connection` and `upgrade` token values. For a verified nonzero
+nested CheckTx retry, it treats `data: null` and `data: ""` as the same absent
+byte string; successful CheckTx data remains exact. The only allowed response
 difference is the fully spelled out terminal malformed-protobuf status and
 message outcome. HTTP `Date` and the Go-only `x-server-time` value are the only
 excluded header values.

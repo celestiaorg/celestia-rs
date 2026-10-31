@@ -240,7 +240,7 @@ def fixture(root: pathlib.Path) -> None:
         go_response = {
             "transport": transport, "wire": blob(name.encode()), "http_status": None if is_grpc or is_websocket else 200,
             "http_headers": [] if is_grpc or is_websocket else [["content-type", "application/json"]],
-            "json": ({"id": -1 if transport == "comet-uri" else 187, "result": {"code": 0 if admitted else 1, "log": "" if admitted else "rejected"}} if transport.startswith("comet-") else {"code": 0 if admitted else 1}) if "grpc" not in transport else None,
+            "json": ({"jsonrpc": "2.0", "id": -1 if transport == "comet-uri" else 187, "result": {"code": 0 if admitted else 1, "log": "" if admitted else "rejected", "data": ""}} if transport.startswith("comet-") else {"code": 0 if admitted else 1}) if "grpc" not in transport else None,
             "grpc_status": 0 if is_grpc else None,
             "grpc_message": "", "initial_metadata": [["content-type", "application/grpc"]] if is_grpc else [],
             "trailing_metadata": [],
@@ -443,7 +443,19 @@ def fixture(root: pathlib.Path) -> None:
         else:
             code, log = 32, "account sequence mismatch"
         if transport == "comet-jsonrpc":
-            value = {"id": 187, "result": {"code": code, "log": log, "hash": tx_hash}}
+            if outcome == "mempool-full":
+                value = {"jsonrpc": "2.0", "id": 187, "error": {
+                    "code": -32603,
+                    "message": "Internal error",
+                    "data": "rejected valid incoming transaction; mempool is full (A1B2). Size: (1:351)",
+                }}
+            elif outcome == "duplicate":
+                value = {"jsonrpc": "2.0", "id": 187, "result": {
+                    "check_tx": {"code": code, "log": log, "data": None},
+                    "hash": tx_hash,
+                }}
+            else:
+                value = {"jsonrpc": "2.0", "id": 187, "result": {"code": code, "log": log, "data": "", "hash": tx_hash}}
             wire = harness.canonical_json(value)
             return {
                 "transport": transport, "wire": blob(wire), "http_status": 200,
@@ -1192,7 +1204,7 @@ class VerifyTest(unittest.TestCase):
         def mutate(value):
             for side in ("go", "rs"):
                 response = value["mempool_capacity"][side][1]["response"]
-                response["json"]["result"]["log"] = "unrelated rejection"
+                response["json"]["error"]["data"] = "unrelated rejection"
                 wire = harness.canonical_json(response["json"])
                 response["wire"] = blob(wire)
                 next(header for header in response["http_headers"]
@@ -1201,6 +1213,214 @@ class VerifyTest(unittest.TestCase):
                 operation["result_sha256"] = hashlib.sha256(harness.canonical_json(response)).hexdigest()
         self.rewrite("cleanup.json", mutate)
         self.reject("cleanup.outcome", lambda: verify.verify(self.root))
+
+    def test_lifecycle_comet_error_capacity_rejection(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "error": {
+                    "code": -32603,
+                    "message": "Internal error",
+                    "data": "rejected valid incoming transaction; mempool is full (A1B2). Size: (1:351)",
+                },
+            },
+        }
+        verify.verify_lifecycle_outcome(record, "mempool-full", "capacity")
+
+    def test_lifecycle_comet_error_schema_is_exact(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "error": {
+                    "code": -32602,
+                    "message": "Internal error",
+                    "data": "mempool is full",
+                },
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "mempool-full", "capacity"))
+
+    def test_lifecycle_comet_error_rejects_incidental_capacity_words(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "error": {
+                    "code": -32603,
+                    "message": "Internal error",
+                    "data": "this is not a mempool condition and not full",
+                },
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "mempool-full", "capacity"))
+
+    def test_lifecycle_comet_commit_uses_nested_check_tx(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {
+                    "check_tx": {"code": 32, "log": "account sequence mismatch", "data": None},
+                    "deliver_tx": {"code": 0, "log": ""},
+                },
+            },
+        }
+        verify.verify_lifecycle_outcome(record, "duplicate", "retry")
+
+    def test_lifecycle_comet_commit_success_uses_nested_check_tx(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {
+                    "check_tx": {"code": 0, "log": "", "data": ""},
+                    "deliver_tx": {"code": 0, "log": ""},
+                },
+            },
+        }
+        verify.verify_lifecycle_outcome(record, "included", "followup")
+
+    def test_lifecycle_comet_boolean_code_is_rejected(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {"code": False, "log": ""},
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "included", "boolean-code"))
+
+    def test_lifecycle_comet_vague_sequence_log_is_rejected(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {"code": 32, "log": "unrelated sequence condition"},
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "duplicate", "vague-sequence"))
+
+    def test_lifecycle_comet_ambiguous_check_tx_is_rejected(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {
+                    "code": 0,
+                    "log": "",
+                    "check_tx": {"code": 0, "log": "", "data": ""},
+                },
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "included", "ambiguous"))
+
+    def test_lifecycle_nested_check_tx_requires_typed_data(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {"check_tx": {"code": 32, "log": "account sequence mismatch"}},
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "duplicate", "missing-data"))
+        record["json"]["result"]["check_tx"]["data"] = False
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "duplicate", "boolean-data"))
+
+    def test_lifecycle_direct_check_tx_requires_typed_data(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {"code": 0, "log": ""},
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "included", "direct-missing-data"))
+        record["json"]["result"]["data"] = False
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "included", "direct-boolean-data"))
+
+    def test_lifecycle_full_verifier_rejects_missing_nested_check_tx_data(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                event = value["disconnect"][side][3]
+                response = event["response"]
+                del response["json"]["result"]["check_tx"]["data"]
+                wire = harness.canonical_json(response["json"])
+                response["wire"] = blob(wire)
+                next(header for header in response["http_headers"]
+                     if header[0] == "content-length")[1] = str(len(wire))
+                event["operation"]["result_sha256"] = hashlib.sha256(
+                    harness.canonical_json(response)).hexdigest()
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.outcome", lambda: verify.verify(self.root))
+
+    def test_lifecycle_rejected_check_tx_empty_data_normalization_is_narrow(self):
+        response = {
+            "transport": "comet-jsonrpc",
+            "json": {"result": {"check_tx": {"code": 32, "data": None}}},
+            "wire": b"raw rejection remains separately hash-bound",
+        }
+        normalized = verify.normalize_lifecycle_response(response, "duplicate")
+        self.assertEqual(normalized["json"]["result"]["check_tx"]["data"], "")
+        self.assertIsNone(response["json"]["result"]["check_tx"]["data"])
+
+        successful = copy.deepcopy(response)
+        successful["json"]["result"]["check_tx"]["code"] = 0
+        self.assertIs(verify.normalize_lifecycle_response(successful, "included"), successful)
+
+        missing = copy.deepcopy(response)
+        del missing["json"]["result"]["check_tx"]["data"]
+        self.assertIs(verify.normalize_lifecycle_response(missing, "duplicate"), missing)
+
+    def test_lifecycle_comet_result_and_error_is_rejected(self):
+        record = {
+            "transport": "comet-jsonrpc",
+            "json": {
+                "jsonrpc": "2.0",
+                "id": 187,
+                "result": {"code": 0, "log": ""},
+                "error": {"code": -32603, "message": "Internal error", "data": "mempool is full"},
+            },
+        }
+        self.reject("cleanup.outcome", lambda: verify.verify_lifecycle_outcome(
+            record, "included", "result-and-error"))
+
+    def test_lifecycle_operation_allows_submillisecond_stamp_quantization(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                event = value["mempool_capacity"][side][1]
+                event["operation"]["completed_monotonic_ns"] = event["monotonic_ms"] * 1_000_000 + 999_999
+        self.rewrite("cleanup.json", mutate)
+        verify.EXPECTED_SEMANTIC_DIGEST = verify.semantic_digest(self.root)
+        verify.verify(self.root)
+
+    def test_lifecycle_operation_rejects_next_millisecond(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                event = value["mempool_capacity"][side][1]
+                event["operation"]["completed_monotonic_ns"] = (event["monotonic_ms"] + 1) * 1_000_000
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.operation", lambda: verify.verify(self.root))
 
     def test_capacity_rejection_sample_may_follow_a_inclusion(self):
         def mutate(value):

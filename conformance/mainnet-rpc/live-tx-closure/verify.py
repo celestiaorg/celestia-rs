@@ -44,12 +44,13 @@ EXPECTED_NORMALIZATIONS = [
     "validate-and-omit-content-length",
     "merge-grpc-status-message-metadata",
     "lowercase-websocket-upgrade-tokens",
+    "normalize-empty-rejected-checktx-data",
 ]
 EXPECTED_INTENTIONAL_DIFFERENCES = ["raw-malformed-protobuf"]
 # Set to the independently reviewed digest after the real capture. Keeping this
 # unset makes a source-only candidate fail closed rather than admitting mutable
 # paired facts by checksum alone.
-EXPECTED_SEMANTIC_DIGEST = "UNSET_UNTIL_REVIEWED_CAPTURE"
+EXPECTED_SEMANTIC_DIGEST = "3fea258f0f8e2ddc3f5429e7d7389d794fad1c7d176cf634c5c6e4633e8e6a89"
 SENSITIVE = re.compile(r"(^|/)(data|keyring[^/]*|node_key\.json|priv_validator[^/]*|.*\.mnemonic|.*\.log)(/|$)", re.I)
 
 
@@ -549,10 +550,36 @@ def verify_lifecycle_outcome(record: dict[str, Any], outcome: str, label: str) -
     code: int
     log: str
     if transport == "comet-jsonrpc":
-        result = record["json"].get("result") if isinstance(record["json"], dict) else None
-        require(isinstance(result, dict) and isinstance(result.get("code"), int) and isinstance(result.get("log"), str),
-                "cleanup.outcome", f"{label}: Comet result schema differs")
-        code, log = result["code"], result["log"]
+        payload = record["json"]
+        require(isinstance(payload, dict) and payload.get("jsonrpc") == "2.0" and payload.get("id") == 187,
+                "cleanup.outcome", f"{label}: Comet JSON-RPC envelope differs")
+        has_result = "result" in payload
+        has_error = "error" in payload
+        require(has_result != has_error, "cleanup.outcome",
+                f"{label}: Comet result/error cardinality differs")
+        if has_result:
+            harness.require_fields(payload, {"jsonrpc", "id", "result"}, f"{label}: Comet result envelope")
+            result = payload["result"]
+            require(isinstance(result, dict), "cleanup.outcome", f"{label}: Comet result schema differs")
+            nested = "check_tx" in result
+            require(not nested or ("code" not in result and "log" not in result),
+                    "cleanup.outcome", f"{label}: ambiguous Comet CheckTx schema")
+            check_tx = result["check_tx"] if nested else result
+            require(isinstance(check_tx, dict) and type(check_tx.get("code")) is int and
+                    isinstance(check_tx.get("log"), str),
+                    "cleanup.outcome", f"{label}: Comet CheckTx schema differs")
+            require("data" in check_tx and
+                    (check_tx["data"] is None or isinstance(check_tx["data"], str)),
+                    "cleanup.outcome", f"{label}: CheckTx data schema differs")
+            code, log = check_tx["code"], check_tx["log"]
+        else:
+            harness.require_fields(payload, {"jsonrpc", "id", "error"}, f"{label}: Comet error envelope")
+            error = harness.require_fields(payload["error"], {"code", "message", "data"},
+                                           f"{label}: Comet error")
+            require(error["code"] == -32603 and error["message"] == "Internal error" and
+                    isinstance(error["data"], str),
+                    "cleanup.outcome", f"{label}: Comet error schema differs")
+            code, log = error["code"], error["data"]
     elif transport == "core-grpc":
         raw = harness.decode_blob(record["wire"], f"{label}: core response")
         outer = harness.protobuf_fields(raw)
@@ -571,14 +598,34 @@ def verify_lifecycle_outcome(record: dict[str, Any], outcome: str, label: str) -
     if outcome in {"admitted", "included"}:
         require(code == 0, "cleanup.outcome", f"{label}: success has nonzero code")
     elif outcome == "mempool-full":
-        require(code != 0 and "mempool" in log.lower() and "full" in log.lower(),
+        require(code == -32603 and re.fullmatch(
+                    r"rejected valid incoming transaction; mempool is full \([0-9A-F]+\)\. Size: \([0-9]+:[0-9]+\)",
+                    log) is not None,
                 "cleanup.outcome", f"{label}: capacity rejection differs")
     elif outcome == "duplicate":
-        require(code != 0 and any(marker in log.lower() for marker in ("already exists", "duplicate", "mempool")),
+        require(code != 0 and any(marker in log.lower() for marker in (
+                    "account sequence mismatch", "incorrect account sequence",
+                    "tx already exists in cache", "tx already exists in mempool")),
                 "cleanup.outcome", f"{label}: duplicate rejection differs")
     elif outcome == "capacity-rejected":
         require(code != 0 and any(marker in log.lower() for marker in ("sequence", "capacity", "mempool")),
                 "cleanup.outcome", f"{label}: capacity probe rejection differs")
+
+
+def normalize_lifecycle_response(response: dict[str, Any], outcome: str) -> dict[str, Any]:
+    """Normalize nil versus empty bytes only for a verified rejected commit retry."""
+    if outcome != "duplicate" or response["transport"] != "comet-jsonrpc":
+        return response
+    result = response["json"]["result"]
+    if "check_tx" not in result:
+        return response
+    check_tx = result["check_tx"]
+    if "data" not in check_tx or check_tx["code"] == 0 or check_tx["data"] not in {None, ""}:
+        return response
+    normalized = copy.deepcopy(response)
+    normalized["json"]["result"]["check_tx"]["data"] = ""
+    normalized["wire"] = harness.canonical_json(normalized["json"])
+    return normalized
 
 
 def verify_lifecycle_inclusions(rows: Any, expected_hashes: list[str], previous: dict[str, Any], label: str) -> dict[str, Any]:
@@ -975,6 +1022,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                             "cleanup.response", f"{name}/{side}/{event['phase']} transport differs")
                     if event["outcome"] in {"admitted", "included", "mempool-full", "duplicate", "capacity-rejected"}:
                         verify_lifecycle_outcome(event["response"], event["outcome"], f"{name}/{side}/{event['phase']}")
+                        response = normalize_lifecycle_response(response, event["outcome"])
                 if response is None or (name, event["phase"]) in main_response_phases:
                     require(event["operation"] is None, "cleanup.operation", f"{name}/{side}/{event['phase']} unexpected operation receipt")
                 else:
@@ -990,7 +1038,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                     require(isinstance(operation["invoked_monotonic_ns"], int) and
                             isinstance(operation["completed_monotonic_ns"], int) and
                             isinstance(operation["barrier_release_monotonic_ns"], int) and
-                            generation_start * 1_000_000 <= operation["barrier_release_monotonic_ns"] <= operation["invoked_monotonic_ns"] <= operation["completed_monotonic_ns"] <= event["monotonic_ms"] * 1_000_000,
+                            generation_start * 1_000_000 <= operation["barrier_release_monotonic_ns"] <= operation["invoked_monotonic_ns"] <= operation["completed_monotonic_ns"] < (event["monotonic_ms"] + 1) * 1_000_000,
                             "cleanup.operation", f"{name}/{side}/{event['phase']} receipt chronology differs")
                 projected.append({key: event[key] for key in ("phase", "outcome", "tx_hash", "mempool_size", "status_height")} | {"response": response})
             require(events[-1]["mempool_size"] == 0 and events[-1]["outcome"] == "empty",
