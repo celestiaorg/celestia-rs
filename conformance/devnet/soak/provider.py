@@ -185,6 +185,10 @@ class ProviderError(RuntimeError):
     """A client failure with an admission outcome that must not be guessed."""
 
 
+BROADCAST_TIMEOUT_S = 30
+BROADCAST_PROCESS_TIMEOUT_S = 35
+
+
 class Workload:
     def __init__(self, run):
         self.run = run
@@ -217,8 +221,9 @@ class Workload:
         operation = "broadcast:" + transport
         self.count(nd, operation, "requested")
         try:
-            out = subprocess.run(self.command(nd) + ["--mode", "broadcast", "--transport", transport],
-                                 input=tx, capture_output=True, timeout=15, check=True)
+            out = subprocess.run(self.command(nd) + ["--mode", "broadcast", "--transport", transport,
+                                                     "--broadcast-timeout", f"{BROADCAST_TIMEOUT_S}s"],
+                                 input=tx, capture_output=True, timeout=BROADCAST_PROCESS_TIMEOUT_S, check=True)
             result = json.loads(out.stdout)
         except Exception:
             self.count(nd, operation, "errors")

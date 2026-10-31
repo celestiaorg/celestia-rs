@@ -55,10 +55,15 @@ elapsed time, byte count and response hash in `provider-result` events.
 The independently signed bank workload rotates submissions across six
 transports. Cosmos gRPC/REST use `BROADCAST_MODE_SYNC`; Comet uses sync;
 core gRPC `BroadcastTx` waits for inclusion and retains CheckTx and execution
-codes separately. Successful CheckTx results are queued for the existing tx-index
-inclusion check. After any uncertain submission error, that account stops
-submitting until a committed account-sequence query proves advancement; other
-accounts continue. A deadline does not imply rejection or permission to resend.
+codes separately. Broadcast commands have a thirty-second outer deadline and a
+thirty-five-second process bound; the HTTP client and WebSocket handshake retain
+their shorter twelve- and three-second transport bounds. This lets core gRPC use
+the full outer bound, so an ordinary slow block does not turn its
+inclusion-waiting method into an artificial ten-second failure. Successful
+CheckTx results are queued for the existing tx-index inclusion check. After any
+uncertain submission error, that account stops submitting until a committed
+account-sequence query proves advancement; other accounts continue. A deadline
+does not imply rejection or permission to resend.
 
 `metrics.provider.operations` records requested, completed, errors and unknown
 admission counts per node/operation, plus accepted/rejected CheckTx and failed
