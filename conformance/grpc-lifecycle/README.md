@@ -6,9 +6,12 @@ use app commit `6013e758d5dceb75827ad191c8d739d7c43cfa04`, core commit
 `a5537d84a008d566abc503d2ea41e30f2301403d`, Cosmos SDK v0.52.12, grpc-go
 v1.83.2 and Go 1.26.9. Captures are valid only when their metadata binds those
 identities, the executed binaries and configs, and every recorder/verifier
-source and input. The evidence binds signed capture source commit `399f57e`;
-later verifier changes read those sources from that commit and reject a
-working-tree or cross-commit rebind.
+source and input. The evidence carries the exact raw object for signed capture
+source commit `399f57e`, the tree objects needed to resolve its reviewed source
+paths, and byte-for-byte snapshots of those paths. The offline verifier rebuilds
+that object graph in an isolated temporary repository, verifies the pinned SSH
+signer, and rejects a snapshot, tree, working-tree, or cross-commit rebind. It
+does not depend on the capture commit remaining reachable from a repository ref.
 
 The Rust executable must be created by `build-rs.sh`. That single build step
 requires a clean signed source commit, uses the locked release command with the
@@ -116,7 +119,10 @@ supporting resource evidence and is not relabeled as this transport campaign.
 Immediately before capture, create a fresh read-only mainnet observation with
 the repository observation helper. Build the Rust executable and its adjacent
 receipt from the exact signed candidate, then run only against isolated
-loopback nodes:
+loopback nodes. The freezer exports that candidate's commit and minimal source
+tree into the package; the verifier accepts a new commit only when the embedded
+object verifies against the pinned `codex-signing` SSH key and all source,
+receipt, inventory, and object-graph bindings agree:
 
 ```sh
 python3 conformance/mainnet-rpc/observe-mainnet.py \
