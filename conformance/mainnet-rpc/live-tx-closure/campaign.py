@@ -1318,8 +1318,9 @@ def write_payloads(state: State, resources_only: bool = False) -> None:
     pools = {side: len(mempool(state.plan["endpoints"][f"{side}_rpc"])[0]) for side in ROLES}
     final = state.last_state
     fresh = live_states["go"]
-    harness.require((fresh["app_hash"], fresh["balance"], fresh["sequence"], fresh["delegation"]) ==
-                    (final["app_hash"], final["balance"], final["sequence"], final["delegation"]),
+    harness.require(fresh["height"] > final["height"] and
+                    (fresh["balance"], fresh["sequence"], fresh["delegation"]) ==
+                    (final["balance"], final["sequence"], final["delegation"]),
                     "final fresh state differs from last indexed state")
     liveness = {"generation": "restored", "block": {
         side: {key: live_block[side][key] for key in ("height", "block_hash", "app_hash", "time", "observed_monotonic_ms")}

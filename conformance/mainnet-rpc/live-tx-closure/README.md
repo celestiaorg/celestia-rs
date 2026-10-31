@@ -145,7 +145,10 @@ CheckTx body; their inclusion records label CheckTx as admission-only instead
 of inventing gas, events or log fields. All other successful calls retain the
 concrete broadcast response. After the terminal malformed request, the
 controller waits for a later common block and freshly queries paired state and
-mempools, proving restored-generation liveness and final continuity.
+mempools. The live app hash is bound to that later block; balance, sequence and
+delegation are bound to the last indexed transaction state, proving restored-
+generation liveness and account continuity without equating roots from
+different heights.
 Common-block freshness is derived from the exact active-release ABCI timeout
 inventory captured in the read-only mainnet observation. The maximum age is
 the delayed-precommit wait plus commit wait plus one round-zero proposal

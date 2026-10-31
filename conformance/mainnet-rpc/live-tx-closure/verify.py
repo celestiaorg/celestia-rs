@@ -1017,8 +1017,8 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
     for left, right in (("go_root", "rs_root"), ("go_balance", "rs_balance"), ("go_sequence", "rs_sequence"), ("go_delegation", "rs_delegation")):
         require(final[left] == final[right], "cleanup.final", f"{left}/{right} differ")
     require(final["go_mempool"] == final["rs_mempool"] == 0, "cleanup.final", "final mempool nonempty")
-    require((final["go_root"], final["go_balance"], final["go_sequence"], final["go_delegation"]) ==
-            (last_state["app_hash"], last_state["balance"], last_state["sequence"], last_state.get("delegation")),
+    require((final["go_balance"], final["go_sequence"], final["go_delegation"]) ==
+            (last_state["balance"], last_state["sequence"], last_state.get("delegation")),
             "cleanup.final", "final state is not linked to last inclusion")
     live = harness.require_fields(final["liveness"], {"generation", "block", "state", "mempool"}, "final liveness")
     require(live["generation"] == "restored", "cleanup.final", "final liveness generation differs")
@@ -1047,6 +1047,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
     go_state = harness.require_fields(live_states["go"], state_fields, "final Go state")
     rs_state = harness.require_fields(live_states["rs"], state_fields, "final Rust state")
     require(go_state == rs_state and go_state["height"] == go_block["height"] and
+            go_state["height"] > last_state["height"] and
             go_state["app_hash"] == go_block["app_hash"] and
             (go_state["app_hash"], go_state["balance"], go_state["sequence"], go_state["delegation"]) ==
             (final["go_root"], final["go_balance"], final["go_sequence"], final["go_delegation"]),

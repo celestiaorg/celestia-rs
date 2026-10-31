@@ -1238,6 +1238,33 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("cleanup.json", mutate)
         self.reject("cleanup.final", lambda: verify.verify(self.root))
 
+    def test_final_liveness_allows_a_newer_block_root(self):
+        def mutate(value):
+            final = value["final"]
+            final["go_root"] = final["rs_root"] = "later-live-root"
+            for side in ("go", "rs"):
+                final["liveness"]["block"][side]["app_hash"] = "later-live-root"
+                final["liveness"]["state"][side]["app_hash"] = "later-live-root"
+        self.rewrite("cleanup.json", mutate)
+        verify.EXPECTED_SEMANTIC_DIGEST = verify.semantic_digest(self.root)
+        verify.verify(self.root)
+
+    def test_final_liveness_rejects_a_different_root_at_inclusion_height(self):
+        cleanup = json.loads((self.root / "cleanup.json").read_text())
+        last_height = cleanup["server_timeout"]["indexed_inclusions"][-1]["go"]["post_state"]["height"]
+        self.assertGreater(cleanup["final"]["liveness"]["state"]["go"]["height"], last_height)
+
+        def mutate(value):
+            final = value["final"]
+            final["go_root"] = final["rs_root"] = "same-height-different-root"
+            for side in ("go", "rs"):
+                final["liveness"]["block"][side]["height"] = last_height
+                final["liveness"]["block"][side]["app_hash"] = "same-height-different-root"
+                final["liveness"]["state"][side]["height"] = last_height
+                final["liveness"]["state"][side]["app_hash"] = "same-height-different-root"
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.final", lambda: verify.verify(self.root))
+
     def test_final_liveness_binding(self):
         def mutate(value):
             value["final"]["liveness"]["state"]["go"]["sequence"] += 1
