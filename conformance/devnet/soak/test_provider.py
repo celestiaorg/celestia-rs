@@ -103,9 +103,13 @@ class ProviderTests(unittest.TestCase):
     def test_timeout_is_counted_and_account_does_not_retry_unknown_admission(self):
         workload = self.workload()
         nd = types.SimpleNamespace(i=0, url="http://127.0.0.1:27657")
-        with patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired("provider-client", 15)):
+        with patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(
+                "provider-client", provider.BROADCAST_PROCESS_TIMEOUT_S)) as run:
             with self.assertRaises(subprocess.TimeoutExpired):
                 workload.broadcast(nd, b"tx", 5)
+        self.assertEqual(run.call_args.kwargs["timeout"], provider.BROADCAST_PROCESS_TIMEOUT_S)
+        self.assertIn(f"{provider.BROADCAST_TIMEOUT_S}s", run.call_args.args[0])
+        self.assertGreater(provider.BROADCAST_PROCESS_TIMEOUT_S, provider.BROADCAST_TIMEOUT_S)
         stats = workload.run.metrics["provider"]["operations"]["n0:broadcast:core-grpc"]
         self.assertEqual(stats, {"requested": 1, "completed": 0, "errors": 1, "admission_unknown": 1})
         workload.block("address", 9)

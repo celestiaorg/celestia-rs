@@ -455,6 +455,7 @@ func main() {
 	flag.StringVar(&e.REST, "rest", "", "REST loopback HTTP endpoint")
 	mode := flag.String("mode", "probe", "probe or broadcast")
 	transport := flag.String("transport", "jsonrpc", "broadcast transport")
+	broadcastTimeout := flag.Duration("broadcast-timeout", 30*time.Second, "outer broadcast deadline")
 	height := flag.Uint64("height", 1, "historical query height")
 	address := flag.String("address", "", "public bank address")
 	flag.Parse()
@@ -476,7 +477,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "invalid or oversized transaction")
 			os.Exit(2)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), *broadcastTimeout)
 		defer cancel()
 		result, x := broadcast(ctx, e, *transport, tx)
 		if x != nil {
