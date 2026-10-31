@@ -7,11 +7,14 @@ import base64
 import copy
 import datetime as dt
 import hashlib
+import io
 import json
 import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
+import urllib.error
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
@@ -1195,6 +1198,55 @@ class VerifyTest(unittest.TestCase):
             "type": "message",
             "attributes": [{"key": "sender", "value": "celestia1test", "index": True}],
         }])
+
+    def test_state_query_retries_only_exact_future_height_error(self):
+        error_body = harness.canonical_json({
+            "code": 2, "message": campaign.FUTURE_HEIGHT_MESSAGE, "details": [],
+        })
+        error = urllib.error.HTTPError(
+            "http://127.0.0.1:19317/account", 500, "Internal Server Error", {}, io.BytesIO(error_body)
+        )
+
+        class Response(io.BytesIO):
+            status = 200
+
+        response = Response(b'{"account":{"sequence":"4"}}')
+        with mock.patch.object(campaign.urllib.request, "urlopen", side_effect=[error, response]) as opened:
+            self.assertEqual(
+                campaign.get_json("http://127.0.0.1:19317/account", "rs account", height=16),
+                {"account": {"sequence": "4"}},
+            )
+        self.assertEqual(opened.call_count, 2)
+        request = opened.call_args_list[0].args[0]
+        self.assertEqual(request.get_header("X-cosmos-block-height"), "16")
+        self.assertTrue(campaign.future_height_error(error_body))
+        self.assertFalse(campaign.future_height_error(harness.canonical_json({
+            "code": 2, "message": "unrelated internal error", "details": [],
+        })))
+
+    def test_state_query_future_height_timeout_is_not_missing(self):
+        error_body = harness.canonical_json({
+            "code": 2, "message": campaign.FUTURE_HEIGHT_MESSAGE, "details": [],
+        })
+        error = urllib.error.HTTPError(
+            "http://127.0.0.1:19317/account", 500, "Internal Server Error", {}, io.BytesIO(error_body)
+        )
+        with mock.patch.object(campaign.urllib.request, "urlopen", side_effect=error):
+            self.reject("future height remained unavailable", lambda: campaign.get_json(
+                "http://127.0.0.1:19317/account", "rs account", height=16, missing=True,
+                _future_height_timeout=0,
+            ))
+
+    def test_state_query_unrelated_http_500_fails_immediately(self):
+        error = urllib.error.HTTPError(
+            "http://127.0.0.1:19317/account", 500, "Internal Server Error", {},
+            io.BytesIO(harness.canonical_json({"code": 2, "message": "unrelated", "details": []})),
+        )
+        with mock.patch.object(campaign.urllib.request, "urlopen", side_effect=error) as opened:
+            self.reject("rs account HTTP 500", lambda: campaign.get_json(
+                "http://127.0.0.1:19317/account", "rs account", height=16,
+            ))
+        self.assertEqual(opened.call_count, 1)
 
     def test_campaign_rejects_home_genesis_substitution(self):
         with tempfile.TemporaryDirectory() as directory:

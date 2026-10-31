@@ -96,6 +96,9 @@ samples and bounded monotonic intervals. The timeout config differs only in
 config byte-for-byte at the structured level. Cases and lifecycle events name
 their generation. Timeout intervals are derived from four consecutive raw
 common-block observations rather than accepted as free duration integers.
+Exact-height state reads retry only the bounded, exact SDK future-height error
+that can occur while REST visibility catches up with an already visible Comet
+block; every other HTTP failure remains immediate.
 
 Lifecycle retry, capacity probe and follow-up calls carry receipts bound to
 the reviewed outer campaign and transport-client hashes. Their raw Comet or

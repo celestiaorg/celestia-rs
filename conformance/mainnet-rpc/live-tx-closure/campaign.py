@@ -329,20 +329,44 @@ def rpc_url(endpoint: str, path: str, query: dict[str, str] | None = None) -> st
     return urllib.parse.urlunsplit(("http", parsed.netloc, path, urllib.parse.urlencode(query or {}), ""))
 
 
-def get_json(url: str, label: str, *, height: int | None = None, missing: bool = False) -> Any:
+FUTURE_HEIGHT_MESSAGE = ("codespace sdk code 26: invalid height: cannot query with height in the future; "
+                         "please provide a valid height")
+
+
+def future_height_error(raw: bytes) -> bool:
+    try:
+        value = harness.strict_json(raw)
+    except (UnicodeError, harness.HarnessError, ValueError):
+        return False
+    return value == {"code": 2, "message": FUTURE_HEIGHT_MESSAGE, "details": []}
+
+
+def get_json(url: str, label: str, *, height: int | None = None, missing: bool = False,
+             _future_height_timeout: float = 5) -> Any:
     harness.loopback_endpoint(url, label)
     request = urllib.request.Request(url, method="GET")
     if height is not None:
         request.add_header("x-cosmos-block-height", str(height))
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            raw = response.read(16 * 1024 * 1024 + 1)
-            harness.require(response.status == 200 and len(raw) <= 16 * 1024 * 1024, f"{label} response differs")
-    except urllib.error.HTTPError as error:
-        if missing and error.code in {400, 404, 500}:
-            return None
-        raise harness.HarnessError(f"{label} HTTP {error.code}") from error
-    return harness.strict_json(raw)
+    deadline = time.monotonic() + _future_height_timeout
+    while True:
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                raw = response.read(16 * 1024 * 1024 + 1)
+                harness.require(response.status == 200 and len(raw) <= 16 * 1024 * 1024,
+                                f"{label} response differs")
+            return harness.strict_json(raw)
+        except urllib.error.HTTPError as error:
+            error_raw = error.read(16 * 1024 * 1024 + 1)
+            future = (height is not None and error.code == 500 and
+                      len(error_raw) <= 16 * 1024 * 1024 and future_height_error(error_raw))
+            if future and time.monotonic() < deadline:
+                time.sleep(0.05)
+                continue
+            if future:
+                raise harness.HarnessError(f"{label} future height remained unavailable") from error
+            if missing and error.code in {400, 404, 500}:
+                return None
+            raise harness.HarnessError(f"{label} HTTP {error.code}") from error
 
 
 def status(endpoint: str) -> tuple[int, Any]:
