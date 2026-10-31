@@ -214,7 +214,8 @@ async fn grpc_handler(State(app): State<Arc<AbciApp>>, req: Request<Body>) -> Re
 
 /// The gRPC router: every path is a unary query method.
 pub fn grpc_router(app: Arc<AbciApp>) -> axum::Router {
-    axum::Router::new().fallback(grpc_handler).with_state(app)
+    grpc_reflection::router(grpc_reflection::Profile::App)
+        .merge(axum::Router::new().fallback(grpc_handler).with_state(app))
 }
 
 /// The bytes of a REST response body. Strings are Go forms (`gostr`): Go's
