@@ -51,10 +51,51 @@ pub struct Reply {
     pub body: Value,
 }
 
+/// Stable response metadata emitted by the Go REST gateway.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ResponseMetadata {
+    /// The gRPC codec content type is present after a handler is entered.
+    pub content_type: bool,
+    /// The committed height used by the query handler.
+    pub height: Option<i64>,
+}
+
+/// A response plus the transport details needed to match grpc-gateway.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DetailedReply {
+    /// Status and decoded JSON body returned by [`handle`].
+    pub reply: Reply,
+    /// Stable gRPC metadata forwarded by grpc-gateway.
+    pub metadata: ResponseMetadata,
+    /// Response descriptor used by jsonpb to preserve declaration order.
+    pub(crate) response_type: Option<&'static str>,
+    /// Whether grpc-gateway's error JSON formatting applies.
+    pub(crate) error: bool,
+}
+
+impl From<Reply> for DetailedReply {
+    fn from(reply: Reply) -> Self {
+        Self {
+            reply,
+            metadata: ResponseMetadata::default(),
+            response_type: None,
+            error: true,
+        }
+    }
+}
+
 /// A gRPC call: `(path, request bytes, height)` → response bytes or a gRPC
 /// status (code, message).
 pub type Call<'a> =
     &'a mut dyn FnMut(&str, &[u8], i64) -> Result<(Vec<u8>, i64), (grpc_query::Code, String)>;
+
+/// A gRPC call that retains response metadata on handler errors.
+pub type CallWithMetadata<'a> =
+    &'a mut dyn FnMut(
+        &str,
+        &[u8],
+        i64,
+    ) -> Result<(Vec<u8>, i64), (grpc_query::Code, String, Option<i64>)>;
 
 /// `runtime.HTTPStatusFromCode` (grpc-gateway v1).
 #[must_use]
@@ -402,8 +443,16 @@ fn set_field_as(
 
 /// Handles one REST request.
 pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
+    handle_with_metadata(req, &mut |path, data, height| {
+        call(path, data, height).map_err(|(code, message)| (code, message, None))
+    })
+    .reply
+}
+
+/// Handles one REST request while retaining metadata from failed handlers.
+pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> DetailedReply {
     let Some((method, rule, vars)) = route(req.method, req.path) else {
-        return not_implemented();
+        return not_implemented().into();
     };
     let mut obj = Map::new();
     if rule.body == "*" {
@@ -411,9 +460,12 @@ pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
             Ok(Value::Object(m)) => obj = m,
             Ok(_) | Err(_) if req.body.is_empty() => {}
             Ok(_) => {
-                return error_reply(grpc_query::Code::InvalidArgument, "unexpected request body");
+                return error_reply(grpc_query::Code::InvalidArgument, "unexpected request body")
+                    .into();
             }
-            Err(e) => return error_reply(grpc_query::Code::InvalidArgument, &e.to_string()),
+            Err(e) => {
+                return error_reply(grpc_query::Code::InvalidArgument, &e.to_string()).into();
+            }
         }
     }
     for (name, value) in &vars {
@@ -422,7 +474,8 @@ pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
             return error_reply(
                 grpc_query::Code::InvalidArgument,
                 &format!("type mismatch, parameter: {name}, error: {e}"),
-            );
+            )
+            .into();
         }
     }
     if rule.body != "*" {
@@ -435,7 +488,7 @@ pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
             let v = percent_decode(v, true);
             let path: Vec<&str> = k.split('.').collect();
             if let Err(e) = set_field(&mut obj, method.input, &path, &v) {
-                return error_reply(grpc_query::Code::InvalidArgument, &e);
+                return error_reply(grpc_query::Code::InvalidArgument, &e).into();
             }
         }
     }
@@ -444,37 +497,53 @@ pub fn handle(req: &Request<'_>, call: Call<'_>) -> Reply {
         Value::Object(obj),
     ) {
         Some(Ok(d)) => d,
-        Some(Err(e)) => return error_reply(grpc_query::Code::InvalidArgument, &e),
-        None => return not_implemented(),
+        Some(Err(e)) => return error_reply(grpc_query::Code::InvalidArgument, &e).into(),
+        None => return not_implemented().into(),
     };
     let height = match crate::parse_height(req.height) {
         Ok(h) => h,
-        Err((c, m)) => return error_reply(c, &m),
+        Err((c, m)) => return error_reply(c, &m).into(),
     };
     match call(method.path, &data, height) {
-        Ok((bytes, _)) => {
+        Ok((bytes, height)) => {
             match celestia_proto::registry::any_value_to_json(
                 &format!("/{}", method.output),
                 &bytes,
             ) {
                 Some(Ok(mut v)) => {
                     jsonpb::go_style(&mut v, method.output);
-                    Reply {
-                        status: 200,
-                        body: v,
+                    DetailedReply {
+                        reply: Reply {
+                            status: 200,
+                            body: v,
+                        },
+                        metadata: ResponseMetadata {
+                            content_type: height >= 0,
+                            height: (height >= 0).then_some(height),
+                        },
+                        response_type: Some(method.output),
+                        error: false,
                     }
                 }
-                Some(Err(e)) => error_reply(grpc_query::Code::Internal, &e),
-                None => error_reply(grpc_query::Code::Internal, "unknown response type"),
+                Some(Err(e)) => error_reply(grpc_query::Code::Internal, &e).into(),
+                None => error_reply(grpc_query::Code::Internal, "unknown response type").into(),
             }
         }
-        Err((code, message)) => error_reply(code, &message),
+        Err((code, message, height)) => {
+            let mut reply = DetailedReply::from(error_reply(code, &message));
+            reply.metadata = ResponseMetadata {
+                content_type: height.is_some(),
+                height,
+            };
+            reply
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prost::Message as _;
 
     #[test]
     fn routes_from_bindings() {
@@ -516,5 +585,108 @@ mod tests {
             Value::Object(obj),
             json!({"pagination": {"limit": "2", "count_total": true}, "resolve_denom": true})
         );
+    }
+
+    #[test]
+    fn go_rest_height_boundaries() {
+        let fixture: Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/mainnet-rpc/rest-boundaries/v10.5.0/rest-heights.json"
+        )))
+        .unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 42);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let heights = case["heights"].as_array().unwrap();
+            // net/http trims optional whitespace and grpc-gateway ignores a
+            // repeated metadata value rather than choosing one of them.
+            let height =
+                (heights.len() == 1).then(|| heights[0].as_str().unwrap().trim().to_owned());
+            let expected_body = case["body"].as_str().unwrap();
+            let expected_json: Value = serde_json::from_str(expected_body).unwrap();
+            let expected_message = expected_json["message"].as_str().unwrap_or_default();
+            let req = Request {
+                method: "GET",
+                path: case["path"].as_str().unwrap(),
+                query: "",
+                height: height.as_deref(),
+                body: &[],
+            };
+            let mut calls = 0;
+            let reply = handle_with_metadata(&req, &mut |path, _, requested_height| {
+                calls += 1;
+                let resolved_height = if requested_height == 0 {
+                    20
+                } else {
+                    requested_height
+                };
+                if requested_height > 20 {
+                    return Err((grpc_query::Code::Unknown, expected_message.to_owned(), None));
+                }
+                if path == "/cosmos.bank.v1beta1.Query/Params" {
+                    let response = celestia_proto::cosmos::bank::v1beta1::QueryParamsResponse {
+                        params: Some(celestia_proto::cosmos::bank::v1beta1::Params {
+                            default_send_enabled: true,
+                            ..Default::default()
+                        }),
+                    };
+                    Ok((response.encode_to_vec(), resolved_height))
+                } else {
+                    Err((
+                        grpc_query::Code::InvalidArgument,
+                        expected_message.to_owned(),
+                        Some(resolved_height),
+                    ))
+                }
+            });
+            assert_eq!(
+                reply.reply.status,
+                u16::try_from(case["status"].as_u64().unwrap()).unwrap(),
+                "{name}"
+            );
+            assert_eq!(
+                crate::reply_body_bytes(&reply),
+                expected_body.as_bytes(),
+                "{name}"
+            );
+            let grpc_headers: Vec<_> = case["headers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|pair| {
+                    let pair = pair.as_array().unwrap();
+                    pair[0]
+                        .as_str()
+                        .unwrap()
+                        .to_ascii_lowercase()
+                        .starts_with("grpc-metadata-")
+                        .then(|| {
+                            (
+                                pair[0].as_str().unwrap().to_ascii_lowercase(),
+                                pair[1].as_str().unwrap().to_owned(),
+                            )
+                        })
+                })
+                .collect();
+            assert_eq!(
+                reply.metadata.content_type,
+                grpc_headers
+                    .iter()
+                    .any(|(name, _)| name == "grpc-metadata-content-type"),
+                "{name}"
+            );
+            assert_eq!(
+                reply.metadata.height.map(|height| height.to_string()),
+                grpc_headers
+                    .iter()
+                    .find(|(name, _)| name == "grpc-metadata-x-cosmos-block-height")
+                    .map(|(_, value)| value.clone()),
+                "{name}"
+            );
+            if name.starts_with("unknown:") {
+                assert_eq!(calls, 0, "unknown routes must precede height parsing");
+            }
+        }
     }
 }

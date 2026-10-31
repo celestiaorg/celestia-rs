@@ -1,0 +1,1319 @@
+{
+  "captured_at": "2026-10-31T00:02:40.281733+00:00",
+  "source_sha256": "b1d84b0043daa079638984c3d7b1cdb8ef892fa3f47467d5a6e64f041f1a18c7",
+  "cases": [
+    {
+      "name": "params:absent",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:empty",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        ""
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "params:zero",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "0"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:negative",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "-1"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: cannot query with height < 0; please provide a valid height\", \"details\":[]}"
+    },
+    {
+      "name": "params:future",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "99999"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height\", \"details\":[]}"
+    },
+    {
+      "name": "params:overflow",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "9223372036854775808"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"9223372036854775808\\\": value out of range\", \"details\":[]}"
+    },
+    {
+      "name": "params:invalid",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "x"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"x\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "params:space",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        " 1"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:plus",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "+1"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:leading-zero",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "01"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:comma",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "1,2"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"1,2\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "params:repeated",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "1",
+        "2"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:invalid-then-valid",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "x",
+        "1"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "params:valid-then-invalid",
+      "path": "/cosmos/bank/v1beta1/params",
+      "heights": [
+        "1",
+        "x"
+      ],
+      "status": 200,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "58"
+        ]
+      ],
+      "body": "{\"params\":{\"send_enabled\":[],\"default_send_enabled\":true}}"
+    },
+    {
+      "name": "handler-error:absent",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:empty",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        ""
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:zero",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "0"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:negative",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "-1"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: cannot query with height < 0; please provide a valid height\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:future",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "99999"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:overflow",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "9223372036854775808"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"9223372036854775808\\\": value out of range\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:invalid",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "x"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"x\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:space",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        " 1"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:plus",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "+1"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:leading-zero",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "01"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "1"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:comma",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "1,2"
+      ],
+      "status": 500,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Trailer",
+          "Grpc-Trailer-Content-Type"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ]
+      ],
+      "body": "{\"code\":2, \"message\":\"codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \\\"x-cosmos-block-height\\\": strconv.ParseInt: parsing \\\"1,2\\\": invalid syntax\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:repeated",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "1",
+        "2"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:invalid-then-valid",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "x",
+        "1"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "handler-error:valid-then-invalid",
+      "path": "/cosmos/bank/v1beta1/balances/bad",
+      "heights": [
+        "1",
+        "x"
+      ],
+      "status": 400,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "Grpc-Metadata-Content-Type",
+          "application/grpc+cosmos-sdk-grpc-codec"
+        ],
+        [
+          "Grpc-Metadata-X-Cosmos-Block-Height",
+          "20"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "109"
+        ]
+      ],
+      "body": "{\"code\":3, \"message\":\"invalid address: decoding bech32 failed: invalid bech32 string length 3\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:absent",
+      "path": "/not-a-route",
+      "heights": [],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:empty",
+      "path": "/not-a-route",
+      "heights": [
+        ""
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:zero",
+      "path": "/not-a-route",
+      "heights": [
+        "0"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:negative",
+      "path": "/not-a-route",
+      "heights": [
+        "-1"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:future",
+      "path": "/not-a-route",
+      "heights": [
+        "99999"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:overflow",
+      "path": "/not-a-route",
+      "heights": [
+        "9223372036854775808"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:invalid",
+      "path": "/not-a-route",
+      "heights": [
+        "x"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:space",
+      "path": "/not-a-route",
+      "heights": [
+        " 1"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:plus",
+      "path": "/not-a-route",
+      "heights": [
+        "+1"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:leading-zero",
+      "path": "/not-a-route",
+      "heights": [
+        "01"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:comma",
+      "path": "/not-a-route",
+      "heights": [
+        "1,2"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:repeated",
+      "path": "/not-a-route",
+      "heights": [
+        "1",
+        "2"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:invalid-then-valid",
+      "path": "/not-a-route",
+      "heights": [
+        "x",
+        "1"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    },
+    {
+      "name": "unknown:valid-then-invalid",
+      "path": "/not-a-route",
+      "heights": [
+        "1",
+        "x"
+      ],
+      "status": 501,
+      "headers": [
+        [
+          "Content-Type",
+          "application/json"
+        ],
+        [
+          "X-Server-Time",
+          "1793404960"
+        ],
+        [
+          "Date",
+          "Sat, 31 Oct 2026 00:02:40 GMT"
+        ],
+        [
+          "Content-Length",
+          "54"
+        ]
+      ],
+      "body": "{\"code\":12, \"message\":\"Not Implemented\", \"details\":[]}"
+    }
+  ]
+}

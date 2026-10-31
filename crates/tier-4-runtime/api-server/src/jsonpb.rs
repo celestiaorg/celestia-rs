@@ -199,6 +199,96 @@ pub fn go_style(v: &mut Value, msg: &str) {
     staking_encoding_json(v, msg);
 }
 
+/// Serializes jsonpb output in protobuf declaration order, as Go's
+/// reflection-based jsonpb marshaler does.
+#[must_use]
+pub fn descriptor_json(v: &Value, msg: &str) -> String {
+    let mut out = String::new();
+    write_descriptor_json(v, Some(msg), &mut out);
+    out
+}
+
+fn write_descriptor_json(v: &Value, msg: Option<&str>, out: &mut String) {
+    fn write_field(
+        out: &mut String,
+        first: &mut bool,
+        written: &mut std::collections::BTreeSet<String>,
+        name: &str,
+        value: &Value,
+        nested: Option<&str>,
+    ) {
+        if !*first {
+            out.push(',');
+        }
+        *first = false;
+        out.push_str(&serde_json::to_string(name).unwrap_or_else(|_| "\"\"".into()));
+        out.push(':');
+        write_descriptor_json(value, nested, out);
+        written.insert(name.to_owned());
+    }
+
+    let Value::Object(obj) = v else {
+        if let Value::Array(values) = v {
+            out.push('[');
+            for (index, value) in values.iter().enumerate() {
+                if index != 0 {
+                    out.push(',');
+                }
+                write_descriptor_json(value, msg, out);
+            }
+            out.push(']');
+        } else {
+            out.push_str(&serde_json::to_string(v).unwrap_or_else(|_| "null".into()));
+        }
+        return;
+    };
+
+    let any_type = (msg == Some("google.protobuf.Any"))
+        .then(|| obj.get("@type").and_then(Value::as_str))
+        .flatten()
+        .map(|name| name.trim_start_matches('/'));
+    let schema_name = any_type.or(msg);
+    let schema = schema_name.and_then(services::message);
+    let mut written = std::collections::BTreeSet::new();
+    let mut first = true;
+    out.push('{');
+    if schema.is_some_and(|message| message.map_entry) {
+        let value_type = schema
+            .and_then(|message| message.fields.iter().find(|field| field.number == 2))
+            .and_then(|field| (field.ty == ty::MESSAGE).then_some(field.type_name));
+        for (name, value) in obj {
+            write_field(out, &mut first, &mut written, name, value, value_type);
+        }
+        out.push('}');
+        return;
+    }
+    if let Some(value) = obj.get("@type") {
+        write_field(out, &mut first, &mut written, "@type", value, None);
+    }
+    if let Some(schema) = schema {
+        for descriptor in schema.fields {
+            let Some(value) = obj.get(descriptor.name) else {
+                continue;
+            };
+            let nested = (descriptor.ty == ty::MESSAGE).then_some(descriptor.type_name);
+            write_field(
+                out,
+                &mut first,
+                &mut written,
+                descriptor.name,
+                value,
+                nested,
+            );
+        }
+    }
+    for (name, value) in obj {
+        if !written.contains(name) {
+            write_field(out, &mut first, &mut written, name, value, None);
+        }
+    }
+    out.push('}');
+}
+
 fn go_style_fields(v: &mut Value, msg: &str) {
     if msg.starts_with("google.protobuf.") && msg != "google.protobuf.Any" {
         return;
