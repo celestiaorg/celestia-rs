@@ -1,0 +1,1678 @@
+{
+  "captured_at_start": "2026-10-31T01:16:52.524794279Z",
+  "captured_at_end": "2026-10-31T01:18:36.188771389Z",
+  "baseline": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "cosmos_sdk": "v0.52.12",
+    "go_builder": "go1.26.9",
+    "rpc": "http://127.0.0.1:28657"
+  },
+  "upgrade": [
+    {
+      "origin": "",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    },
+    {
+      "origin": "https://allowed.example",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    },
+    {
+      "origin": "https://denied.example",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    }
+  ],
+  "sequence": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {}
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "already subscribed"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "failed to parse query: offset 10: EOF"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "maximum query length exceeded"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "subscription not found"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {}
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "subscription not found"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "subscription not found"
+      }
+    }
+  ],
+  "quota": {
+    "clients_opened": 2,
+    "limit_error": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "error": {
+        "code": -32603,
+        "message": "Internal error",
+        "data": "max_subscription_clients 3 reached"
+      }
+    },
+    "reclaimed_after_disconnect": true,
+    "goroutines_before": 84,
+    "goroutines_at_limit": 91,
+    "goroutines_after_cleanup": 84,
+    "heap_bytes_before": 172970464,
+    "heap_bytes_at_limit": 174078104,
+    "heap_bytes_after_cleanup": 164125688,
+    "subscriptions_per_client": [
+      {
+        "jsonrpc": "2.0",
+        "id": 100,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 101,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 102,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 103,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 104,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 105,
+        "error": {
+          "code": -32603,
+          "message": "Internal error",
+          "data": "max_subscriptions_per_client 5 reached"
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 106,
+        "result": {}
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 107,
+        "result": {}
+      }
+    ]
+  },
+  "events": {
+    "reconnect_before_height": 1042,
+    "reconnect_after_height": 1044,
+    "first_resubscribed_height": 1045,
+    "missed_heights": 2,
+    "tx_command": {
+      "height": "0",
+      "txhash": "2B3292A69104189AB75186ABDAC721E34DC648DE23DE2C0C89E6A4DEA1B63D18",
+      "codespace": "",
+      "code": 0,
+      "data": "",
+      "raw_log": "",
+      "logs": [],
+      "info": "",
+      "gas_wanted": "0",
+      "gas_used": "0",
+      "tx": null,
+      "timestamp": "",
+      "events": [],
+      "signers": []
+    },
+    "tx_block_frames": [
+      {
+        "jsonrpc": "2.0",
+        "id": 22,
+        "result": {
+          "query": "tm.event = 'NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "ws190-105-1",
+                  "height": "1046",
+                  "time": "2026-10-31T01:17:14.387855398Z",
+                  "last_block_id": {
+                    "hash": "6938E34F2293ACFB59C74E9D05B9ACAEB76288296C1E3BAD286465B16582B4E2",
+                    "parts": {
+                      "total": 1,
+                      "hash": "54EFBCD6D30AAD465EEF7136FB4B7785E2D87C0454F0AACBA54340CF102706A5"
+                    }
+                  },
+                  "last_commit_hash": "C7CC541BE6876D06BC999EB2E95B0149FDBBAF986EAC493527B10D1C4E0EA7AD",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "66BD190109B15DA1C52749405BE2200461B1CCC55BB1E2958BBCC3B211EA761E",
+                  "next_validators_hash": "66BD190109B15DA1C52749405BE2200461B1CCC55BB1E2958BBCC3B211EA761E",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "843A0314FEB0E5182920EF9E9F0B1A60097CD9B640394B5F4850D82881B1BFF4",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "366232BA7B20BE68CCB38539FA26F7CD2C4BABE5"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "1045",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "6938E34F2293ACFB59C74E9D05B9ACAEB76288296C1E3BAD286465B16582B4E2",
+                    "parts": {
+                      "total": 1,
+                      "hash": "54EFBCD6D30AAD465EEF7136FB4B7785E2D87C0454F0AACBA54340CF102706A5"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "366232BA7B20BE68CCB38539FA26F7CD2C4BABE5",
+                      "timestamp": "2026-10-31T01:17:14.387855398Z",
+                      "signature": "WEfkKyseTEXzZB97VvxCIK2bIxaH+SGggOALFNifXTkkLtuzmcWq15MVPHZsfB76rsP8BH2EurInTgw84CpFAw=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "AECB4A18C14628C52CAB606B77F31401262E105FE05333D0C1D18DBF014E6E8D",
+                "parts": {
+                  "total": 1,
+                  "hash": "DA5952202FE59CA60F57026B132A0A0E8BD41D131F6D9BB591A4C9F4249DC1FD"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "80100000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6630utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "649.740000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "6497.400000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": [],
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "8dVVlyKbKXgnWYaxkkLDW1rBL/H5BKYhLwOtwKaX0TM=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe"
+            ],
+            "coin_received.amount": [
+              "6630utia",
+              "6630utia",
+              "6630utia"
+            ],
+            "coin_spent.amount": [
+              "6630utia",
+              "6630utia"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.annual_provisions": [
+              "80100000000.000000000000000000"
+            ],
+            "commission.amount": [
+              "649.740000000000000000utia"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.amount": [
+              "6630utia",
+              "6630utia"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.amount": [
+              "6630"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "commission.validator": [
+              "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe"
+            ],
+            "rewards.amount": [
+              "6497.400000000000000000utia"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.amount": [
+              "6630utia"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 21,
+        "result": {
+          "query": "tm.event = 'Tx'",
+          "data": {
+            "type": "tendermint/event/Tx",
+            "value": {
+              "TxResult": {
+                "height": "1047",
+                "tx": "CpABCo0BChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEm0KL2NlbGVzdGlhMTJsajBqZXp4ajR2amwzcDhrZGw1cWxobHZ1eXFrYTB3ZWE1N2U4Ei9jZWxlc3RpYTFnbmN4bnN2c3dreWNyZnA0eXN5ZHhuZ3EzdDloNWwyYW1rMmVzdBoJCgR1dGlhEgExEmYKUApGCh8vY29zbW9zLmNyeXB0by5zZWNwMjU2azEuUHViS2V5EiMKIQO6umLdg5BepoaOuTEcgozJ85rjiEqHAHg9Eh90Q7Bm7xIECgIIARgFEhIKDAoEdXRpYRIEMTAwMBDAmgwaQIP5Vrj3c1TgP0TgrQuH4lBk818QGaQWysnxP9qyp0Tdc7o64jQSDIgBkUM/2593us751oLQ4z5nMxxzZsZyDlM=",
+                "result": {
+                  "data": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ==",
+                  "gas_wanted": "200000",
+                  "gas_used": "67778",
+                  "events": [
+                    {
+                      "type": "coin_spent",
+                      "attributes": [
+                        {
+                          "key": "spender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1000utia",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "coin_received",
+                      "attributes": [
+                        {
+                          "key": "receiver",
+                          "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1000utia",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "transfer",
+                      "attributes": [
+                        {
+                          "key": "recipient",
+                          "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                          "index": true
+                        },
+                        {
+                          "key": "sender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1000utia",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "message",
+                      "attributes": [
+                        {
+                          "key": "sender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tx",
+                      "attributes": [
+                        {
+                          "key": "fee",
+                          "value": "1000utia",
+                          "index": true
+                        },
+                        {
+                          "key": "fee_payer",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tx",
+                      "attributes": [
+                        {
+                          "key": "acc_seq",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8/5",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tx",
+                      "attributes": [
+                        {
+                          "key": "signature",
+                          "value": "g/lWuPdzVOA/ROCtC4fiUGTzXxAZpBbKyfE/2rKnRN1zujriNBIMiAGRQz/bn3e6zvnWgtDjPmczHHNmxnIOUw==",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "message",
+                      "attributes": [
+                        {
+                          "key": "action",
+                          "value": "/cosmos.bank.v1beta1.MsgSend",
+                          "index": true
+                        },
+                        {
+                          "key": "sender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "module",
+                          "value": "bank",
+                          "index": true
+                        },
+                        {
+                          "key": "msg_index",
+                          "value": "0",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "coin_spent",
+                      "attributes": [
+                        {
+                          "key": "spender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1utia",
+                          "index": true
+                        },
+                        {
+                          "key": "msg_index",
+                          "value": "0",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "coin_received",
+                      "attributes": [
+                        {
+                          "key": "receiver",
+                          "value": "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1utia",
+                          "index": true
+                        },
+                        {
+                          "key": "msg_index",
+                          "value": "0",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "transfer",
+                      "attributes": [
+                        {
+                          "key": "recipient",
+                          "value": "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est",
+                          "index": true
+                        },
+                        {
+                          "key": "sender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "amount",
+                          "value": "1utia",
+                          "index": true
+                        },
+                        {
+                          "key": "msg_index",
+                          "value": "0",
+                          "index": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "message",
+                      "attributes": [
+                        {
+                          "key": "sender",
+                          "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                          "index": true
+                        },
+                        {
+                          "key": "msg_index",
+                          "value": "0",
+                          "index": true
+                        }
+                      ]
+                    }
+                  ],
+                  "signers": [
+                    "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+                  ]
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_received.amount": [
+              "1000utia",
+              "1utia"
+            ],
+            "tx.fee_payer": [
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+            ],
+            "tx.hash": [
+              "2B3292A69104189AB75186ABDAC721E34DC648DE23DE2C0C89E6A4DEA1B63D18"
+            ],
+            "coin_spent.spender": [
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+            ],
+            "coin_received.receiver": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est"
+            ],
+            "transfer.sender": [
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+            ],
+            "tx.acc_seq": [
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8/5"
+            ],
+            "message.action": [
+              "/cosmos.bank.v1beta1.MsgSend"
+            ],
+            "transfer.msg_index": [
+              "0"
+            ],
+            "tm.event": [
+              "Tx"
+            ],
+            "coin_spent.amount": [
+              "1000utia",
+              "1utia"
+            ],
+            "transfer.amount": [
+              "1000utia",
+              "1utia"
+            ],
+            "tx.signature": [
+              "g/lWuPdzVOA/ROCtC4fiUGTzXxAZpBbKyfE/2rKnRN1zujriNBIMiAGRQz/bn3e6zvnWgtDjPmczHHNmxnIOUw=="
+            ],
+            "message.module": [
+              "bank"
+            ],
+            "tx.height": [
+              "1047"
+            ],
+            "message.sender": [
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+              "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+            ],
+            "tx.fee": [
+              "1000utia"
+            ],
+            "message.msg_index": [
+              "0",
+              "0"
+            ],
+            "coin_spent.msg_index": [
+              "0"
+            ],
+            "coin_received.msg_index": [
+              "0"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 22,
+        "result": {
+          "query": "tm.event = 'NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "ws190-105-1",
+                  "height": "1047",
+                  "time": "2026-10-31T01:17:16.99055183Z",
+                  "last_block_id": {
+                    "hash": "AECB4A18C14628C52CAB606B77F31401262E105FE05333D0C1D18DBF014E6E8D",
+                    "parts": {
+                      "total": 1,
+                      "hash": "DA5952202FE59CA60F57026B132A0A0E8BD41D131F6D9BB591A4C9F4249DC1FD"
+                    }
+                  },
+                  "last_commit_hash": "4ACD372866C4122D06345658FB9F5ADA25E287C64A03C45426539FF5843E78DD",
+                  "data_hash": "AE9B70BC72C2917EF8F5BEAB9E7959FCF413E0D4C2C04F6EF08D14FC8B04E292",
+                  "validators_hash": "66BD190109B15DA1C52749405BE2200461B1CCC55BB1E2958BBCC3B211EA761E",
+                  "next_validators_hash": "66BD190109B15DA1C52749405BE2200461B1CCC55BB1E2958BBCC3B211EA761E",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "F1D55597229B2978275986B19242C35B5AC12FF1F904A6212F03ADC0A697D133",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "366232BA7B20BE68CCB38539FA26F7CD2C4BABE5"
+                },
+                "data": {
+                  "txs": [
+                    "CpABCo0BChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEm0KL2NlbGVzdGlhMTJsajBqZXp4ajR2amwzcDhrZGw1cWxobHZ1eXFrYTB3ZWE1N2U4Ei9jZWxlc3RpYTFnbmN4bnN2c3dreWNyZnA0eXN5ZHhuZ3EzdDloNWwyYW1rMmVzdBoJCgR1dGlhEgExEmYKUApGCh8vY29zbW9zLmNyeXB0by5zZWNwMjU2azEuUHViS2V5EiMKIQO6umLdg5BepoaOuTEcgozJ85rjiEqHAHg9Eh90Q7Bm7xIECgIIARgFEhIKDAoEdXRpYRIEMTAwMBDAmgwaQIP5Vrj3c1TgP0TgrQuH4lBk818QGaQWysnxP9qyp0Tdc7o64jQSDIgBkUM/2593us751oLQ4z5nMxxzZsZyDlM="
+                  ],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "1046",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "AECB4A18C14628C52CAB606B77F31401262E105FE05333D0C1D18DBF014E6E8D",
+                    "parts": {
+                      "total": 1,
+                      "hash": "DA5952202FE59CA60F57026B132A0A0E8BD41D131F6D9BB591A4C9F4249DC1FD"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "366232BA7B20BE68CCB38539FA26F7CD2C4BABE5",
+                      "timestamp": "2026-10-31T01:17:16.99055183Z",
+                      "signature": "aRAeQ0LZqMp+odirux9zX1n1HQigDAW9KzW+0SxUZbL1Q6ViTn5RuJbu3ltI//Yceo3J/up010BJr+BW5WlHBA=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "585D7E85C78FE065450AAC8CC6DC9D171714CE9A69A664DAEA60FA34CA7BD3B6",
+                "parts": {
+                  "total": 1,
+                  "hash": "015DBA2878431EE0676B1E4DDB169D5BE637E5C89AF6972C23CFC4A5A235FCF0"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "80100000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "6606utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "647.388000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "6473.880000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "tx_results": [
+                  {
+                    "code": 0,
+                    "data": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ==",
+                    "log": "",
+                    "info": "",
+                    "gas_wanted": "200000",
+                    "gas_used": "67778",
+                    "events": [
+                      {
+                        "type": "coin_spent",
+                        "attributes": [
+                          {
+                            "key": "spender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1000utia",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "coin_received",
+                        "attributes": [
+                          {
+                            "key": "receiver",
+                            "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1000utia",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "transfer",
+                        "attributes": [
+                          {
+                            "key": "recipient",
+                            "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                            "index": true
+                          },
+                          {
+                            "key": "sender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1000utia",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "message",
+                        "attributes": [
+                          {
+                            "key": "sender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "tx",
+                        "attributes": [
+                          {
+                            "key": "fee",
+                            "value": "1000utia",
+                            "index": true
+                          },
+                          {
+                            "key": "fee_payer",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "tx",
+                        "attributes": [
+                          {
+                            "key": "acc_seq",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8/5",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "tx",
+                        "attributes": [
+                          {
+                            "key": "signature",
+                            "value": "g/lWuPdzVOA/ROCtC4fiUGTzXxAZpBbKyfE/2rKnRN1zujriNBIMiAGRQz/bn3e6zvnWgtDjPmczHHNmxnIOUw==",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "message",
+                        "attributes": [
+                          {
+                            "key": "action",
+                            "value": "/cosmos.bank.v1beta1.MsgSend",
+                            "index": true
+                          },
+                          {
+                            "key": "sender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "module",
+                            "value": "bank",
+                            "index": true
+                          },
+                          {
+                            "key": "msg_index",
+                            "value": "0",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "coin_spent",
+                        "attributes": [
+                          {
+                            "key": "spender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1utia",
+                            "index": true
+                          },
+                          {
+                            "key": "msg_index",
+                            "value": "0",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "coin_received",
+                        "attributes": [
+                          {
+                            "key": "receiver",
+                            "value": "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1utia",
+                            "index": true
+                          },
+                          {
+                            "key": "msg_index",
+                            "value": "0",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "transfer",
+                        "attributes": [
+                          {
+                            "key": "recipient",
+                            "value": "celestia1gncxnsvswkycrfp4ysydxngq3t9h5l2amk2est",
+                            "index": true
+                          },
+                          {
+                            "key": "sender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "amount",
+                            "value": "1utia",
+                            "index": true
+                          },
+                          {
+                            "key": "msg_index",
+                            "value": "0",
+                            "index": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "message",
+                        "attributes": [
+                          {
+                            "key": "sender",
+                            "value": "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8",
+                            "index": true
+                          },
+                          {
+                            "key": "msg_index",
+                            "value": "0",
+                            "index": true
+                          }
+                        ]
+                      }
+                    ],
+                    "codespace": "",
+                    "signers": [
+                      "celestia12lj0jezxj4vjl3p8kdl5qlhlvuyqka0wea57e8"
+                    ]
+                  }
+                ],
+                "validator_updates": [],
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "3i5wbv8IICogM+vPPuKkAqaEiQmashnyKeF5TFHm9pI=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "tm.event": [
+              "NewBlock"
+            ],
+            "coinbase.amount": [
+              "6606utia"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coin_spent.amount": [
+              "6606utia",
+              "6606utia"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.annual_provisions": [
+              "80100000000.000000000000000000"
+            ],
+            "mint.amount": [
+              "6606"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "coin_received.amount": [
+              "6606utia",
+              "6606utia",
+              "6606utia"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "commission.amount": [
+              "647.388000000000000000utia"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "transfer.amount": [
+              "6606utia",
+              "6606utia"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "commission.validator": [
+              "celestiavaloper1ex2eg6tvyzktxmleuvq28y2k7asz3as80fx4qe"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "6473.880000000000000000utia"
+            ]
+          }
+        }
+      }
+    ],
+    "ordering_normalization": "independent subscription goroutines may interleave; require both Tx and NewBlock at the transaction height, retain but do not assert their relative frame order"
+  },
+  "timing": {
+    "server_ping_ms": 27003,
+    "no_pong_close_ms": 30001,
+    "client_ping_pong_payload": "probe",
+    "normalization": "server ping: 26-29s; no-pong close: 29-33s; heights/order are relational, not absolute"
+  },
+  "pressure": {
+    "requests_written": 2000,
+    "server_close_ms": 12000,
+    "close_error": "write tcp 127.0.0.1:38032-\u003e127.0.0.1:28657: write: connection reset by peer",
+    "health_after_disconnect": true,
+    "large_frame_bytes": 16777216,
+    "large_frame_error": "write tcp 127.0.0.1:56246-\u003e127.0.0.1:28657: write: connection reset by peer"
+  }
+}

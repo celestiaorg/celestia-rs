@@ -859,3 +859,147 @@ fn rpc_corpus_matches_go() {
     }
     assert!(!failed, "RPC responses differ from Go");
 }
+
+async fn wait_for_clients(bus: &EventBus, expected: usize, wait: std::time::Duration) {
+    tokio::time::timeout(wait, async {
+        while bus.num_clients() != expected {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("event-bus clients={}, want {expected}", bus.num_clients()));
+}
+
+async fn ws_exchange(
+    ws: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    request: &str,
+) -> String {
+    use futures_util::{SinkExt as _, StreamExt as _};
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        request.into(),
+    ))
+    .await
+    .unwrap();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(3), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
+            return text.to_string();
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn websocket_disconnects_reclaim_subscriptions_and_allow_reconnect() {
+    use futures_util::{SinkExt as _, StreamExt as _};
+
+    let dir = corpus_root().join("blob");
+    let corpus: Value = serde_json::from_slice(&gunzip(&dir.join("corpus.json.gz"))).unwrap();
+    let status = corpus["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "/status")
+        .map(|entry| serde_json::from_str::<Value>(entry["resp"].as_str().unwrap()).unwrap())
+        .unwrap();
+    let frozen =
+        nodestore::genesis::pub_key_from_json(&status["result"]["validator_info"]["pub_key"])
+            .unwrap();
+    let mut chain = tokio::task::spawn_blocking(move || build_chain(&dir, &status, frozen))
+        .await
+        .unwrap();
+    let env = Arc::get_mut(&mut chain.env).unwrap();
+    env.config.max_subscription_clients = 1;
+    env.config.websocket_write_buffer_size = 1;
+    let env = Arc::clone(&chain.env);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(listener, Arc::clone(&env)));
+    let endpoint = format!("ws://{addr}/websocket");
+    let subscribe = r#"{"jsonrpc":"2.0","id":1,"method":"subscribe","params":{"query":"tm.event = 'NewBlock'"}}"#;
+
+    // Dropping an aborted peer task must tear down its subscription and free
+    // the only external client slot.
+    let (mut ws, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut ws, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    wait_for_clients(&env.event_bus, 1, std::time::Duration::from_secs(1)).await;
+    let peer = tokio::spawn(async move {
+        std::future::pending::<()>().await;
+        drop(ws);
+    });
+    peer.abort();
+    let _ = peer.await;
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+
+    // A non-reading peer fills the one-entry response queue. The ten-second
+    // socket write deadline terminates both halves and runs unsubscribe_all.
+    let (mut blocked, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut blocked, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    for id in 10..2010 {
+        blocked
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"genesis","params":{{}}}}"#).into(),
+            ))
+            .await
+            .unwrap();
+    }
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(18)).await;
+    drop(blocked);
+
+    // A peer that does not poll the server ping sends no pong. The 30-second
+    // inbound deadline closes it and reclaims the subscription.
+    let (mut idle, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut idle, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(33)).await;
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            match idle.next().await {
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)) | Err(_)) | None => {
+                    break;
+                }
+                Some(Ok(_)) => {}
+            }
+        }
+    })
+    .await;
+    assert!(
+        closed.is_ok(),
+        "idle socket remained open after read deadline"
+    );
+
+    // The only client slot is immediately reusable by a healthy connection.
+    let (mut healthy, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut healthy, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    assert!(
+        ws_exchange(
+            &mut healthy,
+            r#"{"jsonrpc":"2.0","id":2,"method":"unsubscribe_all","params":{}}"#,
+        )
+        .await
+        .contains(r#""result":{}"#)
+    );
+    healthy.close(None).await.unwrap();
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+    server.abort();
+}
