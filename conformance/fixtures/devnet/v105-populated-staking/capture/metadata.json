@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T00:46:13.360218+00:00",
+  "method": "fresh tagged v10.5.0 staking workload and live four-transport capture on one isolated devnet",
+  "state_identity": {
+    "chain_id": "rs-devnet-1",
+    "tip_height": 40,
+    "query_height": 39,
+    "app_hash": "2548799D666680E79FB0348BE3BD0C4D0FDD13A432D49319166C60D097CAAB55"
+  },
+  "source_sha256": {
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "conformance/devnet/build-bins.sh": "031981d6ca5911c603e96305472cabab9384a455ec257ba0a58beedfababab39",
+    "conformance/devnet/workloads/staking.sh": "7dc1941be775b034d88e3af1de22d68dbdf3dbebc9c2a1d7c518137f76c60a43",
+    "conformance/devnet/workloads/wait_tx.py": "4c2b030c1a33d1f1a3c319d601ccdff5a21350de4aeda085b1fa431117c64b63",
+    "conformance/mainnet-rpc/populated-staking/capture.sh": "1f8c9bc65f4642446216cd6cd54450742372f7e5bd63565690f959f81f56ed5d",
+    "conformance/mainnet-rpc/populated-staking/record.sh": "23bdd453d433d0419eae274a7ee389c347e7bcff5bf4c7cc6e0e43049e5f23b8",
+    "conformance/mainnet-rpc/populated-staking/devnet-keys/node_key.json": "22724f2bec82615694df7eb435b70eeded93d83b1d71e3bacb2ed62e10a23d32",
+    "conformance/mainnet-rpc/populated-staking/devnet-keys/priv_validator_key.json": "5da16574f43331fa2f13e8c9122ba15d8e50c5efe20085dc42cf64134383f6cb",
+    "conformance/rpccorpus/recorder/cmd/populated-queries/main.go": "6c475e759039a34b85c83eaa06c6cf7e8e04e7c170e6fed6bab964321b2e686a",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65"
+  },
+  "artifact_sha256": {
+    "genesis.json": "a191d2e60a8a45c27caf38f8af682ecc570b8432556749e9156362971d0f8fc6",
+    "abci.rec": "eb4955ca7b1daa79e567736d93d9d88954c5f9a65335f192c8a6b45022dbb1a3",
+    "blocks.bin.gz": "96e19b27b51af1007d8992cc1f5901912c4feeaa4d1f8dfd748a192ca00a47b4",
+    "meta.json": "2d76d42ea2e11d587f34aa78035a4e12ac7bcf3a5005b8ca0ef55cecf729980c",
+    "capture/transports.json": "f70e5f7e5b2ce6f69f51430fd490ded82e701bb6daccdc1eea0482e56a2ced65",
+    "capture/mainnet-observation.json": "fed404910eb9a2ae80491cb919fdd257367c0625224f3d8cdb893d2a050d8d23",
+    "capture/app-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "capture/core-build.json": "6ee1bf69127b84b0d7b1b86f464e15fa2bd987b1b6d7f57fb176ad894506ae7e",
+    "capture/app-build-info.txt": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "capture/core-build-info.txt": "ea78f3d97ff377573e71a95d598eb872d795525176107ea61c5934cc69c3e61a",
+    "go-build-info.txt": "a6b2dfe6409e716b1eec50e4101424f4b853bd6358982bbd8b60337cb21f5898",
+    "state/1.json": "946cd16e30ef3391e91a7a522d4246e3284d12ce99b83fae115a6946412d6f90",
+    "state/40.json": "253edd36cac5a1ff83b04bb7eec25f24485459b4e102a3714cb45cad587f9e3d"
+  },
+  "omissions": [
+    "proof validity is not asserted by this transport capture",
+    "non-staking module workloads remain separate captures",
+    "invalid UTF-8 and Any/JSON edge cases remain separate captures",
+    "pagination proof validity is deferred to the proof-focused capture",
+    "staking lifecycle completion times beyond height 40 are not covered"
+  ],
+  "regenerate": "MAINNET_OBSERVATION=<fresh observation.json> conformance/mainnet-rpc/populated-staking/record.sh"
+}

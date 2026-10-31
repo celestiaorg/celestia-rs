@@ -1,0 +1,1469 @@
+{
+  "schema_version": 1,
+  "chain_id": "rs-devnet-1",
+  "tip_height": 40,
+  "query_height": 39,
+  "app_hash": "2548799D666680E79FB0348BE3BD0C4D0FDD13A432D49319166C60D097CAAB55",
+  "state": {
+    "abci_info": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "response": {
+          "data": "celestia-app",
+          "version": "10.5.0",
+          "app_version": "10",
+          "last_block_height": "40",
+          "last_block_app_hash": "9C5dNXQoEbAnWirXGyFZI0+M+jSigSV+Ss+evKJuLyA=",
+          "timeout_info": {
+            "timeout_propose": "3000000000",
+            "timeout_propose_delta": "500000000",
+            "timeout_prevote": "2000000000",
+            "timeout_prevote_delta": "500000000",
+            "timeout_precommit": "3000000000",
+            "timeout_precommit_delta": "500000000",
+            "timeout_commit": "500000000",
+            "delayed_precommit_timeout": "2100000000"
+          }
+        }
+      }
+    },
+    "committing_block": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "block_id": {
+          "hash": "E5C56394960FDB6A084FF32E682158FD75760B433D896C82A58D7A7CB7FA03E2",
+          "parts": {
+            "total": 1,
+            "hash": "098BBE174382899E7B71D4400C12C75AE977004F7CC23E3DA3653545733C6312"
+          }
+        },
+        "block": {
+          "header": {
+            "version": {
+              "block": "11",
+              "app": "10"
+            },
+            "chain_id": "rs-devnet-1",
+            "height": "40",
+            "time": "2026-10-31T00:46:05.750381342Z",
+            "last_block_id": {
+              "hash": "43DF3A6DAF6DDC3CF0E497122947A93F1F7E81DB349586C2289F52A1D6167660",
+              "parts": {
+                "total": 1,
+                "hash": "224B3FAE2DCB8E56A2B622BC1030494E28E93C95CFCC04D08C26E820AE7B25F3"
+              }
+            },
+            "last_commit_hash": "246F43A3EF1B7BF2F28A06BE36DF75DB95D63EBB471E180709E542E7EA5CA30B",
+            "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+            "validators_hash": "84C5117D4AE8408F26C6EA14E425B48A291C2B029B9F21423B37FC9327490592",
+            "next_validators_hash": "84C5117D4AE8408F26C6EA14E425B48A291C2B029B9F21423B37FC9327490592",
+            "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+            "app_hash": "2548799D666680E79FB0348BE3BD0C4D0FDD13A432D49319166C60D097CAAB55",
+            "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            "proposer_address": "B11A450E0B927371B53CAF7D9589486B52A20CC0"
+          },
+          "data": {
+            "txs": [],
+            "square_size": "1"
+          },
+          "evidence": {
+            "evidence": []
+          },
+          "last_commit": {
+            "height": "39",
+            "round": 0,
+            "block_id": {
+              "hash": "43DF3A6DAF6DDC3CF0E497122947A93F1F7E81DB349586C2289F52A1D6167660",
+              "parts": {
+                "total": 1,
+                "hash": "224B3FAE2DCB8E56A2B622BC1030494E28E93C95CFCC04D08C26E820AE7B25F3"
+              }
+            },
+            "signatures": [
+              {
+                "block_id_flag": 2,
+                "validator_address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+                "timestamp": "2026-10-31T00:46:05.750381342Z",
+                "signature": "3zk6OH1HoWl9+BFvIzZLlCpEuUqm77R21pKnPyi7AcR071+rG/Ivc7h4ePFQu0MQVHKHs+iS0d7F9phDd1t7Ag=="
+              },
+              {
+                "block_id_flag": 1,
+                "validator_address": "",
+                "timestamp": "0001-01-01T00:00:00Z",
+                "signature": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    "status": {
+      "jsonrpc": "2.0",
+      "id": -1,
+      "result": {
+        "node_info": {
+          "protocol_version": {
+            "p2p": "8",
+            "block": "11",
+            "app": "10"
+          },
+          "id": "1f32728dd4e508e8ff9a9233c5903e67babe9072",
+          "listen_addr": "tcp://0.0.0.0:33656",
+          "network": "rs-devnet-1",
+          "version": "0.38.17",
+          "channels": "40202223303860613231505100",
+          "moniker": "val0",
+          "other": {
+            "tx_index": "off",
+            "rpc_address": "tcp://127.0.0.1:33657"
+          }
+        },
+        "sync_info": {
+          "latest_block_hash": "E5C56394960FDB6A084FF32E682158FD75760B433D896C82A58D7A7CB7FA03E2",
+          "latest_app_hash": "2548799D666680E79FB0348BE3BD0C4D0FDD13A432D49319166C60D097CAAB55",
+          "latest_block_height": "40",
+          "latest_block_time": "2026-10-31T00:46:05.750381342Z",
+          "earliest_block_hash": "A217FC8643D710E51354115CE264E42BE5C2A178A1B605FE0A241F7661A947F9",
+          "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+          "earliest_block_height": "1",
+          "earliest_block_time": "2026-01-01T00:00:00Z",
+          "catching_up": false
+        },
+        "validator_info": {
+          "address": "B11A450E0B927371B53CAF7D9589486B52A20CC0",
+          "pub_key": {
+            "type": "tendermint/PubKeyEd25519",
+            "value": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+          },
+          "voting_power": "5044"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "validators-first",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "120418012001",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a013212190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMhIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "555"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMhIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a013212190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "823"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [
+              {
+                "operator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+                "consensus_pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+                },
+                "jailed": false,
+                "status": "BOND_STATUS_BONDED",
+                "tokens": "5044000000",
+                "delegator_shares": "5044000000.000000000000000000",
+                "description": {
+                  "moniker": "val0-edited",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": "edited"
+                },
+                "unbonding_height": "0",
+                "unbonding_time": "1970-01-01T00:00:00Z",
+                "commission": {
+                  "commission_rates": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "update_time": "2026-01-01T00:00:00Z"
+                },
+                "min_self_delegation": "2",
+                "unbonding_on_hold_ref_count": "0",
+                "unbonding_ids": []
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-next-key",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "12190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21801",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.key=FOsQS%2FvExMpfS7WgKAPCByF2Oqqy\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a01311200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEgA=",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "503"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEgA=",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a01311200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "790"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [
+              {
+                "operator_address": "celestiavaloper1avgyh77ycn997ja45q5q8ss8y9mr424j5036e2",
+                "consensus_pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "NwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8="
+                },
+                "jailed": false,
+                "status": "BOND_STATUS_BONDED",
+                "tokens": "55000000",
+                "delegator_shares": "55000000.000000000000000000",
+                "description": {
+                  "moniker": "val1",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "unbonding_height": "0",
+                "unbonding_time": "1970-01-01T00:00:00Z",
+                "commission": {
+                  "commission_rates": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "update_time": "2026-10-31T00:44:37.306337700Z"
+                },
+                "min_self_delegation": "1",
+                "unbonding_on_hold_ref_count": "0",
+                "unbonding_ids": []
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-offset",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "1206100118012001",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a013112021002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEgIQAg==",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "507"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEgIQAg==",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a013112021002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "790"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [
+              {
+                "operator_address": "celestiavaloper1avgyh77ycn997ja45q5q8ss8y9mr424j5036e2",
+                "consensus_pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "NwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8="
+                },
+                "jailed": false,
+                "status": "BOND_STATUS_BONDED",
+                "tokens": "55000000",
+                "delegator_shares": "55000000.000000000000000000",
+                "description": {
+                  "moniker": "val1",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "unbonding_height": "0",
+                "unbonding_time": "1970-01-01T00:00:00Z",
+                "commission": {
+                  "commission_rates": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "update_time": "2026-10-31T00:44:37.306337700Z"
+                },
+                "min_self_delegation": "1",
+                "unbonding_on_hold_ref_count": "0",
+                "unbonding_ids": []
+              }
+            ],
+            "pagination": {
+              "next_key": null,
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-reverse",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "120418012801",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.limit=1\u0026pagination.reverse=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a013112170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEhcKFRQo/1xtV9jP1JK2+0JhRTbtZI4B/Q==",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "535"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "Cv8BCjZjZWxlc3RpYXZhbG9wZXIxYXZneWg3N3ljbjk5N2phNDVxNXE4c3M4eTltcjQyNGo1MDM2ZTISQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogNwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8gAyoINTUwMDAwMDAyGjU1MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwOgYKBHZhbDFKAFJLCjsKEjEwMDAwMDAwMDAwMDAwMDAwMBISMjAwMDAwMDAwMDAwMDAwMDAwGhExMDAwMDAwMDAwMDAwMDAwMBIMCPXzlNcGEKSviZIBWgExEhcKFRQo/1xtV9jP1JK2+0JhRTbtZI4B/Q==",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0aff010a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a35303336653212430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2037015c40170e137abad29292ac3570012e90f023e78a75ec125cc0a6c374edef20032a083535303030303030321a35353030303030303030303030303030303030303030303030303a060a0476616c314a00524b0a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a113130303030303030303030303030303030120c08f5f394d70610a4af8992015a013112170a151428ff5c6d57d8cfd492b6fb42614536ed648e01fd"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "816"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [
+              {
+                "operator_address": "celestiavaloper1avgyh77ycn997ja45q5q8ss8y9mr424j5036e2",
+                "consensus_pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "NwFcQBcOE3q60pKSrDVwAS6Q8CPninXsElzApsN07e8="
+                },
+                "jailed": false,
+                "status": "BOND_STATUS_BONDED",
+                "tokens": "55000000",
+                "delegator_shares": "55000000.000000000000000000",
+                "description": {
+                  "moniker": "val1",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "unbonding_height": "0",
+                "unbonding_time": "1970-01-01T00:00:00Z",
+                "commission": {
+                  "commission_rates": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "update_time": "2026-10-31T00:44:37.306337700Z"
+                },
+                "min_self_delegation": "1",
+                "unbonding_on_hold_ref_count": "0",
+                "unbonding_ids": []
+              }
+            ],
+            "pagination": {
+              "next_key": "FCj/XG1X2M/Ukrb7QmFFNu1kjgH9",
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-empty-page",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "120510e7071801",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.offset=999\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "1200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "EgA=",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "159"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "EgA=",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "1200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "60"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-invalid-cursor",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "12050a01ff1801",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.key=%2Fw%3D%3D\u0026pagination.limit=1",
+      "transports": {
+        "abci": {
+          "response_hex": "1200",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "EgA=",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "159"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "EgA=",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "1200"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "60"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [],
+            "pagination": {
+              "next_key": null,
+              "total": "0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validators-historical",
+      "method": "/cosmos.staking.v1beta1.Query/Validators",
+      "request_hex": "120418012001",
+      "height": 29,
+      "rest_path": "/cosmos/staking/v1beta1/validators?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a013212190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMhIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "29",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "555"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMhIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "29",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "29"
+            ]
+          },
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a013212190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "823"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "29"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validators": [
+              {
+                "operator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+                "consensus_pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+                },
+                "jailed": false,
+                "status": "BOND_STATUS_BONDED",
+                "tokens": "5044000000",
+                "delegator_shares": "5044000000.000000000000000000",
+                "description": {
+                  "moniker": "val0-edited",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": "edited"
+                },
+                "unbonding_height": "0",
+                "unbonding_time": "1970-01-01T00:00:00Z",
+                "commission": {
+                  "commission_rates": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "update_time": "2026-01-01T00:00:00Z"
+                },
+                "min_self_delegation": "2",
+                "unbonding_on_hold_ref_count": "0",
+                "unbonding_ids": []
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "validator",
+      "method": "/cosmos.staking.v1beta1.Query/Validator",
+      "request_hex": "0a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e37",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/validators/celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+      "transports": {
+        "abci": {
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a0132",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMg==",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "519"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CowCCjZjZWxlc3RpYXZhbG9wZXIxOXJsNGNtMmhtcjhhZnk0a2xkcHh6M2ZrYTRqZ3VxMGFnNDc1bjcSQwodL2Nvc21vcy5jcnlwdG8uZWQyNTUxOS5QdWJLZXkSIgogU2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leAgAyoKNTA0NDAwMDAwMDIcNTA0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDoVCgt2YWwwLWVkaXRlZCoGZWRpdGVkSgBSRQo7ChIxMDAwMDAwMDAwMDAwMDAwMDASEjIwMDAwMDAwMDAwMDAwMDAwMBoRMTAwMDAwMDAwMDAwMDAwMDASBgiA8tbKBloBMg==",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0a8c020a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e3712430a1d2f636f736d6f732e63727970746f2e656432353531392e5075624b657912220a2053652dfb44ffca317a7983493ebaa33689acbf2ac79307bada5fb44ac1b795e020032a0a35303434303030303030321c353034343030303030303030303030303030303030303030303030303a150a0b76616c302d6564697465642a066564697465644a0052450a3b0a1231303030303030303030303030303030303012123230303030303030303030303030303030301a11313030303030303030303030303030303012060880f2d6ca065a0132"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "751"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "validator": {
+              "operator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+              "consensus_pubkey": {
+                "@type": "/cosmos.crypto.ed25519.PubKey",
+                "key": "U2Ut+0T/yjF6eYNJPrqjNomsvyrHkwe62l+0SsG3leA="
+              },
+              "jailed": false,
+              "status": "BOND_STATUS_BONDED",
+              "tokens": "5044000000",
+              "delegator_shares": "5044000000.000000000000000000",
+              "description": {
+                "moniker": "val0-edited",
+                "identity": "",
+                "website": "",
+                "security_contact": "",
+                "details": "edited"
+              },
+              "unbonding_height": "0",
+              "unbonding_time": "1970-01-01T00:00:00Z",
+              "commission": {
+                "commission_rates": {
+                  "rate": "0.100000000000000000",
+                  "max_rate": "0.200000000000000000",
+                  "max_change_rate": "0.010000000000000000"
+                },
+                "update_time": "2026-01-01T00:00:00Z"
+              },
+              "min_self_delegation": "2",
+              "unbonding_on_hold_ref_count": "0",
+              "unbonding_ids": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "delegations-first",
+      "method": "/cosmos.staking.v1beta1.Query/DelegatorDelegations",
+      "request_hex": "0a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076120418012001",
+      "height": 39,
+      "rest_path": "/cosmos/staking/v1beta1/delegations/celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9a010a85010a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076123663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e371a1a343430303030303030303030303030303030303030303030303012100a04757469611208343430303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpoBCoUBCi9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdhI2Y2VsZXN0aWF2YWxvcGVyMTlybDRjbTJobXI4YWZ5NGtsZHB4ejNma2E0amd1cTBhZzQ3NW43Gho0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMBIQCgR1dGlhEgg0NDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "403"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpoBCoUBCi9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdhI2Y2VsZXN0aWF2YWxvcGVyMTlybDRjbTJobXI4YWZ5NGtsZHB4ejNma2E0amd1cTBhZzQ3NW43Gho0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMBIQCgR1dGlhEgg0NDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0a9a010a85010a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076123663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e371a1a343430303030303030303030303030303030303030303030303012100a04757469611208343430303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "345"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "delegation_responses": [
+              {
+                "delegation": {
+                  "delegator_address": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                  "validator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+                  "shares": "44000000.000000000000000000"
+                },
+                "balance": {
+                  "denom": "utia",
+                  "amount": "44000000"
+                }
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "delegations-historical",
+      "method": "/cosmos.staking.v1beta1.Query/DelegatorDelegations",
+      "request_hex": "0a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076120418012001",
+      "height": 29,
+      "rest_path": "/cosmos/staking/v1beta1/delegations/celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v?pagination.limit=1\u0026pagination.count_total=true",
+      "transports": {
+        "abci": {
+          "response_hex": "0a9a010a85010a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076123663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e371a1a343430303030303030303030303030303030303030303030303012100a04757469611208343430303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "CpoBCoUBCi9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdhI2Y2VsZXN0aWF2YWxvcGVyMTlybDRjbTJobXI4YWZ5NGtsZHB4ejNma2E0amd1cTBhZzQ3NW43Gho0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMBIQCgR1dGlhEgg0NDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+            "proofOps": null,
+            "height": "29",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "403"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "CpoBCoUBCi9jZWxlc3RpYTFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajNzbnIwdhI2Y2VsZXN0aWF2YWxvcGVyMTlybDRjbTJobXI4YWZ5NGtsZHB4ejNma2E0amd1cTBhZzQ3NW43Gho0NDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMBIQCgR1dGlhEgg0NDAwMDAwMBIZChUU6xBL+8TEyl9LtaAoA8IHIXY6qrIQAg==",
+                "proofOps": null,
+                "height": "29",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "29"
+            ]
+          },
+          "response_hex": "0a9a010a85010a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076123663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e371a1a343430303030303030303030303030303030303030303030303012100a04757469611208343430303030303012190a1514eb104bfbc4c4ca5f4bb5a02803c20721763aaab21002"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "345"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "29"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "delegation_responses": [
+              {
+                "delegation": {
+                  "delegator_address": "celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v",
+                  "validator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+                  "shares": "44000000.000000000000000000"
+                },
+                "balance": {
+                  "denom": "utia",
+                  "amount": "44000000"
+                }
+              }
+            ],
+            "pagination": {
+              "next_key": "FOsQS/vExMpfS7WgKAPCByF2Oqqy",
+              "total": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "delegation-rewards",
+      "method": "/cosmos.distribution.v1beta1.Query/DelegationTotalRewards",
+      "request_hex": "0a2f63656c6573746961316176677968373779636e3939376a6134357135713873733879396d723432346a33736e723076",
+      "height": 39,
+      "rest_path": "/cosmos/distribution/v1beta1/delegators/celestia1avgyh77ycn997ja45q5q8ss8y9mr424j3snr0v/rewards",
+      "transports": {
+        "abci": {
+          "response_hex": "0a580a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a353033366532121e0a04757469611216313035303437363031303938323533303030303030300a580a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e37121e0a0475746961121631393033363430383038373835393830303030303030121e0a0475746961121632393534313136383139373638353130303030303030",
+          "body": {
+            "code": 0,
+            "log": "",
+            "info": "",
+            "index": "0",
+            "key": null,
+            "value": "ClgKNmNlbGVzdGlhdmFsb3BlcjFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajUwMzZlMhIeCgR1dGlhEhYxMDUwNDc2MDEwOTgyNTMwMDAwMDAwClgKNmNlbGVzdGlhdmFsb3BlcjE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWc0NzVuNxIeCgR1dGlhEhYxOTAzNjQwODA4Nzg1OTgwMDAwMDAwEh4KBHV0aWESFjI5NTQxMTY4MTk3Njg1MTAwMDAwMDA=",
+            "proofOps": null,
+            "height": "39",
+            "codespace": ""
+          }
+        },
+        "comet_rpc": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "439"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "response": {
+                "code": 0,
+                "log": "",
+                "info": "",
+                "index": "0",
+                "key": null,
+                "value": "ClgKNmNlbGVzdGlhdmFsb3BlcjE5cmw0Y20yaG1yOGFmeTRrbGRweHozZmthNGpndXEwYWc0NzVuNxIeCgR1dGlhEhYxOTAzNjQwODA4Nzg1OTgwMDAwMDAwClgKNmNlbGVzdGlhdmFsb3BlcjFhdmd5aDc3eWNuOTk3amE0NXE1cThzczh5OW1yNDI0ajUwMzZlMhIeCgR1dGlhEhYxMDUwNDc2MDEwOTgyNTMwMDAwMDAwEh4KBHV0aWESFjI5NTQxMTY4MTk3Njg1MTAwMDAwMDA=",
+                "proofOps": null,
+                "height": "39",
+                "codespace": ""
+              }
+            }
+          }
+        },
+        "cosmos_grpc": {
+          "headers": {
+            "content-type": [
+              "application/grpc+proto"
+            ],
+            "x-cosmos-block-height": [
+              "39"
+            ]
+          },
+          "response_hex": "0a580a3663656c657374696176616c6f7065723139726c34636d32686d7238616679346b6c6470787a33666b61346a6775713061673437356e37121e0a04757469611216313930333634303830383738353938303030303030300a580a3663656c657374696176616c6f706572316176677968373779636e3939376a6134357135713873733879396d723432346a353033366532121e0a0475746961121631303530343736303130393832353330303030303030121e0a0475746961121632393534313136383139373638353130303030303030"
+        },
+        "rest": {
+          "status": 200,
+          "headers": {
+            "Content-Length": [
+              "359"
+            ],
+            "Content-Type": [
+              "application/json"
+            ],
+            "Date": [
+              "Sat, 31 Oct 2026 00:46:10 GMT"
+            ],
+            "Grpc-Metadata-Content-Type": [
+              "application/grpc+cosmos-sdk-grpc-codec"
+            ],
+            "Grpc-Metadata-X-Cosmos-Block-Height": [
+              "39"
+            ],
+            "X-Server-Time": [
+              "1793407570"
+            ]
+          },
+          "body": {
+            "rewards": [
+              {
+                "validator_address": "celestiavaloper19rl4cm2hmr8afy4kldpxz3fka4jguq0ag475n7",
+                "reward": [
+                  {
+                    "denom": "utia",
+                    "amount": "1903.640808785980000000"
+                  }
+                ]
+              },
+              {
+                "validator_address": "celestiavaloper1avgyh77ycn997ja45q5q8ss8y9mr424j5036e2",
+                "reward": [
+                  {
+                    "denom": "utia",
+                    "amount": "1050.476010982530000000"
+                  }
+                ]
+              }
+            ],
+            "total": [
+              {
+                "denom": "utia",
+                "amount": "2954.116819768510000000"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "normalizations": [
+    {
+      "case": "delegation-rewards",
+      "policy": "validator-address-order",
+      "reason": "Go iterates the validator rewards map independently on each transport"
+    }
+  ],
+  "omissions": [
+    "proof validity is not asserted by this transport capture",
+    "non-staking module workloads remain separate captures",
+    "invalid UTF-8 and Any/JSON edge cases remain separate captures"
+  ]
+}
