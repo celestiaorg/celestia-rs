@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from unittest import mock
 import urllib.error
+import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
@@ -252,6 +253,8 @@ def fixture(root: pathlib.Path) -> None:
             go_response["wire"] = blob(response_wire)
             if is_websocket:
                 go_response["websocket_frames"] = [{"opcode": "text", "payload": blob(response_wire)}]
+            else:
+                go_response["http_headers"].insert(0, ["content-length", str(len(response_wire))])
         rs_response = copy.deepcopy(go_response)
         difference = None
         if name == "comet-commit-disconnect":
@@ -265,20 +268,38 @@ def fixture(root: pathlib.Path) -> None:
             for record in (go_response, rs_response):
                 record.update({
                     "wire": blob(b""), "grpc_status": None, "grpc_message": None,
-                    "initial_metadata": [], "client_error": "context deadline exceeded",
+                    "initial_metadata": None, "trailing_metadata": None,
+                    "client_error": "context deadline exceeded",
                     "process_effect": "client-canceled",
                 })
         elif name == "server-timeout":
             go_response["process_effect"] = "server-timeout"
             rs_response["process_effect"] = "server-timeout"
         if expected == "policy-difference":
-            go_response["process_effect"] = "abci-connection-closed"
-            go_response["client_error"] = "grpc-transport-closed"
-            go_response["grpc_status"] = None
-            rs_response["process_effect"] = "continued"
-            rs_response["grpc_status"] = 3
-            rs_response["grpc_message"] = "invalid-argument-malformed-protobuf"
-            difference = {"policy": "rust-bounded-error-go-abci-socket-close", "go": "abci-connection-closed", "rs": "invalid-argument-malformed-protobuf"}
+            go_response.update({
+                "process_effect": "continued", "client_error": None, "grpc_status": 13,
+                "grpc_message": "grpc: error unmarshalling request: unexpected EOF",
+            })
+            rs_response.update({
+                "process_effect": "continued", "client_error": None, "grpc_status": 13,
+                "grpc_message": "grpc: error unmarshalling request: failed to decode Protobuf message: invalid varint",
+            })
+            difference = {
+                "policy": "grpc-malformed-request-message",
+                "go": "grpc: error unmarshalling request: unexpected EOF",
+                "rs": "grpc: error unmarshalling request: failed to decode Protobuf message: invalid varint",
+            }
+        if is_grpc and go_response["grpc_status"] is not None:
+            for side, record in (("go", go_response), ("rs", rs_response)):
+                status_metadata = ["grpc-status", str(record["grpc_status"])]
+                message = record["grpc_message"]
+                message_metadata = (["grpc-message", urllib.parse.quote(message, safe="!#$&'()*+,-./:;<=>?@[]^_`{|}~")]
+                                    if message else None)
+                if side == "rs" and message:
+                    record["initial_metadata"].extend([message_metadata, status_metadata])
+                    record["trailing_metadata"] = None
+                else:
+                    record["trailing_metadata"] = ([message_metadata] if message_metadata else []) + [status_metadata]
         release_ns = input_cases[-1]["boundary"]["barrier_release_monotonic_ms"] * 1_000_000
         driver_receipt = {
                 "barrier_release_monotonic_ns": release_ns,
@@ -423,9 +444,10 @@ def fixture(root: pathlib.Path) -> None:
             code, log = 32, "account sequence mismatch"
         if transport == "comet-jsonrpc":
             value = {"id": 187, "result": {"code": code, "log": log, "hash": tx_hash}}
+            wire = harness.canonical_json(value)
             return {
-                "transport": transport, "wire": blob(harness.canonical_json(value)), "http_status": 200,
-                "http_headers": [["content-type", "application/json"]], "json": value,
+                "transport": transport, "wire": blob(wire), "http_status": 200,
+                "http_headers": [["content-length", str(len(wire))], ["content-type", "application/json"]], "json": value,
                 "grpc_status": None, "grpc_message": None, "initial_metadata": [], "trailing_metadata": [],
                 "websocket_frames": [], "websocket_handshake": None, "client_error": None, "process_effect": None,
             }
@@ -433,7 +455,8 @@ def fixture(root: pathlib.Path) -> None:
         return {
             "transport": transport, "wire": blob(harness.protobuf_bytes_field(1, check_tx)), "http_status": None,
             "http_headers": [], "json": None, "grpc_status": 0, "grpc_message": "",
-            "initial_metadata": [["content-type", "application/grpc"]], "trailing_metadata": [],
+            "initial_metadata": [["content-type", "application/grpc"]],
+            "trailing_metadata": [["grpc-status", "0"]],
             "websocket_frames": [], "websocket_handshake": None, "client_error": None, "process_effect": None,
         }
     for lifecycle_name, phases in phase_sets.items():
@@ -554,8 +577,8 @@ def fixture(root: pathlib.Path) -> None:
     support = {
         "capture_started": NOW.isoformat(), "capture_completed": (NOW + dt.timedelta(seconds=35)).isoformat(),
         "candidate_commit": CANDIDATE,
-        "normalizations": ["lowercase-header-names", "trim-optional-whitespace", "sort-declared-multivalue-headers"],
-        "intentional_differences": ["raw-malformed-protobuf"],
+        "normalizations": list(verify.EXPECTED_NORMALIZATIONS),
+        "intentional_differences": list(verify.EXPECTED_INTENTIONAL_DIFFERENCES),
         "exclusions": ["http.date", "http.x-server-time"],
     }
     harness.finalize_manifest(root, support)
@@ -584,6 +607,26 @@ class VerifyTest(unittest.TestCase):
         support = manifest["support"]
         (self.root / "manifest.json").unlink()
         harness.finalize_manifest(self.root, support)
+
+    def rewrite_paired_case(self, name: str, mutate) -> None:
+        path = self.root / "paired-responses.json"
+        value = harness.strict_json(path.read_bytes())
+        row = next(row for row in value["cases"] if row["name"] == name)
+        mutate(row)
+        row["driver"]["go_result_sha256"] = hashlib.sha256(harness.canonical_json(row["go"])).hexdigest()
+        row["driver"]["rs_result_sha256"] = hashlib.sha256(harness.canonical_json(row["rs"])).hexdigest()
+        row["raw_driver"] = blob(harness.canonical_json({
+            "name": name, **row["driver"], "go": row["go"], "rs": row["rs"],
+        }))
+        dump(path, value)
+        manifest = harness.strict_json((self.root / "manifest.json").read_bytes())
+        support = manifest["support"]
+        (self.root / "manifest.json").unlink()
+        harness.finalize_manifest(self.root, support)
+
+    def response(self, name: str, side: str = "go") -> dict:
+        value = harness.strict_json((self.root / "paired-responses.json").read_bytes())
+        return copy.deepcopy(next(row for row in value["cases"] if row["name"] == name)[side])
 
     def reject(self, code: str, function) -> None:
         with self.assertRaisesRegex((verify.VerificationError, harness.HarnessError), code):
@@ -626,6 +669,38 @@ class VerifyTest(unittest.TestCase):
                 value["cases"][0][side]["wire"] = blob(b'{"different":true}')
         self.rewrite("paired-responses.json", mutate)
         self.reject("response.driver|response.wire", lambda: verify.verify(self.root))
+
+    def test_json_wire_format_is_normalized_after_raw_binding(self):
+        def mutate(row):
+            record = row["rs"]
+            wire = json.dumps(record["json"], indent=2, ensure_ascii=False).encode()
+            record["wire"] = blob(wire)
+            next(header for header in record["http_headers"]
+                 if header[0] == "content-length")[1] = str(len(wire))
+        self.rewrite_paired_case("rest-invalid-base64", mutate)
+        verify.EXPECTED_SEMANTIC_DIGEST = verify.semantic_digest(self.root)
+        verify.verify(self.root)
+
+    def test_substantive_empty_string_and_null_still_differ(self):
+        def mutate(row):
+            for side, data in (("go", ""), ("rs", None)):
+                record = row[side]
+                record["json"]["result"]["data"] = data
+                wire = harness.canonical_json(record["json"])
+                record["wire"] = blob(wire)
+                lengths = [header for header in record["http_headers"]
+                           if header[0] == "content-length"]
+                if lengths:
+                    lengths[0][1] = str(len(wire))
+        self.rewrite_paired_case("comet-jsonrpc-commit-bank", mutate)
+        self.reject("response.exact", lambda: verify.verify(self.root))
+
+    def test_rust_only_rest_header_still_differs(self):
+        self.rewrite_paired_case(
+            "rest-invalid-base64",
+            lambda row: row["rs"]["http_headers"].append(["grpc-metadata-x-test", "present"]),
+        )
+        self.reject("response.exact", lambda: verify.verify(self.root))
 
     def test_unknown_normalization(self):
         manifest = harness.strict_json((self.root / "manifest.json").read_bytes())
@@ -921,11 +996,26 @@ class VerifyTest(unittest.TestCase):
         self.reject("response.driver|response.websocket", lambda: verify.verify(self.root))
 
     def test_websocket_fixed_key_accept(self):
-        def mutate(value):
-            for side in ("go", "rs"):
-                value["cases"][18][side]["websocket_handshake"]["headers"][1][1] = "arbitrary-equal-value"
-        self.rewrite("paired-responses.json", mutate)
-        self.reject("response.driver|response.websocket", lambda: verify.verify(self.root))
+        response = self.response("comet-websocket-async-bank")
+        next(header for header in response["websocket_handshake"]["headers"]
+             if header[0] == "sec-websocket-accept")[1] = "arbitrary-equal-value"
+        self.reject("response.websocket", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_websocket_status_is_exact_integer(self):
+        response = self.response("comet-websocket-async-bank")
+        response["websocket_handshake"]["status"] = True
+        self.reject("response.websocket", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_websocket_upgrade_tokens_are_case_normalized(self):
+        go = self.response("comet-websocket-async-bank", "go")
+        rs = self.response("comet-websocket-async-bank", "rs")
+        for row in rs["websocket_handshake"]["headers"]:
+            if row[0] == "connection":
+                row[1] = "upgrade"
+            elif row[0] == "upgrade":
+                row[1] = "WEBSOCKET"
+        self.assertEqual(verify.verify_response_record(go, "go"),
+                         verify.verify_response_record(rs, "rs"))
 
     def test_grpc_metadata_required(self):
         def mutate(value):
@@ -933,6 +1023,77 @@ class VerifyTest(unittest.TestCase):
             value["cases"][1]["rs"]["initial_metadata"] = []
         self.rewrite("paired-responses.json", mutate)
         self.reject("response.driver|response.grpc", lambda: verify.verify(self.root))
+
+    def test_response_status_rejects_boolean(self):
+        response = self.response("rest-invalid-base64")
+        response["http_status"] = True
+        self.reject("response.status", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_null_metadata_is_grpc_only(self):
+        response = self.response("rest-invalid-base64")
+        response["initial_metadata"] = None
+        self.reject("response.metadata", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_null_metadata_arrays_are_allowed(self):
+        response = self.response("core-grpc-cancel")
+        self.assertIsNone(response["initial_metadata"])
+        self.assertIsNone(response["trailing_metadata"])
+        verify.verify_response_record(response, "canceled")
+
+    def test_content_length_must_match_wire(self):
+        response = self.response("rest-invalid-base64")
+        next(row for row in response["http_headers"] if row[0] == "content-length")[1] = "999"
+        self.reject("response.http", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_content_length_must_be_unique(self):
+        response = self.response("rest-invalid-base64")
+        length = next(row[1] for row in response["http_headers"] if row[0] == "content-length")
+        response["http_headers"].append(["content-length", length])
+        self.reject("response.http", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_content_length_must_be_unsigned_decimal(self):
+        response = self.response("rest-invalid-base64")
+        next(row for row in response["http_headers"] if row[0] == "content-length")[1] = "+71"
+        self.reject("response.http", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_message_percent_encoding_is_strict(self):
+        response = self.response("raw-malformed-protobuf", "rs")
+        next(row for row in response["initial_metadata"] if row[0] == "grpc-message")[1] = "%ZZ"
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_message_requires_controls_to_be_percent_encoded(self):
+        response = self.response("raw-malformed-protobuf", "rs")
+        next(row for row in response["initial_metadata"] if row[0] == "grpc-message")[1] = "bad\nvalue"
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_message_requires_non_ascii_to_be_percent_encoded(self):
+        response = self.response("raw-malformed-protobuf", "rs")
+        next(row for row in response["initial_metadata"] if row[0] == "grpc-message")[1] = "é"
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_status_requires_canonical_range_and_spelling(self):
+        for status, encoded in ((99, "99"), (0, "00")):
+            with self.subTest(status=status, encoded=encoded):
+                response = self.response("cosmos-grpc-no-message")
+                response["grpc_status"] = status
+                next(row for row in response["trailing_metadata"] if row[0] == "grpc-status")[1] = encoded
+                self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_status_metadata_must_be_unique(self):
+        response = self.response("raw-malformed-protobuf", "go")
+        response["initial_metadata"].append(["grpc-status", "13"])
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_grpc_metadata_must_match_top_level(self):
+        response = self.response("raw-malformed-protobuf", "go")
+        next(row for row in response["trailing_metadata"] if row[0] == "grpc-status")[1] = "3"
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
+
+    def test_nonempty_grpc_message_requires_metadata(self):
+        response = self.response("raw-malformed-protobuf", "go")
+        response["trailing_metadata"] = [row for row in response["trailing_metadata"]
+                                         if row[0] != "grpc-message"]
+        self.reject("response.grpc", lambda: verify.verify_response_record(response, "mutated"))
 
     def test_capacity_is_tied_to_input_sizes(self):
         self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("tx_b", blob(b"")))
@@ -1018,7 +1179,10 @@ class VerifyTest(unittest.TestCase):
             for side in ("go", "rs"):
                 response = value["mempool_capacity"][side][1]["response"]
                 response["json"]["result"]["log"] = "unrelated rejection"
-                response["wire"] = blob(harness.canonical_json(response["json"]))
+                wire = harness.canonical_json(response["json"])
+                response["wire"] = blob(wire)
+                next(header for header in response["http_headers"]
+                     if header[0] == "content-length")[1] = str(len(wire))
                 operation = value["mempool_capacity"][side][1]["operation"]
                 operation["result_sha256"] = hashlib.sha256(harness.canonical_json(response)).hexdigest()
         self.rewrite("cleanup.json", mutate)
@@ -1289,10 +1453,35 @@ class VerifyTest(unittest.TestCase):
         self.reject("case.jsonrpc", lambda: verify.verify(self.root))
 
     def test_malformed_process_outcome(self):
-        def mutate(value):
-            value["cases"][27]["go"]["process_effect"] = "continued"
-        self.rewrite("paired-responses.json", mutate)
-        self.reject("response.driver|response.grpc|response.policy", lambda: verify.verify(self.root))
+        self.rewrite_paired_case(
+            "raw-malformed-protobuf",
+            lambda row: row["go"].__setitem__("process_effect", "abci-connection-closed"),
+        )
+        self.reject("response.policy", lambda: verify.verify(self.root))
+
+    def test_malformed_status_is_exact(self):
+        def mutate(row):
+            row["go"]["grpc_status"] = 3
+            next(metadata for metadata in row["go"]["trailing_metadata"]
+                 if metadata[0] == "grpc-status")[1] = "3"
+        self.rewrite_paired_case("raw-malformed-protobuf", mutate)
+        self.reject("response.policy", lambda: verify.verify(self.root))
+
+    def test_malformed_message_is_exact(self):
+        def mutate(row):
+            message = "different message"
+            row["go"]["grpc_message"] = message
+            next(metadata for metadata in row["go"]["trailing_metadata"]
+                 if metadata[0] == "grpc-message")[1] = urllib.parse.quote(message)
+        self.rewrite_paired_case("raw-malformed-protobuf", mutate)
+        self.reject("response.policy", lambda: verify.verify(self.root))
+
+    def test_malformed_declaration_is_exact(self):
+        self.rewrite(
+            "paired-responses.json",
+            lambda value: value["cases"][27]["intentional_difference"].__setitem__("policy", "other"),
+        )
+        self.reject("response.policy", lambda: verify.verify(self.root))
 
     def test_blob_raw_request(self):
         self.rewrite("blob-proxy.json", lambda value: value.__setitem__("raw_request", blob(b'{}')))

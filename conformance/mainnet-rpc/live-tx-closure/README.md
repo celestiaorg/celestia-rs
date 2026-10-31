@@ -77,9 +77,14 @@ current-release provenance, topology and sanitized configuration, the 28-case
 matrix, paired pre-state and request identity, admission timing, response
 equivalence, inclusion and final-state equality, cancellation/timeout cleanup,
 BlobTx proxy provenance, process identity and resource cadence, and continuous
-free-space samples. The only allowed response difference is the fully spelled
-out terminal malformed-protobuf outcome. HTTP `Date` and the Go-only
-`x-server-time` value are the only excluded header values.
+free-space samples. Parsed HTTP and WebSocket JSON is compared strictly while
+the original wire remains hash-bound. The verifier validates a unique decimal
+`content-length` when present before omitting it, merges and binds gRPC status
+and message metadata across initial and trailing metadata, and lowercases only
+WebSocket `connection` and `upgrade` token values. The only allowed response
+difference is the fully spelled out terminal malformed-protobuf status and
+message outcome. HTTP `Date` and the Go-only `x-server-time` value are the only
+excluded header values.
 
 The lifecycle artifact is event based. It records every capacity,
 disconnect, cancellation and timeout phase with monotonic time, transaction

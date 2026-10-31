@@ -930,8 +930,11 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
         "requests": {"go": request_record, "rs": request_record},
         "request_semantics": case_semantics(transport, mode),
     }
-    difference = ({"policy": "rust-bounded-error-go-abci-socket-close", "go": "abci-connection-closed",
-                   "rs": "invalid-argument-malformed-protobuf"} if name == "raw-malformed-protobuf" else None)
+    difference = ({
+        "policy": "grpc-malformed-request-message",
+        "go": "grpc: error unmarshalling request: unexpected EOF",
+        "rs": "grpc: error unmarshalling request: failed to decode Protobuf message: invalid varint",
+    } if name == "raw-malformed-protobuf" else None)
     raw_driver = harness.canonical_json(driver)
     response_row = {"name": name, "admission": admission, "go": driver["go"], "rs": driver["rs"],
                     "excluded_headers": list(harness.HTTP_EXCLUDED_HEADERS), "intentional_difference": difference,

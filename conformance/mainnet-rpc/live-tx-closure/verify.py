@@ -12,6 +12,7 @@ import ipaddress
 import pathlib
 import re
 import sys
+import urllib.parse
 from typing import Any
 
 import harness
@@ -35,6 +36,16 @@ SEMANTIC_FILES = (
     "paired-responses.json", "inclusions.json", "cleanup.json",
     "resources.json", "blob-proxy.json",
 )
+EXPECTED_NORMALIZATIONS = [
+    "lowercase-header-names",
+    "trim-optional-whitespace",
+    "sort-declared-multivalue-headers",
+    "canonicalize-strict-json-bodies",
+    "validate-and-omit-content-length",
+    "merge-grpc-status-message-metadata",
+    "lowercase-websocket-upgrade-tokens",
+]
+EXPECTED_INTENTIONAL_DIFFERENCES = ["raw-malformed-protobuf"]
 # Set to the independently reviewed digest after the real capture. Keeping this
 # unset makes a source-only candidate fail closed rather than admitting mutable
 # paired facts by checksum alone.
@@ -370,6 +381,76 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
         require(normalized == full["normal"][node], "config.full", f"{node} timeout full config has another delta")
 
 
+def _metadata(value: Any, label: str, *, nullable: bool) -> list[list[str]]:
+    if value is None:
+        require(nullable, "response.metadata", f"{label}: null metadata is not allowed")
+        return []
+    require(isinstance(value, list), "response.metadata", f"{label}: metadata is not an array")
+    try:
+        return harness.stable_headers(value)
+    except harness.HarnessError as error:
+        raise VerificationError(f"response.metadata: {label}: {error}") from error
+
+
+def _grpc_message(value: str, label: str) -> str:
+    require(re.fullmatch(r"(?:[\x20-\x24\x26-\x7e]|%[0-9A-Fa-f]{2})*", value) is not None,
+            "response.grpc", f"{label}: malformed grpc-message percent encoding")
+    try:
+        return urllib.parse.unquote_to_bytes(value).decode("utf-8", "strict")
+    except UnicodeDecodeError as error:
+        raise VerificationError(f"response.grpc: {label}: grpc-message is not UTF-8") from error
+
+
+def _grpc_metadata(initial: list[list[str]], trailing: list[list[str]], status: int | None,
+                   message: str | None, label: str) -> tuple[list[list[str]], list[list[str]]]:
+    statuses = [value for name, value in initial + trailing if name == "grpc-status"]
+    messages = [value for name, value in initial + trailing if name == "grpc-message"]
+    if status is None:
+        require(not statuses and not messages and message is None,
+                "response.grpc", f"{label}: metadata status exists without top-level status")
+    else:
+        require(type(status) is int and 0 <= status <= 16 and len(statuses) == 1 and
+                statuses[0] == str(status),
+                "response.grpc", f"{label}: metadata status differs from top-level status")
+        require(message is not None, "response.grpc", f"{label}: top-level message is absent")
+        if messages:
+            require(len(messages) == 1 and _grpc_message(messages[0], label) == message,
+                    "response.grpc", f"{label}: metadata message differs from top-level message")
+        else:
+            require(message == "", "response.grpc",
+                    f"{label}: nonempty top-level message is absent from metadata")
+    return (
+        [[name, value] for name, value in initial if name not in {"grpc-status", "grpc-message"}],
+        [[name, value] for name, value in trailing if name not in {"grpc-status", "grpc-message"}],
+    )
+
+
+def _http_headers(headers: list[list[str]], wire: bytes, label: str) -> list[list[str]]:
+    lengths = [value for name, value in headers if name == "content-length"]
+    require(len(lengths) <= 1, "response.http", f"{label}: duplicate content-length")
+    if lengths:
+        require(lengths[0].isascii() and lengths[0].isdecimal() and int(lengths[0]) == len(wire),
+                "response.http", f"{label}: content-length differs from wire size")
+    return [[name, value] for name, value in headers if name != "content-length"]
+
+
+def _websocket_headers(headers: list[list[str]], label: str) -> list[list[str]]:
+    result = copy.deepcopy(headers)
+    for name in ("connection", "upgrade", "sec-websocket-accept"):
+        require(sum(key == name for key, _ in result) == 1,
+                "response.websocket", f"{label}: {name} header count differs")
+    for row in result:
+        if row[0] == "connection":
+            tokens = [token.strip().lower() for token in row[1].split(",")]
+            require(tokens and all(tokens) and "upgrade" in tokens,
+                    "response.websocket", f"{label}: connection tokens differ")
+            row[1] = ", ".join(tokens)
+        elif row[0] == "upgrade":
+            require(row[1].lower() == "websocket", "response.websocket", f"{label}: upgrade differs")
+            row[1] = row[1].lower()
+    return result
+
+
 def verify_response_record(record: dict[str, Any], label: str) -> dict[str, Any]:
     fields = {
         "transport", "wire", "http_status", "http_headers", "json", "grpc_status",
@@ -378,21 +459,22 @@ def verify_response_record(record: dict[str, Any], label: str) -> dict[str, Any]
     }
     harness.require_fields(record, fields, label)
     wire = None if record["wire"] is None else harness.decode_blob(record["wire"], f"{label}: wire")
-    http_headers = harness.stable_headers(record["http_headers"])
-    initial = harness.stable_headers(record["initial_metadata"])
-    trailing = harness.stable_headers(record["trailing_metadata"])
+    transport = record["transport"]
+    is_grpc = transport in {"cosmos-grpc", "core-grpc"}
+    http_headers = _metadata(record["http_headers"], f"{label}: HTTP headers", nullable=False)
+    initial = _metadata(record["initial_metadata"], f"{label}: initial metadata", nullable=is_grpc)
+    trailing = _metadata(record["trailing_metadata"], f"{label}: trailing metadata", nullable=is_grpc)
     frames = []
     for frame in record["websocket_frames"]:
         harness.require_fields(frame, {"opcode", "payload"}, f"{label}: WebSocket frame")
         require(frame["opcode"] in {"text", "binary", "close"}, "response.websocket", label)
         frames.append((frame["opcode"], harness.decode_blob(frame["payload"], f"{label}: WebSocket frame")))
     require(record["transport"] in {spec[1] for spec in harness.CASE_SPECS}, "response.transport", label)
-    require(record["http_status"] is None or isinstance(record["http_status"], int), "response.status", label)
-    require(record["grpc_status"] is None or isinstance(record["grpc_status"], int), "response.status", label)
+    require(record["http_status"] is None or type(record["http_status"]) is int, "response.status", label)
+    require(record["grpc_status"] is None or type(record["grpc_status"]) is int, "response.status", label)
     require(record["grpc_message"] is None or isinstance(record["grpc_message"], str), "response.status", label)
     require(record["client_error"] is None or isinstance(record["client_error"], str), "response.error", label)
     require(record["process_effect"] is None or isinstance(record["process_effect"], str), "response.effect", label)
-    transport = record["transport"]
     if transport in {"rest", "comet-jsonrpc", "comet-uri"}:
         concrete_disconnect = (transport == "comet-jsonrpc" and
                                record["process_effect"] == "client-disconnected-after-complete-write" and
@@ -405,12 +487,16 @@ def verify_response_record(record: dict[str, Any], label: str) -> dict[str, Any]
                 "response.http", label)
         if not concrete_disconnect:
             require(harness.strict_json(wire) == record["json"], "response.wire", f"{label}: HTTP wire/JSON differs")
+            http_headers = _http_headers(http_headers, wire, label)
+            wire = harness.canonical_json(record["json"])
     elif transport in {"cosmos-grpc", "core-grpc"}:
         concrete_socket_close = record["process_effect"] == "abci-connection-closed" and record["grpc_status"] is None
         concrete_cancel = record["process_effect"] == "client-canceled" and record["grpc_status"] is None
         require(record["http_status"] is None and wire is not None and
                 (isinstance(record["grpc_status"], int) or concrete_socket_close or concrete_cancel),
                 "response.grpc", label)
+        initial, trailing = _grpc_metadata(initial, trailing, record["grpc_status"],
+                                           record["grpc_message"], label)
         require(initial or concrete_socket_close or concrete_cancel,
                 "response.grpc", f"{label}: initial metadata empty")
         if initial:
@@ -420,8 +506,11 @@ def verify_response_record(record: dict[str, Any], label: str) -> dict[str, Any]
         require(not frames and record["websocket_handshake"] is None, "response.grpc", label)
     elif transport == "comet-websocket":
         handshake = harness.require_fields(record["websocket_handshake"], {"status", "headers", "request_id"}, f"{label}: WebSocket handshake")
-        require(handshake["status"] == 101 and handshake["request_id"] == 187, "response.websocket", label)
-        stable_handshake = harness.stable_headers(handshake["headers"])
+        require(type(handshake["status"]) is int and handshake["status"] == 101 and
+                type(handshake["request_id"]) is int and handshake["request_id"] == 187,
+                "response.websocket", label)
+        stable_handshake = _websocket_headers(
+            _metadata(handshake["headers"], f"{label}: WebSocket headers", nullable=False), label)
         header_map = {name: value for name, value in stable_handshake}
         require(header_map.get("upgrade", "").lower() == "websocket" and "upgrade" in header_map.get("connection", "").lower(),
                 "response.websocket", f"{label}: upgrade handshake differs")
@@ -432,6 +521,8 @@ def verify_response_record(record: dict[str, Any], label: str) -> dict[str, Any]
         require(len(frames) == 1 and frames[0][0] == "text" and wire == frames[0][1] and
                 harness.strict_json(wire) == record["json"],
                 "response.wire", f"{label}: WebSocket wire/frame/JSON differs")
+        wire = harness.canonical_json(record["json"])
+        frames = [("text", wire)]
     if transport in {"comet-jsonrpc", "comet-websocket"} and record["process_effect"] != "client-disconnected-after-complete-write":
         require(isinstance(record["json"], dict) and record["json"].get("id") == 187,
                 "response.jsonrpc", f"{label}: JSON-RPC id differs")
@@ -652,15 +743,17 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
                     "response.lifecycle", "server timeout case lacks concrete timeout")
         if expected == "policy-difference":
             require(response["intentional_difference"] == {
-                "policy": "rust-bounded-error-go-abci-socket-close",
-                "go": "abci-connection-closed",
-                "rs": "invalid-argument-malformed-protobuf",
+                "policy": "grpc-malformed-request-message",
+                "go": "grpc: error unmarshalling request: unexpected EOF",
+                "rs": "grpc: error unmarshalling request: failed to decode Protobuf message: invalid varint",
             }, "response.policy", name)
             require(go_projection != rs_projection, "response.policy", "concrete malformed outcomes unexpectedly equal")
-            require(go_projection["process_effect"] == "abci-connection-closed" and
-                    go_projection["client_error"] == "grpc-transport-closed" and
-                    rs_projection["process_effect"] == "continued" and rs_projection["grpc_status"] == 3 and
-                    rs_projection["grpc_message"] == "invalid-argument-malformed-protobuf",
+            require(go_projection["process_effect"] == rs_projection["process_effect"] == "continued" and
+                    go_projection["client_error"] is None and rs_projection["client_error"] is None and
+                    go_projection["grpc_status"] == rs_projection["grpc_status"] == 13 and
+                    go_projection["grpc_message"] == "grpc: error unmarshalling request: unexpected EOF" and
+                    rs_projection["grpc_message"] ==
+                    "grpc: error unmarshalling request: failed to decode Protobuf message: invalid varint",
                     "response.policy", "malformed concrete process/status outcome differs")
         else:
             require(response["intentional_difference"] is None, "response.policy", name)
@@ -1202,9 +1295,10 @@ def verify(root: pathlib.Path) -> None:
     except harness.HarnessError as error:
         raise VerificationError(f"case.manifest: {error}") from error
     support = harness.require_fields(manifest["support"], {"capture_started", "capture_completed", "candidate_commit", "normalizations", "intentional_differences", "exclusions"}, "manifest support")
-    require(support["normalizations"] == ["lowercase-header-names", "trim-optional-whitespace", "sort-declared-multivalue-headers"],
+    require(support["normalizations"] == EXPECTED_NORMALIZATIONS,
             "manifest.normalization", "normalizations differ")
-    require(support["intentional_differences"] == ["raw-malformed-protobuf"], "manifest.difference", "intentional differences differ")
+    require(support["intentional_differences"] == EXPECTED_INTENTIONAL_DIFFERENCES,
+            "manifest.difference", "intentional differences differ")
     require(support["exclusions"] == ["http.date", "http.x-server-time"], "manifest.exclusion", "exclusions differ")
     capture_started = parse_time(support["capture_started"], "capture start")
     capture_completed = parse_time(support["capture_completed"], "capture completion")
