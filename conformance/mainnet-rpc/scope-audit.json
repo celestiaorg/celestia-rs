@@ -270,7 +270,8 @@
       ],
       "scope": "Seventeen Go submission exchanges and blob input, replayed in signed sequence through Rust production Comet JSON-RPC, core gRPC, Cosmos gRPC and REST after checking two admitted pre-submission state roots",
       "normalizations": [
-        "Only the final cleanup bank-send CheckTx gas after canceled-commit/retry accepts the recorded 50319 or observed 50307; DeliverTx gas and every other recorded result field remain required"
+        "Only the final cleanup bank-send CheckTx gas after canceled-commit/retry accepts the recorded 50319 or observed 50307; DeliverTx gas and every other recorded result field remain required",
+        "Successful empty CheckTx data from the frozen legacy Go capture is null-normalized to the empty base64 string because ABCI protobuf erases Go nil-versus-non-nil empty-slice allocation; the fresh paired current-release capture remains exact"
       ],
       "known_mismatches": [
         "The timing-dependent 12-gas cleanup CheckTx difference has an unresolved cause"
@@ -288,7 +289,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs",
-            "sha256": "3d0040461d1e8c3154258020983cff96c560cbd4dda5b904c55fb73c2873c83f"
+            "sha256": "95770f7db84e26084102aad9c84c1e2fe47eb287b7738099223e96dd1832c665"
           },
           "function": "admitted_live_transactions_match_rust_production_transports"
         }
@@ -304,7 +305,7 @@
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/live-tx-closure/README.md",
-        "sha256": "34de0032628ee48362225fedef74bba8843090fa35beab9eaf801855eb342bc0"
+        "sha256": "53340f65c5a094024935cd0f2d316fb3300d35a9a7c75573221c140d89eff94b"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",

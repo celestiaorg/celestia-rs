@@ -99,6 +99,18 @@ difference is the fully spelled out terminal malformed-protobuf status and
 message outcome. HTTP `Date` and the Go-only `x-server-time` value are the only
 excluded header values.
 
+The older signed `v105-live-tx` regression fixture contains two successful
+CheckTx responses whose empty Go `[]byte` was still nil at JSON encoding and
+therefore appears as `data: null`. The fresh paired capture from the same exact
+Go app/core source commits contains successful responses with a non-nil empty
+slice and therefore `data: ""`. ABCI protobuf preserves only the empty byte
+string, not that Go allocation detail. Rust canonically emits the empty base64
+string to match the fresh active-release capture. Its legacy replay test keeps
+the old fixture bytes unchanged, asserts that the historical field is null,
+and normalizes only those two known successful CheckTx fields. This legacy
+cross-capture normalization is separate from the fresh paired verifier, where
+successful CheckTx data remains exact.
+
 The lifecycle artifact is event based. It records every capacity,
 disconnect, cancellation and timeout phase with monotonic time, transaction
 hash, local mempool size, status height and the complete transport response
