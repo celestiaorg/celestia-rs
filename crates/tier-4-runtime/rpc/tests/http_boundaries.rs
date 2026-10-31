@@ -11,6 +11,8 @@ use ctypes::proto::abci;
 use futures_util::{SinkExt as _, StreamExt as _};
 use kvdb::MemBackend;
 use rpc::{AppQuery, Environment, NodeInfo, NodeStatus, RpcConfig};
+use rustls_pki_types::CertificateDer;
+use rustls_pki_types::pem::PemObject as _;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio_rustls::TlsConnector;
@@ -518,6 +520,7 @@ const TLS_MISMATCH_KEY: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/tls/mismatch.key"
 );
+const TLS_NON_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
 
 fn tls_config(cert: &str, key: &str) -> RpcConfig {
     RpcConfig {
@@ -531,9 +534,9 @@ fn tls_config(cert: &str, key: &str) -> RpcConfig {
 }
 
 fn tls_connector(alpn: &[&[u8]]) -> TlsConnector {
-    let mut reader = BufReader::new(std::fs::File::open(TLS_CERT).unwrap());
+    let reader = BufReader::new(std::fs::File::open(TLS_CERT).unwrap());
     let mut roots = rustls::RootCertStore::empty();
-    for certificate in rustls_pemfile::certs(&mut reader) {
+    for certificate in CertificateDer::pem_reader_iter(reader) {
         roots.add(certificate.unwrap()).unwrap();
     }
     let mut config = rustls::ClientConfig::builder()
@@ -752,16 +755,46 @@ async fn tagged_go_tls_and_config_boundaries_match_or_are_bounded() {
         server.abort();
     }
 
-    // Complete bad pairs fail before accepting any plaintext fallback.
-    for config in [
-        tls_config("/definitely/missing.crt", "/definitely/missing.key"),
-        tls_config(TLS_CERT, TLS_MISMATCH_KEY),
+    // Complete bad pairs fail before accepting any plaintext fallback. A
+    // missing certificate remains an ordinary file-open error.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let error = rpc::server::serve(
+        listener,
+        environment_with_config(tls_config(
+            "/definitely/missing.crt",
+            "/definitely/missing.key",
+        )),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    assert!(
+        rpc::server::serve(
+            listener,
+            environment_with_config(tls_config(TLS_CERT, TLS_MISMATCH_KEY)),
+        )
+        .await
+        .is_err()
+    );
+
+    // Parsing an existing file without the requested PEM item preserves the
+    // explicit empty-certificate/key diagnostics used by node startup.
+    for (config, expected) in [
+        (
+            tls_config(TLS_NON_PEM, TLS_KEY),
+            "RPC TLS certificate file contains no certificates",
+        ),
+        (
+            tls_config(TLS_CERT, TLS_NON_PEM),
+            "RPC TLS key file contains no private key",
+        ),
     ] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        assert!(
-            rpc::server::serve(listener, environment_with_config(config))
-                .await
-                .is_err()
-        );
+        let error = rpc::server::serve(listener, environment_with_config(config))
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), expected);
     }
 }

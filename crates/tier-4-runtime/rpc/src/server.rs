@@ -15,6 +15,8 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, State};
 use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Version, header};
 use futures_util::{SinkExt as _, StreamExt as _};
+use rustls_pki_types::pem::PemObject as _;
+use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
@@ -1065,8 +1067,8 @@ pub async fn serve_plain(
 }
 
 fn tls_acceptor(config: &crate::env::RpcConfig) -> std::io::Result<TlsAcceptor> {
-    let mut cert_file = BufReader::new(File::open(&config.tls_cert_file)?);
-    let certificates = rustls_pemfile::certs(&mut cert_file)
+    let cert_file = BufReader::new(File::open(&config.tls_cert_file)?);
+    let certificates = CertificateDer::pem_reader_iter(cert_file)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     if certificates.is_empty() {
@@ -1075,8 +1077,10 @@ fn tls_acceptor(config: &crate::env::RpcConfig) -> std::io::Result<TlsAcceptor> 
             "RPC TLS certificate file contains no certificates",
         ));
     }
-    let mut key_file = BufReader::new(File::open(&config.tls_key_file)?);
-    let key = rustls_pemfile::private_key(&mut key_file)
+    let key_file = BufReader::new(File::open(&config.tls_key_file)?);
+    let key = PrivateKeyDer::pem_reader_iter(key_file)
+        .next()
+        .transpose()
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
         .ok_or_else(|| {
             std::io::Error::new(
