@@ -5,10 +5,12 @@ from __future__ import annotations
 import importlib.util
 import copy
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 
@@ -301,6 +303,20 @@ class SDKLifecycleVerification(unittest.TestCase):
 
 
 class ProvenanceMutationResistance(unittest.TestCase):
+    def test_capture_signature_is_self_contained_and_key_bound(self):
+        repository = Path(__file__).resolve().parents[2]
+        commit = "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059"
+        with tempfile.TemporaryDirectory() as empty_home:
+            with patch.dict(os.environ, {"HOME": empty_home}):
+                VERIFY.verify_source_commit_signature(repository, commit)
+                with patch.object(
+                    VERIFY,
+                    "CAPTURE_ALLOWED_SIGNER",
+                    VERIFY.CAPTURE_ALLOWED_SIGNER.replace("IOth0", "IAAAA"),
+                ):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        VERIFY.verify_source_commit_signature(repository, commit)
+
     def rs_receipt(self):
         commit = "1" * 40
         receipt = {

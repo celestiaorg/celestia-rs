@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import tomllib
 
 
@@ -23,6 +24,12 @@ APP_SUM = "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc="
 CORE_SUM = "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM="
 SDK_SUM = "h1:muIDlBLLXeuKiIrGA/t+k9ZLpjjRVs460XRzwh1dgqU="
 GRPC_SUM = "h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU="
+CAPTURE_SIGNER = "codex-signing"
+CAPTURE_SIGNER_FINGERPRINT = "SHA256:SbDDwaWj4doQSs2i9NvNBUQUuEROiheHdhS6dRXrnEg"
+CAPTURE_ALLOWED_SIGNER = (
+    'codex-signing namespaces="git" ssh-ed25519 '
+    "AAAAC3NzaC1lZDI1NTE5AAAAIOth0glZLGpj4gzQwSGGK1K0aseRezO1ov+RcEHHrzM1"
+)
 
 SOURCE_NAMES = [
     "conformance/grpc-lifecycle/README.md",
@@ -90,6 +97,31 @@ def source_bytes(root: Path, name: str, commit: str | None = None) -> bytes:
 
 def source_digest(root: Path, name: str, commit: str | None = None) -> str:
     return hashlib.sha256(source_bytes(root, name, commit)).hexdigest()
+
+
+def verify_source_commit_signature(source_root: Path, source_commit: str) -> None:
+    """Verify the capture commit against its repository-independent SSH trust root."""
+    assert re.fullmatch(r"[0-9a-f]{40}", source_commit)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as allowed_signers:
+        allowed_signers.write(CAPTURE_ALLOWED_SIGNER + "\n")
+        allowed_signers.flush()
+        result = subprocess.run(
+            [
+                "git", "-C", str(source_root),
+                "-c", "gpg.format=ssh",
+                "-c", f"gpg.ssh.allowedSignersFile={allowed_signers.name}",
+                "verify-commit", source_commit,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    expected = (
+        f'Good "git" signature for {CAPTURE_SIGNER} with ED25519 key '
+        f"{CAPTURE_SIGNER_FINGERPRINT}"
+    )
+    assert (result.stdout + result.stderr).strip() == expected
 
 
 def load(path: Path) -> dict:
@@ -260,8 +292,7 @@ def verify_builds(root: Path, meta: dict, source_root: Path,
     assert rs == meta["rs_build"]
     verify_rs_receipt(rs, meta["source_commit"],
                       source_digest(source_root, "Cargo.lock", source_commit))
-    subprocess.run(["git", "-C", str(source_root), "verify-commit", rs["source_commit"]],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    verify_source_commit_signature(source_root, rs["source_commit"])
 
     gzip_symbols = (root / "go-gzip-symbols.txt").read_text().splitlines()
     assert any("google.golang.org/grpc/encoding/gzip.init" in line
@@ -963,8 +994,7 @@ def main() -> None:
     assert meta["mainnet_observation"] == "mainnet-observation.json"
     source_root = Path(__file__).resolve().parents[2]
     source_commit = meta["source_commit"]
-    subprocess.run(["git", "-C", str(source_root), "verify-commit", source_commit],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    verify_source_commit_signature(source_root, source_commit)
     verify_inventory(root, meta, source_root, source_commit)
     verify_builds(root, meta, source_root, source_commit)
     verify_source_audit(meta, source_root, source_commit)
