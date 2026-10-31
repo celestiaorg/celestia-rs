@@ -221,6 +221,20 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
                     "capacity A differs from main case request")
 
     seeds = {name: checked_seed(plan["seed_artifacts"][name], f"seed {name}") for name in SEED_FILES}
+    observation = harness.strict_json(seeds["mainnet-observation.json"].read_bytes())
+    observation_responses = harness.require_fields(observation.get("responses"), {"status", "abci_info"},
+                                                   "mainnet observation responses")
+    abci_record = harness.require_fields(observation_responses["abci_info"], {"body", "sha256"},
+                                         "mainnet observation ABCI response")
+    abci_body = harness.strict_json(abci_record["body"])
+    abci_result = harness.require_fields(abci_body.get("result"), {"response"},
+                                         "mainnet observation ABCI result")
+    abci_response = harness.require_fields(abci_result["response"],
+                                           {"version", "app_version", "last_block_height", "timeout_info"},
+                                           "mainnet observation ABCI payload")
+    freshness_bound_ms = harness.consensus_freshness_bound_ms(
+        abci_response["timeout_info"]
+    )
     configs = harness.strict_json(seeds["configs.json"].read_bytes())
     harness.require_fields(configs, {*GENERATIONS, "full"}, "configs receipt")
     full_configs = harness.require_fields(configs["full"], GENERATIONS, "full configs receipt")
@@ -284,7 +298,8 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     harness.require(all(isinstance(value, str) and value for value in plan["state"].values()), "state query identity is empty")
     return {"binaries": binaries, "client": client, "driver": driver, "output": output,
             "driver_module": driver_module, "blob_proxy_module": blob_proxy_module,
-            "homes": homes, "seeds": seeds, "configs": configs, "receipts": receipts}
+            "homes": homes, "seeds": seeds, "configs": configs, "receipts": receipts,
+            "freshness_bound_ms": freshness_bound_ms}
 
 
 def rpc_url(endpoint: str, path: str, query: dict[str, str] | None = None) -> str:
@@ -322,7 +337,10 @@ def block(endpoint: str, height: int) -> tuple[dict[str, Any], Any]:
             "_observed_wall": dt.datetime.now(dt.timezone.utc)}, raw
 
 
-def common_block(endpoints: dict[str, str], minimum: int, timeout: float = 30) -> dict[str, Any]:
+def common_block(endpoints: dict[str, str], minimum: int, freshness_bound_ms: int,
+                 timeout: float = 30) -> dict[str, Any]:
+    harness.require(isinstance(freshness_bound_ms, int) and freshness_bound_ms > 0,
+                    "common block freshness bound is invalid")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         height = min(status(endpoints[f"{side}_rpc"])[0] for side in ROLES)
@@ -333,7 +351,7 @@ def common_block(endpoints: dict[str, str], minimum: int, timeout: float = 30) -
             age_ms = int((rows["go"]["_observed_wall"] - block_time).total_seconds() * 1000)
             if (stable(rows["go"]) == stable(rows["rs"]) and
                     abs(rows["go"]["observed_monotonic_ms"] - rows["rs"]["observed_monotonic_ms"]) <= 250 and
-                    -250 <= age_ms <= 1750):
+                    -250 <= age_ms <= freshness_bound_ms):
                 return rows
         time.sleep(0.05)
     raise harness.HarnessError("common block query timed out")
@@ -765,7 +783,8 @@ def case_semantics(transport: str, mode: str) -> Any:
 
 def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
     name, transport, mode, family, expected = spec
-    common = common_block(state.plan["endpoints"], state.previous_pre_height + 1)
+    common = common_block(state.plan["endpoints"], state.previous_pre_height + 1,
+                          state.checked["freshness_bound_ms"])
     state.previous_pre_height = common["go"]["height"]
     prestates = {}
     for side in ROLES:
@@ -1177,7 +1196,8 @@ def write_payloads(state: State, resources_only: bool = False) -> None:
                                                   "transport_client_sha256": state.plan["transport_client_sha256"]})
     write_new(output / "inclusions.json", {"cases": state.inclusions})
     harness.require(state.last_state is not None, "campaign has no final included state")
-    live_block = common_block(state.plan["endpoints"], state.previous_pre_height + 1)
+    live_block = common_block(state.plan["endpoints"], state.previous_pre_height + 1,
+                              state.checked["freshness_bound_ms"])
     live_states = {side: query_state(state.plan, side, live_block[side]["height"], live_block[side]["app_hash"])
                    for side in ROLES}
     harness.require(live_states["go"] == live_states["rs"], "final paired state differs")
@@ -1220,7 +1240,8 @@ def run(plan: dict[str, Any]) -> None:
         runtime = None
 
         runtime = start_generation(state, "timeout")
-        first = common_block(plan["endpoints"], state.previous_pre_height + 1)
+        first = common_block(plan["endpoints"], state.previous_pre_height + 1,
+                             state.checked["freshness_bound_ms"])
         timeout_blocks = [{"generation": "timeout", **{
             side: {key: first[side][key] for key in ("height", "block_hash", "app_hash", "time", "observed_monotonic_ms")}
             for side in ROLES

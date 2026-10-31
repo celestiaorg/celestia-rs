@@ -141,6 +141,13 @@ def verify_observation(observation: dict[str, Any], capture_started: dt.datetime
             "observation.raw", "raw status height differs")
     require(int(parsed["abci_info"]["response"]["last_block_height"]) == observation["abci_height"],
             "observation.raw", "raw ABCI height differs")
+    try:
+        freshness_bound_ms = harness.consensus_freshness_bound_ms(
+            parsed["abci_info"]["response"]["timeout_info"]
+        )
+    except (KeyError, harness.HarnessError) as error:
+        raise VerificationError(f"observation.timeouts: {error}") from error
+    require(freshness_bound_ms == 5600, "observation.timeouts", "freshness derivation differs")
 
 
 def urllib_split(value: Any) -> tuple[str, str]:

@@ -36,7 +36,10 @@ def dump(path: pathlib.Path, value: object) -> None:
 
 def observation() -> dict[str, object]:
     status = json.dumps({"result": {"node_info": {"network": "celestia"}, "sync_info": {"latest_block_height": "100"}}}, separators=(",", ":"))
-    abci = json.dumps({"result": {"response": {"version": "10.5.0", "app_version": "10", "last_block_height": "100"}}}, separators=(",", ":"))
+    timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
+    abci = json.dumps({"result": {"response": {"version": "10.5.0", "app_version": "10",
+                                                "last_block_height": "100", "timeout_info": timeout_info}}},
+                      separators=(",", ":"))
     return {
         "endpoint": "https://rpc.celestia.example",
         "observed_at": (NOW - dt.timedelta(minutes=1)).isoformat(),
@@ -709,6 +712,25 @@ class VerifyTest(unittest.TestCase):
     def test_protocol_version(self):
         self.rewrite("mainnet-observation.json", lambda value: value.__setitem__("app_protocol", 9))
         self.reject("observation.release", lambda: verify.verify(self.root))
+
+    def test_consensus_freshness_bound_uses_active_round_zero_timeouts(self):
+        timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
+        self.assertEqual(harness.consensus_freshness_bound_ms(timeout_info), 5600)
+
+    def test_consensus_timeout_rebinding_is_rejected(self):
+        def mutate(value):
+            record = value["responses"]["abci_info"]
+            body = harness.strict_json(record["body"])
+            body["result"]["response"]["timeout_info"]["timeout_propose"] = "30000000000"
+            record["body"] = harness.canonical_json(body).decode()
+            record["sha256"] = hashlib.sha256(record["body"].encode()).hexdigest()
+        self.rewrite("mainnet-observation.json", mutate)
+        self.reject("observation.timeouts", lambda: verify.verify(self.root))
+
+    def test_consensus_timeout_inventory_is_exact(self):
+        timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
+        timeout_info["unreviewed_timeout"] = "1"
+        self.reject("timeout inventory differs", lambda: harness.consensus_freshness_bound_ms(timeout_info))
 
     def test_listener_binary_receipt_binding(self):
         self.rewrite("topology.json", lambda value: value["generations"]["normal"]["listeners"][0].__setitem__("executable_sha256", "f" * 64))

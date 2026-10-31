@@ -26,6 +26,16 @@ HTTP_EXCLUDED_HEADERS = ("date", "x-server-time")
 ORDER_INSENSITIVE_HEADERS = ("access-control-allow-headers", "access-control-allow-methods")
 FIXED_WEBSOCKET_KEY = "MDEyMzQ1Njc4OWFiY2RlZg=="
 FIXED_WEBSOCKET_ACCEPT = "BACScCJPNqyz+UBoqMH89VmURoA="
+ACTIVE_TIMEOUT_INFO_NS = {
+    "timeout_propose": 3_000_000_000,
+    "timeout_propose_delta": 500_000_000,
+    "timeout_prevote": 2_000_000_000,
+    "timeout_prevote_delta": 500_000_000,
+    "timeout_precommit": 3_000_000_000,
+    "timeout_precommit_delta": 500_000_000,
+    "timeout_commit": 500_000_000,
+    "delayed_precommit_timeout": 2_100_000_000,
+}
 
 CASE_SPECS = (
     ("rest-invalid-base64", "rest", "sync", "transport", "rejected"),
@@ -63,6 +73,26 @@ CASE_NAMES = tuple(spec[0] for spec in CASE_SPECS)
 
 class HarnessError(ValueError):
     """A capture condition failed and the run cannot become evidence."""
+
+
+def consensus_freshness_bound_ms(timeout_info: Any) -> int:
+    """Return the round-zero header-to-observation bound for the active release."""
+    require(isinstance(timeout_info, dict) and set(timeout_info) == set(ACTIVE_TIMEOUT_INFO_NS),
+            "active consensus timeout inventory differs")
+    parsed: dict[str, int] = {}
+    for name, expected in ACTIVE_TIMEOUT_INFO_NS.items():
+        value = timeout_info[name]
+        require(isinstance(value, str) and value.isdecimal(), f"active consensus {name} is invalid")
+        parsed[name] = int(value)
+        require(parsed[name] == expected, f"active consensus {name} differs")
+    # Header time is the previous commit's weighted-median precommit time. A
+    # healthy round-zero successor is therefore observable within its delayed
+    # precommit and commit waits, plus one complete proposal window.
+    nanoseconds = (parsed["delayed_precommit_timeout"] + parsed["timeout_commit"] +
+                   parsed["timeout_propose"])
+    require(nanoseconds > 0 and nanoseconds % 1_000_000 == 0,
+            "active consensus freshness bound is invalid")
+    return nanoseconds // 1_000_000
 
 
 def require(condition: bool, message: str) -> None:
