@@ -296,7 +296,7 @@ fn get_node_info() -> QResult<cmt::GetNodeInfoResponse> {
                 .get()
                 .cloned()
                 .unwrap_or_else(|| cmt::VersionInfo {
-                    name: "celestia-app".into(),
+                    name: crate::APPLICATION_NAME.into(),
                     app_name: "celestia-rs".into(),
                     version: env!("CARGO_PKG_VERSION").into(),
                     ..cmt::VersionInfo::default()
@@ -312,7 +312,7 @@ static BUILD_INFO: std::sync::OnceLock<cmt::VersionInfo> = std::sync::OnceLock::
 /// toolchain for `GetNodeInfo` (Go's `version.NewInfo()` fields).
 pub fn set_build_info(version: &str, git_commit: &str, build_tags: &str, toolchain: &str) {
     let _ = BUILD_INFO.set(cmt::VersionInfo {
-        name: "celestia-app".into(),
+        name: crate::APPLICATION_NAME.into(),
         app_name: "celestia-rs".into(),
         version: version.into(),
         git_commit: git_commit.into(),

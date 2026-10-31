@@ -8,7 +8,170 @@
 //! be reproduced, with the reason). Responses in Go map order are compared canonically
 //! (`querycorpus::comparable`).
 
-use devnet_conformance::querycorpus::{check_abci, check_rest, corpus_dir};
+use celestia_proto::cosmos::base::tendermint::v1beta1::{AbciQueryRequest, AbciQueryResponse};
+use devnet_conformance::querycorpus::{
+    AbciCase, AbciResponse, RestCase, check_abci, check_rest, corpus_dir,
+};
+use prost::Message as _;
+
+/// Old unversioned Go recordings predate the explicit compatibility-release
+/// policy. Only their empty version payload is different; every other ABCI
+/// response field must still match. Fresh release captures compare directly.
+fn legacy_empty_version(case: &AbciCase, ours: &AbciResponse) -> bool {
+    if case.path == "/app/version" {
+        if case.response.code != 0
+            || !case.response.value.is_empty()
+            || ours.value != hex::encode(app::COMPATIBILITY_VERSION)
+        {
+            return false;
+        }
+        let mut expected = case.response.clone();
+        expected.value.clone_from(&ours.value);
+        return expected == *ours;
+    }
+
+    // The Comet query corpus also calls /app/version through Cosmos's
+    // ABCIQuery gRPC wrapper. Decode both protobuf layers so this exception
+    // is tied to the nested route and successful empty legacy value, rather
+    // than to one frozen request/response byte string.
+    if case.path != "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery" {
+        return false;
+    }
+    let Some(request) = hex::decode(&case.data)
+        .ok()
+        .and_then(|bytes| AbciQueryRequest::decode(bytes.as_slice()).ok())
+    else {
+        return false;
+    };
+    if request.path != "/app/version" {
+        return false;
+    }
+    let Some(mut expected_inner) = hex::decode(&case.response.value)
+        .ok()
+        .and_then(|bytes| AbciQueryResponse::decode(bytes.as_slice()).ok())
+    else {
+        return false;
+    };
+    let Some(actual_inner) = hex::decode(&ours.value)
+        .ok()
+        .and_then(|bytes| AbciQueryResponse::decode(bytes.as_slice()).ok())
+    else {
+        return false;
+    };
+    if expected_inner.code != 0
+        || !expected_inner.value.is_empty()
+        || actual_inner.value != app::COMPATIBILITY_VERSION.as_bytes()
+    {
+        return false;
+    }
+    expected_inner.value.clone_from(&actual_inner.value);
+    if expected_inner != actual_inner {
+        return false;
+    }
+    let mut expected = case.response.clone();
+    expected.value.clone_from(&ours.value);
+    expected == *ours
+}
+
+#[test]
+fn legacy_version_adapter_is_narrow() {
+    let request = AbciQueryRequest {
+        path: "/app/version".into(),
+        height: 15,
+        ..AbciQueryRequest::default()
+    };
+    let recorded = AbciQueryResponse {
+        height: 15,
+        codespace: "sdk".into(),
+        ..AbciQueryResponse::default()
+    };
+    let mut current = recorded.clone();
+    current.value = app::COMPATIBILITY_VERSION.as_bytes().to_vec();
+    let case = AbciCase {
+        path: "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery".into(),
+        data: hex::encode(request.encode_to_vec()),
+        height: 15,
+        prove: false,
+        missing_response: false,
+        response: AbciResponse {
+            value: hex::encode(recorded.encode_to_vec()),
+            height: 15,
+            ..AbciResponse::default()
+        },
+    };
+    let ours = AbciResponse {
+        value: hex::encode(current.encode_to_vec()),
+        ..case.response.clone()
+    };
+    assert!(legacy_empty_version(&case, &ours));
+
+    let mut changed_envelope = ours.clone();
+    changed_envelope.height += 1;
+    assert!(!legacy_empty_version(&case, &changed_envelope));
+
+    let mut changed_inner = current;
+    changed_inner.log = "different".into();
+    let mut changed_inner_response = ours;
+    changed_inner_response.value = hex::encode(changed_inner.encode_to_vec());
+    assert!(!legacy_empty_version(&case, &changed_inner_response));
+
+    let rest = RestCase {
+        method: "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery".into(),
+        url: "/cosmos/base/tendermint/v1beta1/abci_query?height=15&path=%2Fapp%2Fversion".into(),
+        height: None,
+        status: 200,
+        body: serde_json::json!({
+            "code": 0,
+            "codespace": "sdk",
+            "height": "15",
+            "index": "0",
+            "info": "",
+            "key": null,
+            "log": "",
+            "proof_ops": null,
+            "value": null,
+        }),
+    };
+    let mut current_rest = rest.body.clone();
+    current_rest["value"] =
+        serde_json::Value::String(app::comet::to_b64(app::COMPATIBILITY_VERSION.as_bytes()));
+    assert!(legacy_empty_rest_version(&rest, 200, &current_rest));
+
+    let mut changed_rest = current_rest.clone();
+    changed_rest["height"] = serde_json::Value::String("16".into());
+    assert!(!legacy_empty_rest_version(&rest, 200, &changed_rest));
+    let mut other_route = rest;
+    other_route.url = other_route.url.replace("app%2Fversion", "app%2Fother");
+    assert!(!legacy_empty_rest_version(&other_route, 200, &current_rest));
+}
+
+fn legacy_empty_rest_version(case: &RestCase, status: u16, ours: &serde_json::Value) -> bool {
+    if case.method != "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery"
+        || case.status != 200
+        || status != 200
+    {
+        return false;
+    }
+    let Some(query) = case.url.split_once('?').map(|(_, query)| query) else {
+        return false;
+    };
+    let version_path = query.split('&').any(|pair| {
+        pair.split_once('=').is_some_and(|(key, value)| {
+            key == "path" && value.replace("%2F", "/").replace("%2f", "/") == "/app/version"
+        })
+    });
+    if !version_path
+        || case.body["code"] != 0
+        || !case.body["value"].is_null()
+        || ours["value"]
+            != serde_json::Value::String(app::comet::to_b64(app::COMPATIBILITY_VERSION.as_bytes()))
+    {
+        return false;
+    }
+    let mut expected = case.body.clone();
+    expected["value"] = ours["value"].clone();
+    expected == *ours
+}
 
 /// Requests whose Go answer depends on Go internals.
 const KNOWN_DIVERGENCES: &[(&str, &str)] = &[
@@ -46,7 +209,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
     let failures: Vec<String> = r
         .mismatches
         .iter()
-        .filter(|(c, _)| !deferred_in(&c.path, &c.data))
+        .filter(|(c, ours)| !deferred_in(&c.path, &c.data) && !legacy_empty_version(c, ours))
         .take(20)
         .map(|(c, ours)| {
             format!(
@@ -60,7 +223,7 @@ fn assert_corpus(scenario: &str) -> anyhow::Result<()> {
         "{scenario}: {} mismatches, first:\n{}",
         r.mismatches
             .iter()
-            .filter(|(c, _)| !deferred_in(&c.path, &c.data))
+            .filter(|(c, ours)| !deferred_in(&c.path, &c.data) && !legacy_empty_version(c, ours))
             .count(),
         failures.join("\n")
     );
@@ -77,6 +240,7 @@ fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
     let failures: Vec<String> = r
         .mismatches
         .iter()
+        .filter(|(c, status, body)| !legacy_empty_rest_version(c, *status, body))
         .map(|(c, status, body)| {
             format!(
                 "{} {}\n  go:   {} {}\n  rust: {status} {body}",
@@ -87,7 +251,10 @@ fn assert_rest_corpus(scenario: &str) -> anyhow::Result<()> {
     assert!(
         failures.is_empty(),
         "{scenario}: {} REST mismatches, first:\n{}",
-        failures.len(),
+        r.mismatches
+            .iter()
+            .filter(|(c, status, body)| !legacy_empty_rest_version(c, *status, body))
+            .count(),
         failures
             .iter()
             .take(20)
