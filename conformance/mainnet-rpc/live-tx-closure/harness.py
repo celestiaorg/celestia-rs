@@ -36,6 +36,9 @@ ACTIVE_TIMEOUT_INFO_NS = {
     "timeout_commit": 500_000_000,
     "delayed_precommit_timeout": 2_100_000_000,
 }
+ABCI_INFO_RESPONSE_FIELDS = {
+    "data", "version", "app_version", "last_block_height", "last_block_app_hash", "timeout_info",
+}
 
 CASE_SPECS = (
     ("rest-invalid-base64", "rest", "sync", "transport", "rejected"),

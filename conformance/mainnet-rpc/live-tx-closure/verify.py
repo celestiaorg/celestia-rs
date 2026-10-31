@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import datetime as dt
 import hashlib
@@ -135,15 +136,23 @@ def verify_observation(observation: dict[str, Any], capture_started: dt.datetime
                 "observation.hash", name)
         parsed[name] = harness.strict_json(record["body"])["result"]
     require(parsed["status"]["node_info"]["network"] == "celestia", "observation.raw", "raw chain differs")
-    require(parsed["abci_info"]["response"]["version"] == "10.5.0", "observation.raw", "raw version differs")
-    require(int(parsed["abci_info"]["response"]["app_version"]) == 10, "observation.raw", "raw app protocol differs")
+    abci_response = harness.require_fields(parsed["abci_info"]["response"], harness.ABCI_INFO_RESPONSE_FIELDS,
+                                           "observation ABCI response")
+    require(abci_response["data"] == "celestia-app" and abci_response["version"] == "10.5.0",
+            "observation.raw", "raw application identity differs")
+    require(int(abci_response["app_version"]) == 10, "observation.raw", "raw app protocol differs")
     require(int(parsed["status"]["sync_info"]["latest_block_height"]) == observation["status_height"],
             "observation.raw", "raw status height differs")
-    require(int(parsed["abci_info"]["response"]["last_block_height"]) == observation["abci_height"],
+    require(int(abci_response["last_block_height"]) == observation["abci_height"],
             "observation.raw", "raw ABCI height differs")
     try:
+        last_app_hash = base64.b64decode(abci_response["last_block_app_hash"], validate=True)
+    except (TypeError, ValueError) as error:
+        raise VerificationError("observation.raw: raw last app hash is invalid") from error
+    require(len(last_app_hash) == 32, "observation.raw", "raw last app hash length differs")
+    try:
         freshness_bound_ms = harness.consensus_freshness_bound_ms(
-            parsed["abci_info"]["response"]["timeout_info"]
+            abci_response["timeout_info"]
         )
     except (KeyError, harness.HarnessError) as error:
         raise VerificationError(f"observation.timeouts: {error}") from error

@@ -181,6 +181,19 @@ def validate_home_provenance(homes: dict[str, pathlib.Path], genesis: dict[str, 
                         f"{role} validator key does not match public genesis")
 
 
+def freshness_bound_from_observation(observation: dict[str, Any]) -> int:
+    observation_responses = harness.require_fields(observation.get("responses"), {"status", "abci_info"},
+                                                   "mainnet observation responses")
+    abci_record = harness.require_fields(observation_responses["abci_info"], {"body", "sha256"},
+                                         "mainnet observation ABCI response")
+    abci_body = harness.strict_json(abci_record["body"])
+    abci_result = harness.require_fields(abci_body.get("result"), {"response"},
+                                         "mainnet observation ABCI result")
+    abci_response = harness.require_fields(abci_result["response"], harness.ABCI_INFO_RESPONSE_FIELDS,
+                                           "mainnet observation ABCI payload")
+    return harness.consensus_freshness_bound_ms(abci_response["timeout_info"])
+
+
 def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     binaries = {
         "go": checked_executable(pathlib.Path(plan["go_binary"]), plan["go_sha256"], "Go node"),
@@ -222,19 +235,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
 
     seeds = {name: checked_seed(plan["seed_artifacts"][name], f"seed {name}") for name in SEED_FILES}
     observation = harness.strict_json(seeds["mainnet-observation.json"].read_bytes())
-    observation_responses = harness.require_fields(observation.get("responses"), {"status", "abci_info"},
-                                                   "mainnet observation responses")
-    abci_record = harness.require_fields(observation_responses["abci_info"], {"body", "sha256"},
-                                         "mainnet observation ABCI response")
-    abci_body = harness.strict_json(abci_record["body"])
-    abci_result = harness.require_fields(abci_body.get("result"), {"response"},
-                                         "mainnet observation ABCI result")
-    abci_response = harness.require_fields(abci_result["response"],
-                                           {"version", "app_version", "last_block_height", "timeout_info"},
-                                           "mainnet observation ABCI payload")
-    freshness_bound_ms = harness.consensus_freshness_bound_ms(
-        abci_response["timeout_info"]
-    )
+    freshness_bound_ms = freshness_bound_from_observation(observation)
     configs = harness.strict_json(seeds["configs.json"].read_bytes())
     harness.require_fields(configs, {*GENERATIONS, "full"}, "configs receipt")
     full_configs = harness.require_fields(configs["full"], GENERATIONS, "full configs receipt")

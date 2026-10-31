@@ -37,8 +37,10 @@ def dump(path: pathlib.Path, value: object) -> None:
 def observation() -> dict[str, object]:
     status = json.dumps({"result": {"node_info": {"network": "celestia"}, "sync_info": {"latest_block_height": "100"}}}, separators=(",", ":"))
     timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
-    abci = json.dumps({"result": {"response": {"version": "10.5.0", "app_version": "10",
-                                                "last_block_height": "100", "timeout_info": timeout_info}}},
+    abci = json.dumps({"result": {"response": {"data": "celestia-app", "version": "10.5.0",
+                                                "app_version": "10", "last_block_height": "100",
+                                                "last_block_app_hash": base64.b64encode(b"a" * 32).decode(),
+                                                "timeout_info": timeout_info}}},
                       separators=(",", ":"))
     return {
         "endpoint": "https://rpc.celestia.example",
@@ -726,6 +728,39 @@ class VerifyTest(unittest.TestCase):
             record["sha256"] = hashlib.sha256(record["body"].encode()).hexdigest()
         self.rewrite("mainnet-observation.json", mutate)
         self.reject("observation.timeouts", lambda: verify.verify(self.root))
+
+    def test_real_abci_response_inventory_is_accepted(self):
+        value = observation()
+        response = harness.strict_json(value["responses"]["abci_info"]["body"])["result"]["response"]
+        self.assertEqual(set(response), harness.ABCI_INFO_RESPONSE_FIELDS)
+        self.assertEqual(campaign.freshness_bound_from_observation(value), 5600)
+        verify.verify_observation(value, NOW)
+
+    def test_missing_real_abci_response_field_is_rejected(self):
+        def mutate(value):
+            record = value["responses"]["abci_info"]
+            body = harness.strict_json(record["body"])
+            del body["result"]["response"]["last_block_app_hash"]
+            record["body"] = harness.canonical_json(body).decode()
+            record["sha256"] = hashlib.sha256(record["body"].encode()).hexdigest()
+        self.rewrite("mainnet-observation.json", mutate)
+        mutated = harness.strict_json((self.root / "mainnet-observation.json").read_bytes())
+        self.reject("mainnet observation ABCI payload.*fields differ",
+                    lambda: campaign.freshness_bound_from_observation(mutated))
+        self.reject("observation ABCI response.*fields differ", lambda: verify.verify(self.root))
+
+    def test_extra_abci_response_field_is_rejected(self):
+        def mutate(value):
+            record = value["responses"]["abci_info"]
+            body = harness.strict_json(record["body"])
+            body["result"]["response"]["unreviewed"] = "value"
+            record["body"] = harness.canonical_json(body).decode()
+            record["sha256"] = hashlib.sha256(record["body"].encode()).hexdigest()
+        self.rewrite("mainnet-observation.json", mutate)
+        mutated = harness.strict_json((self.root / "mainnet-observation.json").read_bytes())
+        self.reject("mainnet observation ABCI payload.*fields differ",
+                    lambda: campaign.freshness_bound_from_observation(mutated))
+        self.reject("observation ABCI response.*fields differ", lambda: verify.verify(self.root))
 
     def test_consensus_timeout_inventory_is_exact(self):
         timeout_info = {name: str(value) for name, value in harness.ACTIVE_TIMEOUT_INFO_NS.items()}
