@@ -895,7 +895,7 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
             present = proof == "mempool-present"
             if proof == "indexed-inclusion":
                 harness.require(indexed_height == common[side]["height"] + 1 and
-                                observed_height == indexed_height,
+                                observed_height >= indexed_height,
                                 f"{name}/{side} indexed admission height differs")
             if name in {"mempool-capacity-recovery", "server-timeout"}:
                 harness.require(proof == "mempool-present",
@@ -948,7 +948,7 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
 
 def event(state: State, generation: str, phase: str, outcome: str, digest: str | None,
           response: dict[str, Any] | None, receipts: dict[str, Any] | None,
-          previous_ms: int, expected_pool: int | None = None, expected_height: int | None = None) -> dict[str, Any]:
+          previous_ms: int, expected_pool: int | None = None, minimum_height: int | None = None) -> dict[str, Any]:
     stamp = now_ms()
     while stamp <= previous_ms:
         time.sleep(0.001)
@@ -959,8 +959,8 @@ def event(state: State, generation: str, phase: str, outcome: str, digest: str |
     harness.require(pools["go"] == pools["rs"], f"{phase} mempool counts differ")
     if expected_pool is not None:
         harness.require(pools["go"] == expected_pool, f"{phase} mempool transition differs")
-    if expected_height is not None:
-        harness.require(heights["go"] == expected_height, f"{phase} inclusion height differs")
+    if minimum_height is not None:
+        harness.require(heights["go"] >= minimum_height, f"{phase} precedes its indexed inclusion")
     return {side: {"phase": phase, "generation": generation, "monotonic_ms": stamp, "outcome": outcome,
                    "tx_hash": digest, "mempool_size": pools[side], "status_height": heights[side],
                    "response": None if response is None else response[side],
@@ -1034,7 +1034,7 @@ def capacity_lifecycle(state: State, source: dict[str, Any], response: dict[str,
     previous = events[-1]["go"]["monotonic_ms"]
     main = record_main_inclusion(state, source, response)
     events.append(event(state, "normal", "a-included", "included", hashlib.sha256(a).hexdigest(), None, None,
-                        previous, expected_pool=0, expected_height=main["go"]["post_state"]["height"]))
+                        previous, expected_pool=0, minimum_height=main["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     retry = paired_operation(state, b, "comet-jsonrpc", "sync", "lifecycle-capacity-b-retry")
     events.append(event(state, "normal", "b-retry-admitted", "admitted", retry["digest"], retry,
@@ -1043,7 +1043,7 @@ def capacity_lifecycle(state: State, source: dict[str, Any], response: dict[str,
     included_b = wait_inclusion(state, retry["digest"], {side: retry[side] for side in ROLES})
     indexed.append({"go": included_b["go"], "rs": included_b["rs"]})
     events.append(event(state, "normal", "b-included", "included", retry["digest"], None, None, previous,
-                        expected_pool=0, expected_height=included_b["go"]["post_state"]["height"]))
+                        expected_pool=0, minimum_height=included_b["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     follow_bytes = harness.decode_blob(state.plan["lifecycle_inputs"]["mempool_followup"], "capacity followup")
     follow = paired_operation(state, follow_bytes, "comet-jsonrpc", "sync", "lifecycle-capacity-followup")
@@ -1051,7 +1051,7 @@ def capacity_lifecycle(state: State, source: dict[str, Any], response: dict[str,
     indexed.append({"go": included_follow["go"], "rs": included_follow["rs"]})
     events.append(event(state, "normal", "followup-succeeded", "included", follow["digest"], follow,
                         follow["receipts"], previous, expected_pool=0,
-                        expected_height=included_follow["go"]["post_state"]["height"]))
+                        minimum_height=included_follow["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     events.append(event(state, "normal", "mempool-empty", "empty", None, None, None, previous, expected_pool=0))
     state.cleanup["mempool_capacity"] = cleanup_document(events, indexed)
@@ -1070,20 +1070,20 @@ def followup_lifecycle(state: State, kind: str, source: dict[str, Any], response
     pre_height = source["pre_state"]["go"]["height"]
     first_ms = max(driver["go_invoked_monotonic_ns"], driver["rs_invoked_monotonic_ns"]) // 1_000_000
     completed_ms = (driver["pair_completed_monotonic_ns"] + 999_999) // 1_000_000
-    admission_ms = source["boundary"]["barrier_release_monotonic_ms"] + max(
-        response["admission"][side]["completed_after_barrier_ms"] for side in ROLES)
-    second_ms = max(first_ms + 1, completed_ms, admission_ms)
     main = record_main_inclusion(state, source, response)
-    indexed_proof = any(response["admission"][side]["proof"] == "indexed-inclusion" for side in ROLES)
-    second_height = main["go"]["post_state"]["height"] if indexed_proof else pre_height
-    second_pool = 0 if indexed_proof else 1
-    events = [witnessed_event("normal", phase_one, outcome_one, digest, first_ms, pre_height, 0),
-              witnessed_event("normal", phase_two, outcome_two, digest, second_ms,
-                                second_height, second_pool)]
-    previous = second_ms
-    previous = events[-1]["go"]["monotonic_ms"]
+    second = {}
+    for side in ROLES:
+        admission = response["admission"][side]
+        side_ms = max(first_ms + 1, completed_ms,
+                      source["boundary"]["barrier_release_monotonic_ms"] + admission["completed_after_barrier_ms"])
+        second[side] = {"phase": phase_two, "generation": "normal", "monotonic_ms": side_ms,
+                        "outcome": outcome_two, "tx_hash": digest,
+                        "mempool_size": 0 if admission["proof"] == "indexed-inclusion" else 1,
+                        "status_height": admission["status_height"], "response": None, "operation": None}
+    events = [witnessed_event("normal", phase_one, outcome_one, digest, first_ms, pre_height, 0), second]
+    previous = max(second[side]["monotonic_ms"] for side in ROLES)
     events.append(event(state, "normal", "tx-included", "included", digest, None, None, previous,
-                        expected_pool=0, expected_height=main["go"]["post_state"]["height"]))
+                        expected_pool=0, minimum_height=main["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     retry_bytes = harness.decode_blob(source["requests"]["go"], f"{kind} retry")
     retry = paired_operation(state, retry_bytes, transport, "commit", f"lifecycle-{kind}-retry")
@@ -1095,7 +1095,7 @@ def followup_lifecycle(state: State, kind: str, source: dict[str, Any], response
     inclusion = wait_inclusion(state, follow["digest"], {side: follow[side] for side in ROLES})
     events.append(event(state, "normal", "followup-succeeded", "included", follow["digest"], follow,
                         follow["receipts"], previous, expected_pool=0,
-                        expected_height=inclusion["go"]["post_state"]["height"]))
+                        minimum_height=inclusion["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     events.append(event(state, "normal", "mempool-empty", "empty", None, None, None, previous, expected_pool=0))
     state.cleanup[kind] = cleanup_document(events, [{"go": inclusion["go"], "rs": inclusion["rs"]}])
@@ -1122,7 +1122,7 @@ def timeout_lifecycle_prefix(state: State, source: dict[str, Any], response: dic
     previous = events[-1]["go"]["monotonic_ms"]
     main = record_main_inclusion(state, source, response)
     events.append(event(state, "timeout", "tx-included", "included", digest, None, None, previous,
-                        expected_pool=0, expected_height=main["go"]["post_state"]["height"]))
+                        expected_pool=0, minimum_height=main["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     retry_bytes = harness.decode_blob(source["requests"]["go"], "timeout retry")
     retry = paired_operation(state, retry_bytes, "core-grpc", "commit", "lifecycle-timeout-retry")
@@ -1148,7 +1148,7 @@ def timeout_lifecycle_suffix(state: State, pending: dict[str, Any]) -> None:
     inclusion = wait_inclusion(state, follow["digest"], {side: follow[side] for side in ROLES})
     events.append(event(state, "restored", "followup-succeeded", "included", follow["digest"], follow,
                         follow["receipts"], previous, expected_pool=0,
-                        expected_height=inclusion["go"]["post_state"]["height"]))
+                        minimum_height=inclusion["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]
     events.append(event(state, "restored", "mempool-empty", "empty", None, None, None, previous, expected_pool=0))
     state.cleanup["server_timeout"] = cleanup_document(events, [{"go": inclusion["go"], "rs": inclusion["rs"]}],

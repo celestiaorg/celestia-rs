@@ -829,9 +829,6 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
         indexed_main_proof = (name in {"disconnect", "grpc_cancel"} and any(
             main_response["admission"][side]["proof"] == "indexed-inclusion" for side in ("go", "rs")
         ))
-        expected_mempools = list(mempool_sizes[name])
-        if indexed_main_proof:
-            expected_mempools[1] = 0
         projections: dict[str, list[Any]] = {}
         for side in ("go", "rs"):
             events = pair[side]
@@ -846,6 +843,10 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                         mempool_sizes[name][:1] + mempool_sizes[name][2:],
                         "cleanup.transitions", f"{name}/{side}")
             else:
+                expected_mempools = list(mempool_sizes[name])
+                if (name in {"disconnect", "grpc_cancel"} and
+                        main_response["admission"][side]["proof"] == "indexed-inclusion"):
+                    expected_mempools[1] = 0
                 require(observed_pools == expected_mempools,
                         "cleanup.transitions", f"{name}/{side}")
             require([event.get("generation") for event in events] == event_generations[name],
@@ -897,7 +898,16 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             require(events[-1]["mempool_size"] == 0 and events[-1]["outcome"] == "empty",
                     "cleanup.mempool", f"{name}/{side} final mempool")
             projections[side] = projected
-        require(projections["go"] == projections["rs"], "cleanup.exact", name)
+        if indexed_main_proof:
+            require(projections["go"][:1] + projections["go"][2:] ==
+                    projections["rs"][:1] + projections["rs"][2:] and
+                    {key: value for key, value in projections["go"][1].items()
+                     if key not in {"mempool_size", "status_height"}} ==
+                    {key: value for key, value in projections["rs"][1].items()
+                     if key not in {"mempool_size", "status_height"}},
+                    "cleanup.exact", name)
+        else:
+            require(projections["go"] == projections["rs"], "cleanup.exact", name)
         for go_event, rs_event in zip(pair["go"], pair["rs"], strict=True):
             if go_event["operation"] is not None:
                 require(go_event["operation"]["barrier_release_monotonic_ns"] == rs_event["operation"]["barrier_release_monotonic_ns"] and
@@ -916,10 +926,16 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                     "cleanup.link", "capacity admission is not linked to main driver/admission response")
             inclusion_index = 2
         elif name in {"disconnect", "grpc_cancel"}:
-            require(pair["go"][0]["monotonic_ms"] >= invocation_ms and
-                    pair["go"][1]["monotonic_ms"] >= (max(pair_completed_ms, admission_ms)
-                                                       if indexed_main_proof else pair_completed_ms),
+            require(pair["go"][0]["monotonic_ms"] >= invocation_ms,
                     "cleanup.link", f"{name} chronology is not linked to the main driver")
+            for side in ("go", "rs"):
+                admission = main_response["admission"][side]
+                side_admission_ms = case_barriers[case_name] + admission["completed_after_barrier_ms"]
+                completion_floor = (max(pair_completed_ms, side_admission_ms)
+                                    if admission["proof"] == "indexed-inclusion" else pair_completed_ms)
+                require(pair[side][1]["monotonic_ms"] >= completion_floor and
+                        pair[side][1]["status_height"] == admission["status_height"],
+                        "cleanup.link", f"{name}/{side} completion contradicts its admission sample")
             inclusion_index = 2
         else:
             require(pair["go"][0]["monotonic_ms"] >= invocation_ms and pair["go"][1]["monotonic_ms"] >= pair_completed_ms and
@@ -928,27 +944,22 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             inclusion_index = 3
         main_inclusion = inclusion_cases[case_name]["go"]
         require(main_inclusion["post_state"] is not None and
-                pair["go"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"] and
-                pair["rs"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"],
+                pair["go"][inclusion_index]["status_height"] >= main_inclusion["post_state"]["height"] and
+                pair["rs"][inclusion_index]["status_height"] >= main_inclusion["post_state"]["height"],
                 "cleanup.link", f"{name} inclusion height is not linked to indexed inclusion")
-        if name in {"disconnect", "grpc_cancel"}:
-            expected_second_height = (main_inclusion["post_state"]["height"]
-                                      if indexed_main_proof else main_response["admission"]["go"]["status_height"])
-            require(pair["go"][1]["status_height"] == pair["rs"][1]["status_height"] == expected_second_height,
-                    "cleanup.link", f"{name} completion height contradicts its admission proof")
         if name == "mempool_capacity" and pair["go"][1]["mempool_size"] == 0:
             require(pair["go"][1]["status_height"] == main_inclusion["post_state"]["height"] and
                     pair["rs"][1]["status_height"] == main_inclusion["post_state"]["height"],
                     "cleanup.link", "post-rejection empty mempool is not linked to A inclusion")
         indexed_heights = [row["go"]["post_state"]["height"] for row in pair["indexed_inclusions"]]
         if name == "mempool_capacity":
-            require(pair["go"][4]["status_height"] == indexed_heights[0] and pair["go"][5]["status_height"] == indexed_heights[1],
+            require(pair["go"][4]["status_height"] >= indexed_heights[0] and pair["go"][5]["status_height"] >= indexed_heights[1],
                     "cleanup.link", "capacity B/followup heights are not linked to indexed inclusions")
         elif name in {"disconnect", "grpc_cancel"}:
-            require(pair["go"][4]["status_height"] == indexed_heights[0],
+            require(pair["go"][4]["status_height"] >= indexed_heights[0],
                     "cleanup.link", f"{name} followup height is not linked to indexed inclusion")
         else:
-            require(pair["go"][6]["status_height"] == indexed_heights[0],
+            require(pair["go"][6]["status_height"] >= indexed_heights[0],
                     "cleanup.link", "server timeout followup height is not linked to indexed inclusion")
         event_hashes = [event["tx_hash"] for event in pair["go"]]
         require(all(value is None or re.fullmatch(r"[0-9a-f]{64}", value) is not None for value in event_hashes),

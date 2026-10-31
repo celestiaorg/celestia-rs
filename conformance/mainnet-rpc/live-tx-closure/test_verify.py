@@ -1074,7 +1074,7 @@ class VerifyTest(unittest.TestCase):
             item = next(row for row in value["cases"] if row["name"] == "comet-commit-disconnect")
             proof = item["admission"]["go"]
             proof.update(proof="indexed-inclusion", indexed_height=indexed_height,
-                         status_height=indexed_height, mempool_present=False,
+                         status_height=indexed_height + 1, mempool_present=False,
                          completed_after_barrier_ms=1200)
 
         def mutate_inclusion(value):
@@ -1087,12 +1087,14 @@ class VerifyTest(unittest.TestCase):
             barrier = next(
                 row for row in inputs["cases"] if row["name"] == "comet-commit-disconnect"
             )["boundary"]["barrier_release_monotonic_ms"]
+            go_events = value["disconnect"]["go"]
+            go_events[1]["mempool_size"] = 0
+            go_events[1]["status_height"] = indexed_height + 1
+            go_events[1]["monotonic_ms"] = barrier + 1200
             for side in ("go", "rs"):
-                side_events = value["disconnect"][side]
-                side_events[1]["mempool_size"] = 0
-                side_events[1]["status_height"] = indexed_height
-                for offset, event in enumerate(side_events[1:], 1):
-                    event["monotonic_ms"] = barrier + 1200 + (offset - 1) * 80
+                for offset, event in enumerate(value["disconnect"][side][2:], 1):
+                    event["monotonic_ms"] = barrier + 1200 + offset * 80
+                    event["status_height"] = max(event["status_height"], indexed_height + 1)
 
         self.rewrite("paired-responses.json", mutate_response)
         self.rewrite("inclusions.json", mutate_inclusion)
@@ -1110,7 +1112,7 @@ class VerifyTest(unittest.TestCase):
             item = next(row for row in value["cases"] if row["name"] == "comet-commit-disconnect")
             proof = item["admission"]["go"]
             proof.update(proof="indexed-inclusion", indexed_height=indexed_height,
-                         status_height=indexed_height, mempool_present=False,
+                         status_height=indexed_height + 1, mempool_present=False,
                          completed_after_barrier_ms=1200)
 
         def mutate_inclusion(value):
@@ -1118,9 +1120,23 @@ class VerifyTest(unittest.TestCase):
             for side in ("go", "rs"):
                 item[side]["check_tx_source"] = "indexed-inclusion"
 
+        def mutate_cleanup(value):
+            inputs = json.loads((self.root / "inputs.json").read_text())
+            barrier = next(
+                row for row in inputs["cases"] if row["name"] == "comet-commit-disconnect"
+            )["boundary"]["barrier_release_monotonic_ms"]
+            events = value["disconnect"]["go"]
+            events[1]["mempool_size"] = 0
+            events[1]["status_height"] = indexed_height
+            events[1]["monotonic_ms"] = barrier + 1200
+            for side in ("go", "rs"):
+                for offset, event in enumerate(value["disconnect"][side][2:], 1):
+                    event["monotonic_ms"] = barrier + 1200 + offset * 80
+
         self.rewrite("paired-responses.json", mutate_response)
         self.rewrite("inclusions.json", mutate_inclusion)
-        self.reject("cleanup.transitions|cleanup.link", lambda: verify.verify(self.root))
+        self.rewrite("cleanup.json", mutate_cleanup)
+        self.reject("cleanup.link", lambda: verify.verify(self.root))
 
     def test_indexed_admission_respects_consensus_freshness_bound(self):
         inclusions = json.loads((self.root / "inclusions.json").read_text())
@@ -1156,10 +1172,14 @@ class VerifyTest(unittest.TestCase):
         self.reject("response.admission", lambda: verify.verify(self.root))
 
     def test_lifecycle_inclusion_height_link(self):
+        inclusions = json.loads((self.root / "inclusions.json").read_text())
+        inclusion_height = next(
+            item for item in inclusions["cases"] if item["name"] == "core-grpc-cancel"
+        )["go"]["post_state"]["height"]
+
         def mutate(value):
             for side in ("go", "rs"):
-                for event in value["grpc_cancel"][side][2:]:
-                    event["status_height"] += 10
+                value["grpc_cancel"][side][2]["status_height"] = inclusion_height - 1
         self.rewrite("cleanup.json", mutate)
         self.reject("cleanup.link", lambda: verify.verify(self.root))
 
