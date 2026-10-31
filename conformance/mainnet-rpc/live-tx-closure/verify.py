@@ -824,6 +824,14 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
     main_response_phases = {("mempool_capacity", "a-admitted"), ("server_timeout", "server-timeout")}
     for name, expected_phases in phases.items():
         pair = harness.require_fields(cleanup[name], {"go", "rs", "indexed_inclusions", "blocks", "block_intervals_ms"}, f"cleanup {name}")
+        case_name = lifecycle_cases[name]
+        main_response = response_cases[case_name]
+        indexed_main_proof = (name in {"disconnect", "grpc_cancel"} and any(
+            main_response["admission"][side]["proof"] == "indexed-inclusion" for side in ("go", "rs")
+        ))
+        expected_mempools = list(mempool_sizes[name])
+        if indexed_main_proof:
+            expected_mempools[1] = 0
         projections: dict[str, list[Any]] = {}
         for side in ("go", "rs"):
             events = pair[side]
@@ -838,7 +846,7 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                         mempool_sizes[name][:1] + mempool_sizes[name][2:],
                         "cleanup.transitions", f"{name}/{side}")
             else:
-                require(observed_pools == mempool_sizes[name],
+                require(observed_pools == expected_mempools,
                         "cleanup.transitions", f"{name}/{side}")
             require([event.get("generation") for event in events] == event_generations[name],
                     "cleanup.generation", f"{name}/{side}")
@@ -895,8 +903,6 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                 require(go_event["operation"]["barrier_release_monotonic_ns"] == rs_event["operation"]["barrier_release_monotonic_ns"] and
                         go_event["operation"]["request_sha256"] == rs_event["operation"]["request_sha256"],
                         "cleanup.operation", f"{name}/{go_event['phase']} pair barrier/request differs")
-        case_name = lifecycle_cases[name]
-        main_response = response_cases[case_name]
         driver = main_response["driver"]
         invocation_ms = max(driver["go_invoked_monotonic_ns"], driver["rs_invoked_monotonic_ns"]) // 1_000_000
         pair_completed_ms = (driver["pair_completed_monotonic_ns"] + 999_999) // 1_000_000
@@ -910,7 +916,9 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                     "cleanup.link", "capacity admission is not linked to main driver/admission response")
             inclusion_index = 2
         elif name in {"disconnect", "grpc_cancel"}:
-            require(pair["go"][0]["monotonic_ms"] >= invocation_ms and pair["go"][1]["monotonic_ms"] >= pair_completed_ms,
+            require(pair["go"][0]["monotonic_ms"] >= invocation_ms and
+                    pair["go"][1]["monotonic_ms"] >= (max(pair_completed_ms, admission_ms)
+                                                       if indexed_main_proof else pair_completed_ms),
                     "cleanup.link", f"{name} chronology is not linked to the main driver")
             inclusion_index = 2
         else:
@@ -923,6 +931,11 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                 pair["go"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"] and
                 pair["rs"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"],
                 "cleanup.link", f"{name} inclusion height is not linked to indexed inclusion")
+        if name in {"disconnect", "grpc_cancel"}:
+            expected_second_height = (main_inclusion["post_state"]["height"]
+                                      if indexed_main_proof else main_response["admission"]["go"]["status_height"])
+            require(pair["go"][1]["status_height"] == pair["rs"][1]["status_height"] == expected_second_height,
+                    "cleanup.link", f"{name} completion height contradicts its admission proof")
         if name == "mempool_capacity" and pair["go"][1]["mempool_size"] == 0:
             require(pair["go"][1]["status_height"] == main_inclusion["post_state"]["height"] and
                     pair["rs"][1]["status_height"] == main_inclusion["post_state"]["height"],

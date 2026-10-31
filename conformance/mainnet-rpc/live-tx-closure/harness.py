@@ -397,7 +397,11 @@ def assert_admission(admission: dict[str, Any], boundary_height: int, expected: 
     expected_admission = "rejected" if expected in {"rejected", "policy-difference"} else "admitted"
     for row in rows:
         require(row["outcome"] == expected_admission, f"{label}: unexpected admission outcome")
-        require(0 <= row["completed_after_barrier_ms"] <= 1000, f"{label}: admission outside 1 second")
+        timeout_info = {name: str(value) for name, value in ACTIVE_TIMEOUT_INFO_NS.items()}
+        completion_bound = (consensus_freshness_bound_ms(timeout_info)
+                            if row["proof"] == "indexed-inclusion" else 1000)
+        require(0 <= row["completed_after_barrier_ms"] <= completion_bound,
+                f"{label}: admission proof exceeded its observation bound")
         if expected_admission == "rejected":
             require(row["proof"] == "mempool-absent" and row["mempool_present"] is False and
                     row["indexed_height"] is None and row["status_height"] == boundary_height,
@@ -410,6 +414,8 @@ def assert_admission(admission: dict[str, Any], boundary_height: int, expected: 
                     row["indexed_height"] == boundary_height + 1 and
                     row["status_height"] == row["indexed_height"],
                     f"{label}: inclusion-race proof differs")
+            require(label not in {"mempool-capacity-recovery", "server-timeout"},
+                    f"{label}: capacity lifecycle requires mempool presence")
     require(rows[0]["tx_hash"] == rows[1]["tx_hash"], f"{label}: transaction hash differs")
 
 

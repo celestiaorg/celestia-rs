@@ -868,7 +868,11 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
     try:
         driver = invoke_driver(state, name, transport, mode, request_record)
         if expected not in {"rejected", "policy-difference"}:
-            deadline = time.monotonic() + 1
+            # A transaction can leave the mempool for the next proposal before
+            # the 5 ms poll observes it. Its index entry is then available only
+            # after that consensus round commits, so retain the watcher for the
+            # exact timeout-derived healthy round-zero freshness bound.
+            deadline = time.monotonic() + state.checked["freshness_bound_ms"] / 1000
             while any(observed[side] is None for side in ROLES) and time.monotonic() < deadline:
                 time.sleep(0.005)
     finally:
@@ -893,6 +897,9 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
                 harness.require(indexed_height == common[side]["height"] + 1 and
                                 observed_height == indexed_height,
                                 f"{name}/{side} indexed admission height differs")
+            if name in {"mempool-capacity-recovery", "server-timeout"}:
+                harness.require(proof == "mempool-present",
+                                f"{name}/{side} requires a pending transaction for its capacity lifecycle")
         else:
             hashes, _ = mempool(state.plan["endpoints"][f"{side}_rpc"])
             harness.require(digest not in hashes, f"{name}/{side} rejection entered mempool")
@@ -1066,11 +1073,15 @@ def followup_lifecycle(state: State, kind: str, source: dict[str, Any], response
     admission_ms = source["boundary"]["barrier_release_monotonic_ms"] + max(
         response["admission"][side]["completed_after_barrier_ms"] for side in ROLES)
     second_ms = max(first_ms + 1, completed_ms, admission_ms)
+    main = record_main_inclusion(state, source, response)
+    indexed_proof = any(response["admission"][side]["proof"] == "indexed-inclusion" for side in ROLES)
+    second_height = main["go"]["post_state"]["height"] if indexed_proof else pre_height
+    second_pool = 0 if indexed_proof else 1
     events = [witnessed_event("normal", phase_one, outcome_one, digest, first_ms, pre_height, 0),
-              witnessed_event("normal", phase_two, outcome_two, digest, second_ms, pre_height, 1)]
+              witnessed_event("normal", phase_two, outcome_two, digest, second_ms,
+                                second_height, second_pool)]
     previous = second_ms
     previous = events[-1]["go"]["monotonic_ms"]
-    main = record_main_inclusion(state, source, response)
     events.append(event(state, "normal", "tx-included", "included", digest, None, None, previous,
                         expected_pool=0, expected_height=main["go"]["post_state"]["height"]))
     previous = events[-1]["go"]["monotonic_ms"]

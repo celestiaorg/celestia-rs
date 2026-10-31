@@ -113,9 +113,10 @@ the state consumed by the next main case.
 
 Admission records distinguish a hash observed in the mempool from the narrow
 race where it is already indexed at exactly the next height. The latter must
-be observed within the same one-second admission window and is cross-bound to
-the later exact inclusion and post-state height. Rejections prove both mempool
-and index absence.
+be observed within the active timeout-derived 5.6-second healthy consensus
+freshness bound and is cross-bound to the later exact inclusion and post-state
+height. Mempool presence and rejection absence remain bounded to one second;
+rejections prove both mempool and index absence.
 
 The mempool recovery case records configured `mempool.size = 0` separately
 from its effective one-transaction CAT boundary: Go and Rust both check the
