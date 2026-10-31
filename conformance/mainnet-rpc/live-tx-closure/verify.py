@@ -156,7 +156,7 @@ def verify_receipts(receipts: dict[str, Any], support: dict[str, Any]) -> None:
     go = harness.require_fields(receipts["go"], {"module", "source_commit", "core_commit", "compiler", "tags", "binary_sha256", "command", "build_info", "build_info_sha256", "cli_source_sha256"}, "Go receipt")
     require(go["module"] == "github.com/celestiaorg/celestia-app/v10@v10.5.0", "receipt.go", "Go module differs")
     require(go["source_commit"] == "6013e758d5dceb75827ad191c8d739d7c43cfa04", "receipt.go", "Go source differs")
-    require(go["core_commit"] == "25b188800924a98616a7154d8eaa70e45d76f2f9", "receipt.go", "core source differs")
+    require(go["core_commit"] == "a5537d84a008d566abc503d2ea41e30f2301403d", "receipt.go", "core source differs")
     require(go["compiler"] == "go1.26.9" and go["tags"] == ["ledger"], "receipt.go", "Go toolchain/tags differ")
     require(re.fullmatch(r"[0-9a-f]{64}", go["binary_sha256"]) is not None and
             re.fullmatch(r"[0-9a-f]{64}", go["cli_source_sha256"]) is not None,

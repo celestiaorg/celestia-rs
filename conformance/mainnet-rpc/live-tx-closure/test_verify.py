@@ -71,7 +71,7 @@ def fixture(root: pathlib.Path) -> None:
         "go": {
             "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
             "source_commit": go_source,
-            "core_commit": "25b188800924a98616a7154d8eaa70e45d76f2f9",
+            "core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
             "compiler": "go1.26.9", "tags": ["ledger"], "binary_sha256": "a" * 64,
             "command": ["go", "build", "-buildvcs=false", "-tags=ledger", f"-ldflags={go_ldflags}", "-o", "celestia-appd", "./cmd/celestia-appd"], "build_info": build_info,
             "build_info_sha256": hashlib.sha256(build_info.encode()).hexdigest(), "cli_source_sha256": "7" * 64,
