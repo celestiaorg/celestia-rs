@@ -1037,6 +1037,13 @@ def capture_blob_artifact(state: State, prestate: dict[str, Any]) -> None:
     decoded = harness.decode_canonical_blob_tx(envelope)
     harness.require(len(decoded["blobs"]) == 1, "BlobTx must contain exactly one blob")
     item = decoded["blobs"][0]
+    harness.require(
+        item["namespace_version"] == 0
+        and item["namespace_id"][:18] == b"\0" * 18
+        and item["share_version"] == 0
+        and item["signer"] == b"",
+        "BlobTx CLI provenance requires a v0 namespace, share v0 and empty blob signer",
+    )
     cli_argv = [
         # The BlobTx carries the canonical 28-byte namespace ID. The v10.5
         # CLI accepts only the 10-byte user-controlled suffix for a v0

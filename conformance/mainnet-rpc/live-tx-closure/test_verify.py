@@ -974,6 +974,34 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("blob-proxy.json", mutate)
         self.reject("blob.cli", lambda: verify.verify(self.root))
 
+    def test_blob_nonzero_v0_namespace_prefix_after_internal_rebind(self):
+        blob_artifact = harness.strict_json((self.root / "blob-proxy.json").read_bytes())
+        inputs = harness.strict_json((self.root / "inputs.json").read_bytes())
+        receipts = harness.strict_json((self.root / "build-receipts.json").read_bytes())
+        original = harness.decode_blob(blob_artifact["envelope"], "blob envelope")
+        decoded = harness.decode_canonical_blob_tx(original)["blobs"][0]
+        replacement_id = b"\1" + decoded["namespace_id"][1:]
+        replacement = original.replace(decoded["namespace_id"], replacement_id, 1)
+        self.assertNotEqual(replacement, original)
+
+        blob_artifact["envelope"] = blob(replacement)
+        digest = hashlib.sha256(replacement).hexdigest()
+        blob_artifact["submitted_go_sha256"] = digest
+        blob_artifact["submitted_rs_sha256"] = digest
+        blob_artifact["namespace"] = (b"\0" + replacement_id).hex()
+        raw_request = json.loads(
+            harness.decode_blob(blob_artifact["raw_request"], "raw blob request")
+        )
+        raw_request["params"]["tx"] = base64.b64encode(replacement).decode()
+        blob_artifact["raw_request"] = blob(harness.canonical_json(raw_request))
+        case = next(row for row in inputs["cases"] if row["name"] == "blob-envelope")
+        case["requests"] = {"go": blob(replacement), "rs": blob(replacement)}
+
+        self.reject(
+            "blob.unwrap",
+            lambda: verify.verify_blob(blob_artifact, inputs, receipts),
+        )
+
     def test_blob_unwrap_data(self):
         self.rewrite("blob-proxy.json", lambda value: value.__setitem__("data_sha256", "0" * 64))
         self.reject("blob.unwrap", lambda: verify.verify(self.root))

@@ -1001,6 +1001,10 @@ def verify_blob(blob: dict[str, Any], inputs: dict[str, Any], receipts: dict[str
     decoded = harness.decode_canonical_blob_tx(envelope)
     require(len(decoded["blobs"]) == 1, "blob.unwrap", "expected one blob")
     decoded_blob = decoded["blobs"][0]
+    require(decoded_blob["namespace_version"] == 0 and
+            decoded_blob["namespace_id"][:18] == b"\0" * 18 and
+            decoded_blob["share_version"] == 0 and decoded_blob["signer"] == b"",
+            "blob.unwrap", "CLI provenance requires a v0 namespace, share v0 and empty signer")
     inner_digest = hashlib.sha256(decoded["tx"]).hexdigest()
     require(blob["inner_tx_sha256"] == blob["unwrapped_inner_sha256"] == inner_digest,
             "blob.unwrap", "inner transaction differs")
