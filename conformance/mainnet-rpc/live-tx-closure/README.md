@@ -41,7 +41,11 @@ BlobTx protobuf, records the raw request and envelope with exclusive file
 creation, and returns a synthetic response without forwarding the broadcast.
 The final artifact also binds the frozen CLI argv/source, decoded inner tx,
 namespace, data, share version, signer field and the exact envelope submitted
-to both nodes.
+to both nodes. Inclusion records preserve both identities: `tx_hash` is the
+submitted BlobTx envelope, while `indexed_tx_hash` is the unwrapped inner SDK
+transaction used by celestia-app's transaction index. Ordinary transactions
+have the same submitted and indexed hash. The pre-submission absence check uses
+the indexed inner hash.
 
 `campaign.py` is the receipt-bound outer controller. It validates every binary,
 source, seed and configuration hash; owns the normal, timeout and restored node

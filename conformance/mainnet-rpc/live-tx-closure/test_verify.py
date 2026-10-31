@@ -309,7 +309,9 @@ def fixture(root: pathlib.Path) -> None:
             if name == "staking-delegate":
                 delegation = "1"
             admission_only = name in {"comet-commit-disconnect", "core-grpc-cancel", "server-timeout"}
-            row = {"included_count": 1, "tx_hash": tx_hash,
+            indexed_tx_hash = (hashlib.sha256(inner_blob_tx).hexdigest()
+                               if name == "blob-envelope" else tx_hash)
+            row = {"included_count": 1, "tx_hash": tx_hash, "indexed_tx_hash": indexed_tx_hash,
                    "check_tx": None if admission_only else {"code": 0, **result_common},
                    "check_tx_source": "mempool-admission" if admission_only else "broadcast-response",
                    "deliver_tx": {"code": 5 if expected == "execution-failed" else 0, **result_common},
@@ -329,14 +331,15 @@ def fixture(root: pathlib.Path) -> None:
                 app_hash = f"post-{index}-lifecycle-{len(lifecycle_indexed[lifecycle_name])}"
                 extra_hash = hashlib.sha256(extra_input).hexdigest()
                 extra_row = {
-                    "included_count": 1, "tx_hash": extra_hash,
+                    "included_count": 1, "tx_hash": extra_hash, "indexed_tx_hash": extra_hash,
                     "check_tx": {"code": 0, **result_common}, "check_tx_source": "broadcast-response",
                     "deliver_tx": {"code": 0, **result_common},
                     "post_state": {"height": height, "app_hash": app_hash, "balance": balance, "sequence": sequence, "delegation": delegation},
                 }
                 lifecycle_indexed[lifecycle_name].append({"go": extra_row, "rs": copy.deepcopy(extra_row)})
         else:
-            row = {"included_count": 0, "tx_hash": tx_hash, "check_tx": None, "check_tx_source": None,
+            row = {"included_count": 0, "tx_hash": tx_hash, "indexed_tx_hash": None,
+                   "check_tx": None, "check_tx_source": None,
                    "deliver_tx": None, "post_state": None}
             inclusion_cases.append({"name": name, "go": row, "rs": copy.deepcopy(row)})
             height = pre["height"] + 1
@@ -747,6 +750,14 @@ class VerifyTest(unittest.TestCase):
             value["cases"][5]["rs"]["deliver_tx"]["events"] = ["not-an-event"]
         self.rewrite("inclusions.json", mutate)
         self.reject("inclusion.events", lambda: verify.verify(self.root))
+
+    def test_blob_index_hash_must_be_unwrapped_inner_transaction(self):
+        def mutate(value):
+            row = next(item for item in value["cases"] if item["name"] == "blob-envelope")
+            for side in ("go", "rs"):
+                row[side]["indexed_tx_hash"] = row[side]["tx_hash"]
+        self.rewrite("inclusions.json", mutate)
+        self.reject("inclusion.indexed_hash", lambda: verify.verify(self.root))
 
     def test_paired_gas_change_hits_reviewed_digest(self):
         def mutate(value):

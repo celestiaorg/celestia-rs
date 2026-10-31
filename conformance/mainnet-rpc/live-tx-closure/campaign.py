@@ -778,10 +778,12 @@ def response_result(response: dict[str, Any]) -> dict[str, Any] | None:
             "data": str(value.get("data", ""))}
 
 
-def wait_inclusion(state: State, digest: str, responses: dict[str, dict[str, Any]], timeout: float = 45) -> dict[str, Any]:
+def wait_inclusion(state: State, digest: str, responses: dict[str, dict[str, Any]], timeout: float = 45,
+                   indexed_digest: str | None = None) -> dict[str, Any]:
+    index_key = indexed_digest or digest
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        found = {side: indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest) for side in ROLES}
+        found = {side: indexed_tx(state.plan["endpoints"][f"{side}_rpc"], index_key) for side in ROLES}
         if all(found.values()):
             records = {}
             for side in ROLES:
@@ -790,7 +792,7 @@ def wait_inclusion(state: State, digest: str, responses: dict[str, dict[str, Any
                 raw = block(state.plan["endpoints"][f"{side}_rpc"], height)[0]
                 post = query_state(state.plan, side, height, raw["app_hash"])
                 check_tx = response_result(responses[side])
-                records[side] = {"included_count": 1, "tx_hash": digest,
+                records[side] = {"included_count": 1, "tx_hash": digest, "indexed_tx_hash": index_key,
                                  "check_tx": check_tx,
                                  "check_tx_source": "broadcast-response" if check_tx is not None else "mempool-admission",
                                  "deliver_tx": {"code": int(result["tx_result"].get("code", 0)),
@@ -805,10 +807,10 @@ def wait_inclusion(state: State, digest: str, responses: dict[str, dict[str, Any
             state.last_state = records["go"]["post_state"]
             return records
         time.sleep(0.1)
-    raise harness.HarnessError(f"indexed transaction query timed out: {digest}")
+    raise harness.HarnessError(f"indexed transaction query timed out: {index_key} (submitted {digest})")
 
 
-def admission_watch(state: State, digest: str, stopping: threading.Event,
+def admission_watch(state: State, digest: str, indexed_digest: str, stopping: threading.Event,
                     observed: dict[str, dict[str, Any] | None]) -> None:
     while not stopping.is_set():
         for side in ROLES:
@@ -820,7 +822,7 @@ def admission_watch(state: State, digest: str, stopping: threading.Event,
                         observed[side] = {"proof": "mempool-present", "completed_ms": now_ms(),
                                           "status_height": height, "indexed_height": None}
                     else:
-                        indexed = indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest)
+                        indexed = indexed_tx(state.plan["endpoints"][f"{side}_rpc"], indexed_digest)
                         if indexed is not None:
                             result, _ = indexed
                             height = status(state.plan["endpoints"][f"{side}_rpc"])[0]
@@ -852,13 +854,16 @@ def capture_case(state: State, generation: str, spec: tuple[str, str, str, str, 
     harness.require(prestates["go"] == prestates["rs"], f"{name} paired pre-state differs")
     request_record = state.plan["inputs"][name]
     digest = request_record["sha256"]
+    indexed_digest = digest
     if name == "blob-envelope":
-        harness.require(all(indexed_tx(state.plan["endpoints"][f"{side}_rpc"], digest) is None for side in ROLES),
-                        "BlobTx envelope was already indexed before paired submission")
         capture_blob_artifact(state, prestates["go"])
+        harness.require(state.blob_artifact is not None, "BlobTx capture did not produce an artifact")
+        indexed_digest = state.blob_artifact["inner_tx_sha256"]
+        harness.require(all(indexed_tx(state.plan["endpoints"][f"{side}_rpc"], indexed_digest) is None for side in ROLES),
+                        "BlobTx inner transaction was already indexed before paired submission")
     observed: dict[str, dict[str, Any] | None] = {side: None for side in ROLES}
     stopping = threading.Event()
-    watcher = threading.Thread(target=admission_watch, args=(state, digest, stopping, observed), daemon=True)
+    watcher = threading.Thread(target=admission_watch, args=(state, digest, indexed_digest, stopping, observed), daemon=True)
     watcher.start()
     try:
         driver = invoke_driver(state, name, transport, mode, request_record)
@@ -980,7 +985,10 @@ def record_main_inclusion(state: State, source: dict[str, Any], response: dict[s
     name, expected = source["name"], source["expected_outcome"]
     digest = source["requests"]["go"]["sha256"]
     if expected in {"included", "execution-failed"}:
-        pair = wait_inclusion(state, digest, {side: response[side] for side in ROLES})
+        indexed_digest = (state.blob_artifact["inner_tx_sha256"]
+                          if name == "blob-envelope" and state.blob_artifact is not None else digest)
+        pair = wait_inclusion(state, digest, {side: response[side] for side in ROLES},
+                              indexed_digest=indexed_digest)
         admission_only = {"comet-commit-disconnect", "core-grpc-cancel", "server-timeout"}
         if name in admission_only and any(
             response["admission"][side]["proof"] == "indexed-inclusion" for side in ROLES
@@ -988,7 +996,8 @@ def record_main_inclusion(state: State, source: dict[str, Any], response: dict[s
             for side in ROLES:
                 pair[side]["check_tx_source"] = "indexed-inclusion"
     else:
-        rejected = {"included_count": 0, "tx_hash": digest, "check_tx": None, "check_tx_source": None,
+        rejected = {"included_count": 0, "tx_hash": digest, "indexed_tx_hash": None,
+                    "check_tx": None, "check_tx_source": None,
                     "deliver_tx": None, "post_state": None}
         pair = {"go": rejected, "rs": dict(rejected)}
         if state.last_state is None:
@@ -1169,9 +1178,10 @@ def capture_blob_artifact(state: State, prestate: dict[str, Any]) -> None:
     harness.require(parsed.scheme == "http" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment,
                     "BlobTx proxy destination differs")
     host, port = harness.loopback_endpoint(frozen["destination"], "BlobTx proxy destination")
-    absent = {side: indexed_tx(state.plan["endpoints"][f"{side}_rpc"], hashlib.sha256(envelope).hexdigest()) is None
+    inner_digest = hashlib.sha256(decoded["tx"]).hexdigest()
+    absent = {side: indexed_tx(state.plan["endpoints"][f"{side}_rpc"], inner_digest) is None
               for side in ROLES}
-    harness.require(all(absent.values()), "BlobTx envelope exists before CLI capture")
+    harness.require(all(absent.values()), "BlobTx inner transaction exists before CLI capture")
 
     raw_path = state.checked["output"] / ".blob-proxy.raw.json"
     failures: list[BaseException] = []

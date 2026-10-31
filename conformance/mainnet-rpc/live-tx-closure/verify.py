@@ -497,8 +497,9 @@ def verify_lifecycle_inclusions(rows: Any, expected_hashes: list[str], previous:
     for index, (pair, expected_hash) in enumerate(zip(rows, expected_hashes, strict=True)):
         inclusion_pair = harness.require_fields(pair, {"go", "rs"}, f"{label} inclusion {index}")
         require(inclusion_pair["go"] == inclusion_pair["rs"], "cleanup.inclusion", f"{label}/{index} pair differs")
-        record = harness.require_fields(inclusion_pair["go"], {"included_count", "tx_hash", "check_tx", "check_tx_source", "deliver_tx", "post_state"}, f"{label} inclusion {index}")
-        require(record["included_count"] == 1 and record["tx_hash"] == expected_hash,
+        record = harness.require_fields(inclusion_pair["go"], {"included_count", "tx_hash", "indexed_tx_hash", "check_tx", "check_tx_source", "deliver_tx", "post_state"}, f"{label} inclusion {index}")
+        require(record["included_count"] == 1 and record["tx_hash"] == expected_hash and
+                record["indexed_tx_hash"] == expected_hash,
                 "cleanup.inclusion", f"{label}/{index} hash/count differs")
         require(record["check_tx_source"] == "broadcast-response", "cleanup.inclusion",
                 f"{label}/{index} lacks a concrete CheckTx response")
@@ -665,7 +666,7 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
             require(response["intentional_difference"] is None, "response.policy", name)
             require(go_projection == rs_projection, "response.exact", name)
         inclusion_pair = harness.require_fields(inclusion_by_name[name], {"name", "go", "rs"}, f"inclusion {name}")
-        inclusion_fields = {"included_count", "tx_hash", "check_tx", "check_tx_source", "deliver_tx", "post_state"}
+        inclusion_fields = {"included_count", "tx_hash", "indexed_tx_hash", "check_tx", "check_tx_source", "deliver_tx", "post_state"}
         inclusion = harness.require_fields(inclusion_pair["go"], inclusion_fields, f"Go inclusion {name}")
         rs_inclusion = harness.require_fields(inclusion_pair["rs"], inclusion_fields, f"Rust inclusion {name}")
         require(inclusion == rs_inclusion, "inclusion.exact", name)
@@ -679,6 +680,11 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
         if expected in {"included", "execution-failed"}:
             require(inclusion["included_count"] == 1, "inclusion.count", name)
             require(inclusion["tx_hash"] == response["admission"]["go"]["tx_hash"], "inclusion.hash", name)
+            request_bytes = harness.decode_blob(source["requests"]["go"], f"request {name}")
+            expected_indexed_hash = (hashlib.sha256(harness.decode_canonical_blob_tx(request_bytes)["tx"]).hexdigest()
+                                     if name == "blob-envelope" else inclusion["tx_hash"])
+            require(inclusion["indexed_tx_hash"] == expected_indexed_hash,
+                    "inclusion.indexed_hash", name)
             post = harness.require_fields(inclusion["post_state"], {"height", "app_hash", "balance", "sequence", "delegation"}, f"post-state {name}")
             require(post["height"] > pre["height"], "inclusion.height", name)
             require(inclusion["check_tx_source"] in {"broadcast-response", "mempool-admission", "indexed-inclusion"} and
@@ -733,7 +739,8 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
                 lifecycle_name, expected_hashes = lifecycle
                 last_state = verify_lifecycle_inclusions(cleanup[lifecycle_name]["indexed_inclusions"], expected_hashes, last_state, lifecycle_name)
         else:
-            require(inclusion == {"included_count": 0, "tx_hash": response["admission"]["go"]["tx_hash"], "check_tx": None,
+            require(inclusion == {"included_count": 0, "tx_hash": response["admission"]["go"]["tx_hash"],
+                                  "indexed_tx_hash": None, "check_tx": None,
                                   "check_tx_source": None, "deliver_tx": None, "post_state": None},
                     "inclusion.rejection", name)
             if last_state is None:
