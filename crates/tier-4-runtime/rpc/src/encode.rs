@@ -486,6 +486,7 @@ pub fn response_query_for_path(path: &str, r: &abci::ResponseQuery) -> J {
         && r.value.is_empty()
         && !path.starts_with("/store")
         && !path.starts_with("store")
+        && !path.strip_prefix('/').unwrap_or(path).starts_with("p2p/")
         && let J::Obj(f) = &mut j
     {
         for (k, v) in f.iter_mut() {

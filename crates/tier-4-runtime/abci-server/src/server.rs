@@ -21,6 +21,13 @@ use crate::codec::{read_frame, write_frame};
 pub trait Application: Send + Sync + 'static {
     /// Handles one request and returns the response value.
     fn handle(&self, request: request::Value) -> response::Value;
+
+    /// Handles a request while preserving a response envelope whose value is
+    /// absent. Most applications always return a value; Go BaseApp can return
+    /// a nil Query response for an unknown P2P filter type.
+    fn handle_envelope(&self, request: request::Value) -> Option<response::Value> {
+        Some(self.handle(request))
+    }
 }
 
 /// Serves `app` on `listener` until the listener fails.
@@ -45,22 +52,24 @@ async fn serve_conn<A: Application>(stream: TcpStream, app: Arc<A>) -> anyhow::R
     while let Some(frame) = read_frame(&mut r).await? {
         let req = Request::decode(frame.as_slice())?;
         let (value, flush) = match req.value {
-            Some(request::Value::Flush(_)) => (response::Value::Flush(ResponseFlush {}), true),
+            Some(request::Value::Flush(_)) => {
+                (Some(response::Value::Flush(ResponseFlush {})), true)
+            }
             Some(v) => {
                 let app = Arc::clone(&app);
                 (
-                    tokio::task::spawn_blocking(move || app.handle(v)).await?,
+                    tokio::task::spawn_blocking(move || app.handle_envelope(v)).await?,
                     false,
                 )
             }
             None => (
-                response::Value::Exception(ResponseException {
+                Some(response::Value::Exception(ResponseException {
                     error: "empty request".into(),
-                }),
+                })),
                 true,
             ),
         };
-        let resp = Response { value: Some(value) };
+        let resp = Response { value };
         write_frame(&mut w, &resp.encode_to_vec()).await?;
         if flush {
             w.flush().await?;

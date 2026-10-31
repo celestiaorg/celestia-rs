@@ -187,8 +187,25 @@ impl App {
             .map_err(GrpcQueryError::Handler)
     }
 
-    /// `Query`.
+    /// A concrete query response for in-process consumers. An absent Go Query
+    /// response is an explicit error here; transport adapters must use
+    /// [`Self::query_response`] to preserve the empty envelope.
     pub fn query(&mut self, req: &RequestQuery) -> ResponseQuery {
+        self.query_response(req)
+            .unwrap_or_else(|| query_result(&errs::unknown_request("empty ABCI Query response")))
+    }
+
+    /// `Query`, including Go's nil response for an unknown P2P filter type.
+    /// This is distinct from a present, successful default `ResponseQuery`.
+    pub fn query_response(&mut self, req: &RequestQuery) -> Option<ResponseQuery> {
+        let path = split_path(&req.path);
+        if path.first() == Some(&"p2p") {
+            return handle_query_p2p(&path);
+        }
+        Some(self.query_present(req))
+    }
+
+    fn query_present(&mut self, req: &RequestQuery) -> ResponseQuery {
         sdk::version::set_app_version(self.app_version());
         let mut req = req.clone();
         if req.height == 0 {
@@ -209,7 +226,6 @@ impl App {
         match path[0] {
             "app" => self.handle_query_app(&path, &req),
             "store" => self.handle_query_store(&path, &req),
-            "p2p" => handle_query_p2p(&path),
             "custom" => self.handle_query_custom(&path, &req),
             _ => query_result(&errs::unknown_request("unknown query path")),
         }
@@ -459,19 +475,20 @@ impl App {
     }
 }
 
-fn handle_query_p2p(path: &[&str]) -> ResponseQuery {
+fn handle_query_p2p(path: &[&str]) -> Option<ResponseQuery> {
     if path.len() < 4 {
-        return query_result(&errs::unknown_request(
+        return Some(query_result(&errs::unknown_request(
             "path should be p2p filter <addr|id> <parameter>",
-        ));
+        )));
     }
     if path[1] != "filter" {
-        return query_result(&errs::unknown_request(
+        return Some(query_result(&errs::unknown_request(
             "expected second parameter to be 'filter'",
-        ));
+        )));
     }
-    // No peer filters are configured: every peer is accepted.
-    ResponseQuery::default()
+    // Go leaves resp nil when neither filter branch is selected. Valid filters
+    // have no configured callback and return a present successful response.
+    matches!(path[2], "addr" | "id").then(ResponseQuery::default)
 }
 
 /// `cosmossdk.io/store/types` errors (codespace `store`).

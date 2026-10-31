@@ -306,6 +306,9 @@ pub fn parse_requests(body: &str) -> Result<Vec<RpcRequest>, String> {
 enum CallError {
     /// Internal error (`RPCInternalError`).
     Internal(String),
+    /// Go recovers while dereferencing an absent Query response. Preserve its
+    /// transport-level outcome explicitly without panicking a Rust task.
+    EmptyQueryResponse,
     /// Heavy-request limit.
     Busy,
 }
@@ -332,13 +335,19 @@ async fn call_route(
     }
     let env2 = Arc::clone(env);
     let name = route.name;
-    let res = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        env2.call(name, &args)
+        if name == "abci_query" {
+            let arg = |i: usize| args.get(i).cloned().unwrap_or(Arg::Null);
+            env2.abci_query_response(arg(0).str(), arg(1).bytes(), arg(2).int(), arg(3).bool())
+                .map_err(CallError::Internal)?
+                .ok_or(CallError::EmptyQueryResponse)
+        } else {
+            env2.call(name, &args).map_err(CallError::Internal)
+        }
     })
     .await
-    .map_err(|e| CallError::Internal(e.to_string()))?;
-    res.map_err(CallError::Internal)
+    .map_err(|e| CallError::Internal(e.to_string()))?
 }
 
 /// `BroadcastTxCommit`.
@@ -542,6 +551,11 @@ async fn uri_handler(
             RpcResponse::internal(uri_id(), ERR_HEAVY_LIMIT).encode(),
             false,
         ),
+        Err(CallError::EmptyQueryResponse) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
+            false,
+        ),
         Err(CallError::Internal(e)) => json_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             RpcResponse::internal(uri_id(), &e).encode(),
@@ -637,6 +651,15 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
             Err(CallError::Busy) => {
                 responses.push(RpcResponse::internal(Some(id), ERR_HEAVY_LIMIT));
                 cache = false;
+            }
+            Err(CallError::EmptyQueryResponse) => {
+                // Go's outer HTTP recovery replaces the entire response, even
+                // for a batch with earlier successful elements.
+                return json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
+                    false,
+                );
             }
             Err(CallError::Internal(e)) => responses.push(RpcResponse::internal(Some(id), &e)),
         }
@@ -1042,6 +1065,11 @@ async fn ws_request(
         _ => match call_route(env, route, args, remote).await {
             Ok(j) => Ok(j),
             Err(CallError::Busy) => Err(ERR_HEAVY_LIMIT.to_owned()),
+            Err(CallError::EmptyQueryResponse) => {
+                return Some(
+                    RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
+                );
+            }
             Err(CallError::Internal(e)) => Err(e),
         },
     };

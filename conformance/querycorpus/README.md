@@ -14,9 +14,11 @@ reducing its coverage. No recording failure is replaced by a successful default
 A decoded ABCI response envelope can contain no Query value. New recordings
 preserve this as `missing_response: true`; the accompanying `response` placeholder
 has no response semantics. An actual present, default-valued `ResponseQuery` is
-still a successful Query and does not have that marker. App replay currently
-rejects the missing-response case until it has an explicit transport comparison;
-it must not count it as parity with a successful default Query.
+still a successful Query and does not have that marker. App replay compares the presence of the response value explicitly; it must not
+count an empty envelope as parity with a successful default Query. The exact
+legacy `/p2p/filter/other/x` default placeholders are counted as skipped, since
+the pre-integrity recorder did not preserve a Go response for them. Fresh
+missing-response cases are compared, including their empty envelopes.
 
 The older recorders used `unwrap_or_default()` around ABCI queries. Their empty
 P2P-filter results, especially `/p2p/filter/other/x`, therefore cannot establish

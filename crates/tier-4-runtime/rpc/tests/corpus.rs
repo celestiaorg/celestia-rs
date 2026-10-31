@@ -128,6 +128,12 @@ impl AppQuery for Query {
     fn query(&self, req: abci::RequestQuery) -> Result<abci::ResponseQuery, String> {
         Ok(lock(&self.0).query(&req))
     }
+    fn query_response(
+        &self,
+        req: abci::RequestQuery,
+    ) -> Result<Option<abci::ResponseQuery>, String> {
+        Ok(lock(&self.0).query_response(&req))
+    }
     fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String> {
         lock(&self.0).check_tx(&abci::RequestCheckTx {
             tx: tx.to_vec(),
