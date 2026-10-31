@@ -27,6 +27,8 @@ const NOT_ON_GATEWAY: &[&str] = &[
     "/ibc.lightclients.wasm.",
 ];
 
+const BROADCAST_TX: &str = "/cosmos.tx.v1beta1.Service/BroadcastTx";
+
 /// An HTTP request.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
@@ -508,6 +510,9 @@ pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> De
     let Some((method, rule, vars)) = route(req.method, req.path) else {
         return not_implemented().into();
     };
+    // Go registers BroadcastTx directly on the gateway mux. Unlike app query
+    // routes, it does not pass through the metadata-forwarding query handler.
+    let forward_metadata = method.path != BROADCAST_TX;
     let mut obj = Map::new();
     if rule.body == "*" {
         match serde_json::from_slice::<Value>(req.body) {
@@ -575,8 +580,8 @@ pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> De
                             body: v,
                         },
                         metadata: ResponseMetadata {
-                            content_type: height >= 0,
-                            height: (height >= 0).then_some(height),
+                            content_type: forward_metadata && height >= 0,
+                            height: (forward_metadata && height >= 0).then_some(height),
                         },
                         response_type: Some(method.output),
                         error: false,
@@ -589,8 +594,8 @@ pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> De
         Err((code, message, height)) => {
             let mut reply = DetailedReply::from(error_reply(code, &message));
             reply.metadata = ResponseMetadata {
-                content_type: height.is_some(),
-                height,
+                content_type: forward_metadata && height.is_some(),
+                height: if forward_metadata { height } else { None },
             };
             reply
         }
@@ -601,6 +606,75 @@ pub fn handle_with_metadata(req: &Request<'_>, call: CallWithMetadata<'_>) -> De
 mod tests {
     use super::*;
     use prost::Message as _;
+
+    fn broadcast_request(body: &[u8]) -> Request<'_> {
+        Request {
+            method: "POST",
+            path: "/cosmos/tx/v1beta1/txs",
+            query: "",
+            height: None,
+            body,
+        }
+    }
+
+    #[test]
+    fn broadcast_tx_success_does_not_forward_query_metadata() {
+        let request = broadcast_request(br#"{"tx_bytes":"AQ==","mode":"BROADCAST_MODE_SYNC"}"#);
+        let reply = handle_with_metadata(&request, &mut |path, _, _| {
+            assert_eq!(path, BROADCAST_TX);
+            Ok((
+                celestia_proto::cosmos::tx::v1beta1::BroadcastTxResponse::default().encode_to_vec(),
+                20,
+            ))
+        });
+
+        assert_eq!(reply.reply.status, 200);
+        assert_eq!(reply.metadata, ResponseMetadata::default());
+    }
+
+    #[test]
+    fn broadcast_tx_error_does_not_forward_query_metadata() {
+        let request = broadcast_request(br#"{"tx_bytes":"AQ==","mode":"BROADCAST_MODE_SYNC"}"#);
+        let reply = handle_with_metadata(&request, &mut |path, _, _| {
+            assert_eq!(path, BROADCAST_TX);
+            Err((
+                grpc_query::Code::InvalidArgument,
+                "rejected".to_owned(),
+                Some(20),
+            ))
+        });
+
+        assert_eq!(reply.reply.status, 400);
+        assert_eq!(reply.metadata, ResponseMetadata::default());
+    }
+
+    #[test]
+    fn ordinary_query_still_forwards_metadata() {
+        let request = Request {
+            method: "GET",
+            path: "/cosmos/bank/v1beta1/params",
+            query: "",
+            height: None,
+            body: &[],
+        };
+        let reply = handle_with_metadata(&request, &mut |path, _, _| {
+            assert_eq!(path, "/cosmos.bank.v1beta1.Query/Params");
+            Ok((
+                celestia_proto::cosmos::bank::v1beta1::QueryParamsResponse::default()
+                    .encode_to_vec(),
+                20,
+            ))
+        });
+
+        assert_eq!(reply.reply.status, 200);
+        assert_eq!(
+            reply.metadata,
+            ResponseMetadata {
+                content_type: true,
+                height: Some(20),
+            }
+        );
+    }
 
     #[test]
     fn routes_from_bindings() {

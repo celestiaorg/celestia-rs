@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -25,6 +30,120 @@ func TestLoopbackValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestExactEndpointValidation(t *testing.T) {
+	accepted := []struct {
+		transport string
+		endpoint  string
+	}{
+		{"comet-websocket", "ws://127.0.0.1:26657/websocket"},
+		{"comet-jsonrpc", "http://127.0.0.1:26657"},
+		{"comet-uri", "http://127.0.0.1:26657"},
+		{"rest", "http://127.0.0.1:1317"},
+		{"cosmos-grpc", "127.0.0.1:9090"},
+		{"core-grpc", "127.0.0.1:9098"},
+	}
+	for _, test := range accepted {
+		if err := checkExactEndpoint(test.endpoint, test.transport); err != nil {
+			t.Errorf("rejected %s endpoint %q: %v", test.transport, test.endpoint, err)
+		}
+	}
+
+	rejected := []struct {
+		transport string
+		endpoint  string
+	}{
+		{"comet-websocket", "http://127.0.0.1:26657/websocket"},
+		{"comet-websocket", "wss://127.0.0.1:26657/websocket"},
+		{"comet-websocket", "ws://127.0.0.1:26657"},
+		{"comet-websocket", "ws://127.0.0.1:26657/other"},
+		{"comet-websocket", "ws://127.0.0.1:26657/websocket?query=1"},
+		{"comet-websocket", "ws://127.0.0.1:26657/%77ebsocket"},
+		{"comet-websocket", "ws://8.8.8.8:26657/websocket"},
+		{"comet-jsonrpc", "ws://127.0.0.1:26657/websocket"},
+		{"comet-uri", "https://127.0.0.1:26657"},
+		{"rest", "http://127.0.0.1:1317/path"},
+		{"rest", "http://127.0.0.1:1317?"},
+		{"rest", "http://user@127.0.0.1:1317"},
+		{"core-grpc", "http://127.0.0.1:9098"},
+		{"cosmos-grpc", "8.8.8.8:9090"},
+		{"unknown", "http://127.0.0.1:1234"},
+	}
+	for _, test := range rejected {
+		if err := checkExactEndpoint(test.endpoint, test.transport); err == nil {
+			t.Errorf("accepted %s endpoint %q", test.transport, test.endpoint)
+		}
+	}
+}
+
+func TestExactWebSocketUsesValidatedRequestPath(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	requestURI := make(chan string, 1)
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer conn.Close()
+		reader := bufio.NewReader(conn)
+		request, err := http.ReadRequest(reader)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		requestURI <- request.RequestURI
+		digest := sha1.Sum([]byte(fixedWebSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+		accept := base64.StdEncoding.EncodeToString(digest[:])
+		if _, err = io.WriteString(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n"); err != nil {
+			serverErr <- err
+			return
+		}
+		header := make([]byte, 2)
+		if _, err = io.ReadFull(reader, header); err != nil || header[1]&0x80 == 0 {
+			serverErr <- fmt.Errorf("invalid client WebSocket frame: %v", err)
+			return
+		}
+		length := uint64(header[1] & 0x7f)
+		if length == 126 {
+			extended := make([]byte, 2)
+			if _, err = io.ReadFull(reader, extended); err != nil {
+				serverErr <- err
+				return
+			}
+			length = uint64(binary.BigEndian.Uint16(extended))
+		}
+		masked := make([]byte, 4+length)
+		if _, err = io.ReadFull(reader, masked); err != nil {
+			serverErr <- err
+			return
+		}
+		_, err = conn.Write([]byte("\x81\x02{}"))
+		serverErr <- err
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	endpoint := "ws://" + listener.Addr().String() + "/websocket"
+	_, _, payload, err := exactWebSocket(ctx, endpoint, "broadcast_tx_sync", []byte("tx"), 187)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri := <-requestURI; uri != "/websocket" {
+		t.Fatalf("WebSocket request URI = %q", uri)
+	}
+	if string(payload) != "{}" {
+		t.Fatalf("WebSocket payload = %q", payload)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHTTPFailureAndRedirectRemainFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

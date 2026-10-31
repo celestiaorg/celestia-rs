@@ -2,10 +2,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,12 +20,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -55,6 +61,67 @@ type broadcastResult struct {
 	Error            string  `json:"error,omitempty"`
 	ErrorType        string  `json:"exception_type,omitempty"`
 	AdmissionUnknown bool    `json:"admission_unknown,omitempty"`
+}
+
+// exactResult preserves the stable wire/application fields required by the
+// paired live-transaction closure campaign. It is additive to the soak client
+// modes above and is never used unless --mode exact-broadcast is explicit.
+type exactBlob struct {
+	Base64 string `json:"base64"`
+	SHA256 string `json:"sha256"`
+	Size   int    `json:"size"`
+}
+type exactFrame struct {
+	Opcode  string    `json:"opcode"`
+	Payload exactBlob `json:"payload"`
+}
+type exactHandshake struct {
+	Status    int         `json:"status"`
+	Headers   [][2]string `json:"headers"`
+	RequestID int         `json:"request_id"`
+}
+type exactResult struct {
+	Transport          string          `json:"transport"`
+	Wire               *exactBlob      `json:"wire"`
+	HTTPStatus         *int            `json:"http_status"`
+	HTTPHeaders        [][2]string     `json:"http_headers"`
+	JSON               json.RawMessage `json:"json"`
+	GRPCStatus         *int            `json:"grpc_status"`
+	GRPCMessage        *string         `json:"grpc_message"`
+	InitialMetadata    [][2]string     `json:"initial_metadata"`
+	TrailingMetadata   [][2]string     `json:"trailing_metadata"`
+	WebSocketFrames    []exactFrame    `json:"websocket_frames"`
+	WebSocketHandshake *exactHandshake `json:"websocket_handshake"`
+	ClientError        *string         `json:"client_error"`
+	ProcessEffect      *string         `json:"process_effect"`
+}
+
+func blobOf(raw []byte) *exactBlob {
+	digest := sha256.Sum256(raw)
+	return &exactBlob{Base64: base64.StdEncoding.EncodeToString(raw), SHA256: hex.EncodeToString(digest[:]), Size: len(raw)}
+}
+
+func headerPairs(headers map[string][]string, trailer bool) [][2]string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, strings.ToLower(key))
+	}
+	sort.Strings(keys)
+	var pairs [][2]string
+	for _, key := range keys {
+		values := headers[key]
+		if values == nil {
+			values = headers[http.CanonicalHeaderKey(key)]
+		}
+		for _, value := range values {
+			name := key
+			if trailer {
+				name = "trailer:" + name
+			}
+			pairs = append(pairs, [2]string{name, strings.TrimSpace(value)})
+		}
+	}
+	return pairs
 }
 
 func wireBytes(dst []byte, n protowire.Number, b []byte) []byte {
@@ -122,6 +189,33 @@ func checkLoopback(address string, isURL bool) error {
 	}
 	return nil
 }
+func checkExactEndpoint(address, transport string) error {
+	switch transport {
+	case "comet-websocket":
+		u, err := url.Parse(address)
+		if err != nil {
+			return err
+		}
+		if u.Scheme != "ws" || u.Path != "/websocket" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || u.RawPath != "" || u.ForceQuery {
+			return errors.New("comet-websocket requires an isolated ws loopback /websocket endpoint")
+		}
+		return checkLoopback(u.Host, false)
+	case "rest", "comet-jsonrpc", "comet-uri":
+		u, err := url.Parse(address)
+		if err != nil {
+			return err
+		}
+		if u.Scheme != "http" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || u.RawPath != "" || u.ForceQuery {
+			return fmt.Errorf("%s requires an isolated HTTP loopback endpoint", transport)
+		}
+		return checkLoopback(u.Host, false)
+	case "cosmos-grpc", "core-grpc":
+		return checkLoopback(address, false)
+	default:
+		return fmt.Errorf("unsupported exact transport %q", transport)
+	}
+}
+
 func (e endpoints) validate() error {
 	for _, a := range []string{e.RPC, e.REST} {
 		if x := checkLoopback(a, true); x != nil {
@@ -447,6 +541,367 @@ func broadcast(ctx context.Context, e endpoints, transport string, tx []byte) (b
 	}
 	return result, err
 }
+
+func exactHTTP(ctx context.Context, method, address string, body []byte) ([]byte, int, [][2]string, error) {
+	req, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := (&http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	if err != nil {
+		return raw, resp.StatusCode, headerPairs(resp.Header, false), err
+	}
+	if len(raw) > maxResponse {
+		return nil, resp.StatusCode, headerPairs(resp.Header, false), errors.New("oversized HTTP response")
+	}
+	return raw, resp.StatusCode, headerPairs(resp.Header, false), nil
+}
+
+func exactGRPC(ctx context.Context, endpoint, method string, request []byte) ([]byte, [][2]string, [][2]string, int, string, error) {
+	frame := make([]byte, 5, 5+len(request))
+	binary.BigEndian.PutUint32(frame[1:], uint32(len(request)))
+	frame = append(frame, request...)
+	transport := &http2.Transport{
+		AllowHTTP: true,
+		DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "tcp", endpoint)
+		},
+	}
+	defer transport.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://"+endpoint+method, bytes.NewReader(frame))
+	if err != nil {
+		return nil, nil, nil, 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/grpc")
+	req.Header.Set("TE", "trailers")
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		return nil, nil, nil, 0, "", err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+6))
+	initial := headerPairs(resp.Header, false)
+	trailers := headerPairs(resp.Trailer, false)
+	if err != nil {
+		return nil, initial, trailers, 0, "", err
+	}
+	statusValue := resp.Trailer.Get("Grpc-Status")
+	messageValue := resp.Trailer.Get("Grpc-Message")
+	if statusValue == "" {
+		statusValue = resp.Header.Get("Grpc-Status")
+	}
+	if messageValue == "" {
+		messageValue = resp.Header.Get("Grpc-Message")
+	}
+	code, parseErr := strconv.Atoi(statusValue)
+	if parseErr != nil {
+		return nil, initial, trailers, 0, "", errors.New("missing or invalid grpc-status trailer")
+	}
+	message, _ := url.QueryUnescape(messageValue)
+	if len(raw) == 0 {
+		return nil, initial, trailers, code, message, nil
+	}
+	if len(raw) < 5 || raw[0] != 0 {
+		return nil, initial, trailers, code, message, errors.New("invalid gRPC response frame")
+	}
+	size := int(binary.BigEndian.Uint32(raw[1:5]))
+	if size != len(raw)-5 || size > maxResponse {
+		return nil, initial, trailers, code, message, errors.New("gRPC response frame length differs")
+	}
+	return raw[5:], initial, trailers, code, message, nil
+}
+
+const fixedWebSocketKey = "MDEyMzQ1Njc4OWFiY2RlZg=="
+
+func writeWebSocketFrame(conn net.Conn, opcode byte, payload []byte) error {
+	header := []byte{0x80 | opcode}
+	switch {
+	case len(payload) < 126:
+		header = append(header, 0x80|byte(len(payload)))
+	case len(payload) <= 65535:
+		header = append(header, 0x80|126, byte(len(payload)>>8), byte(len(payload)))
+	default:
+		header = append(header, 0x80|127)
+		length := make([]byte, 8)
+		binary.BigEndian.PutUint64(length, uint64(len(payload)))
+		header = append(header, length...)
+	}
+	mask := [4]byte{0x18, 0x07, 0x01, 0x87}
+	header = append(header, mask[:]...)
+	masked := make([]byte, len(payload))
+	for index := range payload {
+		masked[index] = payload[index] ^ mask[index%len(mask)]
+	}
+	if _, err := conn.Write(header); err != nil {
+		return err
+	}
+	_, err := conn.Write(masked)
+	return err
+}
+
+func readWebSocketFrame(reader *bufio.Reader) (byte, []byte, error) {
+	header := make([]byte, 2)
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return 0, nil, err
+	}
+	if header[0]&0x80 == 0 || header[0]&0x70 != 0 || header[1]&0x80 != 0 {
+		return 0, nil, errors.New("invalid server WebSocket frame")
+	}
+	length := uint64(header[1] & 0x7f)
+	if length == 126 {
+		extended := make([]byte, 2)
+		if _, err := io.ReadFull(reader, extended); err != nil {
+			return 0, nil, err
+		}
+		length = uint64(binary.BigEndian.Uint16(extended))
+	} else if length == 127 {
+		extended := make([]byte, 8)
+		if _, err := io.ReadFull(reader, extended); err != nil {
+			return 0, nil, err
+		}
+		length = binary.BigEndian.Uint64(extended)
+	}
+	if length > maxResponse {
+		return 0, nil, errors.New("oversized WebSocket frame")
+	}
+	payload := make([]byte, int(length))
+	if _, err := io.ReadFull(reader, payload); err != nil {
+		return 0, nil, err
+	}
+	return header[0] & 0x0f, payload, nil
+}
+
+func exactWebSocket(ctx context.Context, endpoint, method string, tx []byte, requestID int) ([]exactFrame, *exactHandshake, []byte, error) {
+	if err := checkExactEndpoint(endpoint, "comet-websocket"); err != nil {
+		return nil, nil, nil, err
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", parsed.Host)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer conn.Close()
+	deadline, ok := ctx.Deadline()
+	if ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	requestPath := parsed.EscapedPath()
+	handshakeRequest := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", requestPath, parsed.Host, fixedWebSocketKey)
+	if _, err := io.WriteString(conn, handshakeRequest); err != nil {
+		return nil, nil, nil, err
+	}
+	reader := bufio.NewReaderSize(conn, 16*1024)
+	response, err := http.ReadResponse(reader, &http.Request{Method: "GET"})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	handshake := &exactHandshake{Status: response.StatusCode, Headers: headerPairs(response.Header, false), RequestID: requestID}
+	digest := sha1.Sum([]byte(fixedWebSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	expectedAccept := base64.StdEncoding.EncodeToString(digest[:])
+	if response.StatusCode != http.StatusSwitchingProtocols || response.Header.Get("Sec-WebSocket-Accept") != expectedAccept {
+		return nil, handshake, nil, errors.New("WebSocket handshake differs")
+	}
+	request, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": requestID, "method": method, "params": map[string]any{"tx": base64.StdEncoding.EncodeToString(tx)}})
+	if err := writeWebSocketFrame(conn, 1, request); err != nil {
+		return nil, handshake, nil, err
+	}
+	frames := []exactFrame{}
+	for len(frames) < 8 {
+		opcode, payload, err := readWebSocketFrame(reader)
+		if err != nil {
+			return frames, handshake, nil, err
+		}
+		switch opcode {
+		case 1, 2, 8:
+			name := map[byte]string{1: "text", 2: "binary", 8: "close"}[opcode]
+			frames = append(frames, exactFrame{Opcode: name, Payload: *blobOf(payload)})
+			return frames, handshake, payload, nil
+		case 9:
+			if err := writeWebSocketFrame(conn, 10, payload); err != nil {
+				return frames, handshake, nil, err
+			}
+		case 10:
+		default:
+			return frames, handshake, nil, errors.New("unsupported WebSocket frame opcode")
+		}
+	}
+	return frames, handshake, nil, errors.New("too many WebSocket control frames")
+}
+
+func broadcastMethod(mode string) (string, error) {
+	switch mode {
+	case "async":
+		return "broadcast_tx_async", nil
+	case "sync":
+		return "broadcast_tx_sync", nil
+	case "commit", "commit-disconnect", "commit-cancel-100ms", "commit-server-timeout-250ms":
+		return "broadcast_tx_commit", nil
+	case "terminal-malformed":
+		return "broadcast_tx_commit", nil
+	case "block":
+		return "broadcast_tx_commit", nil
+	default:
+		return "", fmt.Errorf("unsupported broadcast mode %q", mode)
+	}
+}
+
+func exactBroadcast(ctx context.Context, caseName, endpoint, transport, mode string, tx []byte, requestID int, disconnect bool) exactResult {
+	result := exactResult{Transport: transport, HTTPHeaders: [][2]string{}, InitialMetadata: [][2]string{}, TrailingMetadata: [][2]string{}, WebSocketFrames: []exactFrame{}}
+	method, err := broadcastMethod(mode)
+	if err != nil {
+		message := err.Error()
+		result.ClientError = &message
+		return result
+	}
+	if disconnect && transport != "comet-jsonrpc" {
+		message := "disconnect-after-write is supported only for comet-jsonrpc"
+		result.ClientError = &message
+		return result
+	}
+	switch transport {
+	case "comet-jsonrpc":
+		request, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": requestID, "method": method, "params": map[string]any{"tx": base64.StdEncoding.EncodeToString(tx)}})
+		if disconnect {
+			u, parseErr := url.Parse(endpoint)
+			if parseErr != nil {
+				message := parseErr.Error()
+				result.ClientError = &message
+				return result
+			}
+			conn, dialErr := net.DialTimeout("tcp", u.Host, 3*time.Second)
+			if dialErr != nil {
+				message := dialErr.Error()
+				result.ClientError = &message
+				return result
+			}
+			wire := fmt.Sprintf("POST / HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", u.Host, len(request))
+			_, dialErr = conn.Write(append([]byte(wire), request...))
+			_ = conn.Close()
+			if dialErr != nil {
+				message := dialErr.Error()
+				result.ClientError = &message
+				return result
+			}
+			message := "client-disconnected-after-complete-write"
+			result.ClientError = &message
+			result.ProcessEffect = &message
+			return result
+		}
+		raw, code, headers, callErr := exactHTTP(ctx, "POST", endpoint, request)
+		result.Wire, result.HTTPStatus, result.HTTPHeaders = blobOf(raw), &code, headers
+		if json.Valid(raw) {
+			result.JSON = bytes.Clone(raw)
+		}
+		if callErr != nil {
+			message := callErr.Error()
+			result.ClientError = &message
+		}
+	case "comet-uri":
+		raw, code, headers, callErr := exactHTTP(ctx, "GET", endpoint+"/"+method+"?tx=0x"+hex.EncodeToString(tx), nil)
+		result.Wire, result.HTTPStatus, result.HTTPHeaders = blobOf(raw), &code, headers
+		if json.Valid(raw) {
+			result.JSON = bytes.Clone(raw)
+		}
+		if callErr != nil {
+			message := callErr.Error()
+			result.ClientError = &message
+		}
+	case "comet-websocket":
+		frames, handshake, raw, callErr := exactWebSocket(ctx, endpoint, method, tx, requestID)
+		result.WebSocketFrames, result.WebSocketHandshake, result.Wire = frames, handshake, blobOf(raw)
+		if json.Valid(raw) {
+			result.JSON = bytes.Clone(raw)
+		}
+		if callErr != nil {
+			message := callErr.Error()
+			result.ClientError = &message
+		}
+	case "rest":
+		if caseName == "rest-invalid-base64" {
+			raw, code, headers, callErr := exactHTTP(ctx, "POST", endpoint+"/cosmos/tx/v1beta1/txs", tx)
+			result.Wire, result.HTTPStatus, result.HTTPHeaders = blobOf(raw), &code, headers
+			if json.Valid(raw) {
+				result.JSON = bytes.Clone(raw)
+			}
+			if callErr != nil {
+				message := callErr.Error()
+				result.ClientError = &message
+			}
+			break
+		}
+		modeValue := map[string]string{"async": "BROADCAST_MODE_ASYNC", "sync": "BROADCAST_MODE_SYNC", "block": "BROADCAST_MODE_BLOCK"}[mode]
+		if modeValue == "" {
+			message := "unsupported REST broadcast mode"
+			result.ClientError = &message
+			return result
+		}
+		request, _ := json.Marshal(map[string]any{"tx_bytes": base64.StdEncoding.EncodeToString(tx), "mode": modeValue})
+		raw, code, headers, callErr := exactHTTP(ctx, "POST", endpoint+"/cosmos/tx/v1beta1/txs", request)
+		result.Wire, result.HTTPStatus, result.HTTPHeaders = blobOf(raw), &code, headers
+		if json.Valid(raw) {
+			result.JSON = bytes.Clone(raw)
+		}
+		if callErr != nil {
+			message := callErr.Error()
+			result.ClientError = &message
+		}
+	case "cosmos-grpc", "core-grpc":
+		request := wireBytes(nil, 1, tx)
+		methodName := "/cosmos.tx.v1beta1.Service/BroadcastTx"
+		if transport == "cosmos-grpc" {
+			modeNumber := map[string]uint64{"block": 1, "sync": 2, "async": 3}[mode]
+			if modeNumber == 0 {
+				message := "unsupported Cosmos gRPC mode"
+				result.ClientError = &message
+				return result
+			}
+			request = wireInt(request, 2, modeNumber)
+		} else {
+			methodName = "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx"
+			if caseName == "raw-malformed-protobuf" {
+				request = bytes.Clone(tx)
+			}
+		}
+		raw, header, trailer, grpcCode, grpcMessage, callErr := exactGRPC(ctx, endpoint, methodName, request)
+		result.Wire, result.InitialMetadata, result.TrailingMetadata = blobOf(raw), header, trailer
+		result.GRPCStatus, result.GRPCMessage = &grpcCode, &grpcMessage
+		if callErr != nil {
+			message := callErr.Error()
+			result.ClientError = &message
+			result.GRPCStatus, result.GRPCMessage = nil, nil
+			if caseName == "core-grpc-cancel" {
+				effect := "client-canceled"
+				result.ProcessEffect = &effect
+			}
+		}
+		if caseName == "raw-malformed-protobuf" {
+			effect := "continued"
+			if callErr != nil {
+				effect = "abci-connection-closed"
+			}
+			result.ProcessEffect = &effect
+		} else if caseName == "server-timeout" && callErr == nil {
+			effect := "server-timeout"
+			result.ProcessEffect = &effect
+		}
+	default:
+		message := fmt.Sprintf("unsupported exact transport %q", transport)
+		result.ClientError = &message
+	}
+	return result
+}
 func main() {
 	var e endpoints
 	flag.StringVar(&e.RPC, "rpc", "", "Comet loopback HTTP endpoint")
@@ -456,10 +911,22 @@ func main() {
 	mode := flag.String("mode", "probe", "probe or broadcast")
 	transport := flag.String("transport", "jsonrpc", "broadcast transport")
 	broadcastTimeout := flag.Duration("broadcast-timeout", 30*time.Second, "outer broadcast deadline")
+	exactEndpoint := flag.String("endpoint", "", "single loopback endpoint for exact-broadcast")
+	caseName := flag.String("case-name", "", "frozen live-transaction case name")
+	broadcastMode := flag.String("broadcast-mode", "sync", "exact broadcast mode")
+	requestBase64 := flag.String("request-base64", "", "exact transaction bytes as base64")
+	rpcID := flag.Int("jsonrpc-id", 187, "exact JSON-RPC request id")
+	timeoutMS := flag.Int("timeout-ms", 30000, "exact call timeout in milliseconds")
+	disconnect := flag.Bool("disconnect-after-write", false, "close Comet HTTP after writing request")
 	height := flag.Uint64("height", 1, "historical query height")
 	address := flag.String("address", "", "public bank address")
 	flag.Parse()
-	if x := e.validate(); x != nil {
+	if *mode != "exact-broadcast" {
+		if x := e.validate(); x != nil {
+			fmt.Fprintln(os.Stderr, x)
+			os.Exit(2)
+		}
+	} else if x := checkExactEndpoint(*exactEndpoint, *transport); x != nil {
 		fmt.Fprintln(os.Stderr, x)
 		os.Exit(2)
 	}
@@ -486,6 +953,19 @@ func main() {
 			result.AdmissionUnknown = true
 		}
 		_ = enc.Encode(result)
+	case "exact-broadcast":
+		tx, x := base64.StdEncoding.DecodeString(*requestBase64)
+		if x != nil || len(tx) == 0 || len(tx) > 1<<20 || *caseName == "" || *rpcID != 187 || *timeoutMS < 1 || *timeoutMS > 60000 {
+			fmt.Fprintln(os.Stderr, "invalid exact-broadcast arguments")
+			os.Exit(2)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutMS)*time.Millisecond)
+		defer cancel()
+		result := exactBroadcast(ctx, *caseName, *exactEndpoint, *transport, *broadcastMode, tx, *rpcID, *disconnect)
+		_ = enc.Encode(result)
+		if result.ClientError != nil && !*disconnect {
+			os.Exit(3)
+		}
 	default:
 		fmt.Fprintln(os.Stderr, "unknown mode")
 		os.Exit(2)
