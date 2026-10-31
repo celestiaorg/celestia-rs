@@ -803,9 +803,11 @@ class Soak:
             h = hi + 1
             self.ref_checked = hi
 
-    def check_node(self, nd, limit=400):
+    def check_node(self, nd, limit=400, final=False):
         st = nd.status()
         if not st:
+            if final:
+                self.fail(f"node {nd.i} ({nd.kind}): status unavailable during final consistency pass")
             return
         top, base, _ = st
         upto = min(top, self.ref_checked)
@@ -813,11 +815,40 @@ class Soak:
         n = 0
         while h <= upto and n < limit:
             try:
-                c = get_json(f"{nd.url}/commit?height={h}")["result"]["signed_header"]
-            except Exception:
+                reply = get_json(f"{nd.url}/commit?height={h}")
+            except Exception as e:
+                if final:
+                    self.fail(f"node {nd.i} ({nd.kind}) height {h}: unreadable commit: {e}")
+                    break
                 return
-            got_hash = c["commit"]["block_id"]["hash"].upper()
-            got_app = c["header"]["app_hash"].upper()
+            try:
+                c = reply["result"]["signed_header"]
+            except (KeyError, TypeError) as e:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed signed_header fields: {e}")
+                break
+            # A node can expose the new tip through /status before the signed
+            # commit is available. Both Comet implementations transiently
+            # return a signed_header with a null commit in that window. Only
+            # that exact live-tip response is retryable; malformed, historical,
+            # and final-pass responses must fail closed.
+            if not isinstance(c, dict):
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed signed_header")
+                break
+            if "commit" not in c:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: missing commit field")
+                break
+            commit = c["commit"]
+            if commit is None and h == top and not final:
+                return
+            if not isinstance(commit, dict):
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed commit")
+                break
+            try:
+                got_hash = commit["block_id"]["hash"].upper()
+                got_app = c["header"]["app_hash"].upper()
+            except (KeyError, TypeError, AttributeError) as e:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed commit fields: {e}")
+                break
             r = self.ref_cache.get(h)
             if r is None:
                 nd.checked = h
@@ -828,6 +859,8 @@ class Soak:
             nd.checked = h
             h += 1
             n += 1
+        if final and nd.checked < upto:
+            self.fail(f"node {nd.i} ({nd.kind}): consistency coverage stopped at {nd.checked}, expected {upto}")
 
     def consistency_loop(self):
         while not self.stop.is_set():
@@ -2084,7 +2117,7 @@ class Soak:
             self.fetch_ref(ref, rh - 1)
             for nd in self.nodes:
                 if nd is not ref:
-                    self.check_node(nd, limit=10**9)
+                    self.check_node(nd, limit=10**9, final=True)
         self.scan_logs()
         self.provider.finalize()
         self.stop.set()
