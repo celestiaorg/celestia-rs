@@ -22,6 +22,9 @@ class EvidenceAdmission(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.policy = coverage.read_json(coverage.POLICY)
+        self.review_ledger = coverage.read_json(
+            coverage.ROOT / self.policy["reviewed_evidence"]
+        )
         responses = {}
         for route, result in (("status", {"node_info": {"network": "celestia"}}),
                               ("abci_info", {"response": {"version": "10.5.0"}})):
@@ -131,6 +134,133 @@ class EvidenceAdmission(unittest.TestCase):
         self.assertEqual(indexed[("cosmos-grpc", "/cosmos.bank.v1beta1.Query/Balance")]["declaration"], "descriptor-candidate")
         self.assertIn(("rest", "GET /cosmos/bank/v1beta1/balances/{address}/by_denom"), indexed)
         self.assertEqual(sum(e["declaration"] == "required-registration-check" for e in endpoints), 4)
+
+    def test_merged_current_release_reviews_remain_unadmitted(self):
+        reviews = coverage.validate_reviews(self.review_ledger, self.policy)
+        self.assertEqual({review["issue"] for review in reviews}, {182, 184, 185, 186, 187, 188})
+        self.assertTrue(all(review["status"] == "not-admitted" for review in reviews))
+        self.assertTrue(all(review["matched_state"]["rs"] is None for review in reviews))
+
+    def test_review_cannot_claim_an_unrecorded_rust_binary(self):
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 185)
+        review["binary_sha256"]["rs"] = "d" * 64
+        with self.assertRaisesRegex(ValueError, "inconsistent rs binary identity"):
+            coverage.validate_reviews(self.review_ledger, self.policy)
+
+    def test_review_artifact_and_regression_source_hashes_are_bound(self):
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 186)
+        review["bindings"]["go_responses"][0]["sha256"] = "e" * 64
+        with self.assertRaisesRegex(ValueError, "review artifact hash mismatch"):
+            coverage.validate_reviews(self.review_ledger, self.policy)
+        self.review_ledger = coverage.read_json(
+            coverage.ROOT / self.policy["reviewed_evidence"]
+        )
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 187)
+        review["regressions"][0]["source_sha256"] = "f" * 64
+        with self.assertRaisesRegex(ValueError, "review artifact hash mismatch"):
+            coverage.validate_reviews(self.review_ledger, self.policy)
+
+    def test_review_cannot_hide_missing_matched_state(self):
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 182)
+        review["admission_blockers"].remove("missing-rs-matched-state")
+        with self.assertRaisesRegex(ValueError, "missing Rust capture provenance|matched state"):
+            coverage.validate_reviews(self.review_ledger, self.policy)
+
+    def test_every_artifact_class_has_a_symmetric_presence_blocker(self):
+        present = {
+            "oracle_build": (185, "missing-oracle-build-receipt"),
+            "dependency_receipts": (185, "missing-dependency-receipts"),
+            "genesis": (185, "missing-committed-genesis"),
+            "workload": (185, "missing-committed-workload"),
+            "capture_source": (185, "missing-capture-source"),
+            "mainnet_observation": (185, "missing-complete-mainnet-observation"),
+            "go_responses": (185, "missing-committed-go-response"),
+        }
+        for name, (issue, blocker) in present.items():
+            with self.subTest(name=name, mutation="block-present-artifact"):
+                ledger = deepcopy(self.review_ledger)
+                review = next(item for item in ledger["reviews"] if item["issue"] == issue)
+                review["admission_blockers"].append(blocker)
+                with self.assertRaisesRegex(ValueError, rf"inconsistent {name} presence/blocker"):
+                    coverage.validate_reviews(ledger, self.policy)
+        absent = {
+            "genesis": (182, "missing-committed-genesis"),
+            "workload": (182, "missing-committed-workload"),
+            "mainnet_observation": (182, "missing-complete-mainnet-observation"),
+            "rs_responses": (185, "missing-committed-rs-response"),
+            "oracle_build": (187, "missing-oracle-build-receipt"),
+            "dependency_receipts": (187, "missing-dependency-receipts"),
+            "capture_source": (187, "missing-capture-source"),
+            "go_responses": (187, "missing-committed-go-response"),
+        }
+        for name, (issue, blocker) in absent.items():
+            with self.subTest(name=name, mutation="hide-missing-artifact"):
+                ledger = deepcopy(self.review_ledger)
+                review = next(item for item in ledger["reviews"] if item["issue"] == issue)
+                review["admission_blockers"].remove(blocker)
+                with self.assertRaisesRegex(ValueError, rf"inconsistent {name} presence/blocker"):
+                    coverage.validate_reviews(ledger, self.policy)
+
+    def test_valid_artifact_cannot_be_rebound_to_another_class(self):
+        for destination, source in (("genesis", "workload"),
+                                    ("go_responses", "mainnet_observation")):
+            with self.subTest(destination=destination, source=source):
+                ledger = deepcopy(self.review_ledger)
+                review = next(item for item in ledger["reviews"] if item["issue"] == 185)
+                artifact = deepcopy(review["bindings"][source])
+                review["bindings"][destination] = [artifact] if destination.endswith("responses") else artifact
+                with self.assertRaisesRegex(ValueError, "artifact classes changed"):
+                    coverage.validate_reviews(ledger, self.policy)
+
+    def test_artifact_class_sets_reject_deletion_and_duplicates(self):
+        for name in ("oracle_build", "dependency_receipts", "genesis", "workload",
+                     "capture_source", "mainnet_observation", "go_responses"):
+            with self.subTest(name=name, mutation="delete"):
+                ledger = deepcopy(self.review_ledger)
+                review = next(item for item in ledger["reviews"] if item["issue"] == 185)
+                review["bindings"][name] = [] if isinstance(review["bindings"][name], list) else None
+                with self.assertRaisesRegex(ValueError, "artifact classes changed"):
+                    coverage.validate_reviews(ledger, self.policy)
+        for name in ("dependency_receipts", "go_responses"):
+            with self.subTest(name=name, mutation="duplicate"):
+                ledger = deepcopy(self.review_ledger)
+                review = next(item for item in ledger["reviews"] if item["issue"] == 185)
+                review["bindings"][name].append(deepcopy(review["bindings"][name][0]))
+                with self.assertRaisesRegex(ValueError, "artifact classes changed"):
+                    coverage.validate_reviews(ledger, self.policy)
+        ledger = deepcopy(self.review_ledger)
+        review = next(item for item in ledger["reviews"] if item["issue"] == 185)
+        review["bindings"]["rs_responses"].append(deepcopy(review["bindings"]["go_responses"][0]))
+        with self.assertRaisesRegex(ValueError, "artifact classes changed"):
+            coverage.validate_reviews(ledger, self.policy)
+
+    def test_bound_state_values_are_parsed_from_the_receipt(self):
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 185)
+        review["matched_state"]["go"]["height"] += 1
+        with self.assertRaisesRegex(ValueError, "matched state disagrees"):
+            coverage.validate_reviews(self.review_ledger, self.policy)
+
+    def test_endpoint_and_selector_sets_reject_deletion_and_duplicates(self):
+        for key, issue, error in (("endpoints", 182, "endpoint set changed"),
+                                  ("regressions", 187, "regression selector set changed")):
+            for mutation in ("delete", "duplicate"):
+                with self.subTest(key=key, issue=issue, mutation=mutation):
+                    ledger = deepcopy(self.review_ledger)
+                    review = next(item for item in ledger["reviews"] if item["issue"] == issue)
+                    if mutation == "delete":
+                        review[key].pop()
+                    else:
+                        review[key].append(deepcopy(review[key][0]))
+                    with self.assertRaisesRegex(ValueError, error):
+                        coverage.validate_reviews(ledger, self.policy)
+
+    def test_broadcast_review_binds_all_available_core_selectors(self):
+        review = next(item for item in self.review_ledger["reviews"] if item["issue"] == 187)
+        self.assertEqual(
+            {item["filter"] for item in review["regressions"]},
+            {"broadcast_tx_reaches_check_tx", "core_broadcast_projects_the_go_response_fields",
+             "core_broadcast_is_served_over_http2"},
+        )
 
 
 if __name__ == "__main__":

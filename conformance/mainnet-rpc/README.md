@@ -53,9 +53,36 @@ completeness.
 The committed RPC v10.4.0 and query v9/v10.4 corpora remain regression-only.
 The inventory records their original metadata and hashes and identifies missing
 capture provenance instead of filling it with today's dependency versions.
-The tracking issue's unpublished `codex/rpc-provider-compatibility` work and
-v10.5 fixtures were not present on `main` when this ledger was introduced;
-none of their reported results are admitted by this ledger.
+`evidence-reviews.json` audits the merged v10.5 packages for #182 and #184-#188.
+It hashes their available build receipts, inputs, capture sources, Go responses,
+state receipts and exact regression source/selectors. The review validator also
+requires every missing admission artifact to remain explicit. These records are
+`not-admitted`: they appear in `reviewed_not_admitted` in the JSON report and do
+not add cases or selectors to `current_evidence`.
+
+The review found no package that satisfies the complete admission contract:
+
+- #182 has pinned Go reflection transcripts and runtime replay, but no committed
+  RS binary, matched-state receipt or RS response capture. Its two narrow
+  normalizations and the upstream Go crash diagnostic remain explicit.
+- #184 deliberately compares consensus field sets and scalar types while
+  excluding asynchronous values; its own capture scope disclaims matched state.
+- #185 reconstructs and checks the Go state before a live Rust Simulate test,
+  but does not commit the Rust state/binary/responses and intentionally removes
+  Go source frames from diagnostic text.
+- #186 compares live Rust responses with committed Go URI, JSON-RPC, WebSocket
+  and ABCI fixtures, but has no committed Rust capture or matched state. Its
+  embedded release observation is not a complete raw status/ABCI observation.
+- #187's partial BroadcastTx regressions use Rust fixtures and a local core
+  stand-in, without a pinned Go capture or paired state.
+- #188 has a strong Go four-transport populated-staking capture and committed
+  Go state, but no Rust matched-state or response capture. Its proof and broader
+  query gaps remain recorded by that fixture.
+
+This audit does not infer missing identities from release tags, convert a live
+test result into a committed response artifact, or turn schema/diagnostic checks
+into exact comparisons. A later capture can replace a blocker with an admitted
+manifest only by committing the corresponding evidence.
 
 ## Fresh oracle selection and capture
 
