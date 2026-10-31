@@ -11,6 +11,9 @@
 pub mod jsonpb;
 pub mod rest;
 
+/// Per-message gRPC request and response limits.
+pub use grpc_transport::Limits as GrpcLimits;
+
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -225,17 +228,35 @@ impl tonic::server::UnaryService<Vec<u8>> for Unary {
     }
 }
 
-async fn grpc_handler(State(app): State<Arc<AbciApp>>, req: Request<Body>) -> Response<Body> {
+async fn grpc_handler(
+    State((app, limits)): State<(Arc<AbciApp>, GrpcLimits)>,
+    req: Request<Body>,
+) -> Response<Body> {
     let path = req.uri().path().to_owned();
-    let mut grpc = tonic::server::Grpc::new(RawCodec);
-    let resp = grpc.unary(Unary { app, path }, req).await;
-    resp.map(Body::new)
+    // grpc-go dispatches before reading a message. An unknown method must not
+    // turn into a size error (or wait indefinitely for a request body).
+    if celestia_proto::services::method(&path).is_none() {
+        let (code, message) = grpc_error_status(&path, GrpcQueryError::Unimplemented(path.clone()));
+        return Status::new(code_of(code), message)
+            .into_http()
+            .map(Body::new);
+    }
+    let mut grpc = limits.grpc();
+    grpc_transport::response(grpc.unary(Unary { app, path }, req).await)
 }
 
 /// The gRPC router: every path is a unary query method.
 pub fn grpc_router(app: Arc<AbciApp>) -> axum::Router {
-    grpc_reflection::router(grpc_reflection::Profile::App)
-        .merge(axum::Router::new().fallback(grpc_handler).with_state(app))
+    grpc_router_with_limits(app, GrpcLimits::sdk())
+}
+
+/// The app gRPC router with operator-configured per-message limits.
+pub fn grpc_router_with_limits(app: Arc<AbciApp>, limits: GrpcLimits) -> axum::Router {
+    grpc_reflection::router_with_limits(grpc_reflection::Profile::App, limits).merge(
+        axum::Router::new()
+            .fallback(grpc_handler)
+            .with_state((app, limits)),
+    )
 }
 
 /// The bytes of a REST response body. Strings are Go forms (`gostr`): Go's

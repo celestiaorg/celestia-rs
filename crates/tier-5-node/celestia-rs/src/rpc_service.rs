@@ -30,6 +30,8 @@ pub struct RpcSettings {
     pub tx_index: bool,
     /// `app.toml [grpc] address` (empty = disabled).
     pub app_grpc: String,
+    /// `app.toml [grpc] max-recv-msg-size` and `max-send-msg-size`.
+    pub app_grpc_limits: api_server::GrpcLimits,
     /// `app.toml [api] address` (empty = disabled).
     pub app_api: String,
 }
@@ -99,6 +101,39 @@ fn parse_duration_ms(s: &str) -> Option<u64> {
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Some(total as u64)
+}
+
+fn grpc_limit(t: &toml::Table, key: &str, default: usize, zero: usize) -> anyhow::Result<usize> {
+    let Some(value) = get(t, "grpc", key) else {
+        return Ok(default);
+    };
+    // The SDK's generated TOML quotes these numbers. Also accept native TOML
+    // integers, as Viper's mapstructure decoder does.
+    let n = if let Some(n) = value.as_integer() {
+        n
+    } else if let Some(s) = value.as_str() {
+        s.parse::<i64>()
+            .with_context(|| format!("grpc.{key} must be a nonnegative integer"))?
+    } else {
+        return Err(anyhow!("grpc.{key} must be a nonnegative integer"));
+    };
+    let n =
+        usize::try_from(n).with_context(|| format!("grpc.{key} must be a nonnegative integer"))?;
+    Ok(if n == 0 { zero } else { n })
+}
+
+fn grpc_limits(app: &toml::Table) -> anyhow::Result<api_server::GrpcLimits> {
+    let defaults = api_server::GrpcLimits::sdk();
+    let zero = api_server::GrpcLimits::sdk_zero();
+    Ok(api_server::GrpcLimits {
+        max_receive: grpc_limit(
+            app,
+            "max-recv-msg-size",
+            defaults.max_receive,
+            zero.max_receive,
+        )?,
+        max_send: grpc_limit(app, "max-send-msg-size", defaults.max_send, zero.max_send)?,
+    })
 }
 
 impl RpcSettings {
@@ -177,8 +212,10 @@ impl RpcSettings {
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(section == "grpc")
         };
+        let app_grpc_limits = grpc_limits(&app)?;
         Ok(Self {
             rpc,
+            app_grpc_limits,
             moniker: cfg
                 .get("moniker")
                 .and_then(toml::Value::as_str)
@@ -926,8 +963,9 @@ impl Rpc {
             && let Some(listener) =
                 bind("gRPC query server (with BlockAPI)", &self.settings.app_grpc)
         {
-            let router =
-                rpc::grpc::router(self.env.clone()).merge(api_server::grpc_router(abci.clone()));
+            let limits = self.settings.app_grpc_limits;
+            let router = rpc::grpc::block_router_with_limits(self.env.clone(), limits)
+                .merge(api_server::grpc_router_with_limits(abci.clone(), limits));
             rt.spawn(async move {
                 if let Err(e) = axum::serve(listener, router).await {
                     tracing::error!(error = %e, "app gRPC server failed");
@@ -985,5 +1023,71 @@ impl Rpc {
             ),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod grpc_limit_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn generated_quoted_limits_integer_limits_and_zero_fallbacks() {
+        let app: toml::Table = "[grpc]\nmax-recv-msg-size = \"123\"\nmax-send-msg-size = 456"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            grpc_limit(&app, "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            123
+        );
+        assert_eq!(
+            grpc_limit(&app, "max-send-msg-size", 64 << 20, i32::MAX as usize).unwrap(),
+            456
+        );
+        let zero: toml::Table = "[grpc]\nmax-recv-msg-size = 0\nmax-send-msg-size = \"0\""
+            .parse()
+            .unwrap();
+        assert_eq!(
+            grpc_limit(&zero, "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            10 << 20
+        );
+        assert_eq!(
+            grpc_limit(&zero, "max-send-msg-size", 64 << 20, i32::MAX as usize).unwrap(),
+            i32::MAX as usize
+        );
+        assert_eq!(
+            grpc_limit(&toml::Table::new(), "max-recv-msg-size", 64 << 20, 10 << 20).unwrap(),
+            64 << 20
+        );
+    }
+
+    #[test]
+    fn invalid_limits_fail_configuration_loading() {
+        for value in ["-1", "\"-1\"", "true", "1.5", "\"invalid\""] {
+            let app: toml::Table = format!("[grpc]\nmax-recv-msg-size = {value}")
+                .parse()
+                .unwrap();
+            assert!(grpc_limit(&app, "max-recv-msg-size", 64 << 20, 10 << 20).is_err());
+        }
+    }
+
+    #[test]
+    fn production_settings_load_limits_from_app_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("config")).unwrap();
+        std::fs::write(dir.path().join("config/config.toml"), "[rpc]\nladdr = \"\"").unwrap();
+        std::fs::write(
+            dir.path().join("config/app.toml"),
+            "[grpc]\nenable = true\nmax-recv-msg-size = \"64\"\nmax-send-msg-size = \"32\"",
+        )
+        .unwrap();
+        let settings = RpcSettings::load(dir.path()).unwrap();
+        assert_eq!(
+            settings.app_grpc_limits,
+            api_server::GrpcLimits {
+                max_receive: 64,
+                max_send: 32
+            }
+        );
     }
 }

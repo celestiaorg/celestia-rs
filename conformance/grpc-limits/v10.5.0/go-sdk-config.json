@@ -1,0 +1,110 @@
+[
+  {
+    "name": "bytes-63-invalid-height-false",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063c787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {},
+    "code": 0,
+    "message": "",
+    "response_hex": "1201301a0130",
+    "headers": {
+      "content-type": [
+        "application/grpc"
+      ],
+      "x-cosmos-block-height": [
+        "1"
+      ]
+    },
+    "trailers": {}
+  },
+  {
+    "name": "bytes-63-invalid-height-true",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063c787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {
+      "x-cosmos-block-height": [
+        "invalid"
+      ]
+    },
+    "code": 2,
+    "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"invalid\": invalid syntax",
+    "response_hex": "",
+    "headers": null,
+    "trailers": {
+      "content-type": [
+        "application/grpc"
+      ]
+    }
+  },
+  {
+    "name": "bytes-64-invalid-height-false",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063d78787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {},
+    "code": 0,
+    "message": "",
+    "response_hex": "1201301a0130",
+    "headers": {
+      "content-type": [
+        "application/grpc"
+      ],
+      "x-cosmos-block-height": [
+        "1"
+      ]
+    },
+    "trailers": {}
+  },
+  {
+    "name": "bytes-64-invalid-height-true",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063d78787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {
+      "x-cosmos-block-height": [
+        "invalid"
+      ]
+    },
+    "code": 2,
+    "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"invalid\": invalid syntax",
+    "response_hex": "",
+    "headers": null,
+    "trailers": {
+      "content-type": [
+        "application/grpc"
+      ]
+    }
+  },
+  {
+    "name": "bytes-65-invalid-height-false",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063e7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {},
+    "code": 8,
+    "message": "grpc: received message larger than max (65 vs. 64)",
+    "response_hex": "",
+    "headers": null,
+    "trailers": {
+      "content-type": [
+        "application/grpc"
+      ]
+    }
+  },
+  {
+    "name": "bytes-65-invalid-height-true",
+    "method": "/cosmos.base.node.v1beta1.Service/Config",
+    "request_hex": "a2063e7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+    "request_metadata": {
+      "x-cosmos-block-height": [
+        "invalid"
+      ]
+    },
+    "code": 8,
+    "message": "grpc: received message larger than max (65 vs. 64)",
+    "response_hex": "",
+    "headers": null,
+    "trailers": {
+      "content-type": [
+        "application/grpc"
+      ]
+    }
+  }
+]

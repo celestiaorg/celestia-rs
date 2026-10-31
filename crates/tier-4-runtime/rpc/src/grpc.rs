@@ -15,13 +15,16 @@ use axum::http::{Request, Response};
 use bytes::{Buf, BufMut};
 use ctypes::proto::rpc::grpc as pg;
 use ctypes::proto::{p2p as pp2p, types as ptypes};
-use futures_util::Stream;
+use futures_util::{Stream, StreamExt as _};
 use prost::Message as _;
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::{Code, Status};
 
 use crate::env::{Environment, Route};
 use crate::query::Query;
+
+/// Per-message gRPC request and response limits.
+pub use grpc_transport::Limits as GrpcLimits;
 
 /// Raw protobuf bytes codec.
 #[derive(Debug, Clone, Copy, Default)]
@@ -296,6 +299,20 @@ fn unary(env: &Arc<Environment>, method: &str, req: &[u8]) -> Result<Vec<u8>, St
 
 static SUB_SEQ: AtomicU64 = AtomicU64::new(0);
 
+struct HeightSubscription {
+    bus: Arc<crate::events::EventBus>,
+    client: String,
+}
+
+impl Drop for HeightSubscription {
+    fn drop(&mut self) {
+        // A dropped response stream (cancellation, disconnect or send-limit
+        // error) must release the event-bus subscription even without a later
+        // block publication to notice its closed receiver.
+        let _ = self.bus.unsubscribe_all(&self.client);
+    }
+}
+
 fn subscribe_new_heights(env: &Arc<Environment>) -> Result<BoxStream, Status> {
     let client = format!(
         "block-api-subscription-{}",
@@ -303,15 +320,16 @@ fn subscribe_new_heights(env: &Arc<Environment>) -> Result<BoxStream, Status> {
     );
     let q = Query::new("tm.event='NewBlock'").map_err(unknown)?;
     let sub = env.event_bus.subscribe(&client, q, 500).map_err(unknown)?;
+    let guard = HeightSubscription {
+        bus: Arc::clone(&env.event_bus),
+        client,
+    };
     let env = Arc::clone(env);
     let stream =
-        futures_util::stream::unfold((sub, env, client), |(mut sub, env, client)| async move {
+        futures_util::stream::unfold((sub, env, guard), |(mut sub, env, guard)| async move {
             let m = sub.out.recv().await?;
             let crate::events::EventData::NewBlock { block, .. } = m.data.as_ref() else {
-                return Some((
-                    Err(Status::internal("unexpected event")),
-                    (sub, env, client),
-                ));
+                return Some((Err(Status::internal("unexpected event")), (sub, env, guard)));
             };
             let mut b = (**block).clone();
             let resp = pg::SubscribeNewHeightsResponse {
@@ -320,7 +338,7 @@ fn subscribe_new_heights(env: &Arc<Environment>) -> Result<BoxStream, Status> {
                 time: Some(b.header.time.to_proto()),
                 catching_up: env.node.is_catching_up(),
             };
-            Some((Ok(resp.encode_to_vec()), (sub, env, client)))
+            Some((Ok(resp.encode_to_vec()), (sub, env, guard)))
         });
     Ok(Box::pin(stream))
 }
@@ -370,6 +388,30 @@ impl tonic::server::UnaryService<Vec<u8>> for UnarySvc {
 struct StreamSvc {
     env: Arc<Environment>,
     path: String,
+    max_send: usize,
+}
+
+async fn stream_response(
+    mut stream: BoxStream,
+    max_send: usize,
+) -> Result<tonic::Response<BoxStream>, Status> {
+    // grpc-go sends headers with its first successful SendMsg, not when a
+    // handler creates a stream. In particular, an oversized first response
+    // must be a trailers-only error. Waiting also avoids prematurely exposing
+    // successful headers for a cancelled subscription with no event yet.
+    let Some(first) = stream.next().await else {
+        return Ok(tonic::Response::new(stream));
+    };
+    let first = first?;
+    if first.len() > max_send {
+        return Err(Status::resource_exhausted(format!(
+            "trying to send message larger than max ({} vs. {max_send})",
+            first.len()
+        )));
+    }
+    let stream: BoxStream =
+        Box::pin(futures_util::stream::once(async move { Ok(first) }).chain(stream));
+    Ok(tonic::Response::new(stream))
 }
 
 impl tonic::server::ServerStreamingService<Vec<u8>> for StreamSvc {
@@ -380,10 +422,11 @@ impl tonic::server::ServerStreamingService<Vec<u8>> for StreamSvc {
     fn call(&mut self, request: tonic::Request<Vec<u8>>) -> Self::Future {
         let env = Arc::clone(&self.env);
         let path = self.path.clone();
+        let max_send = self.max_send;
         Box::pin(async move {
             let data = request.into_inner();
             if path == "/tendermint.rpc.grpc.BlockAPI/SubscribeNewHeights" {
-                return Ok(tonic::Response::new(subscribe_new_heights(&env)?));
+                return stream_response(subscribe_new_heights(&env)?, max_send).await;
             }
             let items = tokio::task::spawn_blocking(move || -> Result<Vec<Vec<u8>>, Status> {
                 let _g = env
@@ -408,7 +451,7 @@ impl tonic::server::ServerStreamingService<Vec<u8>> for StreamSvc {
             // first part is the call's status.
             let items = items?;
             let s: BoxStream = Box::pin(futures_util::stream::iter(items.into_iter().map(Ok)));
-            Ok(tonic::Response::new(s))
+            stream_response(s, max_send).await
         })
     }
 }
@@ -432,26 +475,80 @@ pub const METHODS: &[&str] = &[
     "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx",
 ];
 
-async fn grpc_handler(State(env): State<Arc<Environment>>, req: Request<Body>) -> Response<Body> {
+async fn grpc_handler(
+    State((env, limits)): State<(Arc<Environment>, GrpcLimits)>,
+    req: Request<Body>,
+) -> Response<Body> {
     let path = req.uri().path().to_owned();
-    let mut grpc = tonic::server::Grpc::new(RawCodec);
     if STREAMING.contains(&path.as_str()) {
-        grpc.server_streaming(StreamSvc { env, path }, req)
-            .await
-            .map(Body::new)
+        grpc_transport::response(
+            limits
+                .streaming_grpc()
+                .server_streaming(
+                    StreamSvc {
+                        env,
+                        path,
+                        max_send: limits.max_send,
+                    },
+                    req,
+                )
+                .await,
+        )
     } else {
-        grpc.unary(UnarySvc { env, path }, req).await.map(Body::new)
+        grpc_transport::response(limits.grpc().unary(UnarySvc { env, path }, req).await)
     }
 }
 
 /// An axum router serving the celestia-core gRPC methods (merge it into the
 /// app's gRPC router, whose fallback handles every other path).
 pub fn router(env: Arc<Environment>) -> axum::Router {
+    router_with_limits(env, GrpcLimits::core())
+}
+
+/// Core methods mounted on a listener with its own message limits (including
+/// the app listener, whose limits differ from the standalone core defaults).
+pub fn router_with_limits(env: Arc<Environment>, limits: GrpcLimits) -> axum::Router {
+    methods_router(env, limits, false)
+}
+
+/// Only BlockAPI is registered on celestia-app's SDK listener. BroadcastAPI
+/// and BlobstreamAPI belong to the standalone core listener.
+pub fn block_router_with_limits(env: Arc<Environment>, limits: GrpcLimits) -> axum::Router {
+    methods_router(env, limits, true)
+}
+
+async fn unknown_method(req: Request<Body>) -> Response<Body> {
+    let (service, method) = req
+        .uri()
+        .path()
+        .trim_start_matches('/')
+        .split_once('/')
+        .unwrap_or(("", ""));
+    Status::unimplemented(format!("unknown method {method} for service {service}"))
+        .into_http()
+        .map(Body::new)
+}
+
+fn methods_router(env: Arc<Environment>, limits: GrpcLimits, block_only: bool) -> axum::Router {
     let mut r = axum::Router::new();
-    for m in METHODS {
-        r = r.route(m, axum::routing::post(grpc_handler));
+    for service in [
+        "tendermint.rpc.grpc.BlockAPI",
+        "tendermint.rpc.grpc.BroadcastAPI",
+        "tendermint.rpc.grpc.BlobstreamAPI",
+    ] {
+        if !block_only || service == "tendermint.rpc.grpc.BlockAPI" {
+            r = r.route(
+                &format!("/{service}/:method"),
+                axum::routing::post(unknown_method),
+            );
+        }
     }
-    r.with_state(env)
+    for m in METHODS {
+        if !block_only || m.starts_with("/tendermint.rpc.grpc.BlockAPI/") {
+            r = r.route(m, axum::routing::post(grpc_handler));
+        }
+    }
+    r.with_state((env, limits))
 }
 
 /// Serves the celestia-core gRPC services alone (`grpc_laddr`), h2c.
@@ -459,6 +556,8 @@ pub async fn serve(
     listener: tokio::net::TcpListener,
     env: Arc<Environment>,
 ) -> std::io::Result<()> {
+    let limit = env.config.grpc_max_open_connections;
+    let sem = (limit > 0).then(|| Arc::new(tokio::sync::Semaphore::new(limit)));
     let app = router(env)
         .merge(grpc_reflection::router(grpc_reflection::Profile::Core))
         .fallback(|req: Request<Body>| async move {
@@ -472,7 +571,32 @@ pub async fn serve(
             let status = Status::unimplemented(format!("unknown service {svc}"));
             status.into_http().map(Body::new)
         });
-    axum::serve(listener, app).await
+    loop {
+        // Acquire before accepting, like netutil.LimitListener. Waiting TCP
+        // connections remain in the kernel backlog until capacity is released.
+        let permit = match &sem {
+            Some(sem) => Some(
+                Arc::clone(sem)
+                    .acquire_owned()
+                    .await
+                    .map_err(|error| std::io::Error::other(error.to_string()))?,
+            ),
+            None => None,
+        };
+        let (stream, remote) = listener.accept().await?;
+        let service = hyper_util::service::TowerToHyperService::new(app.clone());
+        tokio::spawn(async move {
+            let _permit = permit;
+            let builder =
+                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+            if let Err(error) = builder
+                .serve_connection_with_upgrades(hyper_util::rt::TokioIo::new(stream), service)
+                .await
+            {
+                tracing::debug!(%error, %remote, "core gRPC connection closed");
+            }
+        });
+    }
 }
 
 /// Builds a `ptypes::Part` proof-less copy (helper for tests).
@@ -579,5 +703,32 @@ mod tests {
         assert_eq!(env.event_bus.num_clients(), 0);
         server.abort();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod subscription_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn dropping_stream_guard_cleans_up_without_another_event() {
+        let bus = Arc::new(crate::events::EventBus::new());
+        let sub = bus
+            .subscribe("grpc-height", Query::new("tm.event='NewBlock'").unwrap(), 1)
+            .unwrap();
+        let guard = HeightSubscription {
+            bus: Arc::clone(&bus),
+            client: "grpc-height".into(),
+        };
+        assert_eq!(bus.num_clients(), 1);
+        drop(sub);
+        assert_eq!(
+            bus.num_clients(),
+            1,
+            "a disconnected receiver alone does not remove a subscription"
+        );
+        drop(guard);
+        assert_eq!(bus.num_clients(), 0);
     }
 }
