@@ -79,6 +79,26 @@ fn decode<M: prost::Message + Default>(b: &[u8]) -> Result<M, Status> {
     M::decode(b).map_err(|e| Status::internal(format!("grpc: error unmarshalling request: {e}")))
 }
 
+fn broadcast_response(result: crate::server::BroadcastCommit) -> pg::ResponseBroadcastTx {
+    // celestia-core's adapter deliberately projects the commit responses to
+    // these three fields. In particular, gas and events are not exposed by
+    // the core gRPC BroadcastAPI even though BroadcastTxCommit observes them.
+    pg::ResponseBroadcastTx {
+        check_tx: Some(ctypes::proto::abci::ResponseCheckTx {
+            code: result.check_tx.code,
+            data: result.check_tx.data,
+            log: result.check_tx.log,
+            ..Default::default()
+        }),
+        tx_result: Some(ctypes::proto::abci::ExecTxResult {
+            code: result.tx_result.code,
+            data: result.tx_result.data,
+            log: result.tx_result.log,
+            ..Default::default()
+        }),
+    }
+}
+
 /// `%d` of a byte slice in Go: `[1 2 3]`.
 fn go_bytes_d(b: &[u8]) -> String {
     format!(
@@ -319,6 +339,16 @@ impl tonic::server::UnaryService<Vec<u8>> for UnarySvc {
         let path = self.path.clone();
         Box::pin(async move {
             let data = request.into_inner();
+            if path == "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx" {
+                let request: pg::RequestBroadcastTx = decode(&data)?;
+                // Go's gRPC adapter calls BroadcastTxCommit with an empty RPC
+                // context, sharing its admission, subscription and timeout rules.
+                let result = crate::server::broadcast_commit(&env, request.tx, "")
+                    .await
+                    .map_err(unknown)?;
+                let response = broadcast_response(result);
+                return Ok(tonic::Response::new(response.encode_to_vec()));
+            }
             let res = tokio::task::spawn_blocking(move || {
                 let _g =
                     if HEAVY.contains(&path.as_str()) {
@@ -328,11 +358,6 @@ impl tonic::server::UnaryService<Vec<u8>> for UnarySvc {
                     } else {
                         None
                     };
-                if path == "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx" {
-                    return Err(Status::unimplemented(
-                        "BroadcastTx: use broadcast_tx_commit",
-                    ));
-                }
                 unary(&env, &path, &data)
             })
             .await
@@ -455,4 +480,104 @@ pub async fn serve(
 pub fn strip_proof(mut p: ptypes::Part) -> ptypes::Part {
     p.proof = Some(ctypes::proto::crypto::Proof::default());
     p
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn core_broadcast_projects_the_go_response_fields() {
+        let response = broadcast_response(crate::server::BroadcastCommit {
+            check_tx: ctypes::proto::abci::ResponseCheckTx {
+                code: 3,
+                data: vec![1],
+                log: "check".into(),
+                gas_wanted: 99,
+                ..Default::default()
+            },
+            tx_result: ctypes::proto::abci::ExecTxResult {
+                code: 4,
+                data: vec![2],
+                log: "exec".into(),
+                gas_used: 88,
+                events: vec![ctypes::proto::abci::Event::default()],
+                ..Default::default()
+            },
+            hash: vec![9; 32],
+            height: 12,
+        });
+        assert_eq!(
+            response.check_tx,
+            Some(ctypes::proto::abci::ResponseCheckTx {
+                code: 3,
+                data: vec![1],
+                log: "check".into(),
+                ..Default::default()
+            })
+        );
+        assert_eq!(
+            response.tx_result,
+            Some(ctypes::proto::abci::ExecTxResult {
+                code: 4,
+                data: vec![2],
+                log: "exec".into(),
+                ..Default::default()
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn core_broadcast_is_served_over_http2() -> Result<(), Box<dyn std::error::Error>> {
+        let env = crate::server::broadcast_tests::environment(
+            Ok(ctypes::proto::abci::ResponseCheckTx {
+                code: 7,
+                data: vec![1, 2],
+                log: "rejected".into(),
+                ..Default::default()
+            }),
+            1_000,
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(serve(listener, Arc::clone(&env)));
+
+        let channel = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))?
+            .connect()
+            .await?;
+        let mut client = tonic::client::Grpc::new(channel);
+        client.ready().await?;
+        let path: axum::http::uri::PathAndQuery =
+            "/tendermint.rpc.grpc.BroadcastAPI/BroadcastTx".parse()?;
+        let response = client
+            .unary(
+                tonic::Request::new(
+                    pg::RequestBroadcastTx {
+                        tx: b"rejected transaction".to_vec(),
+                    }
+                    .encode_to_vec(),
+                ),
+                path,
+                RawCodec,
+            )
+            .await?;
+        let response = pg::ResponseBroadcastTx::decode(response.into_inner().as_slice())?;
+        assert_eq!(
+            response.check_tx,
+            Some(ctypes::proto::abci::ResponseCheckTx {
+                code: 7,
+                data: vec![1, 2],
+                log: "rejected".into(),
+                ..Default::default()
+            })
+        );
+        assert_eq!(
+            response.tx_result,
+            Some(ctypes::proto::abci::ExecTxResult::default())
+        );
+        assert_eq!(env.event_bus.num_clients(), 0);
+        server.abort();
+        Ok(())
+    }
 }
