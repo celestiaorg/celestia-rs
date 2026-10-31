@@ -1,0 +1,105 @@
+{
+  "oracle": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+    "cosmos_sdk": "v0.52.12",
+    "cosmos_sdk_commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+    "compiler": "go1.26.9",
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "build_tags": [
+      "ledger"
+    ],
+    "release_version_stamp": "10.5.0",
+    "build_manifest": "go-build.json"
+  },
+  "chain_id": "rpc-provider-105-1",
+  "captured_at_utc": "2026-10-31T00:17:23Z",
+  "source_main": "1e3c241110fb4360ec20c6505bd788b7075a1111",
+  "capture_method": "actual standalone core and embedded Cosmos gRPC listeners on the same local two-validator Go node; no production writes",
+  "normalizations": [
+    "sort SDK extension-number enumeration (Go map iteration order)",
+    "normalize ASCII space/NBSP immediately after protobuf proto: error prefix (Go internal/errors deliberately randomizes it per binary)"
+  ],
+  "scope": "streaming reflection only; no query-state equivalence or universal provider-readiness claim",
+  "sha256": {
+    "conformance/grpc-reflection/capture.go": "56399165464a3b4da027b395bd45f4fa7463946837a82c03dce1f81353aad0d2",
+    "conformance/grpc-reflection/go.mod": "6600134ecc2b1090dadcd28444bac185f04c535ca0b0d05c5777c128313c5dea",
+    "conformance/grpc-reflection/go.sum": "da00738652e3af4ab686fc75702775fb6c71b09c79933fb67c792a57aa4fea48",
+    "conformance/grpc-reflection/embed.py": "8381f0683b7be7c71405ea0d630f4ace792cc0dd051862da463d121df811af5a",
+    "conformance/grpc-reflection/v10.5.0/app.json.gz": "8cc9af4a1a94543e6a12a41d970848304068d28f98929bd39310b73e490a228b",
+    "conformance/grpc-reflection/v10.5.0/app-limits.json.gz": "861c65e619ca27d0388ad2df1bf5d0a8f601fd15fb5cf2b55150e6b2ab76446b",
+    "conformance/grpc-reflection/v10.5.0/core.json.gz": "ec582e60a5cd566b24a2ecf14bb15eb69fca20561f6a80c97e1a6cf6211d93dc",
+    "conformance/grpc-reflection/v10.5.0/core-extension-crash.json": "4e15805a756f830e2f652b57aeb4771374e1c480f94c60a17cfba747ba36dc9f",
+    "conformance/grpc-reflection/v10.5.0/core-extension-crash.log": "1a1cbe70f0b2f7096cb7a44c6f69e2de1914fe3a72682844729a92e88668fdaa",
+    "conformance/grpc-reflection/v10.5.0/go-build-info.txt": "74e15a8d457b771a18032746652f6b9d9661442dc502a3a01d8b808ca3b923e5",
+    "crates/tier-4-runtime/grpc-reflection/src/app-files.bin.gz": "e69bccc2f66823219835d65b07adb86b7b4006d5dcafce0eb0eeb706bcdbd88c",
+    "crates/tier-4-runtime/grpc-reflection/src/app-lookups.bin.gz": "c8af292284ea9e7c05b7fdcd5cbb21a2153cc2bbaa920cc7896d313af3e7899c",
+    "crates/tier-4-runtime/grpc-reflection/src/app-services.txt": "6de142ca6e4d5b034ae6daa03aa8c7dc8970c14976ba12bb13a670378a30b8d5",
+    "crates/tier-4-runtime/grpc-reflection/src/app-extensions.txt": "dc38e05cdd90bca92503b136b7f398ed9a445dc80101f7a6207a15158545ba83",
+    "crates/tier-4-runtime/grpc-reflection/src/core-files.bin.gz": "43d8fc5e42f4a78f81e9e8a08395b534b0eb88a4d24792963ca95a5d3b6f3f6e",
+    "crates/tier-4-runtime/grpc-reflection/src/core-lookups.bin.gz": "335c531fb8ad50b1ce284c1e2b2aa160da60f8e893d806aba4cbbdeeb7012269",
+    "crates/tier-4-runtime/grpc-reflection/src/core-services.txt": "8216bfa69b4ddf11f4600796cad1ff7a700b7362188204619a238a2dd9a7c953",
+    "crates/tier-4-runtime/grpc-reflection/src/core-extensions.txt": "24f830918dc9521b99cdfd62c23998d86d3bef27b62a5a878ed76fd6deaae9e1",
+    "conformance/grpc-reflection/v10.5.0/go-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835"
+  },
+  "mainnet_release_observation": {
+    "endpoint": "https://rpc.celestia.pops.one",
+    "observed_at": "2026-10-30T23:47:41.053964+00:00",
+    "jsonrpc": "2.0",
+    "id": -1,
+    "result": {
+      "response": {
+        "data": "celestia-app",
+        "version": "10.5.0",
+        "app_version": "10",
+        "last_block_height": "15444973",
+        "last_block_app_hash": "rUTngoJ5V7bOb7qRrUSlTTJyTbS1Eqrn5zkzmLHTDA0=",
+        "timeout_info": {
+          "timeout_propose": "3000000000",
+          "timeout_propose_delta": "500000000",
+          "timeout_prevote": "2000000000",
+          "timeout_prevote_delta": "500000000",
+          "timeout_precommit": "3000000000",
+          "timeout_precommit_delta": "500000000",
+          "timeout_commit": "500000000",
+          "delayed_precommit_timeout": "2100000000"
+        }
+      }
+    }
+  },
+  "oracle_abci_info": {
+    "jsonrpc": "2.0",
+    "id": -1,
+    "result": {
+      "response": {
+        "data": "celestia-app",
+        "version": "10.5.0",
+        "app_version": "10",
+        "last_block_height": "135",
+        "last_block_app_hash": "fxlq46XAEo51/Yang+RsSq4cvTCMRMjsVMlLgAyG3mw=",
+        "timeout_info": {
+          "timeout_propose": "3000000000",
+          "timeout_propose_delta": "500000000",
+          "timeout_prevote": "2000000000",
+          "timeout_prevote_delta": "500000000",
+          "timeout_precommit": "3000000000",
+          "timeout_precommit_delta": "500000000",
+          "timeout_commit": "500000000",
+          "delayed_precommit_timeout": "2100000000"
+        }
+      }
+    }
+  },
+  "registration": {
+    "app": {
+      "services": 41,
+      "files": 516
+    },
+    "core": {
+      "services": 5,
+      "files": 375
+    }
+  }
+}

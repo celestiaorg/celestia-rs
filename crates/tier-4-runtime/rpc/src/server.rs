@@ -4,6 +4,8 @@
 //! status codes, headers and error envelopes.
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,14 +13,23 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, State};
-use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Version, header};
 use futures_util::{SinkExt as _, StreamExt as _};
+use rustls_pki_types::pem::PemObject as _;
+use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::sync::mpsc;
+use tokio_rustls::TlsAcceptor;
 
 use crate::env::{ERR_HEAVY_LIMIT, Environment, MAX_QUERY_LENGTH, Route, find_route};
 use crate::json::{self, J, Node, Val};
 use crate::params::{self, Arg};
 use crate::query::Query;
+
+const WS_WRITE_WAIT: Duration = Duration::from_secs(10);
+const WS_READ_WAIT: Duration = Duration::from_secs(30);
+const WS_PING_PERIOD: Duration = Duration::from_secs(27);
+const GO_DEFAULT_MAX_HEADER_BYTES: usize = 1 << 20;
+const GO_HTTP_HEADER_READ_BUFFER: usize = 4096;
 
 /// A JSON-RPC id (`JSONRPCIntID` / `JSONRPCStringID`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,6 +317,9 @@ pub fn parse_requests(body: &str) -> Result<Vec<RpcRequest>, String> {
 enum CallError {
     /// Internal error (`RPCInternalError`).
     Internal(String),
+    /// Go recovers while dereferencing an absent Query response. Preserve its
+    /// transport-level outcome explicitly without panicking a Rust task.
+    EmptyQueryResponse,
     /// Heavy-request limit.
     Busy,
 }
@@ -332,21 +346,72 @@ async fn call_route(
     }
     let env2 = Arc::clone(env);
     let name = route.name;
-    let res = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        env2.call(name, &args)
+        if name == "abci_query" {
+            let arg = |i: usize| args.get(i).cloned().unwrap_or(Arg::Null);
+            env2.abci_query_response(arg(0).str(), arg(1).bytes(), arg(2).int(), arg(3).bool())
+                .map_err(CallError::Internal)?
+                .ok_or(CallError::EmptyQueryResponse)
+        } else {
+            env2.call(name, &args).map_err(CallError::Internal)
+        }
     })
     .await
-    .map_err(|e| CallError::Internal(e.to_string()))?;
-    res.map_err(CallError::Internal)
+    .map_err(|e| CallError::Internal(e.to_string()))?
 }
 
-/// `BroadcastTxCommit`.
+/// Typed result shared by JSON-RPC and core gRPC broadcast adapters.
+#[derive(Debug)]
+pub(crate) struct BroadcastCommit {
+    /// Mempool admission result.
+    pub check_tx: ctypes::proto::abci::ResponseCheckTx,
+    /// Execution result, or its zero value when admission failed.
+    pub tx_result: ctypes::proto::abci::ExecTxResult,
+    /// Transaction hash.
+    pub hash: Vec<u8>,
+    /// Inclusion height, or zero when admission failed.
+    pub height: i64,
+}
+
+struct TxSubscription {
+    bus: Arc<crate::events::EventBus>,
+    client: String,
+    query: Query,
+}
+
+impl Drop for TxSubscription {
+    fn drop(&mut self) {
+        let _ = self.bus.unsubscribe(&self.client, &self.query);
+    }
+}
+
 async fn broadcast_tx_commit(
     env: &Arc<Environment>,
     tx: Vec<u8>,
     remote: &str,
 ) -> Result<J, String> {
+    let result = broadcast_commit(env, tx, remote).await?;
+    Ok(J::obj([
+        (
+            "check_tx",
+            crate::encode::response_check_tx(&result.check_tx),
+        ),
+        (
+            "tx_result",
+            crate::encode::exec_tx_result(&result.tx_result),
+        ),
+        ("hash", J::hex(&result.hash)),
+        ("height", J::i64s(result.height)),
+    ]))
+}
+
+/// Shared `BroadcastTxCommit` semantics for Comet and core gRPC.
+pub(crate) async fn broadcast_commit(
+    env: &Arc<Environment>,
+    tx: Vec<u8>,
+    remote: &str,
+) -> Result<BroadcastCommit, String> {
     let bus = &env.event_bus;
     if bus.num_clients() >= env.config.max_subscription_clients {
         return Err(format!(
@@ -368,22 +433,25 @@ async fn broadcast_tx_commit(
     let mut sub = bus
         .subscribe(remote, q.clone(), 1)
         .map_err(|e| format!("failed to subscribe to tx: {e}"))?;
+    let _subscription = TxSubscription {
+        bus: Arc::clone(bus),
+        client: remote.to_owned(),
+        query: q,
+    };
     let env2 = Arc::clone(env);
     let tx2 = tx.clone();
     let check = tokio::task::spawn_blocking(move || env2.mempool_check_tx(&tx2))
         .await
         .map_err(|e| e.to_string())?;
-    let result = async {
+    async {
         let check = check.map_err(|e| format!("error on broadcastTxCommit: {e}"))?;
-        let mut o = J::obj([("check_tx", crate::encode::response_check_tx(&check))]);
         if check.code != 0 {
-            o.push(
-                "tx_result",
-                crate::encode::exec_tx_result(&ctypes::proto::abci::ExecTxResult::default()),
-            );
-            o.push("hash", J::hex(&hash));
-            o.push("height", J::i64s(0));
-            return Ok(o);
+            return Ok(BroadcastCommit {
+                check_tx: check,
+                tx_result: ctypes::proto::abci::ExecTxResult::default(),
+                hash,
+                height: 0,
+            });
         }
         let timeout = Duration::from_millis(env.config.timeout_broadcast_tx_commit_ms);
         tokio::select! {
@@ -392,10 +460,12 @@ async fn broadcast_tx_commit(
                     let crate::events::EventData::Tx { tx_result } = m.data.as_ref() else {
                         return Err("unexpected event data".into());
                     };
-                    o.push("tx_result", crate::encode::exec_tx_result(&tx_result.result.clone().unwrap_or_default()));
-                    o.push("hash", J::hex(&hash));
-                    o.push("height", J::i64s(tx_result.height));
-                    Ok(o)
+                    Ok(BroadcastCommit {
+                        check_tx: check,
+                        tx_result: tx_result.result.clone().unwrap_or_default(),
+                        hash,
+                        height: tx_result.height,
+                    })
                 }
                 None => Err("txSub was canceled (reason: CometBFT exited)".to_owned()),
             },
@@ -406,9 +476,7 @@ async fn broadcast_tx_commit(
             () = tokio::time::sleep(timeout) => Err("timed out waiting for tx to be included in a block".into()),
         }
     }
-    .await;
-    let _ = bus.unsubscribe(remote, &q);
-    result
+    .await
 }
 
 // --- HTTP ------------------------------------------------------------------
@@ -447,6 +515,35 @@ fn not_found() -> Response<Body> {
         HeaderValue::from_static("nosniff"),
     );
     r
+}
+
+fn framing_error(status: StatusCode, body: &'static str) -> Response<Body> {
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONNECTION, HeaderValue::from_static("close"));
+    response
+}
+
+fn body_read_error(error: &axum::Error) -> &'static str {
+    // Hyper preserves the underlying framing reason in its debug chain while
+    // exposing one generic Display string. The dependency is lockfile-pinned;
+    // map the bounded reasons observed from the tagged net/http oracle.
+    let detail = format!("{error:?}");
+    if detail.contains("Invalid chunk size line") {
+        "invalid byte in chunk length"
+    } else if detail.contains("Invalid chunk body") {
+        "malformed chunked encoding"
+    } else if detail.contains("IncompleteBody") {
+        "unexpected EOF"
+    } else {
+        "http: request body too large"
+    }
 }
 
 fn uri_id() -> Option<Id> {
@@ -540,6 +637,11 @@ async fn uri_handler(
         Err(CallError::Busy) => json_response(
             StatusCode::SERVICE_UNAVAILABLE,
             RpcResponse::internal(uri_id(), ERR_HEAVY_LIMIT).encode(),
+            false,
+        ),
+        Err(CallError::EmptyQueryResponse) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
             false,
         ),
         Err(CallError::Internal(e)) => json_response(
@@ -638,6 +740,15 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
                 responses.push(RpcResponse::internal(Some(id), ERR_HEAVY_LIMIT));
                 cache = false;
             }
+            Err(CallError::EmptyQueryResponse) => {
+                // Go's outer HTTP recovery replaces the entire response, even
+                // for a batch with earlier successful elements.
+                return json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
+                    false,
+                );
+            }
             Err(CallError::Internal(e)) => responses.push(RpcResponse::internal(Some(id), &e)),
         }
     }
@@ -698,14 +809,12 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
     let req_method = req_headers.get(header::ACCESS_CONTROL_REQUEST_METHOD)?;
     let mut r = Response::new(Body::empty());
     *r.status_mut() = StatusCode::NO_CONTENT;
-    for v in [
-        "Origin",
-        "Access-Control-Request-Method",
-        "Access-Control-Request-Headers",
-    ] {
-        r.headers_mut()
-            .append(header::VARY, HeaderValue::from_static(v));
-    }
+    r.headers_mut().insert(
+        header::VARY,
+        HeaderValue::from_static(
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+        ),
+    );
     let origin = req_headers
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())?;
@@ -726,6 +835,24 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
     {
         return Some(r);
     }
+    let requested_headers: Vec<_> = req_headers
+        .get_all(header::ACCESS_CONTROL_REQUEST_HEADERS)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    let all_headers = cfg.cors_allowed_headers.iter().any(|h| h == "*");
+    if !all_headers
+        && requested_headers.iter().any(|requested| {
+            !cfg.cors_allowed_headers
+                .iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(requested))
+        })
+    {
+        return Some(r);
+    }
     if let Ok(v) = HeaderValue::from_str(if all { "*" } else { origin }) {
         r.headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
@@ -734,9 +861,9 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
         r.headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_METHODS, v);
     }
-    if let Some(h) = req_headers.get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
+    for h in req_headers.get_all(header::ACCESS_CONTROL_REQUEST_HEADERS) {
         r.headers_mut()
-            .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, h.clone());
+            .append(header::ACCESS_CONTROL_ALLOW_HEADERS, h.clone());
     }
     Some(r)
 }
@@ -758,6 +885,48 @@ fn unix_now() -> u64 {
 async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
     let (mut parts, body) = req.into_parts();
     let path = parts.uri.path().to_owned();
+    if parts.version == Version::HTTP_11 && parts.uri.authority().is_none() {
+        match parts.headers.get_all(header::HOST).iter().count() {
+            0 => {
+                return framing_error(
+                    StatusCode::BAD_REQUEST,
+                    "400 Bad Request: missing required Host header",
+                );
+            }
+            1 => {}
+            _ => return framing_error(StatusCode::BAD_REQUEST, "400 Bad Request"),
+        }
+    }
+    let transfer_codings: Vec<_> = parts
+        .headers
+        .get_all(header::TRANSFER_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .collect();
+    if transfer_codings.len() > 1
+        && transfer_codings
+            .iter()
+            .all(|coding| coding.eq_ignore_ascii_case("chunked"))
+    {
+        return framing_error(StatusCode::NOT_IMPLEMENTED, "Unsupported transfer encoding");
+    }
+    if parts
+        .headers
+        .get_all(header::TRAILER)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|name| {
+            matches!(
+                name.trim().to_ascii_lowercase().as_str(),
+                "transfer-encoding" | "trailer" | "content-length"
+            )
+        })
+    {
+        return framing_error(StatusCode::BAD_REQUEST, "400 Bad Request");
+    }
     if path == "/websocket" {
         let upgrade = WebSocketUpgrade::from_request_parts(&mut parts, &()).await;
         return if let Ok(up) = upgrade {
@@ -777,23 +946,33 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             r
         };
     }
-    if parts.method == Method::OPTIONS
+    // Go's precheck only reads the request body when batch limiting is on.
+    // With a zero batch limit, CORS may answer OPTIONS without observing an
+    // otherwise over-limit body.
+    if ctx.env.config.max_request_batch_size == 0
+        && parts.method == Method::OPTIONS
         && let Some(r) = cors_preflight(&ctx.env, &parts.headers)
     {
         return r;
     }
     let max = ctx.env.config.max_body_bytes;
-    let Ok(body) = axum::body::to_bytes(body, max).await else {
-        {
-            return json_response(
+    let body = match axum::body::to_bytes(body, max).await {
+        Ok(body) => body,
+        Err(error) => {
+            let reason = body_read_error(&error);
+            let mut response = json_response(
                 StatusCode::BAD_REQUEST,
                 RpcResponse::invalid_request(
                     None,
-                    "error reading request body: http: request body too large",
+                    &format!("error reading request body: {reason}"),
                 )
                 .encode(),
                 false,
             );
+            response
+                .headers_mut()
+                .insert(header::CONNECTION, HeaderValue::from_static("close"));
+            return response;
         }
     };
     // PreChecksHandler: oversized batches are rejected on every path.
@@ -819,13 +998,23 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             }
         }
     }
+    if parts.method == Method::OPTIONS
+        && let Some(r) = cors_preflight(&ctx.env, &parts.headers)
+    {
+        return r;
+    }
     let mut resp = if path == "/" {
         let host = parts
-            .headers
-            .get(header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or_default()
-            .to_owned();
+            .uri
+            .authority()
+            .map(axum::http::uri::Authority::as_str)
+            .or_else(|| {
+                parts
+                    .headers
+                    .get(header::HOST)
+                    .and_then(|header| header.to_str().ok())
+            });
+        let host = host.unwrap_or_default().to_owned();
         jsonrpc_handler(ctx, &body, &host).await
     } else if let Some(route) = path
         .strip_prefix('/')
@@ -860,6 +1049,74 @@ pub async fn serve(
     listener: tokio::net::TcpListener,
     env: Arc<Environment>,
 ) -> std::io::Result<()> {
+    let tls = if env.config.tls_enabled() {
+        Some(tls_acceptor(&env.config)?)
+    } else {
+        None
+    };
+    serve_transport(listener, env, tls).await
+}
+
+/// Serves an explicitly plaintext listener. The node uses this only for its
+/// loopback SDK query adapter when its public RPC listeners use TLS.
+pub async fn serve_plain(
+    listener: tokio::net::TcpListener,
+    env: Arc<Environment>,
+) -> std::io::Result<()> {
+    serve_transport(listener, env, None).await
+}
+
+fn tls_acceptor(config: &crate::env::RpcConfig) -> std::io::Result<TlsAcceptor> {
+    let cert_file = BufReader::new(File::open(&config.tls_cert_file)?);
+    let certificates = CertificateDer::pem_reader_iter(cert_file)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if certificates.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "RPC TLS certificate file contains no certificates",
+        ));
+    }
+    let key_file = BufReader::new(File::open(&config.tls_key_file)?);
+    let key = PrivateKeyDer::pem_reader_iter(key_file)
+        .next()
+        .transpose()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "RPC TLS key file contains no private key",
+            )
+        })?;
+    let mut tls = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    .with_no_client_auth()
+    .with_single_cert(certificates, key)
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    // net/http enables HTTP/2 for TLS servers and otherwise negotiates H1.
+    tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    Ok(TlsAcceptor::from(Arc::new(tls)))
+}
+
+fn request_header_limit(configured: usize) -> usize {
+    // net/http reserves 4 KiB beyond MaxHeaderBytes while reading the
+    // request line and headers. Hyper counts the same bytes directly.
+    (if configured == 0 {
+        GO_DEFAULT_MAX_HEADER_BYTES
+    } else {
+        configured
+    })
+    .saturating_add(GO_HTTP_HEADER_READ_BUFFER)
+}
+
+async fn serve_transport(
+    listener: tokio::net::TcpListener,
+    env: Arc<Environment>,
+    tls: Option<TlsAcceptor>,
+) -> std::io::Result<()> {
     let limit = env.config.max_open_connections;
     let sem = (limit > 0).then(|| Arc::new(tokio::sync::Semaphore::new(limit)));
     loop {
@@ -874,16 +1131,58 @@ pub async fn serve(
         };
         let (stream, remote) = listener.accept().await?;
         let app = router(Arc::clone(&env), remote);
+        let configured_header_limit = env.config.max_header_bytes;
+        let tls = tls.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            let svc = hyper_util::service::TowerToHyperService::new(app);
-            let builder =
-                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
-            if let Err(e) = builder
-                .serve_connection_with_upgrades(hyper_util::rt::TokioIo::new(stream), svc)
-                .await
-            {
-                tracing::debug!(error = %e, %remote, "rpc connection error");
+            let header_limit = request_header_limit(configured_header_limit);
+            if let Some(acceptor) = tls {
+                let stream = match acceptor.accept(stream).await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        tracing::debug!(%error, %remote, "rpc TLS handshake failed");
+                        return;
+                    }
+                };
+                let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2");
+                let svc = hyper_util::service::TowerToHyperService::new(app);
+                if h2 {
+                    let mut builder = hyper::server::conn::http2::Builder::new(
+                        hyper_util::rt::TokioExecutor::new(),
+                    );
+                    builder.max_header_list_size(u32::try_from(header_limit).unwrap_or(u32::MAX));
+                    if let Err(error) = builder
+                        .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                        .await
+                    {
+                        tracing::debug!(%error, %remote, "rpc HTTP/2 connection error");
+                    }
+                } else {
+                    let mut builder = hyper::server::conn::http1::Builder::new();
+                    builder.max_header_size(header_limit);
+                    builder.max_buf_size(header_limit.max(8192));
+                    if let Err(error) = builder
+                        .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                        .with_upgrades()
+                        .await
+                    {
+                        tracing::debug!(%error, %remote, "rpc TLS HTTP/1 connection error");
+                    }
+                }
+            } else {
+                let svc = hyper_util::service::TowerToHyperService::new(app);
+                let mut builder = hyper::server::conn::http1::Builder::new();
+                builder.max_header_size(header_limit);
+                // Hyper's default connection buffer is smaller than Go's
+                // default header allowance.
+                builder.max_buf_size(header_limit.max(8192));
+                if let Err(error) = builder
+                    .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                    .with_upgrades()
+                    .await
+                {
+                    tracing::debug!(%error, %remote, "rpc connection error");
+                }
             }
         });
     }
@@ -921,24 +1220,51 @@ pub fn event_frame(id: &Option<Id>, query: &str, msg: &crate::events::Message) -
 async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<String>(env.config.websocket_write_buffer_size.max(1));
-    let writer = tokio::spawn(async move {
-        let mut ping = tokio::time::interval(Duration::from_secs(27));
+    let (close_tx, mut close_rx) = mpsc::channel(1);
+    let mut writer = tokio::spawn(async move {
+        let mut ping = tokio::time::interval(WS_PING_PERIOD);
         ping.tick().await;
         loop {
             tokio::select! {
+                biased;
+                close = close_rx.recv() => {
+                    if close.is_some() {
+                        let _ = tokio::time::timeout(WS_WRITE_WAIT, sink.close()).await;
+                    }
+                    break;
+                },
                 m = rx.recv() => match m {
-                    Some(m) => if sink.send(WsMessage::Text(m)).await.is_err() { break },
+                    Some(m) => if !ws_write(&mut sink, WsMessage::Text(m)).await { break },
                     None => break,
                 },
-                _ = ping.tick() => if sink.send(WsMessage::Ping(Vec::new())).await.is_err() { break },
+                _ = ping.tick() => if !ws_write(&mut sink, WsMessage::Ping(Vec::new())).await { break },
             }
         }
     });
-    while let Some(msg) = stream.next().await {
+    let mut writer_finished = false;
+    let mut close = false;
+    loop {
+        let msg = tokio::select! {
+            _ = &mut writer => {
+                writer_finished = true;
+                break;
+            }
+            read = tokio::time::timeout(WS_READ_WAIT, stream.next()) => {
+                match read {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        };
         let text = match msg {
             Ok(WsMessage::Text(t)) => t,
             Ok(WsMessage::Binary(b)) => json::go_string(&b),
-            Ok(WsMessage::Close(_)) | Err(_) => break,
+            Ok(WsMessage::Close(frame)) => {
+                let _ = frame;
+                close = true;
+                break;
+            }
+            Err(_) => break,
             Ok(_) => continue,
         };
         if let Some(r) = ws_request(&env, &remote, &text, &tx).await
@@ -948,8 +1274,33 @@ async fn ws_connection(socket: WebSocket, env: Arc<Environment>, remote: String)
         }
     }
     let _ = env.event_bus.unsubscribe_all(&remote);
+    if close {
+        let _ = close_tx.send(()).await;
+        let _ = (&mut writer).await;
+        writer_finished = true;
+    }
     drop(tx);
-    let _ = writer.await;
+    if !writer_finished {
+        writer.abort();
+        let _ = writer.await;
+    }
+}
+
+async fn ws_write(
+    sink: &mut futures_util::stream::SplitSink<WebSocket, WsMessage>,
+    message: WsMessage,
+) -> bool {
+    ws_write_with_timeout(sink, message, WS_WRITE_WAIT).await
+}
+
+async fn ws_write_with_timeout<S>(sink: &mut S, message: WsMessage, wait: Duration) -> bool
+where
+    S: futures_util::Sink<WsMessage> + Unpin,
+{
+    matches!(
+        tokio::time::timeout(wait, sink.send(message)).await,
+        Ok(Ok(()))
+    )
 }
 
 /// Handles one WebSocket message; `None` when nothing is written back
@@ -1042,6 +1393,11 @@ async fn ws_request(
         _ => match call_route(env, route, args, remote).await {
             Ok(j) => Ok(j),
             Err(CallError::Busy) => Err(ERR_HEAVY_LIMIT.to_owned()),
+            Err(CallError::EmptyQueryResponse) => {
+                return Some(
+                    RpcResponse::internal(uri_id(), crate::env::ERR_EMPTY_QUERY_RESPONSE).encode(),
+                );
+            }
             Err(CallError::Internal(e)) => Err(e),
         },
     };
@@ -1159,4 +1515,331 @@ fn ws_subscribe(
 #[must_use]
 pub fn events_map(m: &crate::events::Message) -> BTreeMap<String, Vec<String>> {
     (*m.events).clone()
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+pub(crate) mod broadcast_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    use ctypes::proto::abci;
+    use kvdb::MemBackend;
+    use mempool::{CachedTx, Mempool, MempoolError, MempoolLock, TxInfo, TxKey};
+    use nodestore::{BlockStore, StateStore};
+
+    struct TestApp;
+
+    impl crate::AppQuery for TestApp {
+        fn info(&self) -> Result<abci::ResponseInfo, String> {
+            Ok(abci::ResponseInfo::default())
+        }
+
+        fn query(&self, _: abci::RequestQuery) -> Result<abci::ResponseQuery, String> {
+            Ok(abci::ResponseQuery::default())
+        }
+
+        fn check_tx(&self, _: &[u8]) -> Result<abci::ResponseCheckTx, String> {
+            Ok(abci::ResponseCheckTx::default())
+        }
+    }
+
+    struct TestNode;
+
+    impl crate::NodeStatus for TestNode {
+        fn node_info(&self) -> crate::NodeInfo {
+            crate::NodeInfo::default()
+        }
+
+        fn is_listening(&self) -> bool {
+            true
+        }
+
+        fn listeners(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn peers(&self) -> Vec<crate::PeerInfo> {
+            Vec::new()
+        }
+
+        fn wait_sync(&self) -> bool {
+            false
+        }
+
+        fn is_catching_up(&self) -> bool {
+            false
+        }
+
+        fn round_state_json(&self) -> String {
+            "{}".into()
+        }
+
+        fn round_state_simple_json(&self) -> String {
+            "{}".into()
+        }
+    }
+
+    struct NoEvidence;
+
+    impl crate::EvidenceSink for NoEvidence {
+        fn add_evidence(&self, _: ctypes::Evidence) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct TestLock;
+
+    impl MempoolLock for TestLock {
+        fn flush_app_conn(&mut self) -> Result<(), MempoolError> {
+            Ok(())
+        }
+
+        fn update(
+            &mut self,
+            _: i64,
+            _: &[CachedTx],
+            _: &[abci::ExecTxResult],
+            _: Option<mempool::PreCheckFunc>,
+            _: Option<mempool::PostCheckFunc>,
+        ) -> Result<(), MempoolError> {
+            Ok(())
+        }
+    }
+
+    struct TestMempool {
+        response: Mutex<Result<abci::ResponseCheckTx, MempoolError>>,
+    }
+
+    impl TestMempool {
+        fn new(response: Result<abci::ResponseCheckTx, MempoolError>) -> Self {
+            Self {
+                response: Mutex::new(response),
+            }
+        }
+    }
+
+    impl Mempool for TestMempool {
+        fn check_tx(&self, _: &[u8], info: TxInfo) -> Result<abci::ResponseCheckTx, MempoolError> {
+            assert!(info.from_broadcast);
+            self.response
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+
+        fn remove_tx_by_key(&self, _: &TxKey) -> Result<(), MempoolError> {
+            Ok(())
+        }
+
+        fn reap_max_bytes_max_gas(&self, _: i64, _: i64) -> Vec<CachedTx> {
+            Vec::new()
+        }
+
+        fn reap_max_txs(&self, _: i64) -> Vec<CachedTx> {
+            Vec::new()
+        }
+
+        fn lock(&self) -> Box<dyn MempoolLock + '_> {
+            Box::new(TestLock)
+        }
+
+        fn flush(&self) {}
+
+        fn enable_txs_available(&self) {}
+
+        fn txs_available(&self) -> Option<Arc<tokio::sync::Notify>> {
+            None
+        }
+
+        fn size(&self) -> usize {
+            0
+        }
+
+        fn size_bytes(&self) -> i64 {
+            0
+        }
+
+        fn get_tx_by_key(&self, _: &TxKey) -> Option<CachedTx> {
+            None
+        }
+
+        fn was_recently_evicted(&self, _: &TxKey) -> bool {
+            false
+        }
+
+        fn was_recently_rejected(&self, _: &TxKey) -> (bool, u32, String) {
+            (false, 0, String::new())
+        }
+    }
+
+    pub(crate) fn environment(
+        response: Result<abci::ResponseCheckTx, MempoolError>,
+        timeout_ms: u64,
+    ) -> Arc<Environment> {
+        let db: Arc<dyn kvdb::KvBackend> = Arc::new(MemBackend::new());
+        let config = crate::RpcConfig {
+            timeout_broadcast_tx_commit_ms: timeout_ms,
+            ..Default::default()
+        };
+        Arc::new(Environment::new(
+            BlockStore::new(Arc::clone(&db)).expect("memory block store"),
+            StateStore::new(db),
+            Arc::new(TestApp),
+            Arc::new(TestMempool::new(response)),
+            Arc::new(TestNode),
+            Arc::new(NoEvidence),
+            ctypes::PubKey::Ed25519([0; 32]),
+            crate::GenesisData::default(),
+            None,
+            None,
+            Arc::new(crate::EventBus::new()),
+            config,
+        ))
+    }
+
+    async fn wait_for_subscription(env: &Environment, client: &str) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while env.event_bus.num_client_subscriptions(client) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("broadcast subscription");
+    }
+
+    #[tokio::test]
+    async fn commit_returns_full_result_and_releases_subscription() {
+        let check = abci::ResponseCheckTx {
+            gas_wanted: 7,
+            ..Default::default()
+        };
+        let env = environment(Ok(check.clone()), 1_000);
+        let tx = b"accepted transaction".to_vec();
+        let task_env = Arc::clone(&env);
+        let task_tx = tx.clone();
+        let task =
+            tokio::spawn(async move { broadcast_commit(&task_env, task_tx, "core-grpc").await });
+        wait_for_subscription(&env, "core-grpc").await;
+
+        let exec = abci::ExecTxResult {
+            code: 9,
+            log: "execution failed".into(),
+            gas_used: 5,
+            ..Default::default()
+        };
+        env.event_bus.publish_tx(abci::TxResult {
+            height: 12,
+            index: 0,
+            tx: tx.clone(),
+            result: Some(exec.clone()),
+        });
+
+        let result = task.await.expect("join").expect("commit result");
+        assert_eq!(result.check_tx, check);
+        assert_eq!(result.tx_result, exec);
+        assert_eq!(result.hash, ctypes::Tx(tx).hash());
+        assert_eq!(result.height, 12);
+        assert_eq!(env.event_bus.num_client_subscriptions("core-grpc"), 0);
+    }
+
+    #[tokio::test]
+    async fn rejection_timeout_and_cancellation_release_subscription() {
+        let rejected = abci::ResponseCheckTx {
+            code: 7,
+            log: "rejected".into(),
+            ..Default::default()
+        };
+        let env = environment(Ok(rejected.clone()), 1_000);
+        let result = broadcast_commit(&env, b"rejected".to_vec(), "reject")
+            .await
+            .expect("rejection response");
+        assert_eq!(result.check_tx, rejected);
+        assert_eq!(result.tx_result, abci::ExecTxResult::default());
+        assert_eq!(result.height, 0);
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Err(MempoolError::App("app unavailable".into())), 1_000);
+        let error = broadcast_commit(&env, b"app-error".to_vec(), "app-error")
+            .await
+            .expect_err("application error");
+        assert_eq!(
+            error,
+            "error on broadcastTxCommit: app unavailable".to_owned()
+        );
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Ok(abci::ResponseCheckTx::default()), 1);
+        let error = broadcast_commit(&env, b"timeout".to_vec(), "timeout")
+            .await
+            .expect_err("timeout");
+        assert_eq!(error, "timed out waiting for tx to be included in a block");
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
+        let task_env = Arc::clone(&env);
+        let task =
+            tokio::spawn(
+                async move { broadcast_commit(&task_env, b"cancel".to_vec(), "cancel").await },
+            );
+        wait_for_subscription(&env, "cancel").await;
+        task.abort();
+        let _ = task.await;
+        assert_eq!(env.event_bus.num_clients(), 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+
+    use super::*;
+
+    struct BlockedSink;
+
+    impl Sink<WsMessage> for BlockedSink {
+        type Error = Infallible;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn start_send(self: Pin<&mut Self>, _item: WsMessage) -> Result<(), Self::Error> {
+            unreachable!("a blocked sink never accepts a message")
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn websocket_write_is_bounded() {
+        let mut sink = BlockedSink;
+        assert!(
+            !ws_write_with_timeout(
+                &mut sink,
+                WsMessage::Ping(Vec::new()),
+                Duration::from_millis(1),
+            )
+            .await
+        );
+    }
 }

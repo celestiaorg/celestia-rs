@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "tracking_issue": 181,
+  "reviewed_evidence": "conformance/mainnet-rpc/evidence-reviews.json",
+  "oracle": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "cosmos_sdk": "v0.52.12",
+    "selection": "Verify an active mainnet node before a new isolated capture; a version pin alone is not a mainnet observation. Record the actual compiler, including any difference from issue #181's go1.26.6 baseline.",
+    "celestia_core_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+    "cosmos_sdk_commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4"
+  },
+  "behaviors": {
+    "query-success-errors": {
+      "issue": 188,
+      "description": "Populated-state success, decoder/handler failures and exact status/body/metadata"
+    },
+    "history-proofs-pagination": {
+      "issue": 188,
+      "description": "Matched height and committed root, proof validity, forward/reverse/key/offset pagination"
+    },
+    "broadcasts": {
+      "issue": 187,
+      "description": "Admission, inclusion, execution failure, duplicates, timeout, disconnect and retry"
+    },
+    "subscriptions": {
+      "issue": 190,
+      "description": "Events, ordering, cancellation, slow readers, reconnect and cleanup"
+    },
+    "resource-settings": {
+      "issue": 183,
+      "description": "Default/custom request/response limits, connections, deadlines, bounded allocation and capacity recovery"
+    },
+    "runtime-identity": {
+      "issue": 184,
+      "description": "Actual production node identity, build version and consensus state shape"
+    },
+    "reflection": {
+      "issue": 182,
+      "description": "Port-specific registration, versions, descriptor lookup, streams and cleanup"
+    },
+    "simulation-errors": {
+      "issue": 185,
+      "description": "Decoder, ante and execution errors, gas, details and height metadata"
+    },
+    "empty-abci-envelope": {
+      "issue": 186,
+      "description": "Actual Go URI/JSON-RPC/WS response and connection survival"
+    },
+    "pruning-restarts-indexes": {
+      "issue": 189,
+      "description": "Persistent nodes, pruning boundaries, disabled indexes, catch-up and restart"
+    },
+    "http-boundaries": {
+      "issue": 191,
+      "description": "Height headers, REST body routes, HTTP framing, batches, CORS and proxy behavior"
+    },
+    "all-api-soak": {
+      "issue": 192,
+      "description": "Bounded mixed-node soak with all transports, classified client failures and resource/progress reporting"
+    }
+  },
+  "comparison_policies": {
+    "exact": {
+      "description": "Compare status, stable headers/metadata, response bytes/frames and terminal status; no normalization",
+      "issue": 193
+    },
+    "legacy-query-canonicalization": {
+      "description": "querycorpus.rs sorts selected reward/subspace/interface lists, removes Go source frames and removes GetNodeInfo application_version; this does not establish exact error or runtime build identity parity",
+      "issue": 184
+    },
+    "legacy-rpc-consensus-state": {
+      "description": "rpc/tests/corpus.rs replaces the entire consensus_state/dump_consensus_state result; it does not verify its shape",
+      "issue": 184
+    },
+    "legacy-rpc-node-identity": {
+      "description": "rpc/tests/corpus.rs constructs NodeInfo from the Go status, fixes catching_up=false in gRPC Status and reuses the frozen validator key",
+      "issue": 184
+    },
+    "legacy-rpc-decode-error": {
+      "description": "rpc/tests/corpus.rs removes proto separators and Go source annotations from tx parse errors",
+      "issue": 185
+    },
+    "legacy-rpc-event-order": {
+      "description": "rpc/tests/corpus.rs sorts event map entries in recorded event frames",
+      "issue": 190
+    }
+  },
+  "known_mismatches": [
+    {
+      "issue": 185,
+      "source": "crates/devnet-conformance/tests/query_corpus.rs",
+      "description": "Legacy KNOWN_DIVERGENCES still defers malformed bank Params and Simulate bytes1203616263 (including a stale gas-zero rationale); these retained historical skips are separate from the merged current14-case Simulate contract and do not establish a current mismatch"
+    }
+  ],
+  "exclusions": [
+    {
+      "issue": 187,
+      "source": "crates/devnet-conformance/src/querycorpus.rs",
+      "description": "NEEDS_CONSENSUS cases skip live-core-dependent queries; inspect the source inventory output for the current list"
+    },
+    {
+      "issue": 193,
+      "source": "conformance/rpccorpus",
+      "description": "Existing v10.4.0 RPC and v9/v10.4 query corpora are regression-only; original fixtures lack complete source/compiler/capture hashes"
+    },
+    {
+      "issue": 193,
+      "source": "conformance/mainnet-rpc",
+      "description": "Merged v10.5 packages are hash-checked in evidence-reviews.json. They remain unadmitted where an exact dependency receipt, RS binary/matched-state/response capture, complete mainnet observation or exact comparison is missing"
+    },
+    {
+      "issue": 191,
+      "source": "crates/tier-4-runtime/rpc/tests/corpus.rs",
+      "description": "Legacy HTTP replay invokes the Rust router in-process; it does not establish HTTP wire framing, keep-alive or production listener behavior"
+    },
+    {
+      "issue": 186,
+      "source": "conformance/querycorpus",
+      "description": "Historical recording used query(...).unwrap_or_default(); an empty ABCI Query envelope at /p2p/filter/other/x may appear as fabricated default success and is not evidence of public transport behavior"
+    }
+  ],
+  "current_evidence": [],
+  "scoped_evidence": "conformance/mainnet-rpc/scope-audit.json"
+}

@@ -43,6 +43,16 @@ use sdk::{Context, ExecMode, Header, MultiStore, Result, SdkError};
 /// version explicitly in consensus params.
 pub const INITIAL_APP_VERSION: u64 = 0;
 
+/// The Rust application identity (distinct from the Go compatibility target).
+pub const APPLICATION_NAME: &str = "celestia-rs";
+
+/// The celestia-app release targeted by this build's application API.
+///
+/// Reported by ABCI `Info.version` and `/app/version` for client feature
+/// negotiation. This is neither the Rust software version nor a claim that
+/// every provider API has been qualified; see `docs/rpc-version-identity.md`.
+pub const COMPATIBILITY_VERSION: &str = "10.5.0";
+
 /// The application.
 #[derive(Debug)]
 pub struct App {
@@ -413,8 +423,8 @@ impl App {
     #[must_use]
     pub fn info(&self) -> ResponseInfo {
         ResponseInfo {
-            data: "celestia-app".into(),
-            version: String::new(),
+            data: APPLICATION_NAME.into(),
+            version: COMPATIBILITY_VERSION.into(),
             app_version: self.app_version(),
             last_block_height: self.last_height,
             last_block_app_hash: self.last_commit_hash.clone(),
@@ -1116,6 +1126,21 @@ fn exception(e: &SdkError) -> response::Value {
 }
 
 impl Application for AbciApp {
+    fn handle_envelope(&self, request: request::Value) -> Option<response::Value> {
+        let request::Value::Query(req) = request else {
+            return Some(self.handle(request));
+        };
+        if let Some(resp) = node_services::abci_query(self, &req) {
+            return Some(response::Value::Query(resp));
+        }
+        match self.inner.lock() {
+            Ok(mut app) => app.query_response(&req).map(response::Value::Query),
+            Err(_) => Some(response::Value::Exception(ResponseException {
+                error: "poisoned".into(),
+            })),
+        }
+    }
+
     fn handle(&self, request: request::Value) -> response::Value {
         // celestia-core-backed queries run outside the lock (see
         // `node_services`).

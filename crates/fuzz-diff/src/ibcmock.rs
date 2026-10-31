@@ -35,6 +35,8 @@ pub const CHAIN_ID: &str = "cp-1";
 pub const CP_CLIENT: &str = "07-tendermint-0";
 /// Its connection.
 pub const CP_CONNECTION: &str = "connection-0";
+/// A counterparty-initiated connection used to exercise OpenTry / Confirm.
+pub const CP_CONNECTION2: &str = "connection-1";
 
 /// The mock chain.
 pub struct Cp {
@@ -308,6 +310,10 @@ impl Cp {
 
     /// The counterparty's connection end.
     pub fn put_connection(&mut self, state: i32, a_client: &str, a_conn: &str) {
+        self.put_connection_at(CP_CONNECTION, state, a_client, a_conn);
+    }
+
+    fn put_connection_at(&mut self, cp_conn: &str, state: i32, a_client: &str, a_conn: &str) {
         let end = conn::ConnectionEnd {
             client_id: CP_CLIENT.into(),
             versions: vec![conn::Version {
@@ -326,7 +332,7 @@ impl Cp {
         };
         // gogoproto's encoding, which Go compares with.
         self.put(
-            &format!("connections/{CP_CONNECTION}"),
+            &format!("connections/{cp_conn}"),
             Some(txdecode::gogo_repack(&Any::pack(&end)).value),
         );
     }
@@ -418,6 +424,18 @@ pub const CP_ICA_PORT: &str = "icacontroller-fuzz";
 /// Its channel.
 pub const CP_ICA_CHAN: &str = "channel-9";
 
+const PFM_COVERAGE_AMOUNT: &str = "424242424242424242";
+const PFM_COVERAGE_DENOM: &str = "upfmcoverage";
+const PFM_COVERAGE_RECEIVER: &str = "cosmos1pfmcoverage";
+const PFM_SUCCESS_ACK: &[u8] = br#"{"result":"AQ=="}"#;
+const PFM_SUCCESS_ACK_HEX: &str = "7b22726573756c74223a2241513d3d227d";
+const PFM_ERROR_ACK: &[u8] = br#"{"error":"pfm downstream rejection"}"#;
+const PFM_ERROR_ACK_HEX: &str =
+    "7b226572726f72223a2270666d20646f776e73747265616d2072656a656374696f6e227d";
+const ICA_ERROR_AMOUNT: &str = "100000000000";
+const ICA_INSUFFICIENT_FUNDS_ACK: &str =
+    "ABCI code: 5: error handling packet: see events for details";
+
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
     /// Time of the block the txs go into.
@@ -447,16 +465,49 @@ pub struct Driver {
     pub a_client: Option<String>,
     a_client2: Option<String>,
     frozen: bool,
+    recover_client_on: bool,
+    recover_subject_ready: bool,
+    recover_update_pending: bool,
+    /// Exact rejection of a valid update after the second client freezes.
+    frozen_client_required: bool,
+    frozen_update_pending: bool,
+    /// Required PFM success lifecycle: 0 not sent, 1 incoming packet landed,
+    /// 2 exact forwarded packet observed, 3 original acknowledgement written.
+    pfm_required: bool,
+    pfm_error_required: bool,
+    pfm_timeout_required: bool,
+    pfm_exhaust_required: bool,
+    pfm_stage: u8,
+    pfm_original: Option<ch::Packet>,
+    pfm_forwarded: Option<ch::Packet>,
+    pfm_ack_pending: bool,
+    pfm_timeout_pending: bool,
+    pfm_timeout_complete: bool,
     /// A third client, upgraded once (`MsgUpgradeClient`).
     a_client3: Option<String>,
     upgraded: bool,
     trusted3: i64,
+    /// A dedicated short-lived client and its rejected update. The client is
+    /// created active, then allowed to expire before the update is submitted.
+    expired_client_required: bool,
+    a_expired_client: Option<String>,
+    expired_trusted: i64,
+    expired_update_pending: bool,
     /// Its connection, transfer channel and ICA host channel.
     pub a_conn: Option<String>,
     /// The transfer channel.
     pub a_transfer: Option<String>,
     a_ica: Option<String>,
     ica_version: String,
+    /// Required ICA host lifecycle: successful exact-packet acknowledgement
+    /// under proto3, then after a real channel upgrade under proto3json.
+    ica_encoding_required: bool,
+    ica_requirement_stage: u8,
+    ica_required_packet: Option<(ch::Packet, bool)>,
+    /// Required ICA host application-error lifecycle: exact packet, its
+    /// converted callback-error event and deterministic error acknowledgement.
+    ica_error_required: bool,
+    ica_error_packet: Option<ch::Packet>,
     /// Handshakes the chain under test finished (events).
     conn_open: bool,
     transfer_open: bool,
@@ -474,23 +525,37 @@ pub struct Driver {
     /// Sequences the counterparty received (for timeouts: none).
     pub stats: BTreeMap<&'static str, u64>,
     /// ICS-27 channel upgrade: stage (0 idle, 1 try sent, 2 flushing,
-    /// 3 confirm sent, 4 flush complete, 5 open sent), the channel's
-    /// upgrade sequence, the proposed version, when the try was sent and
-    /// blocks waited in the stage.
+    /// 3 confirm sent, 4 flush complete, 5 open sent, 6 pruning pending,
+    /// 7 pruning sent), the channel's upgrade sequence, the proposed
+    /// version, when the try was sent and blocks waited in the stage.
     cu_stage: u8,
     cu_seq: u64,
     cu_new: String,
     cu_try_at: i64,
     cu_wait: u32,
+    /// A valid Ack was relayed to the host-only ICA route. Its application
+    /// callback must abort the upgrade and return a code-0 FAILURE response.
+    cu_ack_failure_pending: bool,
     /// A transfer channel the counterparty closes: stage (0 none, 1 init
     /// sent, 2 initialized, 3 ack sent, 4 open, 5 transfer sent, 6 packet
-    /// seen, 7 close sent), its id, the packet timed out on close, how many
-    /// were closed and blocks waited in the stage.
+    /// seen, 7 counterparty close sent, 8 local close-init sent), its id, the
+    /// packet timed out on close, how many were closed and blocks waited in
+    /// the stage.
     cl_stage: u8,
     a_transfer2: Option<String>,
     cl_packet: Option<ch::Packet>,
     cl_k: u32,
     cl_wait: u32,
+    close_init_failure_required: bool,
+    close_init_rejected_channel: Option<String>,
+    /// A counterparty-initiated connection: stage (0 not started, 1 Try
+    /// sent, 2 Try landed, 3 Confirm sent, 4 complete), its local id and
+    /// blocks waited in the current stage.
+    conn2_stage: u8,
+    a_conn2: Option<String>,
+    conn2_wait: u32,
+    connection_confirm_on: bool,
+    legacy_upgrade_fixture: bool,
 }
 
 fn proof_height(h: i64) -> Option<Height> {
@@ -505,7 +570,150 @@ fn attr(e: &celestia_proto::celestia_core_proto::abci::Event, key: &str) -> Opti
         .map(|a| a.value.clone())
 }
 
+const ICA_HOST_ACK_ERROR: &str = "channel upgrade handshake must be initiated by controller chain: invalid message sent to channel end";
+
+/// Whether this event attributes a code-0 Ack failure to the ICA host callback
+/// for the channel upgrade currently being relayed.
+fn is_ica_host_ack_error(
+    e: &celestia_proto::celestia_core_proto::abci::Event,
+    channel: Option<&str>,
+    sequence: u64,
+) -> bool {
+    e.r#type == "channel_upgrade_error"
+        && attr(e, "port_id").as_deref() == Some("icahost")
+        && attr(e, "channel_id").as_deref() == channel
+        && attr(e, "upgrade_sequence").and_then(|s| s.parse().ok()) == Some(sequence)
+        && attr(e, "error_receipt").as_deref() == Some(ICA_HOST_ACK_ERROR)
+}
+
 impl Driver {
+    /// Enable the counterparty-initiated OpenTry / OpenConfirm flow.
+    #[must_use]
+    pub fn with_connection_confirm(mut self, enabled: bool) -> Self {
+        self.connection_confirm_on = enabled;
+        self
+    }
+
+    /// Require one attributed application rejection of a local channel close.
+    #[must_use]
+    pub fn with_close_init_failure_requirement(mut self, enabled: bool) -> Self {
+        self.close_init_failure_required = enabled;
+        self
+    }
+
+    /// Enable a governance recovery payload once the second client is frozen.
+    #[must_use]
+    pub fn with_recover_client(mut self, enabled: bool) -> Self {
+        self.recover_client_on = enabled;
+        self
+    }
+
+    /// Require the frozen second client to reject a valid signed update.
+    #[must_use]
+    pub fn with_frozen_client_requirement(mut self, enabled: bool) -> Self {
+        self.frozen_client_required = enabled;
+        self
+    }
+
+    /// Require one exact PFM forward, downstream success Ack and delayed
+    /// acknowledgement of the original incoming packet.
+    #[must_use]
+    pub fn with_pfm_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_required = enabled;
+        self
+    }
+
+    /// Require the exact PFM downstream-error and original-error Ack path.
+    #[must_use]
+    pub fn with_pfm_error_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_error_required = enabled;
+        self
+    }
+
+    /// Require one exact forwarded timeout, retry and eventual success Ack.
+    #[must_use]
+    pub fn with_pfm_timeout_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_timeout_required = enabled;
+        self
+    }
+
+    /// Require the configured retry to time out and propagate its refund Ack.
+    #[must_use]
+    pub fn with_pfm_exhaust_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_exhaust_required = enabled;
+        self
+    }
+
+    /// Require successful exact-packet ICA host execution in both encodings.
+    #[must_use]
+    pub fn with_ica_encoding_requirement(mut self, enabled: bool) -> Self {
+        self.ica_encoding_required = enabled;
+        self
+    }
+
+    /// Require an exact ICA host application error acknowledgement.
+    #[must_use]
+    pub fn with_ica_error_requirement(mut self, enabled: bool) -> Self {
+        self.ica_error_required = enabled;
+        self
+    }
+
+    /// Require an exact update rejection for a dedicated expired client.
+    #[must_use]
+    pub fn with_expired_client_requirement(mut self, enabled: bool) -> Self {
+        self.expired_client_required = enabled;
+        self
+    }
+
+    fn pfm_enabled(&self) -> bool {
+        self.pfm_required
+            || self.pfm_error_required
+            || self.pfm_timeout_required
+            || self.pfm_exhaust_required
+    }
+
+    fn pfm_timeout_enabled(&self) -> bool {
+        self.pfm_timeout_required || self.pfm_exhaust_required
+    }
+
+    fn pfm_acknowledgement(&self) -> (&'static [u8], &'static str) {
+        if self.pfm_error_required {
+            (PFM_ERROR_ACK, PFM_ERROR_ACK_HEX)
+        } else {
+            (PFM_SUCCESS_ACK, PFM_SUCCESS_ACK_HEX)
+        }
+    }
+
+    fn pfm_exhaust_ack_hex(&self) -> Option<String> {
+        let channel = self.a_transfer.as_deref()?;
+        let acknowledgement = serde_json::json!({
+            "error": format!(
+                "packet-forward-middleware error: giving up on packet on channel ({channel}) port (transfer) after max retries"
+            )
+        });
+        Some(hex::encode(acknowledgement.to_string()))
+    }
+
+    /// A frozen subject and a newer active substitute suitable for recovery.
+    #[must_use]
+    pub fn recovery_clients(&self) -> Option<(String, String)> {
+        if !self.recover_client_on || !self.recover_subject_ready || self.trusted <= self.trusted2 {
+            return None;
+        }
+        Some((self.a_client2.clone()?, self.a_client.clone()?))
+    }
+
+    /// Preserve the pre-Ack/pruning channel-upgrade state machine used to
+    /// capture a static signed-header fixture.
+    #[must_use]
+    pub fn with_legacy_upgrade_fixture(mut self, enabled: bool) -> Self {
+        self.legacy_upgrade_fixture = enabled;
+        if enabled {
+            self.bump("legacy_upgrade_fixture");
+        }
+        self
+    }
+
     fn bump(&mut self, k: &'static str) {
         *self.stats.entry(k).or_default() += 1;
     }
@@ -540,6 +748,106 @@ impl Driver {
         ))
     }
 
+    /// A valid update for the dedicated client after its one-second trusting
+    /// period has elapsed. Core must reject it before changing client state.
+    fn expired_update(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        if !self.expired_client_required
+            || self.stats.contains_key("expired_client_update_rejected")
+        {
+            return None;
+        }
+        let client = self.a_expired_client.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.expired_trusted {
+            return None;
+        }
+        let header = self.cp.header(h, self.expired_trusted, None);
+        self.expired_update_pending = true;
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
+            },
+        ))
+    }
+
+    /// A valid update for the second client after exact misbehaviour froze it.
+    fn frozen_update(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        if !self.frozen_client_required
+            || !self.recover_subject_ready
+            || self.frozen_update_pending
+            || self.stats.contains_key("frozen_client_update_rejected")
+        {
+            return None;
+        }
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.trusted2 {
+            return None;
+        }
+        let header = self.cp.header(h, self.trusted2, None);
+        self.frozen_update_pending = true;
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
+            },
+        ))
+    }
+
+    /// Freeze the second client with two valid conflicting signed headers.
+    fn misbehaviour(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        if self.frozen {
+            return None;
+        }
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 4);
+        let h1 = self.cp.header(h, self.trusted2, None);
+        let h2 = self.cp.header(h, self.trusted2, Some(vec![7; 32]));
+        self.frozen = true;
+        self.bump("misbehaviour");
+        let mb = tmlc::Misbehaviour {
+            client_id: client.clone(),
+            header_1: Some(h1),
+            header_2: Some(h2),
+        };
+        Some(vec![if c.rng.one_in(2) {
+            #[allow(deprecated)]
+            Any::pack(
+                &celestia_proto::ibc::core::client::v1::MsgSubmitMisbehaviour {
+                    client_id: client,
+                    misbehaviour: Some(Any::pack(&mb)),
+                    signer: c.signer.clone(),
+                },
+            )
+        } else {
+            Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&mb)),
+                signer: c.signer.clone(),
+            })
+        }])
+    }
+
+    /// `MsgUpdateClient` proving the recovered subject accepts a new header.
+    fn update_recovered(&mut self, c: &mut StepCtx<'_>) -> Option<Any> {
+        let client = self.a_client2.clone()?;
+        let h = self.cp.commit(c.now - 3);
+        if h <= self.trusted2 {
+            return None;
+        }
+        let header = self.cp.header(h, self.trusted2, None);
+        Some(Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: client,
+                client_message: Some(Any::pack(&header)),
+                signer: c.signer.clone(),
+            },
+        ))
+    }
+
     fn metadata(&self, address: &str, encoding: &str) -> String {
         format!(
             r#"{{"version":"ics27-1","controller_connection_id":"{CP_CONNECTION}","host_connection_id":"{}","address":"{address}","encoding":"{encoding}","tx_type":"sdk_multi_msg"}}"#,
@@ -556,6 +864,7 @@ impl Driver {
         self.waited += 1;
         self.cu_wait += 1;
         self.cl_wait += 1;
+        self.conn2_wait += 1;
         // A phase that waits too long (its tx failed) is retried.
         let retry = self.waited > 6;
         match self.phase {
@@ -571,6 +880,18 @@ impl Driver {
                 self.trusted = h;
                 self.trusted2 = h;
                 self.trusted3 = h;
+                if self.expired_client_required {
+                    // Create this client at the current block time so it is
+                    // active during creation, then let the next block's time
+                    // move beyond its one-second trusting period.
+                    let expired_h = self.cp.commit(c.now);
+                    txs.push(vec![Any::pack(&cl::MsgCreateClient {
+                        client_state: Some(self.cp.client_state(expired_h, 1)),
+                        consensus_state: Some(self.cp.consensus_state(expired_h)),
+                        signer: signer.clone(),
+                    })]);
+                    self.expired_trusted = expired_h;
+                }
                 self.phase = 1;
                 self.waited = 0;
             }
@@ -668,11 +989,12 @@ impl Driver {
                 self.waited = 0;
             }
             5 if self.transfer_open => {
-                let encoding = if c.rng.one_in(2) {
-                    "proto3"
-                } else {
-                    "proto3json"
-                };
+                let encoding =
+                    if self.ica_encoding_required || self.ica_error_required || c.rng.one_in(2) {
+                        "proto3"
+                    } else {
+                        "proto3json"
+                    };
                 let md = self.metadata("", encoding);
                 self.cp.put_channel(
                     CP_ICA_PORT,
@@ -758,6 +1080,11 @@ impl Driver {
                         },
                     )]);
                 }
+                if self.recover_update_pending
+                    && let Some(message) = self.update_recovered(c)
+                {
+                    txs.push(vec![message]);
+                }
                 if let Some(t) = self.steady(c) {
                     txs.push(t);
                 }
@@ -777,6 +1104,12 @@ impl Driver {
             }
             _ => {}
         }
+        if let Some(update) = self.frozen_update(c) {
+            txs.push(vec![update]);
+        }
+        if let Some(update) = self.expired_update(c) {
+            txs.push(vec![update]);
+        }
         txs
     }
 
@@ -786,7 +1119,42 @@ impl Driver {
     fn steady(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
         let signer = c.signer.clone();
         let a_chan = self.a_transfer.clone()?;
-        match c.rng.below(17) {
+        if self.pfm_enabled() {
+            if self.pfm_stage == 0 {
+                return Some(self.pfm_recv(c, &signer, &a_chan));
+            }
+            if self.pfm_stage == 2 {
+                if self.pfm_timeout_enabled()
+                    && (!self.pfm_timeout_complete || self.pfm_exhaust_required)
+                {
+                    return self.pfm_timeout(c, &signer);
+                }
+                return self.pfm_ack(c, &signer);
+            }
+        }
+        if self.ica_encoding_required && self.ica_open && self.ica_requirement_stage < 3 {
+            if self.ica_required_packet.is_some() {
+                return None;
+            }
+            if self.ica_requirement_stage == 1 && self.ica_version.contains("proto3json") {
+                self.ica_requirement_stage = 2;
+            }
+            return match self.ica_requirement_stage {
+                0 | 2 => self.ica_packet(c),
+                1 => self.chan_upgrade(c),
+                _ => None,
+            };
+        }
+        if self.ica_error_required && self.ica_open && !self.stats.contains_key("ica_error_ack") {
+            if self.ica_error_packet.is_some() {
+                return None;
+            }
+            return self.ica_packet(c);
+        }
+        if self.frozen_client_required && !self.frozen {
+            return self.misbehaviour(c);
+        }
+        let relay = match c.rng.below(17) {
             12 => self.upgrade(c).or_else(|| self.close_flow(c)),
             13 | 14 => self.chan_upgrade(c),
             15 | 16 => self.close_flow(c),
@@ -938,39 +1306,192 @@ impl Driver {
             // An ICA host tx.
             8..=10 => self.ica_packet(c),
             // Misbehaviour on the second client.
-            _ => {
-                if self.frozen {
-                    return None;
-                }
-                let client = self.a_client2.clone()?;
-                let h = self.cp.commit(c.now - 4);
-                let h1 = self.cp.header(h, self.trusted2, None);
-                let h2 = self.cp.header(h, self.trusted2, Some(vec![7; 32]));
-                self.frozen = true;
-                self.bump("misbehaviour");
-                let mb = tmlc::Misbehaviour {
-                    client_id: client.clone(),
-                    header_1: Some(h1),
-                    header_2: Some(h2),
-                };
-                Some(vec![if c.rng.one_in(2) {
-                    #[allow(deprecated)]
-                    Any::pack(
-                        &celestia_proto::ibc::core::client::v1::MsgSubmitMisbehaviour {
-                            client_id: client,
-                            misbehaviour: Some(Any::pack(&mb)),
-                            signer: signer.clone(),
-                        },
-                    )
-                } else {
-                    Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
-                        client_id: client,
-                        client_message: Some(Any::pack(&mb)),
-                        signer: signer.clone(),
-                    })
-                }])
+            _ => self.misbehaviour(c),
+        };
+        // Fill a block in which the existing steady-state schedule had no
+        // relay. The opt-in flow still advances counterparty and relayer state;
+        // leaving it disabled preserves established fixed-seed paths.
+        relay.or_else(|| self.connection_confirm_flow(c))
+    }
+
+    /// Send one uniquely attributable valid PFM packet into the app.
+    fn pfm_recv(&mut self, c: &StepCtx<'_>, signer: &str, a_chan: &str) -> Vec<Any> {
+        let local_receiver = c.accounts[0].0.clone();
+        let timeout = if self.pfm_timeout_enabled() {
+            "1s"
+        } else {
+            "10m"
+        };
+        let memo = serde_json::json!({
+            "forward": {
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "port": "transfer",
+                "channel": a_chan,
+                "timeout": timeout,
+                "retries": 1
             }
+        })
+        .to_string();
+        let data = serde_json::json!({
+            "amount": PFM_COVERAGE_AMOUNT,
+            "denom": PFM_COVERAGE_DENOM,
+            "memo": memo,
+            "receiver": local_receiver,
+            "sender": "cosmos1pfmcoverageorigin"
+        })
+        .to_string()
+        .into_bytes();
+        let mut packet = ch::Packet {
+            sequence: 0,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: a_chan.into(),
+            data,
+            timeout_height: None,
+            timeout_timestamp: u64::try_from(c.now + 3600).unwrap_or(0) * 1_000_000_000,
+        };
+        self.cp.send(&mut packet);
+        let h = self.cp.commit(c.now - 8);
+        self.pfm_original = Some(packet.clone());
+        self.pfm_stage = 1;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgRecvPacket {
+            proof_commitment: self.cp.proof(&format!(
+                "commitments/ports/transfer/channels/{CP_TRANSFER}/sequences/{}",
+                packet.sequence
+            )),
+            packet: Some(packet),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        messages
+    }
+
+    /// Relay a success acknowledgement for the exact forwarded packet.
+    fn pfm_ack(&mut self, c: &StepCtx<'_>, signer: &str) -> Option<Vec<Any>> {
+        let packet = self.pfm_forwarded.clone()?;
+        let (acknowledgement, _) = self.pfm_acknowledgement();
+        if let Some(index) = self.pending.iter().position(|p| p == &packet) {
+            self.pending.remove(index);
         }
+        self.cp.write_ack(&packet, acknowledgement);
+        let h = self.cp.commit(c.now - 6);
+        self.pfm_ack_pending = true;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgAcknowledgement {
+            proof_acked: self.cp.proof(&format!(
+                "acks/ports/{}/channels/{}/sequences/{}",
+                packet.destination_port, packet.destination_channel, packet.sequence
+            )),
+            packet: Some(packet),
+            acknowledgement: acknowledgement.to_vec(),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        Some(messages)
+    }
+
+    /// Prove non-receipt after the exact forwarded packet's timeout. PFM
+    /// handles the timeout and emits its configured retry in the same tx.
+    fn pfm_timeout(&mut self, c: &StepCtx<'_>, signer: &str) -> Option<Vec<Any>> {
+        let packet = self.pfm_forwarded.clone()?;
+        if let Some(index) = self.pending.iter().position(|pending| pending == &packet) {
+            self.pending.remove(index);
+        }
+        let timeout_secs = i64::try_from(packet.timeout_timestamp / 1_000_000_000).unwrap_or(0);
+        let h = self.cp.commit(c.now.max(timeout_secs.saturating_add(1)));
+        self.pfm_timeout_pending = true;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgTimeout {
+            proof_unreceived: self.cp.proof(&format!(
+                "receipts/ports/{}/channels/{}/sequences/{}",
+                packet.destination_port, packet.destination_channel, packet.sequence
+            )),
+            next_sequence_recv: packet.sequence,
+            packet: Some(packet),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        Some(messages)
+    }
+
+    /// A counterparty-initiated connection handshake. The counterparty's
+    /// INIT and OPEN ends are committed to the signed IAVL store, so the
+    /// chain under test verifies real proofs in OpenTry and OpenConfirm.
+    fn connection_confirm_flow(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        if !self.connection_confirm_on || !self.conn_open || self.conn2_stage == 4 {
+            return None;
+        }
+        let signer = c.signer.clone();
+        let a_client = self.a_client.clone()?;
+        let version = conn::Version {
+            identifier: "1".into(),
+            features: vec!["ORDER_ORDERED".into(), "ORDER_UNORDERED".into()],
+        };
+        let key = format!("connections/{CP_CONNECTION2}");
+        let mut msgs: Vec<Any> = Vec::new();
+        match self.conn2_stage {
+            0 => {
+                self.cp
+                    .put_connection_at(CP_CONNECTION2, conn::State::Init as i32, &a_client, "");
+                let h = self.cp.commit(c.now - 4);
+                msgs.extend(self.update(&signer));
+                msgs.push(Any::pack(&conn::MsgConnectionOpenTry {
+                    client_id: a_client,
+                    previous_connection_id: String::new(),
+                    client_state: None,
+                    counterparty: Some(conn::Counterparty {
+                        client_id: CP_CLIENT.into(),
+                        connection_id: CP_CONNECTION2.into(),
+                        prefix: Some(MerklePrefix {
+                            key_prefix: b"ibc".to_vec(),
+                        }),
+                    }),
+                    delay_period: 0,
+                    counterparty_versions: vec![version],
+                    proof_height: proof_height(h),
+                    proof_init: self.cp.proof(&key),
+                    proof_client: Vec::new(),
+                    proof_consensus: Vec::new(),
+                    consensus_height: None,
+                    signer,
+                    host_consensus_state_proof: Vec::new(),
+                }));
+                self.conn2_stage = 1;
+                self.bump("connection_open_try");
+            }
+            2 => {
+                let a_conn = self.a_conn2.clone()?;
+                self.cp.put_connection_at(
+                    CP_CONNECTION2,
+                    conn::State::Open as i32,
+                    &a_client,
+                    &a_conn,
+                );
+                let h = self.cp.commit(c.now - 3);
+                msgs.extend(self.update(&signer));
+                msgs.push(Any::pack(&conn::MsgConnectionOpenConfirm {
+                    connection_id: a_conn,
+                    proof_ack: self.cp.proof(&key),
+                    proof_height: proof_height(h),
+                    signer,
+                }));
+                self.conn2_stage = 3;
+                self.bump("connection_open_confirm");
+            }
+            1 if self.conn2_wait > 6 => {
+                self.conn2_stage = 0;
+                return None;
+            }
+            3 if self.conn2_wait > 6 => {
+                self.conn2_stage = 2;
+                return None;
+            }
+            _ => return None,
+        }
+        self.conn2_wait = 0;
+        Some(msgs)
     }
 
     /// `MsgUpgradeClient` of the third client to chain `cp-2` (once): the
@@ -1127,7 +1648,8 @@ impl Driver {
                 let seq = self.cu_seq;
                 let new = self.cu_new.clone();
                 let r = c.rng.below(10);
-                if c.now - self.cu_try_at > 620 && r < 6 {
+                let ack_failure = !self.legacy_upgrade_fixture && seq % 4 == 1;
+                if !ack_failure && c.now - self.cu_try_at > 620 && r < 6 {
                     // The upgrade timed out: the counterparty never moved on.
                     let end = cp_end(ch::State::Open, &cur, seq);
                     self.cp.put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &end);
@@ -1142,7 +1664,7 @@ impl Driver {
                         signer,
                     }));
                     self.bump("chan_upgrade_timeout");
-                } else if r < 2 {
+                } else if !ack_failure && r < 2 {
                     let receipt = ch::ErrorReceipt {
                         sequence: seq,
                         message: "fuzz: upgrade cancelled".into(),
@@ -1163,7 +1685,7 @@ impl Driver {
                     }));
                     self.bump("chan_upgrade_cancel");
                 } else {
-                    let state = if r < 5 {
+                    let state = if ack_failure || r < 5 {
                         ch::State::Flushing
                     } else {
                         ch::State::Flushcomplete
@@ -1187,17 +1709,35 @@ impl Driver {
                     self.cp.put_gogo(&up_key, &upgrade);
                     let h = self.cp.commit(c.now - 3);
                     msgs.extend(self.update(&signer));
-                    msgs.push(Any::pack(&ch::MsgChannelUpgradeConfirm {
-                        port_id: "icahost".into(),
-                        channel_id: a_ica.clone(),
-                        counterparty_channel_state: state as i32,
-                        counterparty_upgrade: Some(upgrade),
-                        proof_channel: self.cp.proof(&ch_key),
-                        proof_upgrade: self.cp.proof(&up_key),
-                        proof_height: proof_height(h),
-                        signer,
-                    }));
-                    self.bump("chan_upgrade_confirm");
+                    if ack_failure {
+                        // Celestia enables the ICA host, not the controller.
+                        // Core accepts these real counterparty proofs, then
+                        // the host's Ack callback aborts the upgrade, writes
+                        // an error receipt and returns code 0 with FAILURE.
+                        msgs.push(Any::pack(&ch::MsgChannelUpgradeAck {
+                            port_id: "icahost".into(),
+                            channel_id: a_ica.clone(),
+                            counterparty_upgrade: Some(upgrade),
+                            proof_channel: self.cp.proof(&ch_key),
+                            proof_upgrade: self.cp.proof(&up_key),
+                            proof_height: proof_height(h),
+                            signer,
+                        }));
+                        self.cu_ack_failure_pending = true;
+                        self.bump("chan_upgrade_ack_failure_sent");
+                    } else {
+                        msgs.push(Any::pack(&ch::MsgChannelUpgradeConfirm {
+                            port_id: "icahost".into(),
+                            channel_id: a_ica.clone(),
+                            counterparty_channel_state: state as i32,
+                            counterparty_upgrade: Some(upgrade),
+                            proof_channel: self.cp.proof(&ch_key),
+                            proof_upgrade: self.cp.proof(&up_key),
+                            proof_height: proof_height(h),
+                            signer,
+                        }));
+                        self.bump("chan_upgrade_confirm");
+                    }
                 }
                 self.cu_stage = 3;
             }
@@ -1223,17 +1763,34 @@ impl Driver {
                 self.cu_stage = 5;
                 self.bump("chan_upgrade_open");
             }
+            // A completed upgrade sets the acknowledgement/receipt pruning
+            // bounds. Exercise the permissionless pruning handler against
+            // that real channel state before starting another upgrade.
+            6 => {
+                msgs.push(Any::pack(&ch::MsgPruneAcknowledgements {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica,
+                    limit: 100,
+                    signer,
+                }));
+                self.cu_stage = 7;
+            }
             // A step that did not land is sent again.
             1 if self.cu_wait > 6 => {
                 self.cu_stage = 0;
                 return None;
             }
             3 if self.cu_wait > 6 => {
+                self.cu_ack_failure_pending = false;
                 self.cu_stage = 2;
                 return None;
             }
             5 if self.cu_wait > 6 => {
                 self.cu_stage = 4;
+                return None;
+            }
+            7 if self.cu_wait > 6 => {
+                self.cu_stage = 6;
                 return None;
             }
             _ => return None,
@@ -1304,6 +1861,19 @@ impl Driver {
             }
             4 => {
                 let a2 = self.a_transfer2.clone()?;
+                if self.close_init_failure_required
+                    && !self.stats.contains_key("close_init_failure")
+                {
+                    msgs.push(Any::pack(&ch::MsgChannelCloseInit {
+                        port_id: "transfer".into(),
+                        channel_id: a2,
+                        signer,
+                    }));
+                    self.cl_stage = 8;
+                    self.bump("close_init_failure_sent");
+                    self.cl_wait = 0;
+                    return Some(msgs);
+                }
                 msgs.push(Any::pack(
                     &celestia_proto::ibc::applications::transfer::v1::MsgTransfer {
                         source_port: "transfer".into(),
@@ -1360,9 +1930,10 @@ impl Driver {
                 self.bump("close");
             }
             // A step that did not land is sent again.
-            1 | 3 | 5 | 7 if self.cl_wait > 6 => {
+            1 | 3 | 5 | 7 | 8 if self.cl_wait > 6 => {
                 self.cl_stage = match self.cl_stage {
                     1 => 0,
+                    8 => 4,
                     s => s - 1,
                 };
                 return None;
@@ -1414,15 +1985,20 @@ impl Driver {
         let a_ica = self.a_ica.clone()?;
         let signer = c.signer.clone();
         let (to, _) = c.accounts[c.rng.below(c.accounts.len())].clone();
+        let required_error = self.ica_error_required && !self.stats.contains_key("ica_error_ack");
         let mut msgs = vec![Any::pack(&MsgSend {
             from_address: ica.clone(),
             to_address: to.clone(),
             amount: vec![Coin {
                 denom: "utia".into(),
-                amount: (1 + c.rng.below(1000)).to_string(),
+                amount: if required_error {
+                    ICA_ERROR_AMOUNT.into()
+                } else {
+                    (1 + c.rng.below(1000)).to_string()
+                },
             }],
         })];
-        if c.rng.one_in(3) {
+        if !self.ica_encoding_required && !self.ica_error_required && c.rng.one_in(3) {
             msgs.push(Any::pack(
                 &celestia_proto::cosmos::feegrant::v1beta1::MsgGrantAllowance {
                     granter: ica.clone(),
@@ -1439,7 +2015,10 @@ impl Driver {
                 },
             ));
         }
-        if std::env::var("DELIVER_WIRE").is_ok() {
+        if !self.ica_encoding_required
+            && !self.ica_error_required
+            && std::env::var("DELIVER_WIRE").is_ok()
+        {
             // Systematic wire mutations (`crate::wire`) of host messages:
             // the host decodes them with gogoproto and no unknown-field
             // check. A periodic allowance with an expiration exercises the
@@ -1533,6 +2112,12 @@ impl Driver {
             timeout_timestamp: u64::try_from(c.now + 3600).unwrap_or(0) * 1_000_000_000,
         };
         self.cp.send(&mut p);
+        if self.ica_encoding_required && matches!(self.ica_requirement_stage, 0 | 2) {
+            self.ica_required_packet = Some((p.clone(), json));
+        }
+        if required_error {
+            self.ica_error_packet = Some(p.clone());
+        }
         let h = self.cp.commit(c.now - 5);
         let mut out: Vec<Any> = self.update(&signer).into_iter().collect();
         out.push(Any::pack(&ch::MsgRecvPacket {
@@ -1550,15 +2135,78 @@ impl Driver {
 
     /// Learns ids and packets from a finalized block's tx results (Go's).
     pub fn observe(&mut self, results: &[celestia_proto::celestia_core_proto::abci::ExecTxResult]) {
+        if self.frozen_update_pending {
+            if let Some(client_id) = self.a_client2.as_deref()
+                && results
+                    .iter()
+                    .any(|result| is_frozen_client_update_rejection(result, client_id))
+            {
+                self.bump("frozen_client_update_rejected");
+            }
+            // `observe` is called for the same finalized block as `step`.
+            // Retry next block if CheckTx or proposal selection dropped it.
+            self.frozen_update_pending = false;
+        }
+        if self.expired_update_pending {
+            if let Some(client_id) = self.a_expired_client.as_deref()
+                && results
+                    .iter()
+                    .any(|result| is_expired_client_update_rejection(result, client_id))
+            {
+                self.bump("expired_client_update_rejected");
+            }
+            // `observe` is called for the same finalized block as `step`.
+            // Retry next block if CheckTx or proposal selection dropped it.
+            self.expired_update_pending = false;
+        }
+        if self.cl_stage == 8
+            && let Some(channel_id) = self.a_transfer2.clone()
+            && results
+                .iter()
+                .any(|result| is_transfer_close_init_rejection(result, &channel_id))
+        {
+            // Transfer and ICA host are the only production routes, and both
+            // intentionally reject a local close. The callback runs before
+            // core writes CLOSED, so reuse this exact channel to prove the
+            // rejection left it usable.
+            self.cl_stage = 4;
+            self.cl_wait = 0;
+            self.close_init_rejected_channel = Some(channel_id);
+            self.bump("close_init_failure");
+        }
         for r in results {
             if r.code != 0 {
                 continue;
             }
+            let completing_pfm_exhaustion =
+                self.pfm_exhaust_required && self.pfm_timeout_complete && self.pfm_timeout_pending;
+            let mut ack_callback_error = false;
+            let mut pfm_downstream_ack = false;
+            let mut pfm_original_ack = false;
+            let mut pfm_exhaust_ack = false;
+            let mut pfm_timeout = false;
+            let mut pfm_retry = None;
+            let mut ica_success_ack = None;
+            let mut ica_error_ack = false;
+            let mut ica_error_event = false;
             for e in &r.events {
+                if self.cu_ack_failure_pending
+                    && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
+                {
+                    ack_callback_error = true;
+                }
                 match e.r#type.as_str() {
                     "create_client" => {
                         if let Some(id) = attr(e, "client_id") {
-                            if self.a_client.is_none() {
+                            let expired_height = format!("1-{}", self.expired_trusted);
+                            if self.expired_client_required
+                                && self.a_expired_client.is_none()
+                                && attr(e, "client_type").as_deref() == Some("07-tendermint")
+                                && attr(e, "consensus_height").as_deref()
+                                    == Some(expired_height.as_str())
+                            {
+                                self.a_expired_client = Some(id);
+                            } else if self.a_client.is_none() {
                                 self.a_client = Some(id);
                             } else if self.a_client2.is_none()
                                 && self.a_client.as_ref() != Some(&id)
@@ -1582,13 +2230,42 @@ impl Driver {
                             if self.a_client.as_ref() == Some(&id) {
                                 self.trusted = self.trusted.max(h);
                             } else if self.a_client2.as_ref() == Some(&id) {
+                                let advanced = h > self.trusted2;
                                 self.trusted2 = self.trusted2.max(h);
+                                if self.recover_update_pending && advanced {
+                                    self.recover_update_pending = false;
+                                    self.bump("recovered_client_update");
+                                }
                             } else if self.a_client3.as_ref() == Some(&id) {
                                 self.trusted3 = self.trusted3.max(h);
                             }
                         }
                     }
+                    "client_misbehaviour" if attr(e, "client_id") == self.a_client2 => {
+                        self.recover_subject_ready = true;
+                        self.bump("misbehaviour_confirmed");
+                    }
                     "connection_open_ack" => self.conn_open = true,
+                    "connection_open_try"
+                        if self.conn2_stage == 1
+                            && attr(e, "counterparty_connection_id").as_deref()
+                                == Some(CP_CONNECTION2)
+                            && attr(e, "client_id") == self.a_client =>
+                    {
+                        self.a_conn2 = attr(e, "connection_id");
+                        self.conn2_stage = 2;
+                        self.conn2_wait = 0;
+                    }
+                    "connection_open_confirm"
+                        if self.conn2_stage == 3
+                            && self.a_conn2.as_deref().is_some_and(|id| {
+                                attr(e, "connection_id").as_deref() == Some(id)
+                            }) =>
+                    {
+                        self.conn2_stage = 4;
+                        self.conn2_wait = 0;
+                        self.bump("connection_confirmed");
+                    }
                     "channel_open_ack" if attr(e, "port_id").as_deref() == Some("transfer") => {
                         if self.cl_stage == 3 && attr(e, "channel_id") == self.a_transfer2 {
                             self.cl_stage = 4;
@@ -1613,6 +2290,12 @@ impl Driver {
                         }
                     }
                     "channel_close_confirm" if attr(e, "channel_id") == self.a_transfer2 => {
+                        if attr(e, "channel_id").as_deref()
+                            == self.close_init_rejected_channel.as_deref()
+                        {
+                            self.close_init_rejected_channel = None;
+                            self.bump("close_init_reused_closed");
+                        }
                         self.cl_stage = 0;
                         self.cl_k += 1;
                     }
@@ -1644,7 +2327,7 @@ impl Driver {
                             "channel_upgrade_open" => {
                                 self.ica_version = self.cu_new.clone();
                                 self.bump("chan_upgraded");
-                                0
+                                if self.legacy_upgrade_fixture { 0 } else { 6 }
                             }
                             _ => 0,
                         };
@@ -1663,6 +2346,27 @@ impl Driver {
                                 self.cl_stage = 6;
                             }
                             if p.destination_channel == CP_TRANSFER {
+                                if self.pfm_enabled()
+                                    && self.pfm_stage == 1
+                                    && is_required_pfm_forward(&p, self.a_transfer.as_deref())
+                                {
+                                    self.pfm_forwarded = Some(p.clone());
+                                    self.pfm_stage = 2;
+                                    self.bump("pfm_forwarded");
+                                }
+                                if self.pfm_timeout_enabled()
+                                    && self.pfm_timeout_pending
+                                    && self.pfm_stage == 2
+                                    && self.pfm_forwarded.as_ref().is_some_and(|forwarded| {
+                                        is_required_pfm_retry(
+                                            &p,
+                                            forwarded,
+                                            self.a_transfer.as_deref(),
+                                        )
+                                    })
+                                {
+                                    pfm_retry = Some(p.clone());
+                                }
                                 self.pending.push(p);
                                 if self.pending.len() > 64 {
                                     self.pending.remove(0);
@@ -1670,18 +2374,146 @@ impl Driver {
                             }
                         }
                     }
+                    "timeout_packet"
+                        if self.pfm_timeout_enabled()
+                            && self.pfm_timeout_pending
+                            && self.pfm_stage == 2
+                            && self
+                                .pfm_forwarded
+                                .as_ref()
+                                .is_some_and(|forwarded| packet_event_matches(e, forwarded)) =>
+                    {
+                        pfm_timeout = true;
+                    }
+                    "acknowledge_packet"
+                        if self.pfm_enabled()
+                            && self.pfm_ack_pending
+                            && self.pfm_stage == 2
+                            && self
+                                .pfm_forwarded
+                                .as_ref()
+                                .is_some_and(|forwarded| packet_event_matches(e, forwarded)) =>
+                    {
+                        pfm_downstream_ack = true;
+                    }
+                    "write_acknowledgement"
+                        if self.ica_encoding_required
+                            && self
+                                .ica_required_packet
+                                .as_ref()
+                                .is_some_and(|(packet, _)| {
+                                    packet_of(e).as_ref().is_some_and(|event_packet| {
+                                        same_packet(event_packet, packet)
+                                    })
+                                })
+                            && packet_event_has_ica_send_success_ack(e) =>
+                    {
+                        ica_success_ack = self
+                            .ica_required_packet
+                            .as_ref()
+                            .map(|(_, proto3json)| *proto3json);
+                    }
+                    "write_acknowledgement"
+                        if self.ica_error_required
+                            && self.ica_error_packet.as_ref().is_some_and(|packet| {
+                                packet_of(e)
+                                    .as_ref()
+                                    .is_some_and(|event_packet| same_packet(event_packet, packet))
+                            })
+                            && packet_event_has_ica_insufficient_funds_ack(e) =>
+                    {
+                        ica_error_ack = true;
+                    }
+                    "ibccallbackerror-ics27_packet"
+                        if self.ica_error_required
+                            && self.ica_error_packet.as_ref().is_some_and(|packet| {
+                                is_ica_insufficient_funds_error_event(
+                                    e,
+                                    packet.destination_channel.as_str(),
+                                )
+                            }) =>
+                    {
+                        ica_error_event = true;
+                    }
+                    "write_acknowledgement"
+                        if completing_pfm_exhaustion
+                            && self.pfm_stage == 2
+                            && packet_of(e).as_ref().is_some_and(|packet| {
+                                self.pfm_original
+                                    .as_ref()
+                                    .is_some_and(|original| same_packet(packet, original))
+                            })
+                            && attr(e, "packet_ack_hex") == self.pfm_exhaust_ack_hex() =>
+                    {
+                        pfm_exhaust_ack = true;
+                    }
+                    "write_acknowledgement"
+                        if self.pfm_enabled()
+                            && self.pfm_ack_pending
+                            && self.pfm_stage == 2
+                            && packet_of(e).as_ref().is_some_and(|packet| {
+                                self.pfm_original
+                                    .as_ref()
+                                    .is_some_and(|original| same_packet(packet, original))
+                            })
+                            && attr(e, "packet_ack_hex").as_deref()
+                                == Some(self.pfm_acknowledgement().1) =>
+                    {
+                        pfm_original_ack = true;
+                    }
                     _ => {}
                 }
             }
-            // The ICA address is in the `MsgChannelOpenTry` response's
-            // version.
-            if self.ica_addr.is_none()
-                && let Ok(d) = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(
-                    r.data.as_slice(),
-                )
+            if completing_pfm_exhaustion {
+                if pfm_timeout && pfm_retry.is_none() && pfm_exhaust_ack {
+                    self.pfm_timeout_pending = false;
+                    self.pfm_stage = 3;
+                    self.bump("pfm_retry_exhausted");
+                    self.bump("pfm_original_error_ack");
+                }
+            } else if pfm_timeout && let Some(retry) = pfm_retry {
+                self.pfm_forwarded = Some(retry);
+                self.pfm_timeout_pending = false;
+                self.pfm_timeout_complete = true;
+                self.bump("pfm_timeout");
+                self.bump("pfm_retry");
+            }
+            if let Some(proto3json) = ica_success_ack {
+                match (self.ica_requirement_stage, proto3json) {
+                    (0, false) => {
+                        self.ica_requirement_stage = 1;
+                        self.bump("ica_proto3_success_ack");
+                    }
+                    (2, true) => {
+                        self.ica_requirement_stage = 3;
+                        self.bump("ica_proto3json_success_ack");
+                    }
+                    _ => {}
+                }
+                self.ica_required_packet = None;
+            }
+            if ica_error_ack && ica_error_event {
+                self.ica_error_packet = None;
+                self.bump("ica_error_ack");
+            }
+            if pfm_downstream_ack && pfm_original_ack {
+                self.pfm_ack_pending = false;
+                self.pfm_stage = 3;
+                self.bump("pfm_downstream_ack");
+                if self.pfm_error_required {
+                    self.bump("pfm_original_error_ack");
+                } else {
+                    self.bump("pfm_original_ack");
+                }
+            }
+            if let Ok(d) =
+                celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(r.data.as_slice())
             {
                 for resp in &d.msg_responses {
-                    if resp.type_url.ends_with("MsgChannelOpenTryResponse")
+                    // The ICA address is in the `MsgChannelOpenTry`
+                    // response's version.
+                    if self.ica_addr.is_none()
+                        && resp.type_url.ends_with("MsgChannelOpenTryResponse")
                         && let Ok(t) = ch::MsgChannelOpenTryResponse::decode(resp.value.as_slice())
                         && let Ok(v) = serde_json::from_str::<serde_json::Value>(&t.version)
                         && let Some(a) = v.get("address").and_then(|a| a.as_str())
@@ -1689,10 +2521,100 @@ impl Driver {
                         self.ica_addr = Some(a.to_owned());
                         self.ica_version.clone_from(&t.version);
                     }
+                    if self.cu_stage == 7
+                        && resp.type_url.ends_with("MsgPruneAcknowledgementsResponse")
+                    {
+                        self.cu_stage = 0;
+                        self.cu_wait = 0;
+                        self.bump("prune_acknowledgements");
+                    }
+                    if self.cu_ack_failure_pending
+                        && resp.type_url.ends_with("MsgChannelUpgradeAckResponse")
+                        && let Ok(response) =
+                            ch::MsgChannelUpgradeAckResponse::decode(resp.value.as_slice())
+                    {
+                        self.cu_ack_failure_pending = false;
+                        if response.result == ch::ResponseResultType::Failure as i32
+                            && ack_callback_error
+                        {
+                            self.bump("chan_upgrade_ack_failure");
+                        } else {
+                            self.bump("chan_upgrade_ack_unexpected_result");
+                        }
+                    }
                 }
             }
         }
     }
+
+    /// Learns governance-executed IBC events emitted at block scope.
+    pub fn observe_block_events(
+        &mut self,
+        events: &[celestia_proto::celestia_core_proto::abci::Event],
+    ) {
+        for event in events {
+            if self.recover_client_on
+                && self.recover_subject_ready
+                && event.r#type == "recover_client"
+                && attr(event, "subject_client_id") == self.a_client2
+            {
+                self.recover_subject_ready = false;
+                // Recovery copies the substitute's latest client and
+                // consensus state to the subject. Build the next header from
+                // that exact trusted height and require it to land.
+                self.trusted2 = self.trusted;
+                self.recover_update_pending = true;
+                self.bump("recover_client");
+            }
+        }
+        if self.ica_encoding_required && self.ica_required_packet.is_some() {
+            // A required relay that did not produce its exact success Ack is
+            // retried with a fresh uniquely attributable packet next block.
+            self.ica_required_packet = None;
+        }
+        if self.ica_error_required && self.ica_error_packet.is_some() {
+            // Retry a required relay unless one finalized result contained
+            // the exact error Ack and converted detailed callback event.
+            self.ica_error_packet = None;
+        }
+        if self.frozen_client_required && self.frozen && !self.recover_subject_ready {
+            // Construction is not confirmation: retry required misbehaviour
+            // if CheckTx or proposal selection dropped the transaction.
+            self.frozen = false;
+        }
+    }
+}
+
+fn is_expired_client_update_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    client_id: &str,
+) -> bool {
+    result.code == 29
+        && result.codespace == "client"
+        && result.log.contains(&format!(
+            "cannot update client ({client_id}) with status Expired: client state is not active"
+        ))
+}
+
+fn is_frozen_client_update_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    client_id: &str,
+) -> bool {
+    result.code == 29
+        && result.codespace == "client"
+        && result.log.contains(&format!(
+            "cannot update client ({client_id}) with status Frozen: client state is not active"
+        ))
+}
+
+fn is_transfer_close_init_rejection(
+    result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    channel_id: &str,
+) -> bool {
+    result.code != 0
+        && result.log.contains(&format!(
+            "channel close init callback failed for port ID: transfer, channel ID: {channel_id}: user cannot close channel"
+        ))
 }
 
 /// The packet of a `send_packet` event.
@@ -1714,6 +2636,128 @@ fn packet_of(e: &celestia_proto::celestia_core_proto::abci::Event) -> Option<ch:
     })
 }
 
+fn is_required_pfm_forward(packet: &ch::Packet, channel: Option<&str>) -> bool {
+    let Some(channel) = channel else {
+        return false;
+    };
+    if packet.source_port != "transfer"
+        || packet.source_channel != channel
+        || packet.destination_port != "transfer"
+        || packet.destination_channel != CP_TRANSFER
+    {
+        return false;
+    }
+    let Ok(data) = serde_json::from_slice::<serde_json::Value>(&packet.data) else {
+        return false;
+    };
+    let expected_denom = format!("transfer/{channel}/{PFM_COVERAGE_DENOM}");
+    data.get("amount").and_then(serde_json::Value::as_str) == Some(PFM_COVERAGE_AMOUNT)
+        && data.get("denom").and_then(serde_json::Value::as_str) == Some(expected_denom.as_str())
+        && data.get("receiver").and_then(serde_json::Value::as_str) == Some(PFM_COVERAGE_RECEIVER)
+        && data
+            .get("memo")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+}
+
+fn is_required_pfm_retry(packet: &ch::Packet, prior: &ch::Packet, channel: Option<&str>) -> bool {
+    is_required_pfm_forward(packet, channel)
+        && packet.source_port == prior.source_port
+        && packet.source_channel == prior.source_channel
+        && packet.destination_port == prior.destination_port
+        && packet.destination_channel == prior.destination_channel
+        && packet.data == prior.data
+        && packet.timeout_height.unwrap_or_default() == prior.timeout_height.unwrap_or_default()
+        && packet.sequence > prior.sequence
+        && packet.timeout_timestamp > prior.timeout_timestamp
+}
+
+fn same_packet(a: &ch::Packet, b: &ch::Packet) -> bool {
+    a.sequence == b.sequence
+        && a.source_port == b.source_port
+        && a.source_channel == b.source_channel
+        && a.destination_port == b.destination_port
+        && a.destination_channel == b.destination_channel
+        && a.data == b.data
+        && a.timeout_height.unwrap_or_default() == b.timeout_height.unwrap_or_default()
+        && a.timeout_timestamp == b.timeout_timestamp
+}
+
+fn packet_event_matches(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+    packet: &ch::Packet,
+) -> bool {
+    let height = packet.timeout_height.unwrap_or_default();
+    let expected_height = format!("{}-{}", height.revision_number, height.revision_height);
+    attr(event, "packet_sequence").and_then(|value| value.parse::<u64>().ok())
+        == Some(packet.sequence)
+        && attr(event, "packet_src_port").as_deref() == Some(packet.source_port.as_str())
+        && attr(event, "packet_src_channel").as_deref() == Some(packet.source_channel.as_str())
+        && attr(event, "packet_dst_port").as_deref() == Some(packet.destination_port.as_str())
+        && attr(event, "packet_dst_channel").as_deref() == Some(packet.destination_channel.as_str())
+        && attr(event, "packet_timeout_height").as_deref() == Some(expected_height.as_str())
+        && attr(event, "packet_timeout_timestamp").and_then(|value| value.parse::<u64>().ok())
+            == Some(packet.timeout_timestamp)
+}
+
+fn packet_event_has_ica_send_success_ack(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+) -> bool {
+    let Some(bytes) = attr(event, "packet_ack_hex").and_then(|value| hex::decode(value).ok())
+    else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return false;
+    };
+    if value.get("error").is_some() {
+        return false;
+    }
+    let Some(result) = value
+        .get("result")
+        .and_then(serde_json::Value::as_str)
+        .and_then(x_ibc::gojson::decode_base64_std)
+    else {
+        return false;
+    };
+    let Ok(data) =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(result.as_slice())
+    else {
+        return false;
+    };
+    matches!(
+        data.msg_responses.as_slice(),
+        [response]
+            if response.type_url == "/cosmos.bank.v1beta1.MsgSendResponse"
+                && response.value.is_empty()
+    )
+}
+
+fn packet_event_has_ica_insufficient_funds_ack(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+) -> bool {
+    let Some(bytes) = attr(event, "packet_ack_hex").and_then(|value| hex::decode(value).ok())
+    else {
+        return false;
+    };
+    bytes
+        == serde_json::json!({"error": ICA_INSUFFICIENT_FUNDS_ACK})
+            .to_string()
+            .as_bytes()
+}
+
+fn is_ica_insufficient_funds_error_event(
+    event: &celestia_proto::celestia_core_proto::abci::Event,
+    channel_id: &str,
+) -> bool {
+    event.r#type == "ibccallbackerror-ics27_packet"
+        && attr(event, "ibccallbackerror-module").as_deref() == Some("interchainaccounts")
+        && attr(event, "ibccallbackerror-host_channel_id").as_deref() == Some(channel_id)
+        && attr(event, "ibccallbackerror-success").as_deref() == Some("false")
+        && attr(event, "ibccallbackerror-error")
+            .is_some_and(|error| error.contains("insufficient funds"))
+}
+
 /// Standard base64 with padding.
 fn base64_std(b: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1731,4 +2775,878 @@ fn base64_std(b: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute, ExecTxResult};
+
+    fn packet_event(kind: &str, packet: &ch::Packet, ack_hex: Option<&str>) -> Event {
+        let height = packet.timeout_height.unwrap_or_default();
+        let mut attributes = vec![
+            ("packet_sequence", packet.sequence.to_string()),
+            ("packet_src_port", packet.source_port.clone()),
+            ("packet_src_channel", packet.source_channel.clone()),
+            ("packet_dst_port", packet.destination_port.clone()),
+            ("packet_dst_channel", packet.destination_channel.clone()),
+            ("packet_data_hex", hex::encode(&packet.data)),
+            (
+                "packet_timeout_height",
+                format!("{}-{}", height.revision_number, height.revision_height),
+            ),
+            (
+                "packet_timeout_timestamp",
+                packet.timeout_timestamp.to_string(),
+            ),
+        ];
+        if let Some(ack) = ack_hex {
+            attributes.push(("packet_ack_hex", ack.into()));
+        }
+        Event {
+            r#type: kind.into(),
+            attributes: attributes
+                .into_iter()
+                .map(|(key, value)| EventAttribute {
+                    key: key.into(),
+                    value,
+                    index: true,
+                })
+                .collect(),
+        }
+    }
+
+    fn result(event: Event) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+        result_events(vec![event])
+    }
+
+    fn result_events(
+        events: Vec<Event>,
+    ) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+        celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 0,
+            events,
+            ..Default::default()
+        }
+    }
+
+    fn ack_error(channel: &str, sequence: u64, error: &str) -> Event {
+        Event {
+            r#type: "channel_upgrade_error".into(),
+            attributes: [
+                ("port_id", "icahost".to_owned()),
+                ("channel_id", channel.to_owned()),
+                ("upgrade_sequence", sequence.to_string()),
+                ("error_receipt", error.to_owned()),
+            ]
+            .into_iter()
+            .map(|(key, value)| EventAttribute {
+                key: key.into(),
+                value,
+                index: true,
+            })
+            .collect(),
+        }
+    }
+
+    #[test]
+    fn ack_failure_credit_requires_the_exact_pending_host_callback() {
+        let event = ack_error("channel-1", 7, ICA_HOST_ACK_ERROR);
+        assert!(is_ica_host_ack_error(&event, Some("channel-1"), 7));
+
+        let unrelated = ack_error("channel-1", 7, "channel upgrade timeout elapsed");
+        assert!(!is_ica_host_ack_error(&unrelated, Some("channel-1"), 7));
+        assert!(!is_ica_host_ack_error(&event, Some("channel-2"), 7));
+        assert!(!is_ica_host_ack_error(&event, Some("channel-1"), 8));
+    }
+
+    #[test]
+    fn close_init_rejection_credit_requires_the_exact_channel() {
+        let result = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 8,
+            log: "failed to execute message: channel close init callback failed for port ID: transfer, channel ID: channel-10: user cannot close channel: invalid request".into(),
+            ..Default::default()
+        };
+        assert!(is_transfer_close_init_rejection(&result, "channel-10"));
+        assert!(!is_transfer_close_init_rejection(&result, "channel-1"));
+        assert!(!is_transfer_close_init_rejection(&result, "channel-11"));
+        let successful =
+            celestia_proto::celestia_core_proto::abci::ExecTxResult { code: 0, ..result };
+        assert!(!is_transfer_close_init_rejection(&successful, "channel-10"));
+    }
+
+    #[test]
+    fn frozen_client_credit_requires_pending_exact_client_status_and_abci_error() {
+        let rejected = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 29,
+            codespace: "client".into(),
+            log: "cannot update client (07-tendermint-1) with status Frozen: client state is not active".into(),
+            ..Default::default()
+        };
+        assert!(is_frozen_client_update_rejection(
+            &rejected,
+            "07-tendermint-1"
+        ));
+        assert!(!is_frozen_client_update_rejection(
+            &rejected,
+            "07-tendermint-10"
+        ));
+
+        let expired = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            log: "cannot update client (07-tendermint-1) with status Expired: client state is not active".into(),
+            ..rejected.clone()
+        };
+        assert!(!is_frozen_client_update_rejection(
+            &expired,
+            "07-tendermint-1"
+        ));
+
+        let mut driver = Driver {
+            frozen_client_required: true,
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+        driver.observe(std::slice::from_ref(&rejected));
+        assert_eq!(driver.stats.get("frozen_client_update_rejected"), None);
+        driver.frozen_update_pending = true;
+        driver.observe(&[rejected]);
+        assert_eq!(driver.stats.get("frozen_client_update_rejected"), Some(&1));
+        assert!(!driver.frozen_update_pending);
+    }
+
+    #[test]
+    fn required_misbehaviour_retries_until_the_freeze_event_lands() {
+        let mut required = Driver {
+            frozen_client_required: true,
+            frozen: true,
+            ..Driver::default()
+        };
+        required.observe_block_events(&[]);
+        assert!(!required.frozen);
+
+        let mut default_schedule = Driver {
+            frozen: true,
+            ..Driver::default()
+        };
+        default_schedule.observe_block_events(&[]);
+        assert!(default_schedule.frozen);
+
+        required.frozen = true;
+        required.recover_subject_ready = true;
+        required.observe_block_events(&[]);
+        assert!(required.frozen);
+    }
+
+    #[test]
+    fn expired_client_credit_requires_exact_client_status_and_abci_error() {
+        let rejected = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 29,
+            codespace: "client".into(),
+            log: "cannot update client (07-tendermint-3) with status Expired: client state is not active".into(),
+            ..Default::default()
+        };
+        assert!(is_expired_client_update_rejection(
+            &rejected,
+            "07-tendermint-3"
+        ));
+        assert!(!is_expired_client_update_rejection(
+            &rejected,
+            "07-tendermint-30"
+        ));
+
+        let active = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            log: "cannot update client (07-tendermint-3) with status Active: client state is not active".into(),
+            ..rejected.clone()
+        };
+        assert!(!is_expired_client_update_rejection(
+            &active,
+            "07-tendermint-3"
+        ));
+
+        let successful = celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            code: 0,
+            ..rejected
+        };
+        assert!(!is_expired_client_update_rejection(
+            &successful,
+            "07-tendermint-3"
+        ));
+    }
+
+    #[test]
+    fn expired_client_identity_requires_its_exact_create_event() {
+        fn create_result(client: &str, client_type: &str, height: &str) -> ExecTxResult {
+            ExecTxResult {
+                events: vec![Event {
+                    r#type: "create_client".into(),
+                    attributes: [
+                        ("client_id", client),
+                        ("client_type", client_type),
+                        ("consensus_height", height),
+                    ]
+                    .into_iter()
+                    .map(|(key, value)| EventAttribute {
+                        key: key.into(),
+                        value: value.into(),
+                        index: true,
+                    })
+                    .collect(),
+                }],
+                ..Default::default()
+            }
+        }
+
+        let mut driver = Driver {
+            expired_client_required: true,
+            expired_trusted: 7,
+            ..Driver::default()
+        };
+        driver.observe(&[create_result("07-tendermint-99", "07-tendermint", "1-9")]);
+        assert_eq!(driver.a_expired_client, None);
+
+        driver.observe(&[create_result("06-solomachine-0", "06-solomachine", "1-7")]);
+        assert_eq!(driver.a_expired_client, None);
+
+        // The target may finalize before or after unrelated creations; its
+        // unique client type and consensus height, rather than ordinal, bind it.
+        driver.observe(&[create_result("07-tendermint-3", "07-tendermint", "1-7")]);
+        assert_eq!(driver.a_expired_client.as_deref(), Some("07-tendermint-3"));
+    }
+
+    #[test]
+    fn recovery_clients_require_confirmed_freeze_and_newer_substitute() {
+        let mut driver = Driver::default().with_recover_client(true);
+        driver.a_client = Some("07-tendermint-0".into());
+        driver.a_client2 = Some("07-tendermint-1".into());
+        driver.trusted = 10;
+        driver.trusted2 = 9;
+        assert!(driver.recovery_clients().is_none());
+        driver.recover_subject_ready = true;
+        assert_eq!(
+            driver.recovery_clients(),
+            Some(("07-tendermint-1".into(), "07-tendermint-0".into()))
+        );
+        driver.trusted2 = 10;
+        assert!(driver.recovery_clients().is_none());
+    }
+
+    #[test]
+    fn recovery_credit_requires_the_exact_subject_client() {
+        fn recovery_event(subject: &str) -> Event {
+            Event {
+                r#type: "recover_client".into(),
+                attributes: [EventAttribute {
+                    key: "subject_client_id".into(),
+                    value: subject.into(),
+                    index: true,
+                }]
+                .into(),
+            }
+        }
+
+        let mut driver = Driver {
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+
+        driver.recover_client_on = true;
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+
+        driver.recover_subject_ready = true;
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-10")]);
+        assert_eq!(driver.stats.get("recover_client"), None);
+        assert!(driver.recover_subject_ready);
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), Some(&1));
+        assert!(!driver.recover_subject_ready);
+        assert!(driver.recover_update_pending);
+        assert_eq!(driver.trusted2, driver.trusted);
+
+        driver.observe_block_events(&[recovery_event("07-tendermint-1")]);
+        assert_eq!(driver.stats.get("recover_client"), Some(&1));
+    }
+
+    #[test]
+    fn recovered_update_credit_requires_the_pending_exact_subject() {
+        fn update_result(
+            client: &str,
+            height: i64,
+        ) -> celestia_proto::celestia_core_proto::abci::ExecTxResult {
+            celestia_proto::celestia_core_proto::abci::ExecTxResult {
+                code: 0,
+                events: vec![Event {
+                    r#type: "update_client".into(),
+                    attributes: [
+                        ("client_id", client.to_owned()),
+                        ("consensus_height", format!("0-{height}")),
+                    ]
+                    .into_iter()
+                    .map(|(key, value)| EventAttribute {
+                        key: key.into(),
+                        value,
+                        index: true,
+                    })
+                    .collect(),
+                }],
+                ..Default::default()
+            }
+        }
+
+        let mut driver = Driver {
+            a_client2: Some("07-tendermint-1".into()),
+            ..Driver::default()
+        };
+        driver.observe(&[update_result("07-tendermint-1", 8)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+
+        driver.recover_update_pending = true;
+        driver.observe(&[update_result("07-tendermint-10", 9)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+        assert!(driver.recover_update_pending);
+
+        driver.observe(&[update_result("07-tendermint-1", 8)]);
+        driver.observe(&[update_result("07-tendermint-1", 7)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), None);
+        assert!(driver.recover_update_pending);
+
+        driver.observe(&[update_result("07-tendermint-1", 9)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
+        assert!(!driver.recover_update_pending);
+        assert_eq!(driver.trusted2, 9);
+
+        driver.observe(&[update_result("07-tendermint-1", 10)]);
+        assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
+    }
+
+    #[test]
+    fn pfm_credit_requires_exact_forward_and_original_success_ack() {
+        let forward = ch::Packet {
+            sequence: 9,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: serde_json::json!({
+                "amount": PFM_COVERAGE_AMOUNT,
+                "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+                "memo": "",
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "sender": "cosmos1intermediate"
+            })
+            .to_string()
+            .into_bytes(),
+            timeout_height: None,
+            timeout_timestamp: 99,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"unique original data".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_required: true,
+            pfm_stage: 1,
+            pfm_original: Some(original.clone()),
+            a_transfer: Some("channel-3".into()),
+            ..Driver::default()
+        };
+
+        let mut unrelated = forward.clone();
+        unrelated.source_channel = "channel-30".into();
+        driver.observe(&[result(packet_event("send_packet", &unrelated, None))]);
+        assert_eq!(driver.stats.get("pfm_forwarded"), None);
+        assert_eq!(driver.pfm_stage, 1);
+
+        driver.observe(&[result(packet_event("send_packet", &forward, None))]);
+        assert_eq!(driver.stats.get("pfm_forwarded"), Some(&1));
+        assert_eq!(driver.pfm_stage, 2);
+        assert!(
+            driver
+                .pfm_forwarded
+                .as_ref()
+                .is_some_and(|packet| same_packet(packet, &forward))
+        );
+
+        // Even an exact original success Ack is premature until the driver
+        // emits and Go accepts the downstream Ack for the forwarded packet.
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), None);
+        assert_eq!(driver.pfm_stage, 2);
+        driver.pfm_ack_pending = true;
+
+        let mut other_original = original.clone();
+        other_original.sequence += 1;
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &other_original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some("00"),
+        ))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), None);
+        assert_eq!(driver.pfm_stage, 2);
+
+        // Both exact events must be in the same successful transaction.
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event(
+                "write_acknowledgement",
+                &original,
+                Some(PFM_SUCCESS_ACK_HEX),
+            ),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
+        assert_eq!(driver.pfm_stage, 3);
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
+    }
+
+    #[test]
+    fn pfm_error_credit_requires_the_exact_propagated_error_ack() {
+        let forward = ch::Packet {
+            sequence: 9,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: b"exact forward".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 99,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact original".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_error_required: true,
+            pfm_stage: 2,
+            pfm_original: Some(original.clone()),
+            pfm_forwarded: Some(forward.clone()),
+            pfm_ack_pending: true,
+            ..Driver::default()
+        };
+
+        // A success acknowledgement cannot satisfy the error path, even
+        // alongside the exact downstream acknowledge_packet event.
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event(
+                "write_acknowledgement",
+                &original,
+                Some(PFM_SUCCESS_ACK_HEX),
+            ),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), None);
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), None);
+        assert!(driver.pfm_ack_pending);
+        assert_eq!(driver.pfm_stage, 2);
+
+        driver.observe(&[result_events(vec![
+            packet_event("acknowledge_packet", &forward, None),
+            packet_event("write_acknowledgement", &original, Some(PFM_ERROR_ACK_HEX)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_downstream_ack"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), Some(&1));
+        assert!(!driver.pfm_ack_pending);
+        assert_eq!(driver.pfm_stage, 3);
+    }
+
+    #[test]
+    fn pfm_timeout_credit_requires_exact_timeout_and_retry_in_one_result() {
+        let forward_data = serde_json::json!({
+            "amount": PFM_COVERAGE_AMOUNT,
+            "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+            "receiver": PFM_COVERAGE_RECEIVER,
+            "sender": "cosmos1intermediate"
+        })
+        .to_string()
+        .into_bytes();
+        let first_forward = ch::Packet {
+            sequence: 9,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: forward_data.clone(),
+            timeout_height: None,
+            timeout_timestamp: 99,
+        };
+        let retry = ch::Packet {
+            sequence: 10,
+            data: forward_data,
+            timeout_timestamp: 199,
+            ..first_forward.clone()
+        };
+        let mut driver = Driver {
+            pfm_timeout_required: true,
+            pfm_stage: 2,
+            pfm_forwarded: Some(first_forward.clone()),
+            pfm_timeout_pending: true,
+            a_transfer: Some("channel-3".into()),
+            ..Driver::default()
+        };
+
+        driver.observe(&[result(packet_event("send_packet", &retry, None))]);
+        assert_eq!(driver.stats.get("pfm_timeout"), None);
+        assert_eq!(driver.stats.get("pfm_retry"), None);
+        assert!(driver.pfm_timeout_pending);
+        assert!(!driver.pfm_timeout_complete);
+
+        let mut changed_sender = retry.clone();
+        changed_sender.data = serde_json::json!({
+            "amount": PFM_COVERAGE_AMOUNT,
+            "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+            "receiver": PFM_COVERAGE_RECEIVER,
+            "sender": "cosmos1unrelated"
+        })
+        .to_string()
+        .into_bytes();
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &first_forward, None),
+            packet_event("send_packet", &changed_sender, None),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry"), None);
+
+        for sequence in [first_forward.sequence - 1, first_forward.sequence] {
+            let mut stale = retry.clone();
+            stale.sequence = sequence;
+            driver.observe(&[result_events(vec![
+                packet_event("timeout_packet", &first_forward, None),
+                packet_event("send_packet", &stale, None),
+            ])]);
+            assert_eq!(driver.stats.get("pfm_retry"), None);
+        }
+        let mut stale_timeout = retry.clone();
+        stale_timeout.timeout_timestamp = first_forward.timeout_timestamp;
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &first_forward, None),
+            packet_event("send_packet", &stale_timeout, None),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry"), None);
+
+        let mut unrelated = first_forward.clone();
+        unrelated.sequence += 99;
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &unrelated, None),
+            packet_event("send_packet", &retry, None),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_timeout"), None);
+        assert!(driver.pfm_timeout_pending);
+
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &first_forward, None),
+            packet_event("send_packet", &retry, None),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_timeout"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_retry"), Some(&1));
+        assert!(!driver.pfm_timeout_pending);
+        assert!(driver.pfm_timeout_complete);
+        assert!(
+            driver
+                .pfm_forwarded
+                .as_ref()
+                .is_some_and(|packet| same_packet(packet, &retry))
+        );
+    }
+
+    #[test]
+    fn pfm_exhaustion_credit_requires_exact_retry_timeout_and_original_error_ack() {
+        let retry = ch::Packet {
+            sequence: 10,
+            source_port: "transfer".into(),
+            source_channel: "channel-3".into(),
+            destination_port: "transfer".into(),
+            destination_channel: CP_TRANSFER.into(),
+            data: serde_json::json!({
+                "amount": PFM_COVERAGE_AMOUNT,
+                "denom": format!("transfer/channel-3/{PFM_COVERAGE_DENOM}"),
+                "memo": "",
+                "receiver": PFM_COVERAGE_RECEIVER,
+                "sender": "cosmos1intermediate"
+            })
+            .to_string()
+            .into_bytes(),
+            timeout_height: None,
+            timeout_timestamp: 199,
+        };
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact original data".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_exhaust_required: true,
+            pfm_stage: 2,
+            pfm_original: Some(original.clone()),
+            pfm_forwarded: Some(retry.clone()),
+            pfm_timeout_pending: true,
+            pfm_timeout_complete: true,
+            a_transfer: Some("channel-3".into()),
+            ..Driver::default()
+        };
+        let exhaust_ack = driver.pfm_exhaust_ack_hex().unwrap();
+
+        // The matching events must share one successful result.
+        driver.observe(&[result(packet_event("timeout_packet", &retry, None))]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &original,
+            Some(&exhaust_ack),
+        ))]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+        assert!(driver.pfm_timeout_pending);
+
+        // A different original packet or acknowledgement cannot receive credit.
+        let mut other_original = original.clone();
+        other_original.sequence += 1;
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &other_original, Some(&exhaust_ack)),
+        ])]);
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &original, Some(PFM_ERROR_ACK_HEX)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+
+        // Another attributable retry contradicts exhaustion.
+        let next_retry = ch::Packet {
+            sequence: 11,
+            timeout_timestamp: 299,
+            ..retry.clone()
+        };
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("send_packet", &next_retry, None),
+            packet_event("write_acknowledgement", &original, Some(&exhaust_ack)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), None);
+
+        driver.observe(&[result_events(vec![
+            packet_event("timeout_packet", &retry, None),
+            packet_event("write_acknowledgement", &original, Some(&exhaust_ack)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_retry_exhausted"), Some(&1));
+        assert_eq!(driver.stats.get("pfm_original_error_ack"), Some(&1));
+        assert!(!driver.pfm_timeout_pending);
+        assert_eq!(driver.pfm_stage, 3);
+    }
+
+    #[test]
+    fn ica_encoding_credit_requires_exact_success_ack_for_each_packet() {
+        let response = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+            msg_responses: vec![Any {
+                type_url: "/cosmos.bank.v1beta1.MsgSendResponse".into(),
+                value: Vec::new(),
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let success_ack = format!(r#"{{"result":"{}"}}"#, base64_std(&response));
+        let success_ack_hex = hex::encode(success_ack);
+        let proto3_packet = ch::Packet {
+            sequence: 4,
+            source_port: CP_ICA_PORT.into(),
+            source_channel: CP_ICA_CHAN.into(),
+            destination_port: "icahost".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact proto3 packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            ica_encoding_required: true,
+            ica_required_packet: Some((proto3_packet.clone(), false)),
+            ..Driver::default()
+        };
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(PFM_ERROR_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+        assert_eq!(driver.ica_requirement_stage, 0);
+
+        let mut changed_data = proto3_packet.clone();
+        changed_data.data.push(1);
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &changed_data,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        let success_and_error = hex::encode(format!(
+            r#"{{"result":"{}","error":"not a success"}}"#,
+            base64_std(&response)
+        ));
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(&success_and_error),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(PFM_SUCCESS_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), None);
+
+        driver.ica_required_packet = Some((proto3_packet.clone(), false));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3_packet,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3_success_ack"), Some(&1));
+        assert_eq!(driver.ica_requirement_stage, 1);
+
+        let proto3json_packet = ch::Packet {
+            sequence: 5,
+            data: b"exact proto3json packet".to_vec(),
+            ..proto3_packet.clone()
+        };
+        let mut unrelated = proto3json_packet.clone();
+        unrelated.sequence += 1;
+        driver.ica_requirement_stage = 2;
+        driver.ica_required_packet = Some((proto3json_packet.clone(), true));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &unrelated,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3json_success_ack"), None);
+        assert_eq!(driver.ica_requirement_stage, 2);
+
+        driver.ica_required_packet = Some((proto3json_packet.clone(), true));
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &proto3json_packet,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_proto3json_success_ack"), Some(&1));
+        assert_eq!(driver.ica_requirement_stage, 3);
+    }
+
+    #[test]
+    fn ica_error_credit_requires_exact_packet_ack_and_callback_error_together() {
+        fn callback_error(channel: &str, error: &str) -> Event {
+            Event {
+                r#type: "ibccallbackerror-ics27_packet".into(),
+                attributes: [
+                    ("ibccallbackerror-module", "interchainaccounts"),
+                    ("ibccallbackerror-host_channel_id", channel),
+                    ("ibccallbackerror-success", "false"),
+                    ("ibccallbackerror-error", error),
+                ]
+                .into_iter()
+                .map(|(key, value)| EventAttribute {
+                    key: key.into(),
+                    value: value.into(),
+                    index: true,
+                })
+                .collect(),
+            }
+        }
+
+        let packet = ch::Packet {
+            sequence: 4,
+            source_port: CP_ICA_PORT.into(),
+            source_channel: CP_ICA_CHAN.into(),
+            destination_port: "icahost".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact ICA error packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let ack_hex =
+            hex::encode(serde_json::json!({"error": ICA_INSUFFICIENT_FUNDS_ACK}).to_string());
+        let ack = packet_event("write_acknowledgement", &packet, Some(&ack_hex));
+        let error = callback_error(
+            "channel-3",
+            "spendable balance 10000000000utia is smaller than 100000000000utia: insufficient funds",
+        );
+        let mut driver = Driver {
+            ica_error_required: true,
+            ica_error_packet: Some(packet.clone()),
+            ..Driver::default()
+        };
+
+        let wrong_ack = packet_event(
+            "write_acknowledgement",
+            &packet,
+            Some(&hex::encode(
+                r#"{"error":"ABCI code: 1: error handling packet: see events for details"}"#,
+            )),
+        );
+        driver.observe(&[result(wrong_ack)]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        // Both exact events must occur in one finalized result.
+        driver.observe(&[result(ack.clone())]);
+        driver.observe(&[result(error.clone())]);
+        let wrong_error = callback_error("channel-3", "invalid address");
+        driver.observe(&[result_events(vec![ack.clone(), wrong_error])]);
+        let wrong_channel = callback_error("channel-30", "insufficient funds");
+        driver.observe(&[result_events(vec![ack.clone(), wrong_channel])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        let mut changed = packet.clone();
+        changed.data.push(1);
+        driver.observe(&[result_events(vec![
+            packet_event("write_acknowledgement", &changed, Some(&ack_hex)),
+            error.clone(),
+        ])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), None);
+
+        driver.observe(&[result_events(vec![ack, error])]);
+        assert_eq!(driver.stats.get("ica_error_ack"), Some(&1));
+        assert_eq!(driver.ica_error_packet, None);
+    }
 }

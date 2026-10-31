@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "artifacts_sha256": {
+    "README.md": "22a2f2c60654f03fdfbde0f6b3aeae13f10cbca8e0915ddadf44833440181c64",
+    "go.mod": "3c35639320bd5075a9ba5b73ee5d1db0c904cfbef597450da0c2e8c67d19bd47",
+    "go.sum": "1737d5523b7264df09b253e86e29f96af295a7bd18e0aaa4373c6099317e065f",
+    "main.go": "5fc712cedb6387e6fece488658545f757f0bca3af1d5b2306e656da8daec5764",
+    "main_test.go": "c38d7c5634a5b28baabdd05b8df699899061a1a74af59a5878c292f4d037428d",
+    "record.sh": "dcf9e5b25aa32c63c62a64b2607739f755f2ebd629d3ec2cf2a31eb30c05bd0c",
+    "testdata/go-v10.5.0-cors-disabled.json": "4b71bca15982f8fef9d475f5ac39749a9c4ef6e053303bd10d42236da2fb3b0a",
+    "testdata/go-v10.5.0.build-info.txt": "9b5151fe6fea7f07bac299bd576447769ec057c8558a9370b229fe4a66e4b110",
+    "testdata/go-v10.5.0.json": "fab1006a449583948a01609632d82e1083f4b6bd43cf179faf862c56f4bfc72e",
+    "testdata/mainnet-abci-info.json": "c52ba716bd72dbbb2800a56817d4b53c67a6b997238008857f6d25460bdffd3b",
+    "testdata/mainnet-observation.json": "c95c2afde72353f7af22ffc9953817d131d29cafd63560cdd8de83954ed5e1b5",
+    "testdata/mainnet-status.json": "129c161416fb0e7fef03cbec0ab1d554f1a4f766c5a8086969024d28a11faf3a",
+    "testdata/oracle/app.toml": "afb8743e933314add18b8d73616c504d8216584f6b4f0e3058e794fcb59ff4aa",
+    "testdata/oracle/config-cors-disabled.toml": "3161856c6b0e0ea747e33ae417a22a216fcaa1a0eb1bbf6d47b307f02219f856",
+    "testdata/oracle/config-cors-enabled.toml": "317bf43d74e5bd8ed4523b85508492cc6967945b6d27dd13c11539a3c6e55e76",
+    "testdata/oracle/genesis.json": "11fdfad7057a70ebc408fc50addf7e3a1e608da222839b41f6017e41e7269169",
+    "testdata/release.json": "ad16ac6b354d1b759e84588bc1b81791545db0b9d91bc1354bec95557851c513",
+    "verify.py": "e33a16ca963fb36d8a3d8e9867509a501e295bed7c3dd978c05feceb4cf11368"
+  }
+}

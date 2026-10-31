@@ -1,7 +1,8 @@
 //! Consensus-layer differential ops (MILESTONES.md F1.7): the Rust side of
-//! `conformance/fuzzoracle/v10/consensus.go`. Each op's input is a protobuf
-//! message whose fields 1..n are its arguments; the output is the same
-//! `key=value` lines as Go's (`ok`, `err:<text>`, `panic:<text>` or data).
+//! the version-matched `conformance/fuzzoracle/v{9,10}/consensus.go`. Each
+//! op's input is a protobuf message whose fields 1..n are its arguments; the
+//! output is the same `key=value` lines as Go's (`ok`, `err:<text>`,
+//! `panic:<text>` or data).
 //! Seeds come from the Go-generated `conformance/fixtures/ctypes` vectors
 //! (valid signatures included), so the protobuf mutations start from real
 //! votes, commits, headers, blocks, evidence and parameters.
@@ -14,8 +15,8 @@ use ctypes::proto::crypto as pbc;
 use ctypes::proto::types as pb;
 use ctypes::validation as v;
 use ctypes::{
-    Block, BlockId, Commit, ConsensusParams, Evidence, Header, Part, PartSet, PartSetHeader,
-    Proposal, PubKey, Validator, ValidatorSet, Vote,
+    BitArray, Block, BlockId, Commit, ConsensusParams, Evidence, EvidenceData, Header, Part,
+    PartSet, PartSetHeader, Proposal, PubKey, SignedHeader, Time, Validator, ValidatorSet, Vote,
 };
 use prost::Message;
 use serde::Deserialize;
@@ -112,6 +113,16 @@ fn first(m: &BTreeMap<u64, Vec<Vec<u8>>>, n: u64) -> Option<&[u8]> {
     m.get(&n).and_then(|v| v.first()).map(Vec::as_slice)
 }
 
+fn validator_set_fingerprint(vals: &ValidatorSet) -> Result<String, String> {
+    let proto = vals.to_proto().map_err(|e| e.to_string())?;
+    Ok(format!(
+        "{}:{}:{}",
+        hex::encode(proto.encode_to_vec()),
+        vals.total_voting_power(),
+        vals.all_keys_have_same_type()
+    ))
+}
+
 #[derive(Default)]
 struct Res(String);
 
@@ -141,6 +152,79 @@ impl Res {
 
 fn decode<M: Message + Default>(b: Option<&[u8]>) -> Result<M, String> {
     ctypes::gogo_decode::<M>(b.unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+fn want_parts_from_proto(
+    w: &ctypes::proto::propagation::WantParts,
+    v9: bool,
+) -> Result<propagation::types::WantParts, String> {
+    let mut pb = w.parts.clone().unwrap_or_default();
+    // Go's proto BitArray has a generated Size method: this is its encoded
+    // length, which WantPartsFromProto uses for the zero-element preallocation.
+    let size = pb.encoded_len();
+    if size == 0 {
+        return Err("WantParts: nil parts".into());
+    }
+    let max_bits =
+        i64::from(ctypes::part_set::MAX_BLOCK_PARTS_COUNT * propagation::types::PARITY_RATIO);
+    if !v9 && pb.bits > max_bits {
+        return Err(format!(
+            "WantParts: parts bit array size {} exceeds maximum {max_bits}",
+            pb.bits
+        ));
+    }
+    if w.missing_parts_count <= 0 {
+        return Err("WantParts: MissingPartsCount cannot be negative or zero".into());
+    }
+    if !v9 && i64::from(w.missing_parts_count) > pb.bits {
+        return Err(format!(
+            "WantParts: MissingPartsCount {} exceeds parts bit array size {}",
+            w.missing_parts_count, pb.bits
+        ));
+    }
+    if !v9 && i64::from(w.missing_parts_count) > i64::from(ctypes::part_set::MAX_BLOCK_PARTS_COUNT)
+    {
+        return Err(format!(
+            "WantParts: MissingPartsCount {} exceeds MaxBlockPartsCount {}",
+            w.missing_parts_count,
+            ctypes::part_set::MAX_BLOCK_PARTS_COUNT
+        ));
+    }
+    let elems = if pb.elems.is_empty() {
+        size.div_ceil(64)
+    } else {
+        pb.elems.len()
+    };
+    // celestia-core computes this with a signed 64-bit Go int; addition wraps.
+    let expected = pb.bits.wrapping_add(63) / 64;
+    if expected != i64::try_from(elems).unwrap_or(i64::MAX) {
+        return Err(format!(
+            "mismatch between specified number of bits {}, and number of elements {elems}, expected {expected} elements",
+            pb.bits
+        ));
+    }
+    if pb.elems.is_empty() {
+        pb.elems = vec![0; elems];
+    }
+    let out = propagation::types::WantParts {
+        parts: BitArray::from_proto(&pb),
+        height: w.height,
+        round: w.round,
+        prove: w.prove,
+        missing_parts_count: w.missing_parts_count,
+    };
+    validate_want_parts_v9(&out)?;
+    Ok(out)
+}
+
+fn validate_want_parts_v9(w: &propagation::types::WantParts) -> Result<(), String> {
+    if w.parts.is_nil() {
+        return Err("WantParts: Parts cannot be nil".into());
+    }
+    if w.missing_parts_count <= 0 {
+        return Err("WantParts: MissingPartsCount cannot be negative or zero".into());
+    }
+    Ok(())
 }
 
 /// The Rust side of op `op`.
@@ -303,14 +387,31 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 "light_all",
                 v::verify_commit_light_all_signatures(&chain_id, &vals, &bid, height, &cm),
             );
-            let tl = v::Fraction::ONE_THIRD;
+            let trust_vals = if let Some(raw) = first(m, 6) {
+                let p: pb::ValidatorSet = match decode(Some(raw)) {
+                    Ok(v) => v,
+                    Err(e) => return c.put("trust_valset", &format!("err:{e}")),
+                };
+                let v = match ValidatorSet::from_proto(&p) {
+                    Ok(v) => v,
+                    Err(e) => return c.put("trust_valset", &format!("err:{e}")),
+                };
+                c.put("trust_valset", "ok");
+                v
+            } else {
+                vals.clone()
+            };
+            let tl = v::Fraction {
+                numerator: first(m, 7).map_or(1, go_parse_uint),
+                denominator: first(m, 8).map_or(3, go_parse_uint),
+            };
             c.run(
                 "trusting",
-                v::verify_commit_light_trusting(&chain_id, &vals, &cm, tl),
+                v::verify_commit_light_trusting(&chain_id, &trust_vals, &cm, tl),
             );
             c.run(
                 "trusting_all",
-                v::verify_commit_light_trusting_all_signatures(&chain_id, &vals, &cm, tl),
+                v::verify_commit_light_trusting_all_signatures(&chain_id, &trust_vals, &cm, tl),
             );
         }
         "c_valset" => {
@@ -348,8 +449,29 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                     Err(e) => return c.put(&format!("change{i}"), &format!("err:{e}")),
                 }
             }
+            let before = match validator_set_fingerprint(&vals) {
+                Ok(fingerprint) => fingerprint,
+                Err(e) => return c.put("state_before", &format!("err:{e}")),
+            };
             if !c.run("update", vals.update_with_change_set(&changes)) {
+                match validator_set_fingerprint(&vals) {
+                    Ok(after) => {
+                        c.put("error_state", &after);
+                        c.put("error_unchanged", &(after == before).to_string());
+                    }
+                    Err(e) => c.put("error_state", &format!("err:{e}")),
+                }
                 return;
+            }
+            if let Some(raw) = first(m, 3) {
+                let times = go_parse_i32(raw);
+                if times > 1024 {
+                    c.put("increment", "skip:times exceed 1024");
+                    return;
+                }
+                if !c.run("increment", vals.increment_proposer_priority(times)) {
+                    return;
+                }
             }
             c.put("hash", &hex::encode(vals.hash()));
             c.put(
@@ -431,21 +553,72 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("from_proto", &format!("err:{e}")),
             };
             c.put("from_proto", "ok");
-            c.run("validate", ev.validate_basic());
+            let valid = c.run("validate", ev.validate_basic());
             c.put("hash", &hex::encode(ev.hash()));
             c.put("height", &ev.height().to_string());
-            if let (Some(vsb), Evidence::DuplicateVote(dve)) = (first(m, 2), &ev) {
-                let vals = match decode::<pb::ValidatorSet>(Some(vsb))
-                    .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
-                {
-                    Ok(v) => v,
-                    Err(e) => return c.put("valset", &format!("err:{e}")),
-                };
-                c.put("valset", "ok");
-                c.run(
-                    "verify_duplicate",
-                    evidence::verify::verify_duplicate_vote(dve, &chain_id, &vals),
-                );
+            if let Some(vsb) = first(m, 2) {
+                match &ev {
+                    Evidence::DuplicateVote(dve) => {
+                        let vals = match decode::<pb::ValidatorSet>(Some(vsb))
+                            .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
+                        {
+                            Ok(v) => v,
+                            Err(e) => return c.put("valset", &format!("err:{e}")),
+                        };
+                        c.put("valset", "ok");
+                        c.run(
+                            "verify_duplicate",
+                            evidence::verify::verify_duplicate_vote(dve, &chain_id, &vals),
+                        );
+                    }
+                    Evidence::LightClientAttack(lca)
+                        if valid && first(m, 4).is_some() && first(m, 5).is_some() =>
+                    {
+                        let vals = match decode::<pb::ValidatorSet>(Some(vsb))
+                            .and_then(|p| ValidatorSet::from_proto(&p).map_err(|e| e.to_string()))
+                        {
+                            Ok(v) => v,
+                            Err(e) => return c.put("valset", &format!("err:{e}")),
+                        };
+                        c.put("valset", "ok");
+                        let Ok(common_p) = ctypes::gogo_decode::<pb::SignedHeader>(
+                            first(m, 4).unwrap_or_default(),
+                        ) else {
+                            return c.put("common", "err:decode");
+                        };
+                        let Ok(common) = SignedHeader::from_proto(&common_p) else {
+                            return c.put("common", "err:invalid");
+                        };
+                        if common.validate_basic(&chain_id).is_err() {
+                            return c.put("common", "err:invalid");
+                        }
+                        c.put("common", "ok");
+                        let Ok(trusted_p) = ctypes::gogo_decode::<pb::SignedHeader>(
+                            first(m, 5).unwrap_or_default(),
+                        ) else {
+                            return c.put("trusted", "err:decode");
+                        };
+                        let Ok(trusted) = SignedHeader::from_proto(&trusted_p) else {
+                            return c.put("trusted", "err:invalid");
+                        };
+                        if trusted.validate_basic(&chain_id).is_err() {
+                            return c.put("trusted", "err:invalid");
+                        }
+                        c.put("trusted", "ok");
+                        c.run(
+                            "verify_light",
+                            evidence::verify::verify_light_client_attack(
+                                lca,
+                                &common,
+                                &trusted,
+                                &vals,
+                                Time::ZERO,
+                                0,
+                            ),
+                        );
+                    }
+                    Evidence::LightClientAttack(_) => {}
+                }
             }
         }
         "c_vblock" => {
@@ -487,7 +660,12 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("vk", &format!("err:{e}")),
             };
             c.put("vk", "ok");
-            let r = groth16::sp1_verify(
+            let verify = if sdk::version::is_v9(sdk::version::app_version()) {
+                groth16::sp1_verify_v5
+            } else {
+                groth16::sp1_verify
+            };
+            let r = verify(
                 &vk,
                 vk_bytes,
                 first(m, 2).unwrap_or_default(),
@@ -540,11 +718,19 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
         "c_prop" => {
             use propagation::types::Message as Msg;
             let bz = first(m, 1).unwrap_or_default();
-            if let Err(e) = decode::<ctypes::proto::propagation::Message>(Some(bz)) {
-                return c.put("unmarshal", &format!("err:{e}"));
-            }
+            let proto = match decode::<ctypes::proto::propagation::Message>(Some(bz)) {
+                Ok(v) => v,
+                Err(e) => return c.put("unmarshal", &format!("err:{e}")),
+            };
             c.put("unmarshal", "ok");
-            let msg = match Msg::decode(bz) {
+            let app_v9 = sdk::version::is_v9(sdk::version::app_version());
+            let want = match proto.sum.as_ref() {
+                Some(ctypes::proto::propagation::message::Sum::WantParts(w)) => {
+                    Some(want_parts_from_proto(w, app_v9).map(Msg::WantParts))
+                }
+                _ => None,
+            };
+            let msg = match want.unwrap_or_else(|| Msg::decode(bz)) {
                 Ok(v) => v,
                 Err(e) => return c.put("from_proto", &format!("err:{e}")),
             };
@@ -554,6 +740,7 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 match &msg {
                     Msg::CompactBlock(v) => v.validate_basic(),
                     Msg::HaveParts(v) => v.validate_basic(),
+                    Msg::WantParts(v) if app_v9 => validate_want_parts_v9(v),
                     Msg::WantParts(v) => v.validate_basic(),
                     Msg::RecoveryPart(v) => v.validate_basic(),
                 },
@@ -771,6 +958,70 @@ fn go_parse_int(b: &[u8]) -> i64 {
     if neg { v.wrapping_neg() } else { v }
 }
 
+/// Go `strconv.ParseInt(s, 10, 32)` with the error ignored.
+fn go_parse_i32(b: &[u8]) -> i32 {
+    let (neg, digits) = match b.first() {
+        Some(b'+') => (false, &b[1..]),
+        Some(b'-') => (true, &b[1..]),
+        _ => (false, b),
+    };
+    if digits.is_empty() {
+        return 0;
+    }
+    let mut n = 0u64;
+    let mut range = false;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return 0;
+        }
+        let Some(next) = n
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u64::from(c - b'0')))
+        else {
+            range = true;
+            break;
+        };
+        if next > u64::from(u32::MAX) {
+            range = true;
+            break;
+        }
+        n = next;
+    }
+    let cutoff = 1u64 << 31;
+    if !neg && (range || n >= cutoff) {
+        return i32::MAX;
+    }
+    if neg && (range || n > cutoff) {
+        return i32::MIN;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let v = n as i32;
+    if neg { v.wrapping_neg() } else { v }
+}
+
+/// Go `strconv.ParseUint(s, 10, 64)` with the error ignored: a syntax
+/// error is zero and a range error saturates at `u64::MAX`.
+fn go_parse_uint(b: &[u8]) -> u64 {
+    let digits = b;
+    if digits.is_empty() || !digits[0].is_ascii_digit() {
+        return 0;
+    }
+    let mut n = 0u64;
+    for &c in digits {
+        if !c.is_ascii_digit() {
+            return 0;
+        }
+        let Some(next) = n
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u64::from(c - b'0')))
+        else {
+            return u64::MAX;
+        };
+        n = next;
+    }
+    n
+}
+
 fn canon(op: &str, out: &str) -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = Vec::new();
     for l in out.lines() {
@@ -782,6 +1033,7 @@ fn canon(op: &str, out: &str) -> Vec<(String, String)> {
             || k.ends_with("from_proto")
             || k == "pubkey"
             || k == "valset"
+            || k == "trust_valset"
             || k == "block_id"
             || k == "header"
             || k.starts_with("change");
@@ -875,6 +1127,15 @@ fn fixture(name: &str) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+fn evidence_fixture() -> serde_json::Value {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/fixtures/evidence/vectors.json");
+    std::fs::read(&p)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+
 fn hx(v: &serde_json::Value) -> Vec<u8> {
     hex::decode(v.as_str().unwrap_or_default()).unwrap_or_default()
 }
@@ -896,16 +1157,41 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
     match op {
         "c_vote" | "c_ed25519" | "c_secp256k1" => {
             let f = fixture("votes");
+            let mut derived_cross_chain_vote = false;
             for v in f["votes"].as_array().into_iter().flatten() {
                 let pk = hx(&v["pub_key"]);
                 let proto = hx(&v["proto"]);
                 if op == "c_vote" {
-                    let mut fields: Vec<(u64, &[u8])> = vec![(1, s(&v["chain_id"]).as_bytes())];
+                    let chain_id = s(&v["chain_id"]);
+                    let mut fields: Vec<(u64, &[u8])> = vec![(1, chain_id.as_bytes())];
                     if !pk.is_empty() {
                         fields.push((2, &pk));
                     }
                     fields.push((3, &proto));
                     out.push(input(&fields));
+                    if !derived_cross_chain_vote
+                        && !pk.is_empty()
+                        && [
+                            "from_proto_err",
+                            "validate_err",
+                            "ensure_ext_err",
+                            "verify_err",
+                            "verify_both_err",
+                            "verify_ext_err",
+                        ]
+                        .iter()
+                        .all(|field| v[*field].as_str().is_some_and(str::is_empty))
+                    {
+                        // Preserve both signed vote payloads and the public key
+                        // while changing only their signature-domain chain ID.
+                        let replay_chain_id = format!("{chain_id}-replay");
+                        out.push(input(&[
+                            (1, replay_chain_id.as_bytes()),
+                            (2, &pk),
+                            (3, &proto),
+                        ]));
+                        derived_cross_chain_vote = true;
+                    }
                     continue;
                 }
                 // Raw key, sign bytes and signature of the votes' signers.
@@ -940,12 +1226,32 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         }
         "c_proposal" => {
             let f = fixture("votes");
+            let mut derived_cross_chain_proposal = false;
             for p in f["proposals"].as_array().into_iter().flatten() {
+                let chain_id = s(&p["chain_id"]);
+                let pub_key = hx(&p["pub_key"]);
+                let proposal = hx(&p["proto"]);
                 out.push(input(&[
-                    (1, s(&p["chain_id"]).as_bytes()),
-                    (2, &hx(&p["pub_key"])),
-                    (3, &hx(&p["proto"])),
+                    (1, chain_id.as_bytes()),
+                    (2, &pub_key),
+                    (3, &proposal),
                 ]));
+                if !derived_cross_chain_proposal
+                    && p["from_proto_err"].as_str().is_some_and(str::is_empty)
+                    && p["validate_err"].as_str().is_some_and(str::is_empty)
+                    && p["verify_ok"].as_bool() == Some(true)
+                    && !pub_key.is_empty()
+                {
+                    // Preserve the signed proposal and public key while
+                    // changing only the signature-domain chain ID.
+                    let replay_chain_id = format!("{chain_id}-replay");
+                    out.push(input(&[
+                        (1, replay_chain_id.as_bytes()),
+                        (2, &pub_key),
+                        (3, &proposal),
+                    ]));
+                    derived_cross_chain_proposal = true;
+                }
             }
         }
         "c_header" => {
@@ -975,17 +1281,58 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         "c_commit" | "c_valset" => {
             let f: Seeds =
                 serde_json::from_value(fixture("commits")).unwrap_or(Seeds { cases: vec![] });
+            let mut derived_cross_chain_commit = false;
             for (i, c) in f.cases.iter().enumerate() {
                 let vals = hx(&c["vals"]);
                 if op == "c_commit" {
                     let h = c["height"].as_i64().unwrap_or(0).to_string();
+                    let trust_vals = hx(&c["trust_vals"]);
+                    let trust_num = c["trust_num"].as_u64().unwrap_or(0).to_string();
+                    let trust_den = c["trust_den"].as_u64().unwrap_or(0).to_string();
+                    let block_id = hx(&c["block_id"]);
+                    let commit = hx(&c["commit"]);
+                    let chain_id = s(&c["chain_id"]);
                     out.push(input(&[
-                        (1, s(&c["chain_id"]).as_bytes()),
+                        (1, chain_id.as_bytes()),
                         (2, &vals),
-                        (3, &hx(&c["block_id"])),
+                        (3, &block_id),
                         (4, h.as_bytes()),
-                        (5, &hx(&c["commit"])),
+                        (5, &commit),
+                        (6, &trust_vals),
+                        (7, trust_num.as_bytes()),
+                        (8, trust_den.as_bytes()),
                     ]));
+
+                    let all_verifiers_succeed = [
+                        "verify",
+                        "light",
+                        "light_all",
+                        "trusting",
+                        "trusting_all",
+                        "validate_err",
+                    ]
+                    .into_iter()
+                    .all(|field| c[field].as_str().is_some_and(str::is_empty));
+                    if !derived_cross_chain_commit
+                        && all_verifiers_succeed
+                        && c["trust_num"].as_u64() == Some(1)
+                        && c["trust_den"].as_u64() == Some(3)
+                    {
+                        // Preserve the signed commit and every verification
+                        // input except its signature-domain chain ID.
+                        let replay_chain_id = format!("{chain_id}-replay");
+                        out.push(input(&[
+                            (1, replay_chain_id.as_bytes()),
+                            (2, &vals),
+                            (3, &block_id),
+                            (4, h.as_bytes()),
+                            (5, &commit),
+                            (6, &trust_vals),
+                            (7, trust_num.as_bytes()),
+                            (8, trust_den.as_bytes()),
+                        ]));
+                        derived_cross_chain_commit = true;
+                    }
                 } else {
                     // The change set: validators of another case's set.
                     let other = &f.cases[(i * 7 + 3) % f.cases.len()];
@@ -997,10 +1344,74 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                         .take(1 + i % 4)
                         .map(Message::encode_to_vec)
                         .collect();
+                    let derive_negative_seed = out.is_empty();
                     let mut fields: Vec<(u64, &[u8])> = vec![(1, &vals)];
                     for ch in &changes {
                         fields.push((2, ch));
                     }
+                    out.push(input(&fields));
+                    if derive_negative_seed && let Some(change) = changes.first() {
+                        // Each change decodes independently, but a single
+                        // atomic change set cannot name one validator twice.
+                        out.push(input(&[(1, &vals), (2, change), (2, change)]));
+
+                        let (Ok(mut invalid), Ok(base)) = (
+                            pb::Validator::decode(change.as_slice()),
+                            pb::ValidatorSet::decode(vals.as_slice()),
+                        ) else {
+                            continue;
+                        };
+                        let Some(base_validator) = base.validators.first() else {
+                            continue;
+                        };
+                        invalid.voting_power = -1;
+                        let negative_power = invalid.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &negative_power)]));
+
+                        invalid.voting_power = ctypes::validator_set::MAX_TOTAL_VOTING_POWER + 1;
+                        let excessive_power = invalid.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &excessive_power)]));
+
+                        // ValidatorFromProto takes the address as given. Flip
+                        // one byte to isolate removal of an absent identity
+                        // while retaining the recorded, decodable public key.
+                        let mut absent = base_validator.clone();
+                        if let Some(first) = absent.address.first_mut() {
+                            *first ^= 0xff;
+                        } else {
+                            absent.address.push(0xff);
+                        }
+                        assert!(
+                            base.validators
+                                .iter()
+                                .all(|validator| validator.address != absent.address),
+                            "derived validator address must be absent"
+                        );
+                        absent.voting_power = 0;
+                        let missing_removal = absent.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &missing_removal)]));
+
+                        absent.voting_power = ctypes::validator_set::MAX_TOTAL_VOTING_POWER;
+                        let overflowing_addition = absent.encode_to_vec();
+                        out.push(input(&[(1, &vals), (2, &overflowing_addition)]));
+
+                        let removals: Vec<Vec<u8>> = base
+                            .validators
+                            .iter()
+                            .cloned()
+                            .map(|mut validator| {
+                                validator.voting_power = 0;
+                                validator.encode_to_vec()
+                            })
+                            .collect();
+                        let mut remove_all_fields: Vec<(u64, &[u8])> = vec![(1, &vals)];
+                        remove_all_fields
+                            .extend(removals.iter().map(|removal| (2, removal.as_slice())));
+                        out.push(input(&remove_all_fields));
+                    }
+                    let increments = [-1, 0, 1, 2, 3, 4, 5];
+                    let times = increments[i % increments.len()].to_string();
+                    fields.push((3, times.as_bytes()));
                     out.push(input(&fields));
                 }
             }
@@ -1017,6 +1428,7 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .get(i % fp.cases.len().max(1))
                     .map(|p| hx(&p["proto"]))
                     .unwrap_or_default();
+                let derive_negative_seed = out.is_empty();
                 let ups: Vec<Vec<u8>> = vs
                     .validators
                     .iter()
@@ -1034,6 +1446,17 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     fields.push((2, u));
                 }
                 out.push(input(&fields));
+                if derive_negative_seed {
+                    // Power-zero updates skip public-key validation but the
+                    // subsequent PB2TM conversion still needs a key to derive
+                    // the validator identity.
+                    let missing_key = abci::ValidatorUpdate {
+                        pub_key: None,
+                        power: 0,
+                    }
+                    .encode_to_vec();
+                    out.push(input(&[(1, &params), (2, &missing_key)]));
+                }
             }
         }
         "c_params" => {
@@ -1069,14 +1492,196 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .unwrap_or_default();
                 out.push(input(&[(1, b"test-chain"), (2, &vals), (3, ev)]));
             }
+
+            // The generic ctypes corpus does not associate evidence with the
+            // validator set that signed it. Pair the Go-recorded evidence
+            // vectors with their actual chain and validator set so mutations
+            // start from successful DuplicateVote signature verification.
+            let f = evidence_fixture();
+            let chain = f["chain_id"].as_str().unwrap_or_default().as_bytes();
+            for case in f["cases"].as_array().into_iter().flatten() {
+                if !case["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("dve/"))
+                    || !case["from_proto_err"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    continue;
+                }
+                let ev = hx(&case["evidence"]);
+                let Some(ev_height) = pb::Evidence::decode(ev.as_slice())
+                    .ok()
+                    .and_then(|p| Evidence::from_proto(&p).ok())
+                    .map(|e| e.height())
+                else {
+                    continue;
+                };
+                // Pair only the fixture's single validator set at the exact
+                // evidence height; never substitute another recorded height.
+                let Some([vals]) = case["vals"].as_array().map(Vec::as_slice) else {
+                    continue;
+                };
+                if vals["height"].as_i64() != Some(ev_height) {
+                    continue;
+                }
+                let vals = hx(&vals["vals"]);
+                out.push(input(&[(1, chain), (2, &vals), (3, &ev)]));
+            }
+
+            for case in f["cases"].as_array().into_iter().flatten() {
+                if !case["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("lca/"))
+                    || !case["from_proto_err"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    continue;
+                }
+                let (Some(common_height), Some(trusted_height)) = (
+                    case["lca_common_height"].as_i64(),
+                    case["lca_trusted_height"].as_i64(),
+                ) else {
+                    continue;
+                };
+                let Some(headers) = case["headers"].as_array() else {
+                    continue;
+                };
+                let signed_header = |height: i64| -> Option<Vec<u8>> {
+                    let row = headers
+                        .iter()
+                        .find(|h| h["height"].as_i64() == Some(height))?;
+                    let header = pb::Header::decode(hx(&row["header"]).as_slice()).ok()?;
+                    let commit = pb::Commit::decode(hx(&row["commit"]).as_slice()).ok()?;
+                    Some(
+                        pb::SignedHeader {
+                            header: Some(header),
+                            commit: Some(commit),
+                        }
+                        .encode_to_vec(),
+                    )
+                };
+                let (Some(common), Some(trusted)) =
+                    (signed_header(common_height), signed_header(trusted_height))
+                else {
+                    continue;
+                };
+                let Some(vals) = case["vals"].as_array().and_then(|rows| {
+                    rows.iter()
+                        .find(|v| v["height"].as_i64() == Some(common_height))
+                }) else {
+                    continue;
+                };
+                let vals = hx(&vals["vals"]);
+                let ev = hx(&case["evidence"]);
+                out.push(input(&[
+                    (1, chain),
+                    (2, &vals),
+                    (3, &ev),
+                    (4, &common),
+                    (5, &trusted),
+                ]));
+            }
         }
         "c_vblock" => {
+            // A frozen, structurally valid evidence item is enough to reach
+            // validateBlock's byte limit. Contextual evidence-pool checks run
+            // later in BlockExecutor and are deliberately outside this op.
+            let boundary_evidence = evidence_fixture()["cases"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|case| {
+                    case["label"].as_str() == Some("dve/valid")
+                        && case["from_proto_err"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .is_empty()
+                })
+                .and_then(|case| pb::Evidence::decode(hx(&case["evidence"]).as_slice()).ok())
+                .and_then(|evidence| Evidence::from_proto(&evidence).ok());
             // Consecutive real blocks: the state after block h-1 and block h.
             for name in ["real-blocks-blob", "real-blocks-empty"] {
                 let f = fixture(name);
                 let bs: Vec<&serde_json::Value> =
                     f["blocks"].as_array().into_iter().flatten().collect();
-                for w in bs.windows(2) {
+                let derive_negative_fixture = out.is_empty();
+                let vs =
+                    |v: &serde_json::Value| ctypes::gogo_decode::<pb::ValidatorSet>(&hx(v)).ok();
+                if derive_negative_fixture && let Some(cur) = bs.first() {
+                    let bz = hx(&cur["block"]);
+                    if let Ok(pbk) = ctypes::gogo_decode::<pb::Block>(&bz) {
+                        let h = pbk.header.clone().unwrap_or_default();
+                        let state = ctypes::proto::state::State {
+                            version: Some(ctypes::proto::state::Version {
+                                consensus: h.version,
+                                software: String::new(),
+                            }),
+                            chain_id: h.chain_id.clone(),
+                            initial_height: h.height,
+                            last_block_height: 0,
+                            last_block_id: Some(pb::BlockId::default()),
+                            last_block_time: h.time,
+                            next_validators: vs(&cur["next_vals"]),
+                            validators: vs(&cur["vals"]),
+                            last_validators: None,
+                            last_height_validators_changed: h.height,
+                            consensus_params: ctypes::gogo_decode::<pb::ConsensusParams>(&hx(
+                                &cur["params"]
+                            ))
+                            .ok(),
+                            last_height_consensus_params_changed: h.height,
+                            last_results_hash: h.last_results_hash,
+                            app_hash: h.app_hash,
+                            timeout_info: None,
+                        };
+                        let t = h.time.unwrap_or_default();
+                        let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
+                        let state_bytes = state.encode_to_vec();
+                        out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
+
+                        // An absent CommitSig is structurally valid, but the
+                        // initial block must not carry any LastCommit entries.
+                        let mut nonempty_commit = pbk.clone();
+                        let commit = nonempty_commit.last_commit.get_or_insert_default();
+                        commit.signatures.push(pb::CommitSig {
+                            block_id_flag: i32::from(ctypes::commit::BLOCK_ID_FLAG_ABSENT),
+                            validator_address: Vec::new(),
+                            timestamp: None,
+                            signature: Vec::new(),
+                        });
+                        if let Ok(commit) = Commit::from_proto(commit)
+                            && let Some(header) = nonempty_commit.header.as_mut()
+                        {
+                            header.last_commit_hash = commit.hash();
+                            let nonempty_commit = nonempty_commit.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &nonempty_commit),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        // Keep the authentic initial block and wall clock,
+                        // but make the reconstructed genesis time disagree by
+                        // one second. This reaches the initial-height time
+                        // equality check after proposer validation.
+                        let mut wrong_genesis_time = state.clone();
+                        if let Some(time) = wrong_genesis_time.last_block_time.as_mut() {
+                            time.seconds = time.seconds.saturating_add(1);
+                            let wrong_genesis_time = wrong_genesis_time.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_genesis_time),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+                    }
+                }
+                for (window_index, w) in bs.windows(2).enumerate() {
                     let (prev, cur) = (w[0], w[1]);
                     let bz = hx(&cur["block"]);
                     let Ok(pbk) = ctypes::gogo_decode::<pb::Block>(&bz) else {
@@ -1087,9 +1692,6 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                         continue;
                     };
                     let h = pbk.header.clone().unwrap_or_default();
-                    let vs = |v: &serde_json::Value| {
-                        ctypes::gogo_decode::<pb::ValidatorSet>(&hx(v)).ok()
-                    };
                     let state = ctypes::proto::state::State {
                         version: Some(ctypes::proto::state::Version {
                             consensus: h.version,
@@ -1122,11 +1724,238 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     };
                     let t = h.time.unwrap_or_default();
                     let now = (t.seconds + 5).saturating_mul(1_000_000_000).to_string();
-                    out.push(input(&[
-                        (1, &state.encode_to_vec()),
-                        (2, &bz),
-                        (3, now.as_bytes()),
-                    ]));
+                    let derive_negative_seeds = derive_negative_fixture && window_index == 0;
+                    let state_bytes = state.encode_to_vec();
+                    out.push(input(&[(1, &state_bytes), (2, &bz), (3, now.as_bytes())]));
+                    if derive_negative_seeds {
+                        // Preserve the real state, clock and commit structure,
+                        // but corrupt one signature byte and recompute the
+                        // current header's LastCommitHash. Block.ValidateBasic
+                        // still succeeds before validateBlock authenticates the
+                        // previous block's commit and rejects the signature.
+                        let mut wrong_commit = pbk.clone();
+                        let changed = wrong_commit
+                            .last_commit
+                            .as_mut()
+                            .and_then(|commit| {
+                                commit
+                                    .signatures
+                                    .iter_mut()
+                                    .find(|sig| !sig.signature.is_empty())
+                            })
+                            .and_then(|sig| sig.signature.first_mut())
+                            .map(|byte| *byte ^= 1)
+                            .is_some();
+                        if changed
+                            && let Some(commit) = wrong_commit.last_commit.as_ref()
+                            && let Ok(commit) = Commit::from_proto(commit)
+                            && let Some(header) = wrong_commit.header.as_mut()
+                        {
+                            header.last_commit_hash = commit.hash();
+                            let wrong_commit = wrong_commit.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_commit),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        // Keep the real transition and authentic LastCommit,
+                        // but attach structurally valid frozen evidence and
+                        // recompute the current header's EvidenceHash. The
+                        // evidence parameter is intentionally the only state
+                        // change: ConsensusParams.Hash excludes it. The S / S-1
+                        // pair covers the exact inclusive byte-size boundary.
+                        if let Some(ev) = boundary_evidence.clone() {
+                            let evidence = EvidenceData { evidence: vec![ev] };
+                            let size = evidence.byte_size();
+                            if size > 0
+                                && let Ok(evidence_proto) = evidence.to_proto()
+                            {
+                                let mut block = pbk.clone();
+                                block.evidence = Some(evidence_proto);
+                                if let Some(header) = block.header.as_mut() {
+                                    header.evidence_hash = evidence.hash();
+                                }
+                                let block = block.encode_to_vec();
+                                let with_limit = |max_bytes: i64| {
+                                    let mut bounded = state.clone();
+                                    let params = bounded.consensus_params.as_mut()?;
+                                    params.evidence.as_mut()?.max_bytes = max_bytes;
+                                    let params = ConsensusParams::from_proto(params).ok()?;
+                                    (params.hash() == h.consensus_hash)
+                                        .then(|| bounded.encode_to_vec())
+                                };
+                                if let (Some(at_limit), Some(over_limit)) =
+                                    (with_limit(size), with_limit(size - 1))
+                                {
+                                    out.push(input(&[
+                                        (1, &at_limit),
+                                        (2, &block),
+                                        (3, now.as_bytes()),
+                                    ]));
+                                    out.push(input(&[
+                                        (1, &over_limit),
+                                        (2, &block),
+                                        (3, now.as_bytes()),
+                                    ]));
+                                }
+                            }
+                        }
+
+                        // Keep a valid state and block while making each
+                        // state/header comparison fail in isolation.
+                        let mut wrong_version = pbk.clone();
+                        if let Some(version) = wrong_version
+                            .header
+                            .as_mut()
+                            .and_then(|header| header.version.as_mut())
+                        {
+                            version.app = version.app.saturating_add(1);
+                            let wrong_version = wrong_version.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_version),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        // Keep a valid block but make the state's chain
+                        // identity disagree with its header.
+                        let mut wrong_chain = state.clone();
+                        wrong_chain.chain_id.push_str("-other");
+                        let wrong_chain = wrong_chain.encode_to_vec();
+                        out.push(input(&[(1, &wrong_chain), (2, &bz), (3, now.as_bytes())]));
+
+                        // Keep the valid state but move the block one height
+                        // ahead of the state transition it must follow.
+                        let mut wrong_height = pbk.clone();
+                        if let Some(header) = wrong_height.header.as_mut() {
+                            header.height = header.height.saturating_add(1);
+                            let wrong_height = wrong_height.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_height),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        let mut wrong_last_block = state.clone();
+                        if let Some(byte) = wrong_last_block
+                            .last_block_id
+                            .as_mut()
+                            .and_then(|id| id.hash.first_mut())
+                        {
+                            *byte ^= 1;
+                            let wrong_last_block = wrong_last_block.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_last_block),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        let mut wrong_app_hash = state.clone();
+                        if let Some(byte) = wrong_app_hash.app_hash.first_mut() {
+                            *byte ^= 1;
+                            let wrong_app_hash = wrong_app_hash.encode_to_vec();
+                            out.push(input(&[
+                                (1, &wrong_app_hash),
+                                (2, &bz),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        let header_hash_fields: [for<'a> fn(&'a mut pb::Header) -> &'a mut Vec<u8>;
+                            3] = [
+                            |header: &mut pb::Header| &mut header.consensus_hash,
+                            |header: &mut pb::Header| &mut header.validators_hash,
+                            |header: &mut pb::Header| &mut header.next_validators_hash,
+                        ];
+                        for field in header_hash_fields {
+                            let mut wrong_block = pbk.clone();
+                            if let Some(byte) = wrong_block
+                                .header
+                                .as_mut()
+                                .map(field)
+                                .and_then(|hash| hash.first_mut())
+                            {
+                                *byte ^= 1;
+                                let wrong_block = wrong_block.encode_to_vec();
+                                out.push(input(&[
+                                    (1, &state_bytes),
+                                    (2, &wrong_block),
+                                    (3, now.as_bytes()),
+                                ]));
+                            }
+                        }
+
+                        let mut wrong_results = state.clone();
+                        if let Some(byte) = wrong_results.last_results_hash.first_mut() {
+                            *byte ^= 1;
+                            let wrong_results = wrong_results.encode_to_vec();
+                            out.push(input(&[(1, &wrong_results), (2, &bz), (3, now.as_bytes())]));
+                        }
+
+                        let before_now = t
+                            .seconds
+                            .saturating_sub(61)
+                            .saturating_mul(1_000_000_000)
+                            .saturating_add(i64::from(t.nanos))
+                            .to_string();
+                        out.push(input(&[
+                            (1, &state_bytes),
+                            (2, &bz),
+                            (3, before_now.as_bytes()),
+                        ]));
+
+                        // Reach the two time-consistency checks after commit
+                        // and proposer validation. First, make the state say
+                        // that this block does not advance time.
+                        let mut non_monotonic = state.clone();
+                        non_monotonic.last_block_time = Some(t);
+                        let non_monotonic = non_monotonic.encode_to_vec();
+                        out.push(input(&[(1, &non_monotonic), (2, &bz), (3, now.as_bytes())]));
+
+                        // Then retain the authentic LastCommit but make the
+                        // header disagree with its commit-derived median time.
+                        let mut wrong_median_time = pbk.clone();
+                        if let Some(time) = wrong_median_time
+                            .header
+                            .as_mut()
+                            .and_then(|header| header.time.as_mut())
+                        {
+                            time.seconds = time.seconds.saturating_add(1);
+                            let wrong_median_time = wrong_median_time.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_median_time),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+
+                        // Keep the required 20-byte shape but select an
+                        // address outside the active validator set. This
+                        // reaches membership after LastCommit verification.
+                        let mut wrong_proposer = pbk.clone();
+                        if let Some(header) = wrong_proposer.header.as_mut()
+                            && let Some(first) = header.proposer_address.first_mut()
+                        {
+                            *first ^= 0xff;
+                            assert!(state.validators.as_ref().is_some_and(|validators| {
+                                validators
+                                    .validators
+                                    .iter()
+                                    .all(|validator| validator.address != header.proposer_address)
+                            }));
+                            let wrong_proposer = wrong_proposer.encode_to_vec();
+                            out.push(input(&[
+                                (1, &state_bytes),
+                                (2, &wrong_proposer),
+                                (3, now.as_bytes()),
+                            ]));
+                        }
+                    }
                 }
             }
         }
@@ -1134,21 +1963,55 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../tier-3-app-modules/x/zkism/testdata");
             let rd = |p: &str| std::fs::read(dir.join(p)).unwrap_or_default();
-            let vk = rd("groth16_vk.bin");
-            for (case, vkey) in [
+            for (version, cases) in [
                 (
-                    "state_transition",
-                    "004ac29c473e811dece0f8dd76c8eda80f886d263efb393ec81f54173e54f160",
+                    "",
+                    [
+                        (
+                            "state_transition",
+                            "004ac29c473e811dece0f8dd76c8eda80f886d263efb393ec81f54173e54f160",
+                        ),
+                        (
+                            "state_membership",
+                            "00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63",
+                        ),
+                    ],
                 ),
                 (
-                    "state_membership",
-                    "00982fb21526d096c8bf58eda36b5e293ee9ea0f36df441f6a996a974f8feb63",
+                    "v9/",
+                    [
+                        (
+                            "state_transition",
+                            "0017bc91d53b93c46eb842d7f9020a94ea13d8877a21608b34b71fcc4da64f29",
+                        ),
+                        (
+                            "state_membership",
+                            "004959d5fb2c3d5bc1f98e032188dd94fbb5c6b6152df356c7c20be23be824a2",
+                        ),
+                    ],
                 ),
             ] {
-                let proof = rd(&format!("{case}/proof.bin"));
-                let values = rd(&format!("{case}/public_values.bin"));
-                let vkey = hex::decode(vkey).unwrap_or_default();
-                out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
+                let vk = rd(&format!("{version}groth16_vk.bin"));
+                for (case, vkey) in cases {
+                    let proof = rd(&format!("{version}{case}/proof.bin"));
+                    let values = rd(&format!("{version}{case}/public_values.bin"));
+                    let vkey = hex::decode(vkey).unwrap_or_default();
+                    out.push(input(&[(1, &vk), (2, &proof), (3, &vkey), (4, &values)]));
+                    let mut wrong_proof = proof.clone();
+                    // Preserve the four-byte verifier-key hash prefix, and
+                    // SP1 v6's additional 96 bytes of public-input metadata,
+                    // so rejection happens while checking the proof body.
+                    let proof_body_offset = if version.is_empty() { 4 + 96 } else { 4 };
+                    if let Some(byte) = wrong_proof.get_mut(proof_body_offset) {
+                        *byte ^= 1;
+                        out.push(input(&[
+                            (1, &vk),
+                            (2, &wrong_proof),
+                            (3, &vkey),
+                            (4, &values),
+                        ]));
+                    }
+                }
             }
         }
         "c_ics23" => {
@@ -1172,6 +2035,31 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 }
                 f.extend(path);
                 out.push(input(&f));
+                if i == 0 {
+                    // Keep the valid proof, root and path but require it to
+                    // authenticate a different value.
+                    let wrong_value = b"different value";
+                    out.push(input(&[
+                        (1, &proof),
+                        (2, &root),
+                        (3, wrong_value),
+                        (4, b"ibc"),
+                        (4, k.as_bytes()),
+                    ]));
+                } else if i == 1 {
+                    // Keep the valid absence proof and path but verify it
+                    // against a different commitment root.
+                    let mut wrong_root = root.clone();
+                    if let Some(byte) = wrong_root.first_mut() {
+                        *byte ^= 1;
+                        out.push(input(&[
+                            (1, &proof),
+                            (2, &wrong_root),
+                            (4, b"ibc"),
+                            (4, k.as_bytes()),
+                        ]));
+                    }
+                }
             }
         }
         "c_secp256r1" => {
@@ -1198,6 +2086,8 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             }
         }
         "c_prop" => {
+            use ctypes::proto::propagation::message::Sum;
+
             let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../conformance/fixtures/consensus/propagation.json");
             let f: serde_json::Value = std::fs::read(&p)
@@ -1205,7 +2095,23 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                 .and_then(|b| serde_json::from_slice(&b).ok())
                 .unwrap_or_default();
             for msg in f["messages"].as_array().into_iter().flatten() {
-                out.push(input(&[(1, &hx(&msg["hex"]))]));
+                let bz = hx(&msg["hex"]);
+                out.push(input(&[(1, &bz)]));
+                let Ok(mut proto) = ctypes::gogo_decode::<ctypes::proto::propagation::Message>(&bz)
+                else {
+                    continue;
+                };
+                match proto.sum.as_mut() {
+                    Some(Sum::HaveParts(have)) => {
+                        have.parts.clear();
+                        out.push(input(&[(1, &proto.encode_to_vec())]));
+                    }
+                    Some(Sum::WantParts(want)) => {
+                        want.missing_parts_count = 0;
+                        out.push(input(&[(1, &proto.encode_to_vec())]));
+                    }
+                    _ => {}
+                }
             }
         }
         "c_partset" => {
@@ -1223,11 +2129,35 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
                     .filter_map(|i| ps.get_part(i))
                     .map(|p| p.to_proto().encode_to_vec())
                     .collect();
+                let derive_negative_seeds = out.is_empty();
                 let mut fields: Vec<(u64, &[u8])> = vec![(1, &hdr)];
                 for p in &parts {
                     fields.push((2, p));
                 }
                 out.push(input(&fields));
+                if derive_negative_seeds && let Some(part) = parts.first() {
+                    // The protobuf still decodes, but the 31-byte Merkle root
+                    // is not a valid part-set header hash.
+                    if let Ok(mut invalid_header) = pb::PartSetHeader::decode(hdr.as_slice()) {
+                        invalid_header.hash.pop();
+                        let invalid_header = invalid_header.encode_to_vec();
+                        out.push(input(&[(1, &invalid_header)]));
+                    }
+                    // A valid header with no parts is incomplete.
+                    out.push(input(&[(1, &hdr)]));
+                    // Adding the same valid part twice succeeds but reports
+                    // that the duplicate was not added.
+                    out.push(input(&[(1, &hdr), (2, part), (2, part)]));
+                    // The part still decodes and validates structurally, but
+                    // its retained proof no longer authenticates its bytes.
+                    if let Ok(mut corrupt) = pb::Part::decode(part.as_slice())
+                        && let Some(byte) = corrupt.bytes.first_mut()
+                    {
+                        *byte ^= 1;
+                        let corrupt = corrupt.encode_to_vec();
+                        out.push(input(&[(1, &hdr), (2, &corrupt)]));
+                    }
+                }
             }
         }
         _ => {}
@@ -1258,15 +2188,419 @@ fn collect_block_protos(v: &serde_json::Value, out: &mut Vec<Vec<u8>>) {
 mod tests {
     use super::*;
 
-    /// The `c_vblock` seeds are valid blocks for their states (otherwise
-    /// the op compares error paths only).
+    /// The recorded real transitions remain the positive majority after
+    /// deterministic validation-error seeds are added.
     #[test]
     fn vblock_seeds_validate() {
         let s = seeds("c_vblock");
-        assert!(s.len() >= 20, "{} seeds", s.len());
-        for (i, input) in s.iter().enumerate() {
-            let out = rust_out("c_vblock", input);
-            assert!(out.out.ends_with("validate=ok\n"), "seed {i}: {}", out.out);
+        assert_eq!(s.len(), 67);
+        let valid = s
+            .iter()
+            .filter(|input| rust_out("c_vblock", input).out.ends_with("validate=ok\n"))
+            .count();
+        assert_eq!(valid, 50);
+    }
+
+    #[test]
+    fn vblock_seeds_reach_initial_height_rules() {
+        let initial: Vec<_> = seeds("c_vblock")
+            .into_iter()
+            .filter(|seed| {
+                let Some(fields) = args(seed) else {
+                    return false;
+                };
+                ctypes::proto::state::State::decode(first(&fields, 1).unwrap_or_default())
+                    .is_ok_and(|state| state.last_block_height == 0)
+            })
+            .collect();
+        assert_eq!(initial.len(), 3);
+
+        let valid_fields = args(&initial[0]).unwrap();
+        let time_fields = args(&initial[2]).unwrap();
+        assert_eq!(
+            first(&valid_fields, 2),
+            first(&time_fields, 2),
+            "block changed"
+        );
+        assert_eq!(
+            first(&valid_fields, 3),
+            first(&time_fields, 3),
+            "wall clock changed"
+        );
+        let original =
+            ctypes::proto::state::State::decode(first(&valid_fields, 1).unwrap()).unwrap();
+        let mut changed =
+            ctypes::proto::state::State::decode(first(&time_fields, 1).unwrap()).unwrap();
+        let changed_time = Time::from_proto(changed.last_block_time.as_ref()).unwrap();
+        changed.last_block_time = original.last_block_time;
+        assert_eq!(changed, original, "state changed beyond genesis time");
+        let block = Block::decode(first(&valid_fields, 2).unwrap()).unwrap();
+        let block_time = block.header.time;
+
+        for app_version in [9, 10] {
+            let valid = crate::rust_out(app_version, "c_vblock", &initial[0]).out;
+            assert!(valid.ends_with("validate=ok\n"), "v{app_version}: {valid}");
+            let rejected = crate::rust_out(app_version, "c_vblock", &initial[1]).out;
+            assert!(
+                rejected.ends_with("validate=err:initial block can't have LastCommit signatures\n"),
+                "v{app_version}: {rejected}"
+            );
+            let wrong_time = crate::rust_out(app_version, "c_vblock", &initial[2]).out;
+            assert_eq!(
+                wrong_time,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block time {} is not equal to genesis time {}\n",
+                    block_time.go_string(),
+                    changed_time.go_string()
+                ),
+                "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn partset_seeds_reach_bad_header_incomplete_duplicate_and_bad_proof() {
+        let seeds = seeds("c_partset");
+        assert_eq!(seeds.len(), 84);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_partset", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nheader=err:wrong Hash: expected size to be 32 bytes, got 31 bytes"))
+                    .count(),
+                1,
+                "v{app_version}"
+            );
+            assert!(outputs.iter().any(|out| {
+                out.ends_with("complete=false\ncount=0\n") && !out.contains("part0_add=")
+            }));
+            assert!(outputs.iter().any(|out| {
+                out.contains("part1_add=ok\npart1_added=false\n")
+                    && out.ends_with("complete=true\ncount=1\n")
+            }));
+            assert!(outputs.iter().any(|out| {
+                out.contains("part0_add=err:")
+                    && out.contains("part0_added=false\n")
+                    && out.ends_with("complete=false\ncount=0\n")
+            }));
+        }
+    }
+
+    #[test]
+    fn ics23_seeds_reach_membership_and_non_membership_rejections() {
+        let seeds = seeds("c_ics23");
+        assert_eq!(seeds.len(), 42);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_ics23", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nverify=err:"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("unmarshal=ok\nverify_absence=err:"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nverify=ok\n")
+                    .count(),
+                27
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nverify_absence=ok\n")
+                    .count(),
+                13
+            );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_reach_state_and_block_mismatches() {
+        let seeds = seeds("c_vblock");
+        assert_eq!(seeds.len(), 67);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_vblock", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n")
+                    .count(),
+                50
+            );
+            for error in [
+                "wrong Block.Header.Version.",
+                "wrong Block.Header.ChainID.",
+                "wrong Block.Header.Height.",
+                "wrong Block.Header.LastBlockID.",
+                "wrong Block.Header.AppHash.",
+                "wrong Block.Header.ConsensusHash.",
+                "wrong Block.Header.LastResultsHash.",
+                "wrong Block.Header.ValidatorsHash.",
+                "wrong Block.Header.NextValidatorsHash.",
+            ] {
+                let matches = outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(&format!(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:{error}"
+                        ))
+                    })
+                    .count();
+                assert_eq!(matches, 1, "v{app_version}: {error}");
+            }
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block time ",
+                        ) && out.contains(" is too far in the future")
+                    })
+                    .count(),
+                1,
+                "v{app_version}: future time"
+            );
+            for error in [
+                "not greater than last block time",
+                "invalid block time. Expected ",
+            ] {
+                assert_eq!(
+                    outputs
+                        .iter()
+                        .filter(|out| {
+                            out.starts_with("unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:")
+                                && out.contains(error)
+                        })
+                        .count(),
+                    1,
+                    "v{app_version}: {error}"
+                );
+            }
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.starts_with(
+                            "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:block.Header.ProposerAddress ",
+                        ) && out.ends_with(" is not a validator\n")
+                    })
+                    .count(),
+                1,
+                "v{app_version}: proposer membership"
+            );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_reach_evidence_size_boundary() {
+        let mut boundary: Vec<_> = seeds("c_vblock")
+            .into_iter()
+            .filter_map(|seed| {
+                let fields = args(&seed)?;
+                let mut state = ctypes::proto::state::State::decode(first(&fields, 1)?).ok()?;
+                let block_bytes = first(&fields, 2)?.to_vec();
+                let block = Block::decode(&block_bytes).ok()?;
+                if block.evidence.evidence.is_empty() {
+                    return None;
+                }
+                let got = block.evidence.byte_size();
+                let params = ConsensusParams::from_proto(state.consensus_params.as_ref()?).ok()?;
+                params.validate_basic().ok()?;
+                let max = params.evidence.max_bytes;
+                state
+                    .consensus_params
+                    .as_mut()?
+                    .evidence
+                    .as_mut()?
+                    .max_bytes = 0;
+                Some((
+                    seed,
+                    state.encode_to_vec(),
+                    block_bytes,
+                    first(&fields, 3)?.to_vec(),
+                    max,
+                    got,
+                ))
+            })
+            .collect();
+        assert_eq!(boundary.len(), 2);
+        boundary.sort_by_key(|case| case.4);
+        assert_eq!(
+            boundary[0].1, boundary[1].1,
+            "states differ beyond MaxBytes"
+        );
+        assert_eq!(boundary[0].2, boundary[1].2, "block bytes differ");
+        assert_eq!(boundary[0].3, boundary[1].3, "wall clocks differ");
+        assert_eq!(boundary[0].5, boundary[1].5, "evidence sizes differ");
+        let got = boundary[0].5;
+        assert!(got > 0);
+        assert_eq!(boundary[0].4, got - 1);
+        assert_eq!(boundary[1].4, got);
+
+        for app_version in [9, 10] {
+            let rejected = crate::rust_out(app_version, "c_vblock", &boundary[0].0).out;
+            assert_eq!(
+                rejected,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:Too much evidence: Max {}, got {got}\n",
+                    got - 1
+                ),
+                "v{app_version}"
+            );
+            let accepted = crate::rust_out(app_version, "c_vblock", &boundary[1].0).out;
+            assert_eq!(
+                accepted, "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n",
+                "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn vblock_seeds_authenticate_last_commit() {
+        let seeds = seeds("c_vblock");
+        let pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let (Some(left), Some(right)) = (args(&pair[0]), args(&pair[1])) else {
+                    return false;
+                };
+                first(&left, 1) == first(&right, 1)
+                    && first(&left, 3) == first(&right, 3)
+                    && rust_out("c_vblock", &pair[0])
+                        .out
+                        .ends_with("validate=ok\n")
+                    && rust_out("c_vblock", &pair[1])
+                        .out
+                        .contains("validate=err:wrong signature (#0): ")
+            })
+            .collect();
+        assert_eq!(pairs.len(), 1);
+
+        let left = args(&pairs[0][0]).unwrap();
+        let right = args(&pairs[0][1]).unwrap();
+        let original = pb::Block::decode(first(&left, 2).unwrap()).unwrap();
+        let mut changed = pb::Block::decode(first(&right, 2).unwrap()).unwrap();
+        let original_commit = original.last_commit.as_ref().unwrap();
+        let changed_commit = changed.last_commit.as_ref().unwrap();
+        assert_eq!(original_commit.signatures.len(), 1);
+        assert_eq!(changed_commit.signatures.len(), 1);
+        assert_eq!(original_commit.signatures[0].signature.len(), 64);
+        assert_ne!(
+            original_commit.signatures[0].signature,
+            changed_commit.signatures[0].signature
+        );
+
+        changed.header.as_mut().unwrap().last_commit_hash =
+            original.header.as_ref().unwrap().last_commit_hash.clone();
+        changed.last_commit.as_mut().unwrap().signatures[0].signature =
+            original_commit.signatures[0].signature.clone();
+        assert_eq!(
+            changed, original,
+            "block changed beyond signature and commit hash"
+        );
+
+        let changed = Block::decode(first(&right, 2).unwrap()).unwrap();
+        let sig = &changed.last_commit.unwrap().signatures[0];
+        let detail = hex::encode_upper(&sig.signature);
+        for app_version in [9, 10] {
+            let original_out = crate::rust_out(app_version, "c_vblock", &pairs[0][0]).out;
+            assert_eq!(
+                original_out, "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=ok\n",
+                "v{app_version}"
+            );
+            let changed_out = crate::rust_out(app_version, "c_vblock", &pairs[0][1]).out;
+            assert_eq!(
+                changed_out,
+                format!(
+                    "unmarshal=ok\nstate=ok\nblock=ok\nvalidate=err:wrong signature (#0): {detail}\n"
+                ),
+                "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn groth16_seeds_reach_proof_rejection_with_valid_versioned_keys() {
+        let seeds = seeds("c_groth16");
+        assert_eq!(seeds.len(), 8);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_groth16", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.as_str() == "vk=ok\nverify=ok\n")
+                    .count(),
+                2
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("vk=ok\nverify=err:"))
+                    .count(),
+                2
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.starts_with("vk=err:"))
+                    .count(),
+                4
+            );
+        }
+    }
+
+    #[test]
+    fn propagation_seeds_reach_semantic_rejections() {
+        let seeds = seeds("c_prop");
+        assert_eq!(seeds.len(), 7);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_prop", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.contains("\nfrom_proto=ok\nvalidate=ok\n"))
+                    .count(),
+                5
+            );
+            for error in [
+                "HaveParts: Parts cannot be nil or empty",
+                "WantParts: MissingPartsCount cannot be negative or zero",
+            ] {
+                assert_eq!(
+                    outputs
+                        .iter()
+                        .filter(|out| {
+                            out.as_str() == format!("unmarshal=ok\nfrom_proto=err:{error}\n")
+                        })
+                        .count(),
+                    1
+                );
+            }
         }
     }
 
@@ -1280,5 +2614,538 @@ mod tests {
         assert_eq!(go_parse_int(b"+12"), 12);
         assert_eq!(go_parse_int(b"-"), 0);
         assert_eq!(go_parse_int(b"99999999999999999999x"), i64::MAX);
+    }
+
+    #[test]
+    fn go_parse_i32_like_go() {
+        assert_eq!(go_parse_i32(b"2147483647"), i32::MAX);
+        assert_eq!(go_parse_i32(b"2147483648"), i32::MAX);
+        assert_eq!(go_parse_i32(b"-2147483648"), i32::MIN);
+        assert_eq!(go_parse_i32(b"-2147483649"), i32::MIN);
+        assert_eq!(go_parse_i32(b"2147483648x"), 0);
+        assert_eq!(go_parse_i32(b"4294967296x"), i32::MAX);
+        assert_eq!(go_parse_i32(b"-4294967296x"), i32::MIN);
+        assert_eq!(go_parse_i32(b"+12"), 12);
+        assert_eq!(go_parse_i32(b"-"), 0);
+        assert_eq!(go_parse_i32(b"99999999999999999999x"), i32::MAX);
+    }
+
+    #[test]
+    fn go_parse_uint_like_go() {
+        assert_eq!(go_parse_uint(b"18446744073709551615"), u64::MAX);
+        assert_eq!(go_parse_uint(b"18446744073709551616"), u64::MAX);
+        assert_eq!(go_parse_uint(b"18446744073709551616x"), u64::MAX);
+        assert_eq!(go_parse_uint(b"+12"), 0);
+        assert_eq!(go_parse_uint(b"-1"), 0);
+        assert_eq!(go_parse_uint(b""), 0);
+    }
+
+    #[test]
+    fn valset_seeds_reach_proposer_priority_evolution() {
+        let seeds = seeds("c_valset");
+        assert!(seeds.len() >= 1_800, "{} seeds", seeds.len());
+        let times: std::collections::BTreeSet<Vec<u8>> = seeds
+            .iter()
+            .filter_map(|seed| args(seed).and_then(|fields| first(&fields, 3).map(<[u8]>::to_vec)))
+            .collect();
+        let expected: std::collections::BTreeSet<Vec<u8>> = ["-1", "0", "1", "2", "3", "4", "5"]
+            .into_iter()
+            .map(|s| s.as_bytes().to_vec())
+            .collect();
+        assert_eq!(times, expected);
+
+        for app_version in [9, 10] {
+            let base = seeds
+                .iter()
+                .find(|seed| {
+                    let fields = args(seed).unwrap();
+                    first(&fields, 3).is_none()
+                        && crate::rust_out(app_version, "c_valset", seed)
+                            .out
+                            .contains("\nupdate=ok\n")
+                })
+                .unwrap();
+            let fields = args(base).unwrap();
+            let mut bounded_fields: Vec<(u64, &[u8])> = vec![(1, first(&fields, 1).unwrap())];
+            for change in fields.get(&2).map(Vec::as_slice).unwrap_or_default() {
+                bounded_fields.push((2, change));
+            }
+            for raw in [&b"2147483647"[..], &b"4294967296x"[..]] {
+                bounded_fields.push((3, raw));
+                let bounded = crate::rust_out(app_version, "c_valset", &input(&bounded_fields)).out;
+                assert!(
+                    bounded.ends_with("increment=skip:times exceed 1024\n"),
+                    "v{app_version}: {bounded}"
+                );
+                bounded_fields.pop();
+            }
+
+            let mut evolved = false;
+            let mut rejected_non_positive = false;
+            for seed in &seeds {
+                let fields = args(seed).unwrap();
+                let Some(raw_times) = first(&fields, 3) else {
+                    continue;
+                };
+                let out = crate::rust_out(app_version, "c_valset", seed).out;
+                if raw_times == b"-1" || raw_times == b"0" {
+                    rejected_non_positive |= out.contains(
+                        "increment=err:Cannot call IncrementProposerPriority with non-positive times",
+                    );
+                    continue;
+                }
+                if !out.contains("\nincrement=ok\n") {
+                    continue;
+                }
+                let mut base_fields: Vec<(u64, &[u8])> = vec![(1, first(&fields, 1).unwrap())];
+                for change in fields.get(&2).map(Vec::as_slice).unwrap_or_default() {
+                    base_fields.push((2, change));
+                }
+                let base = crate::rust_out(app_version, "c_valset", &input(&base_fields)).out;
+                let priorities = |s: &str| {
+                    s.lines()
+                        .find_map(|line| line.strip_prefix("priorities="))
+                        .map(str::to_owned)
+                };
+                evolved |= priorities(&out).is_some() && priorities(&out) != priorities(&base);
+            }
+            assert!(evolved, "v{app_version} did not evolve priorities");
+            assert!(
+                rejected_non_positive,
+                "v{app_version} did not reject a seeded non-positive count"
+            );
+        }
+    }
+
+    #[test]
+    fn valset_seeds_reach_change_set_rejection_matrix() {
+        let seeds = seeds("c_valset");
+        assert_eq!(seeds.len(), 1_806);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_valset", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.contains("\nupdate=ok\n"))
+                    .count(),
+                1_800,
+                "v{app_version}"
+            );
+            let errors: Vec<&String> = outputs
+                .iter()
+                .filter(|out| out.contains("\nupdate=err:"))
+                .collect();
+            assert_eq!(errors.len(), 6, "v{app_version}: {errors:?}");
+            for expected in [
+                "duplicate entry ",
+                "voting power can't be negative: -1",
+                "to prevent clipping/overflow, voting power can't be higher than ",
+                "failed to find validator ",
+                "total voting power of resulting valset exceeds max ",
+                "applying the validator changes would result in empty set",
+            ] {
+                assert_eq!(
+                    errors.iter().filter(|out| out.contains(expected)).count(),
+                    1,
+                    "v{app_version}: {expected}: {errors:?}"
+                );
+            }
+            assert!(errors.iter().all(|out| out.contains("\nchange0=ok\n")));
+            assert!(
+                errors.iter().all(|out| out.contains("\nerror_state=")
+                    && out.ends_with("\nerror_unchanged=true\n"))
+            );
+        }
+    }
+
+    #[test]
+    fn valset_fingerprint_includes_proposer_priorities() {
+        let seed = seeds("c_valset").into_iter().next().expect("valset seed");
+        let fields = args(&seed).expect("seed fields");
+        let proto: pb::ValidatorSet = decode(first(&fields, 1)).expect("validator set proto");
+        let mut vals = ValidatorSet::from_proto(&proto).expect("validator set");
+        let hash = vals.hash();
+        let fingerprint = validator_set_fingerprint(&vals).expect("fingerprint");
+
+        vals.validators[0].proposer_priority = vals.validators[0].proposer_priority.wrapping_add(1);
+        assert_eq!(vals.hash(), hash);
+        assert_ne!(
+            validator_set_fingerprint(&vals).expect("changed fingerprint"),
+            fingerprint
+        );
+    }
+
+    #[test]
+    fn validator_update_seeds_reach_conversion_rejection() {
+        let seeds = seeds("c_valupd");
+        assert_eq!(seeds.len(), 301);
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_valupd", seed).out)
+                .collect();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("pb2tm=ok\n"))
+                    .count(),
+                300,
+                "v{app_version}"
+            );
+            assert_eq!(
+                outputs
+                    .iter()
+                    .filter(|out| {
+                        out.contains("update_unmarshal=ok\nvalidate=ok\n")
+                            && out.ends_with("pb2tm=err:validator update without pub key\n")
+                    })
+                    .count(),
+                1,
+                "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn commit_seeds_reach_recorded_trust_contexts() {
+        let seeds = seeds("c_commit");
+        assert!(seeds.len() >= 900);
+        for app_version in [9, 10] {
+            let outputs: Vec<(bool, String)> = seeds
+                .iter()
+                .map(|seed| {
+                    let fields = args(seed).unwrap();
+                    let distinct_trust_set = first(&fields, 2) != first(&fields, 6);
+                    (
+                        distinct_trust_set,
+                        crate::rust_out(app_version, "c_commit", seed).out,
+                    )
+                })
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .any(|(distinct, out)| { *distinct && out.contains("\ntrusting=ok\n") })
+            );
+            for error in [
+                "invalid commit -- insufficient voting power",
+                "double vote from Validator",
+                "trustLevel has zero Denominator",
+                "int64 overflow while calculating voting power needed",
+            ] {
+                assert!(
+                    outputs.iter().any(|(_, out)| {
+                        out.contains(&format!("\ntrusting=err:{error}"))
+                            || out.contains(&format!("\ntrusting_all=err:{error}"))
+                    }),
+                    "v{app_version} missing seeded trusting outcome: {error}"
+                );
+            }
+            assert!(outputs.iter().any(|(_, out)| {
+                out.contains("\ntrusting=ok\n")
+                    && out.contains("\ntrusting_all=err:invalid signature")
+            }));
+        }
+    }
+
+    #[test]
+    fn commit_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_commit");
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=8).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_commit", &replay_pairs[0][0]).out;
+            for field in ["verify", "light", "light_all", "trusting", "trusting_all"] {
+                assert!(
+                    original.contains(&format!("\n{field}=ok\n")),
+                    "v{app_version} original {field}: {original}"
+                );
+            }
+
+            let replay = crate::rust_out(app_version, "c_commit", &replay_pairs[0][1]).out;
+            assert!(
+                replay.contains("\nvalidate=ok\n"),
+                "v{app_version}: {replay}"
+            );
+            for field in ["verify", "light", "light_all", "trusting", "trusting_all"] {
+                assert!(
+                    replay.contains(&format!("\n{field}=err:wrong signature (#0): ")),
+                    "v{app_version} replay {field}: {replay}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn vote_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_vote");
+        assert_eq!(seeds.len(), 1_501);
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=3).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_vote", &replay_pairs[0][0]).out;
+            for field in ["verify", "verify_both", "verify_ext"] {
+                assert!(
+                    original.contains(&format!("\n{field}=ok\n")),
+                    "v{app_version}: {original}"
+                );
+            }
+            let replay = crate::rust_out(app_version, "c_vote", &replay_pairs[0][1]).out;
+            for field in ["verify", "verify_both", "verify_ext"] {
+                assert!(
+                    replay.contains(&format!("\n{field}=err:")),
+                    "v{app_version}: {replay}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn proposal_seeds_reject_cross_chain_replay() {
+        let seeds = seeds("c_proposal");
+        assert_eq!(seeds.len(), 401);
+        let replay_pairs: Vec<_> = seeds
+            .windows(2)
+            .filter(|pair| {
+                let Some(left) = args(&pair[0]) else {
+                    return false;
+                };
+                let Some(right) = args(&pair[1]) else {
+                    return false;
+                };
+                first(&left, 1) != first(&right, 1)
+                    && (2..=3).all(|field| first(&left, field) == first(&right, field))
+            })
+            .collect();
+        assert_eq!(replay_pairs.len(), 1);
+
+        for app_version in [9, 10] {
+            let original = crate::rust_out(app_version, "c_proposal", &replay_pairs[0][0]).out;
+            assert!(
+                original.contains("\nfrom_proto=ok\nvalidate=ok\n")
+                    && original.ends_with("verify=true\n"),
+                "v{app_version}: {original}"
+            );
+            let replay = crate::rust_out(app_version, "c_proposal", &replay_pairs[0][1]).out;
+            assert!(
+                replay.contains("\nfrom_proto=ok\nvalidate=ok\n")
+                    && replay.ends_with("verify=false\n"),
+                "v{app_version}: {replay}"
+            );
+        }
+    }
+
+    #[test]
+    fn commit_plus_prefixed_trust_denominator_matches_go_zero() {
+        let seeds = seeds("c_commit");
+        for app_version in [9, 10] {
+            let base = seeds
+                .iter()
+                .find(|seed| {
+                    crate::rust_out(app_version, "c_commit", seed)
+                        .out
+                        .contains("\ntrusting=ok\n")
+                })
+                .unwrap();
+            let fields = args(base).unwrap();
+            let plus_three = input(&[
+                (1, first(&fields, 1).unwrap()),
+                (2, first(&fields, 2).unwrap()),
+                (3, first(&fields, 3).unwrap()),
+                (4, first(&fields, 4).unwrap()),
+                (5, first(&fields, 5).unwrap()),
+                (6, first(&fields, 6).unwrap()),
+                (7, first(&fields, 7).unwrap()),
+                (8, b"+3"),
+            ]);
+            let out = crate::rust_out(app_version, "c_commit", &plus_three).out;
+            assert!(
+                out.contains("\ntrusting=err:trustLevel has zero Denominator\n"),
+                "v{app_version}: {out}"
+            );
+            assert!(
+                out.contains("\ntrusting_all=err:trustLevel has zero Denominator\n"),
+                "v{app_version}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn groth16_seeds_use_the_executing_app_version() {
+        let seeds = seeds("c_groth16");
+        assert_eq!(seeds.len(), 8);
+        for pair in seeds[..4].as_chunks::<2>().0 {
+            assert!(
+                crate::rust_out(10, "c_groth16", &pair[0])
+                    .out
+                    .ends_with("verify=ok\n")
+            );
+            assert!(
+                crate::rust_out(10, "c_groth16", &pair[1])
+                    .out
+                    .contains("\nverify=err:")
+            );
+        }
+        for pair in seeds[4..].as_chunks::<2>().0 {
+            assert!(
+                crate::rust_out(9, "c_groth16", &pair[0])
+                    .out
+                    .ends_with("verify=ok\n")
+            );
+            assert!(
+                crate::rust_out(9, "c_groth16", &pair[1])
+                    .out
+                    .contains("\nverify=err:")
+            );
+        }
+        assert_eq!(
+            crate::rust_out(9, "c_groth16", &seeds[0]).out,
+            "vk=err:groth16 vkey must be exactly 396 bytes, got 492\n"
+        );
+
+        sdk::version::set_app_version(10);
+        let _ = crate::rust_out(9, "c_groth16", &seeds[4]);
+        assert_eq!(sdk::version::app_version(), 10);
+    }
+
+    #[test]
+    fn propagation_want_parts_uses_the_executing_core_version() {
+        let input = hex::decode("0a161a140a0608461202082010071801200128ffffffff07").unwrap();
+        assert_eq!(
+            crate::rust_out(9, "c_prop", &input).out,
+            "unmarshal=ok\nfrom_proto=ok\nvalidate=ok\nparts=[3 69]\nfields=7/1/true/2147483647\n"
+        );
+        assert_eq!(
+            crate::rust_out(10, "c_prop", &input).out,
+            "unmarshal=ok\nfrom_proto=err:WantParts: MissingPartsCount 2147483647 exceeds parts bit array size 70\n"
+        );
+
+        let malformed = hex::decode("0a0b1a090a0508421201012801").unwrap();
+        let want = "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 66, and number of elements 1, expected 2 elements\n";
+        assert_eq!(crate::rust_out(9, "c_prop", &malformed).out, want);
+        assert_eq!(crate::rust_out(10, "c_prop", &malformed).out, want);
+
+        for (input, want) in [
+            (
+                "0a081a060a0208462801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 70, and number of elements 1, expected 2 elements\n",
+            ),
+            (
+                "0a111a0f0a0b08ffffffffffffffffff012801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits -1, and number of elements 1, expected 0 elements\n",
+            ),
+            (
+                "0a101a0e0a0a08ffffffffffffffff7f2801",
+                "unmarshal=ok\nfrom_proto=err:mismatch between specified number of bits 9223372036854775807, and number of elements 1, expected -144115188075855871 elements\n",
+            ),
+        ] {
+            let input = hex::decode(input).unwrap();
+            assert_eq!(crate::rust_out(9, "c_prop", &input).out, want);
+        }
+    }
+
+    #[test]
+    fn propagation_seeds_reach_compact_block_proofs() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_prop")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_prop", seed).out)
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .any(|out| out.lines().any(|line| line.starts_with("proofs=4:"))),
+                "v{app_version} lacks a successful compact-block proof seed"
+            );
+        }
+    }
+
+    #[test]
+    fn evidence_seeds_reach_duplicate_vote_verification() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_evidence")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_evidence", seed).out)
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("verify_duplicate=ok\n"))
+                    .count()
+                    >= 4
+            );
+            for error in [
+                "verifying VoteA: invalid signature",
+                "verifying VoteB: invalid signature",
+                "validator power from evidence and our validator set does not match",
+                "total voting power from the evidence and our validator set does not match",
+            ] {
+                assert!(
+                    outputs.iter().any(|out| out.contains(error)),
+                    "v{app_version} missing seeded verification outcome: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn evidence_seeds_reach_light_client_attack_verification() {
+        for app_version in [9, 10] {
+            let outputs: Vec<String> = seeds("c_evidence")
+                .iter()
+                .map(|seed| crate::rust_out(app_version, "c_evidence", seed).out)
+                .filter(|out| out.contains("verify_light="))
+                .collect();
+            assert!(
+                outputs
+                    .iter()
+                    .filter(|out| out.ends_with("verify_light=ok\n"))
+                    .count()
+                    >= 4
+            );
+            for error in [
+                "invalid commit from conflicting block: wrong signature",
+                "total voting power from the evidence and our validator set does not match",
+                "expected 4 byzantine validators from evidence but got 1",
+                "evidence contained unexpected byzantine validator power",
+                "evidence contained an unexpected byzantine validator address",
+            ] {
+                assert!(
+                    outputs
+                        .iter()
+                        .any(|out| out.contains(&format!("verify_light=err:{error}"))),
+                    "v{app_version} missing seeded verification outcome: {error}"
+                );
+            }
+        }
     }
 }

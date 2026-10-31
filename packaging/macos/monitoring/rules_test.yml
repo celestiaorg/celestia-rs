@@ -18,6 +18,13 @@ tests:
         values: '2x20 3x20'
       - series: 'celestia_rs_sign_refusals_total{network="mainnet"}'
         values: '2x40'
+      # mocha's staking jailed flag is unreadable; mainnet's is not jailed.
+      - series: 'celestia_rs_validator_signing_info_found{network="mocha"}'
+        values: '1x40'
+      - series: 'celestia_rs_validator_signing_info_found{network="mainnet"}'
+        values: '1x40'
+      - series: 'celestia_rs_validator_jailed{network="mainnet"}'
+        values: '0x40'
       - series: 'node_filesystem_avail_bytes{mountpoint="/System/Volumes/Data"}'
         values: '4x40'
       - series: 'node_filesystem_size_bytes{mountpoint="/System/Volumes/Data"}'
@@ -43,6 +50,14 @@ tests:
         exp_alerts:
           - exp_labels: {severity: critical, network: mocha}
             exp_annotations: {summary: "mocha: the double-sign guard refused to sign; check for a second signer (operator guide §11.11)"}
+      - eval_time: 10m
+        alertname: ValidatorJailedUnknown
+        exp_alerts:
+          - exp_labels: {severity: warning, network: mocha}
+            exp_annotations: {summary: "mocha: cannot tell whether the validator is jailed (valoper in nodes.conf? x/staking query failing?)"}
+      - eval_time: 10m
+        alertname: ValidatorJailed
+        exp_alerts: []
       - eval_time: 10m
         alertname: DiskSpaceCritical
         exp_alerts:

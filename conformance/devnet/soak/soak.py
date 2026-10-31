@@ -24,6 +24,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cosmostx as ctx  # noqa: E402
+import provider  # noqa: E402
 
 EMPTY_HASH = hashlib.sha256(b"").hexdigest().upper()
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -272,6 +273,7 @@ class Soak:
         self.hashes_f = None
         if a.resume:
             self.load_state()
+        self.provider = provider.Workload(self)
         self.seg_start = now()
         self.seg_t0 = self.elapsed()
 
@@ -289,6 +291,34 @@ class Soak:
     def fail(self, msg):
         self.failures.append(f"[t={self.elapsed():.0f}s h={self.max_height}] {msg}")
         self.event("FAIL", msg=msg)
+
+    def client_error(self, category, operation, error, nd, **context):
+        """Retain bounded first/latest diagnostics; every occurrence reaches events.log.
+
+        A client exception is evidence to investigate, not an attribution to a
+        node fault. Context contains public addresses and transaction hashes,
+        never account keys or signed transaction bodies.
+        """
+        kind = f"{type(error).__module__}.{type(error).__qualname__}"
+        sample = {
+            "t": round(self.elapsed(), 1), "h": self.max_height,
+            "node": nd.i if nd is not None else None,
+            "node_kind": nd.kind if nd is not None else None,
+            "endpoint": nd.url if nd is not None else None,
+            "category": category, "operation": operation,
+            "exception_type": kind, "message": str(error)[:4096],
+            "traceback": "".join(traceback.format_exception(error))[-8192:],
+            **context,
+        }
+        # Category/operation come from fixed workload call sites. Do not group
+        # by exception message, transaction, address, or node: those grow with
+        # the workload and would make persisted state unbounded.
+        key = f"{category}:{operation}"
+        summary = self.metrics.setdefault("client_errors", {}).setdefault(key, {"count": 0})
+        summary["count"] += 1
+        summary.setdefault("first", sample)
+        summary["last"] = sample
+        self.event("client-error", **sample)
 
     # ------------------------------------------------------------ persistence
     # A long soak runs in segments (`--resume` after the machine restarted
@@ -773,9 +803,11 @@ class Soak:
             h = hi + 1
             self.ref_checked = hi
 
-    def check_node(self, nd, limit=400):
+    def check_node(self, nd, limit=400, final=False):
         st = nd.status()
         if not st:
+            if final:
+                self.fail(f"node {nd.i} ({nd.kind}): status unavailable during final consistency pass")
             return
         top, base, _ = st
         upto = min(top, self.ref_checked)
@@ -783,11 +815,40 @@ class Soak:
         n = 0
         while h <= upto and n < limit:
             try:
-                c = get_json(f"{nd.url}/commit?height={h}")["result"]["signed_header"]
-            except Exception:
+                reply = get_json(f"{nd.url}/commit?height={h}")
+            except Exception as e:
+                if final:
+                    self.fail(f"node {nd.i} ({nd.kind}) height {h}: unreadable commit: {e}")
+                    break
                 return
-            got_hash = c["commit"]["block_id"]["hash"].upper()
-            got_app = c["header"]["app_hash"].upper()
+            try:
+                c = reply["result"]["signed_header"]
+            except (KeyError, TypeError) as e:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed signed_header fields: {e}")
+                break
+            # A node can expose the new tip through /status before the signed
+            # commit is available. Both Comet implementations transiently
+            # return a signed_header with a null commit in that window. Only
+            # that exact live-tip response is retryable; malformed, historical,
+            # and final-pass responses must fail closed.
+            if not isinstance(c, dict):
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed signed_header")
+                break
+            if "commit" not in c:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: missing commit field")
+                break
+            commit = c["commit"]
+            if commit is None and h == top and not final:
+                return
+            if not isinstance(commit, dict):
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed commit")
+                break
+            try:
+                got_hash = commit["block_id"]["hash"].upper()
+                got_app = c["header"]["app_hash"].upper()
+            except (KeyError, TypeError, AttributeError) as e:
+                self.fail(f"node {nd.i} ({nd.kind}) height {h}: malformed commit fields: {e}")
+                break
             r = self.ref_cache.get(h)
             if r is None:
                 nd.checked = h
@@ -798,6 +859,8 @@ class Soak:
             nd.checked = h
             h += 1
             n += 1
+        if final and nd.checked < upto:
+            self.fail(f"node {nd.i} ({nd.kind}): consistency coverage stopped at {nd.checked}, expected {upto}")
 
     def consistency_loop(self):
         while not self.stop.is_set():
@@ -901,11 +964,12 @@ class Soak:
             for k in keys:
                 if k.address in accs:
                     continue
+                nd = self.tx_node()
                 try:
-                    an, seq = ctx.query_account(self.tx_node().url, k.address)
+                    an, seq = ctx.query_account(nd.url, k.address)
                     accs[k.address] = [an, seq, now()]
-                except Exception:
-                    pass
+                except Exception as error:
+                    self.client_error("bank", "initial-account-query", error, nd, address=k.address)
             self.stop.wait(2)
         period = 1.0 / self.a.tx_rate
         nxt = now()
@@ -924,13 +988,21 @@ class Soak:
             # consecutive sequences meet the same check state; all nodes,
             # Go and Rust, receive load.
             nd = ups[((i - 1) % len(keys)) % len(ups)]
+            if self.provider.enabled and not self.provider.can_send(nd, k.address, acc):
+                self.stop.wait(0.1)
+                continue
             tx = ctx.sign_tx(k, self.chain_id, acc[0], acc[1], [ctx.msg_send(k.address, to, 1 + i % 997)], 120000, 3000)
+            sequence = acc[1]
             try:
-                r = ctx.broadcast(nd.url, tx, timeout=5)
+                r = (self.provider.broadcast(nd, tx, i - 1) if self.provider.enabled
+                     else ctx.broadcast(nd.url, tx, timeout=5))
                 code = int(r.get("code", 0))
                 if code == 0:
                     acc[1] += 1
                     m["ok"] += 1
+                    if self.provider.enabled:
+                        with self.pending_lock:
+                            self.pending_txs.append((hashlib.sha256(tx).hexdigest().upper(), "bank", now(), nd.i))
                 else:
                     rk = f"{code}@n{nd.i}"  # code and the node that rejected
                     m["rejected"][rk] = m["rejected"].get(rk, 0) + 1
@@ -938,8 +1010,18 @@ class Soak:
                     e = re.search(r"expected (\d+), got (\d+)", r.get("log", ""))
                     if code == 32 and e:
                         acc[1] = int(e.group(1))
-            except Exception:
+            except Exception as error:
                 m["errors"] += 1
+                if self.provider.enabled:
+                    self.provider.block(k.address, sequence)
+                self.client_error(
+                    "bank", "broadcast_tx_sync", error, nd,
+                    address=k.address, recipient=to, account_number=acc[0], sequence=sequence,
+                    tx_hash=hashlib.sha256(tx).hexdigest().upper(), tx_bytes=len(tx),
+                    timeout_s=provider.BROADCAST_TIMEOUT_S if self.provider.enabled else 5,
+                    process_timeout_s=provider.BROADCAST_PROCESS_TIMEOUT_S if self.provider.enabled else 5,
+                    transport=provider.TRANSPORTS[(i - 1) % len(provider.TRANSPORTS)] if self.provider.enabled else "jsonrpc",
+                )
             if now() - last_resync > 60:
                 last_resync = now()
                 # Txs lost with a killed node leave sequence gaps that CheckTx
@@ -952,8 +1034,8 @@ class Soak:
                         if accs[kk.address][1] - seq > 40:
                             accs[kk.address][1] = seq
                             m["resyncs"] += 1
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        self.client_error("bank", "account-resync", error, ref, address=kk.address)
             nxt += period
             d = nxt - now()
             if d > 0:
@@ -1997,6 +2079,8 @@ class Soak:
         self.save_state()
         work = [self.monitor_loop, self.consistency_loop, self.bank_loop, self.pfb_loop, self.staking_loop,
                 self.gov_loop]
+        if self.provider.enabled:
+            work.append(self.provider.loop)
         if self.a.long:
             work += [self.authz_loop, self.utf8_loop, self.hyperlane_loop]
         if self.a.mem_sample:
@@ -2034,8 +2118,9 @@ class Soak:
             self.fetch_ref(ref, rh - 1)
             for nd in self.nodes:
                 if nd is not ref:
-                    self.check_node(nd, limit=10**9)
+                    self.check_node(nd, limit=10**9, final=True)
         self.scan_logs()
+        self.provider.finalize()
         self.stop.set()
         self.done = True
         self.save_state()
@@ -2173,7 +2258,8 @@ class Soak:
                 "disk_mb": round(du(f"{nd.home}/data") / 2**20), "checked_upto": nd.checked,
                 "rss_lifetimes": growth,
             })
-        json.dump(rep, open(f"{self.dir}/report.json", "w"), indent=1)
+        with open(f"{self.dir}/report.json", "w") as report:
+            json.dump(rep, report, indent=1)
         md = [f"# Soak report ({'final' if final else 'interim'})", "",
               f"- wall clock: {rep['elapsed_s'] / 3600:.2f} h, heights: {rep['heights']}, txs: {self.blocks['txs']}, "
               f"max block {self.blocks['max_bytes'] / 2**20:.1f} MiB, blocks > 8 MiB: {self.blocks['over_8mb']}",
@@ -2184,17 +2270,22 @@ class Soak:
               f"- hyperlane: {self.metrics['hyperlane']}", f"- utf8: {self.metrics['utf8']}",
               f"- precommit-delay stops: {self.metrics['precommit_stop']}", f"- signing refusals: {self.metrics['sign_refusals']}",
               f"- WAL: {self.metrics['wal']}", f"- disk: {self.metrics['disk']}", f"- rss: {self.metrics['rss']}",
+              f"- provider APIs: {self.metrics.get('provider', {'enabled': False})}",
               f"- stalls: {rep['stalls']}", f"- proposed by node: {rep['proposed_by_node']}", "",
               "| node | kind | restarts | state syncs | max RSS MB | disk MB | RSS growth (MB/h per lifetime) |",
               "|---|---|---|---|---|---|---|"]
         for n in rep["nodes"]:
             md.append(f"| {n['node']} | {n['kind']}{' val' if n['validator'] else ''} | {n['restarts']} | {n['statesyncs']} | "
                       f"{n['max_rss_mb']} | {n['disk_mb']} | {', '.join(str(g['slope_mb_per_h']) for g in n['rss_lifetimes'])} |")
+        md += ["", "## Client exceptions", "", "See events.log for every occurrence; these samples do not attribute node faults.", ""]
+        for operation, samples in sorted(self.metrics.get("client_errors", {}).items()):
+            md += [f"### {operation}", "", "```json", json.dumps(samples, indent=2), "```", ""]
         md += ["", "## Failures", ""] + [f"- {f}" for f in self.failures] + ["", "## Chaos", ""]
         md += [f"- {json.dumps(c)}" for c in self.metrics["chaos"]]
         md += ["", "## Valset cycles", ""] + [f"- {json.dumps(c)}" for c in self.metrics["valset"]]
         md += ["", "## Rust log warnings/errors (top)", ""] + [f"- {v} x {k}" for k, v in rep["log_hits"].items()]
-        open(f"{self.dir}/report.md", "w").write("\n".join(md) + "\n")
+        with open(f"{self.dir}/report.md", "w") as report:
+            report.write("\n".join(md) + "\n")
 
 
 def parse_rfc3339(ts):

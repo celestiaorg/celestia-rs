@@ -62,7 +62,8 @@ for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting
   case $scen in *hyperlane* | *zkism*) hl=(DELIVER_HL=1) ;; esac
   run "deliver-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 "${hl[@]}" -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 1
-  run "govpass-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_SIM=1 "${hl[@]}" -- \
+  run "govpass-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_SIM=1 \
+    DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit "${hl[@]}" -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 2
   case $scen in ibc-edge | ibc-upgrades) ;; *)
     for mode in strings nil synth json; do

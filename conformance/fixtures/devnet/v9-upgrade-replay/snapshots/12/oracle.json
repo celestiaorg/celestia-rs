@@ -1,0 +1,15 @@
+{
+  "height": 12,
+  "producer": "v9.0.8",
+  "receiver": "v10.5.0",
+  "core": "v0.42.3",
+  "compiler": "go1.26.9",
+  "app_version": 10,
+  "app_hash": "7d8cf27e8db6b84e357d1147f30af6a0cf54d3e20a2a7c9cf147c60ff67f552f",
+  "offer_result": 1,
+  "apply_result": 2,
+  "snapshot_sha256": "16bde6a3b833b5630281361bde30b7e3cbb00e8eaa9eefe0471d7dd71cfdcaf5",
+  "chunk_sha256": "06957f9625df7ba22955e4ff7575c7fad7703f9f40416e2fe058865b8a338e8b",
+  "scope": "one complete snapshot chunk; fresh receiver per case; source app hash checked against recorded Go FinalizeBlock response",
+  "error": "multistore restore: version of store valaddr mismatch root store's version; expected 12 got 0; new stores should be added using StoreUpgrades"
+}

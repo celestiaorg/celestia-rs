@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "binary_sha256": "332dd420d7b42a4564427c73f4750010b934e0a8838df18a1ea63fbc8e72b8d9",
+  "binary_size": 40295800,
+  "compiler": "go version go1.26.9 linux/amd64",
+  "build_id": "ofuCovPPkTr856sHX8fQ/a1Ft-PCKcvRMjEK-eunG/tTuXXcfHz8gn_DMk__hh/oE8PCoZ1xMdLGZz35DZE",
+  "module": "github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder",
+  "build_info_sha256": "cfcbda3f063d945d6de06c246cf98e838b2d427073f44d0e70ebeecdf35f0753",
+  "rebuild_command": "cd conformance/rpccorpus/recorder && GOFLAGS=-mod=mod go build -o <output> .",
+  "source_sha256": {
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main_test.go": "98a5994238ae3a049818b28f962b1b9ec53d38acb46531c6f66def453053fd84",
+    "conformance/rpccorpus/recorder/cmd/populated-queries/main.go": "6c475e759039a34b85c83eaa06c6cf7e8e04e7c170e6fed6bab964321b2e686a",
+    "conformance/rpccorpus/recorder/cmd/populated-queries/main_test.go": "37b4f8a4b1d60634c7fc26c5d3373de8c20d283918db4359d1967638977a589b",
+    "conformance/rpccorpus/recorder/cmd/simulation-errors/main.go": "6b7ba3a7c7c2f474f8b43e54d0e014b52475b48dddd7fdc54644d74c522a89e9",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65",
+    "conformance/rpccorpus/recorder/main.go": "887a212fe7cb733f38db9e35e3ab8fef1713bb1611680f105b4e1097a6bf89fc",
+    "conformance/rpccorpus/recorder/record.go": "75bbb1e5977ae4e80a40fa606b1fbd0a66247e1ffa9b1fe7514ee25de9cfaa42",
+    "conformance/rpccorpus/recorder/validation.go": "5e21afa58bcedb962bda04084be5bad2f669b78bb132a1e1eff22777c29769c3"
+  }
+}

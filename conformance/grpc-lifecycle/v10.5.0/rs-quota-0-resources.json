@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "implementation": "rs",
+  "listener": "core",
+  "quota": 0,
+  "started_at": "2026-10-31T04:22:21.238723+00:00",
+  "completed_at": "2026-10-31T04:22:31.184879+00:00",
+  "poll_ms": 250,
+  "settle_ms": 2000,
+  "monitor": {
+    "python_version": "3.12.14",
+    "system": "Linux",
+    "kernel_release": "6.18.55",
+    "clock_ticks_per_second": 100,
+    "page_size": 4096
+  },
+  "process_identity": {
+    "initial": {
+      "pid": 348590,
+      "start_ticks": 10458442,
+      "executable_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252"
+    },
+    "final": {
+      "pid": 348590,
+      "start_ticks": 10458442,
+      "executable_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252"
+    }
+  },
+  "samples": [
+    {
+      "elapsed_ms": 0,
+      "rss_kib": 84748,
+      "threads": 15,
+      "fd_count": 44
+    },
+    {
+      "elapsed_ms": 345,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 595,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 845,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 1096,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 1346,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 1597,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 1847,
+      "rss_kib": 85060,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 2097,
+      "rss_kib": 85064,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 2348,
+      "rss_kib": 85260,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 2598,
+      "rss_kib": 85260,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 2849,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 3099,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 3349,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 3600,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 3852,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 4104,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 4361,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 4666,
+      "rss_kib": 85264,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 4918,
+      "rss_kib": 85440,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 5171,
+      "rss_kib": 85440,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 5423,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 5675,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 5928,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 6180,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 6432,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 6684,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 6940,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 7193,
+      "rss_kib": 85444,
+      "threads": 15,
+      "fd_count": 46
+    },
+    {
+      "elapsed_ms": 7446,
+      "rss_kib": 85664,
+      "threads": 15,
+      "fd_count": 45
+    },
+    {
+      "elapsed_ms": 7699,
+      "rss_kib": 85664,
+      "threads": 15,
+      "fd_count": 44
+    },
+    {
+      "elapsed_ms": 9945,
+      "rss_kib": 85820,
+      "threads": 15,
+      "fd_count": 44
+    }
+  ]
+}

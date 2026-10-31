@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "implementation": "go",
+  "endpoint": "127.0.0.1:32658",
+  "quota": 0,
+  "started_at": "2026-10-31T04:19:14.279094656Z",
+  "completed_at": "2026-10-31T04:19:21.727225118Z",
+  "input_sha256": {
+    "gzip-uncompressed-4194305-zero-bytes": "95e441ca65cd41fa01b2a71799e79fd60db59ed34f13af32a91e85f90378676c",
+    "ping-empty-protobuf": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "subscribe-empty-protobuf": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "saturation": {
+    "configured_quota": 0,
+    "opened": 4,
+    "concurrent_probe": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 1
+    },
+    "recovery_action": "none: zero is unlimited and the concurrent probe succeeded"
+  },
+  "cancellation": {
+    "first_response_hex": "080212205ff3019f534cb4fbfafe272dfa3820eda959136051725c47d55c724c1795f1e41a0c08c1d895d70610c7b6cfad03",
+    "first_height": 2,
+    "buffered_after_cancel_hex": null,
+    "cancel_code": 1,
+    "cancel_message": "context canceled",
+    "same_client_after_cancel": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 0
+    }
+  },
+  "slow_reader": {
+    "connections_opened": 2,
+    "connections": [
+      {
+        "first_response_hex": "08031220b548ae049720efbaa612c1856f429fae6a79008709de1b41f5e7a752ebb968e61a0c08c4d895d706108faacdef01",
+        "height": 3,
+        "wire": {
+          "client_bytes_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a00000004000000000000000004010000000000004d010400000001838645a46125aa42d949aa4af65645e6b2b22f768393ac3af231bad8d04b0d197497c6329a69d28f418b089d5c0b8170dc644e36f75f8b1d75d0620d263d4c4d656440027465864d833505b11f0000050001000000010000000000",
+          "server_frames": [
+            {
+              "phase": "setup",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 6,
+              "raw_hex": "000006040000000000000500004000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 1,
+              "stream_id": 0,
+              "length": 0,
+              "raw_hex": "000000040100000000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 8,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 4,
+              "raw_hex": "00000408000000000000000005"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 6,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 8,
+              "raw_hex": "00000806000000000002041010090e0707"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2598,
+              "type": 1,
+              "flags": 4,
+              "stream_id": 1,
+              "length": 14,
+              "raw_hex": "00000e010400000001885f8b1d75d0620d263d4c4d6564"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2598,
+              "type": 0,
+              "flags": 0,
+              "stream_id": 1,
+              "length": 55,
+              "raw_hex": "000037000000000001000000003208031220b548ae049720efbaa612c1856f429fae6a79008709de1b41f5e7a752ebb968e61a0c08c4d895d706108faacdef01"
+            }
+          ]
+        }
+      },
+      {
+        "first_response_hex": "08041220f6eeec5c2604c73657e67c585b6eaa26d8d40e5529455b15dd79e0c4ba773cac1a0b08c7d895d70610c089b131",
+        "height": 4,
+        "wire": {
+          "client_bytes_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a00000004000000000000000004010000000000004d010400000001838645a46125aa42d949aa4af65645e6b2b22f768393ac3af231bad8d04b0d197497c6329a69d28f418b089d5c0b8170dc644e36f75f8b1d75d0620d263d4c4d656440027465864d833505b11f0000050001000000010000000000",
+          "server_frames": [
+            {
+              "phase": "setup",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 6,
+              "raw_hex": "000006040000000000000500004000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 1,
+              "stream_id": 0,
+              "length": 0,
+              "raw_hex": "000000040100000000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 8,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 4,
+              "raw_hex": "00000408000000000000000005"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 6,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 8,
+              "raw_hex": "00000806000000000002041010090e0707"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2600,
+              "type": 1,
+              "flags": 4,
+              "stream_id": 1,
+              "length": 14,
+              "raw_hex": "00000e010400000001885f8b1d75d0620d263d4c4d6564"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2600,
+              "type": 0,
+              "flags": 0,
+              "stream_id": 1,
+              "length": 54,
+              "raw_hex": "000036000000000001000000003108041220f6eeec5c2604c73657e67c585b6eaa26d8d40e5529455b15dd79e0c4ba773cac1a0b08c7d895d70610c089b131"
+            }
+          ]
+        }
+      }
+    ],
+    "blocked": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 1
+    },
+    "recovered_after_close": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 0
+    },
+    "held_ms": 5201
+  },
+  "compression": {
+    "encoding": "gzip",
+    "uncompressed_len": 4194305,
+    "result": {
+      "code": 8,
+      "message": "grpc: received message after decompression larger than max 4194304",
+      "response_hex": "",
+      "headers": null,
+      "trailers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "elapsed_ms": 16
+    }
+  },
+  "notes": [
+    "all connections and request bodies are bounded and target explicit loopback addresses",
+    "quota zero is the Go compatibility unlimited sentinel; this campaign opens four simultaneous clients",
+    "each slow reader decodes one valid height response, then stops reading until its socket is closed"
+  ]
+}

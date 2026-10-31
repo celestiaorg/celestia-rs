@@ -5,6 +5,8 @@ here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12, B1) and thei
 progress notes are archived in
 [`docs/milestones-completed.md`](docs/milestones-completed.md). Direction
 and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
+Observation windows: [`ADR 0009`](docs/adr/0009-three-night-acceptance.md)
+(owner, 2026-10-28: three clean nights; three days for the mainnet soak).
 Blockers needing the owner: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
 **End state:** evidence sufficient to recommend Rust for Celestia mainnet's
@@ -105,20 +107,20 @@ Every item must pass on the commit the canary runs.
 
 - [ ] **C1.1 Mainnet full node through the v10 upgrade.** M13's mainnet
   full node (release build) at the tip across height 15,116,658 and then
-  at least **7 days** at v10, with every `check-apphash.sh` check and every
+  at least **3 days** at v10, with every `check-apphash.sh` check and every
   tx result matching. Partial F1.8 (c) and F1.5.
   *2026-10-20:* the Mac was offline across the upgrade height (M14), so
-  this is the catch-up through it, not a live crossing; the 7 days at v10
+  this is the catch-up through it, not a live crossing; the 3 days at v10
   count from when it is back at the tip.
   The upgrade height itself is covered by the HTTPS follow in M13
   (15,105,001 → 15,137,961, every height matching); C1.1 still needs the
-  Mac's P2P node at the tip for 7 days.
+  Mac's P2P node at the tip for 3 days.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
   `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
   v10.5.0 and v9.0.8, rotating scenarios with a new seed per night; a
-  mismatch fails the job. Exit: running, and clean for **7 consecutive
+  mismatch fails the job. Exit: running, and clean for **3 consecutive
   nights** before M14 starts.
   *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
   drives `crates/fuzz-diff/nightly.sh` over 12 jobs: pinned `deliver`
@@ -126,7 +128,7 @@ Every item must pass on the commit the canary runs.
   `exec` (mode per round), `pp`, six `deliver` shards and two
   `DELIVER_UPGRADE` shards, each looping new seeds and flag sets
   (`IBC`, `HL`, `WIRE`, `SWEEP`, `RECHECK`, `SIM`, `GOVPASS`) for 2 h. Its
-  first local smoke found findings 75-77 (fixed); the 7-night count starts
+  first local smoke found findings 75-77 (fixed); the 3-night count starts
   at the first clean night.
 
 - [ ] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
@@ -226,7 +228,7 @@ could commit a block Go rejects. F1 is sized for the second case ("would
 we let a large share of mainnet stake run this?"), not only for the
 first.
 
-### Where fuzzing stands (2026-10-16)
+### Historical fuzzing baseline (2026-10-16)
 
 Harnesses (details: `docs/security.md`, "Fuzzing"):
 
@@ -242,14 +244,22 @@ Harnesses (details: `docs/security.md`, "Fuzzing"):
 | cargo-fuzz (10 targets) | crashes only (p2p, ABCI, RPC, light client, decoders, square) | nightly (600 s each) | 6, 9, 10 |
 | Devnet replays, mixed Go + Rust soaks, `follow` on Mocha / mainnet | recorded and real blocks | CI / manual | 11, 26, 27, 35 + the four S3 bugs |
 
-The reason this is not yet enough: the strongest harness (`deliver`, the
-only one that signs, finalizes and compares app hashes on generated input)
-found ten splits in its **first and only** pass, so it is far from
-saturated; it and every other execution harness run only by hand; and
-whole areas (IBC with valid proofs, the v9→v10 upgrade, mainnet-sized
-state, the consensus layer, the Mac's aarch64 build) are not fuzzed at
-all. Findings 24 and 25 (address length, secp256k1 `r`/`s` reduction) were
-found by reading code, not by any harness.
+At that baseline, `deliver` found ten splits in its first pass and the
+execution harnesses ran only by hand. Findings 24 and 25 (address length,
+secp256k1 `r`/`s` reduction) came from code review. This table is historical;
+it does not describe the current scheduling or implemented harness paths.
+
+**Current state (2026-10-28):** `.github/workflows/fuzz-exec.yml` schedules
+`json_*`, consensus `c_*`, `exec`, `pp`, generated `deliver` and upgrade
+shards against pinned Go v10.5.0 / v9.0.8. `DELIVER_IBC` has a mock
+counterparty with signed headers and real ICS-23 proofs; signed Hyperlane
+message-ID and Merkle-root multisig delivery modes are implemented.
+`deliver` switches Go binaries across the v9 → v10.5 upgrade. The campaign,
+coverage and determinism evidence below records progress on earlier
+candidates. Production qualification still requires all exit criteria on
+one exact candidate, including volume, coverage, mainnet-shaped state,
+independent review and three consecutive clean nights. Green CI or a
+running canary does not establish that qualification.
 
 ### Remaining work and exit criteria
 
@@ -258,21 +268,21 @@ compared field. A finding resets the clock of the harness that found it:
 fix it, pin it in `crates/fuzz-diff/tests/regressions.jsonl` (or a unit
 test), then start that harness's count again.
 
-- [ ] **F1.1 Every differential harness in CI.** Nightly today runs only
-  the decode-level ops and cargo-fuzz. Add nightly jobs that build Go
-  `celestia-appd` v10.5.0 and v9.0.8 (as `conformance/devnet/devnet.sh`
-  does) and run `json_*`, `exec` (default, `nil`, `synth`, `json` modes),
-  `pp` and `deliver`, rotating over every devnet scenario and both app
-  versions with a new seed per night, and uploading findings like the
-  existing `fuzz-diff` job. Exit: all four run every night and a mismatch
-  fails the job.
+- [ ] **F1.1 Every differential harness in CI.** The execution workflow
+  and `crates/fuzz-diff/nightly.sh` implement the nightly `json_*`, `exec`
+  (default, `nil`, `synth`, `json`), `pp` and `deliver` rotation across both
+  app versions, with source metadata and finding artifacts; a mismatch
+  fails the job. The workflow also runs consensus-type differentials and
+  generated upgrade shards. Exit: all four execution harnesses run every
+  night on the qualifying candidate, both pinned Go versions and every
+  applicable devnet scenario are covered by the rotation, and a mismatch
+  fails the job. C1.2 / F1.2 retain the separate three-night requirement.
 
 - [ ] **F1.2 Saturate `deliver`.** Exit: after the last fix, at least
-  **1 000 000 finalized txs** (~100× today) across every scenario at both
+  **1 000 000 finalized txs** across every scenario at both
   app versions with no mismatch, **and** no new consensus finding from
-  any harness for **14 consecutive nightly runs**. Proposed numbers; the
-  owner may change them, but the second condition (finding rate has gone
-  to zero) is the one that matters.
+  any harness for **3 consecutive nightly runs** (owner, 2026-10-28;
+  ADR 0009). The finalized-tx requirement still applies separately.
   *Evidence tooling (2026-10-21):* nightly artifacts now retain clean
   outputs, exit codes, source revision / worktree state and finalized-tx
   counts (`DELIVER_STATS`); `crates/fuzz-diff/saturation-report.py`
@@ -282,13 +292,14 @@ test), then start that harness's count again.
   across 66 complete 300-block runs. Two additional recorded-upgrade
   scenarios intentionally stopped at the upgrade signal (167 finalized
   txs) and are excluded from the volume count as incomplete block runs.
-  The volume and 14-night requirements remain open.
+  The volume and 3-night requirements remain open.
 
-- [ ] **F1.3 Measure coverage of consensus code.** Today
-  `fuzz-diff coverage` only counts message types in the recorded
-  scenarios. Run `deliver` / `exec` / `pp` under `cargo llvm-cov` and
-  report line and branch coverage of tier-3 modules, `x-ante`, the tx
-  decoder, PrepareProposal / ProcessProposal and the multistore. Exit: a
+- [ ] **F1.3 Measure coverage of consensus code.** The recorded-message
+  inventory (`fuzz-diff coverage`) and instrumented campaigns below do
+  not yet establish complete per-error and branch coverage. Qualifying
+  `deliver` / `exec` / `pp` runs under `cargo llvm-cov` must report line
+  and branch coverage of tier-3 modules, `x-ante`, the tx decoder,
+  PrepareProposal / ProcessProposal and the multistore. Exit: a
   committed report (`docs/fuzz-coverage.md`) in which every registered
   `sdk.Msg` type has been executed by Go **successfully** and with each of
   its error codes in `deliver`, and every uncovered branch of a message
@@ -328,34 +339,187 @@ test), then start that harness's count again.
   pinned Go oracle. Rerunning the affected v9 `gov` seed with Go 1.26.9
   matched every compared field (150 blocks, 2,614 finalized txs); two
   isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
-  The full campaign is being rerun with the pinned compiler. The
-  coverage baseline still needs a full rerun with the new accounting.
+  C1.4 records subsequent pinned-compiler campaign results. The coverage
+  baseline still needs a full rerun with the new accounting.
 
-- [ ] **F1.4 IBC with valid proofs.** `deliver` builds IBC messages from
-  harvested `Any`s, so a new `MsgRecvPacket` / `MsgAcknowledgement` /
-  `MsgTimeout` / `MsgUpdateClient` fails at proof or header verification
-  before the transfer, PFM or ICA host code runs; those paths are covered
-  only by the recorded `ibc`, `ibc-edge`, `ibc-upgrades` fixtures and the
-  decode-only `json_*` ops. Mainnet carries IBC traffic every block. Add a
-  counterparty to the harness (the ibc-go testing package already used by
-  `conformance/ibcvectors`, or harness-held counterparty validator keys)
-  so fuzzed packets arrive with valid proofs: ICS-20 denoms / amounts /
-  receivers, PFM memos (forwards, retries, refunds, timeouts), ICA host
-  txs in both encodings, acks of every form, client updates with mutated
-  headers, misbehaviour, frozen and expired clients. Same for hyperlane:
-  `MsgProcessMessage` signed by harness-held multisig ISM validators.
-  Exit: F1.2's criteria for this harness too.
+- [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
+  already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
+  whose harness-held ed25519 validator signs headers committing to IAVL
+  stores. Real ICS-23 proofs reach client, connection and channel setup,
+  packet receive / acknowledgement / timeout, PFM and ICA host paths,
+  misbehaviour, client upgrades and channel upgrades / closes. It also
+  mutates proofs and packets; these paths are no longer restricted to
+  recorded fixtures or decode-only operations. See `docs/security.md`,
+  "Fuzzing", for the implemented sequence and its limits.
+  `DELIVER_HL_ISM=message-id|merkle-root` uses harness-held 2-of-3
+  validators and requires successful incoming collateral and synthetic
+  transfers, with explicit counts. PR #113's pinned v10.5.0 / v9.0.8
+  campaigns on `65e08e3` completed 400 generated blocks, 966 finalized
+  txs and 65 successful signed incoming transfers without a consensus
+  mismatch. PR #122 made ordinary signed upgrade campaigns fail unless both
+  kinds succeed before the v9 → v10 switch and records counts by app version. Its exact
+  pinned Merkle-root regression completed 100 blocks / 616 finalized txs
+  with v9 collateral 1 / synthetic 1 and v10 collateral 1. An exact-main
+  message-ID run on `374bb62` completed 300 blocks / 1,078 finalized txs
+  with v9 collateral 1 / synthetic 1 and v10 collateral 3 / synthetic 3.
+  Both runs had zero consensus mismatches or splits. These are bounded
+  candidate results, not saturation.
+  *Channel-upgrade follow-up (2026-10-29, PRs #140 and #141):* after a real
+  ICA host-channel upgrade opens, the mock now executes permissionless
+  acknowledgement / receipt pruning before starting another upgrade. Pinned
+  v9 and v10 300-block regressions reached five and six successful pruning
+  calls with zero mismatches. Celestia enables the ICA host without the
+  controller, so a successful `MsgChannelUpgradeAck` handshake is not
+  reachable: valid `FLUSHING` counterparty proofs reach the host callback,
+  which aborts the upgrade and returns code 0 with `FAILURE`. The regressions
+  attribute two v9 and three v10 executions only when that response and the
+  exact pending channel / sequence callback error occur in the same result.
+  This is negative-path coverage, not successful-handshake credit.
+  *Packet-forward follow-up (2026-10-29, PRs #147–#150):* separate opt-in
+  contracts now require the exact forwarded packet and delayed original
+  acknowledgement for downstream success and error, one exact timeout and
+  configured retry before downstream success, and the recorded retry's
+  timeout followed by PFM v8.2.0's exact max-retries error acknowledgement.
+  Each path passed pinned v9 and v10 300-block differentials with every
+  required event exactly once and zero mismatches. The error and exhaustion
+  contracts execute PFM's refundable unwind path; differential state equality
+  covers its effects, without a separate balance assertion. These are bounded
+  regressions, not volume or three-night qualification evidence.
+  *ICA encoding follow-up (2026-10-29):* an opt-in contract executes an exact
+  successful host packet under proto3, upgrades that real ICA channel to
+  proto3json, then requires the exact second packet's success acknowledgement.
+  Credit is tied to each full packet and its code-0 acknowledgement; scheduled
+  packets and channel-upgrade events alone do not count.
+  *Expired-client follow-up (2026-10-29):* an opt-in contract creates a
+  dedicated one-second Tendermint client while it is active, binds its ID to
+  the exact client type and consensus height, then submits a valid signed
+  update after expiration. Credit requires that exact client ID, `client/29`
+  and `Expired` status in the finalized rejection. Pinned v9 and v10
+  300-block differentials delivered 481 and 707 transactions, observed the
+  exact rejection once in each run and had zero mismatches or splits. This is
+  bounded negative-path coverage, not volume or three-night qualification.
+  *Frozen-client follow-up (2026-10-29):* an opt-in contract submits two
+  conflicting signed headers to the dedicated second Tendermint client and
+  waits for that exact client's `client_misbehaviour` event. It then builds a
+  fresh signed update from the retained trusted height and requires the exact
+  client ID, `client/29` and `Frozen` status in the finalized rejection. Core
+  checks the Frozen status before verifying the header, so this proves the
+  status gate and does not claim successful header verification. Pinned v9
+  and v10 300-block differentials delivered 546 / 639 transactions (223 / 314
+  code 0), confirmed the freeze and attributed the rejection exactly once in
+  each run, with zero mismatches or splits. This is bounded negative-path
+  coverage, not volume or three-night qualification.
+  *ICA application-error follow-up (2026-10-29):* an opt-in contract relays a
+  dedicated proto3 ICA host packet whose bank send exceeds the funded
+  interchain account balance. Credit requires the full exact packet and
+  ibc-go's canonical `ABCI code: 5` error acknowledgement in a code-0 outer
+  delivery, together with the same result's converted
+  `ibccallbackerror-ics27_packet` event identifying the host channel and
+  insufficient-funds cause. The packet payload and canonical acknowledgement
+  are exact; the callback module, host channel, failure status and error cause
+  are matched rather than accepting an arbitrary ICA error. Pinned v9 and v10
+  300-block differentials delivered 556 / 669 transactions (246 / 324 code
+  0), attributed this lifecycle exactly once in each run and had zero
+  mismatches or splits. This is bounded negative-path coverage, not volume or
+  three-night qualification.
+  Remaining work is to establish complete coverage and qualifying volume
+  across ICS-20 denoms / amounts / receivers, other acknowledgement forms and
+  ICA error classes, mutated headers, broader misbehaviour and other frozen
+  client operations, and signed Hyperlane verification paths. The exact PFM,
+  ICA, expired-client and frozen-client lifecycles above still need the same
+  exact-candidate saturation as the rest of this harness. Exit: F1.2's
+  exact-candidate volume and three-night criteria for this harness too, plus
+  F1.3's coverage accounting.
 
-- [ ] **F1.5 The v9 → v10 upgrade.** `exec`, `pp` and `deliver` do not
-  support `v9-upgrade` (the binary switch inside `Commit`); the upgrade
-  every mainnet Rust validator must execute exactly like Go's multiplexer
-  is covered by one recorded scenario. Exit: `deliver` across the upgrade
-  (Go switched from v9.0.8 to v10.x at the upgrade height, Rust in one
+- [ ] **F1.5 The v9 → v10 upgrade.** `deliver` supports `v9-upgrade` and
+  `v9-upgrade-boundary`, switching the pinned Go binary after the upgrade
+  commit while Rust continues in one process. `DELIVER_UPGRADE` builds
+  generated state before signalling and continues after the switch. The
+  C1.4 v10.5.0 campaign records twelve clean upgrade seeds; this is progress
+  toward the required 50 runs, not completion on a new candidate.
+  Exit: `deliver` across the upgrade (Go v9.0.8 → v10.5.0, Rust in one
   process), with fuzzed state built before it (pending unbondings and
   redelegations, open proposals, grants, allowances, vesting, IBC
   channels, hyperlane routes) and fuzzed txs after it, clean over at least
   50 upgrade runs with different seeds; and F1.6's mainnet-state rehearsal
   of the same upgrade.
+  *Persistent replay (2026-10-28, PR #108):* both recorded upgrade
+  scenarios reopen the real App at H−1, H and H+1 on RocksDB and redb
+  (12 cases), retaining Go app-hash / tx-result parity, app version and
+  store mount / commit timing. This tests orderly database reopen.
+  *Real-App node recovery (2026-10-28):* `upgrade_handshake` uses a new
+  `v9-upgrade-replay` fixture with 40 full Go blocks, seen commits and
+  matching ABCI responses (v9.0.8 → v10.5.0, core v0.42.3, Go 1.26.9).
+  On RocksDB and redb at H−1 / H / H+1, it reopens all databases after
+  either saving the block or committing the real App before consensus
+  state is saved (12 cases). Seen commits verify against the current
+  validators; reconstructed requests are passed unchanged and compared
+  with Go. Recovery must match uninterrupted state and continue through
+  the remaining blocks, including post-upgrade bank and reward txs.
+  Call counts distinguish real-App replay from stored-response recovery.
+  This is controlled close/reopen with synced writes.
+  *SIGKILL replay (2026-10-29, PR #123):* the same RocksDB / redb matrix
+  now also runs in child processes killed at H−1 / H / H+1, either after
+  the authenticated block-store write or after the real App commit returns
+  but before consensus state is saved (12 cases). The parent reopens all
+  databases, requires one-block recovery, matches the uninterrupted state,
+  App info and Go-authenticated consensus results, then executes every
+  remaining authentic block. This tests process death after completed
+  synced writes; interruption during a write and power-loss durability
+  remain outside this evidence.
+  *Persisted validator and parameter history (2026-10-29, PRs #131 and
+  #132):* the same authenticated matrix now includes the fixture's sole
+  validator update at H7, its pending H8 set and active H9 set as recovery
+  checkpoints, in addition to the H12 upgrade boundary. Both backends and
+  both controlled-close / SIGKILL modes compare
+  `LastHeightValidatorsChanged` and complete historical validator sets
+  through H+2 with an uninterrupted reference before continuing through
+  the upgrade. Every historical consensus-parameter record is loaded
+  through recovered H+1 and final H+1 and compared with the frozen genesis
+  and complete Go response bytes; the stored app version is 9 through H12
+  and 10 from H13.
+  The fixture emits complete parameters on every block, so this does not
+  test sparse `last_height_changed` backpointer reconstruction. A separate
+  pinned celestia-core v0.40.9 / v0.42.3 StateStore regression covers full
+  and sparse parameter records, close/reopen, pruning that retains a live
+  anchor and explicit missing-anchor failure on RocksDB and redb. That
+  synthetic store regression does not establish real-App sparse-update
+  recovery or close F1.
+  *Lagging and pruned App reopen (2026-10-29, PRs #133 and #134):* with
+  node/block/state stores at H20 and only the App rolled back to the
+  post-upgrade H13 state, both backends replay exactly H14–H20 through the
+  real App, compare every reconstructed `FinalizeBlock` request and
+  consensus result with the frozen Go fixture, retain the H20 consensus
+  state/history and then execute H21–H40. A separate
+  `min-retain-blocks = 5` case reaches block base 15 at H20, reopens with a
+  zero-block handshake and continues to H40 / base 35. It requires old
+  block bodies, parameters and per-height results to be gone. Unexpired
+  evidence headers/commits and retained parameters/results match the frozen
+  Go data; validator history matches the uninterrupted Rust reference.
+  These are orderly rollback/reopen and pruning paths on the devnet
+  fixture. They do not cover a crash during rollback/pruning,
+  expired-evidence pruning, cross-upgrade App rollback or power loss.
+  *Restored App checkpoint replay (2026-10-29, PR #137):* closed Rust App
+  databases produced by replaying authenticated Go blocks through H11
+  (app v9) and H12 (app v10) are paired with separately persisted node,
+  block and state stores at H20. Both backends require exactly nine real
+  block replays for H12–H20 and eight for H13–H20. Every reconstructed
+  `FinalizeBlock` request and consensus result matches the frozen Go fixture; H20 state
+  and history remain equal to the uninterrupted reference before authentic
+  execution continues through H40. This covers orderly checkpoint
+  pairing and reopen across the upgrade. The donor databases are not Go
+  database or snapshot imports, and this does not establish cross-upgrade
+  rollback-command parity, crash recovery or power-loss durability.
+  *Snapshot boundary (2026-10-28):* on the same fixture (H=12), pinned Go
+  v9.0.8 exports H, but v10.5.0 cannot export H after opening the upgraded
+  database (`fibre` has no version at H). A fresh Go v10 receiver accepts
+  the v9-produced H snapshot, then aborts restoration (`valaddr` version
+  0 versus H). The v10 H+1 export/restore control succeeds with the
+  recorded app hash. Frozen Go snapshots pin matching Rust outcomes on
+  both backends, including successful H+1 reopen and replay through the
+  remaining transactions. This is a shared exact-height limitation, not
+  evidence for a permissive restore change or completion of snapshot /
+  mainnet-state qualification. Reproduction: `conformance/devnet/README.md`.
   *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
   executed by `follow` with every app hash and tx result matching (M13).
 
@@ -369,12 +533,11 @@ test), then start that harness's count again.
   the v9 → v10 upgrade executed on that state with every store's root
   hash equal.
 
-- [ ] **F1.7 Consensus-layer differential.** fuzz-diff covers the
-  application; the celestia-core side (block, vote and evidence
-  validation) is fuzzed for crashes only, so a Rust validator that accepts
-  a proposal, block part, vote or evidence Go rejects (or the reverse)
-  would only be found on a live network. Add Go oracle ops built from
-  celestia-core v0.42.3 / v0.40.9 and compare under mutation:
+- [ ] **F1.7 Consensus-layer differential.** The consensus oracle ops
+  listed below already compare celestia-core behavior under mutation and
+  run in the nightly execution workflow. Qualification still needs the
+  required input volume after each op's last fix. Required scope against
+  pinned celestia-core v0.42.3 / v0.40.9:
   `ValidateBlock` and header validation, `LastCommit` / commit
   verification, vote and proposal signature checks, duplicate-vote and
   light-client-attack evidence verification, validator updates from
@@ -407,7 +570,227 @@ test), then start that harness's count again.
   `Data.hash` scan; the header's chain id), all fixed; the 5 031 inputs
   that differed before the fixes agree, 215 of them pinned in
   `tests/regressions.jsonl`. NMT proof verification has no caller in the
-  node (the data root is compared by `pp`). Open: the 10⁸ inputs per op.
+  node (the data root is compared by `pp`).
+  *Bounded current-target campaigns (2026-10-29):* clean exact-source runs
+  on `56faa0e` and `2319850` completed 200,120 inputs across eleven ops and
+  52,417 inputs across the other six, respectively, with zero mismatches
+  (the latter had 34,390 Go-accepted inputs). Together these exercise all
+  seventeen v0.42.3 ops but remain far below the 10⁸ inputs per op exit
+  criterion.
+  *Bounded historical-target campaign (2026-10-29):* `4409219` implements
+  the same seventeen operations against app v9.0.8 / celestia-core v0.40.9,
+  including its SP1 v5 fixtures, and schedules both core versions in the
+  nightly consensus job. A clean exact-source run completed 200,059 inputs
+  with zero mismatches. Its immutable pre-fix run on `0d289b8` found one
+  `c_prop` `WantParts` mismatch family (three occurrences): v0.40.9 accepts
+  a missing-part count that the two later v0.42.3 bounds reject. Exact Go
+  regressions now preserve that version difference, protobuf encoded-size
+  allocation, error order and signed overflow; production propagation is
+  unchanged. A final v0.42.3 guard run completed 50,043 inputs over all
+  seventeen operations with zero mismatches. These are bounded capability
+  checks, not F1.7 qualification: both versions remain far below 10⁸ inputs
+  per operation, and the exact-candidate, coverage and three-night gates are
+  still open.
+  *Fresh current-tree guard (2026-10-29):* both pinned Go oracles were rebuilt
+  from tree `b963791a` and each version ran all seventeen operations for
+  250,020 inputs. The v0.40.9 oracle accepted 172,059 inputs and v0.42.3
+  accepted 172,347; neither campaign found a mismatch. The qualification
+  manifests name pre-squash commit `fb5318e`; merged main `3ddeca2` has the
+  identical tree. This is one seed per version, averages about 14,700 inputs
+  per operation and provides no 10⁸-input or three-night qualification credit.
+  *Positive compact-block proof seed (2026-10-29):* a base-seed outcome audit
+  found that `c_prop`'s only compact block used unrelated original and parity
+  roots, so `Proofs` reached only its incorrect-root error. The propagation
+  vector generator now derives both roots from its four deterministic leaf
+  hashes, and a reachability test requires a successful four-proof result at
+  both app versions. Exact-source pinned v0.40.9 and v0.42.3 campaigns each
+  completed 200,069 `c_prop` inputs, of which Go accepted 137,065, with zero
+  mismatches. This closes only deterministic positive-seed reachability;
+  aggregate acceptance does not establish branch coverage, and the 10⁸-input,
+  exact-candidate and three-night gates remain open.
+  *Seed-outcome accounting (2026-10-29):* consensus campaigns now emit a
+  machine-readable `CONSENSUS_GO_SEED_OUTCOMES` record for the complete
+  unmutated Go seed replay before mutation. It counts inputs and oracle errors
+  per operation and classifies every returned field as success, error, false,
+  panic, skip or data. Initial pinned v0.40.9 and v0.42.3 reports covered all
+  seventeen operations with no seed-level oracle errors and confirmed the new
+  `c_prop` proof result as data. This distinguishes deterministic seed
+  reachability from the aggregate oracle-accept count; it does not establish
+  mutation branch coverage or close any volume or nightly gate.
+  *Negative part-set seeds (2026-10-29):* `c_partset` now deterministically
+  rejects a decodable header with a 31-byte Merkle root, reaches an incomplete
+  valid header-only set, keeps a duplicate valid part from being added twice,
+  and rejects a structurally valid part whose retained proof no longer
+  authenticates its modified bytes. Exact-source pinned v0.40.9 and v0.42.3
+  campaigns each completed 200,020 inputs with 136,428 Go accepts and zero
+  mismatches. Their seed reports agreed on all 84 inputs, including one header
+  error, two incomplete results, one proof error and one duplicate-part result.
+  This records negative-seed reachability only; the 10⁸-input, exact-candidate,
+  coverage and three-night gates remain open.
+  *Invalid ICS-23 proof seeds (2026-10-29):* `c_ics23` now keeps a valid
+  membership proof while changing its claimed value, and keeps a valid
+  non-membership proof while changing its commitment root. Pinned v0.40.9
+  and v0.42.3 campaigns each completed 200,106 inputs with zero mismatches.
+  Their seed reports agreed on all 42 inputs, including exactly one rejected
+  membership check and one rejected non-membership check. This records
+  deterministic verification-rejection reachability only; malformed-proof
+  coverage, the 10⁸-input, exact-candidate and three-night gates remain open.
+  *Invalid block-transition seeds (2026-10-29):* `c_vblock` now keeps a real
+  block decodable while changing the state's chain ID, and keeps a real state
+  decodable while moving its block one height ahead. The bounded pinned
+  v0.40.9 and v0.42.3 campaigns completed 118,578 and 119,602 inputs,
+  respectively, with zero mismatches. Both seed reports agreed on 48 valid
+  transitions and the two intended validation errors. This records
+  deterministic state/block mismatch reachability only; other validation
+  branches and the 10⁸-input, exact-candidate and three-night gates remain
+  open.
+  *State/header mismatch matrix (2026-10-29):* `c_vblock` now extends its
+  first real transition with isolated version, last-block ID, app hash,
+  consensus hash, last-results hash, current/next validator hash and future
+  wall-clock mismatches. Pinned v0.40.9 and v0.42.3 seed replays agree on all
+  58 decodable state/block pairs: 48 valid transitions and ten intended
+  validation errors including the earlier chain-ID and height cases. This
+  records deterministic comparison-branch reachability only; commit,
+  proposer, median-time, evidence and the broader qualification gates remain
+  open.
+  *Block-time consistency matrix (2026-10-29):* `c_vblock` now extends its
+  first successful real transition with two further isolated cases after
+  authentic LastCommit and proposer validation: a state whose last block time
+  equals the candidate block time, and a header one second later than the
+  LastCommit-derived median time. Pinned v0.40.9 and v0.42.3 campaigns each
+  completed 100,028 inputs with 70,796 Go accepts and zero mismatches. Their
+  seed reports agreed on all 60 decodable pairs: 48 valid transitions and 12
+  intended validation errors, including exactly one monotonic-time and one
+  median-time rejection. This records deterministic time-check reachability
+  and a bounded mutation campaign only; proposer/evidence branches and the
+  10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Proposer membership rejection (2026-10-29):* `c_vblock` now keeps the
+  first real transition's state, LastCommit, hashes, time and 20-byte address
+  shape while changing only the proposer address to one asserted absent from
+  the active validator set. Both pinned cores complete block/state conversion
+  and authentic LastCommit verification before returning the exact
+  `block.Header.ProposerAddress ... is not a validator` rejection. Pinned
+  v0.40.9 and v0.42.3 campaigns each completed 100,029 inputs with 70,746 Go
+  accepts and zero mismatches. Their seed reports agreed on all 61 decodable
+  pairs: 48 valid transitions and 13 intended validation errors. This records
+  deterministic proposer-membership reachability and a bounded mutation
+  campaign only; evidence branches and the 10⁸-input, exact-candidate,
+  coverage and three-night gates remain open.
+  *Initial-height block rules (2026-10-29):* `c_vblock` now pairs the first
+  recorded Go block with a height-zero state reconstructed from that block's
+  version, hashes, validators, parameters and genesis time. The original
+  transition succeeds. Its twin adds one structurally valid absent
+  `CommitSig`, updates the header's LastCommit hash and reaches the exact
+  `initial block can't have LastCommit signatures` rejection. Pinned v0.40.9
+  and v0.42.3 campaigns each completed 100,031 inputs with 70,642 Go accepts
+  and zero mismatches. Their seed reports agreed on all 63 decodable pairs:
+  49 successful transitions and 14 intended validation errors. This records
+  deterministic initial-height reachability and a bounded mutation campaign
+  only; other initial-height/evidence branches and the 10⁸-input,
+  exact-candidate, coverage and three-night gates remain open.
+  *Initial-height genesis time (2026-10-29):* `c_vblock` now twins the
+  successful initial transition by changing only the reconstructed state's
+  genesis time by one second. The authentic first block and wall clock remain
+  byte-identical, and both pinned cores reach the exact genesis-time equality
+  rejection after proposer validation. This is reconstructed-state validation
+  only; it does not independently replay `InitChain`, and the 10⁸-input,
+  exact-candidate, coverage and three-night gates remain open.
+  *Evidence byte-limit boundary (2026-10-29):* `c_vblock` now attaches one
+  structurally valid frozen duplicate-vote item to a successful real block,
+  recomputes the current header's evidence hash and compares otherwise
+  identical states whose evidence limits are the encoded evidence-list size
+  `S` and `S-1`. The `S` case succeeds and the `S-1` case reaches the exact
+  evidence-overflow rejection after the authentic LastCommit, proposer and
+  time checks. This is synthetic pure-`validateBlock` boundary coverage: the
+  frozen evidence belongs to its fixture chain, and the later evidence-pool
+  admissibility check is outside `c_vblock`. Full-block evidence acceptance,
+  the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *LastCommit authentication path (2026-10-29):* `c_vblock` now twins the
+  first successful noninitial real transition by changing one byte of its sole
+  commit signature and recomputing the header's LastCommit hash. The state,
+  wall clock and all other block bytes stay fixed. The twin remains
+  structurally valid, then reaches the exact `wrong signature (#0)` rejection
+  while authenticating the previous block's commit. This is deterministic
+  single-signature integration coverage only; batch verification and the
+  10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Invalid Groth16 proof seeds (2026-10-29):* each versioned positive SP1
+  fixture now has a twin whose proof body changes after its four-byte
+  verifier-key hash prefix, while its valid verifying key and public inputs
+  remain fixed. The bounded pinned v0.40.9 and v0.42.3
+  campaigns completed 29,576 and 29,064 inputs, respectively, with zero
+  mismatches. Both seed reports agreed on two successful and two rejected
+  proof checks for the executing app version, while the other version's four
+  key checks still reject. This records deterministic proof-rejection
+  reachability only; other mutations and the 10⁸-input, exact-candidate and
+  three-night gates remain open.
+  *Invalid propagation seeds (2026-10-29):* `c_prop` now derives an empty
+  `HaveParts` and a zero-missing-count `WantParts` from its valid fixtures.
+  Pinned v0.40.9 and v0.42.3 campaigns each completed 200,071 inputs with
+  zero mismatches. Their seed reports agreed on five successful conversions
+  and the two exact semantic conversion errors. This records deterministic
+  `from_proto` rejection reachability only; other propagation validation
+  branches and the 10⁸-input, exact-candidate and three-night gates remain
+  open.
+  *Validator-change rejection matrix (2026-10-29):* `c_valset` derives valid
+  recorded validator sets into duplicate update, negative and excessive
+  individual power, absent removal, total-power overflow and empty-set change
+  sets. Pinned v0.40.9 and v0.42.3 seed replays each decode all 1,806 inputs
+  and report exactly those six rejections while retaining 1,800 successful
+  updates. On every rejection, both oracles and Rust also compare a fingerprint
+  of the serialized validator set, total voting power and key-type homogeneity
+  before and after the failed update; it remains unchanged. A sensitivity
+  regression confirms that changing proposer priority changes the fingerprint
+  even though the consensus hash does not. This records rejection-branch
+  reachability plus serialized validator state and observed-cache preservation;
+  other private fields, validator-update branches and the 10⁸-input,
+  exact-candidate and three-night gates remain open.
+  *Validator-update conversion rejection (2026-10-29):* `c_valupd` now derives
+  one power-zero update without a public key. Both pinned cores allow it through
+  `validateValidatorUpdates`' deletion shortcut, then reject it during the
+  following `PB2TM.ValidatorUpdates` conversion. Pinned v0.40.9 and v0.42.3
+  campaigns each completed 200,109 inputs with 139,232 Go accepts and zero
+  mismatches. Their seed reports agreed on 301 inputs, including 151 successful
+  validations and exactly one conversion rejection while retaining 300
+  successful conversions. This records the conversion-rejection boundary only;
+  the 10⁸-input, exact-candidate, coverage and three-night gates remain open.
+  *Cross-chain commit replay rejection (2026-10-29):* `c_commit` now twins one
+  recorded commit for which full, light, light-all-signatures and both trusting
+  verifiers succeed. The twin preserves the validator sets, block ID, height,
+  commit bytes and trust level while changing only the supplied chain ID. Both
+  pinned cores keep conversion and `ValidateBasic` successful, then reject the
+  unchanged signatures in all five verifiers with the exact `wrong signature
+  (#0)` result. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,101
+  inputs with 69,113 Go accepts and zero mismatches. Their seed reports agreed
+  on all 901 inputs with no oracle errors. This records deterministic signature
+  domain separation and a bounded mutation campaign only; other commit branches
+  and the 10⁸-input, exact-candidate, coverage and three-night gates remain
+  open.
+  *Cross-chain vote replay rejection (2026-10-29):* `c_vote` now twins one
+  recorded vote for which the vote, combined vote-and-extension and extension
+  signature verifiers all succeed. The twin preserves the public key and vote
+  bytes while changing only the supplied chain ID; all three verifiers then
+  reject it. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,061
+  inputs with 68,605 Go accepts and zero mismatches. Their seed reports agreed
+  on all 1,501 inputs with no oracle errors, including 590 successful vote,
+  538 successful combined and 816 successful extension-verifier method
+  outcomes. The extension total includes inapplicable early returns for
+  prevotes and nil precommits; the derived non-nil precommit twin itself
+  reaches and fails all three signature checks. This records deterministic
+  vote signature domain separation and a bounded mutation campaign only;
+  other vote branches and the 10⁸-input, exact-candidate, coverage and
+  three-night gates remain open.
+  *Cross-chain proposal replay rejection (2026-10-29):* `c_proposal` now twins
+  one recorded proposal whose conversion, basic validation and signature
+  verification succeed. The twin preserves the public key and signed proposal
+  bytes while changing only the supplied chain ID. Both pinned cores keep
+  conversion and basic validation successful, then reject the unchanged
+  signature. Pinned v0.40.9 and v0.42.3 campaigns each completed 100,113
+  inputs with 68,572 Go accepts and zero mismatches. Their seed reports agreed
+  on all 401 inputs with no oracle errors, including 155 successful and 36
+  rejected signature checks. This records deterministic proposal signature
+  domain separation and a bounded mutation campaign only; other proposal
+  branches and the 10⁸-input, exact-candidate, coverage and three-night gates
+  remain open.
 
 - [ ] **F1.8 Replay all real traffic available.** `follow` matched ~20 200
   mainnet heights (14,894,001 → 14,914,200) and ~86 600 Mocha heights.
@@ -420,9 +803,11 @@ test), then start that harness's count again.
   *2026-10-20:* `follow` matched mainnet 15,105,001 → 15,137,961 (32,961
   heights, the last ~11,600 of the v9 era and ~21,300 at v10).
 
-- [ ] **F1.9 Determinism of the Rust binary.** The differentials run on
-  x86_64 Linux; the validator runs the `dist` build on aarch64 macOS, with
-  parallel erasure coding, a signature cache and background snapshots.
+- [ ] **F1.9 Determinism of the Rust binary.** C1.3 records Linux x86_64
+  and macOS aarch64 determinism runs on earlier candidates. The validator's
+  `dist` build uses parallel erasure coding, a signature cache and
+  background snapshots; qualification needs fresh evidence on its exact
+  candidate.
   Exit: `deliver` and `pp` clean on the Mac (or a `macos-14` runner) with
   the `dist` profile; the same seeds give byte-identical results under
   `RAYON_NUM_THREADS=1` and the default, with the signature cache on and

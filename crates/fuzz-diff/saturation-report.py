@@ -5,7 +5,7 @@ Usage: python3 crates/fuzz-diff/saturation-report.py <findings-dir> [...]
 Only successful, clean-worktree runs with zero consensus mismatches count.
 Identical scenario / seed / size / flags at one revision count once, even
 when artifacts are downloaded twice. This is volume evidence, not proof
-of the separate 14-night or scenario-coverage gates.
+of the separate 3-night or scenario-coverage gates.
 """
 
 import collections
@@ -91,7 +91,7 @@ def report(roots):
     print(f"\nCounted {len(runs)} unique clean runs; "
           f"{sum(st['delivered'] for st in runs.values())} finalized txs across all revisions.")
     print("Assess the F1.2 volume gate per revision, after the last fix; "
-          "this report does not establish 14 clean nights or complete scenario coverage.")
+          "this report does not establish 3 clean nights or complete scenario coverage.")
     print(f"Both Go oracles must have been built with {PINNED_GO}.")
     if excluded:
         print("Excluded: " + ", ".join(f"{n} {why}" for why, n in sorted(excluded.items())) + ".")

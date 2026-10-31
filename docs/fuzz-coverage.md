@@ -436,19 +436,46 @@ proposal (`GOV proposal_passed`), not per type.
   `cosmos.gov.v1.MsgExecLegacyContent`: celestia-app v9.0.8 and v10.4.0
   call `SetLegacyRouter(govv1beta1.NewRouter())` with no routes, so the
   submission fails `ErrNoProposalHandlerExists` (gov/9) for any content.
+  The legacy `MsgDeposit` handler remains reachable on v1 proposals.
+  GOVPASS runs requesting that type now pair v1 and v1beta1 deposits against
+  the same active proposals, and the pinned v9.0.8 and v10.5.0 40-block regressions require
+  at least one successful legacy deposit. They completed 13 and 11
+  successful legacy deposits respectively with zero consensus mismatches.
+  The table above predates that change and still needs a full regeneration.
+* **Production-disabled IBC paths:** `MsgChannelCloseInit` cannot succeed
+  through either route registered by celestia-app. Both the transfer and ICA
+  host callbacks unconditionally reject a local close; counterparty-initiated
+  `MsgChannelCloseConfirm` remains reachable. With
+  `DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE`, the mock requires the exact
+  transfer callback rejection on an open channel, then reuses and closes that
+  channel through the counterparty path to prove the failed callback left it
+  usable.
+  `DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient` waits for an
+  exactly attributed misbehaviour event on the mock's second Tendermint
+  client, then passes a recovery proposal using the compatible, newer active
+  main client. The requirement receives credit only when the proposal payload
+  executes, the matching block-scope recovery event is observed, and the
+  recovered subject accepts a subsequent signed client update.
 * **Harness gaps** (reachable on mainnet, to add):
-  the IBC channel messages that need a counterparty step the mock does
-  not take (`MsgChannelCloseInit` is refused by the transfer app, so only
-  an ICA channel can close; `MsgChannelUpgradeAck`,
-  `MsgPruneAcknowledgements`).
+  Successful `MsgChannelUpgradeAck` is not a
+  reachable handler path in celestia-app: it enables the ICA host but not
+  the controller, and the host rejects controller-side init / ack. A code-0
+  Ack with a failure response and error receipt does not establish a
+  successful handshake. The mock now supplies valid Ack proofs after Try and
+  requires the decoded code-0 FAILURE response plus the matching ICA host
+  callback error event, exercising that abort and error-receipt path without
+  granting handshake-success credit. It also
+  executes `MsgPruneAcknowledgements`
+  after a completed host-channel upgrade; pinned v9 and v10 300-block
+  regressions reached five and six successful executions with zero
+  mismatches. With `DELIVER_IBC_CONNECTION_CONFIRM`, a separate
+  counterparty-initiated connection supplies signed IAVL proofs for successful
+  `MsgConnectionOpenTry` and `MsgConnectionOpenConfirm`. The flow is opt-in, so
+  established fixed-seed IBC schedules remain unchanged when it is disabled.
+  The table above predates these changes and needs regeneration.
   `hyperlane.warp.v1.MsgUnrollRemoteRouter` now mostly targets a router
   enrolled on a token the signer owns (first Go success in a local
   `hyperlane` run, seed 4243, after this report).
-  `cosmos.gov.v1beta1.MsgDeposit` now mostly makes a small deposit on one
-  of the three newest proposals; three local `gov` runs (seeds 4244 and,
-  with `DELIVER_GOVPASS`, 4245) still had no success: the newest proposals
-  had mostly ended (`gov/3`), so it needs a proposal kept in its deposit
-  period (open).
 
 ## Status against the F1.3 exit
 

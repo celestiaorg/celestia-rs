@@ -22,6 +22,10 @@ pbjson-types = "0.7"
 prost = "0.13"
 serde_json = "1"
 
+[target.'cfg(unix)'.dependencies]
+# Safe fsync for directory handles (std uses F_FULLFSYNC on Apple).
+rustix = { version = "1", features = ["fs"] }
+
 [dev-dependencies]
 hash = { path = "../../tier-0-primitives/hash" }
 tempfile = "3"

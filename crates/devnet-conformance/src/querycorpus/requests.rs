@@ -22,15 +22,15 @@ use serde_json::{Value, json};
 use super::{page_response, with_page};
 
 /// A querier (the Go node over ABCI while recording).
-pub type Querier<'a> = &'a mut dyn FnMut(&RequestQuery) -> ResponseQuery;
+pub type Querier<'a> = &'a mut dyn FnMut(&RequestQuery) -> anyhow::Result<ResponseQuery>;
 
 /// Builds the request list.
 pub struct Builder<'a> {
     query: Querier<'a>,
-    /// Requests built so far.
-    pub reqs: Vec<RequestQuery>,
+    reqs: Vec<RequestQuery>,
     heights: Vec<i64>,
     last: i64,
+    error: Option<anyhow::Error>,
     seen: BTreeSet<(String, Vec<u8>, i64, bool)>,
 }
 
@@ -92,7 +92,32 @@ impl<'a> Builder<'a> {
             reqs: Vec::new(),
             heights,
             last,
+            error: None,
             seen: BTreeSet::new(),
+        }
+    }
+
+    /// Finishes discovery, rejecting the entire recording if any discovery
+    /// request failed. A lost connection must never shrink the request corpus
+    /// silently or become a fabricated successful query.
+    pub fn finish(self) -> anyhow::Result<Vec<RequestQuery>> {
+        match self.error {
+            Some(error) => Err(error),
+            None => Ok(self.reqs),
+        }
+    }
+
+    fn query(&mut self, req: &RequestQuery) -> Option<ResponseQuery> {
+        if self.error.is_some() {
+            return None;
+        }
+        match (self.query)(req) {
+            Ok(response) => Some(response),
+            Err(error) => {
+                self.error =
+                    Some(error.context(format!("discovering query corpus via {}", req.path)));
+                None
+            }
         }
     }
 
@@ -134,12 +159,14 @@ impl<'a> Builder<'a> {
     pub fn get(&mut self, path: &str, req: &Value) -> Value {
         let data = enc(path, req);
         self.push(path, data.clone(), 0, false);
-        let r = (self.query)(&RequestQuery {
+        let Some(r) = self.query(&RequestQuery {
             data,
             path: path.to_owned(),
             height: 0,
             prove: false,
-        });
+        }) else {
+            return Value::Null;
+        };
         if r.code != 0 {
             return Value::Null;
         }
@@ -197,12 +224,14 @@ impl<'a> Builder<'a> {
             let Some(d) = with_page(m.input, &base, &first) else {
                 return;
             };
-            let r = (self.query)(&RequestQuery {
+            let Some(r) = self.query(&RequestQuery {
                 data: d,
                 path: path.to_owned(),
                 height: 0,
                 prove: false,
-            });
+            }) else {
+                return;
+            };
             let Some(next) = page_response(m.output, &r.value).map(|p| p.next_key) else {
                 continue;
             };
@@ -495,12 +524,14 @@ impl<'a> Builder<'a> {
             };
             let path = format!("{svc}TxDecode");
             self.push(&path, dreq.encode_to_vec(), 0, false);
-            let r = (self.query)(&RequestQuery {
+            let Some(r) = self.query(&RequestQuery {
                 data: dreq.encode_to_vec(),
                 path,
                 height: 0,
                 prove: false,
-            });
+            }) else {
+                return;
+            };
             if let Ok(d) =
                 celestia_proto::cosmos::tx::v1beta1::TxDecodeResponse::decode(r.value.as_slice())
             {
@@ -1462,4 +1493,29 @@ impl<'a> Builder<'a> {
 
 fn sdk_bech32(prefix: &str, bz: &[u8]) -> String {
     encoding::bech32::encode(prefix, bz).unwrap_or_default()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod discovery_tests {
+    use super::*;
+
+    #[test]
+    fn discovery_error_prevents_emitting_a_partial_corpus() {
+        let mut calls = 0;
+        let mut query = |_: &RequestQuery| {
+            calls += 1;
+            anyhow::bail!("oracle connection lost")
+        };
+        let mut builder = Builder::new(&mut query, 20);
+        for _ in 0..2 {
+            assert_eq!(
+                builder.get("/cosmos.bank.v1beta1.Query/TotalSupply", &json!({})),
+                Value::Null
+            );
+        }
+        let err = builder.finish().unwrap_err();
+        assert!(format!("{err:#}").contains("oracle connection lost"));
+        assert_eq!(calls, 1, "stop using a failed oracle connection");
+    }
 }

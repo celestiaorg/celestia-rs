@@ -62,6 +62,8 @@ pub fn handles(path: &str) -> bool {
 struct Env<'a> {
     app: &'a AbciApp,
     height: i64,
+    /// Whether the caller omitted the query height and asked for latest state.
+    latest: bool,
 }
 
 impl Env<'_> {
@@ -85,7 +87,8 @@ fn dispatch(env: &Env<'_>, path: &str, data: &[u8]) -> QResult<Vec<u8>> {
         }
         ("cosmos.base.tendermint.v1beta1.Service", "GetSyncing") => get_syncing()?.encode_to_vec(),
         ("cosmos.base.tendermint.v1beta1.Service", "GetLatestBlock") => {
-            get_latest_block()?.encode_to_vec()
+            let height = env.latest.then_some(env.height);
+            get_latest_block(height)?.encode_to_vec()
         }
         ("cosmos.base.tendermint.v1beta1.Service", "GetBlockByHeight") => {
             get_block_by_height(decode(data)?)?.encode_to_vec()
@@ -125,6 +128,7 @@ fn dispatch(env: &Env<'_>, path: &str, data: &[u8]) -> QResult<Vec<u8>> {
 
 /// The gRPC path: `CreateQueryContext(height)` under the lock, then the
 /// handler without it. `None` for other methods.
+#[must_use]
 pub fn grpc_query(
     app: &AbciApp,
     path: &str,
@@ -134,6 +138,7 @@ pub fn grpc_query(
     if !handles(path) {
         return None;
     }
+    let latest = height == 0;
     let h = match app.with_app(|a| {
         a.create_query_context(height, false)
             .map(|s| s.header.height)
@@ -147,11 +152,15 @@ pub fn grpc_query(
         Some(Err(e)) => return Some(Err(GrpcQueryError::Context(e))),
         Some(Ok(h)) => h,
     };
-    let env = Env { app, height: h };
+    let env = Env {
+        app,
+        height: h,
+        latest,
+    };
     Some(
         dispatch(&env, path, data)
             .map(|v| (v, h))
-            .map_err(GrpcQueryError::Handler),
+            .map_err(|error| GrpcQueryError::handler_at_height(error, h)),
     )
 }
 
@@ -162,6 +171,7 @@ pub fn abci_query(app: &AbciApp, req: &RequestQuery) -> Option<ResponseQuery> {
     if !handles(&req.path) || req.path == "/cosmos.tx.v1beta1.Service/BroadcastTx" {
         return None;
     }
+    let latest = req.height == 0;
     let (height, ctx) = app.with_app(|a| {
         let h = if req.height == 0 {
             a.last_block_height()
@@ -173,7 +183,11 @@ pub fn abci_query(app: &AbciApp, req: &RequestQuery) -> Option<ResponseQuery> {
     if let Err(e) = ctx {
         return Some(crate::query::query_result(&e));
     }
-    let env = Env { app, height };
+    let env = Env {
+        app,
+        height,
+        latest,
+    };
     Some(match dispatch(&env, &req.path, &req.data) {
         Ok(value) => ResponseQuery {
             height,
@@ -295,7 +309,7 @@ fn get_node_info() -> QResult<cmt::GetNodeInfoResponse> {
                 .get()
                 .cloned()
                 .unwrap_or_else(|| cmt::VersionInfo {
-                    name: "celestia-app".into(),
+                    name: crate::APPLICATION_NAME.into(),
                     app_name: "celestia-rs".into(),
                     version: env!("CARGO_PKG_VERSION").into(),
                     ..cmt::VersionInfo::default()
@@ -311,7 +325,7 @@ static BUILD_INFO: std::sync::OnceLock<cmt::VersionInfo> = std::sync::OnceLock::
 /// toolchain for `GetNodeInfo` (Go's `version.NewInfo()` fields).
 pub fn set_build_info(version: &str, git_commit: &str, build_tags: &str, toolchain: &str) {
     let _ = BUILD_INFO.set(cmt::VersionInfo {
-        name: "celestia-app".into(),
+        name: crate::APPLICATION_NAME.into(),
         app_name: "celestia-rs".into(),
         version: version.into(),
         git_commit: git_commit.into(),
@@ -321,8 +335,22 @@ pub fn set_build_info(version: &str, git_commit: &str, build_tags: &str, toolcha
     });
 }
 
-fn get_latest_block() -> QResult<cmt::GetLatestBlockResponse> {
-    let (id, block) = block_at(None)?;
+fn get_latest_block(height: Option<i64>) -> QResult<cmt::GetLatestBlockResponse> {
+    get_latest_block_with(height, block_at)
+}
+
+fn get_latest_block_with(
+    height: Option<i64>,
+    load: impl FnOnce(Option<i64>) -> QResult<(tpb::BlockId, tpb::Block)>,
+) -> QResult<cmt::GetLatestBlockResponse> {
+    // The SDK query height and Comet tip advance independently while a block
+    // commits. Go asks Comet for an unqualified latest block, but doing that
+    // here can expose the next tip before the application query has advanced.
+    // For a default-height query, bind the response to the stable application
+    // height reported in the same response metadata. Explicit historical
+    // queries preserve Go's unqualified latest-block lookup, including its
+    // distinct response height. Malformed stored data still fails unchanged.
+    let (id, block) = load(height)?;
     Ok(cmt::GetLatestBlockResponse {
         sdk_block: Some(sdk_block(&block)),
         block_id: Some(id),
@@ -1118,4 +1146,94 @@ fn estimate_gas_price_and_usage(
         estimated_gas_price: price,
         estimated_gas_used: (gas.gas_used as f64 * GAS_MULTIPLIER).round() as u64,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_latest_block_is_bound_to_application_query_height() {
+        let response = get_latest_block_with(Some(101), |height| {
+            assert_eq!(height, Some(101));
+            Ok((
+                tpb::BlockId::default(),
+                tpb::Block {
+                    header: Some(tpb::Header {
+                        height: 101,
+                        ..tpb::Header::default()
+                    }),
+                    ..tpb::Block::default()
+                },
+            ))
+        })
+        .expect("build latest block response");
+
+        assert_eq!(
+            response
+                .block
+                .expect("Comet block")
+                .header
+                .expect("header")
+                .height,
+            101
+        );
+        assert_eq!(
+            response
+                .sdk_block
+                .expect("SDK block")
+                .header
+                .expect("header")
+                .height,
+            101
+        );
+    }
+
+    #[test]
+    fn historical_latest_block_preserves_unqualified_go_lookup() {
+        let response = get_latest_block_with(None, |height| {
+            assert_eq!(height, None);
+            Ok((
+                tpb::BlockId::default(),
+                tpb::Block {
+                    header: Some(tpb::Header {
+                        height: 102,
+                        ..tpb::Header::default()
+                    }),
+                    ..tpb::Block::default()
+                },
+            ))
+        })
+        .expect("build historical latest block response");
+
+        assert_eq!(
+            response
+                .block
+                .expect("Comet block")
+                .header
+                .expect("header")
+                .height,
+            102
+        );
+        assert_eq!(
+            response
+                .sdk_block
+                .expect("SDK block")
+                .header
+                .expect("header")
+                .height,
+            102
+        );
+    }
+
+    #[test]
+    fn latest_block_preserves_comet_errors() {
+        let error = get_latest_block_with(Some(101), |height| {
+            assert_eq!(height, Some(101));
+            Err(QueryError::Plain("invalid time".into()))
+        })
+        .expect_err("malformed Comet block must fail");
+
+        assert_eq!(error.go_error_string(), "invalid time");
+    }
 }

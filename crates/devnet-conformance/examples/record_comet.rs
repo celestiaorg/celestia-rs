@@ -14,7 +14,9 @@ use std::net::{TcpListener, TcpStream};
 
 use base64::Engine as _;
 use celestia_proto::celestia_core_proto::abci::RequestQuery;
-use devnet_conformance::querycorpus::net::{http_get, query, spawn_recording_proxy};
+use devnet_conformance::querycorpus::net::{
+    http_get, query, query_response, spawn_recording_proxy,
+};
 use devnet_conformance::querycorpus::{
     AbciCase, AbciResponse, Corpus, RestCase, requests::Builder, rest_url,
 };
@@ -61,24 +63,24 @@ fn main() -> anyhow::Result<()> {
     eprintln!("chain at height {last}, {} blocks with txs", blocks.len());
     let mut qs = TcpStream::connect(addr.as_str())?;
     qs.set_nodelay(true)?;
-    let mut querier = |req: &RequestQuery| query(&mut qs, req).unwrap_or_default();
+    let mut querier = |req: &RequestQuery| query(&mut qs, req);
     // The node keeps producing blocks: every request names a committed
     // height so the replayed Rust app answers from the same state.
     let at = last - 1;
     let mut b = Builder::new(&mut querier, at);
     b.comet(&blocks, at);
-    let reqs = std::mem::take(&mut b.reqs);
-    drop(b);
+    let reqs = b.finish()?;
     eprintln!("{} ABCI requests", reqs.len());
     let mut abci = Vec::with_capacity(reqs.len());
     for req in &reqs {
-        let resp = querier(req);
+        let resp = query_response(&mut qs, req)?;
         abci.push(AbciCase {
             path: req.path.clone(),
             data: hex::encode(&req.data),
             height: req.height,
             prove: req.prove,
-            response: AbciResponse::from(&resp),
+            missing_response: resp.is_none(),
+            response: resp.as_ref().map(AbciResponse::from).unwrap_or_default(),
         });
     }
     let mut rest = Vec::new();

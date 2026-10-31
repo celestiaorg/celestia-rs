@@ -12,11 +12,14 @@ package main
 //	c_proposal  1 chain id, 2 crypto.PublicKey, 3 Proposal
 //	c_header    1 Header
 //	c_block     1 Block
-//	c_commit    1 chain id, 2 ValidatorSet, 3 BlockID, 4 height (decimal), 5 Commit
-//	c_valset    1 ValidatorSet, 2.. Validator (the change set)
+//	c_commit    1 chain id, 2 ValidatorSet, 3 BlockID, 4 height (decimal), 5 Commit,
+//	            6 trust ValidatorSet, 7 trust numerator, 8 trust denominator (optional)
+//	c_valset    1 ValidatorSet, 2.. Validator (the change set),
+//	            3 proposer-priority increments (decimal, optional)
 //	c_valupd    1 ConsensusParams, 2.. abci.ValidatorUpdate
 //	c_params    1 ConsensusParams, 2 ConsensusParams (update, optional), 3 height
-//	c_evidence  1 chain id, 2 ValidatorSet (optional), 3 Evidence
+//	c_evidence  1 chain id, 2 ValidatorSet (optional), 3 Evidence,
+//	            4 common SignedHeader, 5 trusted SignedHeader (LCA optional)
 //	c_partset   1 PartSetHeader, 2.. Part
 //	c_ed25519   1 public key, 2 message, 3 signature
 //	c_secp256k1 1 public key (33 bytes), 2 message, 3 signature
@@ -63,6 +66,19 @@ import (
 func init() { gnarklogger.Disable() }
 
 func h(b []byte) string { return hex.EncodeToString(b) }
+
+func validatorSetFingerprint(vals *types.ValidatorSet) (string, error) {
+	pb, err := vals.ToProto()
+	if err != nil {
+		return "", err
+	}
+	bz, err := pb.Marshal()
+	if err != nil {
+		return "", err
+	}
+	return h(bz) + ":" + strconv.FormatInt(vals.TotalVotingPower(), 10) + ":" +
+		strconv.FormatBool(vals.AllKeysHaveSameType()), nil
+}
 
 // cargs splits the op input into its fields (field number -> values).
 func cargs(in []byte) (map[protowire.Number][][]byte, error) {
@@ -251,9 +267,30 @@ func consensusOp(op string, in []byte) (o out) {
 		c.run("verify", func() error { return vals.VerifyCommit(chainID, *bid, height, cm) })
 		c.run("light", func() error { return vals.VerifyCommitLight(chainID, *bid, height, cm) })
 		c.run("light_all", func() error { return vals.VerifyCommitLightAllSignatures(chainID, *bid, height, cm) })
-		tl := cmtmath.Fraction{Numerator: 1, Denominator: 3}
-		c.run("trusting", func() error { return vals.VerifyCommitLightTrusting(chainID, cm, tl) })
-		c.run("trusting_all", func() error { return vals.VerifyCommitLightTrustingAllSignatures(chainID, cm, tl) })
+		trustVals := vals
+		if b := first(m, 6); b != nil {
+			var pTrust cmtproto.ValidatorSet
+			if !c.run("trust_valset", func() error {
+				if err := pTrust.Unmarshal(b); err != nil {
+					return err
+				}
+				var err error
+				trustVals, err = types.ValidatorSetFromProto(&pTrust)
+				return err
+			}) {
+				break
+			}
+		}
+		num, den := uint64(1), uint64(3)
+		if b := first(m, 7); b != nil {
+			num, _ = strconv.ParseUint(string(b), 10, 64)
+		}
+		if b := first(m, 8); b != nil {
+			den, _ = strconv.ParseUint(string(b), 10, 64)
+		}
+		tl := cmtmath.Fraction{Numerator: num, Denominator: den}
+		c.run("trusting", func() error { return trustVals.VerifyCommitLightTrusting(chainID, cm, tl) })
+		c.run("trusting_all", func() error { return trustVals.VerifyCommitLightTrustingAllSignatures(chainID, cm, tl) })
 	case "c_valset":
 		var pvs cmtproto.ValidatorSet
 		if !c.run("unmarshal", func() error { return pvs.Unmarshal(first(m, 1)) }) {
@@ -279,8 +316,33 @@ func consensusOp(op string, in []byte) (o out) {
 				return out{Ok: true, Out: c.b.String()}
 			}
 		}
-		if !c.run("update", func() error { return vals.UpdateWithChangeSet(changes) }) {
+		before, err := validatorSetFingerprint(vals)
+		if err != nil {
+			c.put("state_before", "err:"+err.Error())
 			break
+		}
+		if !c.run("update", func() error { return vals.UpdateWithChangeSet(changes) }) {
+			after, err := validatorSetFingerprint(vals)
+			if err != nil {
+				c.put("error_state", "err:"+err.Error())
+				break
+			}
+			c.put("error_state", after)
+			c.put("error_unchanged", strconv.FormatBool(after == before))
+			break
+		}
+		if b := first(m, 3); b != nil {
+			times, _ := strconv.ParseInt(string(b), 10, 32)
+			if times > 1024 {
+				c.put("increment", "skip:times exceed 1024")
+				break
+			}
+			if !c.run("increment", func() error {
+				vals.IncrementProposerPriority(int32(times))
+				return nil
+			}) {
+				break
+			}
 		}
 		c.data("hash", func() string { return h(vals.Hash()) })
 		c.data("proposer", func() string { return h(vals.GetProposer().Address) })
@@ -352,23 +414,66 @@ func consensusOp(op string, in []byte) (o out) {
 		if !c.run("from_proto", func() (e error) { ev, e = types.EvidenceFromProto(&pe); return }) {
 			break
 		}
-		c.run("validate", ev.ValidateBasic)
+		valid := c.run("validate", ev.ValidateBasic)
 		c.data("hash", func() string { return h(ev.Hash()) })
 		c.data("height", func() string { return strconv.FormatInt(ev.Height(), 10) })
 		if vsb := first(m, 2); vsb != nil {
-			dve, isDup := ev.(*types.DuplicateVoteEvidence)
-			var pvs cmtproto.ValidatorSet
-			if !isDup || !c.run("valset", func() error {
-				if err := pvs.Unmarshal(vsb); err != nil {
+			switch e := ev.(type) {
+			case *types.DuplicateVoteEvidence:
+				var pvs cmtproto.ValidatorSet
+				if !c.run("valset", func() error {
+					if err := pvs.Unmarshal(vsb); err != nil {
+						return err
+					}
+					_, err := types.ValidatorSetFromProto(&pvs)
 					return err
+				}) {
+					break
 				}
-				_, err := types.ValidatorSetFromProto(&pvs)
-				return err
-			}) {
-				break
+				vals, _ := types.ValidatorSetFromProto(&pvs)
+				c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(e, chainID, vals) })
+			case *types.LightClientAttackEvidence:
+				commonB, trustedB := first(m, 4), first(m, 5)
+				if !valid || commonB == nil || trustedB == nil {
+					break
+				}
+				var pvs cmtproto.ValidatorSet
+				if !c.run("valset", func() error {
+					if err := pvs.Unmarshal(vsb); err != nil {
+						return err
+					}
+					_, err := types.ValidatorSetFromProto(&pvs)
+					return err
+				}) {
+					break
+				}
+				var commonP, trustedP cmtproto.SignedHeader
+				var common, trusted *types.SignedHeader
+				if err := commonP.Unmarshal(commonB); err != nil {
+					c.put("common", "err:decode")
+					break
+				}
+				common, err = types.SignedHeaderFromProto(&commonP)
+				if err != nil || common.ValidateBasic(chainID) != nil {
+					c.put("common", "err:invalid")
+					break
+				}
+				c.put("common", "ok")
+				if err := trustedP.Unmarshal(trustedB); err != nil {
+					c.put("trusted", "err:decode")
+					break
+				}
+				trusted, err = types.SignedHeaderFromProto(&trustedP)
+				if err != nil || trusted.ValidateBasic(chainID) != nil {
+					c.put("trusted", "err:invalid")
+					break
+				}
+				c.put("trusted", "ok")
+				vals, _ := types.ValidatorSetFromProto(&pvs)
+				c.run("verify_light", func() error {
+					return evidence.VerifyLightClientAttack(e, common, trusted, vals, time.Time{}, 0)
+				})
 			}
-			vals, _ := types.ValidatorSetFromProto(&pvs)
-			c.run("verify_duplicate", func() error { return evidence.VerifyDuplicateVote(dve, chainID, vals) })
 		}
 	case "c_secp256r1":
 		// The account key as the SDK decodes it (secp256r1.PubKey, whose

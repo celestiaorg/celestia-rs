@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T04:22:46.664191+00:00",
+  "mainnet_observation": "mainnet-observation.json",
+  "go_builds": {
+    "app": {
+      "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+      "build_tags": [
+        "ledger"
+      ],
+      "buildvcs": false,
+      "compiler": "go version go1.26.9 linux/amd64",
+      "goflags": "-mod=mod",
+      "ldflags": "-X github.com/cosmos/cosmos-sdk/version.Name=celestia-app -X github.com/cosmos/cosmos-sdk/version.AppName=celestia-appd -X github.com/cosmos/cosmos-sdk/version.Version=10.5.0 -X github.com/cosmos/cosmos-sdk/version.Commit=6013e758d5dceb75827ad191c8d739d7c43cfa04 -X github.com/cosmos/cosmos-sdk/version.BuildTags=ledger -X github.com/celestiaorg/celestia-app/v10/cmd/celestia-appd/cmd.v2UpgradeHeight=0",
+      "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+      "module_sum": "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc=",
+      "package": "./cmd/celestia-appd",
+      "schema_version": 1,
+      "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+      "target": {
+        "CGO_ENABLED": "1",
+        "GOAMD64": "v1",
+        "GOARCH": "amd64",
+        "GOARM": "",
+        "GOEXPERIMENT": "",
+        "GOFIPS140": "off",
+        "GOOS": "linux"
+      }
+    },
+    "core": {
+      "binary_sha256": "618ded0e3fee7397c538e9f27e8e979e97d8650afaed4a0effd29a06371939e1",
+      "build_tags": [],
+      "buildvcs": false,
+      "compiler": "go version go1.26.9 linux/amd64",
+      "goflags": "-mod=mod",
+      "ldflags": "",
+      "module": "github.com/celestiaorg/celestia-core@v0.42.3",
+      "module_sum": "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM=",
+      "package": "./cmd/cometbft",
+      "schema_version": 1,
+      "source_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+      "target": {
+        "CGO_ENABLED": "1",
+        "GOAMD64": "v1",
+        "GOARCH": "amd64",
+        "GOARM": "",
+        "GOEXPERIMENT": "",
+        "GOFIPS140": "off",
+        "GOOS": "linux"
+      }
+    }
+  },
+  "rs_build": {
+    "schema_version": 1,
+    "built_at": "2026-10-31T04:18:44.915631+00:00",
+    "binary_sha256": "2e0fcd01a14dbfd71c29a436481d58260a32e0d4f476709bfbd4edc720239252",
+    "source_commit": "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059",
+    "source_commit_signature_verified": true,
+    "cargo_lock_sha256": "d9c73525d5fde86d6f745a5ffe2bf74c0ce37617613c21f3d12ca1907f3b7238",
+    "rustc_vv": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "cargo_version": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "target": "x86_64-unknown-linux-gnu",
+    "build_command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--release",
+      "--package",
+      "celestia-rs",
+      "--bin",
+      "celestia-rs"
+    ],
+    "profile": "release",
+    "package": "celestia-rs",
+    "binary": "celestia-rs",
+    "locked": true,
+    "default_features": true,
+    "features": [
+      "rocksdb",
+      "jemalloc"
+    ],
+    "version_long": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 399f57ed728b17e9f1bee14f5d8cbdeaa66f0059\nbuild_profile: release\ntoolchain: rustc 1.98.0 (88d9e12ae 2026-08-18) x86_64-unknown-linux-gnu\napp_version: 10\ncompatibility_target: celestia-app v10.5.0, celestia-core v0.42.3"
+  },
+  "source_commit": "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059",
+  "recorder_binary_sha256": "1aa912663a8b5aeb16082802789b4e97c0ff96c061f9db12e36950b388ca5bb4",
+  "inventory": {
+    "sources": [
+      "conformance/grpc-lifecycle/README.md",
+      "conformance/grpc-lifecycle/record.sh",
+      "conformance/grpc-lifecycle/build-rs.sh",
+      "conformance/grpc-lifecycle/resources.py",
+      "conformance/grpc-lifecycle/freeze.py",
+      "conformance/grpc-lifecycle/verify.py",
+      "conformance/grpc-lifecycle/test_verify.py",
+      "conformance/grpc-lifecycle/recorder/main.go",
+      "conformance/grpc-lifecycle/recorder/main_test.go",
+      "conformance/grpc-lifecycle/recorder/go.mod",
+      "conformance/grpc-lifecycle/recorder/go.sum",
+      "crates/tier-4-runtime/rpc/src/grpc.rs",
+      "crates/tier-4-runtime/grpc-transport/src/lib.rs",
+      "crates/tier-5-node/celestia-rs/src/rpc_service.rs",
+      "Cargo.lock"
+    ],
+    "inputs": [
+      "go-quota-0-config.toml",
+      "go-quota-2-config.toml",
+      "rs-quota-0-config.toml",
+      "rs-quota-2-config.toml",
+      "go-app.toml",
+      "rs-app.toml",
+      "genesis.json"
+    ],
+    "captures": [
+      "go-quota-0.json",
+      "go-sdk.json",
+      "go-quota-2.json",
+      "rs-quota-0.json",
+      "rs-sdk.json",
+      "rs-quota-2.json"
+    ],
+    "resources": [
+      "go-quota-0-resources.json",
+      "go-sdk-resources.json",
+      "go-quota-2-resources.json",
+      "rs-quota-0-resources.json",
+      "rs-sdk-resources.json",
+      "rs-quota-2-resources.json"
+    ],
+    "build_receipts": [
+      "go-build-info.txt",
+      "go-core-build-info.txt",
+      "recorder-build-info.txt",
+      "rs-build-info.json",
+      "go-app-build.json",
+      "go-core-build.json",
+      "go-gzip-symbols.txt"
+    ],
+    "observations": [
+      "mainnet-observation.json"
+    ]
+  },
+  "campaign_order": [
+    "go-quota-0.json",
+    "go-sdk.json",
+    "go-quota-2.json",
+    "rs-quota-0.json",
+    "rs-sdk.json",
+    "rs-quota-2.json"
+  ],
+  "campaigns": {
+    "go-quota-0.json": {
+      "implementation": "go",
+      "listener": "core",
+      "quota": 0,
+      "endpoint": "127.0.0.1:32658",
+      "config": "go-quota-0-config.toml",
+      "started_at": "2026-10-31T04:19:14.279094656Z",
+      "completed_at": "2026-10-31T04:19:21.727225118Z"
+    },
+    "go-sdk.json": {
+      "implementation": "go",
+      "listener": "sdk",
+      "quota": null,
+      "endpoint": "127.0.0.1:15090",
+      "config": "go-app.toml",
+      "started_at": "2026-10-31T04:19:24.307389122Z",
+      "completed_at": "2026-10-31T04:19:24.327864541Z"
+    },
+    "go-quota-2.json": {
+      "implementation": "go",
+      "listener": "core",
+      "quota": 2,
+      "endpoint": "127.0.0.1:32658",
+      "config": "go-quota-2-config.toml",
+      "started_at": "2026-10-31T04:19:28.190114041Z",
+      "completed_at": "2026-10-31T04:22:15.459924759Z"
+    },
+    "rs-quota-0.json": {
+      "implementation": "rs",
+      "listener": "core",
+      "quota": 0,
+      "endpoint": "127.0.0.1:33658",
+      "config": "rs-quota-0-config.toml",
+      "started_at": "2026-10-31T04:22:21.340909802Z",
+      "completed_at": "2026-10-31T04:22:28.695799386Z"
+    },
+    "rs-sdk.json": {
+      "implementation": "rs",
+      "listener": "sdk",
+      "quota": null,
+      "endpoint": "127.0.0.1:16090",
+      "config": "rs-app.toml",
+      "started_at": "2026-10-31T04:22:31.355644384Z",
+      "completed_at": "2026-10-31T04:22:31.408930212Z"
+    },
+    "rs-quota-2.json": {
+      "implementation": "rs",
+      "listener": "core",
+      "quota": 2,
+      "endpoint": "127.0.0.1:33658",
+      "config": "rs-quota-2-config.toml",
+      "started_at": "2026-10-31T04:22:35.553127275Z",
+      "completed_at": "2026-10-31T04:22:42.883400216Z"
+    }
+  },
+  "source_audit": {
+    "go_core_keepalive": {
+      "module": "github.com/celestiaorg/celestia-core@v0.42.3",
+      "source_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+      "path": "rpc/grpc/client_server.go",
+      "sha256": "edc13288085bf9bec39efdc6ba22d866a484064b4ae7417e92a2a93a972b1d44",
+      "time_seconds": 30,
+      "timeout_seconds": 10,
+      "permit_without_stream": true,
+      "minimum_client_ping_seconds": 10
+    },
+    "grpc_go_setup_timeout": {
+      "module": "google.golang.org/grpc@v1.83.2",
+      "path": "server.go",
+      "sha256": "a09f192cb707172d7b9004813f300697e0eab8eb781389978683460ed0ddc49e",
+      "default_seconds": 120
+    },
+    "grpc_go_initial_settings": {
+      "module": "google.golang.org/grpc@v1.83.2",
+      "path": "internal/transport/http2_server.go",
+      "sha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093",
+      "first_frame": "SETTINGS",
+      "max_frame_size": 16384
+    },
+    "grpc_go_keepalive_defaults": {
+      "module": "google.golang.org/grpc@v1.83.2",
+      "path": "internal/transport/defaults.go",
+      "sha256": "ca8b8cee5cb10ea5e3396a4e058f31d3a7d7f8e46ce95a82d84895fc34465888",
+      "server_time_seconds": 7200,
+      "server_timeout_seconds": 20,
+      "minimum_client_ping_seconds": 300
+    },
+    "cosmos_sdk_grpc_server": {
+      "module": "github.com/celestiaorg/cosmos-sdk@v0.52.12",
+      "path": "server/grpc/server.go",
+      "sha256": "f24db7f5e784a4b40a63fbdd9b4a45ebb3e16d61952e62b87abcfa4d3657df5d",
+      "only_operator_transport_settings": [
+        "max-recv-msg-size",
+        "max-send-msg-size"
+      ]
+    },
+    "rs_core_keepalive": {
+      "path": "crates/tier-4-runtime/rpc/src/grpc.rs",
+      "sha256": "8e59ad305f37400d0a89af17b2b958c3a294c21d198a99e5da4607f726ef9c5f",
+      "finding": "absent: HTTP/2 builder configures no keepalive interval or timeout"
+    },
+    "rs_setup_deadline": {
+      "paths": [
+        "crates/tier-4-runtime/rpc/src/grpc.rs",
+        "crates/tier-5-node/celestia-rs/src/rpc_service.rs"
+      ],
+      "sha256": {
+        "crates/tier-4-runtime/rpc/src/grpc.rs": "8e59ad305f37400d0a89af17b2b958c3a294c21d198a99e5da4607f726ef9c5f",
+        "crates/tier-5-node/celestia-rs/src/rpc_service.rs": "9dad3658c5e95042a79acf688cb33d6bd31bc2bba2474347696547ae93313031"
+      },
+      "finding": "absent: core and SDK listeners configure no HTTP/2 setup deadline"
+    }
+  },
+  "source_sha256": {
+    "conformance/grpc-lifecycle/README.md": "4fa05705df550b4b8ec1f4582946652126b6ea03b8e381102ed3dc9b375925aa",
+    "conformance/grpc-lifecycle/record.sh": "a22132b459b0d667dcdab838f0a978e3e2d4e3883b89b310f20de11807b6682a",
+    "conformance/grpc-lifecycle/build-rs.sh": "9862cdd545fbe9df20472fd8feaaa0180bd86dfca1f3a506e460efbe5792f745",
+    "conformance/grpc-lifecycle/resources.py": "503a68dd08d93bc717f69d11ed8804acf9285a256a7a48c0e47bd1151f0e2ce5",
+    "conformance/grpc-lifecycle/freeze.py": "bb390b373fe343c966ae329b2f8e6b63e7319298fec479418adfbcfe5e5b219f",
+    "conformance/grpc-lifecycle/verify.py": "223ba04a67dc5ddbcd25f5a23a9bf280f9ea85850dbdb19248fb59fbb4c04103",
+    "conformance/grpc-lifecycle/test_verify.py": "ee542315d6ee09c29cb20f82994a7744e2cdc7c63bf07f7dbad62a49a3273444",
+    "conformance/grpc-lifecycle/recorder/main.go": "57f56bfebada9773d6989b769036e57fb8bdae5b66b0667fc288d22280af3f6e",
+    "conformance/grpc-lifecycle/recorder/main_test.go": "b396bb9be5ae5e8209dfa76bafbf8d3fa02d37b061dbe3d94fc3343f9595de11",
+    "conformance/grpc-lifecycle/recorder/go.mod": "47eb5ff472b8b03262e79a77f2a0018f6fb5648c526c5a37b8a02e2c91526d8f",
+    "conformance/grpc-lifecycle/recorder/go.sum": "5c2f48c73ebb61af45e35ceb7b51d2e7695b7170ea2fb3dd7b1abd7b5575c961",
+    "crates/tier-4-runtime/rpc/src/grpc.rs": "8e59ad305f37400d0a89af17b2b958c3a294c21d198a99e5da4607f726ef9c5f",
+    "crates/tier-4-runtime/grpc-transport/src/lib.rs": "834adde1b5c34e3893fd875d600e0e86bcd7150fe3133aa9221de68c968ac318",
+    "crates/tier-5-node/celestia-rs/src/rpc_service.rs": "9dad3658c5e95042a79acf688cb33d6bd31bc2bba2474347696547ae93313031",
+    "Cargo.lock": "d9c73525d5fde86d6f745a5ffe2bf74c0ce37617613c21f3d12ca1907f3b7238"
+  },
+  "input_sha256": {
+    "go-quota-0-config.toml": "9766193f54ac5e978be19ac9ff1d1af34d638a08ab40c9b516e059a5bfe167db",
+    "go-quota-2-config.toml": "612def78907357aaf6a57dcd4e775075462e9e61d1c1ee3250ef40b9b59bc315",
+    "rs-quota-0-config.toml": "f8046a3d3174d102cf64ba6e505d207ed839c6dc4285818bfd9c39ef9604ac46",
+    "rs-quota-2-config.toml": "3503fc115eb48f92a8b756735c74b5b2b551b6987217a5cf71649252b203878e",
+    "go-app.toml": "73f94bcd804875f788a7b669e361597fd406708ce8e5622ebe1ab9209b16ede6",
+    "rs-app.toml": "c60e6d15a9900f6e238662adec146cc78c0a589d9c9ac6406f9cb869594cfd7f",
+    "genesis.json": "bcba7b86cfe963bfced92cf69ad98afd75ccad54f54a3a37ead7c0854cc53bf8"
+  },
+  "artifact_sha256": {
+    "go-quota-0.json": "357a38c3c0e259adb037fe632c2cefe5e2eaa2bb9a6890054ed02bc6681106c0",
+    "go-sdk.json": "cef22ddeaca8d7dadfbe39ba25d05dd11c96f0239182a3359dcc67d891367ed1",
+    "go-quota-2.json": "64e426c64c002fa3c9a65e82710d58dc7bcd57197d2263c3c096a752a03264e9",
+    "rs-quota-0.json": "6bb9949af2c27a87b988a35ec7eaeac6f626fa1daa38309e6df0089b27b3ef57",
+    "rs-sdk.json": "0cdd769831877f7be556ba818dbc89ae4160e84176a0ca78129371d25bc83a78",
+    "rs-quota-2.json": "0b22918986c89d1c2aebce7442094241b5a2339f5c50d4ef87d99ca3f3a396cb",
+    "go-quota-0-resources.json": "4fd448fc2d9ef65f5663e8d73e83c98d75807a6bb6bd87114d2c5b32a2053080",
+    "go-sdk-resources.json": "94d91ffc685e8af1bfa5947f1d738f91db22a84f383935eba5baa9620625dfd3",
+    "go-quota-2-resources.json": "9c8cdeb39dfff8282e599da07297ed5392845fc0cb09e12bfab1328e8d395f97",
+    "rs-quota-0-resources.json": "1bd42203b886446477ae07a02892b5cc82342df2688e5df4eacd28b6ce9b50f3",
+    "rs-sdk-resources.json": "dbf7506b0dbcc8bbd19a3a1ff17e927e008d8d04952cfac600e52c556f8d9ac3",
+    "rs-quota-2-resources.json": "7e236af80f69c6bf452ad31a13b469a3b29943fe7832c3962c7acd30a68afc56",
+    "go-build-info.txt": "11018dceacd1856a0322e0bc260a116411d08baf9c2e6a5487fa53448b72abf3",
+    "go-core-build-info.txt": "821e7422b0a114cdff2338bd13824bf54682b3a8521c030de051894efc9fd9ac",
+    "recorder-build-info.txt": "248fbc56d8e6f7b3ad1e5964fac3ed07c72273fbd749018a75140f958075ed5e",
+    "rs-build-info.json": "1e4f837301e1345a53409ffd39ee724e92f5bc916b5173cecede5f969703b1da",
+    "go-app-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "go-core-build.json": "6ee1bf69127b84b0d7b1b86f464e15fa2bd987b1b6d7f57fb176ad894506ae7e",
+    "go-gzip-symbols.txt": "1a2e8210ace845f700847e1560af02776f8d8e3ca10d172ca7e683653a1df21d",
+    "go-quota-0-config.toml": "9766193f54ac5e978be19ac9ff1d1af34d638a08ab40c9b516e059a5bfe167db",
+    "go-quota-2-config.toml": "612def78907357aaf6a57dcd4e775075462e9e61d1c1ee3250ef40b9b59bc315",
+    "rs-quota-0-config.toml": "f8046a3d3174d102cf64ba6e505d207ed839c6dc4285818bfd9c39ef9604ac46",
+    "rs-quota-2-config.toml": "3503fc115eb48f92a8b756735c74b5b2b551b6987217a5cf71649252b203878e",
+    "go-app.toml": "73f94bcd804875f788a7b669e361597fd406708ce8e5622ebe1ab9209b16ede6",
+    "rs-app.toml": "c60e6d15a9900f6e238662adec146cc78c0a589d9c9ac6406f9cb869594cfd7f",
+    "genesis.json": "bcba7b86cfe963bfced92cf69ad98afd75ccad54f54a3a37ead7c0854cc53bf8",
+    "mainnet-observation.json": "60bea0412eb59c2f14a2ce46c6e9d01b523012164cbcec890926b42efdf592d1"
+  },
+  "deviations": {
+    "rs_request_compression": "unsupported on core and SDK: RS returns Unimplemented before decompression; Go accepts gzip and applies each listener's receive limit to the decompressed message",
+    "sdk_connection_quota": "unsupported by both production app listeners: app.toml has no connection-quota setting",
+    "core_message_size_configuration": "unsupported by both core listeners: receive is fixed at 4 MiB and send at MaxInt32",
+    "rs_core_keepalive": "absent: Go core sends idle PING at 30s and closes after 10s without ACK; RS configures no HTTP/2 keepalive",
+    "rs_handshake_deadline": "absent: grpc-go closes a silent HTTP/2 setup at 120s; RS has no gRPC setup deadline",
+    "transport_metadata": "intentional: Go core uses application/grpc+proto; Go SDK and RS use application/grpc; RS adds RFC 1123 Date and advertises identity when rejecting gzip"
+  }
+}

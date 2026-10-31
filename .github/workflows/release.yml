@@ -45,7 +45,7 @@ jobs:
       release: ${{ steps.plan.outputs.release }}
       label: ${{ steps.plan.outputs.label }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - id: plan
         env:
           BEFORE: ${{ github.event.before }}
@@ -116,7 +116,7 @@ jobs:
             os: ubuntu-22.04
             cross: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -176,7 +176,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: CHANGELOG.md
           sparse-checkout-cone-mode: false
@@ -201,7 +201,16 @@ jobs:
           # The release's CHANGELOG section (bump-version cut it), then
           # GitHub's generated notes.
           awk -v h="## $TAG " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md >notes.md
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --title "celestia-rs $TAG" --notes-file notes.md --generate-notes $prerelease
+          # Releases are immutable once published: no assets can be added
+          # after. So create a draft, attach the archives, then publish. A
+          # re-run finds the draft a failed run left behind and finishes it.
+          if ! draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release create "$TAG" --draft --verify-tag --title "celestia-rs $TAG" --notes-file notes.md --generate-notes $prerelease
+            draft=true
+          fi
+          if [ "$draft" != true ]; then
+            echo "::error::$TAG is already published, and a published release is immutable: release a new version instead"
+            exit 1
           fi
           gh release upload "$TAG" --clobber dist/*.tar.gz dist/*.tar.gz.sha256 dist/SHA256SUMS
+          gh release edit "$TAG" --draft=false

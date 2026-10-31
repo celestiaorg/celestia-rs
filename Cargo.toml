@@ -65,6 +65,8 @@ members = [
     "crates/tier-4-runtime/nodestore",
     "crates/tier-4-runtime/consensus",
     "crates/tier-4-runtime/grpc-query",
+    "crates/tier-4-runtime/grpc-reflection",
+    "crates/tier-4-runtime/grpc-transport",
     "crates/tier-4-runtime/p2p",
     "crates/tier-4-runtime/mempool",
     "crates/tier-4-runtime/blocksync",

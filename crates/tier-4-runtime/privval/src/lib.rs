@@ -314,32 +314,59 @@ impl LastSignState {
 
 /// `tempfile.WriteFileAtomic` (mode 0600): temp file in the same
 /// directory, fsync, rename over the target, fsync the directory.
+/// A failure after rename may leave the new file published; it must still
+/// be reported, since durability has not been established.
 pub fn write_file_atomic(path: &Path, data: &[u8]) -> Result<()> {
     let io = |e: std::io::Error| Error::new(format!("{}: {e}", path.display()));
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let dir = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    // Acquire the directory before publishing anything. In particular, a
+    // write-only directory must not silently skip synchronization.
+    let directory = open_directory(dir).map_err(io)?;
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let tmp = dir.join(format!(".{name}.tmp{}", std::process::id()));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
     {
-        let mut opts = fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
-        }
-        let mut f = opts.open(&tmp).map_err(io)?;
-        f.write_all(data).map_err(io)?;
-        f.sync_all().map_err(io)?;
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
     }
+    let mut file = opts.open(&tmp).map_err(io)?;
+    file.write_all(data).map_err(io)?;
+    file.sync_all().map_err(io)?;
     fs::rename(&tmp, path).map_err(io)?;
-    if let Ok(d) = fs::File::open(dir) {
-        // Directory fsync makes the rename durable; not supported everywhere.
-        let _ = d.sync_all();
-    }
+    // std's sync_all uses F_FULLFSYNC on Apple, which is for regular
+    // files. Use fsync for directory metadata, and propagate every error.
+    sync_directory(&directory).map_err(io)?;
+    // On Apple, flush the device again after publishing directory metadata.
+    #[cfg(target_vendor = "apple")]
+    file.sync_all().map_err(io)?;
     Ok(())
+}
+
+fn open_directory(path: &Path) -> std::io::Result<fs::File> {
+    #[cfg(test)]
+    tests::directory_fault(tests::DirectoryFault::Open)?;
+    fs::File::open(path)
+}
+
+fn sync_directory(directory: &fs::File) -> std::io::Result<()> {
+    #[cfg(test)]
+    tests::directory_fault(tests::DirectoryFault::Sync)?;
+    #[cfg(unix)]
+    {
+        rustix::fs::fsync(directory).map_err(Into::into)
+    }
+    #[cfg(not(unix))]
+    {
+        directory.sync_all()
+    }
 }
 
 /// `FilePV`.

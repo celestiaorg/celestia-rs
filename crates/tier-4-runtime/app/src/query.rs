@@ -56,6 +56,13 @@ pub enum GrpcQueryError {
     Context(SdkError),
     /// The handler failed.
     Handler(QueryError),
+    /// A handler failed after its query context established response metadata.
+    HandlerAtHeight {
+        /// The error returned by the handler.
+        error: QueryError,
+        /// The committed query context height.
+        height: i64,
+    },
 }
 
 /// Whether the query service of `path` is absent at `app_version`:
@@ -69,6 +76,23 @@ fn absent_at(app_version: u64, path: &str) -> bool {
 }
 
 impl GrpcQueryError {
+    /// Keeps the height only after a decoded request reaches its handler.
+    pub(crate) fn handler_at_height(error: QueryError, height: i64) -> Self {
+        if matches!(error, QueryError::Decode(_)) {
+            Self::Handler(error)
+        } else {
+            Self::HandlerAtHeight { error, height }
+        }
+    }
+
+    /// The header established by a successfully created query context.
+    #[must_use]
+    pub fn response_height(&self) -> Option<i64> {
+        match self {
+            Self::HandlerAtHeight { height, .. } => Some(*height),
+            _ => None,
+        }
+    }
     /// The gRPC status (code, message) Go's gRPC server would return.
     #[must_use]
     pub fn grpc_status(&self) -> (grpc_query::Code, String) {
@@ -82,7 +106,11 @@ impl GrpcQueryError {
                 format!("unknown service {svc}"),
             ),
             Self::Context(e) => QueryError::Sdk(e.clone()).grpc_status(),
-            Self::Handler(e) => e.grpc_status(),
+            Self::Handler(QueryError::Decode(message)) => (
+                grpc_query::Code::Internal,
+                format!("grpc: error unmarshalling request: {message}"),
+            ),
+            Self::Handler(e) | Self::HandlerAtHeight { error: e, .. } => e.grpc_status(),
         }
     }
 }
@@ -172,7 +200,7 @@ impl App {
             let h = state.header.height;
             return handler(self, &mut state, data)
                 .map(|v| (v, h))
-                .map_err(GrpcQueryError::Handler);
+                .map_err(|error| GrpcQueryError::handler_at_height(error, h));
         }
         let Some(handler) = grpc_query::router().route(path) else {
             return Err(GrpcQueryError::Unimplemented(path.to_owned()));
@@ -184,11 +212,28 @@ impl App {
         let mut ctx = state.context();
         handler(&mut ctx, data)
             .map(|v| (v, h))
-            .map_err(GrpcQueryError::Handler)
+            .map_err(|error| GrpcQueryError::handler_at_height(error, h))
     }
 
-    /// `Query`.
+    /// A concrete query response for in-process consumers. An absent Go Query
+    /// response is an explicit error here; transport adapters must use
+    /// [`Self::query_response`] to preserve the empty envelope.
     pub fn query(&mut self, req: &RequestQuery) -> ResponseQuery {
+        self.query_response(req)
+            .unwrap_or_else(|| query_result(&errs::unknown_request("empty ABCI Query response")))
+    }
+
+    /// `Query`, including Go's nil response for an unknown P2P filter type.
+    /// This is distinct from a present, successful default `ResponseQuery`.
+    pub fn query_response(&mut self, req: &RequestQuery) -> Option<ResponseQuery> {
+        let path = split_path(&req.path);
+        if path.first() == Some(&"p2p") {
+            return handle_query_p2p(&path);
+        }
+        Some(self.query_present(req))
+    }
+
+    fn query_present(&mut self, req: &RequestQuery) -> ResponseQuery {
         sdk::version::set_app_version(self.app_version());
         let mut req = req.clone();
         if req.height == 0 {
@@ -209,7 +254,6 @@ impl App {
         match path[0] {
             "app" => self.handle_query_app(&path, &req),
             "store" => self.handle_query_store(&path, &req),
-            "p2p" => handle_query_p2p(&path),
             "custom" => self.handle_query_custom(&path, &req),
             _ => query_result(&errs::unknown_request("unknown query path")),
         }
@@ -267,7 +311,7 @@ impl App {
                     return ResponseQuery {
                         codespace: "sdk".into(),
                         height: req.height,
-                        value: Vec::new(),
+                        value: crate::COMPATIBILITY_VERSION.as_bytes().to_vec(),
                         ..ResponseQuery::default()
                     };
                 }
@@ -459,19 +503,20 @@ impl App {
     }
 }
 
-fn handle_query_p2p(path: &[&str]) -> ResponseQuery {
+fn handle_query_p2p(path: &[&str]) -> Option<ResponseQuery> {
     if path.len() < 4 {
-        return query_result(&errs::unknown_request(
+        return Some(query_result(&errs::unknown_request(
             "path should be p2p filter <addr|id> <parameter>",
-        ));
+        )));
     }
     if path[1] != "filter" {
-        return query_result(&errs::unknown_request(
+        return Some(query_result(&errs::unknown_request(
             "expected second parameter to be 'filter'",
-        ));
+        )));
     }
-    // No peer filters are configured: every peer is accepted.
-    ResponseQuery::default()
+    // Go leaves resp nil when neither filter branch is selected. Valid filters
+    // have no configured callback and return a present successful response.
+    matches!(path[2], "addr" | "id").then(ResponseQuery::default)
 }
 
 /// `cosmossdk.io/store/types` errors (codespace `store`).

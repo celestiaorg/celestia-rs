@@ -1,0 +1,85 @@
+{
+  "captured_at_start": "2026-10-31T01:19:07.437499442Z",
+  "captured_at_end": "2026-10-31T01:19:14.972494037Z",
+  "baseline": {
+    "celestia_app": "v10.5.0",
+    "celestia_app_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "celestia_core": "v0.42.3",
+    "cosmos_sdk": "v0.52.12",
+    "go_builder": "go1.26.9",
+    "rpc": "http://127.0.0.1:28657"
+  },
+  "upgrade": [
+    {
+      "origin": "",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    },
+    {
+      "origin": "https://allowed.example",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    },
+    {
+      "origin": "https://denied.example",
+      "status": 101,
+      "headers": {
+        "Connection": [
+          "Upgrade"
+        ],
+        "Upgrade": [
+          "websocket"
+        ]
+      },
+      "active_block_seen": true
+    }
+  ],
+  "sequence": null,
+  "quota": {
+    "clients_opened": 0,
+    "limit_error": null,
+    "reclaimed_after_disconnect": false,
+    "goroutines_before": 0,
+    "goroutines_at_limit": 0,
+    "goroutines_after_cleanup": 0,
+    "heap_bytes_before": 0,
+    "heap_bytes_at_limit": 0,
+    "heap_bytes_after_cleanup": 0,
+    "subscriptions_per_client": null
+  },
+  "events": {
+    "reconnect_before_height": 0,
+    "reconnect_after_height": 0,
+    "first_resubscribed_height": 0,
+    "missed_heights": 0,
+    "ordering_normalization": ""
+  },
+  "timing": {
+    "server_ping_ms": 0,
+    "no_pong_close_ms": 0,
+    "client_ping_pong_payload": "",
+    "normalization": ""
+  },
+  "pressure": {
+    "requests_written": 0,
+    "server_close_ms": 0,
+    "close_error": "",
+    "health_after_disconnect": false
+  }
+}

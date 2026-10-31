@@ -925,8 +925,11 @@ curl -s localhost:26657/block | jq --arg a "$CONS" \
   celestia-rs query slashing params --node $RPC | jq .params                         # (verified)
   ```
 
-  `missed_blocks_counter` over the last `signed_blocks_window` (10,000);
-  `jailed_until` in the future means jailed.
+  `missed_blocks_counter` over the last `signed_blocks_window` (10,000).
+  `jailed_until` is only the earliest block time at which unjail is
+  allowed: a validator stays jailed past it until an unjail tx. Whether it
+  is jailed is staking's flag:
+  `celestia-rs query staking validator $VALOPER --home $H | jq .validator.jailed`.
 - **App hash:** run `packaging/check-apphash.sh` every few minutes (cron
   or launchd `StartInterval`); exit code 1 is a parity bug — stop the
   validator and keep `~/Library/Logs/celestia-rs.log`.

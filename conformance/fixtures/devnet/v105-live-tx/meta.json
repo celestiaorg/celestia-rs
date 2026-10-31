@@ -1,0 +1,10 @@
+{
+  "scenario": "v105-live-tx",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.5.0",
+  "celestia_app_next": null,
+  "celestia_core": "v0.42.3",
+  "committed_heights": 23,
+  "workload": "none",
+  "generated_at": "2026-10-31T01:32:34Z"
+}

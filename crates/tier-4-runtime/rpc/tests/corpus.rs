@@ -27,6 +27,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use base64::Engine as _;
 use ctypes::proto::abci;
 use ctypes::proto::types as ptypes;
 use kvdb::{KvBackend, MemBackend};
@@ -127,6 +128,12 @@ impl AppQuery for Query {
     }
     fn query(&self, req: abci::RequestQuery) -> Result<abci::ResponseQuery, String> {
         Ok(lock(&self.0).query(&req))
+    }
+    fn query_response(
+        &self,
+        req: abci::RequestQuery,
+    ) -> Result<Option<abci::ResponseQuery>, String> {
+        Ok(lock(&self.0).query_response(&req))
     }
     fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String> {
         lock(&self.0).check_tx(&abci::RequestCheckTx {
@@ -405,6 +412,62 @@ fn normalize(norm: &str, body: &str) -> String {
     serde_json::to_string(&v).unwrap()
 }
 
+/// Adapt only the identity of the historical, unversioned Go build. Preserve
+/// every state, height and timeout field. The actual production identity is
+/// asserted independently by the node's `runtime_metadata` socket regression.
+fn legacy_abci_identity(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(body) else {
+        return body.to_owned();
+    };
+    if let Some(response) = value.pointer_mut("/result/response")
+        && response["data"] == "celestia-app"
+        && response.get("version").is_none()
+    {
+        response["data"] = Value::String(app::APPLICATION_NAME.into());
+        response["version"] = Value::String(app::COMPATIBILITY_VERSION.into());
+    }
+    serde_json::to_string(&value).unwrap()
+}
+
+/// The frozen corpora predate celestia-app's `/app/version` value. Adapt only
+/// that successful legacy response; every envelope and response field remains
+/// part of the byte-for-byte corpus comparison.
+fn legacy_app_version(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(body) else {
+        return body.to_owned();
+    };
+    if let Some(response) = value.pointer_mut("/result/response")
+        && response["code"] == 0
+        && response["codespace"] == "sdk"
+        && response["value"] == ""
+    {
+        response["value"] = Value::String(
+            base64::engine::general_purpose::STANDARD.encode(app::COMPATIBILITY_VERSION),
+        );
+    }
+    serde_json::to_string(&value).unwrap()
+}
+
+#[test]
+fn legacy_app_version_adapter_is_narrow() {
+    let legacy = r#"{"jsonrpc":"2.0","id":-1,"result":{"response":{"code":0,"log":"","info":"kept","value":"","height":"30","codespace":"sdk"}},"extra":7}"#;
+    let adapted: Value = serde_json::from_str(&legacy_app_version(legacy)).unwrap();
+    let mut expected: Value = serde_json::from_str(legacy).unwrap();
+    expected["result"]["response"]["value"] = Value::String("MTAuNS4w".into());
+    assert_eq!(adapted, expected);
+
+    for unchanged in [
+        legacy.replace(r#""code":0"#, r#""code":7"#),
+        legacy.replace(r#""codespace":"sdk""#, r#""codespace":"other""#),
+        legacy.replace(r#""value":"""#, r#""value":"existing""#),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<Value>(&legacy_app_version(&unchanged)).unwrap(),
+            serde_json::from_str::<Value>(&unchanged).unwrap()
+        );
+    }
+}
+
 fn normalize_decode_error(s: &str) -> String {
     let mut s = s.replace("proto:\u{a0}", "").replace("proto: ", "");
     if let (Some(a), Some(b)) = (s.find(" [celestiaorg/"), s.rfind(']')) {
@@ -640,7 +703,11 @@ async fn run_scenario(dir: &Path) -> Stats {
                 let go_status = e["status"].as_u64().unwrap_or(0);
                 let go_ct = e["content_type"].as_str().unwrap_or_default();
                 let go_cc = e["cache_control"].as_str().unwrap_or_default();
-                let (g, r) = if go.contains("tx parse error [") {
+                let (g, r) = if path == "/abci_info" {
+                    (legacy_abci_identity(go), legacy_abci_identity(&resp))
+                } else if path == "/abci_query?path=%22app%2Fversion%22" {
+                    (legacy_app_version(go), legacy_app_version(&resp))
+                } else if go.contains("tx parse error [") {
                     // CheckTx of an undecodable tx: Go's error text embeds the
                     // Go binary's protobuf-go `detrand` separator after
                     // "proto:" and an error-stack location; compare the rest.
@@ -791,4 +858,255 @@ fn rpc_corpus_matches_go() {
         failed |= st.ok != st.total;
     }
     assert!(!failed, "RPC responses differ from Go");
+}
+
+async fn wait_for_clients(bus: &EventBus, expected: usize, wait: std::time::Duration) {
+    tokio::time::timeout(wait, async {
+        while bus.num_clients() != expected {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("event-bus clients={}, want {expected}", bus.num_clients()));
+}
+
+async fn ws_exchange(
+    ws: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    request: &str,
+) -> String {
+    use futures_util::{SinkExt as _, StreamExt as _};
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        request.into(),
+    ))
+    .await
+    .unwrap();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(3), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
+            return text.to_string();
+        }
+    }
+}
+
+async fn websocket_origin_matrix(cors_allowed_origins: Vec<String>) {
+    use futures_util::StreamExt as _;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
+    use tokio_tungstenite::tungstenite::http::HeaderValue;
+
+    let dir = corpus_root().join("blob");
+    let corpus: Value = serde_json::from_slice(&gunzip(&dir.join("corpus.json.gz"))).unwrap();
+    let status = corpus["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "/status")
+        .map(|entry| serde_json::from_str::<Value>(entry["resp"].as_str().unwrap()).unwrap())
+        .unwrap();
+    let frozen =
+        nodestore::genesis::pub_key_from_json(&status["result"]["validator_info"]["pub_key"])
+            .unwrap();
+    let mut chain = tokio::task::spawn_blocking(move || build_chain(&dir, &status, frozen))
+        .await
+        .unwrap();
+    Arc::get_mut(&mut chain.env)
+        .unwrap()
+        .config
+        .cors_allowed_origins = cors_allowed_origins;
+    let env = Arc::clone(&chain.env);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(listener, Arc::clone(&env)));
+    let endpoint = format!("ws://{addr}/websocket");
+    let subscribe =
+        r#"{"jsonrpc":"2.0","id":1,"method":"subscribe","params":{"query":"tm.event = 'Tx'"}}"#;
+
+    for (case, origin) in ["", "https://allowed.example", "https://denied.example"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut request = endpoint.clone().into_client_request().unwrap();
+        if !origin.is_empty() {
+            request
+                .headers_mut()
+                .insert("Origin", HeaderValue::from_str(origin).unwrap());
+        }
+        let (mut ws, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert_eq!(response.status().as_u16(), 101, "origin {origin:?}");
+        assert_eq!(
+            response
+                .headers()
+                .get("Connection")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_ascii_lowercase(),
+            "upgrade"
+        );
+        assert_eq!(
+            response.headers().get("Upgrade").unwrap().to_str().unwrap(),
+            "websocket"
+        );
+        assert!(
+            !response
+                .headers()
+                .contains_key("Access-Control-Allow-Origin")
+        );
+        assert!(!response.headers().contains_key("Vary"));
+        assert!(
+            ws_exchange(&mut ws, subscribe)
+                .await
+                .contains(r#""result":{}"#),
+            "origin {origin:?} did not subscribe"
+        );
+        wait_for_clients(&env.event_bus, 1, std::time::Duration::from_secs(1)).await;
+
+        let height = 100 + i64::try_from(case).unwrap();
+        env.event_bus.publish_tx(abci::TxResult {
+            height,
+            index: 0,
+            tx: format!("origin-{case}").into_bytes(),
+            result: Some(abci::ExecTxResult::default()),
+        });
+        let event = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let frame = ws.next().await.unwrap().unwrap();
+                if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
+                    break text;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let event: Value = serde_json::from_str(&event).unwrap();
+        assert_eq!(event["result"]["query"], "tm.event = 'Tx'");
+        assert_eq!(
+            event["result"]["data"]["value"]["TxResult"]["height"],
+            height.to_string()
+        );
+        ws.close(None).await.unwrap();
+        wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+    }
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn websocket_origins_match_go_and_deliver_events() {
+    websocket_origin_matrix(vec!["https://allowed.example".into()]).await;
+    websocket_origin_matrix(Vec::new()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn websocket_disconnects_reclaim_subscriptions_and_allow_reconnect() {
+    use futures_util::{SinkExt as _, StreamExt as _};
+
+    let dir = corpus_root().join("blob");
+    let corpus: Value = serde_json::from_slice(&gunzip(&dir.join("corpus.json.gz"))).unwrap();
+    let status = corpus["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "/status")
+        .map(|entry| serde_json::from_str::<Value>(entry["resp"].as_str().unwrap()).unwrap())
+        .unwrap();
+    let frozen =
+        nodestore::genesis::pub_key_from_json(&status["result"]["validator_info"]["pub_key"])
+            .unwrap();
+    let mut chain = tokio::task::spawn_blocking(move || build_chain(&dir, &status, frozen))
+        .await
+        .unwrap();
+    let env = Arc::get_mut(&mut chain.env).unwrap();
+    env.config.max_subscription_clients = 1;
+    env.config.websocket_write_buffer_size = 1;
+    let env = Arc::clone(&chain.env);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(rpc::server::serve(listener, Arc::clone(&env)));
+    let endpoint = format!("ws://{addr}/websocket");
+    let subscribe = r#"{"jsonrpc":"2.0","id":1,"method":"subscribe","params":{"query":"tm.event = 'NewBlock'"}}"#;
+
+    // Dropping an aborted peer task must tear down its subscription and free
+    // the only external client slot.
+    let (mut ws, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut ws, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    wait_for_clients(&env.event_bus, 1, std::time::Duration::from_secs(1)).await;
+    let peer = tokio::spawn(async move {
+        std::future::pending::<()>().await;
+        drop(ws);
+    });
+    peer.abort();
+    let _ = peer.await;
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+
+    // A non-reading peer fills the one-entry response queue. The ten-second
+    // socket write deadline terminates both halves and runs unsubscribe_all.
+    let (mut blocked, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut blocked, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    for id in 10..2010 {
+        blocked
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"genesis","params":{{}}}}"#).into(),
+            ))
+            .await
+            .unwrap();
+    }
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(18)).await;
+    drop(blocked);
+
+    // A peer that does not poll the server ping sends no pong. The 30-second
+    // inbound deadline closes it and reclaims the subscription.
+    let (mut idle, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut idle, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(33)).await;
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            match idle.next().await {
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)) | Err(_)) | None => {
+                    break;
+                }
+                Some(Ok(_)) => {}
+            }
+        }
+    })
+    .await;
+    assert!(
+        closed.is_ok(),
+        "idle socket remained open after read deadline"
+    );
+
+    // The only client slot is immediately reusable by a healthy connection.
+    let (mut healthy, _) = tokio_tungstenite::connect_async(&endpoint).await.unwrap();
+    assert!(
+        ws_exchange(&mut healthy, subscribe)
+            .await
+            .contains(r#""result":{}"#)
+    );
+    assert!(
+        ws_exchange(
+            &mut healthy,
+            r#"{"jsonrpc":"2.0","id":2,"method":"unsubscribe_all","params":{}}"#,
+        )
+        .await
+        .contains(r#""result":{}"#)
+    );
+    healthy.close(None).await.unwrap();
+    wait_for_clients(&env.event_bus, 0, std::time::Duration::from_secs(3)).await;
+    server.abort();
 }

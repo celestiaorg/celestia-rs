@@ -21,3 +21,4 @@ pub mod rpc_service;
 pub mod sync;
 pub mod txs;
 pub mod util;
+pub mod version;

@@ -1,0 +1,29 @@
+[package]
+name = "grpc-reflection"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Listener-specific bidirectional gRPC reflection for Celestia RPC providers."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+grpc-transport = { path = "../grpc-transport" }
+prost = "0.13"
+prost-types = "0.13"
+tonic = { version = "=0.12.3", default-features = false }
+
+[dev-dependencies]
+hash = { path = "../../tier-0-primitives/hash" }
+serde_json = "1"
+hex = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time"] }
+tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }

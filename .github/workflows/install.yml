@@ -37,7 +37,7 @@ jobs:
     if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - run: shellcheck -s sh scripts/install.sh scripts/test-install.sh
 
   mock:
@@ -55,7 +55,7 @@ jobs:
           - { os: macos-14, shell: zsh }
           - { os: macos-15, shell: bash }
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: zsh and fish (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zsh fish
@@ -82,7 +82,7 @@ jobs:
     steps:
       # Before checkout, which needs tar (not in amazonlinux).
       - run: ${{ matrix.setup }}
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - run: sh scripts/test-install.sh
         env:
           TEST_SHELL: ${{ matrix.shell }}
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     container: alpine:latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - run: |
           set +e
           sh scripts/install.sh --version v0.0.0 >out 2>&1
@@ -142,7 +142,7 @@ jobs:
       # Before checkout, which needs tar (not in amazonlinux).
       - if: matrix.setup
         run: ${{ matrix.setup }}
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # Anonymous, like a user. PRs test their own copy of the installer;
       # everything else runs the README's command, which fetches the script
       # from main.

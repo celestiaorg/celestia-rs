@@ -101,6 +101,15 @@ groups:
         annotations:
           summary: "{{ $labels.network }}: validator is jailed or tombstoned (operator guide §11.9, Jailed)"
 
+      - alert: ValidatorJailedUnknown
+        # A validator (signing info found) whose staking jailed flag could
+        # not be read: no valoper in nodes.conf, or the query failed.
+        expr: celestia_rs_validator_signing_info_found == 1 unless on (network) celestia_rs_validator_jailed
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.network }}: cannot tell whether the validator is jailed (valoper in nodes.conf? x/staking query failing?)"
+
   - name: host
     rules:
       - alert: DiskSpaceLow

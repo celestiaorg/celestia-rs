@@ -2,8 +2,8 @@
 # Nightly execution differentials (MILESTONES.md C1.2 / F1.1): runs one
 # shard of the `json_*`, `c_*` (consensus types, MILESTONES.md F1.7),
 # `exec`, `pp` and `deliver` harnesses against Go celestia-app v10.5.0 and
-# v9.0.8 (celestia-core v0.42.3), rotating scenarios, modes and flags with
-# the seed so that consecutive nights cover different combinations.
+# v9.0.8 (celestia-core v0.42.3 and v0.40.9 respectively), rotating scenarios,
+# modes and flags with the seed so consecutive nights cover different combinations.
 #
 # usage: crates/fuzz-diff/nightly.sh <job> <seed> [findings-dir]
 #   job: regressions | json | consensus | exec | pp | deliver-<k>of<n> | upgrade-<k>of<n> |
@@ -127,9 +127,14 @@ appd_for() { case $1 in v9-*) echo "$V9" ;; *) echo "$V10" ;; esac; }
 # Flags of a deliver run, chosen by the seed: IBC always (the mock
 # counterparty's packets cover every scenario), the others in rotation.
 deliver_flags() {
-  local scen=$1 s=$2
+  local scen=$1 s=$2 mode
   local f=(DELIVER_IBC=1)
-  case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
+  case $scen in *hyperlane* | *zkism*)
+    mode=$(pick "$((s / 3))" noop message-id merkle-root)
+    f+=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
+    [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+    ;;
+  esac
   [ $((s % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
   [ $((s % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
   [ $((s % 4)) -eq 1 ] && f+=(DELIVER_RECHECK=1)
@@ -146,6 +151,22 @@ deliver_run() { # <scenario> <seed> <flags...>
   tag=$(echo "$@" | sed 's/DELIVER_//g; s/=1//g; s/ /+/g')
   run "deliver-$scen-s$s-${tag:-plain}" $((BLOCKS / 2)) GO_APPD="$(appd_for "$scen")" "$@" -- \
     "$ROOT/crates/fuzz-diff/deliver-diff.sh" "$scen" "$BLOCKS" 8 "$s"
+}
+
+# Full campaign: every verifier mode for Hyperlane scenarios, including
+# rejection/retry coverage for signed modes. Other scenarios run once.
+campaign_deliver_run() { # <scenario> <seed> <flags...>
+  local scen=$1 s=$2 mode
+  shift 2
+  case $scen in *hyperlane* | *zkism*)
+    for mode in noop message-id merkle-root; do
+      local f=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
+      [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+      deliver_run "$scen" "$s" "$@" "${f[@]}"
+    done
+    ;;
+  *) deliver_run "$scen" "$s" "$@" ;;
+  esac
 }
 
 upgrade_run() { # <seed> <flags...>
@@ -188,12 +209,18 @@ json)
   ;;
 consensus)
   # celestia-core's types (votes, proposals, headers, blocks, commits,
-  # validator sets and updates, params, evidence, part sets, signatures):
-  # the v10 oracle only (v9 runs the same celestia-core).
+  # validator sets and updates, params, evidence, part sets, signatures),
+  # checked against each app release's pinned celestia-core.
   OPS=c_vote,c_proposal,c_header,c_block,c_commit,c_valset,c_valupd,c_params,c_evidence,c_partset,c_ed25519,c_secp256k1,c_prop,c_secp256r1,c_ics23,c_groth16,c_vblock
-  t=$((BUDGET - 60))
-  run "consensus-s$SEED" "$t" -- "$FUZZ_DIFF" --app-version 10 --ops "$OPS" \
-    --iters 1000000000 --max-secs "$t" --seed "$SEED" --findings "$FINDINGS/consensus"
+  half=$((BUDGET / 2 - 60))
+  if [ "$half" -le 0 ]; then
+    echo "consensus budget must exceed 120 seconds" >&2
+    exit 2
+  fi
+  for v in 10 9; do
+    run "consensus-v$v-s$SEED" "$half" -- "$FUZZ_DIFF" --app-version "$v" --ops "$OPS" \
+      --iters 1000000000 --max-secs "$half" --seed "$SEED" --findings "$FINDINGS/consensus-v$v"
+  done
   ;;
 exec)
   # Rounds until the budget is spent: a new seed and mode per round, the
@@ -244,7 +271,10 @@ upgrade-*of*)
     s=$((SEED * 1000 + i * n + k))
     i=$((i + 1))
     j=$((SEED + i + k))
-    f=(DELIVER_IBC=1 DELIVER_HL=1)
+    # Divide by the flag cycle so every verifier sees both settings of
+    # WIRE / SWEEP / RECHECK. Rejection setup cannot be combined with upgrades.
+    mode=$(pick "$((j / 6))" noop message-id merkle-root)
+    f=(DELIVER_IBC=1 DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
     [ $((j % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
     [ $((j % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
     [ $((j % 2)) -eq 1 ] && f+=(DELIVER_RECHECK=1)
@@ -265,22 +295,21 @@ campaign-*of*)
     d:*)
       scen=${it#d:}
       f=(DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1)
-      case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
-      deliver_run "$scen" "$SEED" "${f[@]}"
+      campaign_deliver_run "$scen" "$SEED" "${f[@]}"
       ;;
     g:*)
       # The same with every proposal passed (handler error texts reach
       # state through `failed_reason`).
       scen=${it#g:}
       f=(DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_RECHECK=1)
-      case $scen in *hyperlane* | *zkism*) f+=(DELIVER_HL=1) ;; esac
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
-      deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
+      campaign_deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
       ;;
     u:*)
       i=${it#u:}
-      upgrade_run "$((SEED * 100 + i))" DELIVER_IBC=1 DELIVER_HL=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
+      mode=$(pick "$((i - 1))" noop message-id merkle-root)
+      upgrade_run "$((SEED * 100 + i))" DELIVER_IBC=1 DELIVER_HL=1 "DELIVER_HL_ISM=$mode" DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
       ;;
     esac
   done

@@ -2,6 +2,8 @@
 
 **Status:** Accepted. Supersedes the conflicting parts of
 [`../specs/2026-05-14-celestia-rs-design.md`](../specs/2026-05-14-celestia-rs-design.md).
+The observation windows and PR workflow below are superseded by
+[`ADR 0009`](0009-three-night-acceptance.md) (2026-10-28).
 
 ## Context
 
@@ -36,8 +38,8 @@ validation works.
 | Overnight scope (2026-10-15) | If the network allows, go as far as a **Mocha validator** (local key, faucet funds, testnet tokens only; no mainnet keys). On a usage-limit hit, pause and auto-resume at the reset. When blocked on the network, work on performance tuning, release-build hardening (macOS aarch64, packaging, service files) and fuzzing of consensus-critical code. |
 | M13/M14 (2026-10-16) | M13 passes after **24 hours** of clean Mocha validation (shortened from 72 hours the same day by the owner: a longer soak adds little signal) (no app-hash mismatch, no double-sign-guard refusal, missed blocks < 1%). The mainnet full node on the Mac waits until M13 passes (the cloud HTTPS follower covers mainnet execution meanwhile). Mainnet validation (M14) is decided later. Cloud work during the soak: remaining parity gaps, performance, long-run soak/chaos; Mac benchmarks (B1) after the soak. |
 | Mainnet gate (2026-10-16) | Local-file consensus key signing is accepted for mainnet. The consensus-split risk is not: M14 starts only after F1 (consensus-split assurance, `MILESTONES.md`) meets every exit criterion. **Superseded 2026-10-19** by the next row for the first validator. |
-| Mainnet canary (2026-10-19) | M14 is a small-stake canary (stake near the active-set minimum): it starts after M13 and C1 (mainnet full node through the v10 upgrade and 7 days at v10, execution differentials nightly and clean 7 nights, determinism of the Mac `dist` build, a fresh `deliver` campaign, operations). A small-stake Rust validator cannot fork or halt mainnet; F1 stays the gate for more than canary stake. |
-| Workflow | Single agent; push directly to `main` after the local gate (`fmt`, `clippy -D warnings`, `test`). Progress lives in `MILESTONES.md` + commit log; blockers go to `OPEN_QUESTIONS.md` and work continues on unblocked items using Go behavior as the default answer. |
+| Mainnet canary (2026-10-19; acceptance window amended 2026-10-28) | M14 is a small-stake canary (stake near the active-set minimum): it starts after M13 and C1 (mainnet full node through the v10 upgrade and three days at v10, execution differentials nightly and clean for three consecutive nights, determinism of the Mac `dist` build, a fresh `deliver` campaign, operations). A small-stake Rust validator cannot fork or halt mainnet; F1 stays the gate for more than canary stake. |
+| Workflow (amended 2026-10-28) | Open focused completed PRs ready for review, enable auto-merge, and let required CI control merging; do not push directly to `main` or bypass checks. Progress lives in `MILESTONES.md` + commit log; blockers go to `OPEN_QUESTIONS.md` and work continues on unblocked items using Go behavior as the default answer. |
 
 ## Consequences
 

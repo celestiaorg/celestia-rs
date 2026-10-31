@@ -23,12 +23,11 @@
 //	          input: protobuf {repeated bytes txs = 1; uint32 max_square_size = 2}
 //	          (0: SquareSizeUpperBound); out: "<square width> <data root hex>"
 //	json_*    the JSON decodes of consensus execution (jsondecode.go)
-//	c_*       celestia-core v0.42.3 consensus-layer validation (consensus.go;
-//	          v10 oracle only)
+//	c_*       celestia-core v0.40.9 consensus-layer validation (consensus.go)
 //
-// The v9 oracle (`../v9`) is the same program built against celestia-app
-// v9.0.8 and go-square v4.0.0-rc4; keep the two files identical except for
-// the app import path.
+// The v10 oracle (`../v10`) follows the same protocol against the current app
+// and core dependencies. Keep shared operations aligned except where the
+// application or consensus version differs.
 //
 //	GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod GOTOOLCHAIN=go1.26.9 go build -o fuzzoracle-v9 .
 package main
@@ -328,6 +327,14 @@ func main() {
 	if debug.SetMemoryLimit(-1) == 1<<63-1 {
 		debug.SetMemoryLimit(1500 << 20)
 	}
+	// Even an in-memory app reads upgrade metadata from NodeHome. Isolate
+	// each oracle from the operator's home and from other oracle processes.
+	oracleHome, err := os.MkdirTemp(os.Getenv("FUZZ_ORACLE_TMPDIR"), "celestia-fuzzoracle-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(oracleHome)
+	app.NodeHome = oracleHome
 	a := app.New(log.NewNopLogger(), dbm.NewMemDB(), nil, 0, 0, simtestutil.EmptyAppOptions{})
 	enc := a.GetEncodingConfig()
 	dec := enc.TxConfig.TxDecoder()

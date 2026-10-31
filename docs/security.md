@@ -336,8 +336,9 @@ error acknowledgements, timeouts), ICA host txs in either encoding (with
 a fee grant whose amount has a sign, and keys gogoproto skips),
 misbehaviour on the second client, `MsgUpgradeClient` of the third,
 ICS-27 channel upgrades the counterparty proposes (try, confirm with the
-counterparty flushing or flush complete, open, cancel on an error
-receipt, timeout) and transfer channels the counterparty closes
+counterparty flushing or flush complete, open, acknowledgement/receipt
+pruning after a completed upgrade, cancel on an error receipt, timeout) and
+transfer channels the counterparty closes
 (`MsgTimeoutOnClose`, `MsgChannelCloseConfirm`). Hyperlane owner
 operations target objects their signer created (a create message first
 when it has none), and ownership changes are followed. `DELIVER_HL`
@@ -362,6 +363,97 @@ the IGP), `MsgProcessMessage` 22-26, `MsgRemoteTransfer` 22-25 and
 `MsgCreateNativeSyntheticToken` proposal passed in both scenarios; no
 mismatch. Generated gov proposals carry `MsgCreateNativeSyntheticToken`
 too (a fuzz-created mailbox; a new denom, `utia` or empty).
+
+`DELIVER_HL_ISM=message-id` or `merkle-root` replaces the scripted mailbox's
+default noop verifier with a 2-of-3 multisig whose Ethereum signing keys the
+harness holds. Incoming transfers carry signed checkpoints; Merkle-root
+metadata also carries a valid membership proof. Each signed incoming tx
+sets its recipient token's ISM immediately before `MsgProcessMessage`, so
+other fuzz transactions cannot replace verification with a noop and still
+earn signed-coverage credit. `HL_VERIFIED` lines retain successful collateral
+and synthetic deliveries separately; `HL_VERIFIED_VERSION` and `DELIVER_STATS`
+also attribute them to the app version that finalized the message. A selected
+multisig mode exits nonzero if either success path was never reached,
+even when every Go/Rust rejection matched. Default `noop` behavior is
+preserved. Nightly hyperlane/zkism runs rotate all three modes independently
+of gas-sweep selection, retaining the mode in their `.env` evidence.
+
+`DELIVER_HL_REJECT=1` requires a signed ISM and begins with a controlled
+phase: missing, duplicated, reversed and invalid-recovery signatures, plus
+Merkle proof and signed-index mutations for `merkle-root`. Each invalid tx
+is immediately followed by valid metadata for the exact same message ID.
+Both include the ISM selection. Coverage requires adjacent finalized txs,
+the expected verification-stage rejection, and a successful retry; this
+checks rollback of mailbox receipts written before verification. Unrelated
+generators, gas sweeps and user scripts wait until every pair completes,
+then resume. `HL_RETRIED` and `DELIVER_STATS` retain per-case counts,
+failures, controlled-phase block count and completion height. Missing or
+failed pairs exit nonzero even if Go and Rust agree. Nightly signed
+Hyperlane scenario modes enable this phase; noop runs retain their existing behavior. Upgrade jobs
+rotate noop, message-ID and Merkle-root verification independently of
+WIRE / SWEEP / RECHECK selection, without the rejection phase. The full
+campaign runs all three modes for each Hyperlane/zkism scenario, both with
+ordinary generation and with `DELIVER_GOVPASS` enabled, and distributes
+its twelve distinct upgrade seeds across all three modes. These selections
+are retained in each run's `.env`. In a signed `DELIVER_UPGRADE` run, the
+harness reserves the scripted Hyperlane account from unrelated traffic and
+holds the upgrade signal until both incoming paths have succeeded at v9. The
+version-scoped counters fail the run if either pre-switch path is missing;
+post-switch counters remain separate evidence. Unrelated traffic continues on
+other accounts, preserving the upgrade driver's IBC and fuzzing schedule.
+Budget-skipped campaign cases still make the campaign fail.
+The existing duplicate-error-receipt governance fixture pins the original
+state timeline and sets
+`DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture`; that exact value is accepted
+only with both `DELIVER_SCRIPT` and `DELIVER_GOV_FAILURE_REQUIRE` in a signed
+upgrade run. It keeps the governance regression stable and cannot silently
+weaken ordinary signed campaigns. Its Hyperlane counts are not pre-upgrade
+coverage evidence; the separate signed upgrade regression below supplies that.
+Combining this phase with `DELIVER_UPGRADE` is rejected: postponing the
+upgrade driver's early fixture windows would silently weaken that campaign.
+
+`DELIVER_GOVPASS` periodically submits valid single-payload authority
+proposals even when no earlier proposal exists, then deposits and votes on
+the known proposals. `DELIVER_GOV_REQUIRE` accepts comma-separated exact
+payload type URLs. Until every required payload executes, a controlled phase
+pauses custom scripts and unrelated generators, forces the required proposal
+traffic into each block and continues depositing and voting. It then resumes
+the selected IBC, Hyperlane, recheck and other traffic. The option requires
+`DELIVER_GOVPASS`, rejects empty or malformed URLs, and retains both
+requirements and actual `GOV_EXECUTED` counts in `DELIVER_STATS`. Combining it
+with `DELIVER_UPGRADE` is rejected because the controlled phase would skip the
+upgrade campaign's early fixtures. This prevents proposal submission or an
+unrelated passed proposal from being mistaken for execution of the authority
+handler under test.
+
+GOVPASS runs that require legacy deposit coverage deposit through both the current
+`cosmos.gov.v1.MsgDeposit` and legacy `cosmos.gov.v1beta1.MsgDeposit` handlers
+against known v1 proposals. Celestia's empty legacy proposal router prevents a
+valid legacy proposal submission, but the legacy deposit handler remains
+reachable on current proposals. The extra legacy traffic is opt-in so existing
+fixed-seed GOVPASS findings retain their transaction schedule.
+`DELIVER_TYPE_REQUIRE` accepts comma-separated
+exact top-level message URLs and fails unless Go successfully finalizes each
+one. `DELIVER_STATS` retains the requirements, while the `TYPE` lines retain
+the observed per-type counts. This keeps a clean differential from receiving coverage
+credit when the required handler was only submitted, rejected by `CheckTx`, or
+failed during execution.
+`DELIVER_IBC_ACK_FAILURE_REQUIRE=1` additionally requires `DELIVER_IBC`, a
+decoded code-0 `MsgChannelUpgradeAck` FAILURE response and the same result's
+matching ICA host callback error event. The mock supplies valid counterparty
+channel and upgrade proofs after a host-side Try; Celestia's host-only ICA
+callback then aborts the Ack, writes the error receipt and returns FAILURE. A
+successful transaction code or an unrelated Ack failure cannot satisfy this
+contract or be reported as a successful Ack handshake.
+
+The standalone Go decoding oracles also construct an in-memory App, whose
+upgrade keeper reads on-disk metadata at startup. Each oracle therefore uses
+a private temporary `NodeHome`. The Rust driver owns the parent scratch
+directory and removes it after killing and reaping an oracle, including
+periodic restarts; standalone EOF removes the Go-created home. The startup
+smoke check exercises two concurrent instances and repeated Rust-driven
+shutdowns without changing the operator's home. `fuzz-exec` runs it against
+both pinned Go versions before differential jobs.
 
 `fuzz-diff pp` (`crates/fuzz-diff/pp-diff.sh <scenario>`) is the
 ProcessProposal differential: the recorded scenario is re-driven into a Go
@@ -605,7 +697,10 @@ of the v9 grants, fees paid by the v9 allowances; every generated tx is
 also proposed unfiltered at `H..H+2`; late at v10 the fuzz validators take
 5/6 of the power and signal 10 / 9. `DELIVER_HL`, `DELIVER_IBC` (packets
 in flight across the switch), `DELIVER_WIRE` and `DELIVER_SWEEP` combine
-with it. Plus a live devnet with the real switch
+with it. When a signed Hyperlane ISM is selected, the driver first completes
+both collateral and synthetic incoming paths at v9 using its reserved account,
+then releases the held signal; this prevents post-switch successes from hiding
+a pre-switch coverage gap. Plus a live devnet with the real switch
 (`workloads/v9-upgrade-boundary.sh`, fixture replayed with full parity).
 
 Findings 68-72. Volumes after the fixes (24 runs, seeds 1-41, 0
@@ -748,7 +843,7 @@ and creates false CheckTx / PrepareProposal discrepancies against Rust.
 installed; the report excludes other compiler versions.
 Different finalized counts for an identical run are an error. Do not
 sum revisions to claim F1.2: its volume starts after the last fix and
-still needs every scenario, both app versions and 14 clean nights.
+still needs every scenario, both app versions and three consecutive clean nights.
 Artifacts from before `DELIVER_STATS` are not counted by this report.
 
 The `exec` client allows HTTP/2 header lists up to 1 MiB on both
@@ -934,7 +1029,7 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 94 | the SDK message count (`countExecutableMsgs`, CheckTx and both proposal handlers) | Go counts the decoded messages (`GetMsgs`); Rust decoded each message's bytes as received with prost, which rejects what gogoproto reads (a key past `u32`, see 83), and counted such a `MsgRecvPacket` as one message instead of reading its ICA packet (600 when its channel cannot be read) | a tx over the limit passed CheckTx in Rust; a block over the limit was accepted by Rust and rejected by Go in ProcessProposal (a split on block validity from one proposer) | `count_executable_msgs` takes `Tx::gogo_msgs`, and a `MsgExec`'s inner messages are counted from their gogoproto decoding; `msg_count::tests::counts_the_gogoproto_decoding`; `ibc-edge` seed 3020 in `deliver-regressions.txt`. Found by the nightly `fuzz-exec` (`deliver-0of6`, `deliver-1of6`, 5 runs) ([#66](https://github.com/celestiaorg/celestia-rs/issues/66)) |
 | 95 | `SetPubKeyDecorator` on an interchain account | ICS-27 `InterchainAccount.SetPubKey` always fails (`cannot set public key for interchain account`); Rust set the key. Reachable only in simulation (otherwise no key matches the account's address) | `Simulate` of a tx signed by an interchain account succeeded in Rust and failed in Go (gas estimates; not consensus) | `sigverify::set_pub_key` fails for `Account::Interchain`. Found by the nightly `fuzz-exec` (`DELIVER_SIM`, 18 runs across the deliver shards) ([#68](https://github.com/celestiaorg/celestia-rs/issues/68)) |
 | 96 | ante handler and wire-format limits (both versions) | the decoders after the tx decoder still read tx bytes with prost where Go holds gogoproto's decoding (the 83 gap, SDK side): `ParamFilterDecorator` / `NestedMsgDecorator` unpacked `MsgExec` / `MsgSubmitProposal`, and `GetPubKeys` / `SetPubKeyDecorator` the signer keys (`LegacyAminoPubKey` included) with prost (the message count's decoding is 94), which rejects a key past `u32::MAX` (Go: `int32(key >> 3)`, an unknown or a known field); `decodeMultisignatures` compared the whole key instead of `int32(key >> 3)`; `countProtoMsgs` (ICA `CosmosTx`) and `dynamicpb`'s group skipping limited field numbers to 2^29 - 1 where protowire's `ConsumeTag` allows 2^31 - 1. Separately, `SetPubKeyDecorator` stored a multisig key re-encoded by prost, dropping the unknown fields gogoproto's `Any` keeps in its sub-keys | a `MsgExec` holding a key past `u32::MAX` and no `msgs`: Go fails `must include at least one message` (code 18), Rust failed decoding (code 2); the tx result, and with it `LastResultsHash`, splits Rust validators from Go ones from one tx (issue #60); the other paths: a tx or block Go accepts that Rust rejects (or the reverse), and another stored account key | `txview::unpack_go` and `PubKey::from_any` read through `txdecode::prost_compatible` (a multisig keeps its sub-keys as received, `gogo::keeps_raw_anys`, and is stored as gogoproto's `Marshal`), `int32` field numbers in `decode_multisignatures`, `ConsumeTag`'s limit in `count_proto_msgs` and `signers::skip_group`; `txview::tests::issue_60_msg_exec` (the tx's `MsgExec`), `nested_msgs_are_read_as_gogoproto_decodes_them`, `multisignature_keys_truncate_to_int32`, `pubkey::tests`, `msg_count::tests::proto_and_json_counts`, `signers::tests::group_inner_fields_up_to_max_int32`. Found by `deliver-diff` (`ibc`, `DELIVER_WIRE`, seed 3022) |
-| 97 | gov `MsgUpdateParams` (`Params.ValidateBasic`, both versions: cosmos-sdk v0.52.8 and v0.52.12 are identical) | Rust's texts dropped Go's values and merged checks (`voting period must be positive` for `voting period must be positive: 0s`, `invalid quorum` for `quorom cannot be negative: %s` / `quorom too large: %s`, ...) and the initial-deposit-ratio and cancel-ratio parse errors had other prefixes. The error is a log for a tx, but a passed gov proposal whose `MsgUpdateParams` fails stores it as the proposal's `failed_reason` | app-hash split at the end of the proposal's voting period (needs a passed proposal with invalid gov params) | `x_gov::msgs::validate_params` uses Go's texts (durations in Go's `String()`, decs in `LegacyDec.String()`); `msgs::tests::validate_params_errors_are_go_s`; `v9-gov` seed 4018 pinned in `crates/fuzz-diff/deliver-regressions.txt`. Go formats `maximum deposit period must be positive: %d` with a `*time.Duration`, which prints the pointer's address (see Open); Rust prints the nanoseconds. Found by the nightly `fuzz-exec` (`deliver-3of6`) ([#71](https://github.com/celestiaorg/celestia-rs/issues/71)) |
+| 97 | gov `MsgUpdateParams` (`Params.ValidateBasic`, both versions: cosmos-sdk v0.52.8 and v0.52.12 are identical) | Rust's texts dropped Go's values and merged checks (`voting period must be positive` for `voting period must be positive: 0s`, `invalid quorum` for `quorom cannot be negative: %s` / `quorom too large: %s`, ...) and the initial-deposit-ratio and cancel-ratio parse errors had other prefixes. The error is a log for a tx, but a passed gov proposal whose `MsgUpdateParams` fails stores it as the proposal's `failed_reason` | app-hash split at the end of the proposal's voting period (needs a passed proposal with invalid gov params) | `x_gov::msgs::validate_params` uses Go's texts (durations in Go's `String()`, decs in `LegacyDec.String()`); `msgs::tests::validate_params_errors_are_go_s` pins the texts. The historical `v9-gov` seed 4018 remains in `crates/fuzz-diff/deliver-regressions.txt`, but its current 40-block run no longer reaches the failed-proposal marker and receives no end-to-end coverage credit for this finding. Go formats `maximum deposit period must be positive: %d` with a `*time.Duration`, which prints the pointer's address (see Open); Rust prints the nanoseconds. Found by the nightly `fuzz-exec` (`deliver-3of6`) ([#71](https://github.com/celestiaorg/celestia-rs/issues/71)) |
 | 98 | IBC connection version negotiation error text (both versions) | ibc-go v8.7.2 `PickVersion` returns `failed to find a matching counterparty version (%v) from the supported version list (%v)` of two `[]*Version`, each element printed as gogoproto's `CompactTextString` (`[identifier:"1" features:"ORDER_ORDERED" ]`), and `ConnOpenAck` `the counterparty selected version %s is not supported by versions selected on INIT`; Rust omitted the versions. The error is a log for a tx, but a passed gov proposal whose `MsgConnectionOpenTry` / `MsgConnectionOpenAck` fails stores it as the proposal's `failed_reason` | app-hash split at the end of the proposal's voting period (any proposer of a proposal carrying a connection handshake message) | `connection::go_version_string` / `go_versions_string` in `pick_version` and `conn_open_ack`; `connection::tests::pick_version_error_is_go_s`; `zkism-forwarding` seed 5083 pinned in `crates/fuzz-diff/deliver-regressions.txt`. Found by the nightly `fuzz-exec` (`deliver-0of6`) ([#72](https://github.com/celestiaorg/celestia-rs/issues/72)) |
 | 99 | staking `BeginRedelegation` from an unbonded validator (both versions: cosmos-sdk v0.52.8 and v0.52.12) | when the redelegated shares are the source validator's last, `Unbond` removes the unbonded validator (`RemoveValidator`); `getBeginInfo` then looks it up again and, on `ErrNoValidatorFound`, returns early with its named `err` still set, so the redelegation fails with `validator does not exist` (code 3) and the tx reverts. Rust treated the missing validator as bonded (a redelegation entry maturing after the unbonding period) and succeeded | **any delegator** holding all remaining shares of an unbonded validator (e.g. the operator of a jailed or out-of-set validator with only its self-delegation) redelegates them: the tx result, and with it `LastResultsHash` and the app hash, splits Rust validators from Go ones | `delegation::get_begin_info` fails with `no_validator_found`; `tests::redelegating_last_shares_of_unbonded_validator_fails`; `staking-lifecycle` seed 5017 pinned in `crates/fuzz-diff/deliver-regressions.txt` (seen through `DELIVER_SIM`: the generated tx was never delivered). Found by the nightly `fuzz-exec` (`deliver-1of6`) ([#74](https://github.com/celestiaorg/celestia-rs/issues/74)) |
 | 100 | ICS-20 `MsgTransfer.ValidateBasic` length limits (both versions) | `len(msg.Receiver) > 2048` and `len(msg.Memo) > 32768` count Go bytes; Rust used `str::len` of the Go-form string, in which each invalid UTF-8 byte is a multi-byte char, so a receiver of 683 to 2048 invalid bytes failed `recipient address must not exceed 2048 bytes` (code 5) where Go passes the check and fails GetSigners' decoding (`... contains invalid UTF-8`, code 1) | `CheckTx` code, gas and log (RPC); not consensus: both ante handlers fail the tx, so both `ProcessProposal`s reject a block holding it | `gostr::go_len` for both limits in `relay::validate_msg_transfer` (as `x_icahost` does for the owner); `tests::transfer_length_limits_count_go_bytes`; `ibc-edge` seed 6091 pinned in `crates/fuzz-diff/deliver-regressions.txt`. Found by `fuzz-exec` (`deliver-3of6`) ([#78](https://github.com/celestiaorg/celestia-rs/issues/78)) |
@@ -951,6 +1046,7 @@ Fixed (each pinned by a test; consensus-relevant ones also by
 | 111 | IBC packet JSON / packet-forward sender Go-string boundary (both versions) | the shared JSON decoder returned ordinary Unicode rather than gostr's Go-string form; a reserved-range scalar could be re-marshalled or persisted as its internal UTF-8 representation. Normalizing the decoder also requires `GetReceiver` to hash the original Go bytes | a foreign ICS-20 sender can produce different forwarded packet/in-flight state and later refund behavior | normalize JSON strings centrally; hash the normalized PFM preimage through `gostr::to_go_bytes`; full decode/remarshal and Go 1.26.9 / packet-forward-middleware v8.2.0 U+10FFFF vectors pin the path |
 | 112 | ICA host metadata aliases (both versions) | Rust iterated a sorted JSON map, so snake-case aliases could overwrite camel-case protobuf JSON names; gogoproto jsonpb gives camel-case names field-wise precedence, including null and type errors | a handshake version with both aliases can be accepted on one implementation and rejected on the other, or negotiate/store different metadata | validate unknown fields, then decode each field with camel-case precedence; tests cover order, null, type errors and connection IDs. Found by independent ibc-go v8.7.2 application review |
 | 113 | IBC acknowledgement error JSON Go-string boundary (both versions) | a canonical reserved-range Unicode error decoded as ordinary Rust Unicode, so Go-form re-marshalling changed its bytes and Rust's acknowledgement guard rejected it | Go accepts the acknowledgement and executes the application refund while Rust rejects the packet acknowledgement: transaction result and state split | normalize the decoded error to gostr form before constructing `AckResponse::Error`; a canonical U+10FFFF decode/remarshal test pins the bytes |
+| 114 | IBC channel-upgrade duplicate error-receipt panic text (both versions) | ibc-go v8.7.2's `WriteErrorReceipt` uses `errorsmod.Wrapf` at `upgrade.go:1048`, whose `%v` includes the source frame; Rust preserved the registered error text but omitted the frame | a passed governance proposal carrying `MsgChannelUpgradeTry` can hit an existing receipt at the same sequence; the differing panic text is persisted in `Proposal.failed_reason`, splitting the app hash | append the exact ibc-go v8.7.2 wrap frame on this invariant panic; a focused unit test and `v9-upgrade` seed 930039 with a scripted passed proposal in `deliver-regressions.txt` pin the Go-backed path and require the `upgrade.go:1048` marker |
 
 Open:
 

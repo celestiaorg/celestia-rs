@@ -34,6 +34,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use abci_server::record::{Direction, parse};
+use anyhow::Context as _;
 use celestia_proto::Any;
 use celestia_proto::celestia_core_proto::abci::{self, Request, Response, request, response};
 use celestia_proto::cosmos::base::v1beta1::Coin;
@@ -48,6 +49,7 @@ use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
 mod gov_coverage;
+mod hyperlane;
 mod trace;
 mod upgrade;
 
@@ -134,6 +136,8 @@ pub struct Stats {
     /// Per message type URL (nested ones prefixed by `>`): (finalized,
     /// Go code 0, rejected by Go's `CheckTx`).
     pub per_type: BTreeMap<String, (u64, u64, u64)>,
+    /// Exact top-level message types required to execute successfully.
+    pub type_required: Vec<String>,
     /// Go's results of finalized txs by first message type and
     /// `codespace/code`.
     pub codes: BTreeMap<String, u64>,
@@ -153,8 +157,39 @@ pub struct Stats {
     /// Messages actually executed by Go in passed generated proposals,
     /// counted by type URL (submission alone is not execution).
     pub gov_executed: BTreeMap<String, u64>,
+    /// Exact payload types explicitly required to execute through governance.
+    pub gov_required: Vec<String>,
+    /// Substring required in a failed proposal's Go `proposal_log`.
+    pub gov_failure_required: Option<String>,
+    /// Failed Go proposal logs that contained the required substring.
+    pub gov_failure_matches: u64,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
+    /// Require a code-0 channel-upgrade Ack FAILURE response with the matching
+    /// callback error after the host aborts the otherwise valid proof path.
+    pub ibc_ack_failure_required: bool,
+    /// Named fail-closed IBC path requirements that do not have a successful
+    /// top-level transaction to count.
+    pub ibc_required: BTreeSet<&'static str>,
+    /// Selected `DELIVER_HL` ISM.
+    pub hl_verification: Option<String>,
+    /// Successful collateral / synthetic transfers verified by that ISM.
+    pub hl_verified: BTreeMap<String, u64>,
+    /// Successful scripted transfers by app version and path
+    /// (`v9/collateral`, for example). Signed upgrade runs require these.
+    pub hl_verified_versions: BTreeMap<String, u64>,
+    /// A signed upgrade run must cover both incoming paths before switching.
+    pub hl_preupgrade_required: bool,
+    /// Required rejection / successful same-message retry cases.
+    pub hl_rejection_cases: Vec<String>,
+    /// Complete expected-rejection then successful retry pairs, by case.
+    pub hl_retried: BTreeMap<String, u64>,
+    /// Incomplete or invalid rejection/retry pairs; not consensus findings.
+    pub hl_rejection_failures: Vec<String>,
+    /// Generated blocks in the controlled rejection setup phase.
+    pub hl_rejection_blocks: u64,
+    /// Height where every rejection/retry case was completed.
+    pub hl_rejection_complete_height: Option<i64>,
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
     /// code 0, in txs Go's `CheckTx` rejected).
     pub wire: BTreeMap<String, (u64, u64, u64)>,
@@ -875,6 +910,8 @@ struct Gen {
     /// Gov-authority messages built from the app's current parameters
     /// (`DELIVER_GOVPASS`, see [`authority_msgs`]).
     gov_msgs: Vec<Any>,
+    /// An account that unrelated generated txs must not sign with.
+    reserved_account: Option<usize>,
 }
 
 /// State of `DELIVER_WIRE`: messages get a [`crate::wire`] mutation of
@@ -892,23 +929,24 @@ struct WireGen {
 
 /// `DELIVER_HL`: the hyperlane success paths in order, one tx per
 /// generated block from a dedicated fuzz account, each step using the ids
-/// the earlier ones returned: a noop ISM, a mailbox on it, an IGP with a
+/// the earlier ones returned: an ISM (noop by default), a mailbox on it, an IGP with a
 /// gas config, a merkle tree hook, the mailbox's hooks, a collateral
 /// token with an enrolled router, a transfer out (the IGP charges its
 /// fee), `MsgPayForGas`, `MsgClaim` (fees collected), `MsgProcessMessage`
-/// of a transfer in (the noop ISM verifies it), a synthetic token, a
+/// of a transfer in (the selected ISM verifies it), a synthetic token, a
 /// transfer in minting it and one out burning it; then the transfer /
 /// payment / claim / process steps repeat. Steps 16 and 17 (first pass,
 /// app version 10) propose a `MsgCreateNativeSyntheticToken` (gov-only)
 /// and have every fuzz account vote yes.
 #[derive(Default)]
 struct HlSeq {
+    verifier: hyperlane::Verifier,
     on: bool,
     step: usize,
     tries: usize,
     /// The tx of the current step, until it is finalized.
     pending: Option<Vec<u8>>,
-    noop: String,
+    ism: String,
     mailbox: String,
     igp: String,
     hook: String,
@@ -938,8 +976,33 @@ impl HlSeq {
     const LAST: usize = 17;
     const REPEAT_FROM: usize = 8;
 
+    fn msgs(&mut self, gn: &Gen) -> Vec<Any> {
+        let message = self.msg(gn);
+        if self.verifier.name() != "noop" && matches!(self.step, 11 | 14) {
+            // Other fuzz txs can change mailbox/token overrides. Selecting
+            // the immutable multisig immediately before verification in the
+            // same atomic tx prevents a noop override from counting as
+            // successful signed coverage.
+            vec![
+                Any::pack(&celestia_proto::hyperlane::warp::v1::MsgSetToken {
+                    owner: gn.accts[HL_ACCT].acc.clone(),
+                    token_id: if self.step == 11 {
+                        self.token.clone()
+                    } else {
+                        self.synth.clone()
+                    },
+                    ism_id: self.ism.clone(),
+                    new_owner: String::new(),
+                    renounce_ownership: false,
+                }),
+                message,
+            ]
+        } else {
+            vec![message]
+        }
+    }
+
     fn msg(&mut self, gn: &Gen) -> Any {
-        use celestia_proto::hyperlane::core::interchain_security::v1 as ism;
         use celestia_proto::hyperlane::core::post_dispatch::v1 as pd;
         use celestia_proto::hyperlane::core::v1 as core;
         use celestia_proto::hyperlane::warp::v1 as warp;
@@ -969,11 +1032,11 @@ impl HlSeq {
             custom_hook_metadata: String::new(),
         };
         match self.step {
-            0 => Any::pack(&ism::MsgCreateNoopIsm { creator: me }),
+            0 => self.verifier.create(me),
             1 => Any::pack(&core::MsgCreateMailbox {
                 owner: me,
                 local_domain: HL_LOCAL,
-                default_ism: self.noop.clone(),
+                default_ism: self.ism.clone(),
                 default_hook: String::new(),
                 required_hook: String::new(),
             }),
@@ -1051,10 +1114,15 @@ impl HlSeq {
                 let mut amount = [0u8; 32];
                 amount[24..].copy_from_slice(&1000u64.to_be_bytes());
                 m.extend_from_slice(&amount);
+                let metadata = self.verifier.metadata(HL_REMOTE, &m, self.nonce);
                 Any::pack(&core::MsgProcessMessage {
                     mailbox_id: self.mailbox.clone(),
                     relayer: me,
-                    metadata: String::new(),
+                    metadata: if metadata.is_empty() {
+                        String::new()
+                    } else {
+                        format!("0x{}", hex::encode(metadata))
+                    },
                     message: format!("0x{}", hex::encode(m)),
                 })
             }
@@ -1125,7 +1193,7 @@ impl HlSeq {
                     })
                     .unwrap_or_default();
             match self.step {
-                0 => self.noop = id,
+                0 => self.ism = id,
                 1 => self.mailbox = id,
                 2 => self.igp = id,
                 4 => self.hook = id,
@@ -1160,6 +1228,372 @@ impl HlSeq {
     }
 }
 
+impl Stats {
+    fn hl_rejection_setup(&self) -> bool {
+        self.hl_rejection_cases
+            .iter()
+            .any(|case| self.hl_retried.get(case).copied().unwrap_or(0) == 0)
+    }
+
+    fn observe_hl_pair(
+        &mut self,
+        case: hyperlane::Rejection,
+        bad: &[u8],
+        good: &[u8],
+        txs: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+    ) {
+        let bad_result = txs
+            .iter()
+            .zip(results)
+            .enumerate()
+            .find(|(_, (tx, _))| tx.as_slice() == bad);
+        let good_result = txs
+            .iter()
+            .zip(results)
+            .enumerate()
+            .find(|(_, (tx, _))| tx.as_slice() == good);
+        let complete = match (bad_result, good_result) {
+            (Some((b, (_, rejected))), Some((g, (_, retried)))) => {
+                b + 1 == g
+                    && rejected.code != 0
+                    && rejected.log.contains(case.error_marker())
+                    && retried.code == 0
+            }
+            _ => false,
+        };
+        if complete {
+            *self.hl_retried.entry(case.name().into()).or_default() += 1;
+        } else {
+            let outcome = |r: Option<(usize, (&Vec<u8>, &abci::ExecTxResult))>| {
+                r.map_or_else(
+                    || "not finalized".into(),
+                    |(index, (_, r))| {
+                        format!(
+                            "index={index} code={}/{} log={}",
+                            r.codespace,
+                            r.code,
+                            r.log.chars().take(160).collect::<String>()
+                        )
+                    },
+                )
+            };
+            self.hl_rejection_failures.push(format!(
+                "{}: rejected [{}], retry [{}]",
+                case.name(),
+                outcome(bad_result),
+                outcome(good_result)
+            ));
+        }
+    }
+
+    /// Reject missing authority-handler execution even when proposal submission
+    /// and unrelated proposal payloads succeeded.
+    pub fn require_gov_coverage(&self) -> anyhow::Result<()> {
+        for required in &self.gov_required {
+            anyhow::ensure!(
+                self.gov_executed.get(required).copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_GOV_REQUIRE coverage: no executed {required} proposal payload"
+            );
+        }
+        if let Some(required) = &self.gov_failure_required {
+            anyhow::ensure!(
+                self.gov_failure_matches > 0,
+                "incomplete DELIVER_GOV_FAILURE_REQUIRE coverage: no failed proposal log contained {required:?}"
+            );
+        }
+        Ok(())
+    }
+
+    /// Reject a run that did not successfully finalize every explicitly
+    /// required top-level message type.
+    pub fn require_type_coverage(&self) -> anyhow::Result<()> {
+        for required in &self.type_required {
+            let successful = self.per_type.get(required).map_or(0, |counts| counts.1);
+            anyhow::ensure!(
+                successful > 0,
+                "incomplete DELIVER_TYPE_REQUIRE coverage: no successful {required} transaction"
+            );
+        }
+        Ok(())
+    }
+
+    /// A successful transaction alone is insufficient for channel-upgrade
+    /// Ack coverage: ibc-go uses code 0 for both SUCCESS and FAILURE. Require
+    /// the decoded failure response and matching callback error observed by
+    /// the mock driver.
+    pub fn require_ibc_coverage(&self) -> anyhow::Result<()> {
+        if self.ibc_ack_failure_required {
+            anyhow::ensure!(
+                self.ibc
+                    .get("chan_upgrade_ack_failure")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_ACK_FAILURE_REQUIRE coverage: no attributed code-0 MsgChannelUpgradeAck FAILURE response"
+            );
+        }
+        if self.ibc_required.contains("close_init_failure") {
+            anyhow::ensure!(
+                self.ibc.get("close_init_failure").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE coverage: no attributed MsgChannelCloseInit callback rejection"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("close_init_reused_closed")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE coverage: the rejected channel did not remain usable through counterparty close"
+            );
+        }
+        if self.ibc_required.contains("recover_client") {
+            anyhow::ensure!(
+                self.ibc.get("misbehaviour_confirmed").copied().unwrap_or(0) > 0,
+                "incomplete MsgRecoverClient coverage: no matching confirmed misbehaviour event"
+            );
+            anyhow::ensure!(
+                self.ibc.get("recover_client").copied().unwrap_or(0) > 0,
+                "incomplete MsgRecoverClient coverage: no matching block-scope recovery event"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("recovered_client_update")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete MsgRecoverClient coverage: recovered subject did not accept a subsequent update"
+            );
+        }
+        if self.ibc_required.contains("frozen_client_update") {
+            anyhow::ensure!(
+                self.ibc.get("misbehaviour_confirmed").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_FROZEN_CLIENT_REQUIRE coverage: no matching confirmed misbehaviour event"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("frozen_client_update_rejected")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_FROZEN_CLIENT_REQUIRE coverage: no exact frozen-client update rejection"
+            );
+        }
+        if self.ibc_required.contains("pfm_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_downstream_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no exact successful downstream acknowledgement"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_REQUIRE coverage: no delayed success acknowledgement for the exact original packet"
+            );
+        }
+        if self.ibc_required.contains("pfm_error_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_ERROR_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_downstream_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_ERROR_REQUIRE coverage: no exact downstream error acknowledgement"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_error_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_ERROR_REQUIRE coverage: no delayed error acknowledgement for the exact original packet"
+            );
+        }
+        if self.ibc_required.contains("pfm_timeout_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_timeout").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: no exact forwarded timeout"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_retry").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: no exact PFM retry"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_downstream_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: retried packet was not acknowledged"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_TIMEOUT_REQUIRE coverage: no delayed success acknowledgement for the exact original packet"
+            );
+        }
+        if self.ibc_required.contains("pfm_exhaust_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("pfm_forwarded").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact forwarded packet"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_timeout").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact first timeout"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_retry").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact configured retry"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_retry_exhausted").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: retry did not time out without another retry"
+            );
+            anyhow::ensure!(
+                self.ibc.get("pfm_original_error_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact delayed refund acknowledgement for the original packet"
+            );
+        }
+        if self.ibc_required.contains("ica_encoding_lifecycle") {
+            anyhow::ensure!(
+                self.ibc.get("ica_proto3_success_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_ICA_ENCODINGS_REQUIRE coverage: no exact successful proto3 packet acknowledgement"
+            );
+            anyhow::ensure!(
+                self.ibc
+                    .get("ica_proto3json_success_ack")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_ICA_ENCODINGS_REQUIRE coverage: no exact successful proto3json packet acknowledgement after channel upgrade"
+            );
+        }
+        if self.ibc_required.contains("ica_error_ack") {
+            anyhow::ensure!(
+                self.ibc.get("ica_error_ack").copied().unwrap_or(0) > 0,
+                "incomplete DELIVER_IBC_ICA_ERROR_REQUIRE coverage: no exact ICA application-error acknowledgement"
+            );
+        }
+        if self.ibc_required.contains("expired_client_update") {
+            anyhow::ensure!(
+                self.ibc
+                    .get("expired_client_update_rejected")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_EXPIRED_CLIENT_REQUIRE coverage: no exact expired-client update rejection"
+            );
+        }
+        Ok(())
+    }
+
+    fn gov_setup(&self) -> bool {
+        self.gov_required
+            .iter()
+            .any(|required| self.gov_executed.get(required).copied().unwrap_or(0) == 0)
+    }
+
+    /// Require both signed incoming-transfer paths when a multisig ISM was
+    /// explicitly selected. Matching rejections alone are incomplete evidence.
+    pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.hl_rejection_failures.is_empty(),
+            "incomplete Hyperlane rejection/retry evidence: {:?}",
+            self.hl_rejection_failures
+        );
+        anyhow::ensure!(
+            !self.hl_rejection_setup(),
+            "incomplete Hyperlane rejection/retry coverage: required {:?}, completed {:?}",
+            self.hl_rejection_cases,
+            self.hl_retried
+        );
+        if let Some(mode) = &self.hl_verification
+            && mode != "noop"
+        {
+            for kind in ["collateral", "synthetic"] {
+                anyhow::ensure!(
+                    self.hl_verified.get(kind).copied().unwrap_or(0) > 0,
+                    "incomplete DELIVER_HL_ISM={mode} coverage: no successful {kind} MsgProcessMessage"
+                );
+            }
+            if self.hl_preupgrade_required {
+                for kind in ["collateral", "synthetic"] {
+                    let key = format!("v9/{kind}");
+                    anyhow::ensure!(
+                        self.hl_verified_versions.get(&key).copied().unwrap_or(0) > 0,
+                        "incomplete DELIVER_UPGRADE signed coverage: no successful v9 {kind} MsgProcessMessage before the binary switch"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn gov_setup_ready(stats: &Stats, messages: &[Any]) -> bool {
+    stats.gov_setup()
+        && stats.gov_required.iter().any(|required| {
+            stats.gov_executed.get(required).copied().unwrap_or(0) == 0
+                && (required != "/ibc.core.client.v1.MsgRecoverClient"
+                    || messages.iter().any(|message| &message.type_url == required))
+        })
+}
+
+fn gov_requirements(value: Option<&str>, govpass: bool) -> anyhow::Result<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    anyhow::ensure!(govpass, "DELIVER_GOV_REQUIRE requires DELIVER_GOVPASS");
+    let mut required = BTreeSet::new();
+    for url in value.split(',').map(str::trim) {
+        anyhow::ensure!(
+            url.starts_with('/')
+                && url.len() > 1
+                && url[1..]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.'),
+            "DELIVER_GOV_REQUIRE expects nonempty exact message type URLs"
+        );
+        required.insert(url.to_owned());
+    }
+    Ok(required.into_iter().collect())
+}
+
+fn type_requirements(value: Option<&str>) -> anyhow::Result<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let mut required = BTreeSet::new();
+    for url in value.split(',').map(str::trim) {
+        anyhow::ensure!(
+            url.starts_with('/')
+                && url.len() > 1
+                && url[1..]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.'),
+            "DELIVER_TYPE_REQUIRE expects nonempty exact message type URLs"
+        );
+        required.insert(url.to_owned());
+    }
+    Ok(required.into_iter().collect())
+}
+
+fn allow_postupgrade_hl(
+    value: Option<&str>,
+    scripted: bool,
+    gov_failure_required: bool,
+) -> anyhow::Result<bool> {
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    anyhow::ensure!(
+        value == "governance-fixture",
+        "DELIVER_HL_ALLOW_POSTUPGRADE must be governance-fixture"
+    );
+    anyhow::ensure!(
+        scripted && gov_failure_required,
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires DELIVER_SCRIPT and DELIVER_GOV_FAILURE_REQUIRE"
+    );
+    Ok(true)
+}
+
 /// A generated, signed tx.
 struct Built {
     raw: Vec<u8>,
@@ -1172,11 +1606,23 @@ impl Gen {
 
     /// A fuzz account: mostly a single-key one, sometimes a multisig.
     fn acct_idx(&mut self) -> usize {
-        if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
+        let i = if self.accts.len() > ACCOUNTS && !self.m.rng.one_in(6) {
             self.m.rng.below(ACCOUNTS)
         } else {
             self.m.rng.below(self.accts.len())
+        };
+        if self.reserved_account == Some(i) {
+            // Preserve the RNG stream while moving this signer away from the
+            // dedicated account. HL_ACCT is not the first account.
+            i - 1
+        } else {
+            i
         }
+    }
+
+    fn uses_reserved_signer(&self, idx: &[Option<usize>]) -> bool {
+        self.reserved_account
+            .is_some_and(|reserved| idx.iter().flatten().any(|i| *i == reserved))
     }
 
     fn address_value(&mut self) -> Vec<u8> {
@@ -2187,7 +2633,10 @@ impl Gen {
         let cands: Vec<(u8, usize)> = self
             .hl_objects
             .iter()
-            .filter(|o| matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN))
+            .filter(|o| {
+                matches!(o.0, HL_ROUTING_ISM | HL_IGP | HL_MAILBOX | HL_TOKEN)
+                    && self.reserved_account != Some(o.2)
+            })
             .map(|o| (o.0, o.2))
             .collect();
         let (kind, i) = self.pick(&cands)?;
@@ -3149,6 +3598,12 @@ impl Gen {
             signatures: sigs,
         }
         .encode_to_vec();
+        // Message fields can draw a signer from the harvested dictionary, so
+        // acct_idx alone cannot reserve an account. Finish generation first to
+        // preserve the RNG stream, then drop any tx that actually needs it.
+        if self.uses_reserved_signer(&idx) {
+            return None;
+        }
         Some(Built { raw })
     }
 }
@@ -3340,6 +3795,193 @@ pub fn run(
     per_block: usize,
     seed: u64,
 ) -> anyhow::Result<Stats> {
+    let verifier = hyperlane::Verifier::from_env()?;
+    let hl_on = std::env::var("DELIVER_HL").is_ok();
+    let hl_reject = std::env::var("DELIVER_HL_REJECT").is_ok();
+    anyhow::ensure!(
+        hl_on || verifier.name() == "noop",
+        "DELIVER_HL_ISM requires DELIVER_HL"
+    );
+    anyhow::ensure!(
+        !hl_reject || (hl_on && verifier.name() != "noop"),
+        "DELIVER_HL_REJECT requires DELIVER_HL and a signed DELIVER_HL_ISM"
+    );
+    anyhow::ensure!(
+        !hl_reject || std::env::var("DELIVER_UPGRADE").is_err(),
+        "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
+    );
+    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
+    let ibc_on = std::env::var("DELIVER_IBC").is_ok();
+    let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
+    let ibc_close_init_failure_required =
+        std::env::var_os("DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE").is_some();
+    let ibc_legacy_upgrade_fixture =
+        std::env::var_os("DELIVER_IBC_LEGACY_UPGRADE_FIXTURE").is_some();
+    let ibc_ack_failure_required = std::env::var_os("DELIVER_IBC_ACK_FAILURE_REQUIRE").is_some();
+    let ibc_pfm_required = std::env::var_os("DELIVER_IBC_PFM_REQUIRE").is_some();
+    let ibc_pfm_error_required = std::env::var_os("DELIVER_IBC_PFM_ERROR_REQUIRE").is_some();
+    let ibc_pfm_timeout_required = std::env::var_os("DELIVER_IBC_PFM_TIMEOUT_REQUIRE").is_some();
+    let ibc_pfm_exhaust_required = std::env::var_os("DELIVER_IBC_PFM_EXHAUST_REQUIRE").is_some();
+    let ibc_ica_encodings_required =
+        std::env::var_os("DELIVER_IBC_ICA_ENCODINGS_REQUIRE").is_some();
+    let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
+    let ibc_expired_client_required =
+        std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
+    let ibc_frozen_client_required =
+        std::env::var_os("DELIVER_IBC_FROZEN_CLIENT_REQUIRE").is_some();
+    anyhow::ensure!(
+        !ibc_connection_confirm || ibc_on,
+        "DELIVER_IBC_CONNECTION_CONFIRM requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_close_init_failure_required || ibc_on,
+        "DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_legacy_upgrade_fixture || ibc_on,
+        "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ack_failure_required || ibc_on,
+        "DELIVER_IBC_ACK_FAILURE_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_pfm_required || ibc_on,
+        "DELIVER_IBC_PFM_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_pfm_error_required || ibc_on,
+        "DELIVER_IBC_PFM_ERROR_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_pfm_timeout_required || ibc_on,
+        "DELIVER_IBC_PFM_TIMEOUT_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_pfm_exhaust_required || ibc_on,
+        "DELIVER_IBC_PFM_EXHAUST_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ica_encodings_required || ibc_on,
+        "DELIVER_IBC_ICA_ENCODINGS_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ica_error_required || ibc_on,
+        "DELIVER_IBC_ICA_ERROR_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_ica_encodings_required || !ibc_ica_error_required,
+        "DELIVER_IBC ICA encoding-success and application-error requirements are mutually exclusive"
+    );
+    anyhow::ensure!(
+        !ibc_expired_client_required || ibc_on,
+        "DELIVER_IBC_EXPIRED_CLIENT_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_frozen_client_required || ibc_on,
+        "DELIVER_IBC_FROZEN_CLIENT_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        usize::from(ibc_pfm_required)
+            + usize::from(ibc_pfm_error_required)
+            + usize::from(ibc_pfm_timeout_required)
+            + usize::from(ibc_pfm_exhaust_required)
+            <= 1,
+        "DELIVER_IBC PFM success, error, timeout, and exhaustion requirements are mutually exclusive"
+    );
+    anyhow::ensure!(
+        !ibc_ica_encodings_required
+            || !(ibc_pfm_required
+                || ibc_pfm_error_required
+                || ibc_pfm_timeout_required
+                || ibc_pfm_exhaust_required),
+        "DELIVER_IBC_ICA_ENCODINGS_REQUIRE cannot be combined with a PFM lifecycle requirement"
+    );
+    let required = std::env::var_os("DELIVER_GOV_REQUIRE")
+        .map(|v| {
+            v.into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_GOV_REQUIRE must be UTF-8"))
+        })
+        .transpose()?;
+    let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    let ibc_recover_client = gov_required
+        .iter()
+        .any(|url| url == "/ibc.core.client.v1.MsgRecoverClient");
+    anyhow::ensure!(
+        !ibc_recover_client || ibc_on,
+        "DELIVER_GOV_REQUIRE=/ibc.core.client.v1.MsgRecoverClient requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
+        !ibc_frozen_client_required || !ibc_recover_client,
+        "DELIVER_IBC_FROZEN_CLIENT_REQUIRE cannot be combined with MsgRecoverClient coverage"
+    );
+    let type_required = std::env::var_os("DELIVER_TYPE_REQUIRE")
+        .map(|v| {
+            v.into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_TYPE_REQUIRE must be UTF-8"))
+        })
+        .transpose()?;
+    let type_required = type_requirements(type_required.as_deref())?;
+    let gov_failure_required = std::env::var_os("DELIVER_GOV_FAILURE_REQUIRE")
+        .map(|value| {
+            let value = value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_GOV_FAILURE_REQUIRE must be UTF-8"))?;
+            anyhow::ensure!(
+                !value.is_empty(),
+                "DELIVER_GOV_FAILURE_REQUIRE must be nonempty"
+            );
+            Ok::<_, anyhow::Error>(value)
+        })
+        .transpose()?;
+    let script_path = std::env::var_os("DELIVER_SCRIPT")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_SCRIPT must be UTF-8"))
+        })
+        .transpose()?;
+    let allow_postupgrade = std::env::var_os("DELIVER_HL_ALLOW_POSTUPGRADE")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_HL_ALLOW_POSTUPGRADE must be UTF-8"))
+        })
+        .transpose()?;
+    let allow_postupgrade = allow_postupgrade_hl(
+        allow_postupgrade.as_deref(),
+        script_path.is_some(),
+        gov_failure_required.is_some(),
+    )?;
+    if ibc_legacy_upgrade_fixture {
+        anyhow::ensure!(
+            script_path.as_deref()
+                == Some("crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script")
+                && gov_failure_required.as_deref() == Some("upgrade.go:1048")
+                && std::env::var_os("DELIVER_UPGRADE").is_some()
+                && allow_postupgrade,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE is restricted to the upgrade.go:1048 governance fixture"
+        );
+        anyhow::ensure!(
+            !ibc_connection_confirm
+                && !ibc_close_init_failure_required
+                && !ibc_recover_client
+                && !ibc_ack_failure_required
+                && !ibc_pfm_required
+                && !ibc_pfm_error_required
+                && !ibc_pfm_timeout_required
+                && !ibc_pfm_exhaust_required
+                && !ibc_ica_encodings_required
+                && !ibc_ica_error_required
+                && !ibc_expired_client_required
+                && !ibc_frozen_client_required,
+            "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA, expired-client, or frozen-client requirements"
+        );
+    }
+    anyhow::ensure!(
+        gov_required.is_empty() || std::env::var("DELIVER_UPGRADE").is_err(),
+        "DELIVER_GOV_REQUIRE cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
+    );
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
     // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
@@ -3360,6 +4002,10 @@ pub fn run(
         // halts: the generated blocks then run on its gov-upgrade state).
         stop_at = upgrade::held_signals(&records).0;
     }
+    anyhow::ensure!(
+        !allow_postupgrade || (upg.on && hl_on && verifier.name() != "noop"),
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires a signed DELIVER_UPGRADE run"
+    );
     // Go raised the app version in the last `FinalizeBlock`: the binary
     // switches after its `Commit`.
     let mut switch_to: Option<(u64, u64)> = None;
@@ -3368,7 +4014,54 @@ pub fn run(
         conns: BTreeMap::new(),
     };
     let mut rust = trace::Traced::new(app::App::new())?;
-    let mut stats = Stats::default();
+    let mut stats = Stats {
+        gov_required,
+        gov_failure_required,
+        type_required,
+        ibc_ack_failure_required,
+        hl_verification: hl_on.then(|| verifier.name().to_owned()),
+        hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
+        hl_rejection_cases: if hl_reject {
+            verifier
+                .rejections()
+                .iter()
+                .map(|case| case.name().into())
+                .collect()
+        } else {
+            Vec::new()
+        },
+        ..Stats::default()
+    };
+    if ibc_close_init_failure_required {
+        stats.ibc_required.insert("close_init_failure");
+    }
+    if ibc_recover_client {
+        stats.ibc_required.insert("recover_client");
+    }
+    if ibc_pfm_required {
+        stats.ibc_required.insert("pfm_lifecycle");
+    }
+    if ibc_pfm_error_required {
+        stats.ibc_required.insert("pfm_error_lifecycle");
+    }
+    if ibc_pfm_timeout_required {
+        stats.ibc_required.insert("pfm_timeout_lifecycle");
+    }
+    if ibc_pfm_exhaust_required {
+        stats.ibc_required.insert("pfm_exhaust_lifecycle");
+    }
+    if ibc_ica_encodings_required {
+        stats.ibc_required.insert("ica_encoding_lifecycle");
+    }
+    if ibc_ica_error_required {
+        stats.ibc_required.insert("ica_error_ack");
+    }
+    if ibc_expired_client_required {
+        stats.ibc_required.insert("expired_client_update");
+    }
+    if ibc_frozen_client_required {
+        stats.ibc_required.insert("frozen_client_update");
+    }
     let mut gov_coverage = gov_coverage::Proposals::default();
     let mut m = Mutator::new(seed);
     let pool_txs: Vec<Vec<u8>> = crate::corpus::scenario_txs(scenario)?;
@@ -3550,10 +4243,12 @@ pub fn run(
         force_amino: false,
         wire: WireGen::default(),
         gov_msgs: Vec::new(),
+        reserved_account: None,
     };
     gn.wire.on = std::env::var("DELIVER_WIRE").is_ok();
     let mut hl_seq = HlSeq {
-        on: std::env::var("DELIVER_HL").is_ok(),
+        verifier,
+        on: hl_on,
         v10: app_version >= 10,
         ..HlSeq::default()
     };
@@ -3636,21 +4331,65 @@ pub fn run(
     // the message handlers (store access order and iterator charges).
     let sweep_on = std::env::var("DELIVER_SWEEP").is_ok();
     // A mock IBC counterparty driving the IBC success paths.
-    let mut ibc = std::env::var("DELIVER_IBC")
-        .is_ok()
-        .then(crate::ibcmock::Driver::default);
+    let mut ibc = ibc_on.then(|| {
+        crate::ibcmock::Driver::default()
+            .with_connection_confirm(ibc_connection_confirm)
+            .with_close_init_failure_requirement(ibc_close_init_failure_required)
+            .with_recover_client(ibc_recover_client)
+            .with_pfm_requirement(ibc_pfm_required)
+            .with_pfm_error_requirement(ibc_pfm_error_required)
+            .with_pfm_timeout_requirement(ibc_pfm_timeout_required)
+            .with_pfm_exhaust_requirement(ibc_pfm_exhaust_required)
+            .with_ica_encoding_requirement(ibc_ica_encodings_required)
+            .with_ica_error_requirement(ibc_ica_error_required)
+            .with_expired_client_requirement(ibc_expired_client_required)
+            .with_frozen_client_requirement(ibc_frozen_client_required)
+            .with_legacy_upgrade_fixture(ibc_legacy_upgrade_fixture)
+    });
     // The relayer: the last single-key fuzz account.
     let relayer = ACCOUNTS - 1;
-    let mut script = match std::env::var("DELIVER_SCRIPT") {
-        Ok(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
-        Err(_) => std::collections::VecDeque::new(),
+    let mut script = match script_path {
+        Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
+        None => std::collections::VecDeque::new(),
     };
+    anyhow::ensure!(
+        !allow_postupgrade || !script.is_empty(),
+        "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires a nonempty DELIVER_SCRIPT"
+    );
+    let script_at = match std::env::var_os("DELIVER_SCRIPT_AT") {
+        None => 0,
+        Some(value) => value
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("DELIVER_SCRIPT_AT must be UTF-8"))?
+            .parse::<usize>()
+            .context("DELIVER_SCRIPT_AT must be a generated block index")?,
+    };
+    let time_jump_at = std::env::var_os("DELIVER_TIME_JUMP_AT")
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_TIME_JUMP_AT must be UTF-8"))?
+                .parse::<usize>()
+                .context("DELIVER_TIME_JUMP_AT must be a generated block index")
+        })
+        .transpose()?;
+    let time_jump_seconds = match std::env::var_os("DELIVER_TIME_JUMP_SECONDS") {
+        None => 3600,
+        Some(value) => value
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("DELIVER_TIME_JUMP_SECONDS must be UTF-8"))?
+            .parse::<i64>()
+            .context("DELIVER_TIME_JUMP_SECONDS must be a positive number of seconds")?,
+    };
+    anyhow::ensure!(
+        time_jump_seconds > 0,
+        "DELIVER_TIME_JUMP_SECONDS must be a positive number of seconds"
+    );
     let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
     let sim_on = std::env::var("DELIVER_SIM").is_ok();
     // `DELIVER_GOVPASS`: the fuzz accounts pass every proposal (deposit and
     // yes votes, re-sent every 4 blocks), so each proposal's messages run
     // and a failure's text is stored in `failed_reason` (state).
-    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let mut govpass_delegated = false;
     let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
@@ -3664,14 +4403,54 @@ pub fn run(
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
         }
+        if time_jump_at == Some(b) {
+            time.seconds = time
+                .seconds
+                .checked_add(time_jump_seconds)
+                .context("DELIVER_TIME_JUMP_SECONDS overflowed the block time")?;
+        }
         // Sequences from the committed state.
         for a in &mut gn.accts {
             a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
+        let hl_setup = stats.hl_rejection_setup();
+        stats.hl_rejection_blocks += u64::from(hl_setup);
+        let mut hl_pair = None;
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
+        if ibc_recover_client
+            && govpass_delegated
+            && !gn
+                .gov_msgs
+                .iter()
+                .any(|msg| msg.type_url == "/ibc.core.client.v1.MsgRecoverClient")
+            && let Some((subject_client_id, substitute_client_id)) = ibc
+                .as_ref()
+                .and_then(crate::ibcmock::Driver::recovery_clients)
+        {
+            gn.gov_msgs.push(Any::pack(
+                &celestia_proto::ibc::core::client::v1::MsgRecoverClient {
+                    subject_client_id,
+                    substitute_client_id,
+                    signer: GOV.into(),
+                },
+            ));
+        }
+        let gov_setup = !hl_setup && gov_setup_ready(&stats, &gn.gov_msgs);
+        scripted |= gov_setup;
+        // A signed Hyperlane sequence needs its dedicated account's committed
+        // sequence. Before both incoming paths succeed at v9, keep unrelated
+        // mempool traffic off that account and defer the held upgrade signal.
+        let hl_preupgrade = upg.on
+            && app_version < 10
+            && ["collateral", "synthetic"].iter().any(|kind| {
+                let key = format!("v9/{kind}");
+                stats.hl_verified_versions.get(&key).copied().unwrap_or(0) == 0
+            })
+            && stats.hl_preupgrade_required;
+        gn.reserved_account = hl_preupgrade.then_some(HL_ACCT);
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
@@ -3679,13 +4458,16 @@ pub fn run(
             && upg
                 .upgrade_height
                 .is_some_and(|h| (h..=h + 2).contains(&height));
-        if upg.on && !bootstrap {
-            txs = upg.txs(&mut gn, b, height, &hl_seq.token);
+        if upg.on && !bootstrap && !hl_setup {
+            txs = upg.txs(&mut gn, b, height, &hl_seq.token, hl_preupgrade);
         }
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
                 for i in 0..gn.accts.len() {
+                    if hl_preupgrade && i == HL_ACCT {
+                        continue;
+                    }
                     let msg = Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                         delegator_address: gn.accts[i].acc.clone(),
                         validator_address: v.clone(),
@@ -3699,7 +4481,11 @@ pub fn run(
                     }
                 }
             }
-        } else if let Some(block) = script.pop_front() {
+        } else if !hl_setup
+            && !gov_setup
+            && b >= script_at
+            && let Some(block) = script.pop_front()
+        {
             scripted = true;
             for (i, mut msg, gas) in block {
                 // `vote <account>`: a yes vote on the latest proposal.
@@ -3717,7 +4503,12 @@ pub fn run(
                 }
             }
         } else {
-            if let Some(d) = ibc.as_mut() {
+            // IBC uses the dedicated relayer, not the Hyperlane account. Keep
+            // it active so packets can be in flight across the switch.
+            if !hl_setup
+                && !gov_setup
+                && let Some(d) = ibc.as_mut()
+            {
                 let accounts: Vec<(String, Vec<u8>)> = gn
                     .accts
                     .iter()
@@ -3743,19 +4534,44 @@ pub fn run(
                     gn.dict.string("source_channel", id.as_bytes());
                 }
             }
-            if sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+            if !hl_setup && !gov_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
-                for t in sweep_txs(&mut gn, i, &msgs, used) {
-                    stats.swept += 1;
-                    txs.push(t);
+                if !hl_preupgrade || i != HL_ACCT {
+                    for t in sweep_txs(&mut gn, i, &msgs, used) {
+                        stats.swept += 1;
+                        txs.push(t);
+                    }
                 }
             }
-            if hl_seq.on && hl_seq.pending.is_none() {
-                let msg = hl_seq.msg(&gn);
-                if let Some(t) = sign_simple(&gn, HL_ACCT, vec![msg], 3_000_000) {
+            if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
+                let msgs = hl_seq.msgs(&gn);
+                let rejection =
+                    if hl_setup && matches!(hl_seq.step, 11 | 14) {
+                        hl_seq.verifier.rejections().iter().copied().find(|case| {
+                            stats.hl_retried.get(case.name()).copied().unwrap_or(0) == 0
+                        })
+                    } else {
+                        None
+                    };
+                let bad = if let Some(case) = rejection {
+                    let invalid = case.messages(&msgs)?;
+                    let tx = sign_simple(&gn, HL_ACCT, invalid, 3_000_000)
+                        .context("signing rejected Hyperlane tx")?;
+                    gn.accts[HL_ACCT].seq += 1;
+                    txs.push(tx.clone());
+                    Some((case, tx))
+                } else {
+                    None
+                };
+                if let Some(t) = sign_simple(&gn, HL_ACCT, msgs, 3_000_000) {
                     gn.accts[HL_ACCT].seq += 1;
                     hl_seq.pending = Some(t.clone());
+                    if let Some((case, bad)) = bad {
+                        hl_pair = Some((case, bad, t.clone()));
+                    }
                     txs.push(t);
+                } else if bad.is_some() {
+                    anyhow::bail!("signing valid Hyperlane retry");
                 }
                 // The generated votes (any option) stay off the proposal.
                 gn.proposals.retain(|p| *p != hl_seq.proposal);
@@ -3804,14 +4620,14 @@ pub fn run(
                     }
                 }
             }
-            if govpass && !govpass_delegated {
+            if !hl_setup && govpass && !govpass_delegated {
                 // Stake on every bonded validator (only bonded stake is
                 // tallied; one may be jailed for downtime).
                 let vals = bonded_validators(&mut rust);
                 if !vals.is_empty() {
                     govpass_delegated = true;
                     gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
-                    for i in 0..ACCOUNTS - 1 {
+                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let msg =
                             Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                                 delegator_address: gn.accts[i].acc.clone(),
@@ -3827,11 +4643,23 @@ pub fn run(
                         }
                     }
                 }
-            } else if govpass && b % 4 == 0 && !gn.proposals.is_empty() {
+            } else if !hl_setup && govpass && (gov_setup || b % 4 == 0) {
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
-                if !gn.gov_msgs.is_empty() {
-                    let msg = gn.gov_msgs[(b / 4) % gn.gov_msgs.len()].clone();
+                let msg = if gov_setup {
+                    gn.gov_msgs
+                        .iter()
+                        .find(|msg| {
+                            stats.gov_required.contains(&msg.type_url)
+                                && stats.gov_executed.get(&msg.type_url).copied().unwrap_or(0) == 0
+                        })
+                        .cloned()
+                } else if gn.gov_msgs.is_empty() {
+                    None
+                } else {
+                    Some(gn.gov_msgs[(b / 4) % gn.gov_msgs.len()].clone())
+                };
+                if let Some(msg) = msg {
                     let submit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
                         messages: vec![msg],
                         initial_deposit: vec![Coin {
@@ -3865,7 +4693,32 @@ pub fn run(
                         gn.accts[0].seq += 1;
                         txs.push(t);
                     }
-                    for i in 0..ACCOUNTS - 1 {
+                    if stats
+                        .type_required
+                        .iter()
+                        .any(|url| url == "/cosmos.gov.v1beta1.MsgDeposit")
+                    {
+                        // Exercise the legacy deposit message against the
+                        // same active v1 proposal. Legacy proposal submission
+                        // is disabled by Celestia's empty legacy router, but
+                        // its deposit handler remains reachable on v1
+                        // proposals. Keep this opt-in so established GOVPASS
+                        // finding seeds retain their exact traffic schedule.
+                        let legacy_deposit =
+                            Any::pack(&celestia_proto::cosmos::gov::v1beta1::MsgDeposit {
+                                proposal_id: id,
+                                depositor: gn.accts[0].acc.clone(),
+                                amount: vec![Coin {
+                                    denom: "utia".into(),
+                                    amount: "60000000".into(),
+                                }],
+                            });
+                        if let Some(t) = sign_simple(&gn, 0, vec![legacy_deposit], 600_000) {
+                            gn.accts[0].seq += 1;
+                            txs.push(t);
+                        }
+                    }
+                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
                             proposal_id: id,
                             voter: gn.accts[i].acc.clone(),
@@ -3879,10 +4732,14 @@ pub fn run(
                     }
                 }
             }
-            let k = match gn.m.rng.below(20) {
-                0 => 0,
-                1 => per_block * 4,
-                _ => 1 + gn.m.rng.below(per_block.max(1)),
+            let k = if hl_setup || gov_setup {
+                0
+            } else {
+                match gn.m.rng.below(20) {
+                    0 => 0,
+                    1 => per_block * 4,
+                    _ => 1 + gn.m.rng.below(per_block.max(1)),
+                }
             };
             for _ in 0..k {
                 gn.wire.pending.clear();
@@ -4217,6 +5074,39 @@ pub fn run(
                 ));
             }
         }
+        // Give the reserved Hyperlane tx a proposer that includes it without
+        // changing the generator's RNG stream or suppressing other traffic.
+        // ProcessProposal still has to accept the resulting block on both apps.
+        if hl_preupgrade
+            && let Some(t) = hl_seq.pending.as_ref()
+            && !final_txs.contains(t)
+        {
+            let mut forced = proc.clone();
+            forced.txs.clone_from(&final_txs);
+            forced.txs.push(t.clone());
+            if let Ok((size, root)) = app::proposal::block_data_root(app_version, &forced.txs) {
+                forced.square_size = size;
+                forced.data_root_hash = root;
+            }
+            let g = go_value(go.call_or_exception(
+                cons_conn,
+                &Request {
+                    value: Some(request::Value::ProcessProposal(forced.clone())),
+                },
+            )?)?;
+            let g = match g {
+                response::Value::ProcessProposal(p) => Some(p.status),
+                _ => None,
+            };
+            let o = rust.process_proposal(&forced).map(|p| p.status).ok();
+            if g != o {
+                stats.mismatches.push(format!(
+                    "{scenario} h={height} ProcessProposal (reserved Hyperlane tx) go={g:?} rust={o:?}"
+                ));
+            } else if g == accepted {
+                final_txs = forced.txs;
+            }
+        }
         let fb = abci::RequestFinalizeBlock {
             txs: final_txs,
             decided_last_commit: Some(commit),
@@ -4258,6 +5148,12 @@ pub fn run(
         valsets.insert(height + 2, apply_updates(&next, &g.validator_updates));
         valsets.retain(|h, _| *h + 8 > height);
         times.retain(|h, _| *h + 8 > height);
+        if let Some((case, bad, good)) = hl_pair {
+            stats.observe_hl_pair(case, &bad, &good, &fb.txs, &g.tx_results);
+            if !stats.hl_rejection_setup() && stats.hl_rejection_complete_height.is_none() {
+                stats.hl_rejection_complete_height = Some(height);
+            }
+        }
         if hl_seq.pending.is_some() {
             if let Some((t, res)) = fb
                 .txs
@@ -4269,6 +5165,18 @@ pub fn run(
                     .into_iter()
                     .next()
                     .unwrap_or_default();
+                if res.code == 0 && matches!(hl_seq.step, 11 | 14) {
+                    let kind = if hl_seq.step == 11 {
+                        "collateral"
+                    } else {
+                        "synthetic"
+                    };
+                    *stats.hl_verified.entry(kind.into()).or_default() += 1;
+                    *stats
+                        .hl_verified_versions
+                        .entry(format!("v{block_av}/{kind}"))
+                        .or_default() += 1;
+                }
                 hl_seq.result(&u, res);
             } else {
                 // Not in the block (CheckTx or PrepareProposal dropped it).
@@ -4351,6 +5259,18 @@ pub fn run(
         gn.dict.harvest_events(&g.events);
         gov_coverage.completed(&g.events, &mut stats.gov_executed);
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
+            let failed = e
+                .attributes
+                .iter()
+                .any(|a| a.key == "proposal_result" && a.value == "proposal_failed");
+            if failed
+                && let Some(required) = &stats.gov_failure_required
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "proposal_log" && a.value.contains(required))
+            {
+                stats.gov_failure_matches += 1;
+            }
             for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
                 *stats.gov_results.entry(a.value.clone()).or_default() += 1;
                 if hl_seq.on {
@@ -4367,6 +5287,7 @@ pub fn run(
         }
         if let Some(d) = ibc.as_mut() {
             d.observe(&g.tx_results);
+            d.observe_block_events(&g.events);
         }
         let (c, l) = finalize_diff(&g, &o);
         let block_txs = || fb.txs.iter().map(hex::encode).collect::<Vec<_>>().join(",");
@@ -5838,6 +6759,7 @@ fn offline_gen(app_version: u64, seed: u64, force_amino: bool) -> Gen {
         force_amino,
         wire: WireGen::default(),
         gov_msgs: Vec::new(),
+        reserved_account: None,
     };
     for t in crate::corpus::devnet_txs() {
         g.m.harvest(&t);
@@ -5974,6 +6896,349 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rejection_coverage_requires_a_complete_ordered_same_message_pair() {
+        let case = hyperlane::Rejection::MissingSignature;
+        let txs = vec![vec![1], vec![2]];
+        let rejected = abci::ExecTxResult {
+            code: 1,
+            log: case.error_marker().into(),
+            ..Default::default()
+        };
+        let accepted = abci::ExecTxResult::default();
+        let base = || Stats {
+            hl_rejection_cases: vec![case.name().into()],
+            ..Default::default()
+        };
+        assert!(base().hl_rejection_setup());
+        let mut stats = base();
+        stats.observe_hl_pair(
+            case,
+            &[1],
+            &[2],
+            &txs,
+            &[rejected.clone(), accepted.clone()],
+        );
+        assert_eq!(stats.hl_retried[case.name()], 1);
+        assert!(!stats.hl_rejection_setup());
+        assert!(stats.require_hl_coverage().is_ok());
+        let wrong_stage = abci::ExecTxResult {
+            code: 1,
+            log: "out of gas".into(),
+            ..Default::default()
+        };
+        for (txs, results) in [
+            (vec![vec![1]], vec![rejected.clone()]),
+            (
+                vec![vec![2], vec![1]],
+                vec![accepted.clone(), rejected.clone()],
+            ),
+            (
+                vec![vec![1], vec![3], vec![2]],
+                vec![rejected.clone(), accepted.clone(), accepted.clone()],
+            ),
+            (txs.clone(), vec![accepted.clone(), accepted.clone()]),
+            (txs.clone(), vec![wrong_stage, accepted]),
+            (txs, vec![rejected.clone(), rejected]),
+        ] {
+            let mut stats = base();
+            stats.observe_hl_pair(case, &[1], &[2], &txs, &results);
+            assert!(stats.hl_retried.is_empty());
+            assert_eq!(stats.hl_rejection_failures.len(), 1);
+            // A later successful pair must not hide an earlier failure.
+            stats.hl_retried.insert(case.name().into(), 1);
+            assert!(stats.require_hl_coverage().is_err());
+        }
+    }
+
+    #[test]
+    fn required_governance_payloads_need_actual_execution() {
+        let bank = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        let circuit = "/cosmos.circuit.v1.MsgAuthorizeCircuitBreaker";
+        let mut stats = Stats {
+            gov_required: vec![bank.into(), circuit.into()],
+            ..Stats::default()
+        };
+        assert!(stats.gov_setup());
+        stats
+            .gov_executed
+            .insert("/hyperlane.warp.v1.MsgCreateNativeSyntheticToken".into(), 1);
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(bank.into(), 0);
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(bank.into(), 1);
+        assert!(stats.gov_setup());
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_executed.insert(circuit.into(), 1);
+        assert!(!stats.gov_setup());
+        assert!(stats.require_gov_coverage().is_ok());
+        assert!(Stats::default().require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_governance_failure_needs_the_exact_go_log_marker() {
+        let mut stats = Stats {
+            gov_failure_required: Some("upgrade.go:1048".into()),
+            ..Stats::default()
+        };
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_failure_matches = 1;
+        assert!(stats.require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_message_types_need_a_successful_finalized_transaction() {
+        let deposit = "/cosmos.gov.v1beta1.MsgDeposit";
+        let mut stats = Stats {
+            type_required: vec![deposit.into()],
+            ..Stats::default()
+        };
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(format!(">{deposit}"), (1, 1, 0));
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(deposit.into(), (1, 0, 0));
+        assert!(stats.require_type_coverage().is_err());
+        stats.per_type.insert(deposit.into(), (1, 1, 0));
+        assert!(stats.require_type_coverage().is_ok());
+        assert!(Stats::default().require_type_coverage().is_ok());
+
+        assert!(type_requirements(None).unwrap().is_empty());
+        for invalid in ["", ",", "MsgDeposit", "/", "/cosmos gov.MsgDeposit"] {
+            assert!(type_requirements(Some(invalid)).is_err(), "{invalid:?}");
+        }
+        assert_eq!(
+            type_requirements(Some(&format!(" {deposit},{deposit} "))).unwrap(),
+            vec![deposit]
+        );
+    }
+
+    #[test]
+    fn governance_requirement_is_explicit_and_never_silently_empty() {
+        assert!(gov_requirements(None, false).unwrap().is_empty());
+        let bank = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        assert!(gov_requirements(Some(bank), false).is_err());
+        for invalid in [
+            "",
+            ",",
+            " , ",
+            "MsgSetSendEnabled",
+            "/",
+            "/cosmos bank.Msg",
+            "/a,,/b",
+        ] {
+            assert!(
+                gov_requirements(Some(invalid), true).is_err(),
+                "{invalid:?}"
+            );
+        }
+        assert_eq!(
+            gov_requirements(Some(&format!(" {bank},{bank} ")), true).unwrap(),
+            vec![bank]
+        );
+        assert!(!allow_postupgrade_hl(None, false, false).unwrap());
+        assert!(allow_postupgrade_hl(Some("yes"), true, true).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), false, true).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), true, false).is_err());
+        assert!(allow_postupgrade_hl(Some("governance-fixture"), true, true).unwrap());
+    }
+
+    #[test]
+    fn required_governance_setup_waits_until_dynamic_payload_exists() {
+        let recover = "/ibc.core.client.v1.MsgRecoverClient";
+        let mut stats = Stats {
+            gov_required: vec![recover.into()],
+            ..Stats::default()
+        };
+        assert!(stats.gov_setup());
+        assert!(!gov_setup_ready(&stats, &[]));
+        let messages = vec![Any {
+            type_url: recover.into(),
+            value: Vec::new(),
+        }];
+        assert!(gov_setup_ready(&stats, &messages));
+        stats.gov_executed.insert(recover.into(), 1);
+        assert!(!gov_setup_ready(&stats, &messages));
+
+        let static_required = "/cosmos.bank.v1beta1.MsgSetSendEnabled";
+        let static_stats = Stats {
+            gov_required: vec![static_required.into()],
+            ..Stats::default()
+        };
+        assert!(gov_setup_ready(&static_stats, &[]));
+    }
+
+    #[test]
+    fn required_ibc_ack_failure_needs_the_decoded_failure_response() {
+        let mut stats = Stats {
+            ibc_ack_failure_required: true,
+            ..Stats::default()
+        };
+        // A code-0 Ack transaction without response attribution is not
+        // handshake or negative-path coverage.
+        stats.per_type.insert(
+            "/ibc.core.channel.v1.MsgChannelUpgradeAck".into(),
+            (1, 1, 0),
+        );
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("chan_upgrade_ack_failure", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_close_init_failure_needs_rejection_and_channel_reuse() {
+        let mut stats = Stats { ..Stats::default() };
+        stats.ibc_required.insert("close_init_failure");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("close_init_failure", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("close_init_reused_closed", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_recovery_needs_the_matching_block_event() {
+        let mut stats = Stats { ..Stats::default() };
+        stats.ibc_required.insert("recover_client");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("recover_client", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("misbehaviour_confirmed", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("recovered_client_update", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_needs_forward_and_original_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_lifecycle");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_forwarded", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_downstream_ack", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_error_needs_forward_and_both_error_ack_events() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_error_lifecycle");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_forwarded", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_downstream_ack", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_error_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_timeout_needs_retry_and_final_ack_lifecycle() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_timeout_lifecycle");
+        for event in [
+            "pfm_forwarded",
+            "pfm_timeout",
+            "pfm_retry",
+            "pfm_downstream_ack",
+        ] {
+            assert!(stats.require_ibc_coverage().is_err());
+            stats.ibc.insert(event, 1);
+        }
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_exhaustion_needs_both_timeouts_and_refund_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_exhaust_lifecycle");
+        for event in [
+            "pfm_forwarded",
+            "pfm_timeout",
+            "pfm_retry",
+            "pfm_retry_exhausted",
+        ] {
+            assert!(stats.require_ibc_coverage().is_err());
+            stats.ibc.insert(event, 1);
+        }
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_original_error_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ica_encodings_need_exact_success_ack_in_both_encodings() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("ica_encoding_lifecycle");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("ica_proto3_success_ack", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("ica_proto3json_success_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ica_error_needs_exact_application_error_ack() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("ica_error_ack");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("ica_error_ack", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_expired_client_update_needs_exact_rejection() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("expired_client_update");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("expired_client_update_rejected", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_frozen_client_update_needs_freeze_and_exact_rejection() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("frozen_client_update");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("misbehaviour_confirmed", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("frozen_client_update_rejected", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn signed_hyperlane_coverage_requires_both_successful_transfers() {
+        let mut stats = Stats {
+            hl_verification: Some("message-id".into()),
+            ..Stats::default()
+        };
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified.insert("collateral".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified.insert("synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_ok());
+
+        stats.hl_preupgrade_required = true;
+        assert!(stats.require_hl_coverage().is_err());
+        stats
+            .hl_verified_versions
+            .insert("v10/collateral".into(), 1);
+        stats.hl_verified_versions.insert("v10/synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified_versions.insert("v9/collateral".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_verified_versions.insert("v9/synthetic".into(), 1);
+        assert!(stats.require_hl_coverage().is_ok());
+    }
+
+    #[test]
     fn successful_submission_does_not_execute_its_payload() {
         let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend::default());
         let proposal = Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
@@ -6030,6 +7295,7 @@ mod tests {
             force_amino: false,
             wire: WireGen::default(),
             gov_msgs: Vec::new(),
+            reserved_account: None,
         };
         assert!(!amino_sign_seeds(10, 1, 5).is_empty());
         assert!(msg_types().len() > 100);
@@ -6041,5 +7307,31 @@ mod tests {
         for _ in 0..200 {
             assert!(g.tx().is_some());
         }
+    }
+
+    #[test]
+    fn reserved_account_is_filtered_even_when_harvested_as_a_signer() {
+        let mut g = offline_gen(10, 7, false);
+        let address = g.accts[HL_ACCT].addr.clone();
+        let account = g.accts[HL_ACCT].acc.clone().into_bytes();
+        g.reserved_account = Some(HL_ACCT);
+        g.dict
+            .strings
+            .insert("sender".into(), vec![account.clone()]);
+
+        assert!((0..500).any(|_| g.address_value() == account));
+        let mut decoded = 0;
+        for _ in 0..2_000 {
+            let Some(tx) = g.tx() else {
+                continue;
+            };
+            let Ok(tx) = txdecode::decode_for(10, &tx.raw) else {
+                continue;
+            };
+            decoded += 1;
+            let signers = x_ante::txview::signers(&tx).unwrap_or_default();
+            assert!(!signers.contains(&address));
+        }
+        assert!(decoded > 100);
     }
 }

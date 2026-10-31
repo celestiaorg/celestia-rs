@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "implementation": "go",
+  "endpoint": "127.0.0.1:32658",
+  "quota": 2,
+  "started_at": "2026-10-31T04:19:28.190114041Z",
+  "completed_at": "2026-10-31T04:22:15.459924759Z",
+  "input_sha256": {
+    "gzip-uncompressed-4194305-zero-bytes": "95e441ca65cd41fa01b2a71799e79fd60db59ed34f13af32a91e85f90378676c",
+    "ping-empty-protobuf": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "subscribe-empty-protobuf": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "saturation": {
+    "configured_quota": 2,
+    "opened": 2,
+    "concurrent_probe": {
+      "code": 4,
+      "message": "context deadline exceeded while waiting for connections to become ready",
+      "response_hex": "",
+      "headers": null,
+      "trailers": null,
+      "elapsed_ms": 351
+    },
+    "recovered": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 0
+    },
+    "recovery_action": "closed first established HTTP/2 connection"
+  },
+  "cancellation": {
+    "first_response_hex": "080612205b3e44566f952453f6753f925937349a81f1fc5d032e569294af57140e5833ce1a0c08ccd895d70610d898ef9101",
+    "first_height": 6,
+    "buffered_after_cancel_hex": null,
+    "cancel_code": 1,
+    "cancel_message": "context canceled",
+    "same_client_after_cancel": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 0
+    }
+  },
+  "slow_reader": {
+    "connections_opened": 2,
+    "connections": [
+      {
+        "first_response_hex": "08071220b3f5091cfff029881e73c88b9a4d338cbdedcfbd047d537c1c57c283be96c8ae1a0c08d1d895d70610e282e7a403",
+        "height": 7,
+        "wire": {
+          "client_bytes_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a00000004000000000000000004010000000000004d010400000001838645a46125aa42d949aa4af65645e6b2b22f768393ac3af231bad8d04b0d197497c6329a69d28f418b089d5c0b8170dc644e36f75f8b1d75d0620d263d4c4d656440027465864d833505b11f0000050001000000010000000000",
+          "server_frames": [
+            {
+              "phase": "setup",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 6,
+              "raw_hex": "000006040000000000000500004000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 1,
+              "stream_id": 0,
+              "length": 0,
+              "raw_hex": "000000040100000000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 8,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 4,
+              "raw_hex": "00000408000000000000000005"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 6,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 8,
+              "raw_hex": "00000806000000000002041010090e0707"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2599,
+              "type": 1,
+              "flags": 4,
+              "stream_id": 1,
+              "length": 14,
+              "raw_hex": "00000e010400000001885f8b1d75d0620d263d4c4d6564"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2599,
+              "type": 0,
+              "flags": 0,
+              "stream_id": 1,
+              "length": 55,
+              "raw_hex": "000037000000000001000000003208071220b3f5091cfff029881e73c88b9a4d338cbdedcfbd047d537c1c57c283be96c8ae1a0c08d1d895d70610e282e7a403"
+            }
+          ]
+        }
+      },
+      {
+        "first_response_hex": "080812208985a99f8b6617aea2f5d193beccb0babfcf38265e4c6c29f1269ec58c2e48681a0c08d4d895d70610dbdcdae601",
+        "height": 8,
+        "wire": {
+          "client_bytes_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a00000004000000000000000004010000000000004d010400000001838645a46125aa42d949aa4af65645e6b2b22f768393ac3af231bad8d04b0d197497c6329a69d28f418b089d5c0b8170dc644e36f75f8b1d75d0620d263d4c4d656440027465864d833505b11f0000050001000000010000000000",
+          "server_frames": [
+            {
+              "phase": "setup",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 6,
+              "raw_hex": "000006040000000000000500004000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 4,
+              "flags": 1,
+              "stream_id": 0,
+              "length": 0,
+              "raw_hex": "000000040100000000"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 8,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 4,
+              "raw_hex": "00000408000000000000000005"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 0,
+              "type": 6,
+              "flags": 0,
+              "stream_id": 0,
+              "length": 8,
+              "raw_hex": "00000806000000000002041010090e0707"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2599,
+              "type": 1,
+              "flags": 4,
+              "stream_id": 1,
+              "length": 14,
+              "raw_hex": "00000e010400000001885f8b1d75d0620d263d4c4d6564"
+            },
+            {
+              "phase": "height-response",
+              "elapsed_ms": 2599,
+              "type": 0,
+              "flags": 0,
+              "stream_id": 1,
+              "length": 55,
+              "raw_hex": "0000370000000000010000000032080812208985a99f8b6617aea2f5d193beccb0babfcf38265e4c6c29f1269ec58c2e48681a0c08d4d895d70610dbdcdae601"
+            }
+          ]
+        }
+      }
+    ],
+    "blocked": {
+      "code": 4,
+      "message": "context deadline exceeded while waiting for connections to become ready",
+      "response_hex": "",
+      "headers": null,
+      "trailers": null,
+      "elapsed_ms": 350
+    },
+    "recovered_after_close": {
+      "code": 0,
+      "message": "",
+      "response_hex": "",
+      "headers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "trailers": {},
+      "elapsed_ms": 0
+    },
+    "held_ms": 5551
+  },
+  "keepalive_no_pong": {
+    "first_ping_ms": 30000,
+    "ping_data_hex": "0000000000000000",
+    "closed_ms": 40001,
+    "close_error": "EOF",
+    "wire": {
+      "client_bytes_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a000000040000000000000000040100000000",
+      "server_frames": [
+        {
+          "phase": "setup",
+          "elapsed_ms": 0,
+          "type": 4,
+          "flags": 0,
+          "stream_id": 0,
+          "length": 6,
+          "raw_hex": "000006040000000000000500004000"
+        },
+        {
+          "phase": "keepalive",
+          "elapsed_ms": 0,
+          "type": 4,
+          "flags": 1,
+          "stream_id": 0,
+          "length": 0,
+          "raw_hex": "000000040100000000"
+        },
+        {
+          "phase": "keepalive",
+          "elapsed_ms": 30000,
+          "type": 6,
+          "flags": 0,
+          "stream_id": 0,
+          "length": 8,
+          "raw_hex": "0000080600000000000000000000000000"
+        }
+      ]
+    }
+  },
+  "silent_handshake": {
+    "closed_ms": 120001,
+    "close_error": "EOF",
+    "client_bytes_hex": "",
+    "received_bytes_hex": "000006040000000000000500004000"
+  },
+  "compression": {
+    "encoding": "gzip",
+    "uncompressed_len": 4194305,
+    "result": {
+      "code": 8,
+      "message": "grpc: received message after decompression larger than max 4194304",
+      "response_hex": "",
+      "headers": null,
+      "trailers": {
+        "content-type": [
+          "application/grpc+proto"
+        ]
+      },
+      "elapsed_ms": 15
+    }
+  },
+  "notes": [
+    "all connections and request bodies are bounded and target explicit loopback addresses",
+    "quota zero is the Go compatibility unlimited sentinel; this campaign opens four simultaneous clients",
+    "each slow reader decodes one valid height response, then stops reading until its socket is closed"
+  ]
+}

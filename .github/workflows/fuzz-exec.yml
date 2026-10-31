@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/fuzzoracle/v10/go.mod
@@ -63,6 +63,12 @@ jobs:
             (cd conformance/fuzzoracle/$v && go build -o "$GITHUB_WORKSPACE/target/fuzzoracle/fuzzoracle-$v" .)
           done
       - run: cargo build --release -p fuzz-diff
+      - name: Check isolated oracle startup and cleanup
+        run: |
+          for v in 9 10; do
+            python3 conformance/fuzzoracle/check-startup.py --version "$v" \
+              --binary "target/fuzzoracle/fuzzoracle-v$v" --driver target/release/fuzz-diff
+          done
       - run: |
           mkdir -p bins
           cp -r target/devnet-bin bins/devnet-bin
@@ -83,7 +89,7 @@ jobs:
       matrix:
         job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","consensus","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8
         with:
           name: fuzz-exec-bins

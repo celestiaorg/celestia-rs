@@ -24,6 +24,56 @@ Only Go (module proxy) and cargo are needed; no public RPC access.
 Genesis keys and times are random per run, so regenerating a scenario
 replaces its fixture wholesale.
 
+`SAVE_BLOCKS=1` additionally dumps the stopped core's block store as
+`blocks.bin.gz` (alternating length-prefixed block and seen-commit
+protobufs, compressed with gzip) and retains the binaries' module/compiler
+provenance in `go-build-info.txt`. These full, signed blocks allow
+`BlockExecutor` validation and persisted nodestore handshake tests; an
+ABCI recording alone cannot reconstruct authenticated commits.
+
+```bash
+SAVE_BLOCKS=1 APP_V9=1 UPGRADE_TO_V10=1 CHAIN_ID=test \
+  conformance/devnet/devnet.sh v9-upgrade-replay 40 conformance/devnet/workloads/v9-upgrade.sh
+cargo test -p devnet-conformance --test upgrade_handshake
+```
+
+The upgrade handshake regression validates Go blocks and seen commits,
+forwards reconstructed requests unchanged into the real App, and compares
+consensus results to the Go recording. It closes and reopens the app,
+block and state databases at H−1, H and H+1, both after saving a block and
+after committing the app before saving consensus state, on each persistent
+backend. Recovery must restore the uninterrupted state and execute the
+next authentic block. This is a controlled restart test with synced writes;
+abrupt process termination and power-loss durability require separate tests.
+
+### Snapshot boundary at the upgrade commit
+
+The pinned Go oracle has an exact-height limitation on `v9-upgrade-replay`
+(H=12): v9.0.8 can export H, but v10.5.0 cannot export H after opening the
+upgraded database because `fibre` has no committed version there. A fresh
+v10.5.0 receiver accepts the v9-produced snapshot offer, then aborts its
+chunk with a `valaddr` version mismatch. The v10-produced H+1 snapshot
+exports and restores successfully with the recorded app hash.
+
+```bash
+# Requires the pinned app binaries built by build-bins.sh (Go 1.26.9).
+python3 conformance/devnet/probe-upgrade-snapshot.py --out target/snapshot-probe
+cargo test -p devnet-conformance --test persistent_replay go_upgrade_snapshot_restore_boundary
+```
+
+The diagnostic replays original ABCI bytes over local sockets and checks
+every FinalizeBlock app hash against the fixture. It records binary and
+fixture hashes, all three exports, both restore outcomes, and public
+snapshot captures under a new output directory. It refuses an occupied
+probe port; `--port` selects another local port. Producer/export experiments
+use separate homes so a failed export cannot overwrite the control snapshot.
+
+The frozen `snapshots/12` and `snapshots/13` cases contain the Go snapshot,
+chunk and oracle results. Rust matches the H abort on both backends; H+1
+restoration survives reopen and replays through the post-upgrade transactions.
+This pins a shared limitation for these versions. It does not justify
+loosening restore validation or establish general snapshot qualification.
+
 Workloads may ship `<name>.setup.sh` (genesis accounts, run before gentx)
 and `<name>.genesis.py` (edits the final genesis, e.g. short gov voting
 periods); `CHAIN_ID` overrides the chain id and `ALLOW_HALT=1` accepts a

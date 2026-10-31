@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-10-31T00:00:08.178738+00:00",
+  "method": "fresh Go gRPC Simulate calls after replaying public ABCI request inputs into an isolated standalone app",
+  "source_sha256": {
+    "conformance/fixtures/devnet/empty/genesis.json": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2",
+    "conformance/fixtures/devnet/empty/abci.rec": "d89d04f89b4ceaf90fb6b64697da07c0fd18bad8eeb6e22abc845de015a4089c",
+    "conformance/mainnet-rpc/simulation/record.sh": "2714ef4278d43763085ef6f9962b32a090e5e53dda571c06767c751cca7cdb5d",
+    "conformance/mainnet-rpc/simulation/capture-state.py": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83",
+    "conformance/mainnet-rpc/simulation/generate-requests.py": "94b5cb7434f8287cf2aa345f959e8bdcefe52578449683aacaa85a0f88a35ba6",
+    "conformance/rpccorpus/recorder/cmd/simulation-errors/main.go": "6b7ba3a7c7c2f474f8b43e54d0e014b52475b48dddd7fdc54644d74c522a89e9",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65"
+  },
+  "artifacts_sha256": {
+    "dependencies.json": "4bce8cec77e70211ba32e3a68cd9d2b122e79bdf352dbe1171b938f9ce7b5a46",
+    "oracle-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "go-build-info.txt": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "mainnet-observation.json": "fed404910eb9a2ae80491cb919fdd257367c0625224f3d8cdb893d2a050d8d23",
+    "requests.json": "55a53eda607d712f1620ccb2ab2f76254fc60f173d7798d0f04b224e521ddfc9",
+    "go-state.json": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70",
+    "go-errors.json": "49cc11c6afc9120c4d9eae14718a6e7c573c95b64ed4ea59123dc92b84d64045"
+  },
+  "exclusions": [
+    "Go diagnostic source annotations in error text",
+    "multiplexer and historical pre-v10 execution",
+    "nonempty protobuf status details",
+    "raw HTTP/2 header/trailer placement"
+  ],
+  "regenerate": "MAINNET_OBSERVATION=<fresh observation> APPD=<release-recipe binary> conformance/mainnet-rpc/simulation/record.sh <empty output directory>"
+}

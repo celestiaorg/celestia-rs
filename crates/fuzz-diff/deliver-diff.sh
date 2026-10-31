@@ -13,6 +13,21 @@
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
 # Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
 # types.
+# DELIVER_TYPE_REQUIRE=<exact-url,...> fails unless every listed top-level
+# message type has at least one successfully finalized Go transaction.
+# DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
+# DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
+# (default noop). Multisig modes use harness-held 2-of-3 validators and
+# fail as incomplete evidence unless both incoming collateral and synthetic
+# transfers succeed. HL_VERIFIED_VERSION and DELIVER_STATS attribute successes
+# to the app version. Signed upgrade runs require both paths at v9 before the
+# held signal is released.
+# DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture is the narrow exception for
+# a fixed DELIVER_SCRIPT + DELIVER_GOV_FAILURE_REQUIRE state regression.
+# DELIVER_HL_REJECT=1 requires a signed ISM; it first rejects malformed
+# metadata then retries the same message in adjacent transactions. Every
+# required pair must reject at verification and then succeed, or exit nonzero.
+# Cannot be combined with DELIVER_UPGRADE (its early fixture windows).
 #
 # The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.5.0): when Go
 # raises the app version, the harness stops the Go app after that Commit

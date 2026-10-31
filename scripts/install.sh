@@ -320,7 +320,17 @@ latest_version() {
   # shared hosts (CI runners, NAT) run out of.
   if [ -z "$token" ]; then
     version=$(get "$GITHUB_URL/$REPO/releases.atom" - 2>/dev/null |
-      sed -n 's|.*href="[^"]*/releases/tag/\([^"]*\)".*|\1|p' | head -n 1)
+      sed -n 's|.*href="[^"]*/releases/tag/\([^"]*\)".*|\1|p' |
+      while IFS= read -r candidate; do
+        # The feed can advertise a tag before a release's assets exist.
+        # Probe both files without downloading the archive; explicit
+        # --version requests still fail if their assets are missing.
+        asset_url=$GITHUB_URL/$REPO/releases/download/$candidate/celestia-rs-$candidate-$target.tar.gz
+        if asset_exists "$asset_url" && asset_exists "$asset_url.sha256"; then
+          printf '%s\n' "$candidate"
+          break
+        fi
+      done)
     if [ -n "$version" ]; then
       [ "$1" = 1 ] || say "no stable release yet; using the newest pre-release, $version"
       return 0
@@ -336,10 +346,40 @@ latest_version() {
 If the repository is private, set GITHUB_TOKEN (or log in with 'gh auth login').
 If GitHub rate-limited this IP, set GITHUB_TOKEN, or pass --version."
   fi
-  version=$(printf '%s\n' "$json" | json_str tag_name)
-  [ -n "$version" ] || err "$REPO has no releases yet; build from source: https://github.com/$REPO#getting-started"
+  # A release can be published before its assets finish uploading. Pick
+  # the first non-draft release with both files for this machine. Asset
+  # names are available through the API even for private repositories.
+  version=$(printf '%s\n' "$json" | json_lines | awk -v target="$target" '
+    function value(line) {
+      sub(/^[^:]*:[[:space:]]*"/, "", line)
+      sub(/".*/, "", line)
+      return line
+    }
+    /^[[:space:]]*"tag_name":[[:space:]]*"/ {
+      tag = value($0)
+      name = "celestia-rs-" tag "-" target ".tar.gz"
+      archive = checksum = 0
+      draft = 1
+    }
+    /^[[:space:]]*"draft":[[:space:]]*false[[:space:]]*$/ { draft = 0 }
+    /^[[:space:]]*"name":[[:space:]]*"/ {
+      file = value($0)
+      if (file == name) archive = 1
+      if (file == name ".sha256") checksum = 1
+      if (archive && checksum && !draft) { print tag; exit }
+    }')
+  [ -n "$version" ] || err "$REPO has no releases yet with archives and checksums for $target; build from source: https://github.com/$REPO#getting-started"
   if [ "$1" = 0 ]; then
     say "no stable release yet; using the newest pre-release, $version"
+  fi
+}
+
+# Check a public release asset without downloading its body.
+asset_exists() {
+  if [ "$downloader" = curl ]; then
+    curl --proto "$proto" --tlsv1.2 -sSfIL "$1" >/dev/null 2>&1
+  else
+    wget -q --spider "$1" >/dev/null 2>&1
   fi
 }
 

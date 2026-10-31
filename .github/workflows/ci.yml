@@ -13,7 +13,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -22,7 +22,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -32,14 +32,46 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Fuzz evidence accounting
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
+      - name: gRPC limit evidence integrity
+        run: python3 conformance/grpc-limits/verify.py
+      - name: gRPC lifecycle evidence integrity
+        run: |
+          python3 -m unittest -v conformance/grpc-lifecycle/test_verify.py
+          python3 conformance/grpc-lifecycle/verify.py conformance/grpc-lifecycle/v10.5.0
       - run: cargo test --workspace --all-features
+
+  rpc-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify RPC evidence accounting
+        run: python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
+      - name: Validate scoped evidence and admitted current-release regressions
+        run: >-
+          python3 conformance/mainnet-rpc/coverage.py --run-current --verify-scoped
+          --json ${{ runner.temp }}/rpc-coverage.json
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rpc-evidence-inventory
+          path: ${{ runner.temp }}/rpc-coverage.json
+          retention-days: 30
 
   # A small, deterministic budget protects the signer and socket boundary.
   # The complete per-crate report runs nightly, without a second PR workspace build.
@@ -49,7 +81,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools
@@ -84,7 +116,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -116,7 +148,7 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # cargo-deny >= 0.18 parses CVSS 4.0 advisories; accepted advisories
       # are listed with reasons in deny.toml and docs/security.md.
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -143,17 +175,20 @@ jobs:
           - fixturegen
           - fuzzoracle/v9
           - fuzzoracle/v10
+          - grpc-limits/recorder
+          - grpc-lifecycle/recorder
           - lightvectors
           - mathvectors
           - mintvectors
           - p2pvectors
+          - provider-client
           - rpccorpus/recorder
           - txdecode
     env:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/${{ matrix.module }}/go.mod

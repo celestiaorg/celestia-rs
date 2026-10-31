@@ -1,0 +1,143 @@
+{
+  "captured_at": "2026-10-31T00:11:18.691634+00:00",
+  "abci": "127.0.0.1:27300",
+  "cases": [
+    {
+      "query_path": "/p2p",
+      "request_wire_hex": "08320612042f703270",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "4b3a4908061a40706174682073686f756c64206265207032702066696c746572203c616464727c69643e203c706172616d657465723e3a20756e6b6e6f776e2072657175657374520373646b",
+        "payload_hex": "3a4908061a40706174682073686f756c64206265207032702066696c746572203c616464727c69643e203c706172616d657465723e3a20756e6b6e6f776e2072657175657374520373646b"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    },
+    {
+      "query_path": "/p2p/filter",
+      "request_wire_hex": "0f320d120b2f7032702f66696c746572",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "4b3a4908061a40706174682073686f756c64206265207032702066696c746572203c616464727c69643e203c706172616d657465723e3a20756e6b6e6f776e2072657175657374520373646b",
+        "payload_hex": "3a4908061a40706174682073686f756c64206265207032702066696c746572203c616464727c69643e203c706172616d657465723e3a20756e6b6e6f776e2072657175657374520373646b"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    },
+    {
+      "query_path": "/p2p/filter/addr/x",
+      "request_wire_hex": "16321412122f7032702f66696c7465722f616464722f78",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "023a00",
+        "payload_hex": "3a00"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    },
+    {
+      "query_path": "/p2p/filter/id/x",
+      "request_wire_hex": "14321212102f7032702f66696c7465722f69642f78",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "023a00",
+        "payload_hex": "3a00"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    },
+    {
+      "query_path": "/p2p/filter/other/x",
+      "request_wire_hex": "17321512132f7032702f66696c7465722f6f746865722f78",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "00",
+        "payload_hex": ""
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": true
+    },
+    {
+      "query_path": "/p2p/filter//x",
+      "request_wire_hex": "123210120e2f7032702f66696c7465722f2f78",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "00",
+        "payload_hex": ""
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": true
+    },
+    {
+      "query_path": "/p2p/other/addr/x",
+      "request_wire_hex": "15321312112f7032702f6f746865722f616464722f78",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "443a4208061a396578706563746564207365636f6e6420706172616d6574657220746f206265202766696c746572273a20756e6b6e6f776e2072657175657374520373646b",
+        "payload_hex": "3a4208061a396578706563746564207365636f6e6420706172616d6574657220746f206265202766696c746572273a20756e6b6e6f776e2072657175657374520373646b"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    },
+    {
+      "query_path": "/p2p/filter/other/x/extra",
+      "request_wire_hex": "1d321b12192f7032702f66696c7465722f6f746865722f782f6578747261",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "00",
+        "payload_hex": ""
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": true
+    },
+    {
+      "query_path": "/p2p/filter/addr/x/extra",
+      "request_wire_hex": "1c321a12182f7032702f66696c7465722f616464722f782f6578747261",
+      "flush_wire_hex": "021200",
+      "response": {
+        "wire_hex": "023a00",
+        "payload_hex": "3a00"
+      },
+      "flush_response": {
+        "wire_hex": "021a00",
+        "payload_hex": "1a00"
+      },
+      "missing_response": false
+    }
+  ],
+  "echo_after": {
+    "wire_hex": "0912070a05616c697665",
+    "payload_hex": "12070a05616c697665"
+  },
+  "echo_request_wire_hex": "090a070a05616c697665",
+  "flush_after": {
+    "wire_hex": "021a00",
+    "payload_hex": "1a00"
+  },
+  "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+  "capture_source_sha256": "790e33da7106b5cfbd3a37c132038a504ab62c99bfcca04c61881a32866814ba"
+}

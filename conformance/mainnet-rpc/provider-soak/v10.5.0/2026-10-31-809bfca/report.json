@@ -1,0 +1,795 @@
+{
+ "final": true,
+ "elapsed_s": 310,
+ "heights": 111,
+ "blocks": {
+  "txs": 408,
+  "max_bytes": 2045362,
+  "over_8mb": 0,
+  "count": 113
+ },
+ "proposed_by_node": {
+  "0": 28,
+  "1": 28,
+  "2": 29,
+  "3": 28
+ },
+ "nodes": [
+  {
+   "node": 0,
+   "kind": "go",
+   "validator": true,
+   "restarts": 0,
+   "statesyncs": 0,
+   "max_rss_mb": 506,
+   "disk_mb": 33,
+   "checked_upto": 113,
+   "rss_lifetimes": []
+  },
+  {
+   "node": 1,
+   "kind": "go",
+   "validator": true,
+   "restarts": 0,
+   "statesyncs": 0,
+   "max_rss_mb": 539,
+   "disk_mb": 42,
+   "checked_upto": 110,
+   "rss_lifetimes": []
+  },
+  {
+   "node": 2,
+   "kind": "rs",
+   "validator": true,
+   "restarts": 0,
+   "statesyncs": 0,
+   "max_rss_mb": 315,
+   "disk_mb": 68,
+   "checked_upto": 113,
+   "rss_lifetimes": []
+  },
+  {
+   "node": 3,
+   "kind": "rs",
+   "validator": true,
+   "restarts": 0,
+   "statesyncs": 0,
+   "max_rss_mb": 285,
+   "disk_mb": 70,
+   "checked_upto": 113,
+   "rss_lifetimes": []
+  },
+  {
+   "node": 4,
+   "kind": "rs",
+   "validator": false,
+   "restarts": 0,
+   "statesyncs": 0,
+   "max_rss_mb": 309,
+   "disk_mb": 69,
+   "checked_upto": 113,
+   "rss_lifetimes": []
+  }
+ ],
+ "stalls": [],
+ "metrics": {
+  "bank": {
+   "ok": 330,
+   "rejected": {},
+   "errors": 0,
+   "resyncs": 0,
+   "included": 322,
+   "failed_exec": 0,
+   "lost": 0
+  },
+  "pfb": {
+   "submitted": 58,
+   "rejected": {},
+   "included": 56,
+   "failed_exec": 0,
+   "lost": 0,
+   "max_round_bytes": 2086434
+  },
+  "staking": {
+   "submitted": 16,
+   "rejected": {
+    "err:Error: no rewards to withdraw": 2,
+    "32": 1
+   },
+   "included": 15,
+   "failed_exec": 0,
+   "lost": 0
+  },
+  "gov": {
+   "proposals": 2,
+   "passed": 1,
+   "rejected": 0,
+   "other": 1,
+   "votes": 8
+  },
+  "valset": [],
+  "chaos": [],
+  "authz": {
+   "submitted": 0,
+   "rejected": {},
+   "included": 0,
+   "failed_exec": 0,
+   "lost": 0
+  },
+  "feegrant": {
+   "submitted": 0,
+   "rejected": {},
+   "included": 0,
+   "failed_exec": 0,
+   "lost": 0
+  },
+  "hyperlane": {
+   "submitted": 0,
+   "rejected": {},
+   "included": 0,
+   "failed_exec": 0,
+   "lost": 0
+  },
+  "utf8": {
+   "submitted": 0,
+   "rejected": {},
+   "included": 0,
+   "failed_exec": 0,
+   "lost": 0,
+   "checktx_parity": {
+    "same": 0,
+    "diff": []
+   }
+  },
+  "precommit_stop": {
+   "cut_short": 0,
+   "signed_before_stop": 0,
+   "unknown": 0
+  },
+  "sign_refusals": {},
+  "wal": {
+   "n0": {
+    "over_samples": 0,
+    "max_files": 1,
+    "max_total": 1801923,
+    "max_head": 1801923
+   },
+   "n1": {
+    "over_samples": 0,
+    "max_files": 1,
+    "max_total": 9847139,
+    "max_head": 9847139
+   },
+   "n2": {
+    "over_samples": 0,
+    "max_files": 2,
+    "max_total": 14821049,
+    "max_head": 9481937
+   },
+   "n3": {
+    "over_samples": 0,
+    "max_files": 2,
+    "max_total": 14827216,
+    "max_head": 9510190
+   },
+   "n4": {
+    "over_samples": 0,
+    "max_files": 2,
+    "max_total": 14238607,
+    "max_head": 9035689
+   }
+  },
+  "disk": {
+   "max_total_mb": 236,
+   "pressure_syncs": 0
+  },
+  "rss": {
+   "max_total_mb": 1955,
+   "pressure_restarts": 0
+  },
+  "provider": {
+   "enabled": true,
+   "operations": {
+    "n0:comet-http-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:comet-jsonrpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:comet-jsonrpc-proof": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:comet-ws-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:comet-ws-slow-reconnect": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:core-grpc-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:core-grpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:core-grpc-slow-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:cosmos-grpc-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:cosmos-grpc-block": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:rest-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:rest-node-info": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n0:broadcast:jsonrpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n1:broadcast:uri": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n2:broadcast:websocket": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n3:broadcast:cosmos-grpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n4:broadcast:rest": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n0:broadcast:core-grpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n1:comet-http-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:comet-jsonrpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:comet-jsonrpc-proof": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:comet-ws-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:comet-ws-slow-reconnect": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:core-grpc-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:core-grpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:core-grpc-slow-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:cosmos-grpc-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:cosmos-grpc-block": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:rest-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:rest-node-info": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n1:broadcast:jsonrpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n2:broadcast:uri": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n3:broadcast:websocket": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n4:broadcast:cosmos-grpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n0:broadcast:rest": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n1:broadcast:core-grpc": {
+     "requested": 14,
+     "completed": 14,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 14
+    },
+    "n2:comet-http-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:comet-jsonrpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:comet-jsonrpc-proof": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:comet-ws-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:comet-ws-slow-reconnect": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:core-grpc-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:core-grpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:core-grpc-slow-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:cosmos-grpc-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:cosmos-grpc-block": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:rest-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:rest-node-info": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:comet-http-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:comet-jsonrpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:comet-jsonrpc-proof": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:comet-ws-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:comet-ws-slow-reconnect": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:core-grpc-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:core-grpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:core-grpc-slow-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:cosmos-grpc-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:cosmos-grpc-block": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:rest-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n3:rest-node-info": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n2:broadcast:jsonrpc": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n3:broadcast:uri": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n4:broadcast:websocket": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n0:broadcast:cosmos-grpc": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n1:broadcast:rest": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n2:broadcast:core-grpc": {
+     "requested": 13,
+     "completed": 13,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 13
+    },
+    "n3:broadcast:jsonrpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n4:comet-http-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:comet-jsonrpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:comet-jsonrpc-proof": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:comet-ws-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:comet-ws-slow-reconnect": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:core-grpc-status": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:core-grpc-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:core-grpc-slow-subscribe": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:cosmos-grpc-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:cosmos-grpc-block": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:rest-pagination-history": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:rest-node-info": {
+     "requested": 11,
+     "completed": 11,
+     "errors": 0,
+     "admission_unknown": 0
+    },
+    "n4:broadcast:uri": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n0:broadcast:websocket": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n1:broadcast:cosmos-grpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n2:broadcast:rest": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n3:broadcast:core-grpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n4:broadcast:jsonrpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n0:broadcast:uri": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n1:broadcast:websocket": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n2:broadcast:cosmos-grpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n3:broadcast:rest": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    },
+    "n4:broadcast:core-grpc": {
+     "requested": 7,
+     "completed": 7,
+     "errors": 0,
+     "admission_unknown": 0,
+     "accepted": 7
+    }
+   },
+   "disabled_scenarios": [
+    "TLS and reverse proxies",
+    "external provider client SDKs",
+    "proof cryptographic validity",
+    "multi-page cursor traversal",
+    "all supported message families through every transport",
+    "subscription quota saturation",
+    "unbounded slow readers",
+    "exact Go/Rust response equivalence at matched state"
+   ]
+  },
+  "rejection_samples": {
+   "staking:32": {
+    "first": {
+     "t": 289,
+     "h": 105,
+     "node": 4,
+     "log": "xhash\":\"610155C88E36B79EFD069434FF279D9F40E52A664C81447BBF6D38CE58DA546C\",\"codespace\":\"sdk\",\"code\":32,\"data\":\"\",\"raw_log\":\"account sequence mismatch, expected 5, got 4: incorrect account sequence\",\"logs\":[],\"info\":\"\",\"gas_wanted\":\"0\",\"gas_u"
+    },
+    "last": {
+     "t": 289,
+     "h": 105,
+     "node": 4,
+     "log": "xhash\":\"610155C88E36B79EFD069434FF279D9F40E52A664C81447BBF6D38CE58DA546C\",\"codespace\":\"sdk\",\"code\":32,\"data\":\"\",\"raw_log\":\"account sequence mismatch, expected 5, got 4: incorrect account sequence\",\"logs\":[],\"info\":\"\",\"gas_wanted\":\"0\",\"gas_u"
+    },
+    "n": 1
+   }
+  }
+ },
+ "failures": [],
+ "log_hits": {}
+}

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "command": "python3 /workspace/worktrees/rpc-191/conformance/mainnet-rpc/simulation/capture-state.py --address 127.0.0.1:40658 --replay /workspace/worktrees/rpc-191/conformance/fixtures/devnet/empty/abci.rec --genesis /workspace/scratch/rpc-181/rest-post/home/config/genesis.json --out /workspace/scratch/rpc-181/rest-post/go-state.json",
+  "python": "3.12.14",
+  "request_count": 194,
+  "result": {
+    "replayed_requests": 194,
+    "abci_info_hex": "22730a0c63656c65737469612d617070120631302e352e30180a20142a20a24aed6d3e95df951e9a37b40364623ea4af5b5cd30bc231cb7ce98b19c9e85332350a02080312061080cab5ee011a02080222061080cab5ee012a02080332061080cab5ee013a061080cab5ee01420708021080c2d72f",
+    "data": "celestia-app",
+    "version": "10.5.0",
+    "app_version": 10,
+    "height": 20,
+    "app_hash": "A24AED6D3E95DF951E9A37B40364623EA4AF5B5CD30BC231CB7CE98B19C9E853",
+    "chain_id": "rs-devnet-1"
+  },
+  "inputs": {
+    "capture_state_source": {
+      "path": "conformance/mainnet-rpc/simulation/capture-state.py",
+      "sha256": "c8a8c8560363e5f674571f75f0d27af56210afeccd34ed2d1c0329cc9f964b83"
+    },
+    "abci_recording": {
+      "path": "conformance/fixtures/devnet/empty/abci.rec",
+      "sha256": "d89d04f89b4ceaf90fb6b64697da07c0fd18bad8eeb6e22abc845de015a4089c"
+    },
+    "genesis": {
+      "path": "conformance/fixtures/devnet/empty/genesis.json",
+      "sha256": "73359842c6c0a36b9023942a4fb58a9c89452555a091f3e91dc53aebc45975e2"
+    },
+    "start_source": {
+      "path": "start-source.sh",
+      "sha256": "e2bd34e0b5936cae04f8516d6394f0f7fc23fffb022783a92670c27b744bb9c5"
+    },
+    "app_config_uncompressed_sha256": "fb633da2e9f77215d3169cf5828bf741254db0507621e3be214f9d8fa7c7152d",
+    "oracle_binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38"
+  },
+  "output_sha256": "8b73c0a2f4d7e4760534b1cf27c47d3a62011cd176194b36beb804130c3b2a70",
+  "recording_lineage": {
+    "fixture_metadata": {
+      "scenario": "empty",
+      "chain_id": "rs-devnet-1",
+      "celestia_app": "v10.4.0",
+      "celestia_core": "v0.42.3",
+      "committed_heights": 20,
+      "workload": "none",
+      "generated_at": "2026-10-14T05:30:21Z"
+    },
+    "fixture_metadata_sha256": "b5419787135923b36f785f3ab6e51d643b227a732c0913d16cd38b82b821e8d8",
+    "devnet_source_path": "conformance/devnet/devnet.sh",
+    "devnet_source_sha256": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "rpc_recorder_build_receipt": "rpc-recorder-build.json",
+    "note": "capture-state.py replays abci.rec directly; rpc-recorder is bound as part of the fixture-generation toolchain and was not invoked during this replay"
+  }
+}

@@ -8,6 +8,7 @@ require (
 	cosmossdk.io/api v1.0.0
 	cosmossdk.io/errors v1.0.2
 	cosmossdk.io/log v1.6.0
+	cosmossdk.io/math v1.5.3
 	cosmossdk.io/store v1.1.2
 	cosmossdk.io/x/tx v0.13.8
 	github.com/bcp-innovations/hyperlane-cosmos v1.2.0
@@ -36,7 +37,6 @@ require (
 	cosmossdk.io/collections v0.4.0 // indirect
 	cosmossdk.io/core v1.1.0 // indirect
 	cosmossdk.io/depinject v1.2.1 // indirect
-	cosmossdk.io/math v1.5.3 // indirect
 	cosmossdk.io/x/circuit v0.1.1 // indirect
 	cosmossdk.io/x/evidence v0.1.1 // indirect
 	cosmossdk.io/x/feegrant v0.1.1 // indirect
@@ -124,7 +124,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/getsentry/sentry-go v0.42.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect

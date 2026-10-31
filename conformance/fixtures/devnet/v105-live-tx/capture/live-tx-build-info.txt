@@ -1,0 +1,19 @@
+/workspace/scratch/rpc-181/bin-populated/live-tx: go1.26.9
+	path	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/live-tx
+	mod	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder	(devel)	
+	dep	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
+	dep	golang.org/x/sys	v0.48.0	h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+	dep	golang.org/x/text	v0.42.0	h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260526163538-3dc84a4a5aaa	h1:mZHHdPZl0dbGHCflZgAq/Q468DWVFcU2whhB2KAo8fk=
+	dep	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+	dep	google.golang.org/protobuf	v1.36.12	h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1

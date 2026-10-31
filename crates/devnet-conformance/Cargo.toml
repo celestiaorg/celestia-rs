@@ -12,11 +12,17 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Keep the normal oracle tests on the native backend while allowing bounded
+# transport/recorder tests to run without a C++ build.
+default = ["rocksdb"]
+rocksdb = ["app/rocksdb", "api-server/rocksdb"]
+
 [dependencies]
 abci-server = { path = "../tier-4-runtime/abci-server" }
-app = { path = "../tier-4-runtime/app" }
+app = { path = "../tier-4-runtime/app", default-features = false }
 grpc-query = { path = "../tier-4-runtime/grpc-query" }
-api-server = { path = "../tier-4-runtime/api-server" }
+api-server = { path = "../tier-4-runtime/api-server", default-features = false }
 anyhow.workspace = true
 hex = "0.4"
 base64 = "0.23"
@@ -30,6 +36,12 @@ hash = { path = "../tier-0-primitives/hash" }
 gostr = { path = "../tier-0-primitives/gostr" }
 
 [dev-dependencies]
+ctypes = { path = "../tier-1-protocol-types/ctypes" }
+nodestore = { path = "../tier-4-runtime/nodestore" }
+rpc = { path = "../tier-4-runtime/rpc", default-features = false }
+mempool = { path = "../tier-4-runtime/mempool" }
+kvdb = { path = "../tier-2-state-and-store/kvdb" }
+ics23-proofs = { path = "../tier-2-state-and-store/ics23-proofs" }
 snapshots = { path = "../tier-2-state-and-store/snapshots" }
 tempfile = "3"
 pbjson-types = "0.7"

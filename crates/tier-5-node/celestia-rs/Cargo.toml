@@ -15,7 +15,7 @@ workspace = true
 [features]
 default = ["rocksdb", "jemalloc"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
-rocksdb = ["app/rocksdb"]
+rocksdb = ["app/rocksdb", "api-server/rocksdb"]
 # jemalloc as the global allocator (default; unprefixed on Linux, so
 # RocksDB's C++ allocations use it too). On glibc malloc the node's RSS
 # was 4-5x its live heap (docs/benchmarks/memory.md).
@@ -30,7 +30,7 @@ abci-server = { path = "../../tier-4-runtime/abci-server" }
 anyhow.workspace = true
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
 base64 = "0.23"
-api-server = { path = "../../tier-4-runtime/api-server" }
+api-server = { path = "../../tier-4-runtime/api-server", default-features = false }
 app = { path = "../../tier-4-runtime/app", default-features = false }
 blocksync = { path = "../../tier-4-runtime/blocksync" }
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
@@ -78,7 +78,10 @@ tikv-jemalloc-ctl = { version = "0.7", optional = true, features = ["stats"] }
 rustix = { version = "1.1", features = ["termios"] }
 
 [dev-dependencies]
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tempfile = "3"
+tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 rustix = { version = "1.1", features = ["termios", "pty"] }

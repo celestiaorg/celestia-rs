@@ -62,24 +62,30 @@ pub fn node_key(home: &Path) -> anyhow::Result<NodeKey> {
 
 /// A switch for `chain_id` (`makeNodeInfo` + `createSwitch`), not started;
 /// with PEX (and the address book `config/addrbook.json`) when enabled.
-pub fn new_switch(home: &Path, chain_id: &str, opts: &P2pOptions) -> anyhow::Result<Switch> {
+pub fn new_switch(
+    home: &Path,
+    chain_id: &str,
+    opts: &P2pOptions,
+    app_version: u64,
+) -> anyhow::Result<Switch> {
     let key = node_key(home)?;
+    let rpc = crate::rpc_service::RpcSettings::load(home)?;
     let info = NodeInfo {
         protocol_version: ProtocolVersion {
             p2p: p2p::node_info::P2P_PROTOCOL,
             block: p2p::node_info::BLOCK_PROTOCOL,
-            app: 0,
+            app: app_version,
         },
         network: chain_id.to_owned(),
-        version: p2p::node_info::TM_CORE_SEMVER.into(),
+        version: crate::version::node_version(),
         moniker: opts.moniker.clone(),
         listen_addr: format!(
             "tcp://{}",
             opts.external_address.as_deref().unwrap_or(&opts.laddr)
         ),
         other: NodeInfoOther {
-            tx_index: "off".into(),
-            rpc_address: String::new(),
+            tx_index: if rpc.tx_index { "on" } else { "off" }.into(),
+            rpc_address: rpc.rpc.laddr,
         },
         ..NodeInfo::default()
     };

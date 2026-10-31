@@ -31,6 +31,14 @@ pub trait AppQuery: Send + Sync {
     fn info(&self) -> Result<abci::ResponseInfo, String>;
     /// `Query`.
     fn query(&self, req: abci::RequestQuery) -> Result<abci::ResponseQuery, String>;
+    /// Query envelope, preserving a nil response independently from an error or
+    /// a present default Query. Adapters over Go-compatible apps override this.
+    fn query_response(
+        &self,
+        req: abci::RequestQuery,
+    ) -> Result<Option<abci::ResponseQuery>, String> {
+        self.query(req).map(Some)
+    }
     /// `CheckTx` on the mempool connection (without adding to the pool).
     fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String>;
 }
@@ -186,6 +194,12 @@ pub struct RpcConfig {
     pub max_request_batch_size: usize,
     /// `max_body_bytes`.
     pub max_body_bytes: usize,
+    /// `max_header_bytes` (0 uses Go `net/http`'s 1 MiB default).
+    pub max_header_bytes: usize,
+    /// Resolved `tls_cert_file` (empty unless configured).
+    pub tls_cert_file: String,
+    /// Resolved `tls_key_file` (empty unless configured).
+    pub tls_key_file: String,
     /// `max_concurrent_heavy_requests` (0 = default 20, <0 = unlimited).
     pub max_concurrent_heavy_requests: i64,
 }
@@ -215,8 +229,19 @@ impl Default for RpcConfig {
             timeout_broadcast_tx_commit_ms: 10_000,
             max_request_batch_size: 10,
             max_body_bytes: 1_000_000,
+            max_header_bytes: 1 << 20,
+            tls_cert_file: String::new(),
+            tls_key_file: String::new(),
             max_concurrent_heavy_requests: 20,
         }
+    }
+}
+
+impl RpcConfig {
+    /// Go enables RPC TLS only when both file fields are nonempty.
+    #[must_use]
+    pub fn tls_enabled(&self) -> bool {
+        !self.tls_cert_file.is_empty() && !self.tls_key_file.is_empty()
     }
 }
 
@@ -320,6 +345,10 @@ impl std::fmt::Debug for Environment {
         f.debug_struct("Environment").finish_non_exhaustive()
     }
 }
+
+/// Observed Go RPC recovery for dereferencing an absent ABCI Query response.
+pub(crate) const ERR_EMPTY_QUERY_RESPONSE: &str =
+    "runtime error: invalid memory address or nil pointer dereference";
 
 /// `errHeavyRequestLimit`.
 pub const ERR_HEAVY_LIMIT: &str =
@@ -729,9 +758,9 @@ impl Environment {
             ])),
             "broadcast_tx_sync" => self.broadcast_tx_sync(arg(0).bytes()),
             "broadcast_tx_async" => self.broadcast_tx_async(arg(0).bytes()),
-            "abci_query" => {
-                self.abci_query(arg(0).str(), arg(1).bytes(), arg(2).int(), arg(3).bool())
-            }
+            "abci_query" => self
+                .abci_query_response(arg(0).str(), arg(1).bytes(), arg(2).int(), arg(3).bool())?
+                .ok_or_else(|| ERR_EMPTY_QUERY_RESPONSE.to_owned()),
             "abci_info" => {
                 let r = self.app.info()?;
                 Ok(J::obj([("response", encode::response_info(&r))]))
@@ -1374,17 +1403,26 @@ impl Environment {
 
     // --- abci --------------------------------------------------------------
 
-    fn abci_query(&self, path: &str, data: &[u8], height: i128, prove: bool) -> Result<J, String> {
-        let r = self.app.query(abci::RequestQuery {
+    pub(crate) fn abci_query_response(
+        &self,
+        path: &str,
+        data: &[u8],
+        height: i128,
+        prove: bool,
+    ) -> Result<Option<J>, String> {
+        let Some(r) = self.app.query_response(abci::RequestQuery {
             data: data.to_vec(),
             path: path.to_owned(),
             height: i64::try_from(height).unwrap_or(0),
             prove,
-        })?;
-        Ok(J::obj([(
+        })?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(J::obj([(
             "response",
             encode::response_query_for_path(path, &r),
-        )]))
+        )])))
     }
 
     fn broadcast_evidence(&self, ev: &Arg) -> Result<J, String> {

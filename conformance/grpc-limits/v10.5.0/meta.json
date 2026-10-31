@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T00:13:24.295487+00:00",
+  "oracle_build": {
+    "binary_sha256": "eba70d65dde2f6082606e5e4c946a2c41736435e409bb8c69398ca5665847b38",
+    "build_tags": [
+      "ledger"
+    ],
+    "buildvcs": false,
+    "compiler": "go version go1.26.9 linux/amd64",
+    "goflags": "-mod=mod",
+    "ldflags": "-X github.com/cosmos/cosmos-sdk/version.Name=celestia-app -X github.com/cosmos/cosmos-sdk/version.AppName=celestia-appd -X github.com/cosmos/cosmos-sdk/version.Version=10.5.0 -X github.com/cosmos/cosmos-sdk/version.Commit=6013e758d5dceb75827ad191c8d739d7c43cfa04 -X github.com/cosmos/cosmos-sdk/version.BuildTags=ledger -X github.com/celestiaorg/celestia-app/v10/cmd/celestia-appd/cmd.v2UpgradeHeight=0",
+    "module": "github.com/celestiaorg/celestia-app/v10@v10.5.0",
+    "module_sum": "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc=",
+    "package": "./cmd/celestia-appd",
+    "schema_version": 1,
+    "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "target": {
+      "CGO_ENABLED": "1",
+      "GOAMD64": "v1",
+      "GOARCH": "amd64",
+      "GOARM": "",
+      "GOEXPERIMENT": "",
+      "GOFIPS140": "off",
+      "GOOS": "linux"
+    }
+  },
+  "recorder_compiler": "go version go1.26.9 linux/amd64",
+  "capture_source_sha256": {
+    "conformance/grpc-limits/record.sh": "98b2ae3cbdf2c808be1aa351e9feb96f625d7fec521883e767be3864446dbbdc",
+    "conformance/grpc-limits/verify.py": "6bfbcfdb58b345b2f1c8002a981f7e5d2899c1484240f0efa13620b21815b780",
+    "conformance/grpc-limits/recorder/main.go": "28d3dc56d87cb7885047ae55fbff4b3f68046221ec69e1c102a8c92a72fd16c2",
+    "conformance/grpc-limits/recorder/go.mod": "be42924eda8a03ef56a60f7b2df3f5aa3be84658a826ee42561be76757a8fe69",
+    "conformance/grpc-limits/recorder/go.sum": "4d6021e7f1525d43b0713af9db44aead5817e2bbe9910d0f077172a363d4ea52"
+  },
+  "sha256": {
+    "app.toml": "5c3a3ee48b61f4c64900b524f94b3ce4ad3785778b5b1a3d1c4e32b50543f987",
+    "config.toml": "4085119eb7ee53aeb026c76a3d400de4498068bb71bd6f43be880db46c56b6ea",
+    "genesis.json": "368a793971fc27b0030a9069eecf5e7d39e739256ead2d2cf4a22d2a66a0ceb7",
+    "go-build-info.txt": "15f739c853a58e8c3aa5f5168672aabdfb248eb3476e3152ced6fde9c5db2b25",
+    "go-build.json": "0499900e91b2d1d7517fb91f5d5ad5c9a11a54884afebdf5a8707269777b3835",
+    "go-core-request-boundary.json.gz": "4c3e7197ca4d85cd62b01e75d2a4948af0a2358be0101a6393e6aa40b2539056",
+    "go-sdk-block-status.json": "8b296158e73571b188eea81eb08d94a09530e0f372bb8447b3b7682ccd36a298",
+    "go-sdk-block-stream.json": "58d4e54a3d98a35baa4b12081170a969c1174b740b58c899f8949a16ca3a9250",
+    "go-sdk-config.json": "0f28db7c1cb47b3834b7861536d831f63b0ad3f1a8381949524f7688ce2f18f9",
+    "go-sdk-core-broadcast.json": "c713ea01275bd2f89bb1b18e47099b2617b3031053d10733f914f13b38e2e9d9",
+    "go-sdk-send-5.json": "36022aab62dc2d6349e971c523a307cfe47dea240489e1fd9a2a7808cae3dc90",
+    "go-sdk-send-6.json": "57cfc7b86d3edbc270d74c8a958d51586a9101e820031a84de3a5599798d3c54",
+    "go-sdk-send-7.json": "57cfc7b86d3edbc270d74c8a958d51586a9101e820031a84de3a5599798d3c54",
+    "go-sdk-unknown-block-method.json": "b6dda42bbbdd8a43f561f84ebde13e14d3d91d284d3d59ae929b7c5c6d94886b",
+    "go-sdk-unknown-method.json": "698ca2452bee7ac45775cf7cc9cae59d947546794c30883f688ecc74d355d350",
+    "go-sdk-unknown-service.json": "cbad01dd4dd08441de3ac4f3e8c5dbc165729cf2fe2170779e5218a4262984ac",
+    "mainnet-abci-info.json": "8a754a28df3a4d8a0ef1d1821397af9fe749e59e2283d5f0807e985f8b385279",
+    "mainnet-status.json": "e03a57ad4a185757909ebab22fe1c3dfc7fa6aebcb8f3f1dc1d40cc1576c6bd3"
+  },
+  "state_scope": "fresh isolated Go single-validator devnet; Config success height is dynamic, BlockAPI size includes its own runtime metadata; no matched-state universal parity claim",
+  "exclusions": [
+    "HTTP/2 framing timing and dynamic capture heights",
+    "Go/RS build identity and node identity in Status responses",
+    "compressed messages, keepalive, handshake deadlines, memory-growth campaigns",
+    "connection quotas zero/two and prolonged cancellation/recovery loads"
+  ]
+}
