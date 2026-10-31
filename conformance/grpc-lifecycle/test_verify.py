@@ -155,6 +155,17 @@ class MetadataVerification(unittest.TestCase):
         with self.assertRaises(AssertionError):
             VERIFY.verify_metadata(stale_date, "rs", "sdk", started, completed,
                                    rejected_compression=True)
+        canonical = format_datetime(now, usegmt=True)
+        for noncanonical in (
+            canonical.split(", ", 1)[1],
+            canonical.removesuffix("GMT") + "+0000",
+            "Sun" + canonical[3:],
+        ):
+            mutated_date = copy.deepcopy(rs)
+            mutated_date["date"] = [noncanonical]
+            with self.assertRaises((AssertionError, ValueError)):
+                VERIFY.verify_metadata(mutated_date, "rs", "sdk", started, completed,
+                                       rejected_compression=True)
 
 
 class ResourceBounds(unittest.TestCase):

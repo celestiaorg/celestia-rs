@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 import hashlib
 import ipaddress
 import json
@@ -554,7 +554,8 @@ def verify_metadata(value: dict, implementation: str, listener: str,
                               if rejected_compression else {"content-type", "date"})
         assert len(value["date"]) == 1
         date = parsedate_to_datetime(value["date"][0])
-        assert date.tzinfo is not None
+        assert date.tzinfo is not None and date.utcoffset() == timedelta(0)
+        assert format_datetime(date.astimezone(timezone.utc), usegmt=True) == value["date"][0]
         assert started - timedelta(seconds=1) <= date <= completed + timedelta(seconds=1)
         expected["date"] = value["date"]
         if rejected_compression:

@@ -136,5 +136,5 @@ python3 conformance/grpc-lifecycle/verify.py /absolute/path/empty-capture
 
 `ORACLE_BIN` and `CORE_BIN` must have the reviewed adjacent Go build receipts.
 The output inventory excludes node homes, databases, keys and logs; it contains
-only sanitized configs/genesis, response and frame ledgers, resource traces,
+only key-free frozen configs/genesis, response and frame ledgers, resource traces,
 source/build receipts, the fresh public observation, hashes and metadata.
