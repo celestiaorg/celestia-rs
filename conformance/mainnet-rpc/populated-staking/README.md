@@ -37,6 +37,21 @@ validity, non-staking modules, invalid UTF-8, Any/JSON edge cases and later
 staking lifecycle completion. Those require separate populated captures and
 must not be inferred from this slice.
 
+`crates/devnet-conformance/tests/populated_staking_transports.rs` treats this
+Go capture as admitted, immutable provenance. It replays the recorded genesis
+and ABCI stream into Rust, checks the recorded chain ID and the committed app
+hash at the primary capture height 39, and submits each of the eleven exact
+request byte strings at its recorded height through direct ABCI, Comet
+JSON-RPC, Cosmos gRPC and REST. The
+delegation-rewards validator list is the sole normalization, matching the
+recorded Go map-order policy. The test also verifies a Rust-generated IAVL and
+multistore proof against the admitted committed root. The capture contains no
+Go proof-bearing request, so this establishes Rust proof validity but does not
+claim Go/Rust proof-byte parity. The comparison covers ABCI response fields,
+protobuf values, gRPC height metadata, REST status/JSON, and stable REST
+content-type and height metadata. Live `Date` and `X-Server-Time` values and
+transport-derived content length are excluded.
+
 Regenerate with an unused port offset and a fresh observation produced by
 `conformance/mainnet-rpc/observe-mainnet.py`:
 
