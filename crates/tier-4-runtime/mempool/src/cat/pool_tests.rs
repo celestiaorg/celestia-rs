@@ -290,6 +290,19 @@ fn mempool_full_error_message_matches_go() {
 }
 
 #[test]
+fn zero_configured_size_has_one_effective_slot() {
+    let (pool, _) = setup_with(10, |c| c.size = 0);
+    must_check_tx(&pool, "first=x=10");
+    let err = pool
+        .check_tx(b"second=x=10", TxInfo::default())
+        .unwrap_err();
+    assert!(matches!(err, MempoolError::MempoolFull(_)));
+    assert_eq!(pool.size(), 1);
+    assert!(exists(&pool, "first=x=10"));
+    assert!(!exists(&pool, "second=x=10"));
+}
+
+#[test]
 fn flush() {
     let (pool, _) = setup(0);
     let txs = check_txs(&pool, 100, 0);

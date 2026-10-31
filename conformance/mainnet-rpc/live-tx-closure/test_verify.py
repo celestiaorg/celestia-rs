@@ -118,7 +118,7 @@ def fixture(root: pathlib.Path) -> None:
         topology_generations[generation] = {"endpoints": copy.deepcopy(endpoint_values), "listeners": listeners}
     dump(root / "topology.json", {
         "generations": topology_generations, "pex": False, "mempool_broadcast": False,
-        "validator_power": {"go": "1", "rs": "1"}, "max_txs": 1,
+        "validator_power": {"go": "1", "rs": "1"}, "mempool_size": 0, "max_txs": 1,
         "max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES,
         "max_subscription_clients": copy.deepcopy(harness.SUBSCRIPTION_CLIENT_LIMITS),
         "max_subscriptions_per_client": 1,
@@ -133,7 +133,7 @@ def fixture(root: pathlib.Path) -> None:
                 "rpc.max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS[node],
                 "rpc.max_subscriptions_per_client": 1, "p2p.pex": False, "mempool.broadcast": False,
                 "p2p.laddr": endpoint_values[f"{node}_p2p"],
-                "mempool.size": 1, "mempool.max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES,
+                "mempool.size": 0, "mempool.max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES,
                 "tx_index.indexer": "kv", "consensus.timeout_commit": "5s",
             },
             "app.toml": {"grpc.enable": True, "grpc.address": endpoint_values[f"{node}_sdk"],
@@ -343,7 +343,8 @@ def fixture(root: pathlib.Path) -> None:
     dump(root / "inputs.json", {
         "cases": input_cases,
         "capacity": {"tx_a": blob(b"A" * 300), "tx_b": blob(b"B" * 300),
-                     "max_txs": 1, "max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES},
+                     "mempool_size": 0, "max_txs": 1,
+                     "max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES},
         "lifecycle_inputs": {name: blob(value) for name, value in lifecycle_input_bytes.items()},
     })
     dump(root / "paired-responses.json", {
@@ -662,6 +663,10 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("topology.json", lambda value: value.__setitem__("max_txs", 2))
         self.reject("topology.capacity", lambda: verify.verify(self.root))
 
+    def test_configured_mempool_size_is_zero(self):
+        self.rewrite("topology.json", lambda value: value.__setitem__("mempool_size", 1))
+        self.reject("topology.capacity", lambda: verify.verify(self.root))
+
     def test_mempool_byte_floor_cannot_be_recorded_below_effective_value(self):
         self.rewrite("topology.json", lambda value: value.__setitem__("max_txs_bytes", 686))
         self.reject("topology.capacity", lambda: verify.verify(self.root))
@@ -922,6 +927,10 @@ class VerifyTest(unittest.TestCase):
 
     def test_capacity_input_count_is_bound(self):
         self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("max_txs", 2))
+        self.reject("capacity.config", lambda: verify.verify(self.root))
+
+    def test_capacity_input_mempool_size_is_bound(self):
+        self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("mempool_size", 1))
         self.reject("capacity.config", lambda: verify.verify(self.root))
 
     def test_capacity_tx_a_is_submitted(self):

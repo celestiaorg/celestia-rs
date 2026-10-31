@@ -228,7 +228,7 @@ def verify_receipts(receipts: dict[str, Any], support: dict[str, Any]) -> None:
 
 
 def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
-    fields = {"generations", "pex", "mempool_broadcast", "validator_power", "max_txs", "max_txs_bytes", "max_subscription_clients", "max_subscriptions_per_client"}
+    fields = {"generations", "pex", "mempool_broadcast", "validator_power", "mempool_size", "max_txs", "max_txs_bytes", "max_subscription_clients", "max_subscriptions_per_client"}
     harness.require_fields(topology, fields, "topology")
     generations = harness.require_fields(topology["generations"], {"normal", "timeout", "restored"}, "topology generations")
     require(topology["pex"] is False and topology["mempool_broadcast"] is False,
@@ -237,7 +237,8 @@ def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
     require(topology["max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS and
             topology["max_subscriptions_per_client"] == 1,
             "topology.capacity", "subscription capacity differs")
-    require(topology["max_txs"] == 1 and topology["max_txs_bytes"] == harness.MEMPOOL_MAX_TXS_BYTES,
+    require(topology["mempool_size"] == 0 and topology["max_txs"] == 1 and
+            topology["max_txs_bytes"] == harness.MEMPOOL_MAX_TXS_BYTES,
             "topology.capacity", "mempool capacity invalid")
     generation_ticks: set[tuple[str, int]] = set()
     reference_endpoints: dict[str, str] | None = None
@@ -348,7 +349,7 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
                     config["p2p.pex"] is False and config["mempool.broadcast"] is False and
                     config["tx_index.indexer"] == "kv" and config["consensus.timeout_commit"] == "5s",
                     "config.isolation", f"{phase} {node}")
-            require(config["mempool.size"] == topology["max_txs"] and
+            require(config["mempool.size"] == topology["mempool_size"] and
                     config["mempool.max_txs_bytes"] == topology["max_txs_bytes"] and
                     config["rpc.max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS[node] and
                     config["rpc.max_subscriptions_per_client"] == 1,
@@ -526,8 +527,9 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
     require(responses["driver_sha256"] == receipts["capture_sources"]["driver.py"] and
             responses["transport_client_sha256"] == receipts["transport_client"]["binary_sha256"],
             "response.driver", "paired response executables differ from build receipts")
-    capacity = harness.require_fields(inputs["capacity"], {"tx_a", "tx_b", "max_txs", "max_txs_bytes"}, "capacity inputs")
-    require(capacity["max_txs"] == max_txs == 1 and capacity["max_txs_bytes"] == max_txs_bytes,
+    capacity = harness.require_fields(inputs["capacity"], {"tx_a", "tx_b", "mempool_size", "max_txs", "max_txs_bytes"}, "capacity inputs")
+    require(capacity["mempool_size"] == 0 and capacity["max_txs"] == max_txs == 1 and
+            capacity["max_txs_bytes"] == max_txs_bytes,
             "capacity.config", "input/topology capacity differs")
     tx_a = harness.decode_blob(capacity["tx_a"], "capacity tx A")
     tx_b = harness.decode_blob(capacity["tx_b"], "capacity tx B")

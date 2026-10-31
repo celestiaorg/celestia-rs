@@ -132,7 +132,7 @@ def load_plan(path: pathlib.Path) -> dict[str, Any]:
     harness.require_fields(plan["homes"], GENERATIONS, "campaign homes")
     harness.require(set(plan["inputs"]) == set(harness.CASE_NAMES), "campaign input inventory differs")
     harness.require_fields(plan["lifecycle_inputs"], LIFECYCLE_INPUTS, "campaign lifecycle inputs")
-    harness.require_fields(plan["capacity"], {"tx_a", "tx_b", "max_txs", "max_txs_bytes"}, "campaign capacity")
+    harness.require_fields(plan["capacity"], {"tx_a", "tx_b", "mempool_size", "max_txs", "max_txs_bytes"}, "campaign capacity")
     harness.require_fields(plan["endpoints"], ENDPOINT_NAMES, "campaign endpoints")
     harness.validate_endpoints(plan["endpoints"])
     harness.require_fields(plan["config_files"], GENERATIONS, "campaign config files")
@@ -238,8 +238,9 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     tx_a = harness.decode_blob(plan["capacity"]["tx_a"], "capacity A")
     tx_b = harness.decode_blob(plan["capacity"]["tx_b"], "capacity B")
     max_txs = plan["capacity"]["max_txs"]
+    mempool_size = plan["capacity"]["mempool_size"]
     maximum = plan["capacity"]["max_txs_bytes"]
-    harness.require(max_txs == 1 and maximum == harness.MEMPOOL_MAX_TXS_BYTES and
+    harness.require(mempool_size == 0 and max_txs == 1 and maximum == harness.MEMPOOL_MAX_TXS_BYTES and
                     tx_a != tx_b and 0 < len(tx_a) <= maximum and 0 < len(tx_b) <= maximum,
                     "capacity inputs do not exercise the configured boundary")
     harness.require(tx_a == harness.decode_blob(plan["inputs"]["mempool-capacity-recovery"], "capacity case"),
@@ -286,7 +287,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     harness.require(maximum == configs["normal"]["go"]["config.toml"]["mempool.max_txs_bytes"] ==
                     configs["normal"]["rs"]["config.toml"]["mempool.max_txs_bytes"],
                     "capacity plan/config maximum differs")
-    harness.require(max_txs == configs["normal"]["go"]["config.toml"]["mempool.size"] ==
+    harness.require(mempool_size == configs["normal"]["go"]["config.toml"]["mempool.size"] ==
                     configs["normal"]["rs"]["config.toml"]["mempool.size"],
                     "capacity plan/config transaction count differs")
     for generation in GENERATIONS:
@@ -1243,7 +1244,8 @@ def write_payloads(state: State, resources_only: bool = False) -> None:
     max_txs = state.checked["configs"]["normal"]["go"]["config.toml"]["mempool.size"]
     write_new(output / "topology.json", {"generations": state.topology_generations, "pex": False,
                                           "mempool_broadcast": False, "validator_power": {"go": "1", "rs": "1"},
-                                          "max_txs": max_txs, "max_txs_bytes": maximum,
+                                          "mempool_size": max_txs, "max_txs": 1,
+                                          "max_txs_bytes": maximum,
                                           "max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS,
                                           "max_subscriptions_per_client": 1})
     write_new(output / "inputs.json", {"cases": state.cases, "capacity": state.plan["capacity"],

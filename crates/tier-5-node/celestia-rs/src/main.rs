@@ -1184,6 +1184,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
             ..consensus::ConsensusConfig::default()
         },
     );
+    opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;
     let laddr = match &a.p2p_laddr {
         Some(l) => strip_tcp(l),

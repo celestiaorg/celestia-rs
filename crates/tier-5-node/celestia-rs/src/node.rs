@@ -154,6 +154,8 @@ pub struct StartOptions {
     pub stop_height: i64,
     /// Consensus config overrides.
     pub config: ConsensusConfig,
+    /// `[mempool]` CAT pool and reactor settings.
+    pub mempool: mempool::MempoolConfig,
     /// P2P (None: no networking, a lone validator).
     pub p2p: Option<crate::net::P2pOptions>,
     /// `block_sync`: catch up from peers before consensus (Go default).
@@ -179,6 +181,7 @@ impl StartOptions {
             home,
             stop_height,
             config,
+            mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
             block_sync: true,
             state_sync: None,
@@ -349,7 +352,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let app = Arc::new(Mutex::new(app));
     let pool = Arc::new(
         mempool::TxPool::new(
-            mempool::MempoolConfig::celestia_app(),
+            opts.mempool.clone(),
             Arc::new(MempoolApp(app.clone())),
             state.last_block_height,
         )
@@ -760,7 +763,7 @@ fn start_network(
         .map_err(|e| anyhow!("{e}"))?;
     sw.add_reactor(consensus.propagation.clone())
         .map_err(|e| anyhow!("{e}"))?;
-    let cfg = mempool::MempoolConfig::celestia_app();
+    let cfg = pool.config();
     let mreactor = mempool::cat::Reactor::new(
         pool.clone(),
         mempool::cat::ReactorOptions {

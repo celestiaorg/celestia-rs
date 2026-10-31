@@ -8,6 +8,7 @@
 //! templates) < config files < environment (`CELESTIA_RS_*`) < flags.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context as _, anyhow, bail};
 
@@ -186,6 +187,58 @@ impl ConfigFiles {
     pub fn duration_ms(&self, f: File, key: &str) -> u64 {
         parse_duration_ms(&self.string(f, key)).unwrap_or(0)
     }
+}
+
+/// The effective CAT mempool settings from `[mempool]` in `config.toml`.
+///
+/// This applies the same celestia-app v10 safety overrides as the Go node
+/// after loading the operator's CometBFT configuration.
+pub fn mempool_options(files: &ConfigFiles) -> anyhow::Result<mempool::MempoolConfig> {
+    if !files.has_config_toml() {
+        return Ok(mempool::MempoolConfig::celestia_app());
+    }
+    let nonnegative_usize = |key: &str| {
+        usize::try_from(files.int(File::Config, key))
+            .map_err(|_| anyhow!("{key} can't be negative"))
+    };
+    let pool_byte_limit = files.int(File::Config, "mempool.max_txs_bytes");
+    let ttl_num_blocks = files.int(File::Config, "mempool.ttl-num-blocks");
+    let sticky = files.int(File::Config, "mempool.max_persistent_sticky_peers");
+    let sticky = i32::try_from(sticky)
+        .map_err(|_| anyhow!("mempool.max_persistent_sticky_peers is out of range"))?;
+    if sticky < 0 {
+        bail!("mempool.max_persistent_sticky_peers can't be negative");
+    }
+    let single_tx_byte_limit = files.int(File::Config, "mempool.max_tx_bytes");
+    let duration_ms = |key: &str| {
+        let value = files.string(File::Config, key);
+        parse_duration_ms(&value).ok_or_else(|| anyhow!("{key}: invalid duration {value:?}"))
+    };
+    // Parse this even though the app override forces it to zero, matching
+    // Go's config decoding before application overrides are applied.
+    let _ttl_duration_ms = duration_ms("mempool.ttl-duration")?;
+    let gossip_ms = duration_ms("mempool.max-gossip-delay")?;
+    Ok(mempool::MempoolConfig {
+        recheck: files.bool(File::Config, "mempool.recheck"),
+        broadcast: files.bool(File::Config, "mempool.broadcast"),
+        size: nonnegative_usize("mempool.size")?,
+        max_txs_bytes: pool_byte_limit.max(400 * 1024 * 1024),
+        cache_size: nonnegative_usize("mempool.cache_size")?,
+        max_tx_bytes: usize::try_from(single_tx_byte_limit.max(8 * 1024 * 1024))
+            .map_err(|_| anyhow!("mempool.max_tx_bytes is out of range"))?,
+        ttl_duration: Duration::ZERO,
+        ttl_num_blocks: if ttl_num_blocks > 0 {
+            ttl_num_blocks.max(36)
+        } else {
+            ttl_num_blocks
+        },
+        max_gossip_delay: Duration::from_millis(if gossip_ms == 60_000 {
+            20_000
+        } else {
+            gossip_ms
+        }),
+        max_persistent_sticky_peers: sticky,
+    })
 }
 
 /// Splits a comma-separated list, dropping empty entries.
@@ -436,6 +489,48 @@ mod tests {
             168 * 3_600_000
         );
         assert!(f.bool(File::Config, "p2p.pex"));
+        assert_eq!(
+            mempool_options(&f).unwrap(),
+            mempool::MempoolConfig::celestia_app()
+        );
+    }
+
+    #[test]
+    fn mempool_config_is_loaded_with_app_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        let config = CONFIG_TEMPLATE
+            .replace("{{MONIKER}}", "m")
+            .replace("size = 5000", "size = 0")
+            .replace("broadcast = true", "broadcast = false")
+            .replace("max_txs_bytes = 419430400", "max_txs_bytes = 1234")
+            .replace("max_tx_bytes = 8388608", "max_tx_bytes = 123")
+            .replace("ttl-num-blocks = 36", "ttl-num-blocks = 2")
+            .replace("max-gossip-delay = \"20s\"", "max-gossip-delay = \"60s\"");
+        std::fs::write(dir.path().join("config/config.toml"), config).unwrap();
+        let got = mempool_options(&ConfigFiles::load(dir.path()).unwrap()).unwrap();
+        assert_eq!(got.size, 0);
+        assert!(!got.broadcast);
+        assert_eq!(got.max_txs_bytes, 400 * 1024 * 1024);
+        assert_eq!(got.max_tx_bytes, 8 * 1024 * 1024);
+        assert_eq!(got.ttl_num_blocks, 36);
+        assert_eq!(got.max_gossip_delay, Duration::from_secs(20));
+    }
+
+    #[test]
+    fn mempool_config_rejects_negative_capacity() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        let config = CONFIG_TEMPLATE
+            .replace("{{MONIKER}}", "m")
+            .replace("size = 5000", "size = -1");
+        std::fs::write(dir.path().join("config/config.toml"), config).unwrap();
+        assert_eq!(
+            mempool_options(&ConfigFiles::load(dir.path()).unwrap())
+                .unwrap_err()
+                .to_string(),
+            "mempool.size can't be negative"
+        );
     }
 
     #[test]
