@@ -350,12 +350,57 @@ async fn call_route(
     .map_err(|e| CallError::Internal(e.to_string()))?
 }
 
-/// `BroadcastTxCommit`.
+/// Typed result shared by JSON-RPC and core gRPC broadcast adapters.
+#[derive(Debug)]
+pub(crate) struct BroadcastCommit {
+    /// Mempool admission result.
+    pub check_tx: ctypes::proto::abci::ResponseCheckTx,
+    /// Execution result, or its zero value when admission failed.
+    pub tx_result: ctypes::proto::abci::ExecTxResult,
+    /// Transaction hash.
+    pub hash: Vec<u8>,
+    /// Inclusion height, or zero when admission failed.
+    pub height: i64,
+}
+
+struct TxSubscription {
+    bus: Arc<crate::events::EventBus>,
+    client: String,
+    query: Query,
+}
+
+impl Drop for TxSubscription {
+    fn drop(&mut self) {
+        let _ = self.bus.unsubscribe(&self.client, &self.query);
+    }
+}
+
 async fn broadcast_tx_commit(
     env: &Arc<Environment>,
     tx: Vec<u8>,
     remote: &str,
 ) -> Result<J, String> {
+    let result = broadcast_commit(env, tx, remote).await?;
+    Ok(J::obj([
+        (
+            "check_tx",
+            crate::encode::response_check_tx(&result.check_tx),
+        ),
+        (
+            "tx_result",
+            crate::encode::exec_tx_result(&result.tx_result),
+        ),
+        ("hash", J::hex(&result.hash)),
+        ("height", J::i64s(result.height)),
+    ]))
+}
+
+/// Shared `BroadcastTxCommit` semantics for Comet and core gRPC.
+pub(crate) async fn broadcast_commit(
+    env: &Arc<Environment>,
+    tx: Vec<u8>,
+    remote: &str,
+) -> Result<BroadcastCommit, String> {
     let bus = &env.event_bus;
     if bus.num_clients() >= env.config.max_subscription_clients {
         return Err(format!(
@@ -377,22 +422,25 @@ async fn broadcast_tx_commit(
     let mut sub = bus
         .subscribe(remote, q.clone(), 1)
         .map_err(|e| format!("failed to subscribe to tx: {e}"))?;
+    let _subscription = TxSubscription {
+        bus: Arc::clone(bus),
+        client: remote.to_owned(),
+        query: q,
+    };
     let env2 = Arc::clone(env);
     let tx2 = tx.clone();
     let check = tokio::task::spawn_blocking(move || env2.mempool_check_tx(&tx2))
         .await
         .map_err(|e| e.to_string())?;
-    let result = async {
+    async {
         let check = check.map_err(|e| format!("error on broadcastTxCommit: {e}"))?;
-        let mut o = J::obj([("check_tx", crate::encode::response_check_tx(&check))]);
         if check.code != 0 {
-            o.push(
-                "tx_result",
-                crate::encode::exec_tx_result(&ctypes::proto::abci::ExecTxResult::default()),
-            );
-            o.push("hash", J::hex(&hash));
-            o.push("height", J::i64s(0));
-            return Ok(o);
+            return Ok(BroadcastCommit {
+                check_tx: check,
+                tx_result: ctypes::proto::abci::ExecTxResult::default(),
+                hash,
+                height: 0,
+            });
         }
         let timeout = Duration::from_millis(env.config.timeout_broadcast_tx_commit_ms);
         tokio::select! {
@@ -401,10 +449,12 @@ async fn broadcast_tx_commit(
                     let crate::events::EventData::Tx { tx_result } = m.data.as_ref() else {
                         return Err("unexpected event data".into());
                     };
-                    o.push("tx_result", crate::encode::exec_tx_result(&tx_result.result.clone().unwrap_or_default()));
-                    o.push("hash", J::hex(&hash));
-                    o.push("height", J::i64s(tx_result.height));
-                    Ok(o)
+                    Ok(BroadcastCommit {
+                        check_tx: check,
+                        tx_result: tx_result.result.clone().unwrap_or_default(),
+                        hash,
+                        height: tx_result.height,
+                    })
                 }
                 None => Err("txSub was canceled (reason: CometBFT exited)".to_owned()),
             },
@@ -415,9 +465,7 @@ async fn broadcast_tx_commit(
             () = tokio::time::sleep(timeout) => Err("timed out waiting for tx to be included in a block".into()),
         }
     }
-    .await;
-    let _ = bus.unsubscribe(remote, &q);
-    result
+    .await
 }
 
 // --- HTTP ------------------------------------------------------------------
@@ -1187,4 +1235,276 @@ fn ws_subscribe(
 #[must_use]
 pub fn events_map(m: &crate::events::Message) -> BTreeMap<String, Vec<String>> {
     (*m.events).clone()
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, missing_docs)]
+pub(crate) mod broadcast_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    use ctypes::proto::abci;
+    use kvdb::MemBackend;
+    use mempool::{CachedTx, Mempool, MempoolError, MempoolLock, TxInfo, TxKey};
+    use nodestore::{BlockStore, StateStore};
+
+    struct TestApp;
+
+    impl crate::AppQuery for TestApp {
+        fn info(&self) -> Result<abci::ResponseInfo, String> {
+            Ok(abci::ResponseInfo::default())
+        }
+
+        fn query(&self, _: abci::RequestQuery) -> Result<abci::ResponseQuery, String> {
+            Ok(abci::ResponseQuery::default())
+        }
+
+        fn check_tx(&self, _: &[u8]) -> Result<abci::ResponseCheckTx, String> {
+            Ok(abci::ResponseCheckTx::default())
+        }
+    }
+
+    struct TestNode;
+
+    impl crate::NodeStatus for TestNode {
+        fn node_info(&self) -> crate::NodeInfo {
+            crate::NodeInfo::default()
+        }
+
+        fn is_listening(&self) -> bool {
+            true
+        }
+
+        fn listeners(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn peers(&self) -> Vec<crate::PeerInfo> {
+            Vec::new()
+        }
+
+        fn wait_sync(&self) -> bool {
+            false
+        }
+
+        fn is_catching_up(&self) -> bool {
+            false
+        }
+
+        fn round_state_json(&self) -> String {
+            "{}".into()
+        }
+
+        fn round_state_simple_json(&self) -> String {
+            "{}".into()
+        }
+    }
+
+    struct NoEvidence;
+
+    impl crate::EvidenceSink for NoEvidence {
+        fn add_evidence(&self, _: ctypes::Evidence) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct TestLock;
+
+    impl MempoolLock for TestLock {
+        fn flush_app_conn(&mut self) -> Result<(), MempoolError> {
+            Ok(())
+        }
+
+        fn update(
+            &mut self,
+            _: i64,
+            _: &[CachedTx],
+            _: &[abci::ExecTxResult],
+            _: Option<mempool::PreCheckFunc>,
+            _: Option<mempool::PostCheckFunc>,
+        ) -> Result<(), MempoolError> {
+            Ok(())
+        }
+    }
+
+    struct TestMempool {
+        response: Mutex<Result<abci::ResponseCheckTx, MempoolError>>,
+    }
+
+    impl TestMempool {
+        fn new(response: Result<abci::ResponseCheckTx, MempoolError>) -> Self {
+            Self {
+                response: Mutex::new(response),
+            }
+        }
+    }
+
+    impl Mempool for TestMempool {
+        fn check_tx(&self, _: &[u8], info: TxInfo) -> Result<abci::ResponseCheckTx, MempoolError> {
+            assert!(info.from_broadcast);
+            self.response
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+
+        fn remove_tx_by_key(&self, _: &TxKey) -> Result<(), MempoolError> {
+            Ok(())
+        }
+
+        fn reap_max_bytes_max_gas(&self, _: i64, _: i64) -> Vec<CachedTx> {
+            Vec::new()
+        }
+
+        fn reap_max_txs(&self, _: i64) -> Vec<CachedTx> {
+            Vec::new()
+        }
+
+        fn lock(&self) -> Box<dyn MempoolLock + '_> {
+            Box::new(TestLock)
+        }
+
+        fn flush(&self) {}
+
+        fn enable_txs_available(&self) {}
+
+        fn txs_available(&self) -> Option<Arc<tokio::sync::Notify>> {
+            None
+        }
+
+        fn size(&self) -> usize {
+            0
+        }
+
+        fn size_bytes(&self) -> i64 {
+            0
+        }
+
+        fn get_tx_by_key(&self, _: &TxKey) -> Option<CachedTx> {
+            None
+        }
+
+        fn was_recently_evicted(&self, _: &TxKey) -> bool {
+            false
+        }
+
+        fn was_recently_rejected(&self, _: &TxKey) -> (bool, u32, String) {
+            (false, 0, String::new())
+        }
+    }
+
+    pub(crate) fn environment(
+        response: Result<abci::ResponseCheckTx, MempoolError>,
+        timeout_ms: u64,
+    ) -> Arc<Environment> {
+        let db: Arc<dyn kvdb::KvBackend> = Arc::new(MemBackend::new());
+        let config = crate::RpcConfig {
+            timeout_broadcast_tx_commit_ms: timeout_ms,
+            ..Default::default()
+        };
+        Arc::new(Environment::new(
+            BlockStore::new(Arc::clone(&db)).expect("memory block store"),
+            StateStore::new(db),
+            Arc::new(TestApp),
+            Arc::new(TestMempool::new(response)),
+            Arc::new(TestNode),
+            Arc::new(NoEvidence),
+            ctypes::PubKey::Ed25519([0; 32]),
+            crate::GenesisData::default(),
+            None,
+            None,
+            Arc::new(crate::EventBus::new()),
+            config,
+        ))
+    }
+
+    async fn wait_for_subscription(env: &Environment, client: &str) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while env.event_bus.num_client_subscriptions(client) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("broadcast subscription");
+    }
+
+    #[tokio::test]
+    async fn commit_returns_full_result_and_releases_subscription() {
+        let check = abci::ResponseCheckTx {
+            gas_wanted: 7,
+            ..Default::default()
+        };
+        let env = environment(Ok(check.clone()), 1_000);
+        let tx = b"accepted transaction".to_vec();
+        let task_env = Arc::clone(&env);
+        let task_tx = tx.clone();
+        let task =
+            tokio::spawn(async move { broadcast_commit(&task_env, task_tx, "core-grpc").await });
+        wait_for_subscription(&env, "core-grpc").await;
+
+        let exec = abci::ExecTxResult {
+            code: 9,
+            log: "execution failed".into(),
+            gas_used: 5,
+            ..Default::default()
+        };
+        env.event_bus.publish_tx(abci::TxResult {
+            height: 12,
+            index: 0,
+            tx: tx.clone(),
+            result: Some(exec.clone()),
+        });
+
+        let result = task.await.expect("join").expect("commit result");
+        assert_eq!(result.check_tx, check);
+        assert_eq!(result.tx_result, exec);
+        assert_eq!(result.hash, ctypes::Tx(tx).hash());
+        assert_eq!(result.height, 12);
+        assert_eq!(env.event_bus.num_client_subscriptions("core-grpc"), 0);
+    }
+
+    #[tokio::test]
+    async fn rejection_timeout_and_cancellation_release_subscription() {
+        let rejected = abci::ResponseCheckTx {
+            code: 7,
+            log: "rejected".into(),
+            ..Default::default()
+        };
+        let env = environment(Ok(rejected.clone()), 1_000);
+        let result = broadcast_commit(&env, b"rejected".to_vec(), "reject")
+            .await
+            .expect("rejection response");
+        assert_eq!(result.check_tx, rejected);
+        assert_eq!(result.tx_result, abci::ExecTxResult::default());
+        assert_eq!(result.height, 0);
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Err(MempoolError::App("app unavailable".into())), 1_000);
+        let error = broadcast_commit(&env, b"app-error".to_vec(), "app-error")
+            .await
+            .expect_err("application error");
+        assert_eq!(
+            error,
+            "error on broadcastTxCommit: app unavailable".to_owned()
+        );
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Ok(abci::ResponseCheckTx::default()), 1);
+        let error = broadcast_commit(&env, b"timeout".to_vec(), "timeout")
+            .await
+            .expect_err("timeout");
+        assert_eq!(error, "timed out waiting for tx to be included in a block");
+        assert_eq!(env.event_bus.num_clients(), 0);
+
+        let env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
+        let task_env = Arc::clone(&env);
+        let task =
+            tokio::spawn(
+                async move { broadcast_commit(&task_env, b"cancel".to_vec(), "cancel").await },
+            );
+        wait_for_subscription(&env, "cancel").await;
+        task.abort();
+        let _ = task.await;
+        assert_eq!(env.event_bus.num_clients(), 0);
+    }
 }
