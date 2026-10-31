@@ -7,6 +7,17 @@ and one reviewed `celestia-rs` validator. Both validators share the same chain,
 committed state and proposal boundaries, while P2P mempool broadcast is
 disabled so the harness can submit identical bytes to both local mempools.
 
+The reviewed public capture is
+`v10.5.0/2026-10-31-d2e72cb/`. It binds candidate
+`d2e72cbb676814746226224a27ea038fbbd8fcf2`, the read-only active-mainnet
+observation that selected v10.5.0, both binary identities and the complete
+sanitized campaign output. Verify it offline with:
+
+```sh
+python3 conformance/mainnet-rpc/live-tx-closure/verify.py \
+  conformance/mainnet-rpc/live-tx-closure/v10.5.0/2026-10-31-d2e72cb
+```
+
 The frozen inventory has 28 cases. It includes Cosmos gRPC and REST, core gRPC,
 Comet JSON-RPC/URI/WebSocket async, sync and commit forms, exact rejection and
 success behavior, mempool saturation and recovery, client disconnect and gRPC

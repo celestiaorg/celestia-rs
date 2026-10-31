@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "5682e0663cca5447fe72d4834da5eb22a63cfe26",
+  "audited_main": "7627127a36b87eb7ce3770c88eda7de866ecff56",
   "provider_ready": false,
   "packages": [
     {
@@ -295,6 +295,51 @@
       ]
     },
     {
+      "id": "live-tx-closure",
+      "issue": 187,
+      "comparison": "paired-live-transport-closure",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/live-tx-closure/v10.5.0/2026-10-31-d2e72cb/manifest.json",
+        "sha256": "17c1a43f04ee2c4543e10235ea06d5b49788b94cc3eb104bb30dbdbce4dab2fa"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/live-tx-closure/README.md",
+        "sha256": "34de0032628ee48362225fedef74bba8843090fa35beab9eaf801855eb342bc0"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",
+        "sha256": "62e8da47c5e49f78419cfa45a8d26875984b707671dc09b41db37838711159ac"
+      },
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc",
+        "comet-websocket",
+        "core-grpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Paired current-release 28-case live submission matrix plus four transaction lifecycle campaigns over real Go/Rust listeners, matched pre-state and committed post-state, representative bank, staking and BlobTx messages, and bounded process/resource capture",
+      "normalizations": [
+        "Header names and optional whitespace are canonicalized; declared multivalue headers are sorted",
+        "Strict JSON is compared after parsing while every raw wire body remains hash-bound; validated content-length is omitted",
+        "gRPC status/message placement and percent encoding are canonicalized and bound to decoded status",
+        "WebSocket Connection/Upgrade token values are case-normalized",
+        "Only verified nonzero nested retry CheckTx data treats explicit null and empty base64 as the same absent bytes"
+      ],
+      "known_mismatches": [
+        "Malformed protobuf requests return status13 and preserve the connection on both nodes, with the exact Go unexpected-EOF message and Rust invalid-varint message recorded as an intentional parser difference"
+      ],
+      "exclusions": [
+        "HTTP Date and Go x-server-time are transport-generated and excluded after all other stable headers are compared",
+        "The bounded isolated campaign does not establish unbounded production load or every application message family"
+      ],
+      "provenance_limits": [
+        "Public evidence binds binary hashes, exact source/toolchain/build recipes and sanitized configuration but does not publish binaries, node homes or private validator material",
+        "The active v10.5.0 mainnet release was re-observed read-only before capture; the actual Go1.26.9 compiler differs from issue #187 original Go1.26.6 baseline"
+      ],
+      "runtime_regressions": []
+    },
+    {
       "id": "populated-staking",
       "issue": 188,
       "comparison": "normalized-runtime-comparison",
@@ -342,7 +387,7 @@
       "comparison": "exact-protobuf-structural-json-comparison",
       "receipt": {
         "path": "conformance/fixtures/devnet/v105-populated-governance/capture/metadata.json",
-        "sha256": "4d330e5d6de9a046f1e7d3b80444cd4fe5fd596b64c734447e13d728006e021e"
+        "sha256": "8a572e2e72af6e6c309542118eb84dca218b52bc3400ab62b0fc892ebb4c5de8"
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/populated-governance/README.md",
@@ -472,7 +517,7 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/api-server/src/rest.rs",
-            "sha256": "cb4de117c7652f795a8d03e93028737bf90c8ff292925abf5a44c4a86e9d2191"
+            "sha256": "ab7f68f880d4d54ae653d343e258db2f3ce18647754868009bcedbde672463ed"
           },
           "function": "go_rest_height_boundaries"
         }
@@ -524,7 +569,7 @@
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/verify.py",
-        "sha256": "76047ed893ff7f9c41b43a034ab1cedf94a82b882287a8314d9c908cb7ba869a"
+        "sha256": "56ce0e8585c78a2c2bf289ef53d013c7be65f5b81af01849a6b31a14ff6ebdf1"
       },
       "transports": [
         "comet-uri",
@@ -708,10 +753,11 @@
     {
       "issue": 187,
       "packages": [
-        "live-transactions"
+        "live-transactions",
+        "live-tx-closure"
       ],
       "remaining_gaps": [
-        "Complete remaining URI/WebSocket/gRPC cancellation, mode/message/error and resource coverage; resolve the 12-gas cleanup CheckTx difference; retain the explicit missing final-root/balance comparison and original-envelope byte limitations"
+        "Acceptance is covered by the paired closure campaign; unbounded production load and exhaustive application message-family enumeration remain outside the bounded compatibility claim"
       ]
     },
     {

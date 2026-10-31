@@ -84,6 +84,12 @@ test result into a committed response artifact, or turn schema/diagnostic checks
 into exact comparisons. A later capture can replace a blocker with an admitted
 manifest only by committing the corresponding evidence.
 
+The later `live-tx-closure` package does replace the #187 blockers above. It
+commits a paired real-listener Go/Rust capture, matched state, exact build and
+source receipts, lifecycle cleanup evidence and an offline fail-closed verifier.
+The older review row remains as the audit of the earlier partial package rather
+than being rewritten as evidence it never contained.
+
 ## Current behavior checklist and scoped CI gate
 
 `scope-audit.json` separately indexes the merged evidence available at its exact
@@ -101,7 +107,7 @@ no merged current-release campaign.
 | #184 | Production identity and consensus schema | Build identity intentionally differs; asynchronous values unconstrained |
 | #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
 | #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
-| #187 | Seventeen Go exchanges replayed in sequence through Rust production listeners after two admitted state roots | Explicit cleanup CheckTx 12-gas difference; original envelope bytes and final root/balance equality excluded; broader matrix remains open |
+| #187 | Paired 28-case live submission matrix and four lifecycle campaigns across Comet, core gRPC, Cosmos gRPC and REST, with representative bank, staking and BlobTx messages | Narrow wire/metadata normalizations and one exact malformed-parser message difference; bounded local campaign excludes unbounded load and exhaustive message families |
 | #188 | Eleven populated staking/reward cases plus twenty-five governance/Any and pagination cases over four transport paths through three listeners, with Rust committed-root and ICS23 proof checks | Staking retains one list-order normalization; other modules, malformed inputs, lifecycle/history edges and Go proof bytes remain open |
 | #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
 | #190 | Focused actual-Go lifecycle capture composed with a 310-second five-node mixed soak and three Rust production regressions | Bounded local evidence with documented header/order/resource normalizations; TLS/proxy/external clients and exact matched-state payload parity excluded |
@@ -116,7 +122,7 @@ python3 conformance/mainnet-rpc/coverage.py --verify-scoped --json /tmp/rpc-cove
 ```
 
 The `rpc-evidence` CI job now runs the registered offline current-release
-regressions for limits, WebSocket lifecycle, live transactions, populated staking and governance,
+regressions for limits, WebSocket lifecycle, live transactions and their paired closure, populated staking and governance,
 REST height/POST, Comet HTTP and the merged bounded provider soak. Their verifier sources and primary receipts are
 hash-bound. The full reviewed audit content is canonically hash-bound in code,
 including its merged baseline, deviations, provenance limits and remaining-gap

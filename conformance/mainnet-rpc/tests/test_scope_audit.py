@@ -47,6 +47,23 @@ class ScopedEvidenceAudit(unittest.TestCase):
         self.assertTrue(any("Final Go/Rust app-root" in item for item in row["exclusions"]))
         self.assertFalse(result["provider_ready"])
 
+    def test_live_transaction_closure_stays_bound_with_its_limits(self):
+        result = audit.validate(self.value)
+        row = next(row for row in result["packages"] if row["id"] == "live-tx-closure")
+        self.assertEqual(row["comparison"], "paired-live-transport-closure")
+        self.assertEqual(row["transports"], [
+            "comet-uri", "comet-jsonrpc", "comet-websocket",
+            "core-grpc", "cosmos-grpc", "rest",
+        ])
+        self.assertIn("28-case", row["scope"])
+        self.assertEqual(len(row["normalizations"]), 5)
+        self.assertEqual(len(row["known_mismatches"]), 1)
+        self.assertTrue(any("Go1.26.9" in item for item in row["provenance_limits"]))
+        behavior = next(row for row in result["behaviors"] if row["issue"] == 187)
+        self.assertEqual(behavior["packages"], ["live-transactions", "live-tx-closure"])
+        self.assertIn("Acceptance is covered", behavior["remaining_gaps"][0])
+        self.assertFalse(result["provider_ready"])
+
     def test_proxy_tls_framing_closure_scope_and_limits_stay_bound(self):
         result = audit.validate(self.value)
         row = next(row for row in result["packages"] if row["id"] == "proxy-tls-framing")
