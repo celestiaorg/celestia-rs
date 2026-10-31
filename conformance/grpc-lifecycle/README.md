@@ -31,6 +31,12 @@ those constraints.
 | Request compression | The actual app binary registers gzip. grpc-go applies the receive limit to decompressed bytes | Tonic request compression is disabled | Core sends 4 MiB + 1 decompressed bytes; SDK sends an exact 65-byte reflection request against its custom 64-byte limit. Go returns ResourceExhausted with exact sizes. RS returns Unimplemented `Content is compressed with \`gzip\` which isn't supported` on both listeners. |
 | Process resources | The isolated node remains alive for each bounded campaign | Same | A 250 ms Linux `/proc` trace retains RSS, thread and file-descriptor counts through all six campaigns and a two-second settle. PID start time and executable hash bind every trace to the reviewed binary. The verifier enforces sampling continuity, caps absolute RSS/threads/FDs, and rejects unrecovered FD/thread growth or more than 256 MiB retained RSS growth. |
 
+The lifecycle nodes use a 64-byte SDK receive limit and a 4,096-byte send
+limit. The receive limit makes the 65-byte compressed request decisive; the
+bounded send limit admits the real reflection inventory used by the
+cancellation/recovery case. PR #203's separate 5/6/7 and 128-byte send corpus
+remains authoritative for oversized unary and streaming responses.
+
 Successful Ping calls require code 0, an empty protobuf response, exact
 `content-type: application/grpc` headers and empty trailers. Saturated probes
 require `DeadlineExceeded/context deadline exceeded`, no response, and no

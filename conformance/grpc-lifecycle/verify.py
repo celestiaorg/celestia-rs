@@ -373,7 +373,7 @@ def verify_configs_and_order(root: Path, meta: dict, observation_time: datetime)
         app = tomllib.loads((root / name).read_text())["grpc"]
         assert app["enable"] is True
         assert int(app["max-recv-msg-size"]) == 64
-        assert int(app["max-send-msg-size"]) == 128
+        assert int(app["max-send-msg-size"]) == 4_096
     genesis = load(root / "genesis.json")
     assert genesis["chain_id"] == "rs-grpc-limits-1"
 

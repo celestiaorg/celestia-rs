@@ -120,7 +120,7 @@ assert count >= 2
 start=text.index('[grpc]');end=text.index('\n[',start+1);part=text[start:end]
 part=re.sub(r'^enable = .*$', 'enable = true',part,flags=re.M)
 part=re.sub(r'^max-recv-msg-size = .*$', 'max-recv-msg-size = "64"',part,flags=re.M)
-part=re.sub(r'^max-send-msg-size = .*$', 'max-send-msg-size = "128"',part,flags=re.M)
+part=re.sub(r'^max-send-msg-size = .*$', 'max-send-msg-size = "4096"',part,flags=re.M)
 text=text[:start]+part+text[end:];app.write_text(text)
 cfg=tomllib.loads(config.read_text());app_cfg=tomllib.loads(app.read_text())
 assert cfg['p2p']['pex'] is False
@@ -196,7 +196,7 @@ cat > "$RS_HOME/config/app.toml" <<EOF
 enable = true
 address = "127.0.0.1:$((9090+RS_OFF))"
 max-recv-msg-size = "64"
-max-send-msg-size = "128"
+max-send-msg-size = "4096"
 [api]
 enable = false
 EOF
