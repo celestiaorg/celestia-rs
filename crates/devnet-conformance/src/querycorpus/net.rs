@@ -287,6 +287,7 @@ pub fn spawn_replaying_mock(exchanges: &[RpcExchange]) -> anyhow::Result<String>
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod query_tests {
     use super::*;
     use celestia_proto::celestia_core_proto::abci::ResponseFlush;

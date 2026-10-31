@@ -1496,6 +1496,7 @@ fn sdk_bech32(prefix: &str, bz: &[u8]) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod discovery_tests {
     use super::*;
 
