@@ -204,6 +204,9 @@ impl RpcSettings {
         if let Some(v) = get_int(&cfg, "rpc", "max_body_bytes") {
             rpc.max_body_bytes = n(v);
         }
+        if let Some(v) = get_int(&cfg, "rpc", "max_header_bytes") {
+            rpc.max_header_bytes = n(v);
+        }
         if let Some(v) = get_int(&cfg, "rpc", "max_concurrent_heavy_requests") {
             rpc.max_concurrent_heavy_requests = v;
         }
@@ -1075,7 +1078,11 @@ mod grpc_limit_tests {
     fn production_settings_load_limits_from_app_toml() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("config")).unwrap();
-        std::fs::write(dir.path().join("config/config.toml"), "[rpc]\nladdr = \"\"").unwrap();
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            "[rpc]\nladdr = \"\"\nmax_header_bytes = 256",
+        )
+        .unwrap();
         std::fs::write(
             dir.path().join("config/app.toml"),
             "[grpc]\nenable = true\nmax-recv-msg-size = \"64\"\nmax-send-msg-size = \"32\"",
@@ -1089,5 +1096,6 @@ mod grpc_limit_tests {
                 max_send: 32
             }
         );
+        assert_eq!(settings.rpc.max_header_bytes, 256);
     }
 }

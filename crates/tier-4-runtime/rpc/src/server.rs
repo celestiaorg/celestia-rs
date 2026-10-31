@@ -23,6 +23,8 @@ use crate::query::Query;
 const WS_WRITE_WAIT: Duration = Duration::from_secs(10);
 const WS_READ_WAIT: Duration = Duration::from_secs(30);
 const WS_PING_PERIOD: Duration = Duration::from_secs(27);
+const GO_DEFAULT_MAX_HEADER_BYTES: usize = 1 << 20;
+const GO_HTTP_HEADER_READ_BUFFER: usize = 4096;
 
 /// A JSON-RPC id (`JSONRPCIntID` / `JSONRPCStringID`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -773,14 +775,12 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
     let req_method = req_headers.get(header::ACCESS_CONTROL_REQUEST_METHOD)?;
     let mut r = Response::new(Body::empty());
     *r.status_mut() = StatusCode::NO_CONTENT;
-    for v in [
-        "Origin",
-        "Access-Control-Request-Method",
-        "Access-Control-Request-Headers",
-    ] {
-        r.headers_mut()
-            .append(header::VARY, HeaderValue::from_static(v));
-    }
+    r.headers_mut().insert(
+        header::VARY,
+        HeaderValue::from_static(
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+        ),
+    );
     let origin = req_headers
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())?;
@@ -801,6 +801,24 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
     {
         return Some(r);
     }
+    let requested_headers: Vec<_> = req_headers
+        .get_all(header::ACCESS_CONTROL_REQUEST_HEADERS)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    let all_headers = cfg.cors_allowed_headers.iter().any(|h| h == "*");
+    if !all_headers
+        && requested_headers.iter().any(|requested| {
+            !cfg.cors_allowed_headers
+                .iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(requested))
+        })
+    {
+        return Some(r);
+    }
     if let Ok(v) = HeaderValue::from_str(if all { "*" } else { origin }) {
         r.headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
@@ -809,9 +827,9 @@ fn cors_preflight(env: &Environment, req_headers: &HeaderMap) -> Option<Response
         r.headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_METHODS, v);
     }
-    if let Some(h) = req_headers.get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
+    for h in req_headers.get_all(header::ACCESS_CONTROL_REQUEST_HEADERS) {
         r.headers_mut()
-            .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, h.clone());
+            .append(header::ACCESS_CONTROL_ALLOW_HEADERS, h.clone());
     }
     Some(r)
 }
@@ -852,24 +870,30 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             r
         };
     }
-    if parts.method == Method::OPTIONS
+    // Go's precheck only reads the request body when batch limiting is on.
+    // With a zero batch limit, CORS may answer OPTIONS without observing an
+    // otherwise over-limit body.
+    if ctx.env.config.max_request_batch_size == 0
+        && parts.method == Method::OPTIONS
         && let Some(r) = cors_preflight(&ctx.env, &parts.headers)
     {
         return r;
     }
     let max = ctx.env.config.max_body_bytes;
     let Ok(body) = axum::body::to_bytes(body, max).await else {
-        {
-            return json_response(
-                StatusCode::BAD_REQUEST,
-                RpcResponse::invalid_request(
-                    None,
-                    "error reading request body: http: request body too large",
-                )
-                .encode(),
-                false,
-            );
-        }
+        let mut response = json_response(
+            StatusCode::BAD_REQUEST,
+            RpcResponse::invalid_request(
+                None,
+                "error reading request body: http: request body too large",
+            )
+            .encode(),
+            false,
+        );
+        response
+            .headers_mut()
+            .insert(header::CONNECTION, HeaderValue::from_static("close"));
+        return response;
     };
     // PreChecksHandler: oversized batches are rejected on every path.
     if ctx.env.config.max_request_batch_size > 0 {
@@ -893,6 +917,11 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
                 );
             }
         }
+    }
+    if parts.method == Method::OPTIONS
+        && let Some(r) = cors_preflight(&ctx.env, &parts.headers)
+    {
+        return r;
     }
     let mut resp = if path == "/" {
         let host = parts
@@ -949,13 +978,26 @@ pub async fn serve(
         };
         let (stream, remote) = listener.accept().await?;
         let app = router(Arc::clone(&env), remote);
+        let configured_header_limit = env.config.max_header_bytes;
         tokio::spawn(async move {
             let _permit = permit;
             let svc = hyper_util::service::TowerToHyperService::new(app);
-            let builder =
-                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+            // net/http reserves 4 KiB beyond MaxHeaderBytes while reading the
+            // request line and headers. Hyper counts the same bytes directly.
+            let header_limit = (if configured_header_limit == 0 {
+                GO_DEFAULT_MAX_HEADER_BYTES
+            } else {
+                configured_header_limit
+            })
+            .saturating_add(GO_HTTP_HEADER_READ_BUFFER);
+            let mut builder = hyper::server::conn::http1::Builder::new();
+            builder.max_header_size(header_limit);
+            // Hyper's default connection buffer is smaller than Go's default
+            // header allowance. Keep it large enough for the configured cap.
+            builder.max_buf_size(header_limit.max(8192));
             if let Err(e) = builder
-                .serve_connection_with_upgrades(hyper_util::rt::TokioIo::new(stream), svc)
+                .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
+                .with_upgrades()
                 .await
             {
                 tracing::debug!(error = %e, %remote, "rpc connection error");

@@ -1,0 +1,2532 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-31T01:49:01.249522+00:00",
+  "oracles": {
+    "zero": {
+      "endpoint": "http://127.0.0.1:6320",
+      "limits": {
+        "batch": 0,
+        "body": 4096,
+        "header": 256
+      }
+    },
+    "custom": {
+      "endpoint": "http://127.0.0.1:6330",
+      "limits": {
+        "batch": 3,
+        "body": 512,
+        "header": 256
+      }
+    }
+  },
+  "dynamic_response_headers_excluded": [
+    "connection",
+    "content-length",
+    "date",
+    "transfer-encoding",
+    "x-server-time"
+  ],
+  "header_search": {
+    "last_accepted_pad": 4259,
+    "first_rejected_pad": 4260
+  },
+  "sources_sha256": {
+    "/workspace/scratch/rpc-181/comet-http/capture.py": "851ec2fa2774e6887321fbe4f91cdf666339c5256d619728ceaf5513a4017544",
+    "/workspace/scratch/rpc-181/comet-http/start-oracle.sh": "92b65673de8f13370889dba78a797e88dd456156165c84ea028f72a36ae9deb0",
+    "/workspace/scratch/rpc-181/comet-http/mainnet-observation.json": "c90b83f37b7893bd6be2fcbfd4d672f1f47cee31660336113a389e7f691ad6f5"
+  },
+  "cases": [
+    {
+      "name": "custom-batch-at-limit",
+      "category": "batch",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 130,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDEzMA0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mn1d",
+        "raw_sha256": "8acc9f6ec8e349c5e40dcdc4f0852350a7b9fcf6b28b669a578f3575ff501908",
+        "raw_size": 243
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "112"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "W3sianNvbnJwYyI6IjIuMCIsImlkIjowLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIsInJlc3VsdCI6e319XQ==",
+        "body_sha256": "48996474d413da753b94350bada6345eecb7c8d05820c07a5181677ae127fa5a",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAxMTINCkNvbm5lY3Rpb246IGNsb3NlDQoNClt7Impzb25ycGMiOiIyLjAiLCJpZCI6MCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyLCJyZXN1bHQiOnt9fV0=",
+        "raw_sha256": "edc62fd910e94aa5107b9cf58792e798553950ca22fc4a048fb86cb32e0d2a23",
+        "raw_size": 281,
+        "body_text": "[{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}]"
+      }
+    },
+    {
+      "name": "custom-batch-over-limit",
+      "category": "batch",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 173,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDE3Mw0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjN9XQ==",
+        "raw_sha256": "2fa00ac799fb05ca19242e7c75c9c727d1364ca697d0f066834cbe925cd507ea",
+        "raw_size": 286
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "139"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+        "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiYmF0Y2ggcmVxdWVzdCBleGNlZWRzIG1heGltdW0gKDMpIGFsbG93ZWQgbnVtYmVyIG9mIHJlcXVlc3RzIn19",
+        "raw_sha256": "2da846477d80994a3d6b60316c60f6475cc79b77c5ff674410b28d0a17808dd0",
+        "raw_size": 267,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+      }
+    },
+    {
+      "name": "custom-notifications-over-limit",
+      "category": "batch",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 145,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDE0NQ0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIn1d",
+        "raw_sha256": "5ec0dedd15319f77687b177582949440ff4d3dd8beb6e34a2ef5e08a41752ecd",
+        "raw_size": 258
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "139"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+        "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiYmF0Y2ggcmVxdWVzdCBleGNlZWRzIG1heGltdW0gKDMpIGFsbG93ZWQgbnVtYmVyIG9mIHJlcXVlc3RzIn19",
+        "raw_sha256": "2da846477d80994a3d6b60316c60f6475cc79b77c5ff674410b28d0a17808dd0",
+        "raw_size": 267,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+      }
+    },
+    {
+      "name": "custom-over-limit-with-scalar",
+      "category": "batch",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 132,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDEzMg0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjF9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6M30sMV0=",
+        "raw_sha256": "92ef3df14ba28bfff6e96efd3c107ad0537cb0d5139c57a689af8c4753a1202a",
+        "raw_size": 245
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 500,
+        "reason": "Internal Server Error",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "352"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNzAwLCJtZXNzYWdlIjoiUGFyc2UgZXJyb3IuIEludmFsaWQgSlNPTiIsImRhdGEiOiJlcnJvciB1bm1hcnNoYWxpbmcgcmVxdWVzdDoganNvbjogY2Fubm90IHVubWFyc2hhbCBhcnJheSBpbnRvIEdvIHZhbHVlIG9mIHR5cGUgc3RydWN0IHsgSlNPTlJQQyBzdHJpbmcgXCJqc29uOlxcXCJqc29ucnBjXFxcIlwiOyBJRCBpbnRlcmZhY2Uge30gXCJqc29uOlxcXCJpZCxvbWl0ZW1wdHlcXFwiXCI7IE1ldGhvZCBzdHJpbmcgXCJqc29uOlxcXCJtZXRob2RcXFwiXCI7IFBhcmFtcyBqc29uLlJhd01lc3NhZ2UgXCJqc29uOlxcXCJwYXJhbXNcXFwiXCIgfSJ9fQ==",
+        "body_sha256": "f85fa24b05bc5e32d27edd1ee51e82458f6635704dc60e96eb56edb9f5379754",
+        "raw_base64": "SFRUUC8xLjEgNTAwIEludGVybmFsIFNlcnZlciBFcnJvcg0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpWYXJ5OiBPcmlnaW4NClgtU2VydmVyLVRpbWU6IDE3OTM0MTEzMzYNCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMzUyDQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI3MDAsIm1lc3NhZ2UiOiJQYXJzZSBlcnJvci4gSW52YWxpZCBKU09OIiwiZGF0YSI6ImVycm9yIHVubWFyc2hhbGluZyByZXF1ZXN0OiBqc29uOiBjYW5ub3QgdW5tYXJzaGFsIGFycmF5IGludG8gR28gdmFsdWUgb2YgdHlwZSBzdHJ1Y3QgeyBKU09OUlBDIHN0cmluZyBcImpzb246XFxcImpzb25ycGNcXFwiXCI7IElEIGludGVyZmFjZSB7fSBcImpzb246XFxcImlkLG9taXRlbXB0eVxcXCJcIjsgTWV0aG9kIHN0cmluZyBcImpzb246XFxcIm1ldGhvZFxcXCJcIjsgUGFyYW1zIGpzb24uUmF3TWVzc2FnZSBcImpzb246XFxcInBhcmFtc1xcXCJcIiB9In19",
+        "raw_sha256": "62224f3d21d21c9a98cd19220b742339716877296b9f7ef6581431a7577e48d2",
+        "raw_size": 540,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error. Invalid JSON\",\"data\":\"error unmarshaling request: json: cannot unmarshal array into Go value of type struct { JSONRPC string \\\"json:\\\\\\\"jsonrpc\\\\\\\"\\\"; ID interface {} \\\"json:\\\\\\\"id,omitempty\\\\\\\"\\\"; Method string \\\"json:\\\\\\\"method\\\\\\\"\\\"; Params json.RawMessage \\\"json:\\\\\\\"params\\\\\\\"\\\" }\"}}"
+      }
+    },
+    {
+      "name": "zero-batch-four",
+      "category": "batch",
+      "oracle": "zero",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 173,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMyMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDE3Mw0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjN9XQ==",
+        "raw_sha256": "5de69c990cce11182747bcdfa9db33bb5a6e697e674acda93855148021298155",
+        "raw_size": 286
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "149"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "W3sianNvbnJwYyI6IjIuMCIsImlkIjowLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozLCJyZXN1bHQiOnt9fV0=",
+        "body_sha256": "42c3dc021ff5e50c3f7afc6e9dfb62a990479ecf298b76e9442df4f5269cd7d9",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAxNDkNCkNvbm5lY3Rpb246IGNsb3NlDQoNClt7Impzb25ycGMiOiIyLjAiLCJpZCI6MCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MywicmVzdWx0Ijp7fX1d",
+        "raw_sha256": "85d03317bab78c1e5bbaa49fc5b0d5587fe22e2c4155c728ed25b646518bc248",
+        "raw_size": 318,
+        "body_text": "[{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}]"
+      }
+    },
+    {
+      "name": "zero-batch-fifty",
+      "category": "batch",
+      "oracle": "zero",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 2191,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMyMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDIxOTENCg0KW3sianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjowfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjJ9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjozfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6NH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjV9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo2fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6N30seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjh9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo5fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MTB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxMX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjEyfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MTN9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxNH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjE1fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MTZ9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxN30seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjE4fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MTl9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyMH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjIxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MjJ9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyM30seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjI0fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MjV9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyNn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjI3fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mjh9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyOX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjMwfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MzF9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjozMn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjMzfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MzR9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjozNX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjM2fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mzd9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjozOH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjM5fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6NDB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo0MX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjQyfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6NDN9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo0NH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjQ1fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6NDZ9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo0N30seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjQ4fSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6NDl9XQ==",
+        "raw_sha256": "2646c90a2e087b38b67846a201089c1e514e35376ad3039e5d2942aeb359bd59",
+        "raw_size": 2305
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "1891"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "W3sianNvbnJwYyI6IjIuMCIsImlkIjowLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjUsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo2LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjgsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo5LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTAsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxMSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjEyLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTMsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxNCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjE1LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTYsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxNywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjE4LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTksInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyMCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIxLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjIsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyMywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjI0LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjUsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyNiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjI3LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjgsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyOSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjMwLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzEsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozMiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjMzLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzQsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozNSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjM2LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzcsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozOCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjM5LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDAsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0MSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQyLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDMsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0NCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQ1LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDYsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0NywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQ4LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDksInJlc3VsdCI6e319XQ==",
+        "body_sha256": "081e17e82d3dab48d329fb8d86fd7df1a66ce1a8780a9b8752437c3f2e374f6d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAxODkxDQpDb25uZWN0aW9uOiBjbG9zZQ0KDQpbeyJqc29ucnBjIjoiMi4wIiwiaWQiOjAsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjMsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjYsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo3LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6OCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjksInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxMCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjExLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTIsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxMywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjE0LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTUsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxNiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjE3LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MTgsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoxOSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIwLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjEsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyMiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjIzLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjQsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyNSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjI2LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MjcsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjoyOCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjI5LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzAsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozMSwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjMyLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzMsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozNCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjM1LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzYsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjozNywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjM4LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6MzksInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0MCwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQxLCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDIsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0MywicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQ0LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDUsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0NiwicmVzdWx0Ijp7fX0seyJqc29ucnBjIjoiMi4wIiwiaWQiOjQ3LCJyZXN1bHQiOnt9fSx7Impzb25ycGMiOiIyLjAiLCJpZCI6NDgsInJlc3VsdCI6e319LHsianNvbnJwYyI6IjIuMCIsImlkIjo0OSwicmVzdWx0Ijp7fX1d",
+        "raw_sha256": "cc46ef87924478ca4ec41e01c972064c9a1b65e25c7c824534b80a10ca1a6429",
+        "raw_size": 2061,
+        "body_text": "[{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":13,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":14,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":15,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":16,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":17,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":18,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":19,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":20,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":22,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":23,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":24,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":25,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":26,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":27,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":28,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":29,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":30,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":31,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":32,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":33,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":34,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":35,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":36,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":37,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":38,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":39,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":40,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":41,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":43,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":44,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":45,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":46,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":47,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":48,\"result\":{}},{\"jsonrpc\":\"2.0\",\"id\":49,\"result\":{}}]"
+      }
+    },
+    {
+      "name": "single-notification",
+      "category": "notification",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 35,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDM1DQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCJ9",
+        "raw_sha256": "2bf5074871cf7e82ef396b3353ff8e925be90cbe6d444c08f15b4d94701ef794",
+        "raw_size": 147
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "0"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpWYXJ5OiBPcmlnaW4NClgtU2VydmVyLVRpbWU6IDE3OTM0MTEzMzYNCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMA0KQ29ubmVjdGlvbjogY2xvc2UNCg0K",
+        "raw_sha256": "a5fe638ed47b3dbbe3d1cf230729f5b284e33346f57ff39bdb700677f824e8f3",
+        "raw_size": 135,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "notification-only-batch",
+      "category": "notification",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 73,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDczDQoNClt7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgifSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgifV0=",
+        "raw_sha256": "98c3a1a19358cf64f843895aa23a864a49e2bfa22bfd7a9c6a5a7e3f6f87b0a7",
+        "raw_size": 185
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "0"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpWYXJ5OiBPcmlnaW4NClgtU2VydmVyLVRpbWU6IDE3OTM0MTEzMzYNCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMA0KQ29ubmVjdGlvbjogY2xvc2UNCg0K",
+        "raw_sha256": "a5fe638ed47b3dbbe3d1cf230729f5b284e33346f57ff39bdb700677f824e8f3",
+        "raw_size": 135,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "mixed-notification-batch",
+      "category": "notification",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 117,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDExNw0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjcxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgifV0=",
+        "raw_sha256": "d5bdb4fed5f6d075387b8508a046c7f66097600e01b77975fd2aac2d307708ef",
+        "raw_size": 230
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjcxLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "456f7947c629d0dca66e25f30a909da4a694b893c2d8ab2e184e67ed71114d13",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjcxLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "7e4f508d9a7084b548612e259937e9a519066d84edd39c7ada79dde6d4c12fe9",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":71,\"result\":{}}"
+      }
+    },
+    {
+      "name": "empty-batch",
+      "category": "notification",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 2,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDINCg0KW10=",
+        "raw_sha256": "53f878e3157cf3932df978ed19a897bbc9f3cb10076e214d9cf56f03782b81c2",
+        "raw_size": 113
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "0"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpWYXJ5OiBPcmlnaW4NClgtU2VydmVyLVRpbWU6IDE3OTM0MTEzMzYNCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMA0KQ29ubmVjdGlvbjogY2xvc2UNCg0K",
+        "raw_sha256": "a5fe638ed47b3dbbe3d1cf230729f5b284e33346f57ff39bdb700677f824e8f3",
+        "raw_size": 135,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "body-content-length-511",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 511,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDUxMQ0KDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg",
+        "raw_sha256": "6e92287dcfc0e809b5840278e82ee2dd3434ac79981f19e6bffe0e03694f48e0",
+        "raw_size": 624
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "36"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "body_sha256": "fcd8c77a7e0a0e2c93bf89cbf8b02c66255a80aca8114b348de69523a4f6d640",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNg0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "raw_sha256": "186653c41e0354600dc91853d1d6b03043c8c06e5c75cd0f98060e6b6dc247cd",
+        "raw_size": 204,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "body-chunked-511",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 511,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KVHJhbnNmZXItRW5jb2Rpbmc6IGNodW5rZWQNCg0KMWZmDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQowDQoNCg==",
+        "raw_sha256": "179a0c7a5d1f636ec316bcab003c127956155a5491d45f18040d19d54cab9863",
+        "raw_size": 643
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "36"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "body_sha256": "fcd8c77a7e0a0e2c93bf89cbf8b02c66255a80aca8114b348de69523a4f6d640",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNg0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "raw_sha256": "186653c41e0354600dc91853d1d6b03043c8c06e5c75cd0f98060e6b6dc247cd",
+        "raw_size": 204,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "body-content-length-512",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 512,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDUxMg0KDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==",
+        "raw_sha256": "d633d080e94e77faddf133d2b6d39dc4f01210944b3a7aa8c8f267d038d30c8a",
+        "raw_size": 625
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "36"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "body_sha256": "fcd8c77a7e0a0e2c93bf89cbf8b02c66255a80aca8114b348de69523a4f6d640",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNg0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "raw_sha256": "186653c41e0354600dc91853d1d6b03043c8c06e5c75cd0f98060e6b6dc247cd",
+        "raw_size": 204,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "body-chunked-512",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 512,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KVHJhbnNmZXItRW5jb2Rpbmc6IGNodW5rZWQNCg0KMjAwDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0KMA0KDQo=",
+        "raw_sha256": "d03ff038bbff82b710f737b911ad2521ee2da3b111270f2a16799b6e9c705d5f",
+        "raw_size": 644
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "36"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "body_sha256": "fcd8c77a7e0a0e2c93bf89cbf8b02c66255a80aca8114b348de69523a4f6d640",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNg0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjEsInJlc3VsdCI6e319",
+        "raw_sha256": "186653c41e0354600dc91853d1d6b03043c8c06e5c75cd0f98060e6b6dc247cd",
+        "raw_size": 204,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "body-content-length-513",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 513,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDUxMw0KDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA=",
+        "raw_sha256": "f86c3abf49db5588e54c6b2da3ab744ac375a474b254104afa7c49f0b20bebf1",
+        "raw_size": 626
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 400,
+        "reason": "Bad Request",
+        "headers": [
+          [
+            "Connection",
+            "close"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "135"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImVycm9yIHJlYWRpbmcgcmVxdWVzdCBib2R5OiBodHRwOiByZXF1ZXN0IGJvZHkgdG9vIGxhcmdlIn19",
+        "body_sha256": "095e75c9f4451f3f76dc5d454f33a62bdf5aea03f3638781101ce657f6db8bca",
+        "raw_base64": "SFRUUC8xLjEgNDAwIEJhZCBSZXF1ZXN0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpEYXRlOiBTYXQsIDMxIE9jdCAyMDI2IDAxOjQ4OjU2IEdNVA0KQ29udGVudC1MZW5ndGg6IDEzNQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiZXJyb3IgcmVhZGluZyByZXF1ZXN0IGJvZHk6IGh0dHA6IHJlcXVlc3QgYm9keSB0b28gbGFyZ2UifX0=",
+        "raw_sha256": "712c0af1c6a751c1d1a61545afcc08e140bd0777a1c9288e1592d606ba92ab54",
+        "raw_size": 272,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"error reading request body: http: request body too large\"}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "body-chunked-513",
+      "category": "body-boundary",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 513,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KVHJhbnNmZXItRW5jb2Rpbmc6IGNodW5rZWQNCg0KMjAxDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCjANCg0K",
+        "raw_sha256": "f7a56567089c04cb22a46fc85290ed1c6eb3f387424b1548e569d4c3092b8abd",
+        "raw_size": 645
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 400,
+        "reason": "Bad Request",
+        "headers": [
+          [
+            "Connection",
+            "close"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "135"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImVycm9yIHJlYWRpbmcgcmVxdWVzdCBib2R5OiBodHRwOiByZXF1ZXN0IGJvZHkgdG9vIGxhcmdlIn19",
+        "body_sha256": "095e75c9f4451f3f76dc5d454f33a62bdf5aea03f3638781101ce657f6db8bca",
+        "raw_base64": "SFRUUC8xLjEgNDAwIEJhZCBSZXF1ZXN0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpEYXRlOiBTYXQsIDMxIE9jdCAyMDI2IDAxOjQ4OjU2IEdNVA0KQ29udGVudC1MZW5ndGg6IDEzNQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiZXJyb3IgcmVhZGluZyByZXF1ZXN0IGJvZHk6IGh0dHA6IHJlcXVlc3QgYm9keSB0b28gbGFyZ2UifX0=",
+        "raw_sha256": "712c0af1c6a751c1d1a61545afcc08e140bd0777a1c9288e1592d606ba92ab54",
+        "raw_size": 272,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"error reading request body: http: request body too large\"}}"
+      },
+      "metadata": {
+        "configured_limit": 512
+      }
+    },
+    {
+      "name": "preflight-normal-allowed",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 0,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNCkFjY2Vzcy1Db250cm9sLVJlcXVlc3QtTWV0aG9kOiBQT1NUDQpDb250ZW50LUxlbmd0aDogMA0KDQo=",
+        "raw_sha256": "d1f298ecf79a2afd9e9de45cefe01edbd60dbf2f17feeb7d1a70699e61955b2b",
+        "raw_size": 152
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 204,
+        "reason": "No Content",
+        "headers": [
+          [
+            "Access-Control-Allow-Methods",
+            "POST"
+          ],
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Access-Control-Allow-Methods",
+            "POST"
+          ],
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjA0IE5vIENvbnRlbnQNCkFjY2Vzcy1Db250cm9sLUFsbG93LU1ldGhvZHM6IFBPU1QNCkFjY2Vzcy1Db250cm9sLUFsbG93LU9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNClZhcnk6IE9yaWdpbiwgQWNjZXNzLUNvbnRyb2wtUmVxdWVzdC1NZXRob2QsIEFjY2Vzcy1Db250cm9sLVJlcXVlc3QtSGVhZGVycw0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbm5lY3Rpb246IGNsb3NlDQoNCg==",
+        "raw_sha256": "0f4dad3a1e504f9c7b944bd8a417dfdad6b1c0c0d1f71f1af4ca24d760c7c758",
+        "raw_size": 277,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "preflight-normal-denied-origin",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 0,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9kZW5pZWQuZXhhbXBsZQ0KQWNjZXNzLUNvbnRyb2wtUmVxdWVzdC1NZXRob2Q6IFBPU1QNCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "01102e22e0932b0b9ccf6b1b4aa90cec0af869ff3c7e9c35c05f6afbce0c5073",
+        "raw_size": 151
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 204,
+        "reason": "No Content",
+        "headers": [
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjA0IE5vIENvbnRlbnQNClZhcnk6IE9yaWdpbiwgQWNjZXNzLUNvbnRyb2wtUmVxdWVzdC1NZXRob2QsIEFjY2Vzcy1Db250cm9sLVJlcXVlc3QtSGVhZGVycw0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbm5lY3Rpb246IGNsb3NlDQoNCg==",
+        "raw_sha256": "007e13ab5aff4eb9a18951c1179de56944afe267139f6f062d56598e1d4270b2",
+        "raw_size": 187,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "preflight-disallowed-request-header",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 0,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNCkFjY2Vzcy1Db250cm9sLVJlcXVlc3QtTWV0aG9kOiBQT1NUDQpBY2Nlc3MtQ29udHJvbC1SZXF1ZXN0LUhlYWRlcnM6IFgtTm90LUFsbG93ZWQNCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "ee62a5ebd5ab53ece0a0d96b4234f2183d3d33ce2418f1a310a1d33660d8c244",
+        "raw_size": 199
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 204,
+        "reason": "No Content",
+        "headers": [
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjA0IE5vIENvbnRlbnQNClZhcnk6IE9yaWdpbiwgQWNjZXNzLUNvbnRyb2wtUmVxdWVzdC1NZXRob2QsIEFjY2Vzcy1Db250cm9sLVJlcXVlc3QtSGVhZGVycw0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbm5lY3Rpb246IGNsb3NlDQoNCg==",
+        "raw_sha256": "007e13ab5aff4eb9a18951c1179de56944afe267139f6f062d56598e1d4270b2",
+        "raw_size": 187,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "preflight-over-batch",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 173,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNCkFjY2Vzcy1Db250cm9sLVJlcXVlc3QtTWV0aG9kOiBQT1NUDQpDb250ZW50LUxlbmd0aDogMTczDQoNClt7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjF9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6M31d",
+        "raw_sha256": "7cec01a9a394ef17207e2ecef1090512e0adda6f9cbf00c97b035e1a0922763f",
+        "raw_size": 327
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "139"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+        "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiYmF0Y2ggcmVxdWVzdCBleGNlZWRzIG1heGltdW0gKDMpIGFsbG93ZWQgbnVtYmVyIG9mIHJlcXVlc3RzIn19",
+        "raw_sha256": "2da846477d80994a3d6b60316c60f6475cc79b77c5ff674410b28d0a17808dd0",
+        "raw_size": 267,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+      }
+    },
+    {
+      "name": "preflight-over-body",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 513,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNCkFjY2Vzcy1Db250cm9sLVJlcXVlc3QtTWV0aG9kOiBQT1NUDQpDb250ZW50LUxlbmd0aDogNTEzDQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==",
+        "raw_sha256": "6ffec8047704c66ab3beb141095a51c9a74fee9fbae92efa98159c790a14a6b1",
+        "raw_size": 667
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 400,
+        "reason": "Bad Request",
+        "headers": [
+          [
+            "Connection",
+            "close"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "135"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImVycm9yIHJlYWRpbmcgcmVxdWVzdCBib2R5OiBodHRwOiByZXF1ZXN0IGJvZHkgdG9vIGxhcmdlIn19",
+        "body_sha256": "095e75c9f4451f3f76dc5d454f33a62bdf5aea03f3638781101ce657f6db8bca",
+        "raw_base64": "SFRUUC8xLjEgNDAwIEJhZCBSZXF1ZXN0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpEYXRlOiBTYXQsIDMxIE9jdCAyMDI2IDAxOjQ4OjU2IEdNVA0KQ29udGVudC1MZW5ndGg6IDEzNQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiZXJyb3IgcmVhZGluZyByZXF1ZXN0IGJvZHk6IGh0dHA6IHJlcXVlc3QgYm9keSB0b28gbGFyZ2UifX0=",
+        "raw_sha256": "712c0af1c6a751c1d1a61545afcc08e140bd0777a1c9288e1592d606ba92ab54",
+        "raw_size": 272,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"error reading request body: http: request body too large\"}}"
+      }
+    },
+    {
+      "name": "zero-preflight-over-body-unread",
+      "category": "precedence",
+      "oracle": "zero",
+      "request": {
+        "method": "OPTIONS",
+        "target": "/",
+        "decoded_body_size": 4097,
+        "raw_base64": "T1BUSU9OUyAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMyMA0KQ29ubmVjdGlvbjogY2xvc2UNCk9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNCkFjY2Vzcy1Db250cm9sLVJlcXVlc3QtTWV0aG9kOiBQT1NUDQpDb250ZW50LUxlbmd0aDogNDA5Nw0KDQp4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==",
+        "raw_sha256": "82dacfbb2f9df79723d7edd92f7a0bd4171a05de802afc80bd0c8e19024dc27c",
+        "raw_size": 4252
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 204,
+        "reason": "No Content",
+        "headers": [
+          [
+            "Access-Control-Allow-Methods",
+            "POST"
+          ],
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Access-Control-Allow-Methods",
+            "POST"
+          ],
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_base64": "SFRUUC8xLjEgMjA0IE5vIENvbnRlbnQNCkFjY2Vzcy1Db250cm9sLUFsbG93LU1ldGhvZHM6IFBPU1QNCkFjY2Vzcy1Db250cm9sLUFsbG93LU9yaWdpbjogaHR0cHM6Ly9hbGxvd2VkLmV4YW1wbGUNClZhcnk6IE9yaWdpbiwgQWNjZXNzLUNvbnRyb2wtUmVxdWVzdC1NZXRob2QsIEFjY2Vzcy1Db250cm9sLVJlcXVlc3QtSGVhZGVycw0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbm5lY3Rpb246IGNsb3NlDQoNCg==",
+        "raw_sha256": "0f4dad3a1e504f9c7b944bd8a417dfdad6b1c0c0d1f71f1af4ca24d760c7c758",
+        "raw_size": 277,
+        "body_text": ""
+      }
+    },
+    {
+      "name": "post-normal-cors",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 43,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KT3JpZ2luOiBodHRwczovL2FsbG93ZWQuZXhhbXBsZQ0KQ29udGVudC1MZW5ndGg6IDQzDQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo4MX0=",
+        "raw_sha256": "cb42c2d1a76c7b7d27ca8c98ac9c14fc5fbfeebe18344ef19dc49c4fee8163e0",
+        "raw_size": 188
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Access-Control-Allow-Origin",
+            "https://allowed.example"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjgxLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "d5ebfb78c74952f268929cbb102d8a68d92f8ca5acb6c4a99d1c80a0fc78401c",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpBY2Nlc3MtQ29udHJvbC1BbGxvdy1PcmlnaW46IGh0dHBzOi8vYWxsb3dlZC5leGFtcGxlDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjgxLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "ce69599e58036cd133a9974a9765d747ea30e8b3bacba33a1143b42c5d0e365a",
+        "raw_size": 259,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":81,\"result\":{}}"
+      }
+    },
+    {
+      "name": "post-over-batch-cors",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 173,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KT3JpZ2luOiBodHRwczovL2FsbG93ZWQuZXhhbXBsZQ0KQ29udGVudC1MZW5ndGg6IDE3Mw0KDQpbeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjB9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6Mn0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjN9XQ==",
+        "raw_sha256": "318c502ba427229b643d4b931a8ad4d1e99f7f5316114eb5d8e6c58677a6db01",
+        "raw_size": 319
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "139"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+        "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiYmF0Y2ggcmVxdWVzdCBleGNlZWRzIG1heGltdW0gKDMpIGFsbG93ZWQgbnVtYmVyIG9mIHJlcXVlc3RzIn19",
+        "raw_sha256": "2da846477d80994a3d6b60316c60f6475cc79b77c5ff674410b28d0a17808dd0",
+        "raw_size": 267,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+      }
+    },
+    {
+      "name": "post-over-body-cors",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 513,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KT3JpZ2luOiBodHRwczovL2FsbG93ZWQuZXhhbXBsZQ0KQ29udGVudC1MZW5ndGg6IDUxMw0KDQp7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA=",
+        "raw_sha256": "35602aa22f699cdbb751a7ff3988463d56d67872cfdea9bc87dad99e2830eac1",
+        "raw_size": 659
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 400,
+        "reason": "Bad Request",
+        "headers": [
+          [
+            "Connection",
+            "close"
+          ],
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "135"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImVycm9yIHJlYWRpbmcgcmVxdWVzdCBib2R5OiBodHRwOiByZXF1ZXN0IGJvZHkgdG9vIGxhcmdlIn19",
+        "body_sha256": "095e75c9f4451f3f76dc5d454f33a62bdf5aea03f3638781101ce657f6db8bca",
+        "raw_base64": "SFRUUC8xLjEgNDAwIEJhZCBSZXF1ZXN0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpEYXRlOiBTYXQsIDMxIE9jdCAyMDI2IDAxOjQ4OjU2IEdNVA0KQ29udGVudC1MZW5ndGg6IDEzNQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiZXJyb3IgcmVhZGluZyByZXF1ZXN0IGJvZHk6IGh0dHA6IHJlcXVlc3QgYm9keSB0b28gbGFyZ2UifX0=",
+        "raw_sha256": "712c0af1c6a751c1d1a61545afcc08e140bd0777a1c9288e1592d606ba92ab54",
+        "raw_size": 272,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"error reading request body: http: request body too large\"}}"
+      }
+    },
+    {
+      "name": "missing-path-over-batch",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/missing",
+        "decoded_body_size": 173,
+        "raw_base64": "UE9TVCAvbWlzc2luZyBIVFRQLzEuMQ0KSG9zdDogMTI3LjAuMC4xOjYzMzANCkNvbm5lY3Rpb246IGNsb3NlDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkNvbnRlbnQtTGVuZ3RoOiAxNzMNCg0KW3sianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjowfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MX0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjJ9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjozfV0=",
+        "raw_sha256": "324537c05b1e52e9f45ed2a2e6da3cb67f0a5a2142b3ad189cb7310780f991d3",
+        "raw_size": 293
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "139"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+        "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiYmF0Y2ggcmVxdWVzdCBleGNlZWRzIG1heGltdW0gKDMpIGFsbG93ZWQgbnVtYmVyIG9mIHJlcXVlc3RzIn19",
+        "raw_sha256": "2da846477d80994a3d6b60316c60f6475cc79b77c5ff674410b28d0a17808dd0",
+        "raw_size": 267,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+      }
+    },
+    {
+      "name": "malformed-json-under-body",
+      "category": "precedence",
+      "oracle": "custom",
+      "request": {
+        "method": "POST",
+        "target": "/",
+        "decoded_body_size": 1,
+        "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDENCg0Kew==",
+        "raw_sha256": "2d246690b0ca2b6727398d17a1d631915c3678c18397dbf0ed74dd969ca8cd95",
+        "raw_size": 112
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 500,
+        "reason": "Internal Server Error",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "145"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNzAwLCJtZXNzYWdlIjoiUGFyc2UgZXJyb3IuIEludmFsaWQgSlNPTiIsImRhdGEiOiJlcnJvciB1bm1hcnNoYWxpbmcgcmVxdWVzdDogdW5leHBlY3RlZCBlbmQgb2YgSlNPTiBpbnB1dCJ9fQ==",
+        "body_sha256": "1ebaa54b63f4e684aaa1cc5ed4cf944f2d35a48ded529cbf68429266545818ed",
+        "raw_base64": "SFRUUC8xLjEgNTAwIEludGVybmFsIFNlcnZlciBFcnJvcg0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpWYXJ5OiBPcmlnaW4NClgtU2VydmVyLVRpbWU6IDE3OTM0MTEzMzYNCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDg6NTYgR01UDQpDb250ZW50LUxlbmd0aDogMTQ1DQpDb25uZWN0aW9uOiBjbG9zZQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI3MDAsIm1lc3NhZ2UiOiJQYXJzZSBlcnJvci4gSW52YWxpZCBKU09OIiwiZGF0YSI6ImVycm9yIHVubWFyc2hhbGluZyByZXF1ZXN0OiB1bmV4cGVjdGVkIGVuZCBvZiBKU09OIGlucHV0In19",
+        "raw_sha256": "5183200b176c432cbab67979ae67db8ab28ec068a815f6ccc23bfcd7b6134b85",
+        "raw_size": 333,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error. Invalid JSON\",\"data\":\"error unmarshaling request: unexpected end of JSON input\"}}"
+      }
+    },
+    {
+      "name": "header-search-pad-4096",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWENCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "a5894cb31339082fd69f34a06e086bdef8e8d6f4448b0f5427e9905a592c54fc",
+        "raw_size": 4189
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411336"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:56 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "71ebb3058155681a290443c0d6444e14e02e56489043ade5b7fe8c1cc48496f7",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzNg0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1NiBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "950204e14246ba1b76e9fc2a9144fc476a5845d3e5f211f19e6ea1ca66313be0",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4096
+      }
+    },
+    {
+      "name": "header-search-pad-4224",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ0KQ29udGVudC1MZW5ndGg6IDANCg0K",
+        "raw_sha256": "dbfcd8efd9682d7ea81abab717e99347c811349dfd1ddee760439f6a58565a79",
+        "raw_size": 4317
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411338"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:58 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "71ebb3058155681a290443c0d6444e14e02e56489043ade5b7fe8c1cc48496f7",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzOA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1OCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "48d614527eb01ca38d8f0478ff10c41d60339d0a43467223bc9f16c8fa7410dd",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4224
+      }
+    },
+    {
+      "name": "header-search-pad-4256",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhDQpDb250ZW50LUxlbmd0aDogMA0KDQo=",
+        "raw_sha256": "43e58c18fb65f9960c8a99bd27d7e87ad07f8fb1df7d3f296de52e32752e4669",
+        "raw_size": 4349
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411339"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:48:59 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "71ebb3058155681a290443c0d6444e14e02e56489043ade5b7fe8c1cc48496f7",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTMzOQ0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0ODo1OSBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "f495a63b37a530abc7c7e9dc35b9852214b5b3111282787eafbd4741750b930b",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4256
+      }
+    },
+    {
+      "name": "header-search-pad-4258",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWENCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "2b3865aec6bec1755d86e0759caa5f02364a37045c22ccd8d964b28ffb65f1b8",
+        "raw_size": 4351
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411340"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:49:00 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "71ebb3058155681a290443c0d6444e14e02e56489043ade5b7fe8c1cc48496f7",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTM0MA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0OTowMCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "96753ea95189a7f51bef8c818e7e8f7908720b1a70163fa5b9cb2b716fde0fa7",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4258
+      }
+    },
+    {
+      "name": "header-search-pad-4259",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhDQpDb250ZW50LUxlbmd0aDogMA0KDQo=",
+        "raw_sha256": "a2d0bafaef5326887594c6f9751b05d83ca4d8bb9358e050746e7b0d9709fc7d",
+        "raw_size": 4352
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 200,
+        "reason": "OK",
+        "headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ],
+          [
+            "X-Server-Time",
+            "1793411340"
+          ],
+          [
+            "Date",
+            "Sat, 31 Oct 2026 01:49:00 GMT"
+          ],
+          [
+            "Content-Length",
+            "37"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "application/json"
+          ],
+          [
+            "Vary",
+            "Origin"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "body_sha256": "71ebb3058155681a290443c0d6444e14e02e56489043ade5b7fe8c1cc48496f7",
+        "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTM0MA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0OTowMCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzNw0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOi0xLCJyZXN1bHQiOnt9fQ==",
+        "raw_sha256": "96753ea95189a7f51bef8c818e7e8f7908720b1a70163fa5b9cb2b716fde0fa7",
+        "raw_size": 205,
+        "body_text": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{}}"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4259
+      }
+    },
+    {
+      "name": "header-search-pad-4260",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ0KQ29udGVudC1MZW5ndGg6IDANCg0K",
+        "raw_sha256": "b29293889f08536875c7cf541cb61f8b93d72a69804426bf4deffa2a3c826360",
+        "raw_size": 4353
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4260
+      }
+    },
+    {
+      "name": "header-search-pad-4264",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWENCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "cc3c48ff744ec003759e0788f27c01e540c5d6ec0b4e6e31aa40630a319659b7",
+        "raw_size": 4357
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4264
+      }
+    },
+    {
+      "name": "header-search-pad-4272",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ0KQ29udGVudC1MZW5ndGg6IDANCg0K",
+        "raw_sha256": "438cc05d963fd893266989fda73a2811b51d19a50d745aaa23013b8e81434c15",
+        "raw_size": 4365
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4272
+      }
+    },
+    {
+      "name": "header-search-pad-4288",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWENCkNvbnRlbnQtTGVuZ3RoOiAwDQoNCg==",
+        "raw_sha256": "892b41b17aa872a89ebc996df563a70c451323dcf67cfbfdfac47977cc0d45b9",
+        "raw_size": 4381
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4288
+      }
+    },
+    {
+      "name": "header-search-pad-4352",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhDQpDb250ZW50LUxlbmd0aDogMA0KDQo=",
+        "raw_sha256": "a661839a23bb45ca15125a88feb17ac6d8dadedaa83e71e3c91dd655ee842fec",
+        "raw_size": 4445
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4352
+      }
+    },
+    {
+      "name": "header-search-pad-4608",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ0KQ29udGVudC1MZW5ndGg6IDANCg0K",
+        "raw_sha256": "1c21c35cccc6d0f68709e68a16f474420f424d9ee8e65ca4a765aa67c04eb30c",
+        "raw_size": 4701
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 4608
+      }
+    },
+    {
+      "name": "header-search-pad-5120",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhDQpDb250ZW50LUxlbmd0aDogMA0KDQo=",
+        "raw_sha256": "9412fd6d0bb9d076d39f6c87eb3b11bd3b1a1fc4fe6e12fd97f8548bd0ecafaa",
+        "raw_size": 5213
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 5120
+      }
+    },
+    {
+      "name": "header-search-pad-6144",
+      "category": "header-boundary-search",
+      "oracle": "custom",
+      "request": {
+        "method": "GET",
+        "target": "/health",
+        "decoded_body_size": 0,
+        "raw_base64": "R0VUIC9oZWFsdGggSFRUUC8xLjENCkhvc3Q6IDEyNy4wLjAuMTo2MzMwDQpDb25uZWN0aW9uOiBjbG9zZQ0KWC1QYWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ0KQ29udGVudC1MZW5ndGg6IDANCg0K",
+        "raw_sha256": "047cfeaf33b8bfe5d1f68c0496cc77eb13a6f81dc2e35627b514841e57d88580",
+        "raw_size": 6237
+      },
+      "response": {
+        "http_version": "HTTP/1.1",
+        "status": 431,
+        "reason": "Request Header Fields Too Large",
+        "headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ],
+          [
+            "Connection",
+            "close"
+          ]
+        ],
+        "stable_headers": [
+          [
+            "Content-Type",
+            "text/plain; charset=utf-8"
+          ]
+        ],
+        "trailers": [],
+        "body_base64": "NDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "body_sha256": "21973be89994788937ec8a6064bdcc86e039bbcd74e48886d0b877f7c670b897",
+        "raw_base64": "SFRUUC8xLjEgNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KNDMxIFJlcXVlc3QgSGVhZGVyIEZpZWxkcyBUb28gTGFyZ2U=",
+        "raw_sha256": "5dd7cd3dc1acef6651a3c0aa17af8ab1ee1b4689d4a37db505e5dce902232698",
+        "raw_size": 143,
+        "body_text": "431 Request Header Fields Too Large"
+      },
+      "metadata": {
+        "configured_limit": 256,
+        "pad_bytes": 6144
+      }
+    },
+    {
+      "name": "keepalive-success",
+      "category": "keep-alive",
+      "oracle": "custom",
+      "outcome": "second-response",
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "target": "/",
+            "decoded_body_size": 44,
+            "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjoga2VlcC1hbGl2ZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpDb250ZW50LUxlbmd0aDogNDQNCg0KeyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjgwMX0=",
+            "raw_sha256": "a5edd62d3a33b8316254206891d108a220db8330f847ae3a121ef44e91eeb44c",
+            "raw_size": 161
+          },
+          "response": {
+            "http_version": "HTTP/1.1",
+            "status": 200,
+            "reason": "OK",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ],
+              [
+                "X-Server-Time",
+                "1793411340"
+              ],
+              [
+                "Date",
+                "Sat, 31 Oct 2026 01:49:00 GMT"
+              ],
+              [
+                "Content-Length",
+                "38"
+              ]
+            ],
+            "stable_headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ]
+            ],
+            "trailers": [],
+            "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjgwMSwicmVzdWx0Ijp7fX0=",
+            "body_sha256": "ff1ef88104c5536d9a3bc906a6ff8975e2ab5c74e766712de04c998314e2ac50",
+            "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTM0MA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0OTowMCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzOA0KDQp7Impzb25ycGMiOiIyLjAiLCJpZCI6ODAxLCJyZXN1bHQiOnt9fQ==",
+            "raw_sha256": "142349f97da9978b890464d104baa83263ba21ec2cf0127f1ae9e54dab27ee35",
+            "raw_size": 187,
+            "body_text": "{\"jsonrpc\":\"2.0\",\"id\":801,\"result\":{}}"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "target": "/",
+            "decoded_body_size": 44,
+            "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDQ0DQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo5MDB9",
+            "raw_sha256": "6e95e13f85546fb59a9726e049564f78f9fb756de8aacbcaa4bd07282c2f6aba",
+            "raw_size": 156
+          },
+          "response": {
+            "http_version": "HTTP/1.1",
+            "status": 200,
+            "reason": "OK",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ],
+              [
+                "X-Server-Time",
+                "1793411340"
+              ],
+              [
+                "Date",
+                "Sat, 31 Oct 2026 01:49:00 GMT"
+              ],
+              [
+                "Content-Length",
+                "38"
+              ],
+              [
+                "Connection",
+                "close"
+              ]
+            ],
+            "stable_headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ]
+            ],
+            "trailers": [],
+            "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjkwMCwicmVzdWx0Ijp7fX0=",
+            "body_sha256": "9b9e827eb266525036212976fbc5c3d34a7745d84c067cfab5309f46ed26b338",
+            "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTM0MA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0OTowMCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjkwMCwicmVzdWx0Ijp7fX0=",
+            "raw_sha256": "a27f9989ab4d4b00faf8c96f1d40d45ce558188418e3572722d6f71590bb0006",
+            "raw_size": 206,
+            "body_text": "{\"jsonrpc\":\"2.0\",\"id\":900,\"result\":{}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "keepalive-after-batch-error",
+      "category": "keep-alive",
+      "oracle": "custom",
+      "outcome": "second-response",
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "target": "/",
+            "decoded_body_size": 173,
+            "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjoga2VlcC1hbGl2ZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpDb250ZW50LUxlbmd0aDogMTczDQoNClt7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6MH0seyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiaGVhbHRoIiwiaWQiOjF9LHsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoyfSx7Impzb25ycGMiOiIyLjAiLCJtZXRob2QiOiJoZWFsdGgiLCJpZCI6M31d",
+            "raw_sha256": "89d11f686f30915a24d8acceca9b873a1e630fc1d4ca8ee311bd57014396b578",
+            "raw_size": 291
+          },
+          "response": {
+            "http_version": "HTTP/1.1",
+            "status": 200,
+            "reason": "OK",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Date",
+                "Sat, 31 Oct 2026 01:49:00 GMT"
+              ],
+              [
+                "Content-Length",
+                "139"
+              ]
+            ],
+            "stable_headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ]
+            ],
+            "trailers": [],
+            "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImJhdGNoIHJlcXVlc3QgZXhjZWVkcyBtYXhpbXVtICgzKSBhbGxvd2VkIG51bWJlciBvZiByZXF1ZXN0cyJ9fQ==",
+            "body_sha256": "80dcf7b21d82943a2f3602c754715df6cf2778109541d4a2e3d9c359a23b285d",
+            "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NCkRhdGU6IFNhdCwgMzEgT2N0IDIwMjYgMDE6NDk6MDAgR01UDQpDb250ZW50LUxlbmd0aDogMTM5DQoNCnsianNvbnJwYyI6IjIuMCIsImVycm9yIjp7ImNvZGUiOi0zMjYwMCwibWVzc2FnZSI6IkludmFsaWQgUmVxdWVzdCIsImRhdGEiOiJiYXRjaCByZXF1ZXN0IGV4Y2VlZHMgbWF4aW11bSAoMykgYWxsb3dlZCBudW1iZXIgb2YgcmVxdWVzdHMifX0=",
+            "raw_sha256": "e40bea9c589030357b965672df218f799d679c880563e8f6add3aedbec1cf2f8",
+            "raw_size": 248,
+            "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"batch request exceeds maximum (3) allowed number of requests\"}}"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "target": "/",
+            "decoded_body_size": 44,
+            "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjogY2xvc2UNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbg0KQ29udGVudC1MZW5ndGg6IDQ0DQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjo5MDB9",
+            "raw_sha256": "6e95e13f85546fb59a9726e049564f78f9fb756de8aacbcaa4bd07282c2f6aba",
+            "raw_size": 156
+          },
+          "response": {
+            "http_version": "HTTP/1.1",
+            "status": 200,
+            "reason": "OK",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ],
+              [
+                "X-Server-Time",
+                "1793411340"
+              ],
+              [
+                "Date",
+                "Sat, 31 Oct 2026 01:49:00 GMT"
+              ],
+              [
+                "Content-Length",
+                "38"
+              ],
+              [
+                "Connection",
+                "close"
+              ]
+            ],
+            "stable_headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Vary",
+                "Origin"
+              ]
+            ],
+            "trailers": [],
+            "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjkwMCwicmVzdWx0Ijp7fX0=",
+            "body_sha256": "9b9e827eb266525036212976fbc5c3d34a7745d84c067cfab5309f46ed26b338",
+            "raw_base64": "SFRUUC8xLjEgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb24NClZhcnk6IE9yaWdpbg0KWC1TZXJ2ZXItVGltZTogMTc5MzQxMTM0MA0KRGF0ZTogU2F0LCAzMSBPY3QgMjAyNiAwMTo0OTowMCBHTVQNCkNvbnRlbnQtTGVuZ3RoOiAzOA0KQ29ubmVjdGlvbjogY2xvc2UNCg0KeyJqc29ucnBjIjoiMi4wIiwiaWQiOjkwMCwicmVzdWx0Ijp7fX0=",
+            "raw_sha256": "a27f9989ab4d4b00faf8c96f1d40d45ce558188418e3572722d6f71590bb0006",
+            "raw_size": 206,
+            "body_text": "{\"jsonrpc\":\"2.0\",\"id\":900,\"result\":{}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "keepalive-after-body-error",
+      "category": "keep-alive",
+      "oracle": "custom",
+      "outcome": "closed-before-second-response:EOFError",
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "target": "/",
+            "decoded_body_size": 513,
+            "raw_base64": "UE9TVCAvIEhUVFAvMS4xDQpIb3N0OiAxMjcuMC4wLjE6NjMzMA0KQ29ubmVjdGlvbjoga2VlcC1hbGl2ZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpDb250ZW50LUxlbmd0aDogNTEzDQoNCnsianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImhlYWx0aCIsImlkIjoxfSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==",
+            "raw_sha256": "10d899dfee45fbbfadb2a8091100b1de65a2be8885f8bc33d8c0160491c24e6a",
+            "raw_size": 631
+          },
+          "response": {
+            "http_version": "HTTP/1.1",
+            "status": 400,
+            "reason": "Bad Request",
+            "headers": [
+              [
+                "Connection",
+                "close"
+              ],
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Date",
+                "Sat, 31 Oct 2026 01:49:00 GMT"
+              ],
+              [
+                "Content-Length",
+                "135"
+              ]
+            ],
+            "stable_headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ]
+            ],
+            "trailers": [],
+            "body_base64": "eyJqc29ucnBjIjoiMi4wIiwiZXJyb3IiOnsiY29kZSI6LTMyNjAwLCJtZXNzYWdlIjoiSW52YWxpZCBSZXF1ZXN0IiwiZGF0YSI6ImVycm9yIHJlYWRpbmcgcmVxdWVzdCBib2R5OiBodHRwOiByZXF1ZXN0IGJvZHkgdG9vIGxhcmdlIn19",
+            "body_sha256": "095e75c9f4451f3f76dc5d454f33a62bdf5aea03f3638781101ce657f6db8bca",
+            "raw_base64": "SFRUUC8xLjEgNDAwIEJhZCBSZXF1ZXN0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uDQpEYXRlOiBTYXQsIDMxIE9jdCAyMDI2IDAxOjQ5OjAwIEdNVA0KQ29udGVudC1MZW5ndGg6IDEzNQ0KDQp7Impzb25ycGMiOiIyLjAiLCJlcnJvciI6eyJjb2RlIjotMzI2MDAsIm1lc3NhZ2UiOiJJbnZhbGlkIFJlcXVlc3QiLCJkYXRhIjoiZXJyb3IgcmVhZGluZyByZXF1ZXN0IGJvZHk6IGh0dHA6IHJlcXVlc3QgYm9keSB0b28gbGFyZ2UifX0=",
+            "raw_sha256": "1327fe45a240f39f805a3065979ab4b2c67d6a2f40a0f1df2e948c55970f60d1",
+            "raw_size": 272,
+            "body_text": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\",\"data\":\"error reading request body: http: request body too large\"}}"
+          }
+        }
+      ]
+    }
+  ]
+}

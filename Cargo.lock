@@ -3359,6 +3359,7 @@ dependencies = [
  "grpc-reflection",
  "grpc-transport",
  "hex",
+ "hyper",
  "hyper-util",
  "kvdb",
  "mempool",
