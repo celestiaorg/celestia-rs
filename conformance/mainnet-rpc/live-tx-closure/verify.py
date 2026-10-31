@@ -228,7 +228,7 @@ def verify_receipts(receipts: dict[str, Any], support: dict[str, Any]) -> None:
 
 
 def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
-    fields = {"generations", "pex", "mempool_broadcast", "validator_power", "max_txs_bytes", "max_subscription_clients", "max_subscriptions_per_client"}
+    fields = {"generations", "pex", "mempool_broadcast", "validator_power", "max_txs", "max_txs_bytes", "max_subscription_clients", "max_subscriptions_per_client"}
     harness.require_fields(topology, fields, "topology")
     generations = harness.require_fields(topology["generations"], {"normal", "timeout", "restored"}, "topology generations")
     require(topology["pex"] is False and topology["mempool_broadcast"] is False,
@@ -237,7 +237,7 @@ def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
     require(topology["max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS and
             topology["max_subscriptions_per_client"] == 1,
             "topology.capacity", "subscription capacity differs")
-    require(isinstance(topology["max_txs_bytes"], int) and topology["max_txs_bytes"] > 0,
+    require(topology["max_txs"] == 1 and topology["max_txs_bytes"] == harness.MEMPOOL_MAX_TXS_BYTES,
             "topology.capacity", "mempool capacity invalid")
     generation_ticks: set[tuple[str, int]] = set()
     reference_endpoints: dict[str, str] | None = None
@@ -298,7 +298,7 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
         "priv_validator_grpc_laddr",
         "rpc.timeout_broadcast_tx_commit", "rpc.laddr", "rpc.grpc_laddr",
         "rpc.max_subscription_clients", "rpc.max_subscriptions_per_client",
-        "p2p.pex", "p2p.laddr", "mempool.broadcast", "mempool.max_txs_bytes",
+        "p2p.pex", "p2p.laddr", "mempool.broadcast", "mempool.size", "mempool.max_txs_bytes",
         "tx_index.indexer", "consensus.timeout_commit",
     }
     app_fields = {"grpc.enable", "grpc.address", "grpc-web.enable", "api.enable", "api.address"}
@@ -312,6 +312,7 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
             "rpc.max_subscriptions_per_client": ("rpc", "max_subscriptions_per_client"),
             "p2p.pex": ("p2p", "pex"), "p2p.laddr": ("p2p", "laddr"),
             "mempool.broadcast": ("mempool", "broadcast"),
+            "mempool.size": ("mempool", "size"),
             "mempool.max_txs_bytes": ("mempool", "max_txs_bytes"),
             "tx_index.indexer": ("tx_index", "indexer"),
             "consensus.timeout_commit": ("consensus", "timeout_commit"),
@@ -347,7 +348,8 @@ def verify_configs(configs: dict[str, Any], topology: dict[str, Any]) -> None:
                     config["p2p.pex"] is False and config["mempool.broadcast"] is False and
                     config["tx_index.indexer"] == "kv" and config["consensus.timeout_commit"] == "5s",
                     "config.isolation", f"{phase} {node}")
-            require(config["mempool.max_txs_bytes"] == topology["max_txs_bytes"] and
+            require(config["mempool.size"] == topology["max_txs"] and
+                    config["mempool.max_txs_bytes"] == topology["max_txs_bytes"] and
                     config["rpc.max_subscription_clients"] == harness.SUBSCRIPTION_CLIENT_LIMITS[node] and
                     config["rpc.max_subscriptions_per_client"] == 1,
                     "config.capacity", f"{phase} {node}")
@@ -516,7 +518,7 @@ def verify_lifecycle_inclusions(rows: Any, expected_hashes: list[str], previous:
 
 
 def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: dict[str, Any], cleanup: dict[str, Any],
-                 max_txs_bytes: int, receipts: dict[str, Any],
+                 max_txs: int, max_txs_bytes: int, receipts: dict[str, Any],
                  generation_intervals: dict[str, tuple[int, int]]) -> dict[str, Any]:
     harness.require_fields(inputs, {"cases", "capacity", "lifecycle_inputs"}, "inputs")
     harness.require_fields(responses, {"cases", "driver_sha256", "transport_client_sha256"}, "responses")
@@ -524,12 +526,13 @@ def verify_cases(inputs: dict[str, Any], responses: dict[str, Any], inclusions: 
     require(responses["driver_sha256"] == receipts["capture_sources"]["driver.py"] and
             responses["transport_client_sha256"] == receipts["transport_client"]["binary_sha256"],
             "response.driver", "paired response executables differ from build receipts")
-    capacity = harness.require_fields(inputs["capacity"], {"tx_a", "tx_b", "max_txs_bytes"}, "capacity inputs")
-    require(capacity["max_txs_bytes"] == max_txs_bytes, "capacity.config", "input/topology capacity differs")
+    capacity = harness.require_fields(inputs["capacity"], {"tx_a", "tx_b", "max_txs", "max_txs_bytes"}, "capacity inputs")
+    require(capacity["max_txs"] == max_txs == 1 and capacity["max_txs_bytes"] == max_txs_bytes,
+            "capacity.config", "input/topology capacity differs")
     tx_a = harness.decode_blob(capacity["tx_a"], "capacity tx A")
     tx_b = harness.decode_blob(capacity["tx_b"], "capacity tx B")
-    require(tx_a != tx_b and 0 < len(tx_a) <= max_txs_bytes < len(tx_a) + len(tx_b),
-            "capacity.boundary", "configured mempool does not fit one and reject two inputs")
+    require(tx_a != tx_b and 0 < len(tx_a) <= max_txs_bytes and 0 < len(tx_b) <= max_txs_bytes,
+            "capacity.boundary", "capacity inputs do not exercise the one-transaction limit")
     for document, label in ((inputs, "inputs"), (responses, "responses"), (inclusions, "inclusions")):
         require([row.get("name") for row in document["cases"]] == list(harness.CASE_NAMES),
                 "case.inventory", f"{label} case inventory/order differs")
@@ -805,9 +808,17 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
             events = pair[side]
             require(isinstance(events, list) and [event.get("phase") for event in events] == expected_phases,
                     "cleanup.phases", f"{name}/{side}")
-            require([event.get("outcome") for event in events] == outcomes[name] and
-                    [event.get("mempool_size") for event in events] == mempool_sizes[name],
+            require([event.get("outcome") for event in events] == outcomes[name],
                     "cleanup.transitions", f"{name}/{side}")
+            observed_pools = [event.get("mempool_size") for event in events]
+            if name == "mempool_capacity":
+                require(observed_pools[1] in {0, 1} and
+                        observed_pools[:1] + observed_pools[2:] ==
+                        mempool_sizes[name][:1] + mempool_sizes[name][2:],
+                        "cleanup.transitions", f"{name}/{side}")
+            else:
+                require(observed_pools == mempool_sizes[name],
+                        "cleanup.transitions", f"{name}/{side}")
             require([event.get("generation") for event in events] == event_generations[name],
                     "cleanup.generation", f"{name}/{side}")
             require(events[0]["monotonic_ms"] >= lifecycle_barriers[name],
@@ -891,6 +902,10 @@ def verify_cleanup(cleanup: dict[str, Any], inputs: dict[str, Any], responses: d
                 pair["go"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"] and
                 pair["rs"][inclusion_index]["status_height"] == main_inclusion["post_state"]["height"],
                 "cleanup.link", f"{name} inclusion height is not linked to indexed inclusion")
+        if name == "mempool_capacity" and pair["go"][1]["mempool_size"] == 0:
+            require(pair["go"][1]["status_height"] == main_inclusion["post_state"]["height"] and
+                    pair["rs"][1]["status_height"] == main_inclusion["post_state"]["height"],
+                    "cleanup.link", "post-rejection empty mempool is not linked to A inclusion")
         indexed_heights = [row["go"]["post_state"]["height"] for row in pair["indexed_inclusions"]]
         if name == "mempool_capacity":
             require(pair["go"][4]["status_height"] == indexed_heights[0] and pair["go"][5]["status_height"] == indexed_heights[1],
@@ -1164,7 +1179,8 @@ def verify(root: pathlib.Path) -> None:
     verify_genesis(genesis)
     verify_configs(configs, topology)
     generation_intervals = verify_resources(resources, capture_started, capture_completed, topology, receipts)
-    last_state = verify_cases(inputs, responses, inclusions, cleanup, topology["max_txs_bytes"], receipts, generation_intervals)
+    last_state = verify_cases(inputs, responses, inclusions, cleanup, topology["max_txs"],
+                              topology["max_txs_bytes"], receipts, generation_intervals)
     verify_blob(blob, inputs, receipts)
     verify_cleanup(cleanup, inputs, responses, inclusions, receipts, last_state, generation_intervals)
     require(re.fullmatch(r"[0-9a-f]{64}", EXPECTED_SEMANTIC_DIGEST) is not None,

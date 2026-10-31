@@ -54,6 +54,7 @@ CONFIG_FIELDS = {
         "rpc.max_subscriptions_per_client": ("rpc", "max_subscriptions_per_client"),
         "p2p.pex": ("p2p", "pex"), "p2p.laddr": ("p2p", "laddr"),
         "mempool.broadcast": ("mempool", "broadcast"),
+        "mempool.size": ("mempool", "size"),
         "mempool.max_txs_bytes": ("mempool", "max_txs_bytes"),
         "tx_index.indexer": ("tx_index", "indexer"), "consensus.timeout_commit": ("consensus", "timeout_commit"),
     },
@@ -131,7 +132,7 @@ def load_plan(path: pathlib.Path) -> dict[str, Any]:
     harness.require_fields(plan["homes"], GENERATIONS, "campaign homes")
     harness.require(set(plan["inputs"]) == set(harness.CASE_NAMES), "campaign input inventory differs")
     harness.require_fields(plan["lifecycle_inputs"], LIFECYCLE_INPUTS, "campaign lifecycle inputs")
-    harness.require_fields(plan["capacity"], {"tx_a", "tx_b", "max_txs_bytes"}, "campaign capacity")
+    harness.require_fields(plan["capacity"], {"tx_a", "tx_b", "max_txs", "max_txs_bytes"}, "campaign capacity")
     harness.require_fields(plan["endpoints"], ENDPOINT_NAMES, "campaign endpoints")
     harness.validate_endpoints(plan["endpoints"])
     harness.require_fields(plan["config_files"], GENERATIONS, "campaign config files")
@@ -236,8 +237,10 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         harness.decode_blob(value, f"lifecycle input {name}")
     tx_a = harness.decode_blob(plan["capacity"]["tx_a"], "capacity A")
     tx_b = harness.decode_blob(plan["capacity"]["tx_b"], "capacity B")
+    max_txs = plan["capacity"]["max_txs"]
     maximum = plan["capacity"]["max_txs_bytes"]
-    harness.require(isinstance(maximum, int) and 0 < len(tx_a) <= maximum < len(tx_a) + len(tx_b),
+    harness.require(max_txs == 1 and maximum == harness.MEMPOOL_MAX_TXS_BYTES and
+                    tx_a != tx_b and 0 < len(tx_a) <= maximum and 0 < len(tx_b) <= maximum,
                     "capacity inputs do not exercise the configured boundary")
     harness.require(tx_a == harness.decode_blob(plan["inputs"]["mempool-capacity-recovery"], "capacity case"),
                     "capacity A differs from main case request")
@@ -283,6 +286,9 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     harness.require(maximum == configs["normal"]["go"]["config.toml"]["mempool.max_txs_bytes"] ==
                     configs["normal"]["rs"]["config.toml"]["mempool.max_txs_bytes"],
                     "capacity plan/config maximum differs")
+    harness.require(max_txs == configs["normal"]["go"]["config.toml"]["mempool.size"] ==
+                    configs["normal"]["rs"]["config.toml"]["mempool.size"],
+                    "capacity plan/config transaction count differs")
     for generation in GENERATIONS:
         for role in ROLES:
             config = configs[generation][role]["config.toml"]
@@ -946,8 +952,14 @@ def capacity_lifecycle(state: State, source: dict[str, Any], response: dict[str,
                         {side: response[side] for side in ROLES}, None, previous, expected_pool=1))
     previous = events[-1]["go"]["monotonic_ms"]
     rejected = paired_operation(state, b, "comet-jsonrpc", "sync", "lifecycle-capacity-b")
-    events.append(event(state, "normal", "b-rejected", "mempool-full", rejected["digest"], rejected,
-                        rejected["receipts"], previous, expected_pool=1))
+    rejected_event = event(state, "normal", "b-rejected", "mempool-full", rejected["digest"], rejected,
+                           rejected["receipts"], previous)
+    # The concrete CheckTx response proves the capacity rejection. The next
+    # block may commit A between that response and this follow-up mempool
+    # sample, so both the pre-commit and post-commit observations are valid.
+    harness.require(rejected_event["go"]["mempool_size"] in {0, 1},
+                    "b-rejected mempool transition differs")
+    events.append(rejected_event)
     previous = events[-1]["go"]["monotonic_ms"]
     main = record_main_inclusion(state, source, response)
     events.append(event(state, "normal", "a-included", "included", hashlib.sha256(a).hexdigest(), None, None,
@@ -1204,9 +1216,10 @@ def write_payloads(state: State, resources_only: bool = False) -> None:
         copy_seed(state, name)
     write_new(output / "blob-proxy.json", validated_blob_artifact(state))
     maximum = state.checked["configs"]["normal"]["go"]["config.toml"]["mempool.max_txs_bytes"]
+    max_txs = state.checked["configs"]["normal"]["go"]["config.toml"]["mempool.size"]
     write_new(output / "topology.json", {"generations": state.topology_generations, "pex": False,
                                           "mempool_broadcast": False, "validator_power": {"go": "1", "rs": "1"},
-                                          "max_txs_bytes": maximum,
+                                          "max_txs": max_txs, "max_txs_bytes": maximum,
                                           "max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS,
                                           "max_subscriptions_per_client": 1})
     write_new(output / "inputs.json", {"cases": state.cases, "capacity": state.plan["capacity"],

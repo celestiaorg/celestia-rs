@@ -104,6 +104,10 @@ duplicate or sequence/capacity outcome. Capacity B and every successful
 follow-up have paired indexed inclusion/result/post-state records that advance
 the state consumed by the next main case.
 
+The mempool recovery case uses the effective one-transaction `mempool.size`
+limit. It also records the 400 MiB `max_txs_bytes` floor used by both nodes, so
+the byte limit cannot be silently clamped into a different capacity boundary.
+
 Each main response embeds the complete canonical driver document and its hash,
 then cross-binds every projected response and chronology field to that document.
 Disconnect, cancellation and server timeout deliberately have no client-side

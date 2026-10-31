@@ -40,6 +40,7 @@ ABCI_INFO_RESPONSE_FIELDS = {
     "data", "version", "app_version", "last_block_height", "last_block_app_hash", "timeout_info",
 }
 SUBSCRIPTION_CLIENT_LIMITS = {"go": 4, "rs": 1}
+MEMPOOL_MAX_TXS_BYTES = 400 * 1024**2
 
 CASE_SPECS = (
     ("rest-invalid-base64", "rest", "sync", "transport", "rejected"),

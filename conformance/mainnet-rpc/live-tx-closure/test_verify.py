@@ -115,7 +115,8 @@ def fixture(root: pathlib.Path) -> None:
         topology_generations[generation] = {"endpoints": copy.deepcopy(endpoint_values), "listeners": listeners}
     dump(root / "topology.json", {
         "generations": topology_generations, "pex": False, "mempool_broadcast": False,
-        "validator_power": {"go": "1", "rs": "1"}, "max_txs_bytes": 512,
+        "validator_power": {"go": "1", "rs": "1"}, "max_txs": 1,
+        "max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES,
         "max_subscription_clients": copy.deepcopy(harness.SUBSCRIPTION_CLIENT_LIMITS),
         "max_subscriptions_per_client": 1,
     })
@@ -129,7 +130,8 @@ def fixture(root: pathlib.Path) -> None:
                 "rpc.max_subscription_clients": harness.SUBSCRIPTION_CLIENT_LIMITS[node],
                 "rpc.max_subscriptions_per_client": 1, "p2p.pex": False, "mempool.broadcast": False,
                 "p2p.laddr": endpoint_values[f"{node}_p2p"],
-                "mempool.max_txs_bytes": 512, "tx_index.indexer": "kv", "consensus.timeout_commit": "5s",
+                "mempool.size": 1, "mempool.max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES,
+                "tx_index.indexer": "kv", "consensus.timeout_commit": "5s",
             },
             "app.toml": {"grpc.enable": True, "grpc.address": endpoint_values[f"{node}_sdk"],
                          "grpc-web.enable": False, "api.enable": True,
@@ -151,6 +153,7 @@ def fixture(root: pathlib.Path) -> None:
                             "max_subscriptions_per_client": config["rpc.max_subscriptions_per_client"]},
                     "p2p": {"pex": config["p2p.pex"], "laddr": config["p2p.laddr"]},
                     "mempool": {"broadcast": config["mempool.broadcast"],
+                                "size": config["mempool.size"],
                                 "max_txs_bytes": config["mempool.max_txs_bytes"]},
                     "tx_index": {"indexer": config["tx_index.indexer"]},
                     "consensus": {"timeout_commit": config["consensus.timeout_commit"]},
@@ -336,7 +339,8 @@ def fixture(root: pathlib.Path) -> None:
             height = pre["height"] + 1
     dump(root / "inputs.json", {
         "cases": input_cases,
-        "capacity": {"tx_a": blob(b"A" * 300), "tx_b": blob(b"B" * 300), "max_txs_bytes": 512},
+        "capacity": {"tx_a": blob(b"A" * 300), "tx_b": blob(b"B" * 300),
+                     "max_txs": 1, "max_txs_bytes": harness.MEMPOOL_MAX_TXS_BYTES},
         "lifecycle_inputs": {name: blob(value) for name, value in lifecycle_input_bytes.items()},
     })
     dump(root / "paired-responses.json", {
@@ -651,6 +655,23 @@ class VerifyTest(unittest.TestCase):
             "max_subscription_clients", {"go": 1, "rs": 1}))
         self.reject("topology.capacity", lambda: verify.verify(self.root))
 
+    def test_mempool_count_capacity_is_one(self):
+        self.rewrite("topology.json", lambda value: value.__setitem__("max_txs", 2))
+        self.reject("topology.capacity", lambda: verify.verify(self.root))
+
+    def test_mempool_byte_floor_cannot_be_recorded_below_effective_value(self):
+        self.rewrite("topology.json", lambda value: value.__setitem__("max_txs_bytes", 686))
+        self.reject("topology.capacity", lambda: verify.verify(self.root))
+
+    def test_mempool_count_config_is_bound(self):
+        def mutate(value):
+            for phase in ("normal", "timeout", "restored"):
+                for node in ("go", "rs"):
+                    value[phase][node]["config.toml"]["mempool.size"] = 2
+                    value["full"][phase][node]["config.toml"]["mempool"]["size"] = 2
+        self.rewrite("configs.json", mutate)
+        self.reject("config.capacity", lambda: verify.verify(self.root))
+
     def test_go_subscription_limit_reserves_three_internal_clients(self):
         def mutate(value):
             for phase in ("normal", "timeout", "restored"):
@@ -893,8 +914,12 @@ class VerifyTest(unittest.TestCase):
         self.reject("response.driver|response.grpc", lambda: verify.verify(self.root))
 
     def test_capacity_is_tied_to_input_sizes(self):
-        self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("tx_a", blob(b"C" * 600)))
+        self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("tx_b", blob(b"")))
         self.reject("capacity.boundary", lambda: verify.verify(self.root))
+
+    def test_capacity_input_count_is_bound(self):
+        self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("max_txs", 2))
+        self.reject("capacity.config", lambda: verify.verify(self.root))
 
     def test_capacity_tx_a_is_submitted(self):
         self.rewrite("inputs.json", lambda value: value["capacity"].__setitem__("tx_a", blob(b"C" * 300)))
@@ -973,6 +998,31 @@ class VerifyTest(unittest.TestCase):
                 operation["result_sha256"] = hashlib.sha256(harness.canonical_json(response)).hexdigest()
         self.rewrite("cleanup.json", mutate)
         self.reject("cleanup.outcome", lambda: verify.verify(self.root))
+
+    def test_capacity_rejection_sample_may_follow_a_inclusion(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                rejected = value["mempool_capacity"][side][1]
+                included = value["mempool_capacity"][side][2]
+                rejected["mempool_size"] = 0
+                rejected["status_height"] = included["status_height"]
+        self.rewrite("cleanup.json", mutate)
+        verify.EXPECTED_SEMANTIC_DIGEST = verify.semantic_digest(self.root)
+        verify.verify(self.root)
+
+    def test_capacity_empty_rejection_sample_requires_a_inclusion_height(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                value["mempool_capacity"][side][1]["mempool_size"] = 0
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.link", lambda: verify.verify(self.root))
+
+    def test_capacity_rejection_sample_rejects_unrelated_pool_size(self):
+        def mutate(value):
+            for side in ("go", "rs"):
+                value["mempool_capacity"][side][1]["mempool_size"] = 2
+        self.rewrite("cleanup.json", mutate)
+        self.reject("cleanup.transitions", lambda: verify.verify(self.root))
 
     def test_lifecycle_followup_inclusion_state(self):
         def mutate(value):
