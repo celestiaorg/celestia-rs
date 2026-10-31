@@ -607,7 +607,7 @@ mod tests {
     use super::*;
     use prost::Message as _;
 
-    fn broadcast_request<'a>(body: &'a [u8]) -> Request<'a> {
+    fn broadcast_request(body: &[u8]) -> Request<'_> {
         Request {
             method: "POST",
             path: "/cosmos/tx/v1beta1/txs",
