@@ -204,6 +204,13 @@ class SDKLifecycleVerification(unittest.TestCase):
         mutated["cancellation"]["first_services"][0] = "rebound.Service"
         with self.assertRaises(AssertionError):
             VERIFY.verify_sdk_capture(mutated, "go")
+        oversized = copy.deepcopy(capture)
+        oversized["cancellation"]["first_response_hex"] = self.response(
+            ["cosmos.base.node.v1beta1.Service",
+             "grpc.reflection.v1alpha.ServerReflection", "x" * 4_096]
+        )
+        with self.assertRaises(AssertionError):
+            VERIFY.verify_sdk_capture(oversized, "go")
 
 
 class ProvenanceMutationResistance(unittest.TestCase):

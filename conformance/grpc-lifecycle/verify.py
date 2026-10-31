@@ -823,6 +823,10 @@ def verify_sdk_capture(capture: dict, implementation: str) -> None:
         "cancel_message", "cancel_trailers", "recovered_response_hex",
         "recovered_services", "recovered_headers",
     }
+    first_raw = bytes.fromhex(cancellation["first_response_hex"])
+    recovered_raw = bytes.fromhex(cancellation["recovered_response_hex"])
+    assert 0 < len(first_raw) <= 4_096
+    assert 0 < len(recovered_raw) <= 4_096
     first = reflection_services(cancellation["first_response_hex"])
     recovered = reflection_services(cancellation["recovered_response_hex"])
     assert cancellation["first_services"] == cancellation["recovered_services"] == first == recovered
