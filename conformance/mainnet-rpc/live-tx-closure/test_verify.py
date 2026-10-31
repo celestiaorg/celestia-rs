@@ -155,13 +155,13 @@ def fixture(root: pathlib.Path) -> None:
                                   "full": {"normal": full_config(normal), "timeout": full_config(timeout),
                                            "restored": full_config(normal)}})
     dump(root / "genesis.json", {
-        "genesis_time": NOW.isoformat(), "chain_id": "rs-devnet-187", "initial_height": "1",
-        "consensus_params": {"block": {"max_bytes": "22020096"}},
-        "validators": [
+        "app_name": "celestia-appd", "app_version": "10.5.0",
+        "genesis_time": NOW.isoformat(), "chain_id": "rs-devnet-187", "initial_height": 1,
+        "app_hash": "", "app_state": {"auth": {"accounts": []}},
+        "consensus": {"params": {"block": {"max_bytes": "22020096"}}, "validators": [
             {"address": "A", "pub_key": {"type": "tendermint/PubKeyEd25519", "value": "A"}, "power": "1", "name": "go"},
             {"address": "B", "pub_key": {"type": "tendermint/PubKeyEd25519", "value": "B"}, "power": "1", "name": "rs"},
-        ],
-        "app_hash": "", "app_state": {"auth": {"accounts": []}},
+        ]},
     })
     input_cases = []
     response_cases = []
@@ -517,7 +517,7 @@ def fixture(root: pathlib.Path) -> None:
         "request_id": 0, "method": "broadcast_tx_sync", "request_count": 1, "forward_count": 0,
         "source_hash": source_hashes["blob_proxy.py"], "raw_request": blob(raw_request), "destination": destination,
         "cli_argv": [
-            "tx", "blob", "pay-for-blob", "0x" + namespace_id.hex(), "0x" + blob_data.hex(),
+            "tx", "blob", "pay-for-blob", "0x" + namespace_id[-10:].hex(), "0x" + blob_data.hex(),
             "--from", "celestia1test", "--keyring-backend", "test", "--account-number", "1",
             "--sequence", "22", "--chain-id", "rs-devnet-187", "--offline", "--gas", "200000",
             "--fees", "100utia", "--node", destination, "--broadcast-mode", "sync", "--yes", "--output", "json",
@@ -657,6 +657,10 @@ class VerifyTest(unittest.TestCase):
     def test_empty_genesis(self):
         self.rewrite("genesis.json", lambda value: value.clear())
         self.reject("genesis", lambda: verify.verify(self.root))
+
+    def test_genesis_app_version(self):
+        self.rewrite("genesis.json", lambda value: value.__setitem__("app_version", "10.4.0"))
+        self.reject("genesis.identity", lambda: verify.verify(self.root))
 
     def test_boundary_prestate_disconnect(self):
         self.rewrite("inputs.json", lambda value: value["cases"][0]["boundary"]["go"].__setitem__("app_hash", "other"))
@@ -961,6 +965,15 @@ class VerifyTest(unittest.TestCase):
         self.rewrite("blob-proxy.json", mutate)
         self.reject("blob.cli", lambda: verify.verify(self.root))
 
+    def test_blob_cli_full_canonical_namespace(self):
+        def mutate(value):
+            decoded = harness.decode_canonical_blob_tx(
+                harness.decode_blob(value["envelope"], "blob envelope")
+            )
+            value["cli_argv"][3] = "0x" + decoded["blobs"][0]["namespace_id"].hex()
+        self.rewrite("blob-proxy.json", mutate)
+        self.reject("blob.cli", lambda: verify.verify(self.root))
+
     def test_blob_unwrap_data(self):
         self.rewrite("blob-proxy.json", lambda value: value.__setitem__("data_sha256", "0" * 64))
         self.reject("blob.unwrap", lambda: verify.verify(self.root))
@@ -980,10 +993,10 @@ class VerifyTest(unittest.TestCase):
     def test_campaign_rejects_home_genesis_substitution(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            genesis = {"validators": [
+            genesis = {"consensus": {"params": {}, "validators": [
                 {"name": "go", "address": "A", "pub_key": {"type": "ed25519", "value": "go"}},
                 {"name": "rs", "address": "B", "pub_key": {"type": "ed25519", "value": "rs"}},
-            ]}
+            ]}}
             homes = {}
             for role, address in (("go", "A"), ("rs", "B")):
                 config = root / role / "config"
@@ -995,7 +1008,7 @@ class VerifyTest(unittest.TestCase):
                     "pub_key": {"type": "ed25519", "value": role},
                 })
             campaign.validate_home_provenance(homes, genesis)
-            dump(homes["rs"] / "config" / "genesis.json", {"validators": []})
+            dump(homes["rs"] / "config" / "genesis.json", {"consensus": {"params": {}, "validators": []}})
             self.reject("home genesis differs", lambda: campaign.validate_home_provenance(homes, genesis))
 
     def test_substituted_campaign_module_cannot_execute_before_hash_rejection(self):

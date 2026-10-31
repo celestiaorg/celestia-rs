@@ -247,11 +247,15 @@ def verify_topology(topology: dict[str, Any], receipts: dict[str, Any]) -> None:
 
 
 def verify_genesis(genesis: dict[str, Any]) -> None:
-    fields = {"genesis_time", "chain_id", "initial_height", "consensus_params", "validators", "app_hash", "app_state"}
+    fields = {"app_name", "app_version", "genesis_time", "chain_id", "initial_height", "app_hash", "app_state", "consensus"}
     harness.require_fields(genesis, fields, "genesis")
-    require(genesis["chain_id"] == "rs-devnet-187" and genesis["initial_height"] == "1",
-            "genesis.identity", "chain id/initial height differs")
-    validators = genesis["validators"]
+    require(genesis["app_name"] == "celestia-appd" and genesis["app_version"] == "10.5.0" and
+            genesis["chain_id"] == "rs-devnet-187" and genesis["initial_height"] == 1,
+            "genesis.identity", "app/chain/initial height differs")
+    consensus = harness.require_fields(genesis["consensus"], {"params", "validators"}, "genesis consensus")
+    require(isinstance(consensus["params"], dict) and consensus["params"],
+            "genesis.consensus", "consensus parameters are empty")
+    validators = consensus["validators"]
     require(isinstance(validators, list) and len(validators) == 2, "genesis.validators", "expected exactly two validators")
     addresses: set[str] = set()
     powers: list[int] = []
@@ -1019,7 +1023,7 @@ def verify_blob(blob: dict[str, Any], inputs: dict[str, Any], receipts: dict[str
     names = {row["name"]: row for row in inputs["cases"]}
     prestate = names["blob-envelope"]["pre_state"]["go"]
     expected_argv = [
-        "tx", "blob", "pay-for-blob", "0x" + decoded_blob["namespace_id"].hex(),
+        "tx", "blob", "pay-for-blob", "0x" + decoded_blob["namespace_id"][-10:].hex(),
         "0x" + decoded_blob["data"].hex(), "--from", blob["cli_signer"],
         "--keyring-backend", "test", "--account-number", str(prestate["account_number"]),
         "--sequence", str(prestate["sequence"]), "--chain-id", "rs-devnet-187", "--offline",

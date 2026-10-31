@@ -163,7 +163,8 @@ def normalize_timeout_config(value: dict[str, Any], normal: dict[str, Any]) -> d
 
 
 def validate_home_provenance(homes: dict[str, pathlib.Path], genesis: dict[str, Any]) -> None:
-    validators = {row["name"]: row for row in genesis["validators"]}
+    consensus = harness.require_fields(genesis.get("consensus"), {"params", "validators"}, "genesis consensus")
+    validators = {row["name"]: row for row in consensus["validators"]}
     harness.require(set(validators) == set(ROLES), "genesis validator roles differ")
     for role in ROLES:
         genesis_path = homes[role] / "config" / "genesis.json"
@@ -1037,7 +1038,10 @@ def capture_blob_artifact(state: State, prestate: dict[str, Any]) -> None:
     harness.require(len(decoded["blobs"]) == 1, "BlobTx must contain exactly one blob")
     item = decoded["blobs"][0]
     cli_argv = [
-        "tx", "blob", "pay-for-blob", "0x" + item["namespace_id"].hex(), "0x" + item["data"].hex(),
+        # The BlobTx carries the canonical 28-byte namespace ID. The v10.5
+        # CLI accepts only the 10-byte user-controlled suffix for a v0
+        # namespace and reconstructs the canonical prefix itself.
+        "tx", "blob", "pay-for-blob", "0x" + item["namespace_id"][-10:].hex(), "0x" + item["data"].hex(),
         "--from", frozen["cli_signer"], "--keyring-backend", "test",
         "--account-number", str(prestate["account_number"]), "--sequence", str(prestate["sequence"]),
         "--chain-id", "rs-devnet-187", "--offline", "--gas", "200000", "--fees", "100utia",
