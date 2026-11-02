@@ -332,10 +332,8 @@ fn corpus_v105_authz_feegrant() -> anyhow::Result<()> {
         rest.mismatches.len(),
         rest.mismatches.iter().take(8).collect::<Vec<_>>()
     );
-    eprintln!(
-        "fresh authz/feegrant: ABCI compared={} consensus exclusions={}; REST compared={} consensus exclusions={}",
-        abci.compared, abci.skipped, rest.compared, rest.skipped
-    );
+    assert_eq!(abci.skipped, 16, "review changed consensus exclusions");
+    assert_eq!(rest.skipped, 11, "review changed consensus exclusions");
     Ok(())
 }
 
