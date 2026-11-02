@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-11-02T18:54:57.137869+00:00",
+  "chain_id": "rs-rpc-persistence-prune-kv",
+  "height": 14,
+  "comparison": "decoded-json-exact",
+  "cases": [],
+  "errors": [
+    "Go/Rust tips differ; stop the validator and wait for catch-up before capture"
+  ],
+  "exclusions": [
+    "HTTP Date, X-Server-Time and derived Content-Length",
+    "Cosmos gRPC, REST, WebSocket lifecycle, state sync and pre-v10 multiplexer"
+  ],
+  "go_status": {
+    "status": 200,
+    "content_type": "application/json",
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"node_info\":{\"protocol_version\":{\"p2p\":\"8\",\"block\":\"11\",\"app\":\"10\"},\"id\":\"e98252f507363bcb8533fda606ebc40c85d06686\",\"listen_addr\":\"tcp://0.0.0.0:38776\",\"network\":\"rs-rpc-persistence-prune-kv\",\"version\":\"0.38.17\",\"channels\":\"402022233038606132315051\",\"moniker\":\"node2\",\"other\":{\"tx_index\":\"on\",\"rpc_address\":\"tcp://127.0.0.1:38777\"}},\"sync_info\":{\"latest_block_hash\":\"A5815ED7C62D31B1936248ABDBE7971EB94E9041114B9937F5FDEE9F659C7094\",\"latest_app_hash\":\"1C06502CFC703B9CE05ACA215172E0302AA4093D880EC7DEEF31DD065201287B\",\"latest_block_height\":\"20\",\"latest_block_time\":\"2026-11-02T18:54:45.166782625Z\",\"earliest_block_hash\":\"0E0BD96E1CA18F71157EE5E0E1571D2B8C33570ECF2D8F50C74EAA9D9C76CFB9\",\"earliest_app_hash\":\"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\",\"earliest_block_height\":\"1\",\"earliest_block_time\":\"2026-11-02T18:53:33.745328362Z\",\"catching_up\":false},\"validator_info\":{\"address\":\"45025B3A6E49105EEC5022993AA50006FA236D35\",\"pub_key\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"6TlPnvmocOwMQuyFSngKy3tnpSPUxCNSBSckydOwtuk=\"},\"voting_power\":\"0\"}}}",
+    "body_sha256": "6a2f97952d6a1e5573e1e310349c0459aea10342359e32d184789abed5c560fd"
+  },
+  "rs_status": {
+    "status": 200,
+    "content_type": "application/json",
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"result\":{\"node_info\":{\"protocol_version\":{\"p2p\":\"8\",\"block\":\"11\",\"app\":\"10\"},\"id\":\"2122bef3d8b784faa56c9ed87aa6a24fc8e55b28\",\"listen_addr\":\"tcp://0.0.0.0:38766\",\"network\":\"rs-rpc-persistence-prune-kv\",\"version\":\"0.38.17-celestia-rs.0.1.0-rc.5\",\"channels\":\"40202223303860613231505100\",\"moniker\":\"node1\",\"other\":{\"tx_index\":\"on\",\"rpc_address\":\"tcp://127.0.0.1:38767\"}},\"sync_info\":{\"latest_block_hash\":\"2BE5F82E1C8F62F5CE3939726A2B5541C4DCC11105A728E860F8ECB15E687282\",\"latest_app_hash\":\"D69CDF9FE678AAE077B8ABBB7C073230D6A89E6597D852F40815F19ADEBF4C9F\",\"latest_block_height\":\"22\",\"latest_block_time\":\"2026-11-02T18:54:50.370336489Z\",\"earliest_block_hash\":\"0E0BD96E1CA18F71157EE5E0E1571D2B8C33570ECF2D8F50C74EAA9D9C76CFB9\",\"earliest_app_hash\":\"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\",\"earliest_block_height\":\"1\",\"earliest_block_time\":\"2026-11-02T18:53:33.745328362Z\",\"catching_up\":false},\"validator_info\":{\"address\":\"932A97BAC5324B5CA771F9E703B6DB5741FD97C5\",\"pub_key\":{\"type\":\"tendermint/PubKeyEd25519\",\"value\":\"irUrJKdh7EumAfCgHNKTOa1pfcRZe1qK/HVIgNKFpng=\"},\"voting_power\":\"0\"}}}",
+    "body_sha256": "b4b1c8c288403996399cf7616d46113bf40638469a373c0865f93e5f00e9acde"
+  }
+}

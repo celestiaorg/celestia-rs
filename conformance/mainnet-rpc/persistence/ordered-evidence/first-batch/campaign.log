@@ -1,0 +1,14 @@
+/tmp/rpc-persistence-189-ordered/retain-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/retain-kv/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/retain-kv/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/prune-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/prune-kv/after-restart.json: 0 pairs, 0 mismatches, errors=['Go/Rust tips differ; stop the validator and wait for catch-up before capture']
+/tmp/rpc-persistence-189-ordered/prune-kv/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/retain-null/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/retain-null/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/retain-null/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/prune-null/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/prune-null/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-ordered/prune-null/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+FAILED: prune-kv/after-restart
+node logs: /tmp/tmp.egOJJlo10G

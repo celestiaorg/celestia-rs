@@ -1,0 +1,80 @@
+2026-11-02T18:40:32.812648Z  INFO consensus::state: received complete proposal block height=6
+2026-11-02T18:40:34.789133Z  INFO consensus::state: finalizing commit of block height=6 hash=3533418E4F14866506B5B6BCBCF89B9D8C2E2744FA8A173FFA7ED554A9DF8B9C root=9B97494A487586602E7A7D5FE3D70A0576D59A7A1CC9A442951E8409C39D91A3 num_txs=0
+2026-11-02T18:40:34.798907Z  INFO celestia_rs::node: committed block height=6 hash=3533418E4F14866506B5B6BCBCF89B9D8C2E2744FA8A173FFA7ED554A9DF8B9C app_hash=C7302FF54AE6B49D29A884DC289EE570522CD34A4369F6862D4A758D6DFAE555
+2026-11-02T18:40:35.291303Z  INFO propagation::reactor: adding commitment height=7 round=0 psh=1:532174474871
+2026-11-02T18:40:35.292234Z  INFO consensus::state: received proposal height=7 round=0
+2026-11-02T18:40:35.402213Z  INFO consensus::state: received complete proposal block height=7
+2026-11-02T18:40:37.390844Z  INFO consensus::state: finalizing commit of block height=7 hash=4187C217CA99E67CDB4E3DE2EF95A405689C5CA69AE2C9790398840A4516DBFB root=C7302FF54AE6B49D29A884DC289EE570522CD34A4369F6862D4A758D6DFAE555 num_txs=1
+2026-11-02T18:40:37.401154Z  INFO celestia_rs::node: committed block height=7 hash=4187C217CA99E67CDB4E3DE2EF95A405689C5CA69AE2C9790398840A4516DBFB app_hash=8D1476417A62A044C3A51FED4952FEC9174813C37D27F3253C3D867AB47A14D6
+2026-11-02T18:40:37.891396Z  INFO propagation::reactor: adding commitment height=8 round=0 psh=1:68703C9356CC
+2026-11-02T18:40:37.892062Z  INFO consensus::state: received proposal height=8 round=0
+2026-11-02T18:40:38.004457Z  INFO consensus::state: received complete proposal block height=8
+2026-11-02T18:40:39.992443Z  INFO consensus::state: finalizing commit of block height=8 hash=12CDE80AB5E2BE572028C05403E5AC507B87BDA94D99810B2B20CEF5962EB6CE root=8D1476417A62A044C3A51FED4952FEC9174813C37D27F3253C3D867AB47A14D6 num_txs=0
+2026-11-02T18:40:40.000712Z  INFO celestia_rs::node: committed block height=8 hash=12CDE80AB5E2BE572028C05403E5AC507B87BDA94D99810B2B20CEF5962EB6CE app_hash=A977A9A62D7F2B3458B336776BFF3E69691380A9CEBA57A176DABB8E3EDD78CC
+2026-11-02T18:40:40.492391Z  INFO propagation::reactor: adding commitment height=9 round=0 psh=1:FA254498E017
+2026-11-02T18:40:40.592295Z  INFO consensus::state: received proposal height=9 round=0
+2026-11-02T18:40:40.605916Z  INFO consensus::state: received complete proposal block height=9
+2026-11-02T18:40:42.592563Z  INFO consensus::state: finalizing commit of block height=9 hash=FC71B2A569E5B5BDF87C1047FCF4C6497F0975450912F6DA053A46EA0E36C782 root=A977A9A62D7F2B3458B336776BFF3E69691380A9CEBA57A176DABB8E3EDD78CC num_txs=1
+2026-11-02T18:40:42.603073Z  INFO celestia_rs::node: committed block height=9 hash=FC71B2A569E5B5BDF87C1047FCF4C6497F0975450912F6DA053A46EA0E36C782 app_hash=7562FCC95ECEDA48430695648D5DD0CFFDD3B675CC3F8694B5293DFA09C9E40A
+2026-11-02T18:40:43.093942Z  INFO consensus::state: received proposal height=10 round=0
+2026-11-02T18:40:43.205788Z  INFO consensus::state: received complete proposal block height=10
+2026-11-02T18:40:45.193925Z  INFO consensus::state: finalizing commit of block height=10 hash=98F2636D2ECC87D40DB4005D19F9E48E99E148A4DA78FE9EDC6B215FB2414F21 root=7562FCC95ECEDA48430695648D5DD0CFFDD3B675CC3F8694B5293DFA09C9E40A num_txs=0
+2026-11-02T18:40:45.201050Z  INFO celestia_rs::node: committed block height=10 hash=98F2636D2ECC87D40DB4005D19F9E48E99E148A4DA78FE9EDC6B215FB2414F21 app_hash=0F0D61768F890BB36B1D11C95C2CB7F5EC888D8C9AD9B1686724F6EFAFF0776A
+2026-11-02T18:40:45.694977Z  INFO propagation::reactor: adding commitment height=11 round=0 psh=1:73C28483DDD4
+2026-11-02T18:40:45.695745Z  INFO consensus::state: received proposal height=11 round=0
+2026-11-02T18:40:45.806898Z  INFO consensus::state: received complete proposal block height=11
+2026-11-02T18:40:47.797176Z  INFO consensus::state: finalizing commit of block height=11 hash=B4BA0DDEE6EBC746C53557DF34F3A7153C6887B9862A6EF24BAC4C86FB0618FC root=0F0D61768F890BB36B1D11C95C2CB7F5EC888D8C9AD9B1686724F6EFAFF0776A num_txs=0
+2026-11-02T18:40:47.806171Z  INFO celestia_rs::node: committed block height=11 hash=B4BA0DDEE6EBC746C53557DF34F3A7153C6887B9862A6EF24BAC4C86FB0618FC app_hash=5905B2A07D243CD10C410BCF55F432C94255A109D8759D018065F540BBC438A4
+2026-11-02T18:40:48.295206Z  INFO propagation::reactor: adding commitment height=12 round=0 psh=1:9BDA1ECD8D88
+2026-11-02T18:40:48.395672Z  INFO consensus::state: received proposal height=12 round=0
+2026-11-02T18:40:48.408731Z  INFO consensus::state: received complete proposal block height=12
+2026-11-02T18:40:50.400805Z  INFO consensus::state: finalizing commit of block height=12 hash=05228B7C52ADC457BBC7F8F4F1F1E9EEC652BBF2CA7089200D603DF3B74C47CD root=5905B2A07D243CD10C410BCF55F432C94255A109D8759D018065F540BBC438A4 num_txs=0
+2026-11-02T18:40:50.408032Z  INFO celestia_rs::node: committed block height=12 hash=05228B7C52ADC457BBC7F8F4F1F1E9EEC652BBF2CA7089200D603DF3B74C47CD app_hash=1D7BB36B3266B7C3EA8D8A49511C8A8C77BE33A89C44E16BCBB2A56F75785A39
+2026-11-02T18:40:50.907402Z  INFO propagation::reactor: adding commitment height=13 round=0 psh=1:1215E97793AF
+2026-11-02T18:40:50.909051Z  INFO consensus::state: received proposal height=13 round=0
+2026-11-02T18:40:51.017924Z  INFO consensus::state: received complete proposal block height=13
+2026-11-02T18:40:53.003747Z  INFO consensus::state: finalizing commit of block height=13 hash=6023F0D2A183C15B057EFB6FCFB0C584C4CBEC07B6C7E553309BF58B87BCBC68 root=1D7BB36B3266B7C3EA8D8A49511C8A8C77BE33A89C44E16BCBB2A56F75785A39 num_txs=0
+2026-11-02T18:40:53.016628Z  INFO celestia_rs::node: committed block height=13 hash=6023F0D2A183C15B057EFB6FCFB0C584C4CBEC07B6C7E553309BF58B87BCBC68 app_hash=8871DEE94C0D80A0CE473F9186647C3169362B7C2486E88CA66290789B244B6E
+2026-11-02T18:40:53.499797Z  INFO propagation::reactor: adding commitment height=14 round=0 psh=1:06CB5AC94464
+2026-11-02T18:40:53.600300Z  INFO consensus::state: received proposal height=14 round=0
+2026-11-02T18:40:53.612679Z  INFO consensus::state: received complete proposal block height=14
+2026-11-02T18:40:55.598974Z  INFO consensus::state: finalizing commit of block height=14 hash=9BFC399C603120BBB36EB6607C78BFB86FEE36B662276042CA25C85CA4D2C2A5 root=8871DEE94C0D80A0CE473F9186647C3169362B7C2486E88CA66290789B244B6E num_txs=0
+2026-11-02T18:40:55.606998Z  INFO celestia_rs::node: committed block height=14 hash=9BFC399C603120BBB36EB6607C78BFB86FEE36B662276042CA25C85CA4D2C2A5 app_hash=4798F827C530AD08F7ECAAC591ADB6A579FFFAD4ABCFA5BEB89A49C3F8918736
+2026-11-02T18:40:56.101102Z  INFO propagation::reactor: adding commitment height=15 round=0 psh=1:43166DFE5520
+2026-11-02T18:40:56.102159Z  INFO consensus::state: received proposal height=15 round=0
+2026-11-02T18:40:56.211745Z  INFO consensus::state: received complete proposal block height=15
+2026-11-02T18:40:58.300587Z  INFO consensus::state: finalizing commit of block height=15 hash=FA36A068E3FE1C5992182F1D61947A34D6E429FB2BA7C065C26584BD51EAA1A2 root=4798F827C530AD08F7ECAAC591ADB6A579FFFAD4ABCFA5BEB89A49C3F8918736 num_txs=0
+2026-11-02T18:40:58.307742Z  INFO celestia_rs::node: committed block height=15 hash=FA36A068E3FE1C5992182F1D61947A34D6E429FB2BA7C065C26584BD51EAA1A2 app_hash=01F47BB8BD95C20C064E84AE4ED1BCA41C7EF2D33E6DD2A7F54701B31B1508BE
+2026-11-02T18:40:58.703053Z  INFO propagation::reactor: adding commitment height=16 round=0 psh=1:BA3AE97A11B7
+2026-11-02T18:40:58.801185Z  INFO consensus::state: received proposal height=16 round=0
+2026-11-02T18:40:58.816633Z  INFO consensus::state: received complete proposal block height=16
+2026-11-02T18:41:00.802937Z  INFO consensus::state: finalizing commit of block height=16 hash=D1785D325D3874B03FB5EF84C40473CE93EEA115CE07197BF674D8B64C2D34D1 root=01F47BB8BD95C20C064E84AE4ED1BCA41C7EF2D33E6DD2A7F54701B31B1508BE num_txs=0
+2026-11-02T18:41:00.809672Z  INFO celestia_rs::node: committed block height=16 hash=D1785D325D3874B03FB5EF84C40473CE93EEA115CE07197BF674D8B64C2D34D1 app_hash=6725EC71E3692DD038D5B43DB4D028FA98384B81B737C7F22A9E9A81A8A9B93F
+2026-11-02T18:41:01.304452Z  INFO propagation::reactor: adding commitment height=17 round=0 psh=1:FCEFAFA0BA70
+2026-11-02T18:41:01.305388Z  INFO consensus::state: received proposal height=17 round=0
+2026-11-02T18:41:01.416101Z  INFO consensus::state: received complete proposal block height=17
+2026-11-02T18:41:01.503343Z  INFO p2p::switch: Stopping peer for error peer=Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out} err="EOF"
+2026-11-02T18:41:03.841798Z  INFO celestia_rs::ops: shutting down (flushing state, WAL and stores) signal="SIGTERM"
+2026-11-02T18:41:03.862660Z  INFO celestia_rs: node stopped
+2026-11-02T18:41:04.073455Z  INFO celestia_rs: starting node home=/tmp/tmp.BhT0tupCHM/retain-kv/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T18:41:04.141572Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:38667
+2026-11-02T18:41:04.141681Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:21108
+2026-11-02T18:41:04.146573Z  INFO nodestore::handshake: ABCI Handshake App Info height=16 hash=6725EC71E3692DD038D5B43DB4D028FA98384B81B737C7F22A9E9A81A8A9B93F protocol_version=10
+2026-11-02T18:41:04.146620Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=16 store_height=16 state_height=16
+2026-11-02T18:41:04.146635Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=16 app_hash=6725EC71E3692DD038D5B43DB4D028FA98384B81B737C7F22A9E9A81A8A9B93F
+2026-11-02T18:41:04.146864Z  INFO celestia_rs::node: handshake complete height=16 app_hash=6725EC71E3692DD038D5B43DB4D028FA98384B81B737C7F22A9E9A81A8A9B93F replayed=0
+2026-11-02T18:41:04.152411Z  INFO celestia_rs::net: p2p switch started node_id=857bef86fe32fe4546db2dcd2f176e73d0072fd0 addr=Some(NetAddress(857bef86fe32fe4546db2dcd2f176e73d0072fd0@127.0.0.1:38666)) channels=202223515030313240386061
+2026-11-02T18:41:04.152479Z  INFO celestia_rs::sync: starting block sync height=16 switch_to_consensus=true
+2026-11-02T18:41:04.938886Z  INFO p2p::switch: Added peer peer=Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out}
+2026-11-02T18:41:04.957406Z  INFO p2p::switch: Added peer peer=Peer{MConn{127.0.0.1:38676} 618df47465854adcb42e82b8c6d46b09ef3e0f8e out}
+2026-11-02T18:41:05.152761Z  INFO blocksync::reactor: Time to switch to consensus reactor! height=17
+2026-11-02T18:41:05.153854Z  INFO celestia_rs::node: block sync finished height=16 blocks_synced=0 reason=CaughtUp
+2026-11-02T18:41:05.155825Z  INFO consensus::wal: Searching for height height=17 min=0 max=0
+2026-11-02T18:41:05.157213Z  INFO consensus::wal: Searching for height height=16 min=0 max=0
+2026-11-02T18:41:05.158126Z  INFO consensus::wal: Found height=16 index=0
+2026-11-02T18:41:05.158238Z  INFO consensus::state: Catchup by replaying consensus messages height=17 n=7
+2026-11-02T18:41:07.375040Z  INFO propagation::reactor: adding commitment height=17 round=0 psh=1:FCEFAFA0BA70
+2026-11-02T18:44:14.008577Z  INFO celestia_rs::ops: shutting down (flushing state, WAL and stores) signal="SIGTERM"
+2026-11-02T18:44:14.009261Z  INFO p2p::switch: Stopping peer for error peer=Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out} err="EOF"
+2026-11-02T18:44:14.010330Z  INFO p2p::switch: Stopping peer for error peer=Peer{MConn{127.0.0.1:38676} 618df47465854adcb42e82b8c6d46b09ef3e0f8e out} err="EOF"
+2026-11-02T18:44:14.079501Z  INFO celestia_rs: node stopped

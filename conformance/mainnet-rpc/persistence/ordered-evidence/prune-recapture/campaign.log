@@ -1,0 +1,5 @@
+/tmp/rpc-persistence-189-prune-recapture/prune-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-prune-recapture/prune-kv/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/rpc-persistence-189-prune-recapture/prune-kv/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+All captured fixed-height Comet cases match; captures: /tmp/rpc-persistence-189-prune-recapture
+node logs: /tmp/tmp.kTmtD0LvzW

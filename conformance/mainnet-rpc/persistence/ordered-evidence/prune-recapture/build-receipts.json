@@ -1,0 +1,10 @@
+{
+  "rs_binary_sha256": "89582318e528931a8af99de53571e1294e814942f1f6e272ac087f4fd924cf97",
+  "rs_version": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: ead1f49830d5da5a219d8542efa967b0e757d3bc\nbuild_profile: debug\ntoolchain: rustc 1.98.0 (88d9e12ae 2026-08-18) x86_64-unknown-linux-gnu\napp_version: 10\ncompatibility_target: celestia-app v10.5.0, celestia-core v0.42.3\n",
+  "driver_commit": "a2c929b6f896618c1ae2ff37737c8c9e319ce71c",
+  "sources": {
+    "conformance/devnet/rpc-persistence.sh": "11c34e93ba9fdfd063ee25b42539798dae3c523af4d3c70a5acb2c7fdf71cc57",
+    "conformance/devnet/lib-mixed.sh": "d2791d76164765719553192940842e716115bdeb8900e73994dcaca4a43c3d10",
+    "conformance/mainnet-rpc/persistence/capture.py": "30341bd6a0175bc2071cf339f7caf9b0851eab5990dd7ef46cb99be91138fc49"
+  }
+}

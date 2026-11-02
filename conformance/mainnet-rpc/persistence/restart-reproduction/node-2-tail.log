@@ -1,0 +1,80 @@
+6:41PM INF Completed ABCI Handshake - CometBFT and App are synced appHash={} appHeight=16 module=consensus
+6:41PM INF Version info abci=2.0.0 block=11 commit_hash= module=server p2p=8 tendermint_version=0.38.17
+6:41PM INF This node is not a validator addr=1B55DB05BC6D1FE3FDD857B5989946B71CD53577 module=consensus pubKey=giLzrbbywKHGokl5YW6doNAVmS0tHJZgDCnpNNPRMQo=
+2026/11/02 18:41:04 [JOB 1] WAL file /tmp/tmp.BhT0tupCHM/retain-kv/n2/data/evidence.db/000002.log with log number 000002 stopped reading at offset: 0; replayed 0 keys in 0 batches
+6:41PM INF Consensus reactor created module=server
+6:41PM INF P2P Node ID ID=618df47465854adcb42e82b8c6d46b09ef3e0f8e file=/tmp/tmp.BhT0tupCHM/retain-kv/n2/config/node_key.json module=p2p
+6:41PM INF Adding persistent peers addrs=["9f1289509ba5042cf55b1b17e36200e6377148ec@127.0.0.1:38656","857bef86fe32fe4546db2dcd2f176e73d0072fd0@127.0.0.1:38666"] module=p2p
+6:41PM INF Adding unconditional peer ids ids=[] module=p2p
+6:41PM INF Add our address to book addr={"id":"618df47465854adcb42e82b8c6d46b09ef3e0f8e","ip":"0.0.0.0","port":38676} book=/tmp/tmp.BhT0tupCHM/retain-kv/n2/config/addrbook.json module=p2p
+6:41PM INF service start impl=Node module=server msg={}
+6:41PM INF privval gRPC server running without TLS on loopback only addr=127.0.0.1:38689 module=server
+6:41PM INF Started privval gRPC server addr=127.0.0.1:38689 module=server
+6:41PM INF service start impl="P2P Switch" module=p2p msg={}
+6:41PM INF service start impl=Recovery module=propagation msg={}
+6:41PM INF service start impl=CAT module=server msg={}
+6:41PM INF service start impl=BlockSync module=blocksync msg={}
+6:41PM INF service start impl=BlockPool module=blocksync msg={}
+6:41PM INF service start impl=ConsensusReactor module=consensus msg={}
+6:41PM INF Reactor  module=consensus waitSync=true
+6:41PM INF service start impl=Evidence module=evidence msg={}
+6:41PM INF service start impl=StateSync module=statesync msg={}
+6:41PM INF serve module=rpc-server msg={}
+6:41PM INF service start impl="Peer{MConn{127.0.0.1:42236} 857bef86fe32fe4546db2dcd2f176e73d0072fd0 in}" module=p2p msg={} peer={"id":"857bef86fe32fe4546db2dcd2f176e73d0072fd0","ip":"127.0.0.1","port":42236}
+6:41PM INF service start impl=MConn{127.0.0.1:42236} module=p2p msg={} peer={"id":"857bef86fe32fe4546db2dcd2f176e73d0072fd0","ip":"127.0.0.1","port":42236}
+6:41PM INF Time to switch to consensus reactor! height=17 module=blocksync
+6:41PM INF service stop impl={"Logger":{"Logger":{}}} module=blocksync msg={}
+6:41PM INF SwitchToConsensus module=consensus
+6:41PM INF service start impl=ConsensusState module=consensus msg={}
+6:41PM INF service start impl=baseWAL module=consensus msg={} wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:41PM INF service start impl=Group module=consensus msg={} wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:41PM INF service start impl=TimeoutTicker module=consensus msg={}
+6:41PM INF Searching for height height=17 max=0 min=0 module=consensus wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:41PM INF Searching for height height=16 max=0 min=0 module=consensus wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:41PM INF Found height=16 index=0 module=consensus wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:41PM INF Catchup by replaying consensus messages height=17 module=consensus
+6:41PM INF Replay: New Step height=17 module=consensus round=0 step=RoundStepNewHeight
+6:41PM INF Replay: Timeout dur=497.728574 height=17 module=consensus round=0 step=1
+6:41PM INF Replay: New Step height=17 module=consensus round=0 step=RoundStepPropose
+6:41PM INF Replay: New Step height=17 module=consensus round=0 step=RoundStepPrevote
+6:41PM INF Replay: New Step height=17 module=consensus round=0 step=RoundStepPrecommit
+6:41PM INF Replay: Done module=consensus
+6:41PM INF service start impl="Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out}" module=p2p msg={} peer={"id":"9f1289509ba5042cf55b1b17e36200e6377148ec","ip":"127.0.0.1","port":38656}
+6:41PM INF service start impl=MConn{127.0.0.1:38656} module=p2p msg={} peer={"id":"9f1289509ba5042cf55b1b17e36200e6377148ec","ip":"127.0.0.1","port":38656}
+6:41PM INF adding commitment height=17 module=propagation psh={"hash":"FCEFAFA0BA7022736956E50EED620AC2B80C9FF8542378053FECDAD1228AEAD4","total":1} round=0
+6:41PM INF Timed out dur=3000 height=17 module=consensus round=0 step=3
+6:44PM INF caught signal module=server signal=terminated
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=server msg={}
+6:44PM INF Stopping Node module=server
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=events msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=pubsub msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=txindex msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"857bef86fe32fe4546db2dcd2f176e73d0072fd0","ip":"127.0.0.1","port":42236}
+6:44PM ERR Stopping peer for error err="read tcp 127.0.0.1:38676->127.0.0.1:42236: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:42236} 857bef86fe32fe4546db2dcd2f176e73d0072fd0 in}" reactor=p2p
+6:44PM INF service stop impl="Peer{MConn{127.0.0.1:42236} 857bef86fe32fe4546db2dcd2f176e73d0072fd0 in}" module=p2p msg={} peer={"id":"857bef86fe32fe4546db2dcd2f176e73d0072fd0","ip":"127.0.0.1","port":42236}
+6:44PM ERR canceled grpc subscription. retrying module=rpc
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"9f1289509ba5042cf55b1b17e36200e6377148ec","ip":"127.0.0.1","port":38656}
+6:44PM ERR Stopping peer for error err="read tcp 127.0.0.1:47012->127.0.0.1:38656: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out}" reactor=p2p
+6:44PM INF service stop impl="Peer{MConn{127.0.0.1:38656} 9f1289509ba5042cf55b1b17e36200e6377148ec out}" module=p2p msg={} peer={"id":"9f1289509ba5042cf55b1b17e36200e6377148ec","ip":"127.0.0.1","port":38656}
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"Metrics":{"ApplicationRejectedProposals":{},"BlockGossipPartsReceived":{},"BlockIntervalSeconds":{},"BlockParts":{},"BlockSizeBytes":{},"BlockTimeSeconds":{},"ByzantineValidators":{},"ByzantineValidatorsPower":{},"ChainSizeBytes":{},"CommittedHeight":{},"DuplicateBlockPart":{},"DuplicateVote":{},"FullPrevoteDelay":{},"Height":{},"LateVotes":{},"MissingValidators":{},"MissingValidatorsPower":{},"NumTxs":{},"PrecommitsCounted":{},"PrecommitsStakingPercentage":{},"ProposalCreateCount":{},"ProposalReceiveCount":{},"ProposerMissedProposals":{},"QuorumPrecommitDelay":{},"QuorumPrevoteDelay":{},"RoundDurationSeconds":{},"RoundVotingPowerPercent":{},"Rounds":{},"StartHeight":{},"StepDurationSeconds":{},"TimedOutProposals":{},"TotalTxs":{},"ValidatorLastSignedHeight":{},"ValidatorMissedBlocks":{},"ValidatorPower":{},"Validators":{},"ValidatorsPower":{},"VoteExtensionReceiveCount":{}},"Switch":{"Logger":{"Logger":{}}}} module=consensus msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"StartedPrecommitSleep":{}} module=consensus msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=consensus msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}}} module=consensus msg={} wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:44PM INF service stop impl={"Dir":"/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal","Head":{"ID":"Tv7mBnYqsXgy:/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal","Path":"/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal"},"ID":"group:Tv7mBnYqsXgy:/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal","Logger":{"Logger":{}}} module=consensus msg={} wal=/tmp/tmp.BhT0tupCHM/retain-kv/n2/data/cs.wal/wal
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=evidence msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=statesync msg={}
+6:44PM INF service stop impl={"BlockMaxBytes":33554432,"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=propagation msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=server msg={}
+6:44PM INF service stop impl={"Logger":{"Logger":{}},"Switch":{"Logger":{"Logger":{}}}} module=blocksync msg={}
+6:44PM ERR Error stopping pool err="already stopped" module=blocksync
+6:44PM INF Closing rpc listener listener={"Listener":{}} module=server
+6:44PM INF RPC HTTP server stopped err="accept tcp 127.0.0.1:38677: use of closed network connection" module=rpc-server
+6:44PM ERR Error serving server err="accept tcp 127.0.0.1:38677: use of closed network connection" module=server
+6:44PM INF Closing rpc listener listener={"Listener":{}} module=server
+6:44PM ERR Stopped accept routine, as transport is closed module=p2p numPeers=0
+6:44PM INF Closing blockstore module=server
+6:44PM INF Closing statestore module=server
+6:44PM INF Closing evidencestore module=server
+6:44PM INF Closing application.db module=server
+6:44PM INF Closing snapshots/metadata.db module=server

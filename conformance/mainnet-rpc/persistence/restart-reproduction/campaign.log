@@ -1,0 +1,3 @@
+/tmp/rpc-persistence-189-progress/retain-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+node 1 did not reach height 19
+node logs: /tmp/tmp.BhT0tupCHM
