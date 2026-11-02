@@ -24,7 +24,9 @@ def source(root):
     return {
         "revision": git(root, "rev-parse", "HEAD"),
         "tree": git(root, "rev-parse", "HEAD^{tree}"),
-        "status": git(root, "status", "--porcelain"),
+        # User Git settings must not hide inputs from qualification evidence.
+        "status": git(root, "status", "--porcelain", "--untracked-files=all",
+                      "--ignore-submodules=none"),
     }
 
 

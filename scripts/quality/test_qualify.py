@@ -66,6 +66,46 @@ class QualificationTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "clean worktree"):
                 self.run_check(root, Path(folder) / "out", "pass")
 
+    def test_git_config_cannot_hide_untracked_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.repo(folder)
+            subprocess.run(["git", "-C", str(root), "config",
+                            "status.showUntrackedFiles", "no"], check=True)
+            (root / "untracked.rs").write_text("changed")
+            with self.assertRaisesRegex(ValueError, "clean worktree"):
+                self.run_check(root, Path(folder) / "out", "pass")
+
+    def test_git_config_cannot_hide_source_created_during_check(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.repo(folder)
+            subprocess.run(["git", "-C", str(root), "config",
+                            "status.showUntrackedFiles", "no"], check=True)
+            result, evidence = self.run_check(
+                root, Path(folder) / "out",
+                "from pathlib import Path; Path('untracked.rs').write_text('changed')",
+            )
+            self.assertFalse(result)
+            self.assertEqual(evidence["exit_code"], 0)
+            self.assertEqual(evidence["status"], "failed")
+
+    def test_git_config_cannot_hide_modified_submodule(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.repo(folder)
+            # Make a local gitlink without fetching any external repository.
+            nested = self.repo(root)
+            revision = MODULE.git(nested, "rev-parse", "HEAD")
+            subprocess.run(["git", "-C", str(root), "update-index", "--add",
+                            "--cacheinfo", f"160000,{revision},repo"], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.name=Test",
+                            "-c", "user.email=test@example.invalid", "commit",
+                            "-qm", "gitlink"], check=True)
+            subprocess.run(["git", "-C", str(root), "config",
+                            "diff.ignoreSubmodules", "all"], check=True)
+            self.assertEqual(MODULE.source(root)["status"], "")
+            (nested / "source.txt").write_text("changed")
+            with self.assertRaisesRegex(ValueError, "clean worktree"):
+                self.run_check(root, Path(folder) / "out", "pass")
+
 
 if __name__ == "__main__":
     unittest.main()
