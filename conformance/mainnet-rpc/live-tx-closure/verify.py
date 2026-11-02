@@ -11,6 +11,7 @@ import hashlib
 import ipaddress
 import pathlib
 import re
+import subprocess
 import sys
 import urllib.parse
 from typing import Any
@@ -179,6 +180,26 @@ def urllib_split(value: Any) -> tuple[str, str]:
     return parsed.scheme, parsed.hostname.lower()
 
 
+def verify_lockfile(repository: pathlib.Path, source_commit: str, expected_sha256: str) -> None:
+    """Bind a capture to its build's lockfile, even after dependency updates."""
+    require(re.fullmatch(r"[0-9a-f]{40}", source_commit) is not None,
+            "receipt.rust", "source commit invalid")
+    # The common case also supports source archives without Git metadata.
+    if hashlib.sha256((repository / "Cargo.lock").read_bytes()).hexdigest() == expected_sha256:
+        return
+    try:
+        recorded = subprocess.run(
+            ["git", "show", f"{source_commit}:Cargo.lock"], cwd=repository,
+            check=True, capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise VerificationError(
+            "receipt.rust: recorded Cargo.lock unavailable; fetch the capture's source commit"
+        ) from error
+    require(hashlib.sha256(recorded).hexdigest() == expected_sha256,
+            "receipt.rust", "recorded Cargo.lock hash differs")
+
+
 def verify_receipts(receipts: dict[str, Any], support: dict[str, Any]) -> None:
     harness.require_fields(receipts, {"go", "rust", "transport_client", "capture_sources"}, "build receipts")
     go = harness.require_fields(receipts["go"], {"module", "source_commit", "core_commit", "compiler", "tags", "binary_sha256", "command", "build_info", "build_info_sha256", "cli_source_sha256"}, "Go receipt")
@@ -216,8 +237,7 @@ def verify_receipts(receipts: dict[str, Any], support: dict[str, Any]) -> None:
     require(re.fullmatch(r"[0-9a-f]{64}", rust["binary_sha256"]) is not None,
             "receipt.rust", "Rust binary hash invalid")
     repository = pathlib.Path(__file__).resolve().parents[3]
-    require(hashlib.sha256((repository / "Cargo.lock").read_bytes()).hexdigest() == rust["cargo_lock_sha256"],
-            "receipt.rust", "Cargo.lock hash differs")
+    verify_lockfile(repository, rust["source_commit"], rust["cargo_lock_sha256"])
     client = harness.require_fields(receipts["transport_client"], {"binary_sha256", "source_sha256", "go_mod_sha256", "go_sum_sha256", "compiler", "command"}, "transport client receipt")
     client_root = repository / "conformance/provider-client"
     require(re.fullmatch(r"[0-9a-f]{64}", client["binary_sha256"]) is not None,
