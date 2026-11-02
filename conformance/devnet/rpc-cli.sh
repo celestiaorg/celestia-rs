@@ -48,12 +48,20 @@ rm -f "$H/config/app.toml.bak"
 # tx/block indexing (`celestia-appd init` writes indexer = "null")
 sed -i.bak 's#^indexer = "null"#indexer = "kv"#' "$H/config/config.toml"
 rm -f "$H/config/config.toml.bak"
+# /block_results requires retained FinalizeBlock responses; Go init discards them.
+sed -i.bak 's#^discard_abci_responses = true#discard_abci_responses = false#' "$H/config/config.toml"
+rm -f "$H/config/config.toml.bak"
 P_RPC=$((26657 + OFF))
 NODE=tcp://127.0.0.1:$P_RPC
 RPC=http://127.0.0.1:$P_RPC
 
 PID=
-cleanup() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; wait 2>/dev/null || true; rm -rf "$W"; }
+cleanup() {
+  local status=$?
+  if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+  wait 2>/dev/null || true
+  if [ "$status" -eq 0 ]; then rm -rf "$W"; else echo "logs: $W"; fi
+}
 trap cleanup EXIT
 fail() { echo "FAILED: $*"; tail -n 30 "$W/node.log" | sed 's/\x1b\[[0-9;]*m//g'; exit 1; }
 json() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
@@ -83,7 +91,7 @@ check 'd["node_info"]["network"]=="'$CHAIN_ID'" and int(d["sync_info"]["latest_b
 check 'd["header"]["height"]=="2"' "query block --type=height 2" "$(q block --type=height 2)"
 check 'int(d["total_count"])>=2 and len(d["blocks"])==2' "query blocks (block_search)" \
   "$(q blocks --query "block.height >= 2" --limit 2)"
-check '"txs_results" in d or "finalize_block_events" in d or "height" in d' "query block-results 2" "$(q block-results 2)"
+check 'd["height"]=="2"' "query block-results 2" "$(q block-results 2)"
 check 'any(c["denom"]=="utia" for c in d["balances"])' "query bank balances" "$(q bank balances "$USER0")"
 check 'd["account"]["value"]["address"]=="'$USER0'"' "query auth account" "$(q auth account "$USER0")"
 check 'd["validator"]["operator_address"]=="'$VALOPER'"' "query staking validator" "$(q staking validator "$VALOPER")"

@@ -207,10 +207,23 @@ for i, k in enumerate(kinds):
         if m:
             seen[int(m.group(1))] = (m.group(2), m.group(3))
     missing = [h for h in range(1, upto + 1) if h not in seen]
-    # Heights committed while a node was down come from catch-up and are
-    # logged too, so every height must be present.
-    if missing:
-        fail.append(f"rust node {i} missing heights {missing[:10]}{'...' if len(missing) > 10 else ''}")
+    # SIGKILL can land after persistence but before the commit log is flushed.
+    # Handshake replay need not emit the normal commit log either. Verify those
+    # heights from this node's retained blocks, including the post-commit app
+    # hash in the following header, rather than treating a log as durable state.
+    recovered = 0
+    for h in missing:
+        try:
+            b = rpc(i, f"/block?height={h}")
+            following = rpc(i, f"/block?height={h + 1}")
+            if int(b["block"]["header"]["height"]) != h or int(following["block"]["header"]["height"]) != h + 1:
+                raise ValueError("unexpected retained block height")
+            seen[h] = (b["block_id"]["hash"].upper(), following["block"]["header"]["app_hash"].upper())
+            recovered += 1
+        except Exception as exc:
+            fail.append(f"rust node {i} missing persisted height {h}: {exc}")
+    if recovered:
+        print(f"[{label}] rust node {i}: verified {recovered} unlogged heights through RPC")
     bad = 0
     for h, (bh, ah) in seen.items():
         if h > upto:
@@ -277,4 +290,3 @@ workload() { # <dir> <rpc-node-index> <blob-rpc-node-index>
   grep -E "^pfb" "$dir/blob.log" | head -30 || true
   for i in $(seq 1 6); do send user0 bank send "$u0" "$u1" "$((3000 + i))utia"; sleep 1; done
 }
-
