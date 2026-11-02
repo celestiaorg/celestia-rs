@@ -1,0 +1,4055 @@
+{
+  "tip_height": 16,
+  "historical_height": 14,
+  "pairs": [
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e3939393939393939393339363934",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e3939393939393939393339363934",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "54"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "99999999939694"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "54"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "99999999939694"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "0",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "0",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "107"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "109"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a9f010a202f636f736d6f732e617574682e763162657461312e426173654163636f756e74127b0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102c4ce756e8e5f7dcea90e5095dc8ee949049a11de07eec754cea496e4d60961122003",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a9f010a202f636f736d6f732e617574682e763162657461312e426173654163636f756e74127b0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102c4ce756e8e5f7dcea90e5095dc8ee949049a11de07eec754cea496e4d60961122003",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "259"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": {
+              "@type": "/cosmos.crypto.secp256k1.PubKey",
+              "key": "AsTOdW6OX33OqQ5QldyO6UkEmhHeB+7HVM6kluTWCWES"
+            },
+            "account_number": "0",
+            "sequence": "3"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "259"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": {
+              "@type": "/cosmos.crypto.secp256k1.PubKey",
+              "key": "AsTOdW6OX33OqQ5QldyO6UkEmhHeB+7HVM6kluTWCWES"
+            },
+            "account_number": "0",
+            "sequence": "3"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "16"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "0",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "16"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f313030303030303030303030303030",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f313030303030303030303030303030",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "55"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "100000000000000"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "55"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "100000000000000"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "1",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "1",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "107"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "109"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a550a202f636f736d6f732e617574682e763162657461312e426173654163636f756e7412310a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a550a202f636f736d6f732e617574682e763162657461312e426173654163636f756e7412310a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "167"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": null,
+            "account_number": "0",
+            "sequence": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "167"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": null,
+            "account_number": "0",
+            "sequence": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f3130303030303030303030303030301200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f3130303030303030303030303030301200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "101"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "100000000000000"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "101"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "100000000000000"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f3130303030303030303030303030301200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a170a0475746961120f3130303030303030303030303030301200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:39 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "101"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654499"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "100000000000000"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "101"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "100000000000000"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "1"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "1"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e3939393939393939393339363934",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e3939393939393939393339363934",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "54"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "99999999939694"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "54"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "balance": {
+            "denom": "utia",
+            "amount": "99999999939694"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "14",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 3,
+        "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+        "headers": {
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "14",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "107"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 400,
+        "headers": {
+          "Content-Length": [
+            "109"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "code": 3,
+          "message": "invalid address: decoding bech32 failed: invalid bech32 string length 3",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a9f010a202f636f736d6f732e617574682e763162657461312e426173654163636f756e74127b0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102c4ce756e8e5f7dcea90e5095dc8ee949049a11de07eec754cea496e4d60961122003",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a9f010a202f636f736d6f732e617574682e763162657461312e426173654163636f756e74127b0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712460a1f2f636f736d6f732e63727970746f2e736563703235366b312e5075624b657912230a2102c4ce756e8e5f7dcea90e5095dc8ee949049a11de07eec754cea496e4d60961122003",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "259"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": {
+              "@type": "/cosmos.crypto.secp256k1.PubKey",
+              "key": "AsTOdW6OX33OqQ5QldyO6UkEmhHeB+7HVM6kluTWCWES"
+            },
+            "account_number": "0",
+            "sequence": "3"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "259"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "account": {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+            "pub_key": {
+              "@type": "/cosmos.crypto.secp256k1.PubKey",
+              "key": "AsTOdW6OX33OqQ5QldyO6UkEmhHeB+7HVM6kluTWCWES"
+            },
+            "account_number": "0",
+            "sequence": "3"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "12021001",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "1"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "0a160a0475746961120e39393939393939393933393639341200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "100"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "balances": [
+            {
+              "denom": "utia",
+              "amount": "99999999939694"
+            }
+          ],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "RS": {
+        "code": 0,
+        "value_hex": "1200",
+        "headers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "x-cosmos-block-height": [
+            "14"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "14",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "RS": {
+        "code": 200,
+        "headers": {
+          "Content-Length": [
+            "58"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "Grpc-Metadata-Content-Type": [
+            "application/grpc+cosmos-sdk-grpc-codec"
+          ],
+          "Grpc-Metadata-X-Cosmos-Block-Height": [
+            "14"
+          ]
+        },
+        "body": {
+          "balances": [],
+          "pagination": {
+            "next_key": null,
+            "total": "0"
+          }
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "116",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "116",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "116",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "146"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 26: invalid height: cannot query with height in the future; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "-1",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "-1",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "-1",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "137"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: cannot query with height \u003c 0; please provide a valid height",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "balance",
+        "Method": "/cosmos.bank.v1beta1.Query/Balance",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g/by_denom?denom=utia",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120475746961"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "garbage",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-address",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/bad",
+        "Height": "garbage",
+        "RequestHex": "0a03626164"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "account",
+        "Method": "/cosmos.auth.v1beta1.Query/Account",
+        "Rest": "/cosmos/auth/v1beta1/accounts/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "offset",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=1\u0026pagination.limit=1\u0026pagination.count_total=true",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c633435671206100118012001"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "reverse",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.limit=1\u0026pagination.reverse=true",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120418012801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "invalid-cursor",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.key=AQI%3D\u0026pagination.limit=1",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c6334356712060a0201021801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "grpc",
+      "Go": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ]
+        }
+      },
+      "RS": {
+        "code": 2,
+        "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+        "headers": null,
+        "trailers": {
+          "content-type": [
+            "application/grpc+proto"
+          ],
+          "date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        }
+      },
+      "match": true
+    },
+    {
+      "input": {
+        "Name": "empty-page",
+        "Method": "/cosmos.bank.v1beta1.Query/AllBalances",
+        "Rest": "/cosmos/bank/v1beta1/balances/celestia1wf34ckdtv0wr7t40cvke4qjggljeg9q2flc45g?pagination.offset=999\u0026pagination.limit=1",
+        "Height": "garbage",
+        "RequestHex": "0a2f63656c65737469613177663334636b6474763077723774343063766b6534716a67676c6a6567397132666c63343567120510e7071801"
+      },
+      "transport": "rest",
+      "Go": {
+        "code": 500,
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ],
+          "X-Server-Time": [
+            "1793654500"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "RS": {
+        "code": 500,
+        "headers": {
+          "Content-Length": [
+            "208"
+          ],
+          "Content-Type": [
+            "application/json"
+          ],
+          "Date": [
+            "Mon, 02 Nov 2026 21:21:40 GMT"
+          ]
+        },
+        "body": {
+          "code": 2,
+          "message": "codespace sdk code 18: invalid request: Baseapp.RegisterGRPCServer: invalid height header \"x-cosmos-block-height\": strconv.ParseInt: parsing \"garbage\": invalid syntax",
+          "details": []
+        }
+      },
+      "match": true
+    }
+  ],
+  "normalizations": [
+    "Go diagnostic source frames only",
+    "Date, server timing, content length and unrelated HTTP headers excluded; stable content type and height metadata retained",
+    "JSON object key order and whitespace only; array and pagination order retained"
+  ]
+}

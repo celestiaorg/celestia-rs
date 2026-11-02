@@ -1,0 +1,126 @@
+test_artifact_class_sets_reject_deletion_and_duplicates (test_coverage.EvidenceAdmission.test_artifact_class_sets_reject_deletion_and_duplicates) ... ok
+test_bound_state_values_are_parsed_from_the_receipt (test_coverage.EvidenceAdmission.test_bound_state_values_are_parsed_from_the_receipt) ... ok
+test_broadcast_review_binds_all_available_core_selectors (test_coverage.EvidenceAdmission.test_broadcast_review_binds_all_available_core_selectors) ... ok
+test_changed_input_is_not_silently_accepted (test_coverage.EvidenceAdmission.test_changed_input_is_not_silently_accepted) ... ok
+test_complete_manifest_is_admitted (test_coverage.EvidenceAdmission.test_complete_manifest_is_admitted) ... ok
+test_current_runner_rejects_zero_selected_tests (test_coverage.EvidenceAdmission.test_current_runner_rejects_zero_selected_tests) ... ok
+test_dependency_commits_must_match_selected_releases (test_coverage.EvidenceAdmission.test_dependency_commits_must_match_selected_releases) ... ok
+test_endpoint_and_selector_sets_reject_deletion_and_duplicates (test_coverage.EvidenceAdmission.test_endpoint_and_selector_sets_reject_deletion_and_duplicates) ... ok
+test_every_artifact_class_has_a_symmetric_presence_blocker (test_coverage.EvidenceAdmission.test_every_artifact_class_has_a_symmetric_presence_blocker) ... ok
+test_exact_comparison_may_record_a_mismatch (test_coverage.EvidenceAdmission.test_exact_comparison_may_record_a_mismatch) ... ok
+test_inventory_distinguishes_declarations_and_reflection (test_coverage.EvidenceAdmission.test_inventory_distinguishes_declarations_and_reflection) ... ok
+test_merged_current_release_reviews_remain_unadmitted (test_coverage.EvidenceAdmission.test_merged_current_release_reviews_remain_unadmitted) ... ok
+test_mismatched_height_and_root_are_rejected (test_coverage.EvidenceAdmission.test_mismatched_height_and_root_are_rejected) ... ok
+test_missing_explanation_and_selector_fail (test_coverage.EvidenceAdmission.test_missing_explanation_and_selector_fail) ... ok
+test_normalization_cannot_count_as_exact (test_coverage.EvidenceAdmission.test_normalization_cannot_count_as_exact) ... ok
+test_normalized_result_requires_a_normalization_policy (test_coverage.EvidenceAdmission.test_normalized_result_requires_a_normalization_policy) ... ok
+test_old_release_cannot_be_admitted_as_current (test_coverage.EvidenceAdmission.test_old_release_cannot_be_admitted_as_current) ... ok
+test_out_of_tree_artifact_fails (test_coverage.EvidenceAdmission.test_out_of_tree_artifact_fails) ... ok
+test_review_artifact_and_regression_source_hashes_are_bound (test_coverage.EvidenceAdmission.test_review_artifact_and_regression_source_hashes_are_bound) ... ok
+test_review_cannot_claim_an_unrecorded_rust_binary (test_coverage.EvidenceAdmission.test_review_cannot_claim_an_unrecorded_rust_binary) ... ok
+test_review_cannot_hide_missing_matched_state (test_coverage.EvidenceAdmission.test_review_cannot_hide_missing_matched_state) ... ok
+test_stale_or_later_mainnet_observation_fails (test_coverage.EvidenceAdmission.test_stale_or_later_mainnet_observation_fails) ... ok
+test_valid_artifact_cannot_be_rebound_to_another_class (test_coverage.EvidenceAdmission.test_valid_artifact_cannot_be_rebound_to_another_class) ... ok
+test_blob_submission_and_final_capacity (test_live_tx.LiveTransactionEvidence.test_blob_submission_and_final_capacity) ... ok
+test_blocks_and_state_snapshots_are_structurally_verified (test_live_tx.LiveTransactionEvidence.test_blocks_and_state_snapshots_are_structurally_verified) ... ok
+test_case_inventory_transports_modes_and_exact_requests (test_live_tx.LiveTransactionEvidence.test_case_inventory_transports_modes_and_exact_requests) ... ok
+test_grpc_success_payloads_metadata_and_http_transport_status (test_live_tx.LiveTransactionEvidence.test_grpc_success_payloads_metadata_and_http_transport_status) ... ok
+test_mainnet_observation_is_fresh_ordered_and_self_consistent (test_live_tx.LiveTransactionEvidence.test_mainnet_observation_is_fresh_ordered_and_self_consistent) ... ok
+test_rejections_duplicates_and_protobuf_codes (test_live_tx.LiveTransactionEvidence.test_rejections_duplicates_and_protobuf_codes) ... ok
+test_sources_artifacts_builds_and_inputs_are_bound (test_live_tx.LiveTransactionEvidence.test_sources_artifacts_builds_and_inputs_are_bound) ... ok
+test_success_inclusion_heights_gas_events_and_cleanup (test_live_tx.LiveTransactionEvidence.test_success_inclusion_heights_gas_events_and_cleanup) ... ok
+test_complete_capture_passes (test_live_tx_closure.LiveTransactionClosureEvidence.test_complete_capture_passes) ... ok
+test_semantic_mutation_suite_passes (test_live_tx_closure.LiveTransactionClosureEvidence.test_semantic_mutation_suite_passes) ... ......................................................................................................................................................
+----------------------------------------------------------------------
+Ran 150 tests in 5.410s
+
+OK
+ok
+test_dependency_update_preserves_historical_evidence (test_live_tx_closure.LockfileProvenance.test_dependency_update_preserves_historical_evidence) ... ok
+test_missing_recorded_commit_fails_closed (test_live_tx_closure.LockfileProvenance.test_missing_recorded_commit_fails_closed) ... ok
+test_rewritten_receipt_hash_is_rejected (test_live_tx_closure.LockfileProvenance.test_rewritten_receipt_hash_is_rejected) ... ok
+test_unchanged_lockfile_needs_no_historical_object (test_live_tx_closure.LockfileProvenance.test_unchanged_lockfile_needs_no_historical_object) ... ok
+test_missing_capture_path_fails_closed (test_populated_governance.PopulatedGovernanceProvenance.test_missing_capture_path_fails_closed) ... ok
+test_recorded_sources_match_capture_commit (test_populated_governance.PopulatedGovernanceProvenance.test_recorded_sources_match_capture_commit) ... ok
+test_unavailable_capture_object_fails_closed (test_populated_governance.PopulatedGovernanceProvenance.test_unavailable_capture_object_fails_closed) ... ok
+test_wrong_recorded_source_hash_fails (test_populated_governance.PopulatedGovernanceProvenance.test_wrong_recorded_source_hash_fails) ... ok
+test_abci_comet_and_grpc_return_identical_protobuf (test_populated_staking.PopulatedStakingEvidence.test_abci_comet_and_grpc_return_identical_protobuf) ... ok
+test_block_archive_and_state_snapshots_are_structurally_verified (test_populated_staking.PopulatedStakingEvidence.test_block_archive_and_state_snapshots_are_structurally_verified) ... ok
+test_committing_root_and_inventory (test_populated_staking.PopulatedStakingEvidence.test_committing_root_and_inventory) ... ok
+test_observation_freshness_raw_hashes_and_agreement (test_populated_staking.PopulatedStakingEvidence.test_observation_freshness_raw_hashes_and_agreement) ... ok
+test_populated_pagination_and_historical_controls (test_populated_staking.PopulatedStakingEvidence.test_populated_pagination_and_historical_controls) ... ok
+test_sources_artifacts_and_oracles_are_bound (test_populated_staking.PopulatedStakingEvidence.test_sources_artifacts_and_oracles_are_bound) ... ok
+test_bank_errors_cannot_be_hidden_after_rehash (test_provider_soak.ProviderSoakEvidence.test_bank_errors_cannot_be_hidden_after_rehash) ... ok
+test_candidate_commit_rebinding_fails_after_rehash (test_provider_soak.ProviderSoakEvidence.test_candidate_commit_rebinding_fails_after_rehash) ... ok
+test_capture_source_hash_mismatch_fails (test_provider_soak.ProviderSoakEvidence.test_capture_source_hash_mismatch_fails) ... ok
+test_capture_source_inventory_cannot_be_removed_after_rehash (test_provider_soak.ProviderSoakEvidence.test_capture_source_inventory_cannot_be_removed_after_rehash) ... ok
+test_changed_artifact_hash_fails (test_provider_soak.ProviderSoakEvidence.test_changed_artifact_hash_fails) ... ok
+test_checksum_inventory_cannot_omit_an_artifact (test_provider_soak.ProviderSoakEvidence.test_checksum_inventory_cannot_omit_an_artifact) ... ok
+test_complete_capture_passes (test_provider_soak.ProviderSoakEvidence.test_complete_capture_passes) ... ok
+test_expected_go_websocket_noise_is_frozen (test_provider_soak.ProviderSoakEvidence.test_expected_go_websocket_noise_is_frozen) ... ok
+test_failed_provider_result_fails_after_rehash (test_provider_soak.ProviderSoakEvidence.test_failed_provider_result_fails_after_rehash) ... ok
+test_full_node_cannot_be_recorded_as_block_proposer (test_provider_soak.ProviderSoakEvidence.test_full_node_cannot_be_recorded_as_block_proposer) ... ok
+test_full_node_cannot_be_relabelled_as_validator (test_provider_soak.ProviderSoakEvidence.test_full_node_cannot_be_relabelled_as_validator) ... ok
+test_go_build_recipe_module_rebinding_fails_after_rehash (test_provider_soak.ProviderSoakEvidence.test_go_build_recipe_module_rebinding_fails_after_rehash) ... ok
+test_missing_captured_git_object_fails_closed (test_provider_soak.ProviderSoakEvidence.test_missing_captured_git_object_fails_closed) ... ok
+test_missing_provider_operation_fails_after_rehash (test_provider_soak.ProviderSoakEvidence.test_missing_provider_operation_fails_after_rehash) ... ok
+test_non_final_report_fails_after_rehash (test_provider_soak.ProviderSoakEvidence.test_non_final_report_fails_after_rehash) ... ok
+test_noncontiguous_block_hashes_fail_after_rehash (test_provider_soak.ProviderSoakEvidence.test_noncontiguous_block_hashes_fail_after_rehash) ... ok
+test_observation_timestamp_must_be_timezone_aware (test_provider_soak.ProviderSoakEvidence.test_observation_timestamp_must_be_timezone_aware) ... ok
+test_per_node_operation_counts_cannot_be_redistributed (test_provider_soak.ProviderSoakEvidence.test_per_node_operation_counts_cannot_be_redistributed) ... ok
+test_provider_events_cannot_be_rebound_to_one_node (test_provider_soak.ProviderSoakEvidence.test_provider_events_cannot_be_rebound_to_one_node) ... ok
+test_publication_support_file_cannot_be_removed (test_provider_soak.ProviderSoakEvidence.test_publication_support_file_cannot_be_removed) ... ok
+test_staking_rejections_cannot_be_removed_after_rehash (test_provider_soak.ProviderSoakEvidence.test_staking_rejections_cannot_be_removed_after_rehash) ... ok
+test_status_protocol_cannot_disagree_with_app_version (test_provider_soak.ProviderSoakEvidence.test_status_protocol_cannot_disagree_with_app_version) ... ok
+test_transaction_cutoff_cannot_be_hidden_after_rehash (test_provider_soak.ProviderSoakEvidence.test_transaction_cutoff_cannot_be_hidden_after_rehash) ... ok
+test_unlisted_file_cannot_hide_outside_checksum_inventory (test_provider_soak.ProviderSoakEvidence.test_unlisted_file_cannot_hide_outside_checksum_inventory) ... ok
+test_dynamic_header_cannot_be_admitted_as_stable (test_rest_post_boundaries.RestPostBoundaryEvidence.test_dynamic_header_cannot_be_admitted_as_stable) ... ok
+test_frozen_fixture_and_provenance_verify (test_rest_post_boundaries.RestPostBoundaryEvidence.test_frozen_fixture_and_provenance_verify) ... ok
+test_raw_response_mutation_is_rejected (test_rest_post_boundaries.RestPostBoundaryEvidence.test_raw_response_mutation_is_rejected) ... ok
+test_rebound_mainnet_height_mismatch_is_rejected (test_rest_post_boundaries.RestPostBoundaryEvidence.test_rebound_mainnet_height_mismatch_is_rejected) ... ok
+test_rebound_mainnet_protocol_app_mismatch_is_rejected (test_rest_post_boundaries.RestPostBoundaryEvidence.test_rebound_mainnet_protocol_app_mismatch_is_rejected) ... ok
+test_unexpected_case_rename_is_rejected_by_complete_inventory (test_rest_post_boundaries.RestPostBoundaryEvidence.test_unexpected_case_rename_is_rejected_by_complete_inventory) ... ok
+test_complete_scoped_inventory_preserves_readiness_limit (test_scope_audit.ScopedEvidenceAudit.test_complete_scoped_inventory_preserves_readiness_limit) ... ok
+test_deviations_scope_and_provenance_limits_cannot_be_erased (test_scope_audit.ScopedEvidenceAudit.test_deviations_scope_and_provenance_limits_cannot_be_erased) ... ok
+test_each_behavior_binds_every_package_and_retains_gaps (test_scope_audit.ScopedEvidenceAudit.test_each_behavior_binds_every_package_and_retains_gaps) ... ok
+test_go_only_capture_cannot_be_promoted_to_parity (test_scope_audit.ScopedEvidenceAudit.test_go_only_capture_cannot_be_promoted_to_parity) ... ok
+test_grpc_lifecycle_closure_scope_and_limits_stay_bound (test_scope_audit.ScopedEvidenceAudit.test_grpc_lifecycle_closure_scope_and_limits_stay_bound) ... ok
+test_live_transaction_closure_stays_bound_with_its_limits (test_scope_audit.ScopedEvidenceAudit.test_live_transaction_closure_stays_bound_with_its_limits) ... ok
+test_merged_live_transaction_replay_stays_bound_with_its_limits (test_scope_audit.ScopedEvidenceAudit.test_merged_live_transaction_replay_stays_bound_with_its_limits) ... ok
+test_offline_verifier_cannot_be_removed (test_scope_audit.ScopedEvidenceAudit.test_offline_verifier_cannot_be_removed) ... ok
+test_package_deletion_and_duplicate_are_rejected (test_scope_audit.ScopedEvidenceAudit.test_package_deletion_and_duplicate_are_rejected) ... ok
+test_persistence_conditions_cannot_be_erased (test_scope_audit.ScopedEvidenceAudit.test_persistence_conditions_cannot_be_erased) ... ok
+test_populated_governance_scope_and_remaining_gaps_stay_bound (test_scope_audit.ScopedEvidenceAudit.test_populated_governance_scope_and_remaining_gaps_stay_bound) ... ok
+test_provider_readiness_and_missing_issue_cannot_be_hidden (test_scope_audit.ScopedEvidenceAudit.test_provider_readiness_and_missing_issue_cannot_be_hidden) ... ok
+test_proxy_tls_framing_closure_scope_and_limits_stay_bound (test_scope_audit.ScopedEvidenceAudit.test_proxy_tls_framing_closure_scope_and_limits_stay_bound) ... ok
+test_rebound_valid_receipt_and_stale_hash_are_rejected (test_scope_audit.ScopedEvidenceAudit.test_rebound_valid_receipt_and_stale_hash_are_rejected) ... ok
+test_reviewed_baseline_cannot_be_rebound (test_scope_audit.ScopedEvidenceAudit.test_reviewed_baseline_cannot_be_rebound) ... ok
+test_runtime_selectors_cannot_be_omitted_or_rebound (test_scope_audit.ScopedEvidenceAudit.test_runtime_selectors_cannot_be_omitted_or_rebound) ... ok
+test_transport_scope_cannot_be_broadened (test_scope_audit.ScopedEvidenceAudit.test_transport_scope_cannot_be_broadened) ... ok
+test_verifier_execution_uses_only_registered_python_sources (test_scope_audit.ScopedEvidenceAudit.test_verifier_execution_uses_only_registered_python_sources) ... ok
+test_websocket_closure_bindings_and_limits_cannot_regress (test_scope_audit.ScopedEvidenceAudit.test_websocket_closure_bindings_and_limits_cannot_regress) ... ok
+test_acceptance_criterion_cannot_disappear (test_websocket_closure.WebSocketClosureEvidence.test_acceptance_criterion_cannot_disappear) ... ok
+test_acceptance_evidence_cannot_be_rewritten (test_websocket_closure.WebSocketClosureEvidence.test_acceptance_evidence_cannot_be_rewritten) ... ok
+test_complete_closure_passes (test_websocket_closure.WebSocketClosureEvidence.test_complete_closure_passes) ... verified 18 hashed artifacts and WebSocket lifecycle invariants
+provider soak evidence verified: 310s, 111 heights, 990/990 provider operations
+ok
+test_deleted_evidence_file_is_rejected (test_websocket_closure.WebSocketClosureEvidence.test_deleted_evidence_file_is_rejected) ... ok
+test_extra_evidence_file_is_rejected (test_websocket_closure.WebSocketClosureEvidence.test_extra_evidence_file_is_rejected) ... ok
+test_lifecycle_artifact_cannot_be_rebound (test_websocket_closure.WebSocketClosureEvidence.test_lifecycle_artifact_cannot_be_rebound) ... ok
+test_lifecycle_paths_cannot_alias_one_artifact (test_websocket_closure.WebSocketClosureEvidence.test_lifecycle_paths_cannot_alias_one_artifact) ... ok
+test_limitations_and_normalizations_cannot_disappear (test_websocket_closure.WebSocketClosureEvidence.test_limitations_and_normalizations_cannot_disappear) ... ok
+test_omitted_manifest_entry_is_rejected (test_websocket_closure.WebSocketClosureEvidence.test_omitted_manifest_entry_is_rejected) ... ok
+test_resource_summary_cannot_be_rewritten (test_websocket_closure.WebSocketClosureEvidence.test_resource_summary_cannot_be_rewritten) ... provider soak evidence verified: 310s, 111 heights, 990/990 provider operations
+ok
+test_soak_candidate_cannot_be_rebound (test_websocket_closure.WebSocketClosureEvidence.test_soak_candidate_cannot_be_rebound) ... ok
+test_symlinked_evidence_directory_component_is_rejected (test_websocket_closure.WebSocketClosureEvidence.test_symlinked_evidence_directory_component_is_rejected) ... ok
+test_symlinked_required_file_is_rejected_before_resolution (test_websocket_closure.WebSocketClosureEvidence.test_symlinked_required_file_is_rejected_before_resolution) ... ok
+test_websocket_completion_count_cannot_change (test_websocket_closure.WebSocketClosureEvidence.test_websocket_completion_count_cannot_change) ... provider soak evidence verified: 310s, 111 heights, 990/990 provider operations
+ok
+test_websocket_operation_cannot_disappear (test_websocket_closure.WebSocketClosureEvidence.test_websocket_operation_cannot_disappear) ... ok
+
+----------------------------------------------------------------------
+Ran 111 tests in 11.186s
+
+OK
+verified 82 v10.5.0 REST POST/body boundary cases and provenance

@@ -1,0 +1,137 @@
+   Compiling crypto-common v0.1.7
+   Compiling rustix v1.1.6
+   Compiling byteorder v1.5.0
+   Compiling hyper-util v0.1.21
+   Compiling digest v0.10.7
+   Compiling curve25519-dalek-ng v4.1.1
+   Compiling sha2 v0.10.9
+   Compiling ripemd v0.1.3
+   Compiling blake2 v0.10.6
+   Compiling hash v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-0-primitives/hash)
+   Compiling tempfile v3.27.0
+   Compiling sha3 v0.10.9
+   Compiling iavl v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-2-state-and-store/iavl)
+   Compiling merkle v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-0-primitives/merkle)
+   Compiling prost-build v0.13.5
+   Compiling ics23 v0.12.0
+   Compiling shares v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-1-protocol-types/shares)
+   Compiling kvstore v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-2-state-and-store/kvstore)
+   Compiling ed25519-consensus v2.1.0
+   Compiling ics23-proofs v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-2-state-and-store/ics23-proofs)
+   Compiling crypto v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-0-primitives/crypto)
+   Compiling pbjson-types v0.7.0
+   Compiling tower v0.5.3
+   Compiling multistore v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-2-state-and-store/multistore)
+   Compiling ark-serialize v0.5.0
+   Compiling axum v0.7.9
+   Compiling tower v0.4.13
+   Compiling hyper-timeout v0.5.2
+   Compiling ark-ff v0.5.0
+   Compiling square v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-1-protocol-types/square)
+   Compiling prost-gostr-std v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-0-primitives/prost-gostr-std)
+   Compiling celestia-core-proto v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-1-protocol-types/celestia-core-proto)
+   Compiling snapshots v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-2-state-and-store/snapshots)
+   Compiling tonic v0.12.3
+   Compiling ark-poly v0.5.0
+   Compiling ark-ec v0.5.0
+   Compiling celestia-proto v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-1-protocol-types/celestia-proto)
+   Compiling grpc-transport v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/grpc-transport)
+   Compiling abci-server v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/abci-server)
+   Compiling ark-bn254 v0.5.0
+   Compiling grpc-reflection v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/grpc-reflection)
+   Compiling sdk v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/sdk)
+   Compiling x-auth v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/auth)
+   Compiling x-bank v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/bank)
+   Compiling txdecode v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/txdecode)
+   Compiling x-staking v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/staking)
+   Compiling x-feegrant v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/feegrant)
+   Compiling x-fibre v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/fibre)
+   Compiling x-upgrade v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/upgrade)
+   Compiling x-ante v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/ante)
+   Compiling x-capability v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/capability)
+   Compiling x-hyperlane v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/hyperlane)
+   Compiling x-ibc v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/ibc)
+   Compiling x-params v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/params)
+   Compiling x-warp v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/warp)
+   Compiling x-transfer v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/transfer)
+   Compiling x-distribution v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/distribution)
+   Compiling x-slashing v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/slashing)
+   Compiling x-gov v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/gov)
+   Compiling x-icahost v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/icahost)
+   Compiling x-authz v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/authz)
+   Compiling x-forwarding v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/forwarding)
+   Compiling x-blob v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/blob)
+   Compiling x-minfee v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/minfee)
+   Compiling x-zkism v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/zkism)
+   Compiling x-consensus v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/consensus)
+   Compiling x-mint v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/mint)
+   Compiling x-circuit v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/circuit)
+   Compiling x-valaddr v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/valaddr)
+   Compiling x-signal v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/signal)
+   Compiling grpc-query v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/grpc-query)
+   Compiling x-evidence v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/evidence)
+   Compiling x-packetforward v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-3-app-modules/x/packetforward)
+   Compiling app v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/app)
+   Compiling api-server v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/api-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 53.20s
+     Running unittests src/lib.rs (/workspace/.cache/module-closure-target/debug/deps/api_server-c0c71a0ba9357127)
+
+running 12 tests
+test jsonpb::tests::base64 ... ok
+test rest::tests::go_base64_errors ... ok
+test jsonpb::tests::nulls_and_custom_types ... ok
+test rest::tests::governance_v1_query_enum_accepts_number_and_name ... ok
+test rest::tests::broadcast_tx_error_does_not_forward_query_metadata ... ok
+test rest::tests::broadcast_tx_success_does_not_forward_query_metadata ... ok
+test rest::tests::query_params_follow_the_schema ... ok
+test rest::tests::request_body_bytes_use_go_base64_errors ... ok
+test tests::rest_repeated_height_is_ignored ... ok
+test rest::tests::ordinary_query_still_forwards_metadata ... ok
+test rest::tests::routes_from_bindings ... ok
+test rest::tests::go_rest_height_boundaries ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/reflection.rs (/workspace/.cache/module-closure-target/debug/deps/reflection-10fb5a637e893a11)
+
+running 1 test
+test sdk_router_registers_only_the_sdk_reflection_version ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/lib.rs (/workspace/.cache/module-closure-target/debug/deps/grpc_transport-4fc36d67f6263154)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/limits.rs (/workspace/.cache/module-closure-target/debug/deps/limits-bdc526da66b25b3b)
+
+running 4 tests
+test declared_oversize_rejected_without_waiting_for_or_allocating_payload ... ok
+test streaming_limit_is_per_message_and_preserves_prior_frames ... ok
+test response_boundary_and_metadata ... ok
+test request_boundary_and_capacity_after_failure ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/query_headers.rs (/workspace/.cache/module-closure-target/debug/deps/query_headers-443f5e3575898dc0)
+
+running 2 tests
+test pre_dispatch_error_remains_trailers_only_without_a_height ... ok
+test sdk_error_preserves_initial_height_and_sends_status_in_trailers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests api_server
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests grpc_transport
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

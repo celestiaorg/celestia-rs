@@ -1,0 +1,9 @@
+{
+  "release": "v10.5.0",
+  "source_commit": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+  "asset": "celestia-app_Linux_x86_64.tar.gz",
+  "url": "https://github.com/celestiaorg/celestia-app/releases/download/v10.5.0/celestia-app_Linux_x86_64.tar.gz",
+  "archive_sha256": "3a200f501a59406cb7de9134b7ce229409b4095e8dcaa492b88238cef73d4445",
+  "binary_sha256": "c7af9298ef582185435a0bdc86172045e36ec6fb970d633a16bb9af77896ddac",
+  "compiler": "go1.26.6"
+}

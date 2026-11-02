@@ -1,0 +1,10 @@
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder	[no test files]
+ok  	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/abci-frame-recorder	0.009s
+ok  	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/live-tx	0.014s
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/local-signer	[no test files]
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/persistent-api	[no test files]
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/persistent-ws	[no test files]
+ok  	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/populated-governance	0.020s
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/populated-matrix	[no test files]
+ok  	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/populated-queries	0.019s
+?   	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/simulation-errors	[no test files]

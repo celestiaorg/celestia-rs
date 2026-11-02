@@ -1,0 +1,15 @@
+rust node e94838b64a2243f42dfe25713db86155325c8803 listening on Some(NetAddress(e94838b64a2243f42dfe25713db86155325c8803@127.0.0.1:37756)), channels [60, 61]
+2026-11-02T21:07:20.356266Z  INFO light::client: Downloading trusted light block using options
+2026-11-02T21:07:20.365792Z  INFO statesync::syncer: Discovering snapshots discovery_time=5s
+2026-11-02T21:07:23.053776Z  INFO p2p::switch: Added peer peer=Peer{MConn{127.0.0.1:37656} 89cb82576e6a96bf77d2013573297c912f006245 out}
+2026-11-02T21:07:23.155992Z  INFO statesync::syncer: Discovered new snapshot height=20 format=3 hash=05E4A08B72EADD308F57A0F62E497FC1F6D4819867844075E476A094FF8C5754
+2026-11-02T21:07:23.156302Z  INFO statesync::syncer: Discovered new snapshot height=10 format=3 hash=B69C7EDDE57113170A4AA623C98D88CCFA3950B3FBD01CDD3570EE36CB9BEED9
+2026-11-02T21:07:25.378634Z  INFO statesync::syncer: Offering snapshot to ABCI app height=20 format=3 hash=05E4A08B72EADD308F57A0F62E497FC1F6D4819867844075E476A094FF8C5754
+2026-11-02T21:07:25.379624Z  INFO statesync::syncer: Snapshot accepted, restoring height=20
+2026-11-02T21:07:25.379824Z  INFO statesync::syncer: Fetching snapshot chunk height=20 format=3 chunk=0 total=1
+2026-11-02T21:07:25.509228Z  INFO app: restored state-sync snapshot height=20
+2026-11-02T21:07:25.509888Z  INFO statesync::syncer: Applied snapshot chunk to ABCI app height=20 format=3 chunk=0 total=1
+2026-11-02T21:07:25.598757Z  INFO statesync::syncer: Verified ABCI app height=20 app_hash=8D525FA32A866020433779F2565974DF8ECC82051FDC0E6C3BEF852F36FF4E5D
+2026-11-02T21:07:25.598854Z  INFO statesync::syncer: Snapshot restored height=20 format=3 hash=05E4A08B72EADD308F57A0F62E497FC1F6D4819867844075E476A094FF8C5754
+serving snapshot Ok((20, 1, "459ff7f4215a49ab7e425d76dc9c30a34fcd82a5d3e3951c70fefb44e0b4f83a")) for 90s
+2026-11-02T21:07:28.350291Z  INFO p2p::switch: Added peer peer=Peer{MConn{127.0.0.1:46176} d1f49be6ad31fb2cbe6b59df8f2efcbc6f6bfe78 in}

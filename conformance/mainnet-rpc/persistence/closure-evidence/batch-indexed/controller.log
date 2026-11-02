@@ -1,0 +1,16 @@
+/tmp/closure-persistence-final/retain-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-final/retain-kv/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-final/retain-kv/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+2026/11/02 21:14:34 [JOB 1] WAL file /tmp/tmp.LrIHshxszq/retain-kv/n0/data/blockstore.db/000009.log with log number 000009 stopped reading at offset: 28881; replayed 102 keys in 17 batches
+dumped heights 1..39
+/tmp/closure-persistence-final/prune-kv/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-final/prune-kv/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-final/prune-kv/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+2026/11/02 21:16:40 [JOB 1] WAL file /tmp/tmp.LrIHshxszq/prune-kv/n0/data/blockstore.db/000009.log with log number 000009 stopped reading at offset: 25446; replayed 90 keys in 15 batches
+dumped heights 1..39
+node 1 lost a port race; restarting
+node 1 lost a port race; restarting
+node 1 lost a port race; restarting
+node 1 lost a port race; restarting
+node 1 lost a port race; restarting
+node logs: /tmp/tmp.LrIHshxszq

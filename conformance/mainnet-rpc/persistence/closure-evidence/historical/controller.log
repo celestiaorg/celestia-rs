@@ -1,0 +1,8 @@
+/tmp/closure-historical-addressed/height-1-comet.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-historical-addressed/height-13-comet.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-historical-addressed/height-14-comet.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-historical-addressed/height-15-comet.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-historical-addressed/height-29-comet.json: 40 pairs, 0 mismatches, errors=[]
+2026/11/02 21:11:30 [JOB 1] WAL file /tmp/tmp.TQ86yK17Yz/network/n0/data/blockstore.db/000002.log with log number 000002 stopped reading at offset: 52843; replayed 188 keys in 38 batches
+dumped heights 1..30
+node logs: /tmp/tmp.TQ86yK17Yz

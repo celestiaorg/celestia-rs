@@ -1,0 +1,50 @@
+9:07PM INF starting node with ABCI CometBFT in-process module=server
+9:07PM INF service start impl=multiAppConn module=proxy msg={}
+9:07PM INF service start connection=query impl=localClient module=abci-client msg={}
+9:07PM INF service start connection=snapshot impl=localClient module=abci-client msg={}
+9:07PM INF service start connection=mempool impl=localClient module=abci-client msg={}
+9:07PM INF service start connection=consensus impl=localClient module=abci-client msg={}
+9:07PM INF service start impl=EventBus module=events msg={}
+9:07PM INF service start impl=PubSub module=pubsub msg={}
+9:07PM INF Version info abci=2.0.0 block=11 commit_hash= module=server p2p=8 tendermint_version=0.38.17
+9:07PM INF This node is not a validator addr=81B500B4999DBE10EC97F64478CE346AAE5121E1 module=consensus pubKey=1i0w/Z1f7rdtSRdarB5Zem4HsYVXSFF31H3R/2yh81g=
+9:07PM INF Consensus reactor created module=server
+9:07PM INF P2P Node ID ID=d1f49be6ad31fb2cbe6b59df8f2efcbc6f6bfe78 file=/tmp/tmp.CKQjcMMnha/go/config/node_key.json module=p2p
+9:07PM INF Adding persistent peers addrs=["e94838b64a2243f42dfe25713db86155325c8803@127.0.0.1:37756"] module=p2p
+9:07PM INF Adding unconditional peer ids ids=[] module=p2p
+9:07PM INF Add our address to book addr={"id":"d1f49be6ad31fb2cbe6b59df8f2efcbc6f6bfe78","ip":"0.0.0.0","port":37856} book=/tmp/tmp.CKQjcMMnha/go/config/addrbook.json module=p2p
+9:07PM INF service start impl=Node module=server msg={}
+9:07PM INF privval gRPC server running without TLS on loopback only addr=127.0.0.1:37869 module=server
+9:07PM INF Started privval gRPC server addr=127.0.0.1:37869 module=server
+9:07PM INF serve module=rpc-server msg={}
+9:07PM INF service start impl="P2P Switch" module=p2p msg={}
+9:07PM INF service start impl=CAT module=server msg={}
+9:07PM INF service start impl=BlockSync module=blocksync msg={}
+9:07PM INF service start impl=ConsensusReactor module=consensus msg={}
+9:07PM INF Reactor  module=consensus waitSync=true
+9:07PM INF service start impl=Evidence module=evidence msg={}
+9:07PM INF service start impl=StateSync module=statesync msg={}
+9:07PM INF service start impl=Recovery module=propagation msg={}
+9:07PM INF Starting state sync module=statesync
+9:07PM INF Downloading trusted light block using options module=light
+9:07PM INF Discovering snapshots discoverTime=5000 module=statesync
+9:07PM INF service start impl="Peer{MConn{127.0.0.1:37756} e94838b64a2243f42dfe25713db86155325c8803 out}" module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":37756}
+9:07PM INF service start impl=MConn{127.0.0.1:37756} module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":37756}
+9:07PM INF Discovered new snapshot format=3 hash={} height=20 module=statesync
+9:07PM INF Header has already been verified hash=3300E739668BAA0A698C33504E441D124F05BF34F4CEC4EAC015EC65D52C3144 height=21 module=light
+9:07PM INF VerifyHeader hash=3411DF07FD06D0CB741D73F8153B830D55C50B47575A2A97B47E062F93A72100 height=22 module=light
+9:07PM INF VerifyHeader hash=899EE9177E12DD0169D190FCBEC543492F062B1788FA74F657F22F7AEF487B36 height=20 module=light
+9:07PM INF Header has already been verified hash=3300E739668BAA0A698C33504E441D124F05BF34F4CEC4EAC015EC65D52C3144 height=21 module=light
+9:07PM INF Header has already been verified hash=3411DF07FD06D0CB741D73F8153B830D55C50B47575A2A97B47E062F93A72100 height=22 module=light
+9:07PM INF Header has already been verified hash=3300E739668BAA0A698C33504E441D124F05BF34F4CEC4EAC015EC65D52C3144 height=21 module=light
+9:07PM INF Offering snapshot to ABCI app format=3 hash={} height=20 module=statesync
+9:07PM INF Snapshot accepted, restoring format=3 hash={} height=20 module=statesync
+9:07PM INF Fetching snapshot chunk chunk=0 format=3 height=20 module=statesync total=1
+9:07PM INF Header has already been verified hash=899EE9177E12DD0169D190FCBEC543492F062B1788FA74F657F22F7AEF487B36 height=20 module=light
+9:07PM INF Applied snapshot chunk to ABCI app chunk=0 format=3 height=20 module=statesync total=1
+9:07PM INF Verified ABCI app appHash={} height=20 module=statesync
+9:07PM INF Snapshot restored format=3 hash={} height=20 module=statesync
+9:07PM INF service start impl=BlockPool module=blocksync msg={}
+9:08PM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":37756}
+9:08PM INF Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:37756} e94838b64a2243f42dfe25713db86155325c8803 out}" reactor=p2p
+9:08PM INF service stop impl="Peer{MConn{127.0.0.1:37756} e94838b64a2243f42dfe25713db86155325c8803 out}" module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":37756}

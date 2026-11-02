@@ -1,0 +1,11 @@
+   Compiling api-server v0.0.1 (/workspace/celestia-rs-persistence/crates/tier-4-runtime/api-server)
+   Compiling devnet-conformance v0.0.1 (/workspace/celestia-rs-persistence/crates/devnet-conformance)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.46s
+     Running tests/populated_module_matrix.rs (/workspace/.cache/module-closure-target/debug/deps/populated_module_matrix-fcd5e0f7459392c7)
+
+running 1 test
+test populated_module_matrix_matches_real_transports_and_proofs has been running for over 60 seconds
+test populated_module_matrix_matches_real_transports_and_proofs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 422.48s
+

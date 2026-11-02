@@ -74,6 +74,8 @@ jobs:
         run: >-
           python3 conformance/mainnet-rpc/coverage.py --run-current --verify-scoped
           --json ${{ runner.temp }}/rpc-coverage.json
+      - name: Bounded provider baseline completion
+        run: python3 conformance/mainnet-rpc/readiness.py
       - name: Persistent RPC capture controller
         run: python3 -m unittest discover -s conformance/mainnet-rpc/persistence -v
       - name: Preserve incomplete restart-campaign evidence
@@ -197,6 +199,7 @@ jobs:
           - p2pvectors
           - provider-client
           - rpccorpus/recorder
+          - mainnet-rpc/module-closure/proofcheck
           - txdecode
     env:
       GOFLAGS: -mod=mod

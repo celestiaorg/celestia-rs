@@ -11,11 +11,14 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "a5c758ca8826ede40d90804cf94f5b7e4bc28c743e8a756da8464dfaeb992a27"
+REVIEWED_AUDIT_SHA256 = "c7478988c1425d14f6825372d09c5c7e8355948e5e6a2d33fcdd80faa3604da1"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
 CONTRACTS = {
+    'module-closure': (188, 'paired-frozen-module-closure', 'conformance/mainnet-rpc/module-closure/evidence/manifest.json', 'conformance/mainnet-rpc/module-closure/README.md', 'conformance/mainnet-rpc/module-closure/verify.py'),
+    'persistent-provider-closure': (189, 'paired-persistent-provider-closure', 'conformance/mainnet-rpc/persistence/closure-evidence/manifest.json', 'conformance/mainnet-rpc/persistence/CLOSURE.md', 'conformance/mainnet-rpc/persistence/verify_closure.py'),
+    'provider-soak-closure': (192, 'bounded-final-candidate-all-api-soak', 'conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/manifest.json', 'conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/README.md', 'conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/verify.py'),
     "reflection": (182, "normalized-runtime-comparison", "conformance/grpc-reflection/v10.5.0/meta.json", "conformance/grpc-reflection/README.md", None),
     "grpc-limits": (183, "unmatched-runtime-comparison", "conformance/grpc-limits/v10.5.0/meta.json", "conformance/grpc-limits/README.md", "conformance/grpc-limits/verify.py"),
     "grpc-lifecycle": (183, "relational-go-plus-rust-captures", "conformance/grpc-lifecycle/v10.5.0/meta.json", "conformance/grpc-lifecycle/README.md", "conformance/grpc-lifecycle/verify.py"),
@@ -34,6 +37,9 @@ CONTRACTS = {
     "proxy-tls-framing": (191, "normalized-runtime-comparison", "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/provenance.json", "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/README.md", "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/verify.py"),
 }
 RUNTIME_CONTRACTS = {
+    'module-closure': (('crates/devnet-conformance/tests/populated_module_matrix.rs', 'populated_module_matrix_matches_real_transports_and_proofs'), ('crates/tier-4-runtime/grpc-transport/tests/query_headers.rs', 'sdk_error_preserves_initial_height_and_sends_status_in_trailers'), ('crates/tier-4-runtime/grpc-transport/tests/query_headers.rs', 'pre_dispatch_error_remains_trailers_only_without_a_height')),
+    'persistent-provider-closure': (),
+    'provider-soak-closure': (),
     "reflection": (("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "sdk_v1alpha_matches_go_socket_streams"), ("crates/tier-4-runtime/grpc-reflection/tests/transport.rs", "core_v1_and_v1alpha_match_go_socket_streams")),
     "grpc-limits": (("crates/tier-5-node/celestia-rs/tests/grpc_limits.rs", "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"),),
     "grpc-lifecycle": (),
@@ -60,6 +66,9 @@ RUNTIME_CONTRACTS = {
     ),
 }
 TRANSPORT_CONTRACTS = {
+    'module-closure': {'comet-jsonrpc', 'rest', 'cosmos-grpc'},
+    'persistent-provider-closure': {'rest', 'comet-jsonrpc', 'comet-websocket', 'cosmos-grpc'},
+    'provider-soak-closure': {'rest', 'core-grpc', 'comet-jsonrpc', 'comet-uri', 'comet-websocket', 'cosmos-grpc'},
     "reflection": {"core-grpc", "cosmos-grpc"}, "grpc-limits": {"core-grpc", "cosmos-grpc"},
     "grpc-lifecycle": {"core-grpc", "cosmos-grpc"},
     "runtime-identity": {"comet-uri", "cosmos-grpc", "rest"}, "simulation": {"cosmos-grpc"},

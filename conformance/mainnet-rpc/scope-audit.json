@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "audited_main": "4fa4ec7ba1952fec917da6a7ae4d534c87eb050d",
+  "audited_main": "8ae137aee7c5ffe827576fdc656bbb1224dfd8b4",
   "provider_ready": false,
   "packages": [
     {
@@ -702,6 +702,149 @@
           "function": "tls_public_rpc_keeps_app_get_latest_block_on_private_loopback"
         }
       ]
+    },
+    {
+      "id": "module-closure",
+      "issue": 188,
+      "comparison": "paired-frozen-module-closure",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/module-closure/evidence/manifest.json",
+        "sha256": "605a216586ca3d6d5328f4b36853344816347d9fbc1b1fe01c36c8d85c6703e6"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/module-closure/README.md",
+        "sha256": "bab6c7981fafae168bfbfd75f88278278597ee4766ff03d63d2e39ad172369c4"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/module-closure/verify.py",
+        "sha256": "fe9b56cc862e56d735350dcf46c7ab0d671244d49e92d8895c41036c4e930568"
+      },
+      "transports": [
+        "comet-jsonrpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Ten populated current-release campaigns: 150991 real-listener responses, 259 method paths, 686 matched committed heights, 616 independently valid proofs and 24 explicitly rejected identical Go/Rust proofs",
+      "normalizations": [
+        "Go diagnostic source frames only",
+        "Selected Go map-order and reflection descriptor lists; all 600 differing raw protobuf cases enumerated",
+        "JSON object order/whitespace and equivalent empty protobuf-byte representations; raw responses retained"
+      ],
+      "known_mismatches": [
+        "Official Go ICS23 verifier rejects 24 captured empty-bank-leaf/neighbor proofs; Rust rejects the identical bytes"
+      ],
+      "exclusions": [
+        "Internal P2P filters, empty ABCI envelope and consensus-backed services are inventoried and covered separately",
+        "No unbounded input/lifecycle enumeration, TLS/proxies or production-duration bounds"
+      ],
+      "provenance_limits": [
+        "Fresh Go1.26.9 ledger-tagged standalone oracle; original Go1.26.6 baseline delta explicit",
+        "Archived signed helper/native source, binary/compiler receipts and committed paired responses; current test adds only checked lint annotations"
+      ],
+      "runtime_regressions": [
+        {
+          "source": {
+            "path": "crates/devnet-conformance/tests/populated_module_matrix.rs",
+            "sha256": "9f20b33644dbb177231d4311f536a64162551209b69e5174d16a857bb787d94f"
+          },
+          "function": "populated_module_matrix_matches_real_transports_and_proofs"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs",
+            "sha256": "67b81f6640f903f81097c135bbb90fcaf54b862bd3537cade245f4d4f0271f36"
+          },
+          "function": "sdk_error_preserves_initial_height_and_sends_status_in_trailers"
+        },
+        {
+          "source": {
+            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs",
+            "sha256": "67b81f6640f903f81097c135bbb90fcaf54b862bd3537cade245f4d4f0271f36"
+          },
+          "function": "pre_dispatch_error_remains_trailers_only_without_a_height"
+        }
+      ]
+    },
+    {
+      "id": "persistent-provider-closure",
+      "issue": 189,
+      "comparison": "paired-persistent-provider-closure",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/persistence/closure-evidence/manifest.json",
+        "sha256": "e8ce2ef7043048eff4a66a920ac65c8b3ed3cd213f2cdb510dd22264e9a3932b"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/persistence/CLOSURE.md",
+        "sha256": "86f27ee61a3d13debd6f4a35e8114e329f288aec4459407655183a958965a8e5"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/persistence/verify_closure.py",
+        "sha256": "a4caad1ef5e136e8c442e3db8c11a067c7d8cf45485bcac776932c289099502b"
+      },
+      "transports": [
+        "comet-jsonrpc",
+        "comet-websocket",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Four pruning/index profiles, three phases: 480 Comet and 1008 gRPC/REST pairs; 24 matched reconnect deliveries; 620 current official-multiplexer historical comparisons and bidirectional network snapshot state sync",
+      "normalizations": [
+        "Go diagnostic source frames and JSON object order/whitespace only for API payloads",
+        "Stable height/content metadata retained; Date/timing/derived length/unrelated HTTP headers excluded",
+        "NewBlock result_finalize_block.validator_updates empty allocation only: Go [] versus Rust null; all other event data/indexes compared"
+      ],
+      "known_mismatches": [
+        "Shared simultaneous-start Go/Rust follower stall remains separately reproduced; success requires ordered validator-first restart",
+        "Empty validator-update allocation differs in raw NewBlock events"
+      ],
+      "exclusions": [
+        "All blocks and FinalizeBlock responses retained; block-store pruning and discarded responses excluded",
+        "Snapshot-reactor/persistent-app path only; no claim of every node state-sync/restart configuration",
+        "Historical multiplexer queries use active v10 schema; old-handler/pre-v2 semantics not promised"
+      ],
+      "provenance_limits": [
+        "Two explicit source-built Go1.26.9 batches; original port startup failure retained",
+        "Official v10.5.0 release multiplexer uses Go1.26.6 and published asset checksums",
+        "Public source/configuration/blocks/snapshot/client receipts retained; no private node homes archived"
+      ],
+      "runtime_regressions": []
+    },
+    {
+      "id": "provider-soak-closure",
+      "issue": 192,
+      "comparison": "bounded-final-candidate-all-api-soak",
+      "receipt": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/manifest.json",
+        "sha256": "d13b92ee1861a7a566b31f9e128850c1db4f79eb48ff183b20ed10c2112ee7bc"
+      },
+      "documentation": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/README.md",
+        "sha256": "33b423776a631e58388540dc4154a92d136591d3659ce8c7ee93a2bb87e089b8"
+      },
+      "verifier": {
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/verify.py",
+        "sha256": "5590016bd715c4fde41914e6c744ab4b48a199c37fc08ac9993eb9bd4978d456"
+      },
+      "transports": [
+        "comet-uri",
+        "comet-jsonrpc",
+        "comet-websocket",
+        "core-grpc",
+        "cosmos-grpc",
+        "rest"
+      ],
+      "scope": "Signed final-candidate mixed-node all-API soak: 312 seconds, 112 height advances, 960 completed provider operations with zero errors/stalls/mismatches",
+      "normalizations": [],
+      "known_mismatches": [],
+      "exclusions": [
+        "Memory profile excludes chaos, saturation, unbounded slow readers, TLS/proxies/external SDKs and exact paired response equivalence",
+        "All nodes checked through111; four through114; the last Go consistency poll was three heights behind at cutoff"
+      ],
+      "provenance_limits": [
+        "Exact f51ce12 candidate/compiler/binary and Go1.26.9 oracle receipts; archived capture sources",
+        "Recently accepted cutoff transactions remain separately accounted for, without inclusion claims"
+      ],
+      "runtime_regressions": []
     }
   ],
   "behaviors": [
@@ -764,18 +907,21 @@
     {
       "issue": 188,
       "packages": [
+        "module-closure",
         "populated-governance",
         "populated-staking"
       ],
       "remaining_gaps": [
-        "Continue IBC, authz, feegrant, vesting account Any, Hyperlane, fibre, forwarding and zkism workloads; governance completion/cancellation/expiry and v1beta1; invalid UTF-8, malformed requests and invalid cursors; failing history and historical key/offset traversal; and broader proof coverage plus Go proof-byte/validity parity. Preserve source and matched-state controls."
+        "Acceptance is covered for populated IBC, authz, feegrant, vesting, Hyperlane, fibre, forwarding/zkism, governance, UTF-8, cursor/history and proof cases by the frozen paired closure. Exhaustive histories/inputs, declared map-order policies and 24 shared rejected proofs remain explicit limits."
       ]
     },
     {
       "issue": 189,
-      "packages": [],
+      "packages": [
+        "persistent-provider-closure"
+      ],
       "remaining_gaps": [
-        "No current-mainnet pruning/index/restart/state-sync campaign is merged; local work and old regressions do not substitute for evidence"
+        "Acceptance is covered for the tested persistent profiles and historical/state-sync paths. Ordered startup, the retained shared simultaneous-start stall, the one empty-event-list wire allocation, full block/response retention and active-schema multiplexer semantics remain explicit conditions; universal persistence readiness is not claimed."
       ]
     },
     {
@@ -802,10 +948,11 @@
     {
       "issue": 192,
       "packages": [
-        "provider-soak"
+        "provider-soak",
+        "provider-soak-closure"
       ],
       "remaining_gaps": [
-        "Merged PR217 satisfies the bounded all-API soak issue; its disabled scenarios, cutoff-pending transactions, exact candidate809bfca and lack of exact matched-state response parity remain explicit"
+        "The original bounded soak is supplemented by the signed final-candidate 312-second/960-operation soak. Disabled scenarios, cutoff-pending transactions, finite consistency polling and lack of exact paired response parity remain explicit."
       ]
     }
   ]

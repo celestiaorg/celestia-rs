@@ -90,6 +90,14 @@ source receipts, lifecycle cleanup evidence and an offline fail-closed verifier.
 The older review row remains as the audit of the earlier partial package rather
 than being rewritten as evidence it never contained.
 
+The later `module-closure` package supplements #188 with all ten populated module
+workloads, committed paired Rust responses, historical/error cases and identical
+Go/Rust proof bytes with independent validity outcomes. `persistence/CLOSURE.md`
+adds the four persistent profiles, reconnects, state sync and official-release
+multiplexer history. The final candidate also has a fresh all-API soak. See
+[the bounded completion record](READINESS.md) for the #181 acceptance mapping and
+its retained operational conditions.
+
 ## Current behavior checklist and scoped CI gate
 
 `scope-audit.json` separately indexes the merged evidence available at its exact
@@ -108,11 +116,11 @@ no merged current-release campaign.
 | #185 | Fourteen Simulate error/success/height cases | Go diagnostic source-frame deviation; paired runtime artifacts unrecorded |
 | #186 | Public empty-envelope errors and reusable connections | Exact runtime replay with incomplete paired capture provenance |
 | #187 | Paired 28-case live submission matrix and four lifecycle campaigns across Comet, core gRPC, Cosmos gRPC and REST, with representative bank, staking and BlobTx messages | Narrow wire/metadata normalizations, an explicit legacy nil/empty CheckTx allocation normalization, and one exact malformed-parser message difference; bounded local campaign excludes unbounded load and exhaustive message families |
-| #188 | Eleven populated staking/reward cases plus twenty-five governance/Any and pagination cases over four transport paths through three listeners, with Rust committed-root and ICS23 proof checks | Staking retains one list-order normalization; other modules, malformed inputs, lifecycle/history edges and Go proof bytes remain open |
-| #189 | No merged current-release persistence campaign | Historical tests and local work are not substituted for capture evidence |
+| #188 | Ten fresh populated campaigns: 150,991 paired socket comparisons, 686 matched heights and 640 identical proof results | Narrow list/source-frame policies; 24 shared verifier rejections; exhaustive input/history enumeration excluded |
+| #189 | Four persistent profiles, gRPC/REST error metadata, reconnects, two-way state sync and official current-release multiplexer history | Validator-first restart, shared simultaneous-start stall, retained blocks/responses, active-schema history and one empty-event-list allocation remain explicit |
 | #190 | Focused actual-Go lifecycle capture composed with a 310-second five-node mixed soak and three Rust production regressions | Bounded local evidence with documented header/order/resource normalizations; TLS/proxy/external clients and exact matched-state payload parity excluded |
 | #191 | REST height/POST plus Comet/proxy/TLS/framing packages | Acceptance covered with explicit native parser/TLS deviations and local-oracle/provider exclusions |
-| #192 | Merged310-second mixed-node all-API soak:111 heights,990 provider operations | Candidate809bfca, explicit disabled scenarios and cutoff accounting; no exact paired response parity |
+| #192 | Original soak plus final signed candidate: 312 seconds, 112 height advances, 960 provider operations | Explicit disabled scenarios and finite cutoff accounting; no exact paired response parity |
 
 Run the scope gate independently:
 
@@ -218,6 +226,9 @@ normalizations need their own narrow policy and linked issue. Exact comparisons
 may record mismatches; they must not be relabelled normalized successes.
 
 ## Provider readiness review
+
+The bounded #181 investigation is complete under the evidence and conditions in
+[READINESS.md](READINESS.md). This does not change the strict ledger claim below.
 
 The ledger always reports readiness as not established. A maintainer must assess
 complete behavior coverage and accepted deviations before changing that claim.
