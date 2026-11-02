@@ -1,0 +1,65 @@
+2026-11-02T21:16:53.680107Z  INFO celestia_rs: starting node home=/tmp/tmp.LrIHshxszq/retain-null/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T21:16:53.729052Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:35867
+2026-11-02T21:16:53.729311Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:18308
+2026-11-02T21:16:53.729368Z  INFO celestia_rs::rpc_service: gRPC query server (with BlockAPI) listening addr=127.0.0.1:18300
+2026-11-02T21:16:53.915893Z  INFO celestia_rs::rpc_service: REST API listening addr=127.0.0.1:10527
+2026-11-02T21:16:53.916000Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-02T21:16:53.916032Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-02T21:16:54.143090Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-02T21:16:54.143762Z  INFO celestia_rs::node: handshake complete height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 replayed=0
+Error: start p2p switch
+
+Caused by:
+    listen tcp://127.0.0.1:35866: Address already in use (os error 98)
+2026-11-02T21:17:01.717552Z  INFO celestia_rs: starting node home=/tmp/tmp.LrIHshxszq/retain-null/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T21:17:01.775605Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:35867
+2026-11-02T21:17:01.776018Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:18308
+2026-11-02T21:17:01.776063Z  INFO celestia_rs::rpc_service: gRPC query server (with BlockAPI) listening addr=127.0.0.1:18300
+2026-11-02T21:17:01.977739Z  INFO celestia_rs::rpc_service: REST API listening addr=127.0.0.1:10527
+2026-11-02T21:17:01.977909Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-02T21:17:01.977951Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-02T21:17:02.141662Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-02T21:17:02.142532Z  INFO celestia_rs::node: handshake complete height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 replayed=0
+Error: start p2p switch
+
+Caused by:
+    listen tcp://127.0.0.1:35866: Address already in use (os error 98)
+2026-11-02T21:17:09.736759Z  INFO celestia_rs: starting node home=/tmp/tmp.LrIHshxszq/retain-null/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T21:17:09.779865Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:35867
+2026-11-02T21:17:09.780197Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:18308
+2026-11-02T21:17:09.780273Z  INFO celestia_rs::rpc_service: gRPC query server (with BlockAPI) listening addr=127.0.0.1:18300
+2026-11-02T21:17:09.886388Z  INFO celestia_rs::rpc_service: REST API listening addr=127.0.0.1:10527
+2026-11-02T21:17:09.886876Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-02T21:17:09.886961Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-02T21:17:09.991765Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-02T21:17:09.992054Z  INFO celestia_rs::node: handshake complete height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 replayed=0
+Error: start p2p switch
+
+Caused by:
+    listen tcp://127.0.0.1:35866: Address already in use (os error 98)
+2026-11-02T21:17:17.682965Z  INFO celestia_rs: starting node home=/tmp/tmp.LrIHshxszq/retain-null/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T21:17:17.714345Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:35867
+2026-11-02T21:17:17.714476Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:18308
+2026-11-02T21:17:17.714550Z  INFO celestia_rs::rpc_service: gRPC query server (with BlockAPI) listening addr=127.0.0.1:18300
+2026-11-02T21:17:17.848306Z  INFO celestia_rs::rpc_service: REST API listening addr=127.0.0.1:10527
+2026-11-02T21:17:17.848389Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-02T21:17:17.848417Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-02T21:17:17.940612Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-02T21:17:17.940915Z  INFO celestia_rs::node: handshake complete height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 replayed=0
+Error: start p2p switch
+
+Caused by:
+    listen tcp://127.0.0.1:35866: Address already in use (os error 98)
+2026-11-02T21:17:25.761634Z  INFO celestia_rs: starting node home=/tmp/tmp.LrIHshxszq/retain-null/n1 pruning=PruningOptions { keep_recent: 0, keep_every: 0, interval: 0 } min_retain_blocks=0 discard_abci_responses=false halt_height=0 halt_time=0
+2026-11-02T21:17:25.820809Z  INFO celestia_rs::rpc_service: RPC server listening addr=127.0.0.1:35867
+2026-11-02T21:17:25.821169Z  INFO celestia_rs::rpc_service: celestia-core gRPC listening addr=127.0.0.1:18308
+2026-11-02T21:17:25.821271Z  INFO celestia_rs::rpc_service: gRPC query server (with BlockAPI) listening addr=127.0.0.1:18300
+2026-11-02T21:17:25.981387Z  INFO celestia_rs::rpc_service: REST API listening addr=127.0.0.1:10527
+2026-11-02T21:17:25.981689Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-02T21:17:25.981783Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-02T21:17:26.101814Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-02T21:17:26.102035Z  INFO celestia_rs::node: handshake complete height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 replayed=0
+Error: start p2p switch
+
+Caused by:
+    listen tcp://127.0.0.1:35866: Address already in use (os error 98)

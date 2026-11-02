@@ -1,0 +1,6 @@
+validator at app version 10
+validator at 23, snapshots at multiples of 10
+phase 1: Rust node restored the Go snapshot at height 20 (1 chunks applied), app hash 8D525FA32A866020433779F2565974DF8ECC82051FDC0E6C3BEF852F36FF4E5D matches header 21
+phase 2: Go node (only peer: the Rust node) restored the Rust-served snapshot at height 20 (1 chunks)
+rust summary: {"snapshot_height": 20, "sync_seconds": 5.245734409, "restored_app_hash": "8D525FA32A866020433779F2565974DF8ECC82051FDC0E6C3BEF852F36FF4E5D", "chunks_served": 1, "chunk_bytes_served": 4977, "snapshot_list_requests": 1, "served_snapshot": [20, 1, "459ff7f4215a49ab7e425d76dc9c30a34fcd82a5d3e3951c70fefb44e0b4f83a"]}
+OK: logs in /tmp/tmp.CKQjcMMnha

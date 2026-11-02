@@ -1,0 +1,14 @@
+bank send celestia165jj2qrfptz8vt027g6jmqsnl6r03d3j6lch9z celestia1ewrlsfrzqlwjk3vunczassv7rszh02e8e2qdsa 1000utia -> 5 0 
+bank send celestia1ewrlsfrzqlwjk3vunczassv7rszh02e8e2qdsa celestia165jj2qrfptz8vt027g6jmqsnl6r03d3j6lch9z 10utia -> 6 0 
+staking delegate celestiavaloper165jj2qrfptz8vt027g6jmqsnl6r03d3jlq6wny 1000000utia -> 8 0 
+app version before: 9
+signal signal 10 -> 10 0 
+signal try-upgrade -> 11 0 
+app version 10 at height 14
+bank send celestia165jj2qrfptz8vt027g6jmqsnl6r03d3j6lch9z celestia1ewrlsfrzqlwjk3vunczassv7rszh02e8e2qdsa 2000utia -> 18 0 
+bank send celestia1ewrlsfrzqlwjk3vunczassv7rszh02e8e2qdsa celestia165jj2qrfptz8vt027g6jmqsnl6r03d3j6lch9z 20utia -> 20 0 
+distribution withdraw-rewards celestiavaloper165jj2qrfptz8vt027g6jmqsnl6r03d3jlq6wny --commission -> 22 0 
+{
+  "height": "15"
+}
+workload done

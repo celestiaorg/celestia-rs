@@ -156,7 +156,7 @@ class ScopedEvidenceAudit(unittest.TestCase):
         behavior = next(row for row in result["behaviors"] if row["issue"] == 188)
         self.assertEqual(
             behavior["packages"],
-            ["populated-governance", "populated-staking"],
+            ["module-closure", "populated-governance", "populated-staking"],
         )
         gaps = " ".join(behavior["remaining_gaps"])
         for required in ("IBC", "authz", "feegrant", "vesting", "Hyperlane",
@@ -263,7 +263,7 @@ class ScopedEvidenceAudit(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
                     audit.validate(self.value)
 
-    def test_uncovered_persistence_campaign_cannot_be_marked_complete(self):
+    def test_persistence_conditions_cannot_be_erased(self):
         row = next(row for row in self.value["behaviors"] if row["issue"] == 189)
         row["remaining_gaps"] = ["complete"]
         with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):

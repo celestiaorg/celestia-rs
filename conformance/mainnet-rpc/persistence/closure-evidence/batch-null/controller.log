@@ -1,0 +1,12 @@
+/tmp/closure-persistence-null/retain-null/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-null/retain-null/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-null/retain-null/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+2026/11/02 21:20:39 [JOB 1] WAL file /tmp/tmp.AT1falQUv6/retain-null/n0/data/blockstore.db/000009.log with log number 000009 stopped reading at offset: 28938; replayed 102 keys in 17 batches
+dumped heights 1..39
+/tmp/closure-persistence-null/prune-null/before-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-null/prune-null/after-restart.json: 40 pairs, 0 mismatches, errors=[]
+/tmp/closure-persistence-null/prune-null/after-pruning-boundary.json: 40 pairs, 0 mismatches, errors=[]
+2026/11/02 21:22:50 [JOB 1] WAL file /tmp/tmp.AT1falQUv6/prune-null/n0/data/blockstore.db/000009.log with log number 000009 stopped reading at offset: 28918; replayed 102 keys in 17 batches
+dumped heights 1..39
+All captured fixed-height Comet cases match; captures: /tmp/closure-persistence-null
+node logs: /tmp/tmp.AT1falQUv6

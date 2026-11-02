@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "bounded-final-candidate-all-api-soak",
+  "candidate_commit": "f51ce1218e9c701108af0d038bf0dab1f2d2f3c1",
+  "binary_sha256": {
+    "celestia_rs": "b930852fd654265b4d5a34dd3f5e5ca094a94fedca337c61d6e7b8040363a694",
+    "celestia_app": "43d941ecbed3c1d32b18c7a2c35d5d27e2d07cd108604065018b7b431535e271",
+    "provider_client": "f9528b0cdbfcfe1ebbdb02516867be27a7b5840e570da5b17fe2274581a0f589"
+  },
+  "elapsed_s": 312,
+  "height_advances": 112,
+  "provider_operations": 960,
+  "artifacts": {
+    "README.md": "33b423776a631e58388540dc4154a92d136591d3659ce8c7ee93a2bb87e089b8",
+    "capture-sources/conformance/devnet/soak/provider.py": "41be056e77f5cd2f06b7abb23021663ac0110e922999fb84449ad1c79d53402b",
+    "capture-sources/conformance/devnet/soak/soak.py": "b374f4793857180d0254ddc8717f27b4293be3636f5f9c1f03e56b27332b445f",
+    "capture-sources/conformance/devnet/soak.sh": "3a3ecf175bb771c10384660ef13e6e169011002de5079ea57631afc21fda21a6",
+    "capture-sources/conformance/provider-client/go.mod": "2b3e976be0a98ef657207b992904c0d8dd57eccb4da68bf041bbaf05a094c632",
+    "capture-sources/conformance/provider-client/go.sum": "5aec6278c2bd7a371a2f64e6b0408a5b95bea7e8806be9ccc119e217c0122f20",
+    "capture-sources/conformance/provider-client/main.go": "382a8a651d62271c5bfe812137d364428ea4651993d851aba57f04591f40dfde",
+    "disk.csv": "8f669d6a6fefcaa7573668428e33d0f9bdbde247fc34c387de860d7b9b297170",
+    "events.log": "2bc3a779fda44bd514e6a72ea277e8483a2057d3ea1a23574492ca89373bad33",
+    "hashes.jsonl": "28d3260ef706d06e41bd364f9d3895796a1ad793a171f7c97e9cb31dc3c7bea7",
+    "mainnet-observation.json": "9f5637af8f36681614fe75e9425b8c7ad75f75e19d0c711849606825c800d8b6",
+    "mem.jsonl": "bf298e2c613e2ffdc3ed195fc1f1c593c5f03ce8887502547182904df435ba72",
+    "node-logs/n0.log": "529b962fa672b839c8ad3b3181434240a0a55048787ab7725956e435107ae871",
+    "node-logs/n1.log": "8b1b1c5e5091a4d34619853324302830427d6038c9c060b9015e9779865f4651",
+    "node-logs/n2.log": "79181ab7916fb6cccbbd40357fa38df815cd7ce1cc0cede31500803694ad76f6",
+    "node-logs/n3.log": "d2d22868e5534b72f31a045a40fbc467e61cbf582985ec46cccc5622f91941ff",
+    "node-logs/n4.log": "35024ce4ae056fd7d4cef6f138016f03e54d0413f5bc721f6c73e777b6cc0e0b",
+    "provider-provenance.json": "5c4af8f51639d20b00f06e23865f327383c1e71f28f163e3a44bc2140dcaf63d",
+    "report.json": "0d30cf98cb08f30c3f1bb661e989e91c579c57bacc3d507ae8715f85cd8d4daf",
+    "report.md": "18f6e7515723352410209ec5e29720f4868835fb28b477fcdb6beb84b837e42a",
+    "rss.csv": "60304ac62da3542b1847ce3004825e3724e9f9476a5aa5f3cd9a4aafe0860b85",
+    "verify.py": "5590016bd715c4fde41914e6c744ab4b48a199c37fc08ac9993eb9bd4978d456"
+  },
+  "checked_upto": [
+    114,
+    111,
+    114,
+    114,
+    114
+  ]
+}

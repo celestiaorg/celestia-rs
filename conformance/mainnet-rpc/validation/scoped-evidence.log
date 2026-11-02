@@ -1,0 +1,32 @@
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.014s
+
+OK
+.......................................................................................................................................................
+----------------------------------------------------------------------
+Ran 150 tests in 6.137s
+
+OK
+.....
+----------------------------------------------------------------------
+Ran 6 tests in 6.764s
+
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.045s
+
+OK
+verified 25 populated governance cases at rs-devnet-1 height 34
+verified 18 hashed artifacts and WebSocket lifecycle invariants
+provider soak evidence verified: 310s, 111 heights, 990/990 provider operations
+verified #190 lifecycle closure: 110 WebSocket results across 5 nodes and 145 resource samples
+verified 82 v10.5.0 REST POST/body boundary cases and provenance
+provider soak evidence verified: 310s, 111 heights, 990/990 provider operations
+verified 43 tagged-Go Comet HTTP boundary cases
+verified 50 proxy/TLS/framing cases and exact provenance
+Verified 10 fresh module campaigns: {'abci': 40271, 'comet_rpc': 40271, 'cosmos_grpc': 36467, 'rest': 33982}, 686 matched heights; 616 valid and 24 explicitly rejected proofs
+Verified 480 persistent Comet + 1008 gRPC/REST pairs, 24 reconnect events, 620 historical-multiplexer pairs and bidirectional state sync; ordered startup and declared wire/retention limits apply
+Verified final-candidate all-API soak: 312s, 112 height advances, 960 provider operations, zero client/consistency failures; declared bounded exclusions apply
+19 scoped current-release packages audited; exact parity admission remains separate; provider readiness NOT ESTABLISHED

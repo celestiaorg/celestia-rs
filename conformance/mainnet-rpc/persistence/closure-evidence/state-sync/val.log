@@ -1,0 +1,362 @@
+9:06PM INF starting node with ABCI CometBFT in-process module=server
+9:06PM INF service start impl=multiAppConn module=proxy msg={}
+9:06PM INF service start connection=query impl=localClient module=abci-client msg={}
+9:06PM INF service start connection=snapshot impl=localClient module=abci-client msg={}
+9:06PM INF service start connection=mempool impl=localClient module=abci-client msg={}
+9:06PM INF service start connection=consensus impl=localClient module=abci-client msg={}
+9:06PM INF service start impl=EventBus module=events msg={}
+9:06PM INF service start impl=PubSub module=pubsub msg={}
+9:06PM INF ABCI Handshake App Info hash={} height=0 module=consensus protocol-version=0 software-version=10.5.0
+9:06PM INF ABCI Replay Blocks appHeight=0 module=consensus stateHeight=0 storeHeight=0
+9:06PM INF InitChain chainID=rs-statesync-rust-1 initialHeight=1 module=server
+9:06PM INF initializing blockchain state from genesis.json module=server
+9:06PM INF created new capability module=ibc name=ports/transfer
+9:06PM INF port binded module=x/ibc/port port=transfer
+9:06PM INF claimed capability capability=1 module=transfer name=ports/transfer
+9:06PM INF created new capability module=ibc name=ports/icahost
+9:06PM INF port binded module=x/ibc/port port=icahost
+9:06PM INF claimed capability capability=2 module=icahost name=ports/icahost
+9:06PM INF Completed ABCI Handshake - CometBFT and App are synced appHash={} appHeight=0 module=consensus
+9:06PM INF Version info abci=2.0.0 block=11 commit_hash= module=server p2p=8 tendermint_version=0.38.17
+9:06PM INF This node is a validator addr=07E91CE11957865B411D40AD90E8D393A35634DB module=consensus pubKey=jFyWs5QSX1/vdPOFzWpIbJXcyESzCa1d9UDORIydJy0=
+9:06PM INF Consensus reactor created module=server
+9:06PM INF P2P Node ID ID=89cb82576e6a96bf77d2013573297c912f006245 file=/tmp/tmp.CKQjcMMnha/val/config/node_key.json module=p2p
+9:06PM INF Adding persistent peers addrs=[] module=p2p
+9:06PM INF Adding unconditional peer ids ids=[] module=p2p
+9:06PM INF Add our address to book addr={"id":"89cb82576e6a96bf77d2013573297c912f006245","ip":"0.0.0.0","port":37656} book=/tmp/tmp.CKQjcMMnha/val/config/addrbook.json module=p2p
+9:06PM INF service start impl=Node module=server msg={}
+9:06PM INF privval gRPC server running without TLS on loopback only addr=127.0.0.1:37669 module=server
+9:06PM INF Started privval gRPC server addr=127.0.0.1:37669 module=server
+9:06PM INF serve module=rpc-server msg={}
+9:06PM INF service start impl="P2P Switch" module=p2p msg={}
+9:06PM INF service start impl=PEX module=pex msg={}
+9:06PM INF service start book=/tmp/tmp.CKQjcMMnha/val/config/addrbook.json impl=AddrBook module=p2p msg={}
+9:06PM INF service start impl=CAT module=server msg={}
+9:06PM INF service start impl=BlockSync module=blocksync msg={}
+9:06PM INF service start impl=ConsensusReactor module=consensus msg={}
+9:06PM INF Reactor  module=consensus waitSync=false
+9:06PM INF service start impl=ConsensusState module=consensus msg={}
+9:06PM INF service start impl=baseWAL module=consensus msg={} wal=/tmp/tmp.CKQjcMMnha/val/data/cs.wal/wal
+9:06PM INF service start impl=Group module=consensus msg={} wal=/tmp/tmp.CKQjcMMnha/val/data/cs.wal/wal
+9:06PM INF service start impl=TimeoutTicker module=consensus msg={}
+9:06PM INF Searching for height height=1 max=0 min=0 module=consensus wal=/tmp/tmp.CKQjcMMnha/val/data/cs.wal/wal
+9:06PM INF Searching for height height=0 max=0 min=0 module=consensus wal=/tmp/tmp.CKQjcMMnha/val/data/cs.wal/wal
+9:06PM INF Found height=0 index=0 module=consensus wal=/tmp/tmp.CKQjcMMnha/val/data/cs.wal/wal
+9:06PM INF Catchup by replaying consensus messages height=1 module=consensus
+9:06PM INF Replay: Done module=consensus
+9:06PM INF service start impl=Evidence module=evidence msg={}
+9:06PM INF service start impl=StateSync module=statesync msg={}
+9:06PM INF service start impl=Recovery module=propagation msg={}
+9:06PM INF Timed out dur=496.104674 height=1 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"98F92C247286DD5FEE8BAE9791A4E171D91D85B0D1579F47A86358183380D790","parts":{"hash":"6A1E9841E43D11BB96714B14D50DB743B6C2A441FE6AF478812CA7D91471AFD0","total":1}},"height":1,"pol_round":-1,"round":0,"signature":"dGykY+Ql8FyYlR/WaMzNBRjNqAV9qod/z0fG/J5ZnnhJchm6CqB6qH9hV7M3MvTqEjCRwahCRNxAU42fkq31BQ==","timestamp":"2026-11-02T21:06:20.732619358Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=98F92C247286DD5FEE8BAE9791A4E171D91D85B0D1579F47A86358183380D790 height=1 module=consensus
+9:06PM INF finalizing commit of block hash={} height=1 module=consensus num_txs=0 root=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+9:06PM INF finalized block block_app_hash=47F7A4D29BDC25CABEA15CEB7067E7190A682D996B54821AD360F33F9DA6E336 height=1 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.759534 height=2 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C4F1E9E8334A7C5ADA45F72AF19FD2036BC2E35C81AA05735AC29AE0ED084AFC","parts":{"hash":"19436986A6A7F9972D6D5DDC09B7329BFF5A40DAA3A3807776B49F0DC5526F39","total":1}},"height":2,"pol_round":-1,"round":0,"signature":"HiCFPq33FDQf4xdcdY4Ds4c8cUs5P2CGDSBOU8IaLbei+oGJ2xDh21sjWIdsivESBPrVoxkTP8LFoIvE9uF3Cw==","timestamp":"2026-11-02T21:06:23.332855906Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=C4F1E9E8334A7C5ADA45F72AF19FD2036BC2E35C81AA05735AC29AE0ED084AFC height=2 module=consensus
+9:06PM INF finalizing commit of block hash={} height=2 module=consensus num_txs=0 root=47F7A4D29BDC25CABEA15CEB7067E7190A682D996B54821AD360F33F9DA6E336
+9:06PM INF finalized block block_app_hash=7B348A3A793950F2B271644F7470CB1BDFE08FCD82C53CD8A2D32A1794C7BCD1 height=2 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=496.603711 height=3 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"45A814923DD6E948B862E844DBDA044EC9D10CF66FCD551B21598DD85E97D05B","parts":{"hash":"68366C06DBAE97124D6ADAC3DB96DD3E30A3C69960C2B59CDFBAE34230434563","total":1}},"height":3,"pol_round":-1,"round":0,"signature":"7AgzyK4mOolrGMJqCC4g76h57s8h0tn3lmO8IZm79RW4h1kjKh0dz1+g1JpiTeve69bp+2U5PwqZTzvb3KWKAA==","timestamp":"2026-11-02T21:06:25.920314283Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=45A814923DD6E948B862E844DBDA044EC9D10CF66FCD551B21598DD85E97D05B height=3 module=consensus
+9:06PM INF finalizing commit of block hash={} height=3 module=consensus num_txs=0 root=7B348A3A793950F2B271644F7470CB1BDFE08FCD82C53CD8A2D32A1794C7BCD1
+9:06PM INF finalized block block_app_hash=70C670AFD655C10BBD45994293EA95ACBAA5F6E1BB94E93ADEBFE3A330CBF8EF height=3 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.412633 height=4 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D803AABB0EC07FCF0C8DBB226514DCBA55C68015094A079E82F9DBE85D0445F6","parts":{"hash":"393B069F8F5571226B6B07EE117DC8CCF7842ED389E59FAAF53DDAD6A67B2FC2","total":1}},"height":4,"pol_round":-1,"round":0,"signature":"Gi3GoYXoFVjW4sLAhSFJjj2QnRKxFgU8mDfCntQeXdkSuOdC93o2vzSTeUrR7yaKhJl46kr2ziEuqvTHXAt9DA==","timestamp":"2026-11-02T21:06:28.522011639Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=D803AABB0EC07FCF0C8DBB226514DCBA55C68015094A079E82F9DBE85D0445F6 height=4 module=consensus
+9:06PM INF finalizing commit of block hash={} height=4 module=consensus num_txs=0 root=70C670AFD655C10BBD45994293EA95ACBAA5F6E1BB94E93ADEBFE3A330CBF8EF
+9:06PM INF finalized block block_app_hash=0BE06D9EF9A62D59334511F48E2DFD6B57F85D981A0028878E4B4311AA149A3E height=4 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.330294 height=5 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"06DC22310763F634CE68DB9D3E2C7D983DD528C182A79D30E50ECC2A6B6BD818","parts":{"hash":"B6C9B997A60DF21053EF825DFB9C76EA15BC195F3E66DD56294001FA9D2F21A9","total":1}},"height":5,"pol_round":-1,"round":0,"signature":"Ihr/MUa/ebtsHXPQm4CKJaUi0g8X7oyHk6FFd0z1cYuTe4k8V39Owu+lT59ssL8UxrQCRn5FM9P1mq6uoOtVCA==","timestamp":"2026-11-02T21:06:31.122932725Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=06DC22310763F634CE68DB9D3E2C7D983DD528C182A79D30E50ECC2A6B6BD818 height=5 module=consensus
+9:06PM INF finalizing commit of block hash={} height=5 module=consensus num_txs=0 root=0BE06D9EF9A62D59334511F48E2DFD6B57F85D981A0028878E4B4311AA149A3E
+9:06PM INF finalized block block_app_hash=CE2FA3823B563DE5DB9D6E690AB62C4D6074AB9DEF16F37BFCC0D935A0AB9B42 height=5 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=492.861122 height=6 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3EA0957A0F7C19DA7EE1BF9261E7496570F697A3B97A03568BD8ED58CA45AF4B","parts":{"hash":"19400390B3651AEC9A31AAED06F982DD6DC1A2B8E35EB4B115E3D4EA1B992467","total":1}},"height":6,"pol_round":-1,"round":0,"signature":"utXNulVQuZa/HdCVgA3W6tnelDQl0I76G+spBqYMwWsijwiVIwCDebebixMdp+x2XDoaHEITKxNIZ69SG7BrBQ==","timestamp":"2026-11-02T21:06:33.725896608Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=3EA0957A0F7C19DA7EE1BF9261E7496570F697A3B97A03568BD8ED58CA45AF4B height=6 module=consensus
+9:06PM INF finalizing commit of block hash={} height=6 module=consensus num_txs=0 root=CE2FA3823B563DE5DB9D6E690AB62C4D6074AB9DEF16F37BFCC0D935A0AB9B42
+9:06PM INF finalized block block_app_hash=1935E3BE11FB747368F5CB0FCA52718F0AAD2F2051C4201E828605DCCB3A40ED height=6 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=496.610731 height=7 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"19A1D936CEA445C8EC723C9F79001AA53BAE977C70566245548D8F3A6F2968A3","parts":{"hash":"B2FA5186825C7C8AD660F5A202076A91D7BD6132AE76AC372B67A9FF8ED180A2","total":1}},"height":7,"pol_round":-1,"round":0,"signature":"ATMJNli9GKe3ocmBjU7U3fVUotSr6bXJvTQIFh1gU6APwFSoSD3cajAuIkbOmLI8bPDEWqkGgxnp6/xlOdy0AA==","timestamp":"2026-11-02T21:06:36.326240669Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=19A1D936CEA445C8EC723C9F79001AA53BAE977C70566245548D8F3A6F2968A3 height=7 module=consensus
+9:06PM INF finalizing commit of block hash={} height=7 module=consensus num_txs=0 root=1935E3BE11FB747368F5CB0FCA52718F0AAD2F2051C4201E828605DCCB3A40ED
+9:06PM INF finalized block block_app_hash=59A6A72425930F9ABD5BC5E4999398E2545DDFF1868A2FDC6DAC626D0E464A1D height=7 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.033034 height=8 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B873DAFC800F50AB2E7B053AF1DA0F44567517F75303D254F1839CC04268085A","parts":{"hash":"435E4E2F7EB5D71F353FC91B81AE2A162DF881246850967EA82AC0EFAEB0E991","total":1}},"height":8,"pol_round":-1,"round":0,"signature":"eYcGVEF4vxeAiCgdvdQC3ceCG2NAxaXJahq15UGXnp8pQyKABnEstRQlJcudhi2wq86Ffwx8FapLFEnBwD6pDQ==","timestamp":"2026-11-02T21:06:38.927641818Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=B873DAFC800F50AB2E7B053AF1DA0F44567517F75303D254F1839CC04268085A height=8 module=consensus
+9:06PM INF finalizing commit of block hash={} height=8 module=consensus num_txs=0 root=59A6A72425930F9ABD5BC5E4999398E2545DDFF1868A2FDC6DAC626D0E464A1D
+9:06PM INF finalized block block_app_hash=F9CBF841EACF52511E0098EA2A71EBEC54E60AAEF04A9EC66A066ED267B4EED9 height=8 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.649903 height=9 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C4892065B6166B6E5E41D484268F1675CB4622042E30DA8C05A09A1D19A7A0D1","parts":{"hash":"565ADAF26784684E4452F19A7E9C047EEBBB04B00821C8DC1154A668C480F0E4","total":1}},"height":9,"pol_round":-1,"round":0,"signature":"PpJzLB8Eko2Sn+QUICGQA7B6EBsDSEXIFJ5GQERtA5NZOQgnfx2Dur5Eow7OIa8pvloxExraEybbgIGwpgCnAw==","timestamp":"2026-11-02T21:06:41.528391477Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=C4892065B6166B6E5E41D484268F1675CB4622042E30DA8C05A09A1D19A7A0D1 height=9 module=consensus
+9:06PM INF finalizing commit of block hash={} height=9 module=consensus num_txs=0 root=F9CBF841EACF52511E0098EA2A71EBEC54E60AAEF04A9EC66A066ED267B4EED9
+9:06PM INF finalized block block_app_hash=C1A894BD3C9C247BE523A35DA5153E7509DBD7C6AF17ECAE0DDCD179CCB8F6CE height=9 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=495.664197 height=10 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"8189C6FC859751C82BEC60C73AD6B9BD9FE8B1A74234B9CAA5A432B97F3E0419","parts":{"hash":"B2CA7A61D52DE837525414BFD58C194847DDDA170B13C5ED4216BB28DC031F99","total":1}},"height":10,"pol_round":-1,"round":0,"signature":"rv3LSPfOUOijDFHkqsmLxCMrpY8jzkuIlDmMIN3b87WNkUcKEkCmTrJZYv9rVo7QFGupnYxvl3Or5qUPlaP/AQ==","timestamp":"2026-11-02T21:06:44.130673505Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=8189C6FC859751C82BEC60C73AD6B9BD9FE8B1A74234B9CAA5A432B97F3E0419 height=10 module=consensus
+9:06PM INF finalizing commit of block hash={} height=10 module=consensus num_txs=0 root=C1A894BD3C9C247BE523A35DA5153E7509DBD7C6AF17ECAE0DDCD179CCB8F6CE
+9:06PM INF finalized block block_app_hash=2F4EDEFBD069065ACCB7EEA159E38AED4AC30C201904ECB2AE734B050676F04F height=10 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF creating state snapshot height=10 module=server
+9:06PM INF completed state snapshot format=3 height=10 module=server
+9:06PM INF Timed out dur=493.307363 height=11 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2376FC62FAA40FD635F192B4776B6E889D2BE2BA3E9F747CBAE4699843E3530A","parts":{"hash":"C703F4C7260CF64CA0741E75E3A6668CC2A2DEEA2BD15C177CB32FE908AD0391","total":1}},"height":11,"pol_round":-1,"round":0,"signature":"K8yZMNfpXqlqV83F69xZRt7KD8e45idDQ/5khGjzT2RI7a5D73o79l9ue1wh4fg+mpEvCJsC7uKzNZOpggXhAw==","timestamp":"2026-11-02T21:06:46.733196823Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=2376FC62FAA40FD635F192B4776B6E889D2BE2BA3E9F747CBAE4699843E3530A height=11 module=consensus
+9:06PM INF finalizing commit of block hash={} height=11 module=consensus num_txs=0 root=2F4EDEFBD069065ACCB7EEA159E38AED4AC30C201904ECB2AE734B050676F04F
+9:06PM INF finalized block block_app_hash=A5E7B67B06EBB7A6832435BE81E571B7C121D79FB2EA5FF9328046A2A40AC63D height=11 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=495.908151 height=12 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5DFE11DFB021C4DECEBE03E13E56990CCC550846AB0ADB973B1113DD6F2764AA","parts":{"hash":"A1C874C887C0EE27682AA5374FA7BBA3B378727534B2F25B56D15CFD39970F69","total":1}},"height":12,"pol_round":-1,"round":0,"signature":"fqOS8MFogcieR8q6qEBw297Vm+3QbwdXM0BRs/E1WifAluObPUZnCXc7ouPCCUU4SmXMBiryegR2qR1tUFXKCQ==","timestamp":"2026-11-02T21:06:49.333668976Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=5DFE11DFB021C4DECEBE03E13E56990CCC550846AB0ADB973B1113DD6F2764AA height=12 module=consensus
+9:06PM INF finalizing commit of block hash={} height=12 module=consensus num_txs=0 root=A5E7B67B06EBB7A6832435BE81E571B7C121D79FB2EA5FF9328046A2A40AC63D
+9:06PM INF finalized block block_app_hash=0E3677396D296BF896173984D03FB490E81FA5546854D09740A85FAC4338741C height=12 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=496.091582 height=13 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"76CB890CCDB2FE51ACD4BD39E621DFEAB324C076256E57A13944CDCDA9B0905D","parts":{"hash":"D1C7AB8094FE0C32F40E504F667390637542D9AFFCDBF20CC618238B5574070D","total":1}},"height":13,"pol_round":-1,"round":0,"signature":"g8cK2jOodaC+6Wlpc0bIzjspIB03WvZQY+7zSxL83U6hSibqVouySHMBhuTH2nHzN9vksEWDU0crlUlMocimCw==","timestamp":"2026-11-02T21:06:51.935160787Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=76CB890CCDB2FE51ACD4BD39E621DFEAB324C076256E57A13944CDCDA9B0905D height=13 module=consensus
+9:06PM INF finalizing commit of block hash={} height=13 module=consensus num_txs=0 root=0E3677396D296BF896173984D03FB490E81FA5546854D09740A85FAC4338741C
+9:06PM INF finalized block block_app_hash=C5034314EA414C15CD929DB95A5A528B500AC403F0309F16B9E360B4CEA56CF6 height=13 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.213756 height=14 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D4230105AB6DFF434113865F41374B551400D2391547F17F6A61D2291D70D4AD","parts":{"hash":"19231D224D8C3858675FBBE8A09EB8F69A5BDED73C01D16EFD4E015F11C4547C","total":1}},"height":14,"pol_round":-1,"round":0,"signature":"KvOV/Pf3PWcFgCI8prErzv1hiLC3DYf4EX6M5swCgUxYJCg45p1dQtMnQrt2KGjwVCPeQaxmzKYtPuDHMCU4Ag==","timestamp":"2026-11-02T21:06:54.536616735Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=D4230105AB6DFF434113865F41374B551400D2391547F17F6A61D2291D70D4AD height=14 module=consensus
+9:06PM INF finalizing commit of block hash={} height=14 module=consensus num_txs=0 root=C5034314EA414C15CD929DB95A5A528B500AC403F0309F16B9E360B4CEA56CF6
+9:06PM INF finalized block block_app_hash=9450CEC761606E021B13AF03EA49DB7D1156C0770547C7ED3DC2B21B8F078AB2 height=14 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=497.417575 height=15 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"C72EABE1C7DBAD7809F4C9095D3C64359AAD9300282AA53BB347D7CB30FE0D3F","parts":{"hash":"4FAACF62604B1E87E8EE7959D82AAB49A36E27FFC9EE1C1794A7BBE4A1EDFA45","total":1}},"height":15,"pol_round":-1,"round":0,"signature":"KAAc7lLk/c0mRo5mUDpzS3HSNUGLFZzgmN3tnSW67acEXohM1xJ95EbBt6joLgtP4syhgiriXHBxHaHo1WDwDQ==","timestamp":"2026-11-02T21:06:57.137065375Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=C72EABE1C7DBAD7809F4C9095D3C64359AAD9300282AA53BB347D7CB30FE0D3F height=15 module=consensus
+9:06PM INF finalizing commit of block hash={} height=15 module=consensus num_txs=0 root=9450CEC761606E021B13AF03EA49DB7D1156C0770547C7ED3DC2B21B8F078AB2
+9:06PM INF finalized block block_app_hash=66FD8604078C1F0A773519653183CDD819B96198B6EA83492F0C2A9DA373C78E height=15 module=state num_txs_res=0 num_val_updates=0
+9:06PM INF Timed out dur=496.286769 height=16 module=consensus round=0 step=1
+9:06PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"D8DBDCA886E35B2ADB1C0FF03DAD5E5AC65C7EF5FD6957C703461990C7230F6A","parts":{"hash":"3F1F711BF70F2813913973796CD5224D70A4ACFCCBFE2454AA4FC6F24DF805E8","total":1}},"height":16,"pol_round":-1,"round":0,"signature":"tysaBmnwECSXyQ3n9CVBfLGlppl7khMN3bWWMCu0PZ1FJ9cL46AjqVR1JIX98NyMbTtwaPBA0juZ1tVXoNVVBg==","timestamp":"2026-11-02T21:06:59.739176433Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:06PM INF received complete proposal block hash=D8DBDCA886E35B2ADB1C0FF03DAD5E5AC65C7EF5FD6957C703461990C7230F6A height=16 module=consensus
+9:07PM INF finalizing commit of block hash={} height=16 module=consensus num_txs=0 root=66FD8604078C1F0A773519653183CDD819B96198B6EA83492F0C2A9DA373C78E
+9:07PM INF finalized block block_app_hash=029A3E41930519634E0E80F35E0C216E3A72D073E3DDE2914282E99BB4BE377D height=16 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.51843 height=17 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"F314EA34CC24CFDC35B7B6A45AF1BFD38F8FD6D753F58CA3CB9DE8F60038C6A8","parts":{"hash":"69014B5B8ACE80E15EBCFC3151F1F21DB749B7DE5F868D6D716B889F34F01B8D","total":1}},"height":17,"pol_round":-1,"round":0,"signature":"3PxOfB+LKEL0ionJjC+6I+y357suN649wdqUdHGAP0wKVOnGPsRhe34ZlYr/ytnKTHZd8r/9bvxhMJZq8g6tBg==","timestamp":"2026-11-02T21:07:02.339985907Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=F314EA34CC24CFDC35B7B6A45AF1BFD38F8FD6D753F58CA3CB9DE8F60038C6A8 height=17 module=consensus
+9:07PM INF finalizing commit of block hash={} height=17 module=consensus num_txs=0 root=029A3E41930519634E0E80F35E0C216E3A72D073E3DDE2914282E99BB4BE377D
+9:07PM INF finalized block block_app_hash=23F401C74F92E8F9EF9FFF5470FD94FA2C324C3FA2B438A97D4A6E1DEDFE8175 height=17 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.989903 height=18 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"6897B4F743BC4B8C8BBED651A7CB5802323087C3D7362F8BD99FC1163F67B4CF","parts":{"hash":"FEEC64C02DBE552774385FF7C8E54A235042C2061BF8E849180702DFDDF80B2A","total":1}},"height":18,"pol_round":-1,"round":0,"signature":"NLIT2cNU8rVBqf2bLrP4P/GzV3jM0oWw+lu6a7aO4UCc4BUrltmuU5RZ4UAE3BzHBbaMJt2BkNhnXueq/nDiDw==","timestamp":"2026-11-02T21:07:04.941017921Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=6897B4F743BC4B8C8BBED651A7CB5802323087C3D7362F8BD99FC1163F67B4CF height=18 module=consensus
+9:07PM INF finalizing commit of block hash={} height=18 module=consensus num_txs=0 root=23F401C74F92E8F9EF9FFF5470FD94FA2C324C3FA2B438A97D4A6E1DEDFE8175
+9:07PM INF finalized block block_app_hash=EC639553E3CD73A114EEAB97947DA661B7511C5A0B9B934DA5141A986B5FB179 height=18 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.462951 height=19 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"06ADE2F93240BFCC5A862E36D63E0040D289BE6478A824C9749D4566E3819921","parts":{"hash":"912531E57E68ADA25B9B49394FCC7CEE9AAB7DB305E2CA477F95FC79E4583CC3","total":1}},"height":19,"pol_round":-1,"round":0,"signature":"P+HI6s7oL/a9/ZYlSON9ndYFuMg/yOli8f1C0fS9RfgVcBZc8+0Zv+y56KENr0roWyQaYEfEXph8a/P1L1qtBw==","timestamp":"2026-11-02T21:07:07.541828253Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=06ADE2F93240BFCC5A862E36D63E0040D289BE6478A824C9749D4566E3819921 height=19 module=consensus
+9:07PM INF finalizing commit of block hash={} height=19 module=consensus num_txs=0 root=EC639553E3CD73A114EEAB97947DA661B7511C5A0B9B934DA5141A986B5FB179
+9:07PM INF finalized block block_app_hash=378F0E1705A30348EE54EA112CC1AF853F1357F3F5D39835384579750501FA3C height=19 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.400688 height=20 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"899EE9177E12DD0169D190FCBEC543492F062B1788FA74F657F22F7AEF487B36","parts":{"hash":"ED4CB1B1BDB3FBC2FD9EE2F5BD297EA85E3E0E0368CF98A3B3FD32B717DFF2E6","total":1}},"height":20,"pol_round":-1,"round":0,"signature":"bVwIO9o0kxuueFUpgARXpVyAHjOiDRU4y/OKb3nJwqrLLyN2a3TCZU6/UrnoPAMTaJY0gB+7E35LJHRxdJyCAg==","timestamp":"2026-11-02T21:07:10.144027769Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=899EE9177E12DD0169D190FCBEC543492F062B1788FA74F657F22F7AEF487B36 height=20 module=consensus
+9:07PM INF finalizing commit of block hash={} height=20 module=consensus num_txs=0 root=378F0E1705A30348EE54EA112CC1AF853F1357F3F5D39835384579750501FA3C
+9:07PM INF finalized block block_app_hash=8D525FA32A866020433779F2565974DF8ECC82051FDC0E6C3BEF852F36FF4E5D height=20 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF creating state snapshot height=20 module=server
+9:07PM INF completed state snapshot format=3 height=20 module=server
+9:07PM INF Timed out dur=493.128504 height=21 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3300E739668BAA0A698C33504E441D124F05BF34F4CEC4EAC015EC65D52C3144","parts":{"hash":"104C80C62CE26E7F700F1E0116106D9F29C0386D4106F0D950F256B45EDCFA33","total":1}},"height":21,"pol_round":-1,"round":0,"signature":"50xYUYIu6C4FxKg7hi2V8TfKafZDd8R3kCouW+dPwIDU3KLO43jjiDQN7CTom+e2o3scJBdWqqMNyy7hUNYAAA==","timestamp":"2026-11-02T21:07:12.744895268Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=3300E739668BAA0A698C33504E441D124F05BF34F4CEC4EAC015EC65D52C3144 height=21 module=consensus
+9:07PM INF finalizing commit of block hash={} height=21 module=consensus num_txs=0 root=8D525FA32A866020433779F2565974DF8ECC82051FDC0E6C3BEF852F36FF4E5D
+9:07PM INF finalized block block_app_hash=11BD379F1509E24B30F5138BAB34D4B569F12549873195DEC90FA7C44699965F height=21 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.045371 height=22 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3411DF07FD06D0CB741D73F8153B830D55C50B47575A2A97B47E062F93A72100","parts":{"hash":"718B233DCDF4DFE5BD68E60E3110226D54488E0AD0B38EA0AD5DEC1582116BB9","total":1}},"height":22,"pol_round":-1,"round":0,"signature":"WWEh+vmoEPOpDKrH5KX2519pl6ts3jlPm88gD6HpGmLMA4vbZ59f56ky/dxmIRndaALQjKYe1Uj48XXD9bXKBg==","timestamp":"2026-11-02T21:07:15.347194942Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=3411DF07FD06D0CB741D73F8153B830D55C50B47575A2A97B47E062F93A72100 height=22 module=consensus
+9:07PM INF finalizing commit of block hash={} height=22 module=consensus num_txs=0 root=11BD379F1509E24B30F5138BAB34D4B569F12549873195DEC90FA7C44699965F
+9:07PM INF finalized block block_app_hash=BFD6B5E8F2237D6B5739B691693965D17A16C8D70FEBBF6320650927E76D50E8 height=22 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.709008 height=23 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"8F2E9A0775812A4B7FEB76CD7619AD3CB9161F16535E31DA8823C45D23ACB008","parts":{"hash":"BD97EFBB0BFDCE2838C4DC7E723864C96B610034C49DD6CC412B406BB34FDA46","total":1}},"height":23,"pol_round":-1,"round":0,"signature":"nq00njNJ2qlBbtYAfqidDcLH+Ky5uf7xMXlD7/F4U6lIm/nz97vPgS1HK4ucH9RcKBjLhC14oWZ/JkJtVTL+BQ==","timestamp":"2026-11-02T21:07:17.948327811Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=8F2E9A0775812A4B7FEB76CD7619AD3CB9161F16535E31DA8823C45D23ACB008 height=23 module=consensus
+9:07PM INF finalizing commit of block hash={} height=23 module=consensus num_txs=0 root=BFD6B5E8F2237D6B5739B691693965D17A16C8D70FEBBF6320650927E76D50E8
+9:07PM INF finalized block block_app_hash=0F219DD746269A7BB96C3F3BBC156FA51BD216EDADE9925D16548C698DD64DC0 height=23 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.519051 height=24 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2829805595E1A60B41A0FE8E10C8CEB909A35AA19ABEF7CF4CF5853BFB7EEE11","parts":{"hash":"8B4DE2549E31B0B6AFDDB90A899D0565779F7E1A17DFCA61C18D3BAD15A52465","total":1}},"height":24,"pol_round":-1,"round":0,"signature":"tXF+MMeLVA4X2ZjwTXtgqpUCVf/cZYg4124mAhQqvZcMRgJW5MPRHNUazKQnA2UGS5jVjNeOvT9rhPIiPMDgBQ==","timestamp":"2026-11-02T21:07:20.549640352Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=2829805595E1A60B41A0FE8E10C8CEB909A35AA19ABEF7CF4CF5853BFB7EEE11 height=24 module=consensus
+9:07PM INF finalizing commit of block hash={} height=24 module=consensus num_txs=0 root=0F219DD746269A7BB96C3F3BBC156FA51BD216EDADE9925D16548C698DD64DC0
+9:07PM INF finalized block block_app_hash=D0A3D46F221383103136DF95A44C22C9D002DEA9BA21EFA5D80E59C76695F6F5 height=24 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF service start impl="Peer{MConn{127.0.0.1:59962} e94838b64a2243f42dfe25713db86155325c8803 in}" module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":59962}
+9:07PM INF service start impl=MConn{127.0.0.1:59962} module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":59962}
+9:07PM INF Timed out dur=497.254088 height=25 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"B6C442D29C9F188F7B24D7A8D3AB67176B0B9746EF7434B1491D3BA582BD912B","parts":{"hash":"CE74CC70A1A7923EC4BC4E7567130A3A85857C2DB1CB4F9DDB8E89239645F58B","total":1}},"height":25,"pol_round":-1,"round":0,"signature":"3vAuIs6lHWetBiR/UW39b7NmRBpg7G7JMom/f8wlWv/nFBkfRESqmKJcRins01m4IgTSKCYNXbtmPFtv77xkAw==","timestamp":"2026-11-02T21:07:23.151169988Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=B6C442D29C9F188F7B24D7A8D3AB67176B0B9746EF7434B1491D3BA582BD912B height=25 module=consensus
+9:07PM INF finalizing commit of block hash={} height=25 module=consensus num_txs=0 root=D0A3D46F221383103136DF95A44C22C9D002DEA9BA21EFA5D80E59C76695F6F5
+9:07PM INF finalized block block_app_hash=326483256492EEBA97B538735FFE11B244A07D1EB69668255DC27D464BAB5DF6 height=25 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.708428 height=26 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"88228F5900EB23D5CF21881408E2BD89EC9250C885AE85BF43AF45BF7093D5DD","parts":{"hash":"CBBFF56E8C28028240AD89B3C14D0F1BB0707E089140DDE7BB36B9D1DDC6D83E","total":1}},"height":26,"pol_round":-1,"round":0,"signature":"w22HRV6Ss5RHBAL9i0gff6ZPCj0CjiVODsVnLF+MSZftKjtxWM7DLhpcmuAaen98LeyL6ZEAMzQqxz551e65Cw==","timestamp":"2026-11-02T21:07:25.75301663Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=88228F5900EB23D5CF21881408E2BD89EC9250C885AE85BF43AF45BF7093D5DD height=26 module=consensus
+9:07PM INF finalizing commit of block hash={} height=26 module=consensus num_txs=0 root=326483256492EEBA97B538735FFE11B244A07D1EB69668255DC27D464BAB5DF6
+9:07PM INF finalized block block_app_hash=225FE46A6F23FDF2C5216F33893344F2BF56D1B58CC6F7A9FAEB4575E9456AAF height=26 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.629662 height=27 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5A29CF19A92FEB31C893AAF5E6C075C3E8C96CF220BCE837A2A10E77F4A2053D","parts":{"hash":"00E9E497A33FEA52BDA988A5B9D11316551B0DD3F0648E01616492FB86A9B0AE","total":1}},"height":27,"pol_round":-1,"round":0,"signature":"8KnqE8hsCjo+O85Ibt2PLUEenCCYp8Qtq+i9vD6cg96l6u1/P490+4cM3uekRRfa3pbgWJL6hByP9Ar6tBOpBg==","timestamp":"2026-11-02T21:07:28.353721839Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=5A29CF19A92FEB31C893AAF5E6C075C3E8C96CF220BCE837A2A10E77F4A2053D height=27 module=consensus
+9:07PM INF finalizing commit of block hash={} height=27 module=consensus num_txs=0 root=225FE46A6F23FDF2C5216F33893344F2BF56D1B58CC6F7A9FAEB4575E9456AAF
+9:07PM INF finalized block block_app_hash=C7A4E46E023ED1F89EE76C63D2BE38AB11C3F5956B1791E286B0397BD5D01BAB height=27 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.733092 height=28 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"83AEF0297F1F4EA48F1CF47053989417B18BF8DF8B4E51AD4FE072F7C3E33D32","parts":{"hash":"399C9EAE3D749EF6764DB6A314AAF1C86578BEE6DD49B6D93895A73CB57450A8","total":1}},"height":28,"pol_round":-1,"round":0,"signature":"FnCOtwpZQYsBH9UwbXQkn/D2Qrk3YeR5IdiTD0ZTmw7XoB/g3+p6D66IEY8x6WmlXVrT+MpQ8LHXaa45SfWSAg==","timestamp":"2026-11-02T21:07:30.955533591Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=83AEF0297F1F4EA48F1CF47053989417B18BF8DF8B4E51AD4FE072F7C3E33D32 height=28 module=consensus
+9:07PM INF finalizing commit of block hash={} height=28 module=consensus num_txs=0 root=C7A4E46E023ED1F89EE76C63D2BE38AB11C3F5956B1791E286B0397BD5D01BAB
+9:07PM INF finalized block block_app_hash=25B73025D64752BEC75BB37B29860D3867CC4A1589B639413576023CBDDC5401 height=28 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=494.596892 height=29 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"407E23B01D4D718DB8375AA30C5660B1F80515FFDC7F522327214CB75C27AC6D","parts":{"hash":"F90F21D26A25D9455025692190AEA736618B2D98864811C9CCEBD38B42945818","total":1}},"height":29,"pol_round":-1,"round":0,"signature":"NE+s6Oghz1GnycbAZZ1kUuOErXy6VE+DLwKBPhJpGd2O3dfsi7Kn0kdJhjgzxb+jHDjzqlKZ0Su70GgF0NpYAg==","timestamp":"2026-11-02T21:07:33.556668659Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=407E23B01D4D718DB8375AA30C5660B1F80515FFDC7F522327214CB75C27AC6D height=29 module=consensus
+9:07PM INF finalizing commit of block hash={} height=29 module=consensus num_txs=0 root=25B73025D64752BEC75BB37B29860D3867CC4A1589B639413576023CBDDC5401
+9:07PM INF finalized block block_app_hash=BAA08FFC95228A1EA7545E0F26968441E41024576557D2EC4CB53E93D5BAF78E height=29 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.372888 height=30 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"96CC29E88CA450ED32D8D87C32910D3CFBA013664C3338A8D33B99EF8C2E5EDB","parts":{"hash":"FB50BC4B8BEA43358D78D77AB373FC13B3218D7956E8075D3DF9EEF0F8D3C3F6","total":1}},"height":30,"pol_round":-1,"round":0,"signature":"xqXM7fChNFFYj0gYvhsWaQ04NMCw6aITxsExSxjW+skwQo8X+Qs9LXgQV3INPEwBv22qeDA94G/L8WYhreH+Ag==","timestamp":"2026-11-02T21:07:36.157942894Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=96CC29E88CA450ED32D8D87C32910D3CFBA013664C3338A8D33B99EF8C2E5EDB height=30 module=consensus
+9:07PM INF finalizing commit of block hash={} height=30 module=consensus num_txs=0 root=BAA08FFC95228A1EA7545E0F26968441E41024576557D2EC4CB53E93D5BAF78E
+9:07PM INF finalized block block_app_hash=E48BD137E3C9A9505723B51F1A9149E458187BB47200695D05DF97B7F8203CEE height=30 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF creating state snapshot height=30 module=server
+9:07PM INF completed state snapshot format=3 height=30 module=server
+9:07PM INF Timed out dur=493.550207 height=31 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"FFADD25056A0CEA2F576DAB4641C415C181B5D26DCF21DADBEE948DC2F676B1D","parts":{"hash":"CEE871FF9ED1EEC08BAC21BD311976C5D27380E14388A2183A0625E3F55EC2B8","total":1}},"height":31,"pol_round":-1,"round":0,"signature":"JefjVK6aqIsWkw/oZCMcQDovozsYfJw4moStq3OW+PCk5rB/YkyRDMYx7BQLXODjVIjfRm/7BwfOnQWgPljGAA==","timestamp":"2026-11-02T21:07:38.760310253Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=FFADD25056A0CEA2F576DAB4641C415C181B5D26DCF21DADBEE948DC2F676B1D height=31 module=consensus
+9:07PM INF finalizing commit of block hash={} height=31 module=consensus num_txs=0 root=E48BD137E3C9A9505723B51F1A9149E458187BB47200695D05DF97B7F8203CEE
+9:07PM INF finalized block block_app_hash=821E967FF61B9B444167A670DA9F11A7900064CD5F38FFC3958BA12649F56BDA height=31 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=495.113086 height=32 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E5B2E647F46A244EAAEF2CBDD10E8C7E98BB3B627AB9E9100FE0309885DF0605","parts":{"hash":"C82E0034A954C5387482F226423E65A5095C58038921E0C915A5AF9925454EBB","total":1}},"height":32,"pol_round":-1,"round":0,"signature":"/fIUT3lwqPZELokcrrhgnZM+02LH1YZ7r6ebayGizfnRWlemAnENnI6N7/FWRyPbQYrz8BX1UYlHFZSezDrdCw==","timestamp":"2026-11-02T21:07:41.361778589Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=E5B2E647F46A244EAAEF2CBDD10E8C7E98BB3B627AB9E9100FE0309885DF0605 height=32 module=consensus
+9:07PM INF finalizing commit of block hash={} height=32 module=consensus num_txs=0 root=821E967FF61B9B444167A670DA9F11A7900064CD5F38FFC3958BA12649F56BDA
+9:07PM INF finalized block block_app_hash=0C07BED91B44883BC85B1D52317CF6E04ECF2A9C3114BA2AD04E1A32F691F8E5 height=32 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=497.153451 height=33 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"86B966757B25A6C69EE39D66068F6B333DCF1ACD4FA0A6C50D87727C7BD5CA47","parts":{"hash":"CBA0B87D5380C53DFD9B71D3A721630E9539316CDB94AEB76B052127C893E5E9","total":1}},"height":33,"pol_round":-1,"round":0,"signature":"G8wZMsEO9H0Vq2YqnCXpSynT3UMw59FotyC4ppBpo6RpqkyohMioVST5YFSVRj46Z1dnq5kgex+cCP6zaUF6Dg==","timestamp":"2026-11-02T21:07:43.964834171Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=86B966757B25A6C69EE39D66068F6B333DCF1ACD4FA0A6C50D87727C7BD5CA47 height=33 module=consensus
+9:07PM INF finalizing commit of block hash={} height=33 module=consensus num_txs=0 root=0C07BED91B44883BC85B1D52317CF6E04ECF2A9C3114BA2AD04E1A32F691F8E5
+9:07PM INF finalized block block_app_hash=AC14BA75E439BC2A9851E382D9EB9655BF80F4C81A5ECF05EF9402F31CDE4502 height=33 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.493534 height=34 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"006CE4D54DBC28E4DD11B4BCB74688574DDFE7C50D4F208ED9D6F783E9B9C140","parts":{"hash":"8307BBE322A9D56B8A83552CFB8590806A069345376078095A440A6552017A67","total":1}},"height":34,"pol_round":-1,"round":0,"signature":"vJT0FXl2exaMI2wc+AWzNP74Q9WHkhh90j0q1MHKrLZhHR808BDogYnyuwILrIqE87sWrymeUz8/tjxX/f7EBQ==","timestamp":"2026-11-02T21:07:46.564896972Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=006CE4D54DBC28E4DD11B4BCB74688574DDFE7C50D4F208ED9D6F783E9B9C140 height=34 module=consensus
+9:07PM INF finalizing commit of block hash={} height=34 module=consensus num_txs=0 root=AC14BA75E439BC2A9851E382D9EB9655BF80F4C81A5ECF05EF9402F31CDE4502
+9:07PM INF finalized block block_app_hash=1C3F1611762A2E5A46B922F5C0C274968EFEFE5F7361E3165BE65E9B034DCFBB height=34 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=496.075193 height=35 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"8AFB038AEC5F544FB310BA5FB76F831FEDDB178A3F77D85533227396A3A7B5E2","parts":{"hash":"B2D7AACCD634D0F82A402AC916718954409472AAA902FBCD5394CC72904826D0","total":1}},"height":35,"pol_round":-1,"round":0,"signature":"QHe9qI+JEl1NzD6aMsW6Q300ToYcTd4kokeaICS71jKoqU14QfzqL0t4DFRsdCYki9ME/KuIE5hiTHLZx8F7DQ==","timestamp":"2026-11-02T21:07:49.166389964Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=8AFB038AEC5F544FB310BA5FB76F831FEDDB178A3F77D85533227396A3A7B5E2 height=35 module=consensus
+9:07PM INF finalizing commit of block hash={} height=35 module=consensus num_txs=0 root=1C3F1611762A2E5A46B922F5C0C274968EFEFE5F7361E3165BE65E9B034DCFBB
+9:07PM INF finalized block block_app_hash=4D6EBC68AB918F5B5080DD4BBEF844590CF6B592A3772D31504942BC2DF54D7C height=35 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=483.081573 height=36 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"5FAC84EA6C87011F8ABA92E27E74525388DBD2885467395D78D34FDC36D078E9","parts":{"hash":"89F7CECC52738090B067D1467C11FA6D2278FA300345511132B1E4A4F633A586","total":1}},"height":36,"pol_round":-1,"round":0,"signature":"bGUseFmdJ7IT6ZLAnqUD6NXBfglEZU5I0dVrxoe5bAyYrsSNQYTD09F0NrOkEpPUk3cSTV83rNbyE1YzcgtLAA==","timestamp":"2026-11-02T21:07:51.768723939Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=5FAC84EA6C87011F8ABA92E27E74525388DBD2885467395D78D34FDC36D078E9 height=36 module=consensus
+9:07PM INF finalizing commit of block hash={} height=36 module=consensus num_txs=0 root=4D6EBC68AB918F5B5080DD4BBEF844590CF6B592A3772D31504942BC2DF54D7C
+9:07PM INF finalized block block_app_hash=00305455335DFC7ACFB1E0EB692C4BB5F3E4DB447B9FC2EE31B0274C7E9487B2 height=36 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=490.45436 height=37 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"82437F566678E5DC54E17AE058F8E3B373EF2ABC10BBDC3948D084EDFBE6F086","parts":{"hash":"B8A6846B5C9D99DE64AE99742EE051F204EF08C0F39125EEB3272A147BF897E8","total":1}},"height":37,"pol_round":-1,"round":0,"signature":"UzwvWAmui3Niv4Mpf95uVTmvlbK9NYW4woEjq5YDZi1OQ2aoaN7kk1K3fQemkx7tfHPoJi7tgTVqLu7yw/n+Bw==","timestamp":"2026-11-02T21:07:54.373359443Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=82437F566678E5DC54E17AE058F8E3B373EF2ABC10BBDC3948D084EDFBE6F086 height=37 module=consensus
+9:07PM INF finalizing commit of block hash={} height=37 module=consensus num_txs=0 root=00305455335DFC7ACFB1E0EB692C4BB5F3E4DB447B9FC2EE31B0274C7E9487B2
+9:07PM INF finalized block block_app_hash=BA6AE1818C5E27F37F3F6A69003F7DCC040CEF4448A8F30E7033F3E8F338B369 height=37 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=492.094282 height=38 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0A2523F8ED118516B2AB155264F9B5C0B4B2841ECDAC8ECF66BE8C4C574DE1D1","parts":{"hash":"359428E0ED07565D50F043BD13C883AEEA97E8A1D5B868D4D7EF44EF8719B1F8","total":1}},"height":38,"pol_round":-1,"round":0,"signature":"+rKYXTWFhatgMiEhZTNVCi1gYkRbFWKj1IfflFPh8gkrtn4YXc4VP9ew12fVcVq7ZktDIlCfuUcb1mYsZKRyAA==","timestamp":"2026-11-02T21:07:56.976989478Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=0A2523F8ED118516B2AB155264F9B5C0B4B2841ECDAC8ECF66BE8C4C574DE1D1 height=38 module=consensus
+9:07PM INF finalizing commit of block hash={} height=38 module=consensus num_txs=0 root=BA6AE1818C5E27F37F3F6A69003F7DCC040CEF4448A8F30E7033F3E8F338B369
+9:07PM INF finalized block block_app_hash=2E2B0D10882987F12A97C958C515578B5F9AA5D570BC3F5A5F290AF9288BC67F height=38 module=state num_txs_res=0 num_val_updates=0
+9:07PM INF Timed out dur=484.900281 height=39 module=consensus round=0 step=1
+9:07PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"89703F40067F13BF7FA93C2A1C82612FAA370F2EB1885309604E03B4BACC2EC4","parts":{"hash":"AE85451A9D46D11543E91C0B61D403AE95D1D46DEC50997B804DA51E205BD782","total":1}},"height":39,"pol_round":-1,"round":0,"signature":"9CEcMH14ugx4cbEIjb4EPRycR0FftJRAkcQgZgAdDxByadCMXiCMBGlMt2pfIQsZs9kjqjbsUhBDRLbgZRBDAg==","timestamp":"2026-11-02T21:07:59.589973905Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:07PM INF received complete proposal block hash=89703F40067F13BF7FA93C2A1C82612FAA370F2EB1885309604E03B4BACC2EC4 height=39 module=consensus
+9:08PM INF finalizing commit of block hash={} height=39 module=consensus num_txs=0 root=2E2B0D10882987F12A97C958C515578B5F9AA5D570BC3F5A5F290AF9288BC67F
+9:08PM INF finalized block block_app_hash=4C38964C59C88CBDF785B815D7319C60186AFE20A25279826252693502BB3A93 height=39 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=496.090371 height=40 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"91D53C3D7C9466F9D873AC4F396DD34EA53894A87212C7A11E2B0F964E5C7C92","parts":{"hash":"F59B386F83A4E784E6B9FAA10D39AE7AA4AA5C8C1D1BD73F12F783626D6DF292","total":1}},"height":40,"pol_round":-1,"round":0,"signature":"udOPeNQrITob2A4jRGFSOQLfOrace1bYjGhAUIR8is6d7TNcsXcp4I+Bw3womzCoafKgS0wj8mrimEdl01rnDQ==","timestamp":"2026-11-02T21:08:02.180359836Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=91D53C3D7C9466F9D873AC4F396DD34EA53894A87212C7A11E2B0F964E5C7C92 height=40 module=consensus
+9:08PM INF finalizing commit of block hash={} height=40 module=consensus num_txs=0 root=4C38964C59C88CBDF785B815D7319C60186AFE20A25279826252693502BB3A93
+9:08PM INF finalized block block_app_hash=69437CF3E13CB5FC0FED406B7FF1D83B42B483A76FEA858C1B585961BB384506 height=40 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF creating state snapshot height=40 module=server
+9:08PM INF completed state snapshot format=3 height=40 module=server
+9:08PM INF Timed out dur=495.835628 height=41 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9B7A13FA7B8AF1417331633618F778FF0910BCB2994EC44122A83C65FFD1C2A3","parts":{"hash":"777CB14FD517DCEBC2784FCB79FE953993A1996561CA0E03C53A9DBA162AFB6E","total":1}},"height":41,"pol_round":-1,"round":0,"signature":"cqN62236a/L1BbULeNYkP/zseXRPTZZMmWLEkg/q2jaJF41dYHyfJie43d7DhLfk0f0RplB1nshiXZI++M87AQ==","timestamp":"2026-11-02T21:08:04.781682961Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=9B7A13FA7B8AF1417331633618F778FF0910BCB2994EC44122A83C65FFD1C2A3 height=41 module=consensus
+9:08PM INF finalizing commit of block hash={} height=41 module=consensus num_txs=0 root=69437CF3E13CB5FC0FED406B7FF1D83B42B483A76FEA858C1B585961BB384506
+9:08PM INF finalized block block_app_hash=A54B397A91DF233A2D59F84D8ACCF753331FA3A366272B5E43A58449A15D6216 height=41 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=496.425228 height=42 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"9201ED128B2ED2E41979F2B054DCF5613E20242C54D291B38301C8B79967C859","parts":{"hash":"224DA3CF5C0F963047DB1650F4B7FD1E1955BB1FD466353C6BBF3FF7E3050F83","total":1}},"height":42,"pol_round":-1,"round":0,"signature":"NgpPhqL6da2xPjfkUlcuB38MIL5g5ABMoDsIo5eHYn/s20X+NOZnFHasEjupiq3e2tpWVrIM7gKjnklGsgcgDw==","timestamp":"2026-11-02T21:08:07.38332347Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=9201ED128B2ED2E41979F2B054DCF5613E20242C54D291B38301C8B79967C859 height=42 module=consensus
+9:08PM INF finalizing commit of block hash={} height=42 module=consensus num_txs=0 root=A54B397A91DF233A2D59F84D8ACCF753331FA3A366272B5E43A58449A15D6216
+9:08PM INF finalized block block_app_hash=8DED97943AFAAE37A575FC358BB28F343B4E06C9D95509779FA9CF84B2AB4FB4 height=42 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.771915 height=43 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"E01C0D1FA72EA1742C6E04175464ABB5A81C9B3EC95CF1FAA60CAF1D022314E0","parts":{"hash":"A5445B15E241C76893A61F541B5E1D154606298AFCAE0352F6F8F34C25D18DE0","total":1}},"height":43,"pol_round":-1,"round":0,"signature":"IQtj28wSuJb4+NQRIglE0kQeQhngTClwcjKI+pkCKRjtq+Y4fzU+Fxvj6PN+XqbofofiglPvqGEBVN6vng0pDA==","timestamp":"2026-11-02T21:08:09.989244139Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=E01C0D1FA72EA1742C6E04175464ABB5A81C9B3EC95CF1FAA60CAF1D022314E0 height=43 module=consensus
+9:08PM INF finalizing commit of block hash={} height=43 module=consensus num_txs=0 root=8DED97943AFAAE37A575FC358BB28F343B4E06C9D95509779FA9CF84B2AB4FB4
+9:08PM INF finalized block block_app_hash=017C875764D5BE2AAC17051B76C192EA543C5FA8B70375EEC68E2EB895F3827A height=43 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=488.123198 height=44 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"BF176BCF021E3F0899D4DB7ACF6B556F49268ADC580184E510A43CC29028A421","parts":{"hash":"B700F66BEB65E0AA72C382BC4ECC33503B26100A4F86F9E16C1FDB92FA552B7B","total":1}},"height":44,"pol_round":-1,"round":0,"signature":"7iuaquZ0GyzG6DV+g/n+WX7luxqsd04cIU3PvMAL4TLaAwUKyfDhUfyY8q2PyJfO1iQMRjoaCO9JbWaI13pZAQ==","timestamp":"2026-11-02T21:08:12.589156294Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=BF176BCF021E3F0899D4DB7ACF6B556F49268ADC580184E510A43CC29028A421 height=44 module=consensus
+9:08PM INF finalizing commit of block hash={} height=44 module=consensus num_txs=0 root=017C875764D5BE2AAC17051B76C192EA543C5FA8B70375EEC68E2EB895F3827A
+9:08PM INF finalized block block_app_hash=CEF6F415483411868DFD799B9E13FDD8476FBAE2032D9F1D89190527FA0AA43E height=44 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.826032 height=45 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7C8512E22CD81FD89F1EC8D9D197F742B555E0F8A115639276ADC4588CC20BAE","parts":{"hash":"B2CB2829039A810A335A396474692F2F5C7C6363EFA7508AC44A3329B80F5C2D","total":1}},"height":45,"pol_round":-1,"round":0,"signature":"/Pv99vXZ4Ld/vjlIFr+HcKNaSyz9HtjsAd4a3xPnfo8oBqrjVnIoeYr8vIhzlSiwurF4aMPCUF2fl/lY/r6nCw==","timestamp":"2026-11-02T21:08:15.189141173Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=7C8512E22CD81FD89F1EC8D9D197F742B555E0F8A115639276ADC4588CC20BAE height=45 module=consensus
+9:08PM INF finalizing commit of block hash={} height=45 module=consensus num_txs=0 root=CEF6F415483411868DFD799B9E13FDD8476FBAE2032D9F1D89190527FA0AA43E
+9:08PM INF finalized block block_app_hash=9651607E57801E3A24BFD24EF933F5B18A271FCB09A091606434ECB79DA2A9EB height=45 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=489.31478 height=46 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"2F086D0FDE4334A7C9A92556FF72DD1DA6F7206BD823D42CBB5A2718C389B454","parts":{"hash":"111686B1BA17C12FEA1DB0980D71CFB26BB0A0B6C8652BDC41B4124C1E487A1F","total":1}},"height":46,"pol_round":-1,"round":0,"signature":"+DaXHgT9GrF0lQ0kMgJI6cU9mhiTWH4bUxpqEMZxoLLrtXPZ12cdzXSJiM86C+j9XNfr9+jR99XrBWoGJEU/DA==","timestamp":"2026-11-02T21:08:17.793412068Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=2F086D0FDE4334A7C9A92556FF72DD1DA6F7206BD823D42CBB5A2718C389B454 height=46 module=consensus
+9:08PM INF finalizing commit of block hash={} height=46 module=consensus num_txs=0 root=9651607E57801E3A24BFD24EF933F5B18A271FCB09A091606434ECB79DA2A9EB
+9:08PM INF finalized block block_app_hash=0F570174C60304892CF6E1ACF27C70A2E85C98B39CA2C43A08A3C26988783CC7 height=46 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=490.367989 height=47 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"0E3F1DE804A76EE2A3CCD759E65F235F0D309403C86E5D8BAC77EC1457D2B4EE","parts":{"hash":"7EA302EDF5DE807DB6A2D9F37E7605D3B3165F028C8C9A65E637E9BF20282410","total":1}},"height":47,"pol_round":-1,"round":0,"signature":"xGKPqb06x3/T9XADxX77QZdhHRuF0FSMVqIwucS2oOrzJEl1fJzGoOoRaaqrl8Pg8oTHwo8VnfpoJWcYVh7ODA==","timestamp":"2026-11-02T21:08:20.396189581Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=0E3F1DE804A76EE2A3CCD759E65F235F0D309403C86E5D8BAC77EC1457D2B4EE height=47 module=consensus
+9:08PM INF finalizing commit of block hash={} height=47 module=consensus num_txs=0 root=0F570174C60304892CF6E1ACF27C70A2E85C98B39CA2C43A08A3C26988783CC7
+9:08PM INF finalized block block_app_hash=10319EA38C6775550768E5C9BF979DA34601A826C448CB34EB7BF8F9867054A4 height=47 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=496.124712 height=48 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CC4716F929B7448E5FEAAB326129C5AA94675B887F7ACEF08A001749EB49DF4E","parts":{"hash":"A3808471F3FD53F2D9861ADA88F39164FA454E8A2336B341C7AFB8049E2BD9E7","total":1}},"height":48,"pol_round":-1,"round":0,"signature":"8dTr6McRPIGWydXVGgmAiUVYFwHSt3dfo66xzdbkhRVyOuYRo97PQUsSmt+rbh9C1h6vhrFLGxJqeIpv0C1qDQ==","timestamp":"2026-11-02T21:08:22.996477277Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=CC4716F929B7448E5FEAAB326129C5AA94675B887F7ACEF08A001749EB49DF4E height=48 module=consensus
+9:08PM INF finalizing commit of block hash={} height=48 module=consensus num_txs=0 root=10319EA38C6775550768E5C9BF979DA34601A826C448CB34EB7BF8F9867054A4
+9:08PM INF finalized block block_app_hash=27C3DC3986E2FD13F0FF34BEF44BD5A2F1C1FBFBA1E611D67960ADDE9FCFA172 height=48 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=490.603285 height=49 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"A98542E18B217534133FCE97161D76071F0C08EB7BBA36523EAFB8ACEC72F664","parts":{"hash":"BF9225614D6D48CD0E283F4F26DA74C80EE25150A020AC495F88BC06FE31EB6B","total":1}},"height":49,"pol_round":-1,"round":0,"signature":"9/yLhI/qQ4YRezseheVEf5bMgNdqs48oW6YHZeD3ehwxPqLwx1YaiDjU6yblsKoPmsnHq4iUZp96H9DbCU2cBQ==","timestamp":"2026-11-02T21:08:25.600562561Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=A98542E18B217534133FCE97161D76071F0C08EB7BBA36523EAFB8ACEC72F664 height=49 module=consensus
+9:08PM INF finalizing commit of block hash={} height=49 module=consensus num_txs=0 root=27C3DC3986E2FD13F0FF34BEF44BD5A2F1C1FBFBA1E611D67960ADDE9FCFA172
+9:08PM INF finalized block block_app_hash=D1B0CC1531695A1B9237A54347EEDC9394AEEDB86528531F2482BE76DA05541E height=49 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=490.51281 height=50 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"24277691D463E7B6C1A18C651F35E06387B8031E94DDCD8031B6F5967696054E","parts":{"hash":"FD1BC021E9BD342A1DF942BEF5DB7315D044DA8D7EB81297774C2D68ECCC0EF9","total":1}},"height":50,"pol_round":-1,"round":0,"signature":"sU3rOJkOtLgoq8cloJ8ndc+b3DhH9pvakqJNGnwpFw1DO7o29RYzPq7m15NsjLg8WHhOtIE0MTddozXhAEUXAg==","timestamp":"2026-11-02T21:08:28.201950365Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=24277691D463E7B6C1A18C651F35E06387B8031E94DDCD8031B6F5967696054E height=50 module=consensus
+9:08PM INF finalizing commit of block hash={} height=50 module=consensus num_txs=0 root=D1B0CC1531695A1B9237A54347EEDC9394AEEDB86528531F2482BE76DA05541E
+9:08PM INF finalized block block_app_hash=E4F21EC6884C6F0B808D77DA0854219D44103B3D3DF2C28B67D1D3E7D5CCEB92 height=50 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF creating state snapshot height=50 module=server
+9:08PM INF completed state snapshot format=3 height=50 module=server
+9:08PM INF Timed out dur=494.556558 height=51 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"325C00274F2072CA5878C156AFFDD273324C570902E50475701DBF792585F7C8","parts":{"hash":"064A2D9038B052C5AB0B06B95D1BE7EC8D1CD56DA4601C0852F47FF4787AC3D8","total":1}},"height":51,"pol_round":-1,"round":0,"signature":"/nVJRLqid5b1P0KliekYFrRohUnCgsDDak7XFMNApWpGetmy95a6l89mNxrlCdV4/uhvR2zlT1nvYoT+WT5LCQ==","timestamp":"2026-11-02T21:08:30.802269703Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=325C00274F2072CA5878C156AFFDD273324C570902E50475701DBF792585F7C8 height=51 module=consensus
+9:08PM INF finalizing commit of block hash={} height=51 module=consensus num_txs=0 root=E4F21EC6884C6F0B808D77DA0854219D44103B3D3DF2C28B67D1D3E7D5CCEB92
+9:08PM INF finalized block block_app_hash=BCE056B07C67240C17D099AB9A95C40DF21EA4B53E444D47ED86427642EA65C8 height=51 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.511934 height=52 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"57A484F39D632096BF79D1C0F170F2E89F1EB19CAA0CD24D411FF740E64CC2DA","parts":{"hash":"7086A6646C585DCBBD3A9493C0B986A49E2198D263A98319A025FFC6C503F0B3","total":1}},"height":52,"pol_round":-1,"round":0,"signature":"B1pFZAlnlnEPWFGQEYczyLn/5C99XVl9VAIMoLnxzmQVLWI1lk+VTF6xdQ+nmceOahxM+Cs0p7sMKM9LDeD1AQ==","timestamp":"2026-11-02T21:08:33.40420811Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=57A484F39D632096BF79D1C0F170F2E89F1EB19CAA0CD24D411FF740E64CC2DA height=52 module=consensus
+9:08PM INF finalizing commit of block hash={} height=52 module=consensus num_txs=0 root=BCE056B07C67240C17D099AB9A95C40DF21EA4B53E444D47ED86427642EA65C8
+9:08PM INF finalized block block_app_hash=F06022ED37097D0C31FEBF2CCB3A6806A2A9D096EA90E7DC3FB4FAABC9FB9B01 height=52 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=489.283077 height=53 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CA4D18E046E07A263466B123B75AA5C549D2996CDCB062F8338CC0506E284047","parts":{"hash":"8681701341C189AFE69D10BDD9E11B111DCE96C0743A74EE6021512E6251E624","total":1}},"height":53,"pol_round":-1,"round":0,"signature":"tcrBxu69DNeGuw7HOgXI7rE5AVs+s4kQROZRL12O5Y5fPS2bNRVrhq6eXm5RbJXJocY/luDMR+pGEZR+8QaFCg==","timestamp":"2026-11-02T21:08:36.008227525Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=CA4D18E046E07A263466B123B75AA5C549D2996CDCB062F8338CC0506E284047 height=53 module=consensus
+9:08PM INF finalizing commit of block hash={} height=53 module=consensus num_txs=0 root=F06022ED37097D0C31FEBF2CCB3A6806A2A9D096EA90E7DC3FB4FAABC9FB9B01
+9:08PM INF finalized block block_app_hash=C1A659759CAD74BE2B5A82CCD07D0E99A72ACE3CF33822513C57C7C2F78CE169 height=53 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.058998 height=54 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CFBE9A32534FB083B079C5A6148E9CD1DC2BA590081E84A818B011513F366344","parts":{"hash":"343AB1314BFCEAD0A6117DCEB72BE94F9622008643921554DA5C459506B2C9DC","total":1}},"height":54,"pol_round":-1,"round":0,"signature":"u2JOVSSSjLX9egQtT+cj2XuYncCt6U9UsaLXl3t+tUMQsFQSq2V7ojGZ+bHfNKcEsXioAchUY9i6i2WXo1mmBA==","timestamp":"2026-11-02T21:08:38.608630293Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=CFBE9A32534FB083B079C5A6148E9CD1DC2BA590081E84A818B011513F366344 height=54 module=consensus
+9:08PM INF finalizing commit of block hash={} height=54 module=consensus num_txs=0 root=C1A659759CAD74BE2B5A82CCD07D0E99A72ACE3CF33822513C57C7C2F78CE169
+9:08PM INF finalized block block_app_hash=B9980B109FFFF001708028F9F9A814447EF0B19F76EE2341ADD2A2FB275A9594 height=54 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=496.11108 height=55 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7045904FF97D6CC644B930134310541215DB749DFD83D8EC102D17A7109D0E26","parts":{"hash":"E40745416714EE523F591D780756E96874BD04C595BDAF4AA2DC54BA4D890251","total":1}},"height":55,"pol_round":-1,"round":0,"signature":"tQm8kAaHCI05LNd9DAJEgcKgBLNbKw9dsj9vyUP/eWMXAxSGkkjxCOW1l1q9weAbuSOCsK0qShtI52xIN7JzBw==","timestamp":"2026-11-02T21:08:41.209894343Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=7045904FF97D6CC644B930134310541215DB749DFD83D8EC102D17A7109D0E26 height=55 module=consensus
+9:08PM INF finalizing commit of block hash={} height=55 module=consensus num_txs=0 root=B9980B109FFFF001708028F9F9A814447EF0B19F76EE2341ADD2A2FB275A9594
+9:08PM INF finalized block block_app_hash=090C92200372798FDCEBAE4564E1C4CA8B02AF0D472D44365085A3959DCB27E1 height=55 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.879602 height=56 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"CB23F572831757F908EAF4B3B8690FC72CE9A8353627D27DB0D6A6CB46341214","parts":{"hash":"8DB219D5BF0312A41F1119B051FD1CA9106ABED2B2F6786F9E15F1D203C24FB4","total":1}},"height":56,"pol_round":-1,"round":0,"signature":"Q/gKUlnoZ8BWo536roV/sDK5JWKf5P/c9sRnRIKJFBv94g12186ZifZ9WcsZSNevVJWsascCF8h2UNDLUmwIBw==","timestamp":"2026-11-02T21:08:43.811464355Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=CB23F572831757F908EAF4B3B8690FC72CE9A8353627D27DB0D6A6CB46341214 height=56 module=consensus
+9:08PM INF finalizing commit of block hash={} height=56 module=consensus num_txs=0 root=090C92200372798FDCEBAE4564E1C4CA8B02AF0D472D44365085A3959DCB27E1
+9:08PM INF finalized block block_app_hash=88FF0C349EE5B6C3CEA83F1E2E4A4FA2F6CB88A69CAC816466FBF92A24B52D44 height=56 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.753137 height=57 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7275A5D62252EC181A9D6059E30F1F6184DBAB54C9AF64FBB22B283400740C7D","parts":{"hash":"555B870A1AD4720401D5620830556BED232D2FCF0C7214214D5F3E344AF7094B","total":1}},"height":57,"pol_round":-1,"round":0,"signature":"dT09191pc89vCsp+4NXpOLa6Y0TM/4ooX2EEB4atK8slTLdcqpSG1QpSL5dC8bCU8U17+UB7TV6lFzLLZQX3DA==","timestamp":"2026-11-02T21:08:46.41181834Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=7275A5D62252EC181A9D6059E30F1F6184DBAB54C9AF64FBB22B283400740C7D height=57 module=consensus
+9:08PM INF finalizing commit of block hash={} height=57 module=consensus num_txs=0 root=88FF0C349EE5B6C3CEA83F1E2E4A4FA2F6CB88A69CAC816466FBF92A24B52D44
+9:08PM INF finalized block block_app_hash=9C285538FC58454DE1D3F0DA0EAE653509AC4B2E453A62CE9C15A6E934EC7867 height=57 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=491.758392 height=58 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"3D3DFCCE3210675C8803A675080DC3466D44FFB3A888D458226731655CDD0EC2","parts":{"hash":"ADF3D0FF070637DA13B130D1DEBED98B0FDD29F5A40040441446B7CF9DD874D4","total":1}},"height":58,"pol_round":-1,"round":0,"signature":"RfBUsA8fEHNXudak/rPc605EiZoBMEZgtwNRMAFoaSVIfQpexCOyk4I3KolSn/LHkTVW5fm6zqRRrcMrQVzODQ==","timestamp":"2026-11-02T21:08:49.0141487Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=3D3DFCCE3210675C8803A675080DC3466D44FFB3A888D458226731655CDD0EC2 height=58 module=consensus
+9:08PM INF finalizing commit of block hash={} height=58 module=consensus num_txs=0 root=9C285538FC58454DE1D3F0DA0EAE653509AC4B2E453A62CE9C15A6E934EC7867
+9:08PM INF finalized block block_app_hash=E198C1531A941583E4DB69244416F18CC00BC7674CA1C83F1892C01E7CB864B3 height=58 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=495.244409 height=59 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"7833D9AA1320C59FC3E1750FDB1D6C6DEA785A33D6C5C96E38CB7C4E670B9DDF","parts":{"hash":"773538C76F0F37A0326448DC34563D7538851DA68E54B64C1EDB3694B11DD03D","total":1}},"height":59,"pol_round":-1,"round":0,"signature":"YI0mXooSnk0mAi4VkVLPKnRmZItDqrD0qnR9iesUzGHE2AIPcbFCYZUnRCVfRcPo8fPgejnYtYrQ9EX41MtkDw==","timestamp":"2026-11-02T21:08:51.617904366Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=7833D9AA1320C59FC3E1750FDB1D6C6DEA785A33D6C5C96E38CB7C4E670B9DDF height=59 module=consensus
+9:08PM INF finalizing commit of block hash={} height=59 module=consensus num_txs=0 root=E198C1531A941583E4DB69244416F18CC00BC7674CA1C83F1892C01E7CB864B3
+9:08PM INF finalized block block_app_hash=1D912CA91D7170DF7C9D74A366B4FF692885F0254E010DEFF68BCDFEA962AAC7 height=59 module=state num_txs_res=0 num_val_updates=0
+9:08PM INF Timed out dur=492.834431 height=60 module=consensus round=0 step=1
+9:08PM INF received proposal module=consensus proposal={"Type":32,"block_id":{"hash":"907EB7481C62F4DB608BD122E91FC23C721282E17C551FF30BA36C19D784D292","parts":{"hash":"2FB6FA0C7D75A10FB4EDF454A93EBF0D5D64949613CFFD48F2392BBA03DFC851","total":1}},"height":60,"pol_round":-1,"round":0,"signature":"lLTaxKme2b9AhX5iuGqNKCrF1j1gD0u9ekIpPVQJHTB/MxJ5A7K37kuPcvocnl86HmIFRwsmymU5OSMlBYCXDA==","timestamp":"2026-11-02T21:08:54.21684013Z"} proposer=07E91CE11957865B411D40AD90E8D393A35634DB
+9:08PM INF received complete proposal block hash=907EB7481C62F4DB608BD122E91FC23C721282E17C551FF30BA36C19D784D292 height=60 module=consensus
+9:08PM INF service stop impl={"Logger":{"Logger":{}}} module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":59962}
+9:08PM INF Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:59962} e94838b64a2243f42dfe25713db86155325c8803 in}" reactor=p2p
+9:08PM INF service stop impl="Peer{MConn{127.0.0.1:59962} e94838b64a2243f42dfe25713db86155325c8803 in}" module=p2p msg={} peer={"id":"e94838b64a2243f42dfe25713db86155325c8803","ip":"127.0.0.1","port":59962}

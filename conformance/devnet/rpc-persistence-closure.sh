@@ -7,7 +7,8 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 RS=${RS_BIN:-$ROOT/target/debug/celestia-rs}
 export PATH=$BIN:$PATH
-OFF=${DEVNET_PORT_OFFSET:-12000}
+# Keep P2P/RPC listeners below the Linux ephemeral source-port range.
+OFF=${DEVNET_PORT_OFFSET:-3000}
 W=$(mktemp -d)
 FAIL=()
 OUT=${RPC_PERSISTENCE_OUT:?set RPC_PERSISTENCE_OUT to a new capture directory}

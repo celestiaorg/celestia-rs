@@ -1,0 +1,2864 @@
+[
+  {
+    "endpoint": "ws://127.0.0.1:35777/websocket",
+    "initial_ack": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {}
+    },
+    "before_disconnect": [
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+          "code": -32000,
+          "message": "Server error",
+          "data": "subscription was canceled (reason: CometBFT exited)"
+        }
+      }
+    ],
+    "disconnect": "websocket: close 1006 (abnormal closure): unexpected EOF",
+    "reconnect_ack": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {}
+    },
+    "events": [
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "17",
+                  "time": "2026-11-02T21:15:28.625077981Z",
+                  "last_block_id": {
+                    "hash": "8BDD08A6AC3AFE0E310F7219073143DEA97E4EB8E7C998056A69ACF418CE9EBB",
+                    "parts": {
+                      "total": 1,
+                      "hash": "82A1A1F308476472EBE2AA375A71AC0FF4AD9FE1BAD9C238789917F68356B548"
+                    }
+                  },
+                  "last_commit_hash": "AA03127C5232E96652F7E068A42A2D54117FBFBD71838AFADED6529859F751F1",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "C79D148B85A870C4F7A702B9B0EC0E25CAC1D3D3A5C3F9587914451591618861",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "16",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "8BDD08A6AC3AFE0E310F7219073143DEA97E4EB8E7C998056A69ACF418CE9EBB",
+                    "parts": {
+                      "total": 1,
+                      "hash": "82A1A1F308476472EBE2AA375A71AC0FF4AD9FE1BAD9C238789917F68356B548"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:28.625077981Z",
+                      "signature": "ilfWqumbD8QQraPL7HYG3/2xb7ZYAIAK2VrDXpW7N7wrCsHrjLICWeSINWIuGaYpV5mrTTkL9NZMKatNXUfrBA=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                "parts": {
+                  "total": 1,
+                  "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "107825.088000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "1078250.880000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": [],
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "xb600dbr/LvSlweojySafbaBl/E0xYgYz3J/AxgxlRo=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.amount": [
+              "1100256utia",
+              "1100256utia"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "commission.amount": [
+              "107825.088000000000000000utia"
+            ],
+            "coin_received.amount": [
+              "1100256utia",
+              "1100256utia",
+              "1100256utia"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "mint.amount": [
+              "1100256"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "coinbase.amount": [
+              "1100256utia"
+            ],
+            "coin_spent.amount": [
+              "1100256utia",
+              "1100256utia"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "1078250.880000000000000000utia"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "18",
+                  "time": "2026-11-02T21:15:35.797245489Z",
+                  "last_block_id": {
+                    "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                    "parts": {
+                      "total": 1,
+                      "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                    }
+                  },
+                  "last_commit_hash": "E14909CCA9C17757E0D260012298DCDFD032DBFF829E11816BDC4B7075B92BF6",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "C5BEB4D1D6EBFCBBD29707A88F249A7DB68197F134C58818CF727F031831951A",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "17",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                    "parts": {
+                      "total": 1,
+                      "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:35.797245489Z",
+                      "signature": "3Hp4+70Lt0nR2G9gMqC8XiDzPU1CH5C2g0XAuVD6V3EUu7FwulfE1GXpz7O8tamVS4+WlNtNAS0fuEztcMYGAw=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                "parts": {
+                  "total": 1,
+                  "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "297346.406000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "2973464.060000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": [],
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "lsLW7d/xyZLseAy304Z/H9wRiULBHIvhadXQ2mW47GM=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "tm.event": [
+              "NewBlock"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "mint.amount": [
+              "3034147"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "rewards.amount": [
+              "2973464.060000000000000000utia"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.amount": [
+              "3034147utia"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "commission.amount": [
+              "297346.406000000000000000utia"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "coin_received.amount": [
+              "3034147utia",
+              "3034147utia",
+              "3034147utia"
+            ],
+            "coin_spent.amount": [
+              "3034147utia",
+              "3034147utia"
+            ],
+            "transfer.amount": [
+              "3034147utia",
+              "3034147utia"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "19",
+                  "time": "2026-11-02T21:15:38.399117864Z",
+                  "last_block_id": {
+                    "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                    "parts": {
+                      "total": 1,
+                      "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                    }
+                  },
+                  "last_commit_hash": "41BA9E5F3EE61C1CE71F1D998D12E41784CD92D68DC50B9A60B36D9DA7D881E0",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "96C2D6EDDFF1C992EC780CB7D3867F1FDC118942C11C8BE169D5D0DA65B8EC63",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "18",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                    "parts": {
+                      "total": 1,
+                      "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:38.399117864Z",
+                      "signature": "H/+e5KO5/1jaWDr/k3Pa93NYHAGq82F5YCpBw/piDeWE2cft8pqZjcFoiZBi19WXhy0nZmUgPEwcge+0rtoIDA=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "4E2D6E9DD6273BAB803920A0463E11AD60CFB70D949C508211BF42F81CFE3962",
+                "parts": {
+                  "total": 1,
+                  "hash": "23C0F53E80BDD9DDE3E3DFE0E3D3A588C379FA3BB8C69DEA98390FEF5FC36ADF"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "107869.384000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "1078693.840000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": [],
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "NgOoGZ1mrIqTe3R+6m/aRXEjVFjdmAtzuh81x4N2Pos=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "coin_received.amount": [
+              "1100708utia",
+              "1100708utia",
+              "1100708utia"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coinbase.amount": [
+              "1100708utia"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "commission.amount": [
+              "107869.384000000000000000utia"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "1078693.840000000000000000utia"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coin_spent.amount": [
+              "1100708utia",
+              "1100708utia"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.amount": [
+              "1100708"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "transfer.amount": [
+              "1100708utia",
+              "1100708utia"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ]
+          }
+        }
+      }
+    ],
+    "heights": [
+      "17",
+      "18",
+      "19"
+    ]
+  },
+  {
+    "endpoint": "ws://127.0.0.1:35767/websocket",
+    "initial_ack": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {}
+    },
+    "before_disconnect": null,
+    "disconnect": "websocket: close 1006 (abnormal closure): unexpected EOF",
+    "reconnect_ack": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {}
+    },
+    "events": [
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "17",
+                  "time": "2026-11-02T21:15:28.625077981Z",
+                  "last_block_id": {
+                    "hash": "8BDD08A6AC3AFE0E310F7219073143DEA97E4EB8E7C998056A69ACF418CE9EBB",
+                    "parts": {
+                      "total": 1,
+                      "hash": "82A1A1F308476472EBE2AA375A71AC0FF4AD9FE1BAD9C238789917F68356B548"
+                    }
+                  },
+                  "last_commit_hash": "AA03127C5232E96652F7E068A42A2D54117FBFBD71838AFADED6529859F751F1",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "C79D148B85A870C4F7A702B9B0EC0E25CAC1D3D3A5C3F9587914451591618861",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "16",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "8BDD08A6AC3AFE0E310F7219073143DEA97E4EB8E7C998056A69ACF418CE9EBB",
+                    "parts": {
+                      "total": 1,
+                      "hash": "82A1A1F308476472EBE2AA375A71AC0FF4AD9FE1BAD9C238789917F68356B548"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:28.625077981Z",
+                      "signature": "ilfWqumbD8QQraPL7HYG3/2xb7ZYAIAK2VrDXpW7N7wrCsHrjLICWeSINWIuGaYpV5mrTTkL9NZMKatNXUfrBA=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                "parts": {
+                  "total": 1,
+                  "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100256utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "107825.088000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "1078250.880000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": null,
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "xb600dbr/LvSlweojySafbaBl/E0xYgYz3J/AxgxlRo=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_received.amount": [
+              "1100256utia",
+              "1100256utia",
+              "1100256utia"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_spent.amount": [
+              "1100256utia",
+              "1100256utia"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coinbase.amount": [
+              "1100256utia"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "commission.amount": [
+              "107825.088000000000000000utia"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.amount": [
+              "1100256"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "1078250.880000000000000000utia"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "transfer.amount": [
+              "1100256utia",
+              "1100256utia"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "18",
+                  "time": "2026-11-02T21:15:35.797245489Z",
+                  "last_block_id": {
+                    "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                    "parts": {
+                      "total": 1,
+                      "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                    }
+                  },
+                  "last_commit_hash": "E14909CCA9C17757E0D260012298DCDFD032DBFF829E11816BDC4B7075B92BF6",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "C5BEB4D1D6EBFCBBD29707A88F249A7DB68197F134C58818CF727F031831951A",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "17",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "412A6BE92500112AE282EB878F6166E37E25216EDC1FC5666A1925651D62BB82",
+                    "parts": {
+                      "total": 1,
+                      "hash": "FDD3BF9409005357295CCD872F11FECBC2645C84DD00B8DBFE03B9CC310A57DE"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:35.797245489Z",
+                      "signature": "3Hp4+70Lt0nR2G9gMqC8XiDzPU1CH5C2g0XAuVD6V3EUu7FwulfE1GXpz7O8tamVS4+WlNtNAS0fuEztcMYGAw=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                "parts": {
+                  "total": 1,
+                  "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "3034147utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "297346.406000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "2973464.060000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": null,
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "lsLW7d/xyZLseAy304Z/H9wRiULBHIvhadXQ2mW47GM=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_received.amount": [
+              "3034147utia",
+              "3034147utia",
+              "3034147utia"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_spent.amount": [
+              "3034147utia",
+              "3034147utia"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coinbase.amount": [
+              "3034147utia"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "commission.amount": [
+              "297346.406000000000000000utia"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.amount": [
+              "3034147"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "2973464.060000000000000000utia"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "transfer.amount": [
+              "3034147utia",
+              "3034147utia"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ]
+          }
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "query": "tm.event='NewBlock'",
+          "data": {
+            "type": "tendermint/event/NewBlock",
+            "value": {
+              "block": {
+                "header": {
+                  "version": {
+                    "block": "11",
+                    "app": "10"
+                  },
+                  "chain_id": "rs-rpc-persistence-prune-kv",
+                  "height": "19",
+                  "time": "2026-11-02T21:15:38.399117864Z",
+                  "last_block_id": {
+                    "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                    "parts": {
+                      "total": 1,
+                      "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                    }
+                  },
+                  "last_commit_hash": "41BA9E5F3EE61C1CE71F1D998D12E41784CD92D68DC50B9A60B36D9DA7D881E0",
+                  "data_hash": "3D96B7D238E7E0456F6AF8E7CDF0A67BD6CF9C2089ECB559C659DCAA1F880353",
+                  "validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "next_validators_hash": "DFADB32D6C0F282930438767D6AD5E3CF9390595BFA3944ADE0D9CF1691D781F",
+                  "consensus_hash": "3010BCE4084E97D799470DF8DE72F6983DD8AF1B7EB5050D29B7C541165DD1D6",
+                  "app_hash": "96C2D6EDDFF1C992EC780CB7D3867F1FDC118942C11C8BE169D5D0DA65B8EC63",
+                  "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                  "proposer_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57"
+                },
+                "data": {
+                  "txs": [],
+                  "square_size": "1"
+                },
+                "evidence": {
+                  "evidence": []
+                },
+                "last_commit": {
+                  "height": "18",
+                  "round": 0,
+                  "block_id": {
+                    "hash": "3B30FE4A576B8D6301020728F9662A8DFA7B976F56DC913D5B884563F8FA2E33",
+                    "parts": {
+                      "total": 1,
+                      "hash": "024215CC192D3DE563128E211A20B2DA8BE242EF2BFF2348FC14303B32C5E59A"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "block_id_flag": 2,
+                      "validator_address": "B837CBCE2EC20B6A7A8132CA8ED5FEB161246B57",
+                      "timestamp": "2026-11-02T21:15:38.399117864Z",
+                      "signature": "H/+e5KO5/1jaWDr/k3Pa93NYHAGq82F5YCpBw/piDeWE2cft8pqZjcFoiZBi19WXhy0nZmUgPEwcge+0rtoIDA=="
+                    }
+                  ]
+                }
+              },
+              "block_id": {
+                "hash": "4E2D6E9DD6273BAB803920A0463E11AD60CFB70D949C508211BF42F81CFE3962",
+                "parts": {
+                  "total": 1,
+                  "hash": "23C0F53E80BDD9DDE3E3DFE0E3D3A588C379FA3BB8C69DEA98390FEF5FC36ADF"
+                }
+              },
+              "result_finalize_block": {
+                "events": [
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coinbase",
+                    "attributes": [
+                      {
+                        "key": "minter",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mint",
+                    "attributes": [
+                      {
+                        "key": "inflation_rate",
+                        "value": "0.026700000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "annual_provisions",
+                        "value": "13350000000000.000000000000000000",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_spent",
+                    "attributes": [
+                      {
+                        "key": "spender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "coin_received",
+                    "attributes": [
+                      {
+                        "key": "receiver",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "transfer",
+                    "attributes": [
+                      {
+                        "key": "recipient",
+                        "value": "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj",
+                        "index": true
+                      },
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "amount",
+                        "value": "1100708utia",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "message",
+                    "attributes": [
+                      {
+                        "key": "sender",
+                        "value": "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "commission",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "107869.384000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rewards",
+                    "attributes": [
+                      {
+                        "key": "amount",
+                        "value": "1078693.840000000000000000utia",
+                        "index": true
+                      },
+                      {
+                        "key": "validator",
+                        "value": "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm",
+                        "index": true
+                      },
+                      {
+                        "key": "mode",
+                        "value": "BeginBlock",
+                        "index": true
+                      }
+                    ]
+                  }
+                ],
+                "validator_updates": null,
+                "consensus_param_updates": {
+                  "block": {
+                    "max_bytes": "33554432",
+                    "max_gas": "-1"
+                  },
+                  "evidence": {
+                    "max_age_num_blocks": "100000",
+                    "max_age_duration": "172800000000000",
+                    "max_bytes": "1048576"
+                  },
+                  "validator": {
+                    "pub_key_types": [
+                      "ed25519"
+                    ]
+                  },
+                  "version": {
+                    "app": "10"
+                  },
+                  "abci": {}
+                },
+                "app_hash": "NgOoGZ1mrIqTe3R+6m/aRXEjVFjdmAtzuh81x4N2Pos=",
+                "timeout_info": {
+                  "timeout_propose": "3000000000",
+                  "timeout_propose_delta": "500000000",
+                  "timeout_prevote": "2000000000",
+                  "timeout_prevote_delta": "500000000",
+                  "timeout_precommit": "3000000000",
+                  "timeout_precommit_delta": "500000000",
+                  "timeout_commit": "500000000",
+                  "delayed_precommit_timeout": "2100000000"
+                }
+              }
+            }
+          },
+          "events": {
+            "coin_received.amount": [
+              "1100708utia",
+              "1100708utia",
+              "1100708utia"
+            ],
+            "coin_received.mode": [
+              "BeginBlock",
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_received.receiver": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "coin_spent.amount": [
+              "1100708utia",
+              "1100708utia"
+            ],
+            "coin_spent.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "coin_spent.spender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "coinbase.amount": [
+              "1100708utia"
+            ],
+            "coinbase.minter": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad"
+            ],
+            "coinbase.mode": [
+              "BeginBlock"
+            ],
+            "commission.amount": [
+              "107869.384000000000000000utia"
+            ],
+            "commission.mode": [
+              "BeginBlock"
+            ],
+            "commission.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "message.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "message.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ],
+            "mint.amount": [
+              "1100708"
+            ],
+            "mint.annual_provisions": [
+              "13350000000000.000000000000000000"
+            ],
+            "mint.inflation_rate": [
+              "0.026700000000000000"
+            ],
+            "mint.mode": [
+              "BeginBlock"
+            ],
+            "rewards.amount": [
+              "1078693.840000000000000000utia"
+            ],
+            "rewards.mode": [
+              "BeginBlock"
+            ],
+            "rewards.validator": [
+              "celestiavaloper1fm86a86f432vxcq537c64v86q4kur9cg9ernpm"
+            ],
+            "tm.event": [
+              "NewBlock"
+            ],
+            "transfer.amount": [
+              "1100708utia",
+              "1100708utia"
+            ],
+            "transfer.mode": [
+              "BeginBlock",
+              "BeginBlock"
+            ],
+            "transfer.recipient": [
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s",
+              "celestia1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8k44vnj"
+            ],
+            "transfer.sender": [
+              "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+              "celestia17xpfvakm2amg962yls6f84z3kell8c5lpnjs3s"
+            ]
+          }
+        }
+      }
+    ],
+    "heights": [
+      "17",
+      "18",
+      "19"
+    ]
+  }
+]

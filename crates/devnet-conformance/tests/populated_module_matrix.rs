@@ -69,6 +69,7 @@ fn expected_bytes(case: &Value, transport: &str) -> Vec<u8> {
         hex_bytes(&case["transports"][transport]["response_hex"])
     }
 }
+#[allow(clippy::collapsible_if)] // Preserve the explicit fallback when descriptor decoding fails.
 fn assert_value(case: &Value, bytes: &[u8], transport: &str) {
     let path = case["method"].as_str().unwrap();
     let canonical = |bytes: &[u8]| {
@@ -428,6 +429,7 @@ fn verify_proofs(app: &mut app::App, capture: &Value, scenario: &str) {
     assert_eq!(checked, official.len());
     assert!(verified > 0, "no independently verified proofs");
 }
+#[allow(clippy::too_many_lines, clippy::result_large_err)] // One ordered owner for listener lifetimes; tonic requires Status.
 async fn verify_scenario(scenario: &str) {
     let capture = load_capture(scenario);
     let mut direct = replayed_app(scenario, &capture);

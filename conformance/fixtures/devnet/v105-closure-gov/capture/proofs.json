@@ -1,0 +1,322 @@
+[
+  {
+    "name": "/store/bank/key-4151",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/bank/key-4155",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/bank/key-4157",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4159",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/bank/key-4163",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/bank/key-4167",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/bank/key-4169",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4171",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/bank/key-4175",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/bank/key-4179",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/bank/key-4181",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4183",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/staking/key-4187",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/staking/key-4191",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/staking/key-4193",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/staking/key-4195",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/acc/key-4199",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/acc/key-4203",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/acc/key-4205",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/acc/key-4207",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/consensus/key-4211",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/consensus/key-4215",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/consensus/key-4217",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/consensus/key-4219",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/mint/key-4223",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/mint/key-4227",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/mint/key-4229",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/mint/key-4231",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/upgrade/key-4235",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/upgrade/key-4239",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/upgrade/key-4241",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/upgrade/key-4243",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/blob/key-4247",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/blob/key-4251",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/blob/key-4253",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/blob/key-4255",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/gov/key-4259",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/gov/key-4263",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/gov/key-4265",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/gov/key-4267",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/acc/key-4319",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/acc/key-4323",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/acc/key-4325",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/acc/key-4327",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/bank/key-4331",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/bank/key-4335",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/bank/key-4337",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4339",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/acc/key-4343",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/acc/key-4347",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/acc/key-4349",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/acc/key-4351",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/bank/key-4355",
+    "valid": false,
+    "error": "official verifier rejected operation 0"
+  },
+  {
+    "name": "/store/bank/key-4359",
+    "valid": false,
+    "error": "official verifier rejected operation 0"
+  },
+  {
+    "name": "/store/bank/key-4361",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4363",
+    "valid": false,
+    "error": "official verifier rejected operation 0"
+  },
+  {
+    "name": "/store/acc/key-4367",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/acc/key-4371",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/acc/key-4373",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/acc/key-4375",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  },
+  {
+    "name": "/store/bank/key-4379",
+    "valid": true,
+    "root": "132b8d405030514f8ff052c4af341f10555e344dda1390f9a35adccd002cf81d"
+  },
+  {
+    "name": "/store/bank/key-4383",
+    "valid": true,
+    "root": "54305b1383963c3da21a1e7a480258a5539c14bdb8c6ea73d67909fd8d36608a"
+  },
+  {
+    "name": "/store/bank/key-4385",
+    "valid": true,
+    "root": "4867fc270aeccf13b0b1a296891fa5f5f7374e90378c31df2bbd9d6a4249fc2e"
+  },
+  {
+    "name": "/store/bank/key-4387",
+    "valid": true,
+    "root": "d34aa6205f8cab65d62b13e314377fa82c4826bd347f5fc762776ab4c042dbaa"
+  }
+]
