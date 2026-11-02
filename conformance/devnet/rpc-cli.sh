@@ -79,7 +79,7 @@ echo "rust node at height $(height), RPC $RPC"
 USER0=$($A keys show user0 -a --keyring-backend test)
 VAL0=$($A keys show val0 -a --keyring-backend test)
 VALOPER=$($A keys show val0 --bech val -a --keyring-backend test)
-q() { celestia-appd query "$@" --node "$NODE" -o json; }
+q() { celestia-appd query "$@" --home "$H" --node "$NODE" -o json; }
 check() { # <python expr over d> <description> <json>
   python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert ($1)" "$3" 2>/dev/null \
     || fail "$2: $(echo "$3" | head -c 400)"
@@ -87,11 +87,11 @@ check() { # <python expr over d> <description> <json>
 }
 
 check 'd["node_info"]["network"]=="'$CHAIN_ID'" and int(d["sync_info"]["latest_block_height"])>=3' "status" \
-  "$(celestia-appd status --node "$NODE" 2>&1)"
+  "$(celestia-appd status --home "$H" --node "$NODE" 2>&1)"
 check 'd["header"]["height"]=="2"' "query block --type=height 2" "$(q block --type=height 2)"
 check 'int(d["total_count"])>=2 and len(d["blocks"])==2' "query blocks (block_search)" \
   "$(q blocks --query "block.height >= 2" --limit 2)"
-check 'd["height"]=="2"' "query block-results 2" "$(q block-results 2)"
+check 'int(d["height"])==2' "query block-results 2" "$(q block-results 2)"
 check 'any(c["denom"]=="utia" for c in d["balances"])' "query bank balances" "$(q bank balances "$USER0")"
 check 'd["account"]["value"]["address"]=="'$USER0'"' "query auth account" "$(q auth account "$USER0")"
 check 'd["validator"]["operator_address"]=="'$VALOPER'"' "query staking validator" "$(q staking validator "$VALOPER")"
