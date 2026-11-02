@@ -2057,6 +2057,24 @@ impl ConsensusState {
         if !self.rs.validators.has_address(&addr) {
             return;
         }
+        // Our vote of this type is already in the round (replayed from
+        // the WAL after a restart): the privval would return it again or
+        // refuse a different one (`conflicting data`, `step regression`),
+        // so do not ask. Go asks and logs the refusal as an error.
+        let votes = if vote_type == PREVOTE_TYPE {
+            self.rs.votes.prevotes(self.rs.round)
+        } else {
+            self.rs.votes.precommits(self.rs.round)
+        };
+        if votes.and_then(|v| v.get_by_address(&addr)).is_some() {
+            tracing::debug!(
+                height = self.rs.height,
+                round = self.rs.round,
+                vote_type,
+                "already voted in this round; not signing again"
+            );
+            return;
+        }
         match self.sign_vote(vote_type, hash, header, block) {
             Ok(vote) => {
                 self.events

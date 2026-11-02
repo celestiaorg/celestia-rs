@@ -269,6 +269,48 @@ struct Disks {
     _pv_dir: tempfile::TempDir,
     key_path: std::path::PathBuf,
     state_path: std::path::PathBuf,
+    /// Signing errors from this node's privval after WAL replay, across
+    /// restarts.
+    refusals: Arc<Mutex<usize>>,
+}
+
+/// A privval that counts the signatures [`FilePv`] refuses once `live`
+/// (set when `start`, and with it the WAL replay, has returned).
+struct CountingPv {
+    inner: FilePv,
+    refusals: Arc<Mutex<usize>>,
+    live: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CountingPv {
+    fn count<T>(&self, r: privval::Result<T>) -> privval::Result<T> {
+        if r.is_err() && self.live.load(std::sync::atomic::Ordering::Relaxed) {
+            *self.refusals.lock().unwrap() += 1;
+        }
+        r
+    }
+}
+
+impl privval::PrivValidator for CountingPv {
+    fn pub_key(&self) -> privval::Result<PubKey> {
+        self.inner.pub_key()
+    }
+    fn sign_vote(
+        &mut self,
+        chain_id: &str,
+        vote: &mut ctypes::proto::types::Vote,
+    ) -> privval::Result<()> {
+        let r = self.inner.sign_vote(chain_id, vote);
+        self.count(r)
+    }
+    fn sign_proposal(
+        &mut self,
+        chain_id: &str,
+        proposal: &mut ctypes::proto::types::Proposal,
+    ) -> privval::Result<()> {
+        let r = self.inner.sign_proposal(chain_id, proposal);
+        self.count(r)
+    }
 }
 
 struct Running {
@@ -333,6 +375,10 @@ struct Scenario {
     /// A node whose first boot is asked to stop while it waits in the
     /// delayed precommit (SIGTERM mid-height); `crashes` restarts it.
     stop_in_precommit_wait: Option<usize>,
+    /// (node, height, down for s): the node crashes right after its
+    /// non-nil precommit at `height` reaches its WAL, before the block
+    /// commits (SIGTERM between precommit and commit), and restarts.
+    crash_after_precommit: Option<(usize, i64, i64)>,
 }
 
 #[derive(Default)]
@@ -350,6 +396,9 @@ struct Outcome {
     extended_sigs: usize,
     /// Precommits signed by a node after its stop was requested.
     precommits_while_stopping: usize,
+    /// Votes or proposals an honest node's privval refused to sign after
+    /// its WAL replay (the node logs these; replay refusals are silent).
+    sign_refusals: usize,
 }
 
 struct Sim {
@@ -434,6 +483,7 @@ impl Sim {
                     _pv_dir: dir,
                     key_path,
                     state_path,
+                    refusals: Arc::new(Mutex::new(0)),
                 },
                 running: None,
                 seed: seed_for(i),
@@ -506,7 +556,12 @@ impl Sim {
         let mut hs = Handshaker::new(ss, state, bs, &self.genesis, now);
         let state = hs.handshake(&mut exec).unwrap();
         let wal = MemWal::open(node.disks.wal.clone(), now).unwrap();
-        let pv = FilePv::load(&node.disks.key_path, &node.disks.state_path).unwrap();
+        let live = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pv = CountingPv {
+            inner: FilePv::load(&node.disks.key_path, &node.disks.state_path).unwrap(),
+            refusals: node.disks.refusals.clone(),
+            live: live.clone(),
+        };
         let interrupted = std::mem::take(&mut self.nodes[i].stop_next_boot);
         let clock = SimClock {
             global: self.global.clone(),
@@ -528,6 +583,7 @@ impl Sim {
             mempool::TxInfo::default(),
         );
         cs.start().unwrap();
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
         self.outcome.replayed += cs.replayed_messages;
         self.nodes[i].running = Some(Running {
             cs,
@@ -666,6 +722,21 @@ impl Sim {
         self.outcome.max_round = self.outcome.max_round.max(round);
         let _ = height;
         self.record_events(i, &events);
+        if let Some((node, h, down)) = self.sc.crash_after_precommit
+            && node == i
+            && events.iter().any(|ev| {
+                matches!(ev, Event::Broadcast(ConsensusMessage::Vote(v))
+                    if v.vote_type == PRECOMMIT_TYPE && v.height == h && !v.block_id.is_zero())
+            })
+        {
+            // The precommit is in the WAL (written with fsync before it
+            // is handled); nothing after it reaches the network.
+            self.sc.crash_after_precommit = None;
+            self.nodes[i].running = None;
+            let at = self.now_ns() + i128::from(down) * 1_000_000_000;
+            self.push(at, Ev::Restart(i));
+            return;
+        }
         for m in self.equivocate(i, &events) {
             for p in net.peers.clone() {
                 net.out.push((p, m.clone()));
@@ -822,6 +893,13 @@ impl Sim {
             })
             .collect();
         let _ = &mut self.commits;
+        self.outcome.sign_refusals = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.sc.byzantine != Some(*i))
+            .map(|(_, n)| *n.disks.refusals.lock().unwrap())
+            .sum();
         self.outcome
     }
 }
@@ -1012,6 +1090,31 @@ fn stop_during_delayed_precommit_does_not_sign() {
     assert_eq!(o.precommits_while_stopping, 0);
     assert_eq!(o.restarts, 1);
     assert_live(&o, 5, &[0]);
+}
+
+#[test]
+fn crash_between_precommit_and_commit_does_not_refuse() {
+    // SIGTERM after the validator's precommit reached the WAL but before
+    // the block committed (Mocha heights 1,838,650 and 2,179,423). The
+    // restart replays the prevote and precommit, then +2/3 precommits from
+    // peers arrive before the block: entering precommit again must not
+    // ask the privval for a second (nil) precommit, which it refuses as
+    // `conflicting data` and the DoubleSignGuardRefused alert reports.
+    for seed in 30..38u64 {
+        let sc = Scenario {
+            n: 4,
+            seed,
+            duration_s: 120,
+            target_height: 8,
+            max_delay_ms: 40,
+            crash_after_precommit: Some((0, 4, 1)),
+            ..Scenario::default()
+        };
+        let o = Sim::new(sc).run();
+        assert_eq!(o.restarts, 1, "seed {seed}");
+        assert_live(&o, 8, &[0, 1, 2, 3]);
+        assert_eq!(o.sign_refusals, 0, "seed {seed}: privval refused to sign");
+    }
 }
 
 #[test]

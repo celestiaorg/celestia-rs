@@ -1022,6 +1022,16 @@ timed 0.37 s into the precommit wait at height 1,722,751 left the sign
 state at the prevote, the node stopped in 66 ms, and after the restart
 there was no refusal and only that one height was missed.
 
+A second restart bug had the same symptom (Mocha heights 1,838,650 and
+2,179,423, both auto-update restarts): a SIGTERM that came after the
+precommit reached the WAL but before the block committed. The restarted
+node replayed its prevote and precommit, then +2/3 precommits from peers
+arrived before the block, and it asked the privval for a nil precommit
+at the same height and round. The guard refused it, and the signed
+precommit was still gossiped. Builds with the fix (2026-10-31) do not
+sign a vote of a type the round already holds from this node. After the
+fix, every refusal is worth checking with step 1.
+
 ### 11.12 Network upgrades (`halt-height`, `upgrade-info.json`)
 
 Celestia upgrades the app version by validator signalling (no governance
