@@ -57,6 +57,9 @@ BUILD_NAMES = [
     "go-gzip-symbols.txt",
 ]
 OBSERVATION_NAMES = ["mainnet-observation.json"]
+SOURCE_SUPPORT_PREFIX = "capture-source"
+SOURCE_SNAPSHOT_PREFIX = f"{SOURCE_SUPPORT_PREFIX}/snapshot"
+SOURCE_COMMIT_NAME = f"{SOURCE_SUPPORT_PREFIX}/commit.object"
 
 
 def digest(path: Path) -> str:
@@ -65,6 +68,45 @@ def digest(path: Path) -> str:
 
 def checked(*args: str) -> str:
     return subprocess.check_output(args, text=True).strip()
+
+
+def git_bytes(repo: Path, *args: str) -> bytes:
+    return subprocess.check_output(["git", "-C", str(repo), *args])
+
+
+def freeze_capture_source(repo: Path, capture: Path, source_commit: str) -> list[str]:
+    """Export the signed commit graph needed by the offline verifier."""
+    support = capture / SOURCE_SUPPORT_PREFIX
+    snapshot = capture / SOURCE_SNAPSHOT_PREFIX
+    trees = support / "trees"
+    assert not support.exists(), f"capture source support already exists: {support}"
+    snapshot.mkdir(parents=True)
+    trees.mkdir()
+
+    commit_object = git_bytes(repo, "cat-file", "commit", source_commit)
+    (capture / SOURCE_COMMIT_NAME).write_bytes(commit_object)
+
+    tree_oids = {checked("git", "-C", str(repo), "rev-parse", f"{source_commit}^{{tree}}")}
+    for name in SOURCE_NAMES:
+        contents = git_bytes(repo, "show", f"{source_commit}:{name}")
+        destination = snapshot / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(contents)
+        parts = Path(name).parts[:-1]
+        for depth in range(1, len(parts) + 1):
+            directory = "/".join(parts[:depth])
+            oid = checked("git", "-C", str(repo), "rev-parse",
+                          f"{source_commit}:{directory}")
+            assert checked("git", "-C", str(repo), "cat-file", "-t", oid) == "tree"
+            tree_oids.add(oid)
+
+    tree_names = []
+    for oid in sorted(tree_oids):
+        name = f"{SOURCE_SUPPORT_PREFIX}/trees/{oid}.tree"
+        (capture / name).write_bytes(git_bytes(repo, "cat-file", "tree", oid))
+        tree_names.append(name)
+    snapshot_names = [f"{SOURCE_SNAPSHOT_PREFIX}/{name}" for name in SOURCE_NAMES]
+    return [SOURCE_COMMIT_NAME, *snapshot_names, *tree_names]
 
 
 def sanitized_go_build_info(binary: Path, label: str) -> str:
@@ -189,6 +231,7 @@ def main() -> None:
     subprocess.run(["git", "-C", str(repo), "verify-commit", source_commit], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     assert checked("git", "-C", str(repo), "status", "--porcelain") == ""
+    source_support_names = freeze_capture_source(repo, capture, source_commit)
     rs_info = json.loads(args.rs_build_receipt.read_text())
     assert args.rs_build_receipt.resolve() == Path(str(args.rs_bin.resolve()) + ".build.json")
     expected_rs_keys = {
@@ -266,15 +309,20 @@ def main() -> None:
             "resources": RESOURCE_NAMES,
             "build_receipts": BUILD_NAMES,
             "observations": OBSERVATION_NAMES,
+            "source_support": source_support_names,
         },
         "campaign_order": CAPTURE_NAMES,
         "campaigns": campaigns,
         "source_audit": go_source_audit(repo),
-        "source_sha256": {name: digest(repo / name) for name in SOURCE_NAMES},
+        "source_sha256": {
+            name: digest(capture / SOURCE_SNAPSHOT_PREFIX / name)
+            for name in SOURCE_NAMES
+        },
         "input_sha256": {name: digest(capture / name) for name in INPUT_NAMES},
         "artifact_sha256": {
             name: digest(capture / name)
-            for name in CAPTURE_NAMES + RESOURCE_NAMES + BUILD_NAMES + INPUT_NAMES + OBSERVATION_NAMES
+            for name in (CAPTURE_NAMES + RESOURCE_NAMES + BUILD_NAMES + INPUT_NAMES
+                         + OBSERVATION_NAMES + source_support_names)
         },
         "deviations": {
             "rs_request_compression": (

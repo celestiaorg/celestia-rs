@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "c86584f5b594af847611684940f7749aa591d12eae4bc33a4e030e1712144b7b",
+  "build_tags": [],
+  "buildvcs": false,
+  "compiler": "go version go1.26.9 linux/amd64",
+  "goflags": "-mod=mod",
+  "ldflags": "",
+  "module": "github.com/celestiaorg/celestia-core@v0.42.3",
+  "module_sum": "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM=",
+  "package": "./cmd/cometbft",
+  "schema_version": 1,
+  "source_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+  "target": {
+    "CGO_ENABLED": "1",
+    "GOAMD64": "v1",
+    "GOARCH": "amd64",
+    "GOARM": "",
+    "GOEXPERIMENT": "",
+    "GOFIPS140": "off",
+    "GOOS": "linux"
+  }
+}

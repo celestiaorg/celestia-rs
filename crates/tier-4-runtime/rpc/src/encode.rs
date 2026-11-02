@@ -445,7 +445,7 @@ pub fn exec_tx_result(r: &abci::ExecTxResult) -> J {
 pub fn response_check_tx(r: &abci::ResponseCheckTx) -> J {
     J::obj([
         ("code", J::num(r.code)),
-        ("data", J::b64n(&r.data)),
+        ("data", J::b64(&r.data)),
         ("log", J::str(&r.log)),
         ("info", J::str(&r.info)),
         ("gas_wanted", J::i64s(r.gas_wanted)),
@@ -767,4 +767,17 @@ pub fn share_proof_is_zero(p: &ptypes::ShareProof) -> bool {
         && p.namespace_id.is_empty()
         && p.row_proof.is_none()
         && p.namespace_version == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_check_tx_empty_data_is_an_empty_base64_string() {
+        let encoded = response_check_tx(&abci::ResponseCheckTx::default()).encode();
+
+        assert!(encoded.contains(r#""data":"""#), "{encoded}");
+        assert!(!encoded.contains(r#""data":null"#), "{encoded}");
+    }
 }

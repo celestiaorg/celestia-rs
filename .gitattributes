@@ -7,3 +7,6 @@
 # Frozen upstream output is byte-for-byte evidence and retains Go/TOML spacing.
 conformance/grpc-limits/v10.5.0/app.toml whitespace=-blank-at-eol
 conformance/grpc-limits/v10.5.0/go-build-info.txt whitespace=-blank-at-eol
+# Receipt-bound capture sources retain their reviewed terminal byte layout.
+conformance/mainnet-rpc/live-tx-closure/harness.py whitespace=-blank-at-eof
+conformance/mainnet-rpc/live-tx-closure/README.md whitespace=-blank-at-eof

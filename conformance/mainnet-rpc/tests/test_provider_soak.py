@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 CAPTURE = (
@@ -173,6 +174,25 @@ class ProviderSoakEvidence(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "capture source inventory"):
             verify.verify_provenance()
+
+    def test_capture_source_hash_mismatch_fails(self):
+        self.mutate_json(
+            "provider-provenance.json",
+            lambda provenance: provenance["capture_sources_sha256"].__setitem__(
+                "conformance/provider-client/main.go", "0" * 64
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "capture source mismatch"):
+            verify.verify_provenance()
+
+    def test_missing_captured_git_object_fails_closed(self):
+        with mock.patch.object(
+            verify.subprocess,
+            "run",
+            side_effect=verify.subprocess.CalledProcessError(128, ["git", "show"]),
+        ):
+            with self.assertRaisesRegex(ValueError, "captured source unavailable"):
+                verify.verify_provenance()
 
     def test_per_node_operation_counts_cannot_be_redistributed(self):
         def change(report):

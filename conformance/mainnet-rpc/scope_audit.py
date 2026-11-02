@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "03d677ef308346984e73b617aa572404012d16c13782a59cc336ca3c7eb37707"
+REVIEWED_AUDIT_SHA256 = "cb2dd6b5e955983666000d8b408c5a35440cf5baf6d96401fe794d973f8c58f5"
 AUDIT = Path(__file__).with_name("scope-audit.json")
 # The exact package/receipt/verifier set is reviewed code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
@@ -23,7 +23,9 @@ CONTRACTS = {
     "simulation": (185, "normalized-runtime-comparison", "conformance/mainnet-rpc/simulation/metadata.json", "conformance/mainnet-rpc/simulation/README.md", None),
     "empty-query": (186, "runtime-exact-unrecorded", "conformance/mainnet-rpc/v10.5.0/empty-query-meta.json", "conformance/mainnet-rpc/empty-query/README.md", None),
     "live-transactions": (187, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-live-tx/capture/metadata.json", "conformance/mainnet-rpc/live-tx/README.md", "conformance/mainnet-rpc/tests/test_live_tx.py"),
+    "live-tx-closure": (187, "paired-live-transport-closure", "conformance/mainnet-rpc/live-tx-closure/v10.5.0/2026-10-31-d2e72cb/manifest.json", "conformance/mainnet-rpc/live-tx-closure/README.md", "conformance/mainnet-rpc/tests/test_live_tx_closure.py"),
     "populated-staking": (188, "normalized-runtime-comparison", "conformance/fixtures/devnet/v105-populated-staking/capture/metadata.json", "conformance/mainnet-rpc/populated-staking/README.md", "conformance/mainnet-rpc/tests/test_populated_staking.py"),
+    "populated-governance": (188, "exact-protobuf-structural-json-comparison", "conformance/fixtures/devnet/v105-populated-governance/capture/metadata.json", "conformance/mainnet-rpc/populated-governance/README.md", "conformance/mainnet-rpc/populated-governance/verify.py"),
     "websocket-lifecycle": (190, "relational-go-plus-rust-regressions", "conformance/websocket-lifecycle/closure-review.json", "conformance/websocket-lifecycle/README.md", "conformance/websocket-lifecycle/verify-closure.py"),
     "rest-heights": (191, "rust-with-stand-in-only", "conformance/mainnet-rpc/rest-boundaries/v10.5.0/provenance.json", "conformance/mainnet-rpc/rest-boundaries/README.md", "conformance/mainnet-rpc/rest-boundaries/verify.py"),
     "rest-post": (191, "go-transports-only", "conformance/mainnet-rpc/rest-post-boundaries/v10.5.0/provenance.json", "conformance/mainnet-rpc/rest-post-boundaries/README.md", "conformance/mainnet-rpc/rest-post-boundaries/verify.py"),
@@ -39,7 +41,9 @@ RUNTIME_CONTRACTS = {
     "simulation": (("crates/devnet-conformance/tests/simulation_errors.rs", "current_release_simulation_errors"),),
     "empty-query": (("crates/tier-4-runtime/rpc/tests/empty_query.rs", "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"),),
     "live-transactions": (("crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs", "admitted_live_transactions_match_rust_production_transports"),),
+    "live-tx-closure": (),
     "populated-staking": (("crates/devnet-conformance/tests/populated_staking_transports.rs", "admitted_populated_inputs_match_all_rust_transports"),),
+    "populated-governance": (("crates/devnet-conformance/tests/populated_governance_transports.rs", "admitted_populated_inputs_match_all_rust_transports"),),
     "websocket-lifecycle": (
         ("crates/tier-4-runtime/rpc/src/server.rs", "websocket_write_is_bounded"),
         ("crates/tier-4-runtime/rpc/tests/corpus.rs", "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"),
@@ -61,7 +65,9 @@ TRANSPORT_CONTRACTS = {
     "runtime-identity": {"comet-uri", "cosmos-grpc", "rest"}, "simulation": {"cosmos-grpc"},
     "empty-query": {"comet-uri", "comet-jsonrpc", "comet-websocket"},
     "live-transactions": {"comet-jsonrpc", "core-grpc", "cosmos-grpc", "rest"},
+    "live-tx-closure": {"comet-uri", "comet-jsonrpc", "comet-websocket", "core-grpc", "cosmos-grpc", "rest"},
     "populated-staking": {"comet-jsonrpc", "cosmos-grpc", "rest"},
+    "populated-governance": {"comet-jsonrpc", "cosmos-grpc", "rest"},
     "websocket-lifecycle": {"comet-websocket"}, "rest-heights": {"rest"}, "rest-post": {"rest"},
     "comet-http": {"comet-uri", "comet-jsonrpc"},
     "proxy-tls-framing": {"comet-uri", "comet-jsonrpc", "comet-websocket", "rest"},

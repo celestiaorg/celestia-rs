@@ -9,6 +9,7 @@ from email.utils import format_datetime, parsedate_to_datetime
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -24,6 +25,7 @@ APP_SUM = "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc="
 CORE_SUM = "h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM="
 SDK_SUM = "h1:muIDlBLLXeuKiIrGA/t+k9ZLpjjRVs460XRzwh1dgqU="
 GRPC_SUM = "h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU="
+CAPTURE_SOURCE_COMMIT = "399f57ed728b17e9f1bee14f5d8cbdeaa66f0059"
 CAPTURE_SIGNER = "codex-signing"
 CAPTURE_SIGNER_FINGERPRINT = "SHA256:SbDDwaWj4doQSs2i9NvNBUQUuEROiheHdhS6dRXrnEg"
 CAPTURE_ALLOWED_SIGNER = (
@@ -72,6 +74,27 @@ BUILD_NAMES = [
     "go-gzip-symbols.txt",
 ]
 OBSERVATION_NAMES = ["mainnet-observation.json"]
+SOURCE_SUPPORT_PREFIX = "capture-source"
+SOURCE_SNAPSHOT_PREFIX = f"{SOURCE_SUPPORT_PREFIX}/snapshot"
+SOURCE_COMMIT_NAME = f"{SOURCE_SUPPORT_PREFIX}/commit.object"
+SOURCE_TREE_OIDS = [
+    "3485c7ce32bc4082fcb6f33564d7fb23bbdeb9e5",
+    "7af5f8e7bfc578444b821049863295f375804c47",
+    "7e832b3adea5a94dce467aa79b8aa1a42e75bfd4",
+    "8ef9465cfab04b277e0d89ebfb4c03f28e8203ff",
+    "9c3e73209e08bbff5db39a57ee78f75def47be15",
+    "a4080fce8c905a001f85ea017ea512403a98b5ca",
+    "a62a83b7ecac030707f7c96e95058d2969602bfd",
+    "c42f216252f270040f1f094e4d2b783df601f4e9",
+    "c8ddb38c668421c0df6f44f0ef544a03102eab30",
+    "de9dca696de1fdd43f8775d9d0546fcb71303ad2",
+    "ec318162a5eb15cd6d15d63ae1f56a6d7cd4fb86",
+    "fedeaa4a39bee3d5658070bef5d907d78011d957",
+    "ff37e67b5756226580b2d86681450172bcb03f2a",
+]
+SOURCE_SNAPSHOT_NAMES = [f"{SOURCE_SNAPSHOT_PREFIX}/{name}" for name in SOURCE_NAMES]
+SOURCE_TREE_NAMES = [f"{SOURCE_SUPPORT_PREFIX}/trees/{oid}.tree" for oid in SOURCE_TREE_OIDS]
+SOURCE_SUPPORT_NAMES = [SOURCE_COMMIT_NAME, *SOURCE_SNAPSHOT_NAMES, *SOURCE_TREE_NAMES]
 INVENTORY = {
     "inputs": INPUT_NAMES,
     "captures": CAPTURE_NAMES,
@@ -79,44 +102,126 @@ INVENTORY = {
     "build_receipts": BUILD_NAMES,
     "observations": OBSERVATION_NAMES,
 }
+ARTIFACT_NAMES = (
+    INPUT_NAMES + CAPTURE_NAMES + RESOURCE_NAMES + BUILD_NAMES + OBSERVATION_NAMES
+    + SOURCE_SUPPORT_NAMES
+)
 
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def source_bytes(root: Path, name: str, commit: str | None = None) -> bytes:
-    if commit is None:
-        return (root / name).read_bytes()
-    assert re.fullmatch(r"[0-9a-f]{40}", commit)
-    return subprocess.check_output(
-        ["git", "-C", str(root), "show", f"{commit}:{name}"],
-        stderr=subprocess.DEVNULL,
-    )
+def evidence_path(root: Path, name: str) -> Path:
+    assert name and not Path(name).is_absolute() and ".." not in Path(name).parts
+    path = root / name
+    current = root
+    for part in Path(name).parts:
+        current = current / part
+        assert not current.is_symlink(), f"symlinked evidence path: {name}"
+    assert path.is_file() and path.resolve().is_relative_to(root.resolve())
+    return path
 
 
-def source_digest(root: Path, name: str, commit: str | None = None) -> str:
-    return hashlib.sha256(source_bytes(root, name, commit)).hexdigest()
+def source_bytes(root: Path, name: str) -> bytes:
+    return evidence_path(root, name).read_bytes()
 
 
-def verify_source_commit_signature(source_root: Path, source_commit: str) -> None:
-    """Verify the capture commit against its repository-independent SSH trust root."""
+def source_digest(root: Path, name: str) -> str:
+    return hashlib.sha256(source_bytes(root, name)).hexdigest()
+
+
+def source_support_tree_oids(support_names: list[str]) -> list[str]:
+    expected_prefix = [SOURCE_COMMIT_NAME, *SOURCE_SNAPSHOT_NAMES]
+    assert support_names[:len(expected_prefix)] == expected_prefix
+    tree_names = support_names[len(expected_prefix):]
+    assert tree_names and tree_names == sorted(tree_names)
+    tree_oids = []
+    for name in tree_names:
+        match = re.fullmatch(rf"{re.escape(SOURCE_SUPPORT_PREFIX)}/trees/([0-9a-f]{{40}})\.tree", name)
+        assert match, f"invalid capture tree object name: {name}"
+        tree_oids.append(match.group(1))
+    assert len(tree_oids) == len(set(tree_oids))
+    return tree_oids
+
+
+def verify_capture_source(root: Path, source_commit: str,
+                          support_names: list[str] | None = None) -> None:
+    """Rebuild and verify the signed capture commit without ambient Git objects."""
     assert re.fullmatch(r"[0-9a-f]{40}", source_commit)
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as allowed_signers:
-        allowed_signers.write(CAPTURE_ALLOWED_SIGNER + "\n")
-        allowed_signers.flush()
+    support_names = SOURCE_SUPPORT_NAMES if support_names is None else support_names
+    tree_oids = source_support_tree_oids(support_names)
+    commit_object = source_bytes(root, SOURCE_COMMIT_NAME)
+    with tempfile.TemporaryDirectory() as directory:
+        temporary = Path(directory)
+        repository = temporary / "repository"
+        home = temporary / "home"
+        home.mkdir()
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith("GIT_")}
+        environment.update({
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "GIT_CONFIG_NOSYSTEM": "1",
+        })
+        subprocess.run(["git", "init", "--quiet", str(repository)], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       env=environment)
+
+        def import_object(kind: str, content: bytes) -> str:
+            literal = ["--literally"] if kind == "tree" else []
+            return subprocess.check_output(
+                ["git", "-C", str(repository), "hash-object", *literal,
+                 "-t", kind, "-w", "--stdin"],
+                input=content, env=environment,
+            ).decode().strip()
+
+        tree_names = support_names[1 + len(SOURCE_SNAPSHOT_NAMES):]
+        for oid, name in zip(tree_oids, tree_names, strict=True):
+            assert import_object("tree", source_bytes(root, name)) == oid
+        snapshot_root = root / SOURCE_SNAPSHOT_PREFIX
+        for name in SOURCE_NAMES:
+            import_object("blob", source_bytes(snapshot_root, name))
+        assert import_object("commit", commit_object) == source_commit
+
+        required_tree_oids = {
+            subprocess.check_output(
+                ["git", "-C", str(repository), "rev-parse", f"{source_commit}^{{tree}}"],
+                text=True, env=environment,
+            ).strip()
+        }
+        for name in SOURCE_NAMES:
+            parents = Path(name).parts[:-1]
+            for depth in range(1, len(parents) + 1):
+                directory_name = "/".join(parents[:depth])
+                required_tree_oids.add(subprocess.check_output(
+                    ["git", "-C", str(repository), "rev-parse",
+                     f"{source_commit}:{directory_name}"],
+                    text=True, env=environment,
+                ).strip())
+        assert set(tree_oids) == required_tree_oids
+
+        allowed_signers = temporary / "allowed_signers"
+        allowed_signers.write_text(CAPTURE_ALLOWED_SIGNER + "\n")
         result = subprocess.run(
             [
-                "git", "-C", str(source_root),
+                "git", "-C", str(repository),
                 "-c", "gpg.format=ssh",
-                "-c", f"gpg.ssh.allowedSignersFile={allowed_signers.name}",
+                "-c", f"gpg.ssh.allowedSignersFile={allowed_signers}",
                 "verify-commit", source_commit,
             ],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=environment,
         )
+        for name in SOURCE_NAMES:
+            restored = subprocess.check_output(
+                ["git", "-C", str(repository), "show", f"{source_commit}:{name}"],
+                stderr=subprocess.DEVNULL, env=environment,
+            )
+            assert restored == source_bytes(snapshot_root, name)
     expected = (
         f'Good "git" signature for {CAPTURE_SIGNER} with ED25519 key '
         f"{CAPTURE_SIGNER_FINGERPRINT}"
@@ -212,8 +317,7 @@ def verify_rs_receipt(
         assert receipt["version_long"] == version_long
 
 
-def verify_builds(root: Path, meta: dict, source_root: Path,
-                  source_commit: str | None = None) -> None:
+def verify_builds(root: Path, meta: dict, source_root: Path) -> None:
     app = meta["go_builds"]["app"]
     core = meta["go_builds"]["core"]
     receipt_keys = {
@@ -291,31 +395,36 @@ def verify_builds(root: Path, meta: dict, source_root: Path,
     rs = load(root / "rs-build-info.json")
     assert rs == meta["rs_build"]
     verify_rs_receipt(rs, meta["source_commit"],
-                      source_digest(source_root, "Cargo.lock", source_commit))
-    verify_source_commit_signature(source_root, rs["source_commit"])
+                      source_digest(source_root, "Cargo.lock"))
 
     gzip_symbols = (root / "go-gzip-symbols.txt").read_text().splitlines()
     assert any("google.golang.org/grpc/encoding/gzip.init" in line
                for line in gzip_symbols)
 
 
-def verify_inventory(root: Path, meta: dict, source_root: Path,
-                     source_commit: str | None = None) -> None:
-    expected = {"sources": SOURCE_NAMES, **INVENTORY}
+def verify_inventory(root: Path, meta: dict, source_root: Path) -> None:
+    assert set(meta["inventory"]) == {"sources", *INVENTORY, "source_support"}
+    support_names = meta["inventory"]["source_support"]
+    source_support_tree_oids(support_names)
+    expected = {"sources": SOURCE_NAMES, **INVENTORY, "source_support": support_names}
     assert meta["inventory"] == expected
     classes = list(expected.values())
     flat = [name for names in classes for name in names]
     assert len(flat) == len(set(flat)), "inventory classes overlap"
-    artifacts = INPUT_NAMES + CAPTURE_NAMES + RESOURCE_NAMES + BUILD_NAMES + OBSERVATION_NAMES
-    assert set(meta["artifact_sha256"]) == set(artifacts)
+    artifact_names = (INPUT_NAMES + CAPTURE_NAMES + RESOURCE_NAMES + BUILD_NAMES
+                      + OBSERVATION_NAMES + support_names)
+    assert set(meta["artifact_sha256"]) == set(artifact_names)
     assert set(meta["input_sha256"]) == set(INPUT_NAMES)
     assert set(meta["source_sha256"]) == set(SOURCE_NAMES)
-    actual = {str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()}
-    assert actual == set(artifacts) | {"meta.json"}
+    actual = {str(path.relative_to(root)) for path in root.rglob("*")
+              if path.is_file() or path.is_symlink()}
+    assert actual == set(artifact_names) | {"meta.json"}
     for name, expected_digest in meta["artifact_sha256"].items():
-        assert digest(root / name) == expected_digest, f"artifact hash mismatch: {name}"
+        assert digest(evidence_path(root, name)) == expected_digest, (
+            f"artifact hash mismatch: {name}"
+        )
     for name, expected_digest in meta["source_sha256"].items():
-        assert source_digest(source_root, name, source_commit) == expected_digest, (
+        assert source_digest(source_root, name) == expected_digest, (
             f"source hash mismatch: {name}"
         )
     for name, expected_digest in meta["input_sha256"].items():
@@ -513,8 +622,7 @@ def verify_resource_artifacts(root: Path, meta: dict) -> None:
                          implementation, quota, binary)
 
 
-def verify_source_audit(meta: dict, source_root: Path,
-                        source_commit: str | None = None) -> None:
+def verify_source_audit(meta: dict, source_root: Path) -> None:
     audit = meta["source_audit"]
     assert set(audit) == {
         "go_core_keepalive", "grpc_go_setup_timeout", "grpc_go_initial_settings",
@@ -555,19 +663,19 @@ def verify_source_audit(meta: dict, source_root: Path,
     rpc_name = "crates/tier-4-runtime/rpc/src/grpc.rs"
     service_name = "crates/tier-5-node/celestia-rs/src/rpc_service.rs"
     assert audit["rs_core_keepalive"] == {
-        "path": rpc_name, "sha256": source_digest(source_root, rpc_name, source_commit),
+        "path": rpc_name, "sha256": source_digest(source_root, rpc_name),
         "finding": "absent: HTTP/2 builder configures no keepalive interval or timeout",
     }
     assert audit["rs_setup_deadline"] == {
         "paths": [rpc_name, service_name],
         "sha256": {
-            rpc_name: source_digest(source_root, rpc_name, source_commit),
-            service_name: source_digest(source_root, service_name, source_commit),
+            rpc_name: source_digest(source_root, rpc_name),
+            service_name: source_digest(source_root, service_name),
         },
         "finding": "absent: core and SDK listeners configure no HTTP/2 setup deadline",
     }
-    rpc_source = source_bytes(source_root, rpc_name, source_commit).decode()
-    service_source = source_bytes(source_root, service_name, source_commit).decode()
+    rpc_source = source_bytes(source_root, rpc_name).decode()
+    service_source = source_bytes(source_root, service_name).decode()
     assert "keep_alive_interval" not in rpc_source
     assert "keep_alive_timeout" not in rpc_source
     assert "axum::serve(listener, router).await" in service_source
@@ -983,7 +1091,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     root = args.capture.resolve()
-    meta = load(root / "meta.json")
+    meta = load(evidence_path(root, "meta.json"))
     assert set(meta) == {
         "schema_version", "captured_at", "mainnet_observation", "go_builds", "rs_build",
         "source_commit", "recorder_binary_sha256", "inventory", "campaign_order",
@@ -992,12 +1100,12 @@ def main() -> None:
     }
     assert meta["schema_version"] == 1
     assert meta["mainnet_observation"] == "mainnet-observation.json"
-    source_root = Path(__file__).resolve().parents[2]
+    source_root = root / SOURCE_SNAPSHOT_PREFIX
     source_commit = meta["source_commit"]
-    verify_source_commit_signature(source_root, source_commit)
-    verify_inventory(root, meta, source_root, source_commit)
-    verify_builds(root, meta, source_root, source_commit)
-    verify_source_audit(meta, source_root, source_commit)
+    verify_inventory(root, meta, source_root)
+    verify_capture_source(root, source_commit, meta["inventory"]["source_support"])
+    verify_builds(root, meta, source_root)
+    verify_source_audit(meta, source_root)
 
     observation = load(root / meta["mainnet_observation"])
     assert set(observation) == {

@@ -508,6 +508,20 @@ fn assert_comet_result(actual: &Value, recorded: &Value) {
     assert_eq!(actual["result"], recorded["http"]["body"]["result"]);
 }
 
+fn current_check_tx_json(recorded: &Value) -> Value {
+    assert!(
+        recorded["data"].is_null(),
+        "legacy normalization is only valid for the frozen nil byte field"
+    );
+    let mut expected = recorded.clone();
+    // Go can retain either a nil or non-nil empty []byte before JSON encoding,
+    // but ABCI protobuf erases that allocation detail. The current paired Go
+    // capture emits the empty base64 string, which Rust uses canonically. Keep
+    // the signed legacy fixture unchanged and normalize only this known field.
+    expected["data"] = Value::String(String::new());
+    expected
+}
+
 async fn grpc_call(
     client: &mut tonic::client::Grpc<tonic::transport::Channel>,
     method: &'static str,
@@ -776,7 +790,11 @@ async fn admitted_live_transactions_match_rust_production_transports() {
         comet_commit["http"]["request_body"].as_str().unwrap(),
     )
     .json();
-    for field in ["check_tx", "tx_result", "hash"] {
+    assert_eq!(
+        response["result"]["check_tx"],
+        current_check_tx_json(&comet_commit["http"]["body"]["result"]["check_tx"])
+    );
+    for field in ["tx_result", "hash"] {
         assert_eq!(
             response["result"][field],
             comet_commit["http"]["body"]["result"][field]
@@ -833,6 +851,7 @@ async fn admitted_live_transactions_match_rust_production_transports() {
     }
     let check_tx = &response["result"]["check_tx"];
     let go_check_tx = &cleanup["http"]["body"]["result"]["check_tx"];
+    let expected_check_tx = current_check_tx_json(go_check_tx);
     for field in [
         "code",
         "data",
@@ -845,7 +864,7 @@ async fn admitted_live_transactions_match_rust_production_transports() {
         "priority",
         "sequence",
     ] {
-        assert_eq!(check_tx[field], go_check_tx[field], "cleanup {field}");
+        assert_eq!(check_tx[field], expected_check_tx[field], "cleanup {field}");
     }
     // Depending on live consensus timing, the replay has observed either the
     // exact Go value or 12 less CheckTx gas for this final bank send after the

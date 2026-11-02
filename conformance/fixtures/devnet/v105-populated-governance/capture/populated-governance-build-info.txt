@@ -1,0 +1,28 @@
+/workspace/scratch/rpc-181/issue188-finish/accepted2-d259aa9/bin/populated-governance: go1.26.9
+	path	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder/cmd/populated-governance
+	mod	github.com/celestiaorg/celestia-rs/conformance/rpccorpus/recorder	(devel)	
+	dep	github.com/cometbft/cometbft	v0.38.17
+	=>	github.com/celestiaorg/celestia-core	v0.42.3	h1:kdXKlSiEqEWl87EyxNB9ryx1aQJq/8RyBdgfYy2rdYM=
+	
+	dep	github.com/cosmos/gogoproto	v1.7.2	h1:5G25McIraOC0mRFv9TVO139Uh3OklV2hczr13KKVHCA=
+	dep	github.com/decred/dcrd/dcrec/secp256k1/v4	v4.3.0	h1:rpfIENRNNilwHwZeG5+P150SMrnNEcHYvcCuK6dPZSg=
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/go-cmp	v0.7.0	h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+	dep	github.com/oasisprotocol/curve25519-voi	v0.0.0-20220708102147-0a8a51822cae	h1:FatpGJD2jmJfhZiFDElaC0QhZUDQnxUeAwTGkfAHN3I=
+	dep	golang.org/x/crypto	v0.57.0	h1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=
+	dep	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
+	dep	golang.org/x/sys	v0.48.0	h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+	dep	golang.org/x/text	v0.42.0	h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260526163538-3dc84a4a5aaa	h1:mZHHdPZl0dbGHCflZgAq/Q468DWVFcU2whhB2KAo8fk=
+	dep	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+	dep	google.golang.org/protobuf	v1.36.12	h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1

@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 
 HERE = Path(__file__).resolve().parent
@@ -68,6 +69,20 @@ def digest(path: Path) -> str:
 
 def load(name: str):
     return json.loads((HERE / name).read_text())
+
+
+def captured_source_digest(name: str) -> str:
+    """Hash a capture source from the recorded candidate, not the moving tree."""
+    try:
+        completed = subprocess.run(
+            ["git", "show", f"{COMMIT}:{name}"],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError(f"captured source unavailable: {name}") from error
+    return hashlib.sha256(completed.stdout).hexdigest()
 
 
 def verify_hashes() -> None:
@@ -153,8 +168,7 @@ def verify_provenance() -> dict:
     if set(sources) != CAPTURE_SOURCES:
         raise ValueError("capture source inventory changed or disappeared")
     for name, sha256 in sources.items():
-        path = (REPO / name).resolve()
-        if REPO not in path.parents or digest(path) != sha256:
+        if captured_source_digest(name) != sha256:
             raise ValueError(f"capture source mismatch: {name}")
     verify_observation(provenance)
     return provenance

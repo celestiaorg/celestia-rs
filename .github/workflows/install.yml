@@ -51,8 +51,8 @@ jobs:
           - { os: ubuntu-22.04, shell: sh }
           - { os: ubuntu-24.04, shell: bash }
           - { os: ubuntu-24.04-arm, shell: sh }
-          - { os: macos-14, shell: sh }
-          - { os: macos-14, shell: zsh }
+          - { os: macos-15, shell: sh }
+          - { os: macos-15, shell: zsh }
           - { os: macos-15, shell: bash }
     steps:
       - uses: actions/checkout@v7.0.1
@@ -129,7 +129,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14 }
           - { os: macos-15 }
           - { os: ubuntu-22.04 }
           - { os: ubuntu-24.04-arm }

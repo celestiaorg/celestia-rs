@@ -1,0 +1,10 @@
+{
+  "scenario": "v105-populated-governance",
+  "chain_id": "rs-devnet-1",
+  "celestia_app": "v10.5.0",
+  "celestia_app_next": null,
+  "celestia_core": "v0.42.3",
+  "committed_heights": 35,
+  "workload": "populated-governance.sh",
+  "generated_at": "2026-10-31T05:01:30Z"
+}

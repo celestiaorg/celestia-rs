@@ -1057,6 +1057,9 @@ impl Environment {
 
     fn block_results(&self, h: Option<i128>) -> Result<J, String> {
         let height = self.get_height(self.block_store.height(), h)?;
+        if self.state_store.discard_abci_responses {
+            return Err("node is not persisting finalize block responses".to_owned());
+        }
         let r = self
             .state_store
             .load_finalize_block_response(height)
