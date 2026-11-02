@@ -296,6 +296,7 @@ const SCENARIOS: &[&str] = &[
     "ibc",
     "staking-lifecycle",
     "utf8",
+    "v105-authz-feegrant",
     "v9-authz-feegrant",
     "v9-blob",
     "v9-empty",
@@ -309,6 +310,32 @@ const SCENARIOS: &[&str] = &[
     "vesting",
     "zkism-forwarding",
 ];
+
+/// Fresh release answers must not inherit the legacy empty-version adapter or
+/// stale Simulate gas exception. The shared query comparator's explicit list
+/// ordering/build-identity/diagnostic normalizations still apply.
+#[test]
+fn corpus_v105_authz_feegrant() -> anyhow::Result<()> {
+    let abci = check_abci("v105-authz-feegrant")?;
+    assert!(abci.compared > 1000, "only {} ABCI cases", abci.compared);
+    assert!(
+        abci.mismatches.is_empty(),
+        "{} fresh ABCI mismatches: {:#?}",
+        abci.mismatches.len(),
+        abci.mismatches.iter().take(8).collect::<Vec<_>>()
+    );
+    let rest = check_rest("v105-authz-feegrant")?;
+    assert!(rest.compared > 500, "only {} REST cases", rest.compared);
+    assert!(
+        rest.mismatches.is_empty(),
+        "{} fresh REST mismatches: {:#?}",
+        rest.mismatches.len(),
+        rest.mismatches.iter().take(8).collect::<Vec<_>>()
+    );
+    assert_eq!(abci.skipped, 16, "review changed consensus exclusions");
+    assert_eq!(rest.skipped, 11, "review changed consensus exclusions");
+    Ok(())
+}
 
 macro_rules! corpus_tests {
     ($($name:ident => $scenario:literal;)*) => {$(

@@ -68,6 +68,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Verify RPC evidence accounting
         run: python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
+      - name: Fresh authz and feegrant capture integrity
+        run: python3 conformance/mainnet-rpc/populated-authz/verify.py
       - name: Validate scoped evidence and admitted current-release regressions
         run: >-
           python3 conformance/mainnet-rpc/coverage.py --run-current --verify-scoped

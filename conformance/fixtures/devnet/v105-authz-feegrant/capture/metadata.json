@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-11-02T18:38:40.598082+00:00",
+  "scenario": "v105-authz-feegrant",
+  "comparison": "existing-querycorpus-canonicalization",
+  "source_commit": "cabc055deb9dcfa5e438adb2d67365b7a104d9b7",
+  "recorder_compiler": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "source_sha256": {
+    "conformance/devnet/build-bins.sh": "031981d6ca5911c603e96305472cabab9384a455ec257ba0a58beedfababab39",
+    "conformance/devnet/devnet.sh": "b26071e0926c54ecbd43c164dca0b53a8a9ff0d5cb5656238bc5a58fac7b6b7d",
+    "conformance/devnet/workloads/authz-feegrant.sh": "6224ebabe96bd87b0e07f612226eabf930ba6022678f2a2afd351809a4500bbf",
+    "conformance/devnet/workloads/lib.sh": "5a4d7711a967cca8684149a84e43b1e0dac7c68c0ebf41b01fa30fb135289b86",
+    "conformance/devnet/workloads/wait_tx.py": "4c2b030c1a33d1f1a3c319d601ccdff5a21350de4aeda085b1fa431117c64b63",
+    "conformance/querycorpus/record.sh": "8dd552b699e9936e1d8b156f779f65cc56c0af3ad1fbf4f44658849145a12288",
+    "conformance/mainnet-rpc/observe-mainnet.py": "64cd57a4173175811c7f2e72d30d817484ffb9eedbafed2ebd607c458dc142f5",
+    "Cargo.toml": "d2b5c1740effc5b513f8e77860c1146e2bdf72b5acc2df476522051613bfb689",
+    "Cargo.lock": "95b8aebf51fa9209db8b7f63904de95cb015f6612fdb7e0c0e0d7385446b3f51",
+    "crates/devnet-conformance/Cargo.toml": "3bb83163e2022b93fa8575ae45768501cc272dd8286466fad2fa02f758876b20",
+    "crates/devnet-conformance/src/querycorpus.rs": "cda504c8e2e96fa44c670782e34ac034a5eddb77b858578962b0e6b03e27d840",
+    "crates/devnet-conformance/examples/record_queries.rs": "fc26be54159b1d35e6b1d712171ae538edf86c22ba80b733722af5d8e6367edd",
+    "conformance/devnet-oracle/main.go": "663cd0247e73fdaed1ede493724b0c34b8c0d6e9895392f5560d0c06e80bb897",
+    "conformance/devnet-oracle/go.mod": "06acdcd757d3d30f8d64ff2486e27622582c8fadda7ac7b71ed00d6a7560c5f1",
+    "conformance/devnet-oracle/go.sum": "59a4faeed3441a7c98604f902c7b3331f5a0f7d94ee5b2fcdcbf63694653375c",
+    "conformance/rpccorpus/recorder/go.mod": "95eae3ab94fe2ca5813a24db2b28f11ec57d41e800cafb62d79c3517142279df",
+    "conformance/rpccorpus/recorder/go.sum": "2b06648a46077d4c605243f9ad5a4a730cbad4fd96556c9d497db24ceee10e65",
+    "conformance/rpccorpus/recorder/cmd/abci-frame-recorder/main.go": "aa8dbc0f3eb5cec55dc4150ad3216353d106621db5d12c5a33edce66e1d0a14f",
+    "crates/devnet-conformance/src/querycorpus/net.rs": "203f2e2236fd5d3e1835218f8cc26863b8a7aa1aeb6fd9ab1f03ab915d231144",
+    "crates/devnet-conformance/src/querycorpus/requests.rs": "940f0f358f325b6fb7ae732c910113f4f8c0247efa227c14bb0abd7536c9f885",
+    "conformance/mainnet-rpc/populated-authz/README.md": "2faf2ac959faaaa502a5fd605dda915b591692c948c0b2e5a4e1e78ea66acdac",
+    "conformance/mainnet-rpc/populated-authz/receipt.py": "ee7a27fd67315730a1aa299811835adafe4145e07792edd889c898d404e7226d",
+    "conformance/mainnet-rpc/populated-authz/record.sh": "725908bda522dffa2ff63628bba78725309c17eb10959b594f4751fb26c5bbdc",
+    "conformance/mainnet-rpc/populated-authz/verify.py": "12a69cb93375959e8fd9cebcd89bae9e26961305e3fa0d8ba255b1dae440acc1"
+  },
+  "artifact_sha256": {
+    "conformance/fixtures/devnet/v105-authz-feegrant/abci.rec": "920fa87ad8a03f40eff08bbb6f03faa6bca3f4a9cff02b6a6f36b5ea0a585a46",
+    "conformance/fixtures/devnet/v105-authz-feegrant/blocks.bin.gz": "90db1c31dce7365d252ccc3ec506a9415046e21b89f4ef07b4f4bad758aaa263",
+    "conformance/fixtures/devnet/v105-authz-feegrant/capture/celestia-appd.build-info.txt": "4df532134af80a40731deebfa4da9142b076bb371618fbf8ab85088128a786da",
+    "conformance/fixtures/devnet/v105-authz-feegrant/capture/celestia-appd.build.json": "db7938924399704d9473a07303610bd2100b6b4dd5f9cb94825c9e6859c99c85",
+    "conformance/fixtures/devnet/v105-authz-feegrant/capture/cometbft.build-info.txt": "67a9985532a2038de0625d87889dae9dbcb4a202433b68cea05a18dcc7d1c792",
+    "conformance/fixtures/devnet/v105-authz-feegrant/capture/cometbft.build.json": "b1107e8089449ca2681370fe55fee414bddf25f5fe9b7001019f77b61ed03774",
+    "conformance/fixtures/devnet/v105-authz-feegrant/capture/mainnet-observation.json": "5c405f058d63027395d0abba1e063494f69e4657873a646a6813c1ee7110457a",
+    "conformance/fixtures/devnet/v105-authz-feegrant/genesis.json": "1a79005d507d8b05668ac0d2576dc56a3e56e00238b67c838b99437407ce3b70",
+    "conformance/fixtures/devnet/v105-authz-feegrant/go-build-info.txt": "e5cace1d9945e5f2da52d50aa53e5bde94977b8201a03aa9b7880d7b34f5478a",
+    "conformance/fixtures/devnet/v105-authz-feegrant/meta.json": "d998f652cfba6b4ddb733c60255f8f29abfa7df6b4e7c29e9908f820f20ebe07",
+    "conformance/fixtures/devnet/v105-authz-feegrant/state/1.json": "946cd16e30ef3391e91a7a522d4246e3284d12ce99b83fae115a6946412d6f90",
+    "conformance/fixtures/devnet/v105-authz-feegrant/state/89.json": "be0af43b53a5c5969271dbf733392b7ca5b72e6dfedd47064b9a7c9ea37dde43",
+    "conformance/querycorpus/v105-authz-feegrant.json.gz": "46baa0edc6dc9d49ab1320f1227542875cef2462dca6ff31a25bd47dae82f344"
+  },
+  "generator_sha256": {
+    "devnet-oracle": "d7dac472a45e55997805de1986ee968ee93b98dafda922dc42cb6dd150ea2ec3",
+    "abci-recorder": "25da0a9c4b76cf74fa5f1b8f386ffb0766ce523461116d5e4e493a0574a0d7af",
+    "rpc-recorder": "f26b2cfc795739103dda95e711e32770c2bd902ed4f3a919a37b26a69de977dd"
+  },
+  "query_recorder_sha256": "37a8b82d3b21574e9a96430c3ae5e55a506d97de006b2e2fdd17c77a1b5452e4",
+  "scope": "fresh v10.5.0 authz/feegrant workload, exact ABCI replay roots and ABCI/REST corpus",
+  "omissions": [
+    "real Comet/Cosmos gRPC/REST Rust listeners (the existing query harness calls app/gateway handlers)",
+    "runtime build identity, consensus-backed query handlers and client socket lifecycle",
+    "other module campaigns, independent ICS23 proof validation and universal provider parity"
+  ],
+  "normalizations": [
+    "querycorpus canonical_value sorts selected map-order lists and removes GetNodeInfo application_version",
+    "querycorpus comparable strips Go diagnostic source frames",
+    "REST comparisons parse JSON, sort selected map-order lists and remove GetNodeInfo application_version"
+  ]
+}
