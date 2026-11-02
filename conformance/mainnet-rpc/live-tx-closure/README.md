@@ -18,6 +18,14 @@ python3 conformance/mainnet-rpc/live-tx-closure/verify.py \
   conformance/mainnet-rpc/live-tx-closure/v10.5.0/2026-10-31-d2e72cb
 ```
 
+The Rust lockfile hash describes that recorded build, so later dependency
+updates do not invalidate the capture. If the working lockfile differs, the
+verifier reads `Cargo.lock` from the recorded source commit in local Git history.
+That candidate predates a squash merge; fetch it once before offline verification
+with `git fetch --no-tags origin d2e72cbb676814746226224a27ea038fbbd8fcf2`.
+Missing history or a mismatched historical hash fails verification. This evidence
+describes the recorded candidate; current dependency updates still run CI.
+
 The frozen inventory has 28 cases. It includes Cosmos gRPC and REST, core gRPC,
 Comet JSON-RPC/URI/WebSocket async, sync and commit forms, exact rejection and
 success behavior, mempool saturation and recovery, client disconnect and gRPC

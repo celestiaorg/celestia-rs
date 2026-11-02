@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -38,6 +39,44 @@ class LiveTransactionClosureEvidence(unittest.TestCase):
             cwd=ROOT,
             check=True,
         )
+
+
+class LockfileProvenance(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.repository = Path(temporary.name)
+        self.git("init", "-q")
+        self.git("config", "user.name", "Evidence test")
+        self.git("config", "user.email", "evidence@example.invalid")
+        self.lockfile = self.repository / "Cargo.lock"
+        self.lockfile.write_text("recorded dependencies\n")
+        self.digest = hashlib.sha256(self.lockfile.read_bytes()).hexdigest()
+        self.git("add", "Cargo.lock")
+        self.git("-c", "commit.gpgsign=false", "commit", "-qm", "Recorded build")
+        self.commit = self.git("rev-parse", "HEAD").strip()
+        self.lockfile.write_text("updated dependencies\n")
+
+    def git(self, *arguments):
+        return subprocess.run(
+            ["git", *arguments], cwd=self.repository, check=True,
+            capture_output=True, text=True,
+        ).stdout
+
+    def test_dependency_update_preserves_historical_evidence(self):
+        verify.verify_lockfile(self.repository, self.commit, self.digest)
+
+    def test_rewritten_receipt_hash_is_rejected(self):
+        with self.assertRaisesRegex(verify.VerificationError, "recorded Cargo.lock hash differs"):
+            verify.verify_lockfile(self.repository, self.commit, "0" * 64)
+
+    def test_missing_recorded_commit_fails_closed(self):
+        with self.assertRaisesRegex(verify.VerificationError, "recorded Cargo.lock unavailable"):
+            verify.verify_lockfile(self.repository, "0" * 40, self.digest)
+
+    def test_unchanged_lockfile_needs_no_historical_object(self):
+        current = hashlib.sha256(self.lockfile.read_bytes()).hexdigest()
+        verify.verify_lockfile(self.repository, "0" * 40, current)
 
 
 if __name__ == "__main__":

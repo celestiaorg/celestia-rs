@@ -301,15 +301,15 @@
       "comparison": "paired-live-transport-closure",
       "receipt": {
         "path": "conformance/mainnet-rpc/live-tx-closure/v10.5.0/2026-10-31-d2e72cb/manifest.json",
-        "sha256": "17c1a43f04ee2c4543e10235ea06d5b49788b94cc3eb104bb30dbdbce4dab2fa"
+        "sha256": "f9b9a635587c189c1f36fa6bc1b484bf9a6ea3c9e813ef727a8f2ece1a5a5752"
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/live-tx-closure/README.md",
-        "sha256": "7af7fc7696b5b39a7a20d4982327941ac3382761a3a7dd9d5c052b1362bf2196"
+        "sha256": "6fd5b30df5b9f41f19677f462e9844584d38d9c035de47b36ecbed643d0417f9"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",
-        "sha256": "62e8da47c5e49f78419cfa45a8d26875984b707671dc09b41db37838711159ac"
+        "sha256": "6f70316b0f44572e313ed1fbcd156ef0fbaefdd22bdd6b496a80ee9ab60cfa63"
       },
       "transports": [
         "comet-uri",
