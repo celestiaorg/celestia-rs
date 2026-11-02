@@ -123,4 +123,120 @@ mod tests {
         assert_eq!(b.value, Some(response::Value::Flush(ResponseFlush {})));
         Ok(())
     }
+
+    #[tokio::test]
+    async fn malformed_connections_do_not_stop_other_clients() -> anyhow::Result<()> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(serve(listener, Arc::new(Echo)));
+        // A framing overflow and an invalid protobuf request must each close
+        // only their own connection, without dispatching a partial request.
+        for bytes in [vec![0xff; 10], vec![1, 0xff]] {
+            let mut client = TcpStream::connect(addr).await?;
+            client.write_all(&bytes).await?;
+            client.shutdown().await?;
+            let frame =
+                tokio::time::timeout(std::time::Duration::from_secs(5), read_frame(&mut client))
+                    .await??;
+            assert_eq!(frame, None);
+        }
+        let mut healthy = TcpStream::connect(addr).await?;
+        write_frame(
+            &mut healthy,
+            &Request {
+                value: Some(request::Value::Flush(RequestFlush {})),
+            }
+            .encode_to_vec(),
+        )
+        .await?;
+        let frame =
+            tokio::time::timeout(std::time::Duration::from_secs(5), read_frame(&mut healthy))
+                .await??
+                .expect("healthy client receives a response");
+        assert_eq!(
+            Response::decode(frame.as_slice())?.value,
+            Some(response::Value::Flush(ResponseFlush {}))
+        );
+        server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn half_close_flushes_pending_responses_in_order() -> anyhow::Result<()> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let mut client = TcpStream::connect(listener.local_addr()?).await?;
+        let (stream, _) = listener.accept().await?;
+        let connection = tokio::spawn(serve_conn(stream, Arc::new(Echo)));
+        for message in ["first", "second"] {
+            write_frame(
+                &mut client,
+                &Request {
+                    value: Some(request::Value::Echo(RequestEcho {
+                        message: message.into(),
+                    })),
+                }
+                .encode_to_vec(),
+            )
+            .await?;
+        }
+        // No Flush request: EOF on the read half must drain buffered replies.
+        client.shutdown().await?;
+        for message in ["first", "second"] {
+            let frame =
+                tokio::time::timeout(std::time::Duration::from_secs(5), read_frame(&mut client))
+                    .await??
+                    .expect("buffered reply survives half-close");
+            assert_eq!(
+                Response::decode(frame.as_slice())?.value,
+                Some(response::Value::Echo(ResponseEcho {
+                    message: message.into(),
+                }))
+            );
+        }
+        assert_eq!(read_frame(&mut client).await?, None);
+        connection.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn empty_request_flushes_exception_without_closing_connection() -> anyhow::Result<()> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let mut client = TcpStream::connect(listener.local_addr()?).await?;
+        let (stream, _) = listener.accept().await?;
+        let connection = tokio::spawn(serve_conn(stream, Arc::new(Echo)));
+        write_frame(&mut client, &Request { value: None }.encode_to_vec()).await?;
+        let frame =
+            tokio::time::timeout(std::time::Duration::from_secs(5), read_frame(&mut client))
+                .await??
+                .expect("exception is flushed immediately");
+        assert_eq!(
+            Response::decode(frame.as_slice())?.value,
+            Some(response::Value::Exception(ResponseException {
+                error: "empty request".into(),
+            }))
+        );
+        write_frame(
+            &mut client,
+            &Request {
+                value: Some(request::Value::Echo(RequestEcho {
+                    message: "still connected".into(),
+                })),
+            }
+            .encode_to_vec(),
+        )
+        .await?;
+        client.shutdown().await?;
+        let frame =
+            tokio::time::timeout(std::time::Duration::from_secs(5), read_frame(&mut client))
+                .await??
+                .expect("connection accepts another request");
+        assert_eq!(
+            Response::decode(frame.as_slice())?.value,
+            Some(response::Value::Echo(ResponseEcho {
+                message: "still connected".into(),
+            }))
+        );
+        connection.await??;
+        Ok(())
+    }
 }
