@@ -8,6 +8,7 @@ use ctypes::vote::{PRECOMMIT_TYPE, PREVOTE_TYPE};
 pub(super) enum DirectoryFault {
     Open,
     Sync,
+    CreateTemp,
 }
 
 thread_local! {
@@ -243,20 +244,18 @@ fn failed_state_write_releases_no_vote_or_extension_signature() {
     let before = pv.last_sign_state.clone();
     let state_path = dir.path().join("state.json");
     let persisted = fs::read(&state_path).unwrap();
-    // Force the atomic writer's open to fail, even when tests run as root.
-    let blocker = dir
-        .path()
-        .join(format!(".state.json.tmp{}", std::process::id()));
-    fs::create_dir(&blocker).unwrap();
     let mut v = vote(&pv, PRECOMMIT_TYPE, 5, 0, 1);
     v.extension = b"extension".to_vec();
-    assert!(pv.sign_vote("c", &mut v).is_err());
+    {
+        // Deterministic even as root; stale temporary names must be harmless.
+        let _fault = DirectoryFaultGuard::new(DirectoryFault::CreateTemp);
+        assert!(pv.sign_vote("c", &mut v).is_err());
+    }
     assert!(v.signature.is_empty());
     assert!(v.extension_signature.is_empty());
     assert_eq!(pv.last_sign_state, before);
     assert_eq!(fs::read(&state_path).unwrap(), persisted);
 
-    fs::remove_dir(blocker).unwrap();
     pv.sign_vote("c", &mut v).unwrap();
     assert!(!v.signature.is_empty());
     assert!(!v.extension_signature.is_empty());
@@ -272,10 +271,6 @@ fn failed_state_write_releases_no_proposal_signature() {
     let before = pv.last_sign_state.clone();
     let state_path = dir.path().join("state.json");
     let persisted = fs::read(&state_path).unwrap();
-    let blocker = dir
-        .path()
-        .join(format!(".state.json.tmp{}", std::process::id()));
-    fs::create_dir(&blocker).unwrap();
     let mut proposal = pb::Proposal {
         r#type: ctypes::vote::PROPOSAL_TYPE,
         height: 5,
@@ -285,12 +280,14 @@ fn failed_state_write_releases_no_proposal_signature() {
         timestamp: ts(1_700_000_000, 0),
         signature: vec![],
     };
-    assert!(pv.sign_proposal("c", &mut proposal).is_err());
+    {
+        let _fault = DirectoryFaultGuard::new(DirectoryFault::CreateTemp);
+        assert!(pv.sign_proposal("c", &mut proposal).is_err());
+    }
     assert!(proposal.signature.is_empty());
     assert_eq!(pv.last_sign_state, before);
     assert_eq!(fs::read(&state_path).unwrap(), persisted);
 
-    fs::remove_dir(blocker).unwrap();
     pv.sign_proposal("c", &mut proposal).unwrap();
     let mut restarted = FilePv::load(dir.path().join("key.json"), state_path).unwrap();
     let mut conflict = proposal.clone();
@@ -508,4 +505,68 @@ fn go_vectors() {
             "{ctx}"
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_does_not_reuse_a_stale_permissive_temporary_file() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("state.json");
+    let stale = dir
+        .path()
+        .join(format!(".state.json.tmp{}", std::process::id()));
+    fs::write(&stale, b"stale data").unwrap();
+    fs::set_permissions(&stale, fs::Permissions::from_mode(0o644)).unwrap();
+    write_file_atomic(&target, b"new state").unwrap();
+    assert_eq!(fs::read(&stale).unwrap(), b"stale data");
+    assert_eq!(fs::read(&target).unwrap(), b"new state");
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_does_not_follow_a_preexisting_temporary_symlink() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("state.json");
+    let victim = dir.path().join("other-state.json");
+    let stale = dir
+        .path()
+        .join(format!(".state.json.tmp{}", std::process::id()));
+    fs::write(&target, b"old state").unwrap();
+    fs::write(&victim, b"unrelated state").unwrap();
+    symlink(&victim, &stale).unwrap();
+    write_file_atomic(&target, b"new state").unwrap();
+    assert_eq!(fs::read(&victim).unwrap(), b"unrelated state");
+    assert_eq!(fs::read(&target).unwrap(), b"new state");
+    assert!(
+        !fs::symlink_metadata(&target)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        fs::symlink_metadata(&stale)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 3);
+}
+
+#[test]
+fn failed_atomic_rename_removes_only_its_unpublished_temporary_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("state.json");
+    fs::create_dir(&target).unwrap();
+    let sentinel = target.join("keep");
+    fs::write(&sentinel, b"preserve").unwrap();
+    assert!(write_file_atomic(&target, b"new state").is_err());
+    assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
 }

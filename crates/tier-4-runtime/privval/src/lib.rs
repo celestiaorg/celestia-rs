@@ -329,24 +329,23 @@ pub fn write_file_atomic(path: &Path, data: &[u8]) -> Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let tmp = dir.join(format!(".{name}.tmp{}", std::process::id()));
-    let mut opts = fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut file = opts.open(&tmp).map_err(io)?;
+    // Exclusive creation with a fresh name prevents stale files (and symlinks)
+    // from being reused. NamedTempFile also removes unpublished files on error.
+    #[cfg(test)]
+    tests::directory_fault(tests::DirectoryFault::CreateTemp).map_err(io)?;
+    let mut file = tempfile::Builder::new()
+        .prefix(&format!(".{name}.tmp"))
+        .tempfile_in(dir)
+        .map_err(io)?;
     file.write_all(data).map_err(io)?;
-    file.sync_all().map_err(io)?;
-    fs::rename(&tmp, path).map_err(io)?;
+    file.as_file().sync_all().map_err(io)?;
+    let _file = file.persist(path).map_err(|error| io(error.error))?;
     // std's sync_all uses F_FULLFSYNC on Apple, which is for regular
     // files. Use fsync for directory metadata, and propagate every error.
     sync_directory(&directory).map_err(io)?;
     // On Apple, flush the device again after publishing directory metadata.
     #[cfg(target_vendor = "apple")]
-    file.sync_all().map_err(io)?;
+    _file.sync_all().map_err(io)?;
     Ok(())
 }
 
