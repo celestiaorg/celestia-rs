@@ -74,6 +74,12 @@ jobs:
         run: >-
           python3 conformance/mainnet-rpc/coverage.py --run-current --verify-scoped
           --json ${{ runner.temp }}/rpc-coverage.json
+      - name: Persistent RPC capture controller
+        run: python3 -m unittest discover -s conformance/mainnet-rpc/persistence -v
+      - name: Preserve incomplete restart-campaign evidence
+        run: python3 conformance/mainnet-rpc/persistence/verify_reproduction.py
+      - name: Ordered restart pruning and index matrix
+        run: python3 conformance/mainnet-rpc/persistence/verify_ordered.py
       - if: always()
         uses: actions/upload-artifact@v7
         with:

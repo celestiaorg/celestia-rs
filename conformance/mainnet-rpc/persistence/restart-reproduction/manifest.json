@@ -1,0 +1,43 @@
+{
+  "outcome": "incomplete-restart-campaign",
+  "attempted_profiles": [
+    "retain-kv"
+  ],
+  "not_completed": [
+    "retain-kv restart progress and post-pruning capture",
+    "prune-kv",
+    "retain-null",
+    "prune-null"
+  ],
+  "artifacts": {
+    "build-receipts.json": "1e1fff3e7fb136a17ac978ea4619172a2347d86cbb5d9fe29c8ca6ca5d3030ac",
+    "campaign.log": "4519ca15c88c79b8626b81f12124a362019fe8dfa303739a0fea90015a187544",
+    "capture-source.py": "30341bd6a0175bc2071cf339f7caf9b0851eab5990dd7ef46cb99be91138fc49",
+    "capture-source.sh": "518f2f78ee498c3b324b93f592e15ef21aa30769084834ac0eff8a4b2ac6ccfa",
+    "celestia-appd.build.json": "db7938924399704d9473a07303610bd2100b6b4dd5f9cb94825c9e6859c99c85",
+    "cometbft.build.json": "b1107e8089449ca2681370fe55fee414bddf25f5fe9b7001019f77b61ed03774",
+    "mainnet-observation.json": "5c405f058d63027395d0abba1e063494f69e4657873a646a6813c1ee7110457a",
+    "mixed-source.sh": "d2791d76164765719553192940842e716115bdeb8900e73994dcaca4a43c3d10",
+    "node-0-tail.log": "017b5c3aa12ae5aab032222313628bd132a20606bf9f44985a1cd0f36475b75a",
+    "node-1-tail.log": "bca3cfa109fc5c796dbf73f490cb589790e9bd3fdb36847c1af89542a6fc51b7",
+    "node-2-tail.log": "73dd762336bce6738936e8f94ae184d611196979a376e48a0e69f2495159f64c",
+    "retain-kv/app-0.toml": "09f54d111ee83b36261372d0ac66c2dc2781a10684701b116debaef75baffe98",
+    "retain-kv/app-1.toml": "dd2c576c2ccdee46de56d825bbb713fa158932e7bb4ccdb838c422a34ab56647",
+    "retain-kv/app-2.toml": "53e1fdecb5ba07f0053dbb0ae5ffc48b666609a3fc946581ae88a421ddd01e81",
+    "retain-kv/before-restart.json": "7d03ff3e4331c21374cc31dd1a2d72507a8f57add1c9ff612174647a927bd4aa",
+    "retain-kv/config-0.toml": "cc2624d9ae73e20fd468d0c8d830b15b7dc081862e952bc3d52333917ae089e5",
+    "retain-kv/config-1.toml": "7027513cf295c142af2f10a6e48fed91b4573571961eb257b84a13f220f18a42",
+    "retain-kv/config-2.toml": "55975f30d789aa9b879877a69473a235dc7db4916f7dc63fca615f8e911897c3",
+    "retain-kv/genesis.json": "017e73725d0400f74803ad260c6ebaa04fc3fefd65c9390f128f37d646988899",
+    "retain-kv/inclusion-101.json": "7e1f847a7d3d07c7287e3a56039001050e884df0470cc5653fef97a3c2782a34",
+    "retain-kv/inclusion-102.json": "f294757b55f0630528887c366bfd558c9f24d9d3f038ea9f4d867c7b3aa0cba1",
+    "retain-kv/inclusion-103.json": "f158935e56fc522545548f7eed5e21aad3414e98ecb1445fffc92bae8cb85e18",
+    "retain-kv/reference-blocks.json": "8dd5542e1a02716dc14c68bde58eccf75c2f21b9d1681d6a692f0f7f0ae52b31",
+    "retain-kv/restart-diagnostic.json": "c107c04b124601fa1851029aefabf1ef5cc9ea1ed19176939db65a329eb6923a",
+    "retain-kv/tx-101.json": "ef172a5845b4c6be87bd07d3cba92e3930d28aff135b2bd87fcc20c007eef966",
+    "retain-kv/tx-102.json": "33ce5545c48fa9d5049cc6ae697ae36569c43db14f7fee925922be26121c2cae",
+    "retain-kv/tx-103.json": "df7fb7148736edb256e49d6afcaebe4298bfaccf8584b9822b37fb4c3410df48",
+    "validator-blocks.bin.gz": "bee0e3041d646bd46b0eedbfb96134e0c10e3eb2e85082e48d191f96e73df29e"
+  },
+  "archive_parser_sha256": "988daf12dc7bea7100c6baa861362d46843c8da7aeab3691a57ad6d75bbeb95f"
+}
