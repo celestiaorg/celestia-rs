@@ -254,6 +254,14 @@ impl LastSignState {
     pub fn from_json(bz: &[u8]) -> Result<Self> {
         let v: serde_json::Value =
             serde_json::from_slice(bz).map_err(|e| Error::new(e.to_string()))?;
+        // Go's struct decoder accepts an object (or null), but rejects other
+        // JSON kinds. Indexing those kinds would silently yield missing fields
+        // and reset the persisted height/round/step double-sign guard to zero.
+        if !v.is_object() && !v.is_null() {
+            return Err(Error::new(
+                "invalid PrivValidator state: expected a JSON object",
+            ));
+        }
         let height = match &v["height"] {
             serde_json::Value::String(s) => s
                 .parse::<i64>()
