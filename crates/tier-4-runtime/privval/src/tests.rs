@@ -403,6 +403,42 @@ fn existing_key_with_missing_or_corrupt_state_is_not_regenerated() {
     assert_eq!(fs::read(&key_path).unwrap(), key);
 }
 
+#[test]
+fn non_object_state_cannot_reset_the_persisted_signing_guard() {
+    let (mut pv, dir) = temp_pv();
+    let mut signed = vote(&pv, PREVOTE_TYPE, 5, 0, 1);
+    pv.sign_vote("c", &mut signed).unwrap();
+    let key_path = dir.path().join("key.json");
+    let state_path = dir.path().join("state.json");
+    let key = fs::read(&key_path).unwrap();
+    for malformed in ["[]", "[{}]", "42", "true", "false", "\"junk\""] {
+        assert!(
+            LastSignState::from_json(malformed.as_bytes()).is_err(),
+            "{malformed}"
+        );
+        fs::write(&state_path, malformed).unwrap();
+        assert!(FilePv::load(&key_path, &state_path).is_err(), "{malformed}");
+        assert!(
+            FilePv::load_or_generate(&key_path, &state_path).is_err(),
+            "{malformed}"
+        );
+        assert_eq!(fs::read(&state_path).unwrap(), malformed.as_bytes());
+        assert_eq!(fs::read(&key_path).unwrap(), key);
+    }
+}
+
+#[test]
+fn null_state_keeps_go_struct_decoder_semantics() {
+    assert_eq!(
+        LastSignState::from_json(b"null").unwrap(),
+        LastSignState::default()
+    );
+    assert_eq!(
+        LastSignState::from_json(b"{}").unwrap(),
+        LastSignState::default()
+    );
+}
+
 #[derive(Debug)]
 struct VectorOp {
     kind: String,
