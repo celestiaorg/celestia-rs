@@ -242,7 +242,10 @@ async fn grpc_handler(
             .map(Body::new);
     }
     let mut grpc = limits.grpc();
-    grpc_transport::response(grpc.unary(Unary { app, path }, req).await)
+    grpc_transport::query_error_trailers(
+        grpc_transport::response(grpc.unary(Unary { app, path }, req).await),
+        BLOCK_HEIGHT_HEADER,
+    )
 }
 
 /// The gRPC router: every path is a unary query method.
@@ -252,11 +255,37 @@ pub fn grpc_router(app: Arc<AbciApp>) -> axum::Router {
 
 /// The app gRPC router with operator-configured per-message limits.
 pub fn grpc_router_with_limits(app: Arc<AbciApp>, limits: GrpcLimits) -> axum::Router {
-    grpc_reflection::router_with_limits(grpc_reflection::Profile::App, limits).merge(
-        axum::Router::new()
-            .fallback(grpc_handler)
-            .with_state((app, limits)),
-    )
+    grpc_reflection::router_with_limits(grpc_reflection::Profile::App, limits)
+        .merge(
+            axum::Router::new()
+                .fallback(grpc_handler)
+                .with_state((app, limits)),
+        )
+        .layer(axum::middleware::from_fn(protobuf_content_type))
+}
+
+// grpc-go echoes the explicit protobuf subtype, including errors and reflection.
+// Tonic otherwise always emits application/grpc even for grpc+proto requests.
+async fn protobuf_content_type(
+    request: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response<Body> {
+    let explicit_proto = request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .is_some_and(|value| {
+            value
+                .as_bytes()
+                .eq_ignore_ascii_case(b"application/grpc+proto")
+        });
+    let mut response = next.run(request).await;
+    if explicit_proto {
+        response.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/grpc+proto"),
+        );
+    }
+    response
 }
 
 /// The bytes of a REST response body. Strings are Go forms (`gostr`): Go's

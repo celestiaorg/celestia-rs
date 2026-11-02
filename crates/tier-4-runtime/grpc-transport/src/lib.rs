@@ -238,3 +238,24 @@ pub fn response(mut response: Response<tonic::body::BoxBody>) -> Response<Body> 
         }))
     })
 }
+
+/// Send an SDK query error after its initial height metadata, like grpc-go.
+/// Tonic normally emits a single trailers-only response for unary errors.
+#[must_use]
+pub fn query_error_trailers(mut response: Response<Body>, height_header: &str) -> Response<Body> {
+    if !response.headers().contains_key(height_header)
+        || !response.headers().contains_key("grpc-status")
+    {
+        return response;
+    }
+    let mut trailers = HeaderMap::new();
+    for key in ["grpc-status", "grpc-message", "grpc-status-details-bin"] {
+        if let Some(value) = response.headers_mut().remove(key) {
+            trailers.insert(key, value);
+        }
+    }
+    *response.body_mut() = Body::new(http_body_util::Empty::<bytes::Bytes>::new().with_trailers(
+        std::future::ready(Some(Ok::<_, std::convert::Infallible>(trailers))),
+    ));
+    response
+}

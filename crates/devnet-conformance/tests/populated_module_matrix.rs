@@ -1,5 +1,7 @@
 //! Fresh populated module comparisons over real ABCI, Comet, gRPC and REST listeners.
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+use prost::Message as _;
+use serde_json::json;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
@@ -148,6 +150,43 @@ fn canonical_rest(mut value: Value) -> Value {
         }
     }
     value
+}
+fn header_json(headers: &http::HeaderMap) -> Value {
+    let mut out = serde_json::Map::new();
+    for key in headers.keys() {
+        out.insert(
+            key.to_string(),
+            json!(
+                headers
+                    .get_all(key)
+                    .iter()
+                    .map(|value| hex::encode(value.as_bytes()))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    Value::Object(out)
+}
+fn assert_grpc_headers(case: &Value, headers: &http::HeaderMap) {
+    let expected = &case["transports"]["cosmos_grpc"];
+    // grpc-go puts a trailers-only response's content type in Trailer metadata.
+    let expected = if expected["headers"].is_object() {
+        &expected["headers"]
+    } else {
+        &expected["trailers"]
+    };
+    for key in ["content-type", "x-cosmos-block-height"] {
+        let actual: Vec<_> = headers
+            .get_all(key)
+            .iter()
+            .map(|value| value.to_str().unwrap())
+            .collect();
+        let expected: Vec<_> = expected[key]
+            .as_array()
+            .map(|values| values.iter().map(|value| value.as_str().unwrap()).collect())
+            .unwrap_or_default();
+        assert_eq!(actual, expected, "{} gRPC {key}", case["name"]);
+    }
 }
 struct Query(Mutex<app::App>);
 
@@ -400,7 +439,8 @@ async fn verify_scenario(scenario: &str) {
         Arc::new(app::AbciApp::new(direct)),
     ));
     let cases = capture["cases"].clone();
-    tokio::task::spawn_blocking(move || {
+    let abci_record = tokio::task::spawn_blocking(move || {
+        let mut records = Vec::new();
         let mut socket = TcpStream::connect(abci_addr).unwrap();
         socket.set_nodelay(true).unwrap();
         socket
@@ -419,7 +459,11 @@ async fn verify_scenario(scenario: &str) {
             .unwrap()
             .expect("ABCI Query response");
             assert_abci(case, &response);
+            records.push(
+                json!({"name":case["name"],"response_hex":hex::encode(response.encode_to_vec())}),
+            );
         }
+        records
     })
     .await
     .unwrap();
@@ -430,6 +474,7 @@ async fn verify_scenario(scenario: &str) {
         rpc_listener,
         rpc_environment(replayed_app(scenario, &capture), &capture),
     ));
+    let mut comet_record = Vec::new();
     for case in capture["cases"].as_array().unwrap() {
         let request=serde_json::json!({"jsonrpc":"2.0","id":1,"method":"abci_query","params":{"path":case["method"],"data":case["request_hex"].as_str().unwrap().to_uppercase(),"height":case["height"].as_i64().unwrap().to_string(),"prove":case["prove"]}}).to_string();
         let (status, _, body) = tokio::task::spawn_blocking(move || {
@@ -467,6 +512,7 @@ async fn verify_scenario(scenario: &str) {
             )
             .unwrap();
         assert_value(case, &value, "comet_rpc");
+        comet_record.push(json!({"name":case["name"],"status":status,"body":actual}));
     }
     rpc_task.abort();
     let api = Arc::new(app::AbciApp::new(replayed_app(scenario, &capture)));
@@ -481,7 +527,18 @@ async fn verify_scenario(scenario: &str) {
         .connect()
         .await
         .unwrap();
+    let channel = tonic::service::interceptor::InterceptedService::new(
+        channel,
+        |mut request: tonic::Request<()>| {
+            request
+                .metadata_mut()
+                .insert("content-type", "application/grpc+proto".parse().unwrap());
+            Ok(request)
+        },
+    );
     let mut client = tonic::client::Grpc::new(channel);
+    let mut grpc_record = Vec::new();
+    let mut rest_record = Vec::new();
     for case in capture["cases"].as_array().unwrap() {
         let height = case["height"].as_i64().unwrap();
         let grpc = &case["transports"]["cosmos_grpc"];
@@ -495,6 +552,8 @@ async fn verify_scenario(scenario: &str) {
             let path: http::uri::PathAndQuery = case["method"].as_str().unwrap().parse().unwrap();
             match client.unary(request, path, api_server::RawCodec).await {
                 Ok(response) => {
+                    let headers = response.metadata().clone().into_headers();
+                    assert_grpc_headers(case, &headers);
                     assert_eq!(
                         grpc["code"].as_i64().unwrap_or(0),
                         0,
@@ -502,6 +561,7 @@ async fn verify_scenario(scenario: &str) {
                         case["name"]
                     );
                     assert_value(case, response.get_ref(), "cosmos_grpc");
+                    grpc_record.push(json!({"name":case["name"],"code":0,"response_hex":hex::encode(response.get_ref()),"headers_hex":header_json(&headers)}));
                     let expected = grpc["headers"]["x-cosmos-block-height"][0].as_str();
                     assert_eq!(
                         response
@@ -514,6 +574,9 @@ async fn verify_scenario(scenario: &str) {
                     );
                 }
                 Err(status) => {
+                    let headers = status.metadata().clone().into_headers();
+                    assert_grpc_headers(case, &headers);
+                    grpc_record.push(json!({"name":case["name"],"code":status.code() as i32,"message":status.message(),"headers_hex":header_json(&headers),"status_metadata_hex":header_json(&status.metadata().clone().into_headers())}));
                     assert_eq!(
                         i64::from(status.code() as i32),
                         grpc["code"].as_i64().unwrap(),
@@ -546,11 +609,12 @@ async fn verify_scenario(scenario: &str) {
             let actual: Value = serde_json::from_slice(&body)
                 .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&body).into_owned()));
             assert_eq!(
-                canonical_rest(actual),
+                canonical_rest(actual.clone()),
                 canonical_rest(expected["body"].clone()),
                 "{} REST body",
                 case["name"]
             );
+            rest_record.push(json!({"name":case["name"],"status":status,"headers":headers,"body_hex":hex::encode(&body),"body":actual}));
             if status == 200 {
                 assert_eq!(
                     header(&headers, "grpc-metadata-x-cosmos-block-height"),
@@ -563,6 +627,18 @@ async fn verify_scenario(scenario: &str) {
     }
     grpc_task.abort();
     rest_task.abort();
+    if let Some(directory) = std::env::var_os("MODULE_CLOSURE_CAPTURE") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let bytes = serde_json::to_vec(&json!({"scenario":scenario,"chain_id":capture["chain_id"],"tip_height":capture["tip_height"],"query_height":capture["query_height"],"app_hash":capture["app_hash"],"matched_heights":(1..=capture["tip_height"].as_i64().unwrap()).collect::<Vec<_>>(),"abci":abci_record,"comet_rpc":comet_record,"cosmos_grpc":grpc_record,"rest":rest_record})).unwrap();
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+        encoder.write_all(&bytes).unwrap();
+        std::fs::write(
+            directory.join(format!("{scenario}-rust.json.gz")),
+            encoder.finish().unwrap(),
+        )
+        .unwrap();
+    }
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn populated_module_matrix_matches_real_transports_and_proofs() {
