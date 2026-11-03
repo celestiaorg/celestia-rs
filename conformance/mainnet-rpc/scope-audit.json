@@ -86,7 +86,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/grpc_limits.rs",
-            "sha256": "91c9a86043b86e27c56b31a06e716382692eb03a603cbe91e6c7971b5f3e28a6"
+            "sha256": "cb5bc0c5672d64bdd9018318125612eb63a900ace4af24fe8cd6650a5f9e06f8"
           },
           "function": "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"
         }
@@ -166,7 +166,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs",
-            "sha256": "dc50b93017fd9fd6a21e2592b0590d58c8657cf82a7a2537f47cc92e98aabce2"
+            "sha256": "6c2b3db5d11aeef2bd1c34423ae76316a7d939b86431ae15e246406cf5d1f9b8"
           },
           "function": "production_listeners_report_build_and_compatibility_separately"
         }
