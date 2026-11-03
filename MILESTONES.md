@@ -437,6 +437,20 @@ test), then start that harness's count again.
   generated state before signalling and continues after the switch. The
   C1.4 v10.5.0 campaign records twelve clean upgrade seeds; this is progress
   toward the required 50 runs, not completion on a new candidate.
+  *Signed devnet follow-up (2026-11-03):* clean exact candidate
+  `5641e7d3837630e5899ba9d7e81ec372883d3cbd` completed 50 different seeds
+  (25 message-ID and 25 Merkle-root ISM), each with 240 generated blocks,
+  one actual Go v9.0.8 → v10.5.0 binary switch and successful finalized v10
+  traffic. Both signed v9 incoming transfer paths succeeded before every
+  switch. Totals: 12,000 blocks, 42,790 finalized transactions, 21,363 code 0,
+  zero consensus mismatches; 1,073 text-only differences remain separately
+  retained. Both signed v10 paths were observed in 44/50 runs, not every run.
+  The [receipt](docs/evidence/signed-upgrade-5641e7d.json) pins source,
+  compilers, input/receipt hashes, flags and local raw-artifact locations;
+  independent review recomputed all run markers and totals. This supplies
+  bounded devnet evidence on that candidate. Mainnet-shaped rehearsal,
+  coverage, saturation and observation-window requirements remain open;
+  the evidence does not automatically transfer to later commits.
   Exit: `deliver` across the upgrade (Go v9.0.8 → v10.5.0, Rust in one
   process), with fuzzed state built before it (pending unbondings and
   redelegations, open proposals, grants, allowances, vesting, IBC

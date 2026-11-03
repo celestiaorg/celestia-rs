@@ -1,0 +1,188 @@
+{
+  "artifact_hashes": {
+    "analysis.json": "7aead8ad3eaee8e41a5e494e4a5edb578769faf0c9042dd008abe2ee8f301e31",
+    "build.log": "13bffa60b7fa138dc8016d941654a816d1350404427a2cfa375cf2d43573acfa",
+    "qualification/check.log": "f09d95c4a4e8ead067a294f8897838f5cbbf9b8ff6e779c3c6d2da2311a6beb6",
+    "qualification/evidence.json": "3f151bf7d943a73fc9973f4ca86e34a124e0427c5cdb22c893f148bbc32dad07",
+    "runs/source-visibility.json": "14d9f81b4eceff1f7df57f3c9955bef88f7bd4f4f6d2c6d5330b5c4fb994b649",
+    "runs/summary.json": "bdecd10865786601f5c1684d15613cbc48e96042175f92024635f64bdbc20e4c",
+    "settings.json": "c3b6b5ee16e33dfffe87a7b9050b880427846d36defef811ef8f71cf5ceabeeb"
+  },
+  "artifact_root": "/workspace/scratch/celestia-week/signed-upgrade-5641e7d",
+  "limitations": [
+    "Local raw artifacts are retained in the engineering workspace, not a public artifact archive.",
+    "240 generated blocks and one actual Go binary switch per seed; mainnet-shaped state/replay is separate.",
+    "Signed v9 collateral and synthetic transfers are required per run; positive v10 phase traffic need not be Hyperlane.",
+    "Both signed v10 transfer paths were observed in 44/50 runs, not all 50.",
+    "Text-only differences are retained separately from consensus comparisons.",
+    "Candidate predates PR258; hashed external runner separately verified root index flags and fsmonitor-disabled status before/after.",
+    "No automatic transfer to later source commits and no three-night or three-day qualification claim."
+  ],
+  "qualification": {
+    "binary_sha256": {
+      "/workspace/scratch/celestia-week/oracle-bins/devnet-bin/celestia-appd": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+      "/workspace/scratch/celestia-week/oracle-bins/devnet-bin/v9/celestia-appd": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/inputs/fuzz-diff": "56a1f86ba3dbd92231e5eb6ca65338009b71da235c69301c00cac86644fda949",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/inputs/go-v10.build.json": "a29132111ee1695e6201adf1ed4a52cb811180b07bbd798e2c15e9681a16d9cb",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/inputs/go-v9.build.json": "7e3f01d2ac23e6174645f0e9b009bbc6cb0a32d3142df902b7643ef3a36fe615",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/inputs/upgrade-campaign.py": "5d67465d1f89d92b501677d502713f5d784f366ee8da81098167282db43c8463"
+    },
+    "command": [
+      "python3",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/inputs/upgrade-campaign.py",
+      "/workspace/scratch/celestia-week/signed-upgrade-5641e7d/runs"
+    ],
+    "exit_code": 0,
+    "finished_at_unix": 1793726764.5678473,
+    "inputs_unchanged": true,
+    "log_sha256": "f09d95c4a4e8ead067a294f8897838f5cbbf9b8ff6e779c3c6d2da2311a6beb6",
+    "machine": "x86_64",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "schema_version": 1,
+    "scope": "one check only; remaining F1 gates require separate evidence",
+    "source": {
+      "revision": "5641e7d3837630e5899ba9d7e81ec372883d3cbd",
+      "status": "",
+      "tree": "9a0d96ac121bf035c50d79088b3a493dfbf65ace"
+    },
+    "source_after": {
+      "revision": "5641e7d3837630e5899ba9d7e81ec372883d3cbd",
+      "status": "",
+      "tree": "9a0d96ac121bf035c50d79088b3a493dfbf65ace"
+    },
+    "started_at_unix": 1793725891.5786762,
+    "status": "passed",
+    "toolchains": {
+      "cargo": {
+        "error": "",
+        "exit_code": 0,
+        "output": "cargo 1.98.0 (797e8a9bc 2026-08-05)"
+      },
+      "go": {
+        "error": "",
+        "exit_code": 0,
+        "output": "go version go1.26.9 linux/amd64"
+      },
+      "rustc": {
+        "error": "",
+        "exit_code": 0,
+        "output": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8"
+      }
+    }
+  },
+  "run_receipt_hashes": {
+    "runs/upgrade-01-message-id.json": "59c8aef3f5c0adc3afde00699dcad7966581c66486e0164815c19f81c8372935",
+    "runs/upgrade-02-merkle-root.json": "5a032ab2a82a25d14c824780008abfd5a66f97ea4779673216174590f18d981a",
+    "runs/upgrade-03-message-id.json": "43a01726e66ef3edf92b4898619a7b00e2639cc9298f1b96629e3201e9b33cba",
+    "runs/upgrade-04-merkle-root.json": "6ea33e460a6af7259c0b50a6e5592761065223f57cda70344d0ba09370760eb9",
+    "runs/upgrade-05-message-id.json": "6603459686ee25415d7b6cb9aae34c57dfcab10873b2fac48fb40b07ffe0e3b7",
+    "runs/upgrade-06-merkle-root.json": "110a370b1ff45d6a84ca9cbe1a37d8e5698ded6182efb8af560e527ad7731f6f",
+    "runs/upgrade-07-message-id.json": "71c691b416aa6474996e1832b4dfe98bb7ea1bafde56c34c81c4013c66f8d35f",
+    "runs/upgrade-08-merkle-root.json": "c3928b5b4433147e839d483b7028a1dc6960680b25cef57dd4ddee5019445ad3",
+    "runs/upgrade-09-message-id.json": "a28db4e2a2d05d9dc3cf0a4a0bfbe214fc460423b0d597ff38b4c7f85d2b91e6",
+    "runs/upgrade-10-merkle-root.json": "1b7b8ecba5081971a2849d3fcf01a665dc8c987f016f0a26e0490cb0857c2e79",
+    "runs/upgrade-11-message-id.json": "291261277f180b7f8a762597bd5a34d48f2ec1a318c095f1cfd6af985eff81af",
+    "runs/upgrade-12-merkle-root.json": "9da4ac99e1db1a02a82709a41c543dc0f0dcd12701e2bef3044fc5f00747e62d",
+    "runs/upgrade-13-message-id.json": "7cdf80511547a6ed45106c73c7c408f3e1a19a5a12cf8688adc79ed489595e5d",
+    "runs/upgrade-14-merkle-root.json": "2fecc9fdf630ae9670620663ae4fc89fcf60c5e6b1f9a7a16a9fbc24c95d7eed",
+    "runs/upgrade-15-message-id.json": "e1f366d33294383bcbd9c9726fd7bcbda94aeeed9bf0ee0bfdc924c859fbb15b",
+    "runs/upgrade-16-merkle-root.json": "4533afa3f3f56983c5ea15bd4299a82f69671bd025ab9112a6fd05fd801d7627",
+    "runs/upgrade-17-message-id.json": "f5fef0c2c7a11aff7555fa52641699040d0b39a3e7e71ce2045f2b75cb54d096",
+    "runs/upgrade-18-merkle-root.json": "c02a7559901e06e24dc07fdbed950c91094023b718a748a2f3d4b3d3e55c67a9",
+    "runs/upgrade-19-message-id.json": "ab27a820e9098e94b16dfbc8504c59e7336ab6b692ebe8a633e1b189a2d968da",
+    "runs/upgrade-20-merkle-root.json": "cd88e67ab3b992c78f75906e9c33f36b060e6d88233054bac31956a2424f0c90",
+    "runs/upgrade-21-message-id.json": "1cd4bfefd204b8cf0c1e9d87e14df749a132dc5c69177d106f679fbf2dc74a23",
+    "runs/upgrade-22-merkle-root.json": "99e6a83acc836155727182317be31e455735861d1a43bdd431901ff5bb00e261",
+    "runs/upgrade-23-message-id.json": "d064a8309b3b045cae6de9ec687893577edf1027fbd52cf91a677f99390907ef",
+    "runs/upgrade-24-merkle-root.json": "884e03bea0b73d9d75b1353c317b9931f6946eab85e87a313908bcdecb0b5a83",
+    "runs/upgrade-25-message-id.json": "c9ab1915b3f10d5f6b6fa1d8ed7953dd082908d14c6e629c5f25ef808f926bca",
+    "runs/upgrade-26-merkle-root.json": "f18c20d5b922a50f56a52f86d6ffb7af35dc67c034aa3ea15156152382f3b967",
+    "runs/upgrade-27-message-id.json": "ebe3824b9504f31083f4dffd5719f7ca99a301d891071862f103a0282a78b7e7",
+    "runs/upgrade-28-merkle-root.json": "d2e0902e45e6707b0adf9abe3ed00f1b846bc8727753b84e271524f48e4faa90",
+    "runs/upgrade-29-message-id.json": "4d3623e3c695ce88e3dc203451ec3ca6db3e58fc2b3de67d7a2270187a6e3d2a",
+    "runs/upgrade-30-merkle-root.json": "f7f28e4eef93a616a799b77067382cf9a718908bd9882ac6474a929e725567b8",
+    "runs/upgrade-31-message-id.json": "d531e333519135914c209f2ec68205fbc8bed5c1ada328ec381e722da289be2f",
+    "runs/upgrade-32-merkle-root.json": "8f43d7e2ef0ccd80d19b1f8df35bd12742dc7b0f81de45d26500be252e1736c5",
+    "runs/upgrade-33-message-id.json": "4bbba7ed5555593ae04e0dc0cc5064360d5bc35ceada84a732e672e3bed8b83b",
+    "runs/upgrade-34-merkle-root.json": "4714e250d02365f1fbcac44d22b0dee2122ec083aee47df1a1ab6edcf85f2250",
+    "runs/upgrade-35-message-id.json": "863f06f922f55013f10cb87f89909da82ecab926422fd441e105c00b74f5ef86",
+    "runs/upgrade-36-merkle-root.json": "57391840095ebcff8088934beaf80bd8fffce241a9f8c7442be3fbee0650ba7a",
+    "runs/upgrade-37-message-id.json": "e3f0ddc1a573e691701474234d1e079538b66f0dee24c0c312cf199fda703272",
+    "runs/upgrade-38-merkle-root.json": "f0bcdf4c0a6be2d2bd6ca989191ff30d0293ce1dbc2a9feb0e2049cf1c705468",
+    "runs/upgrade-39-message-id.json": "aea664210f5dd367f988ec994508b83a3394b4b2f377a4fece2c669f9b4046e0",
+    "runs/upgrade-40-merkle-root.json": "a9315c268f6e5638f28f95cbb896d1d42dd8fe031ce323fae424b77f8af84268",
+    "runs/upgrade-41-message-id.json": "11ecaf783c80db1d0fa4caec1465ef1af866040283a4507bf333ea5e57674620",
+    "runs/upgrade-42-merkle-root.json": "062e1b09a5b482451ac6091e2e5f6d614e685db6e6b37f115d56203d58f3abb8",
+    "runs/upgrade-43-message-id.json": "36628a0526dc762b17247bbe5bb52d965f49a77cbf801499a4dc7c3899807a90",
+    "runs/upgrade-44-merkle-root.json": "f596bf1ad9a794342d354e7c1a2f9272483809724c8cde259e44c07c265ae0d3",
+    "runs/upgrade-45-message-id.json": "36e356c469890ca69710dee67c84bca0e024bc1c4cebbb111bd9996e6fe553d0",
+    "runs/upgrade-46-merkle-root.json": "2747b89ff3a9e34b7ee1e35e20769f7ab4c535627b1fba918342e5d927c76659",
+    "runs/upgrade-47-message-id.json": "b9f751875c3757e929cd5439a22a82fbd1e21f29ff44e4d9e41a96dd05f62b26",
+    "runs/upgrade-48-merkle-root.json": "9a8f3aa5ceaa9d267948108f5e07138eb563deeac60b6c850a3cbb82fcb2bc59",
+    "runs/upgrade-49-message-id.json": "62d15ef3612dfa8786f630d2784a290ada01a77735c5befaa0aa3e01ce7b92a6",
+    "runs/upgrade-50-merkle-root.json": "4bf07c9f8549d5d374b7f3ebed54b0023c0ae3885175812e45ba7f02df8ca134"
+  },
+  "schema_version": 1,
+  "scope": "bounded signed devnet upgrades; no F1.5/mainnet recommendation claim",
+  "summary": {
+    "by_ism": {
+      "merkle-root": {
+        "blocks": 6000,
+        "delivered": 20643,
+        "delivered_ok": 10390,
+        "handler_errors": 4841,
+        "unattributed_errors": 5412
+      },
+      "message-id": {
+        "blocks": 6000,
+        "delivered": 22147,
+        "delivered_ok": 10973,
+        "handler_errors": 5292,
+        "unattributed_errors": 5882
+      }
+    },
+    "hl_verified_versions": {
+      "v10/collateral": 181,
+      "v10/synthetic": 207,
+      "v9/collateral": 70,
+      "v9/synthetic": 57
+    },
+    "ism_runs": {
+      "merkle-root": 25,
+      "message-id": 25
+    },
+    "log_only_differences": 1073,
+    "runs": 50,
+    "seeds": [
+      1,
+      50
+    ],
+    "source": {
+      "revision": "5641e7d3837630e5899ba9d7e81ec372883d3cbd",
+      "status": "",
+      "tree": "9a0d96ac121bf035c50d79088b3a493dfbf65ace"
+    },
+    "source_visibility": {
+      "after": {
+        "hidden_root_index_entries": [],
+        "status_with_fsmonitor_disabled": ""
+      },
+      "before": {
+        "hidden_root_index_entries": [],
+        "status_with_fsmonitor_disabled": ""
+      }
+    },
+    "status": "bounded signed upgrade campaign passed; mainnet-shaped rehearsal and other F1 gates open",
+    "totals": {
+      "blocks": 12000,
+      "delivered": 42790,
+      "delivered_ok": 21363,
+      "mismatches": 0
+    },
+    "v10_signed_transfer_runs": {
+      "both": 44,
+      "collateral": 45,
+      "synthetic": 48
+    }
+  }
+}
