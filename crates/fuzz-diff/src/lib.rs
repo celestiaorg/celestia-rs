@@ -401,9 +401,14 @@ pub fn parse_eds_input(b: &[u8]) -> Option<(Vec<Vec<u8>>, u64)> {
         match (f.num, f.wt) {
             (1, 2) => txs.push(f.val),
             (2, 0) => {
-                max = 0;
+                let mut v = 0u64;
                 for (i, x) in f.val.iter().enumerate() {
-                    max |= u64::from(x & 0x7f) << (7 * i);
+                    v |= u64::from(x & 0x7f) << (7 * i);
+                }
+                // The oracle's parseEDSInput only takes a non-zero value, so
+                // a later zero keeps the earlier max instead of resetting it.
+                if v != 0 {
+                    max = v;
                 }
             }
             _ => return None,
