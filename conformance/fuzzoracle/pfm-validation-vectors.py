@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate PFM validation ACK vectors with both pinned Go oracle binaries."""
+"""Regenerate PFM rejected-metadata ACK vectors with both pinned Go oracle binaries."""
 
 import argparse
 import hashlib
@@ -53,9 +53,9 @@ def main():
                                  check=True, env=env, timeout=60)
         outputs = [json.loads(line) for line in run.stdout.splitlines()]
         if len(outputs) != len(inputs) or any(not o.get("ok") or o.get("panic") for o in outputs):
-            raise ValueError(f"incomplete validation outputs at v{version}")
+            raise ValueError(f"incomplete metadata ACK outputs at v{version}")
         results[version] = outputs
-        records = [{"app_version": version, "op": "json_pfm_ack", "note": "PFM validation ACK: " + c["name"],
+        records = [{"app_version": version, "op": "json_pfm_ack", "note": "PFM metadata ACK: " + c["name"],
                     "input": c["memo"].encode().hex(), "go": o} for c, o in zip(inputs, outputs)]
         (args.out / f"v{version}.jsonl").write_text("".join(json.dumps(r, sort_keys=True, ensure_ascii=True) + "\n" for r in records))
     if results[9] != results[10]:
@@ -69,7 +69,7 @@ def main():
                 raise ValueError("ACK commitment does not match emitted bytes")
             case.update(ack_hex=ack, commitment_hex=commitment)
         cases.append(case)
-    fixture = args.out / "memo-validation-acks.json"
+    fixture = args.out / args.cases.name
     fixture.write_text(json.dumps(cases, ensure_ascii=True, indent=2) + "\n")
     paths = [Path("conformance/fuzzoracle/pfm-validation-vectors.py")]
     paths += [Path(f"conformance/fuzzoracle/{v}/{name}") for v in ("v9", "v10") for name in ("jsondecode.go", "go.mod", "go.sum")]
@@ -80,7 +80,7 @@ def main():
                                          "app_v10": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
                                          "pfm": "e16c798c788097d457144530642b9b3455ab6a4b",
                                          "ibc_go": "a17d4368090a6ab6d97c04a1b3e45c21fd0b7478"},
-               "scope": "invalid-metadata OnRecvPacket callback ACK and commitment; no IBC proof lifecycle"}
+               "scope": "parse/validation-error OnRecvPacket callback ACK and commitment; no IBC proof lifecycle"}
     (args.out / "provenance.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(f"recorded {len(cases)} cases at each pinned Go version")
 

@@ -1,0 +1,71 @@
+{
+  "binaries": {
+    "10": {
+      "build_info": [
+        "dep\tgithub.com/celestiaorg/celestia-app/v10\tv10.5.0\th1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc=",
+        "dep\tgithub.com/cosmos/cosmos-sdk\tv0.50.13",
+        "=>\tgithub.com/celestiaorg/cosmos-sdk\tv0.52.12\th1:muIDlBLLXeuKiIrGA/t+k9ZLpjjRVs460XRzwh1dgqU=",
+        "",
+        "dep\tgithub.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8\tv8.2.0\th1:rM+S14DFiqmu6Rc3PuhvWqwywPsnt/CbIslSnBftPFs=",
+        "dep\tgithub.com/cosmos/ibc-go/v8\tv8.7.0",
+        "=>\tgithub.com/celestiaorg/ibc-go/v8\tv8.7.2\th1:AWae851fdX7pJWlGnUBKlKJzpr4c2t5m4TLs6vDfmAY=",
+        "",
+        "build\t-buildmode=exe",
+        "build\t-compiler=gc",
+        "build\tCGO_ENABLED=1",
+        "build\tCGO_CFLAGS=",
+        "build\tCGO_CPPFLAGS=",
+        "build\tCGO_CXXFLAGS=",
+        "build\tCGO_LDFLAGS=",
+        "build\tGOARCH=amd64",
+        "build\tGOOS=linux",
+        "build\tGOAMD64=v1"
+      ],
+      "compiler": "go1.26.9",
+      "sha256": "706cc93f14277d450628c6ac0070833dac89c435954f603c936152e98635fe70"
+    },
+    "9": {
+      "build_info": [
+        "dep\tgithub.com/celestiaorg/celestia-app/v9\tv9.0.8\th1:HyxzmHCFbkksDbxNrLctaF+0xb2wWoxzb8OJTBoPZmY=",
+        "dep\tgithub.com/cosmos/cosmos-sdk\tv0.50.13",
+        "=>\tgithub.com/celestiaorg/cosmos-sdk\tv0.52.8\th1:8L8YG90DjO23T9lsEI2AXJ7kXIJ/SQWGoA4X9Zz9dy0=",
+        "",
+        "dep\tgithub.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8\tv8.2.0\th1:rM+S14DFiqmu6Rc3PuhvWqwywPsnt/CbIslSnBftPFs=",
+        "dep\tgithub.com/cosmos/ibc-go/v8\tv8.7.0",
+        "=>\tgithub.com/celestiaorg/ibc-go/v8\tv8.7.2\th1:AWae851fdX7pJWlGnUBKlKJzpr4c2t5m4TLs6vDfmAY=",
+        "",
+        "build\t-buildmode=exe",
+        "build\t-compiler=gc",
+        "build\tCGO_ENABLED=1",
+        "build\tCGO_CFLAGS=",
+        "build\tCGO_CPPFLAGS=",
+        "build\tCGO_CXXFLAGS=",
+        "build\tCGO_LDFLAGS=",
+        "build\tGOARCH=amd64",
+        "build\tGOOS=linux",
+        "build\tGOAMD64=v1"
+      ],
+      "compiler": "go1.26.9",
+      "sha256": "d0eb63390d7cacf6e1dc63fa14d16ce717bd53809d66a4a960923850eca93fab"
+    }
+  },
+  "fixture_sha256": "2e3ed72a2a543501d28f65c913498f030f7e0ca3e6d4e66b56e92a92939cecb7",
+  "module_source_commits": {
+    "app_v10": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "app_v9": "220ef14eab5f6849c8129633e8bc5bc55995ecfa",
+    "ibc_go": "a17d4368090a6ab6d97c04a1b3e45c21fd0b7478",
+    "pfm": "e16c798c788097d457144530642b9b3455ab6a4b"
+  },
+  "schema_version": 1,
+  "scope": "parse/validation-error OnRecvPacket callback ACK and commitment; no IBC proof lifecycle",
+  "source_sha256": {
+    "conformance/fuzzoracle/pfm-validation-vectors.py": "312366e0e978083649e44dd3423638326d48ed0c10aed94c9301e667dcbd0468",
+    "conformance/fuzzoracle/v10/go.mod": "e13f6e583c16469cf37edba386cc0d854f2981d32e2673681870a5067c7c77ab",
+    "conformance/fuzzoracle/v10/go.sum": "dc9689d224c19d6690bc5d5b822da0d429b1c55d406266fcfe599b91ebdbfb68",
+    "conformance/fuzzoracle/v10/jsondecode.go": "fa7533603f930d6712ca8c0ea80a42dc22b4f9abe331f38229dc3e35ffe73ce9",
+    "conformance/fuzzoracle/v9/go.mod": "815a444ad641ea9bcb02bedaad76327141fe9003e44c8268c3841de848171442",
+    "conformance/fuzzoracle/v9/go.sum": "4431e4a1777c07b36871b8bc910a77d2e47fc7b841680ae17a5f8782fd51d467",
+    "conformance/fuzzoracle/v9/jsondecode.go": "fa7533603f930d6712ca8c0ea80a42dc22b4f9abe331f38229dc3e35ffe73ce9"
+  },
+  "vectors_per_version": 55
+}

@@ -682,47 +682,72 @@ mod tests {
     fn invalid_metadata_acknowledgements_match_pinned_go_bytes() {
         // Invalid metadata returns before transfer keepers. These vectors call
         // the real PFM callback, but do not exercise IBC proof verification.
-        let cases: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../../conformance/fixtures/packetforward/memo-validation-acks.json"
-        )))
-        .unwrap();
+        let fixtures = [
+            (
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../../conformance/fixtures/packetforward/memo-validation-acks.json"
+                )),
+                false,
+            ),
+            (
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../../conformance/fixtures/packetforward/memo-parse-error-acks.json"
+                )),
+                true,
+            ),
+        ];
         let module = PacketForwardMiddleware {
             app: x_transfer::relay::TransferModule,
             retries_on_timeout: 0,
             forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
         };
-        for case in cases.as_array().unwrap() {
-            if case["valid"] == true {
-                continue;
+        for (fixture, parse_errors) in fixtures {
+            let cases: serde_json::Value = serde_json::from_str(fixture).unwrap();
+            for case in cases.as_array().unwrap() {
+                if parse_errors {
+                    assert!(
+                        matches!(
+                            memo::classify(case["memo"].as_str().unwrap()),
+                            Memo::ParseError(_)
+                        ),
+                        "{}",
+                        case["name"]
+                    );
+                }
+                if case["valid"] == true {
+                    continue;
+                }
+                let mut store = sdk::MultiStore::new();
+                let mut ctx =
+                    Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+                let packet = Packet {
+                    source_port: "transfer".into(),
+                    source_channel: "channel-0".into(),
+                    destination_port: "transfer".into(),
+                    destination_channel: "channel-1".into(),
+                    data: serde_json::to_vec(&serde_json::json!({
+                        "denom": "uatom", "amount": "1", "sender": "remote", "receiver": "pfm",
+                        "memo": case["memo"].as_str().unwrap(),
+                    }))
+                    .unwrap(),
+                    ..Default::default()
+                };
+                let ack = module
+                    .on_recv_packet(&mut ctx, &packet, &[])
+                    .unwrap()
+                    .unwrap();
+                let expected = encoding::hex::decode(case["ack_hex"].as_str().unwrap()).unwrap();
+                assert!(!ack.success, "{}", case["name"]);
+                assert_eq!(ack.bytes, expected, "{}", case["name"]);
+                assert_eq!(
+                    x_ibc::channel::commit_acknowledgement(&ack.bytes),
+                    encoding::hex::decode(case["commitment_hex"].as_str().unwrap()).unwrap(),
+                    "{}",
+                    case["name"]
+                );
             }
-            let mut store = sdk::MultiStore::new();
-            let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
-            let packet = Packet {
-                source_port: "transfer".into(),
-                source_channel: "channel-0".into(),
-                destination_port: "transfer".into(),
-                destination_channel: "channel-1".into(),
-                data: serde_json::to_vec(&serde_json::json!({
-                    "denom": "uatom", "amount": "1", "sender": "remote", "receiver": "pfm",
-                    "memo": case["memo"].as_str().unwrap(),
-                }))
-                .unwrap(),
-                ..Default::default()
-            };
-            let ack = module
-                .on_recv_packet(&mut ctx, &packet, &[])
-                .unwrap()
-                .unwrap();
-            let expected = encoding::hex::decode(case["ack_hex"].as_str().unwrap()).unwrap();
-            assert!(!ack.success, "{}", case["name"]);
-            assert_eq!(ack.bytes, expected, "{}", case["name"]);
-            assert_eq!(
-                x_ibc::channel::commit_acknowledgement(&ack.bytes),
-                encoding::hex::decode(case["commitment_hex"].as_str().unwrap()).unwrap(),
-                "{}",
-                case["name"]
-            );
         }
     }
 

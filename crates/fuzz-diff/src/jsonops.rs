@@ -44,6 +44,17 @@ fn fail(err: impl Into<String>) -> Out {
     }
 }
 
+fn pfm_error_ack(error: &str) -> String {
+    let ack = x_ibc::router::Acknowledgement::error_string(&format!(
+        "packet-forward-middleware error: {error}"
+    ));
+    format!(
+        "{} {}",
+        hex::encode(&ack.bytes),
+        hex::encode(x_ibc::channel::commit_acknowledgement(&ack.bytes))
+    )
+}
+
 /// The Rust outcome of a `json_*` op.
 #[must_use]
 pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
@@ -64,6 +75,9 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
             match memo::classify(&text) {
                 Memo::NotForward => ok("not_forward".into()),
                 Memo::NilForward => ok("nil_forward".into()),
+                Memo::ParseError(e) if op == "json_pfm_ack" => ok(pfm_error_ack(&format!(
+                    "error parsing forward metadata: {e}"
+                ))),
                 Memo::ParseError(e) => fail(e),
                 Memo::Forward(f) => {
                     if op == "json_pfm_ack" {
@@ -71,16 +85,7 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
                         // its serialized bytes and commitment, not Err text.
                         return ok(match memo::validate(&f) {
                             Ok(()) => "valid".into(),
-                            Err(error) => {
-                                let ack = x_ibc::router::Acknowledgement::error_string(&format!(
-                                    "packet-forward-middleware error: {error}"
-                                ));
-                                format!(
-                                    "{} {}",
-                                    hex::encode(&ack.bytes),
-                                    hex::encode(x_ibc::channel::commit_acknowledgement(&ack.bytes))
-                                )
-                            }
+                            Err(error) => pfm_error_ack(&error),
                         });
                     }
                     let retries = f.retries.map_or_else(|| "-".into(), |r| r.to_string());
@@ -440,6 +445,12 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             r#"{"title":"T","authors":["a",null],"summary":"S","details":"d","proposal_forum_url":"u","vote_option_context":"v"}"#,
         ],
         "json_pfm_ack" => &[
+            r#"{"forward":true}"#,
+            r#"{"forward":{"receiver":1}}"#,
+            r#"{"forward":{"retries":256}}"#,
+            r#"{"forward":{"timeout":"1x"}}"#,
+            r#"{"forward":{"timeout":null}}"#,
+            r#"{"forward":{"receiver":1,"timeout":null}}"#,
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0"}}"#,
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udfff"}}"#,
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udffe"}}"#,

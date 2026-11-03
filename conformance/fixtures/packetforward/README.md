@@ -1,22 +1,32 @@
-# PFM metadata validation acknowledgements
+# PFM rejected-metadata acknowledgements
 
-These 15 cases per app version retain acknowledgement bytes and their IBC
-commitments from pinned Go v9.0.8 / v10.5.0, built with Go 1.26.9. They cover
-reserved Unicode identifiers at channel/port length boundaries, escaped and
-literal JSON, and ordinary Unicode/ASCII controls.
+The 15 validation cases and 55 parse-error cases per app version retain
+acknowledgement bytes and their IBC commitments from pinned Go v9.0.8 /
+v10.5.0, built with Go 1.26.9. Validation cases cover reserved Unicode
+identifiers at channel/port length boundaries, escaped and literal JSON,
+and ordinary Unicode/ASCII controls.
 
 `json_pfm_ack` first classifies and decodes the memo. When official PFM
-`ForwardMetadata.Validate` rejects it, the Go adapter calls the real
+typed metadata decoding or `ForwardMetadata.Validate` rejects it, the Go adapter
+calls the real
 `IBCMiddleware.OnRecvPacket` and `channeltypes.CommitAcknowledgement`.
-Validation returns before keeper or transfer access; a logger/context and
+Parsing/validation rejection returns before keeper state or transfer access;
+a logger/context and
 otherwise empty keeper suffice for this bounded path. Valid metadata returns
 `valid`, without attempting a transfer. The ordinary `json_pfm` operation
-still only decodes and classifies metadata.
+still only decodes and classifies metadata. Non-forward, nil-forward and valid
+metadata outputs remain classification markers, without invoking transfer code.
+For this operation, the generic fuzzer's Go-accept counter includes error ACKs
+and these markers; it is not a count of successful packet deliveries.
 
-The Rust callback test runs the actual packet-forward middleware on the 14
-invalid cases and compares both byte strings. Thirty recorded oracle outcomes
-also run without Go in `fuzz-diff/tests/regressions.jsonl`; the nightly JSON
-rotation includes the new operation. These tests do not verify IBC proofs,
+The Rust callback test runs the actual packet-forward middleware on all 69
+invalid cases and compares both byte strings. It also requires the 55 new cases
+to take the parse-error branch, before field validation. The parse cases cover
+wrong field types, uint8 overflow/number syntax, duration parsing and overflow,
+Unicode/control-character quoting, duplicate/folded fields and the precedence of
+custom unmarshal errors over saved type errors. The 140 recorded oracle outcomes
+run without Go in `fuzz-diff/tests/regressions.jsonl`; the nightly JSON
+rotation already includes this operation. These tests do not verify IBC proofs,
 execute a full MsgRecvPacket lifecycle or qualify production readiness.
 
 Regenerate into a fresh directory, then review/copy the outputs:
@@ -35,5 +45,17 @@ cargo test -p x-packetforward -p fuzz-diff
 `provenance.json` records oracle checksums/compiler/module build information,
 source-file hashes, exact app/PFM/IBC source commits and the callback fixture
 hash. The generator checks Go 1.26.9 and the pinned app/dependency versions,
-checks agreement between the
-two reference versions, and verifies each emitted acknowledgement commitment.
+checks agreement between the two reference versions, and verifies each emitted acknowledgement commitment.
+
+For parse-error vectors, pass
+`--cases conformance/fixtures/packetforward/memo-parse-error-acks.json` to the
+same generator with a separate fresh output directory. The output fixture
+keeps the input basename; its separate `provenance.json` is retained in the
+repository as `memo-parse-error-provenance.json`. Validation provenance retains
+its original generation hashes. Neither receipt transfers qualification to
+later source revisions.
+
+The expanded operation matched 20,006 mutation inputs at each pinned app
+version (seed 173), with no output disagreement. These are dirty-source
+component diagnostics, not qualification volume, IBC proof tests or a complete
+error-path inventory.
