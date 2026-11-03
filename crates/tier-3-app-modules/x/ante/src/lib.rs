@@ -226,6 +226,12 @@ fn run_ante(
     // decorators call (the IBC handlers of the redundant relay check) that
     // Rust turned into another error or ignored.
     let res = match kvstore::unwind::scope(|| run_chain(ctx, tx, simulate, deps)) {
+        (_, Some(kvstore::unwind::Unwind::OutOfGas)) => {
+            // Go unwinds to SetUpContext even if a callback translated or
+            // ignored the store failure. Keep its tx meter at the first panic.
+            ctx.gas.rewind_to_first_out_of_gas();
+            Err(Fail::Err(sdk::error::sdk::out_of_gas("")))
+        }
         (Err(Fail::Panic(m)), _) => Err(Fail::Panic(m)),
         (_, Some(kvstore::unwind::Unwind::Panic(log))) => Err(Fail::Panic(log)),
         (Err(Fail::Err(e) | Fail::ZeroCtx(e)), _) if e.is_panic() => Err(Fail::Panic(e.log)),
