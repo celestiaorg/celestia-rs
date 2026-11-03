@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "kind": "bounded Go v10 ante-handler conformance; not message execution or mainnet qualification",
+  "command": "GOTOOLCHAIN=go1.26.9 GOFLAGS=-mod=readonly go build -buildvcs=false -o <generator> .; <generator> <out> feegrant-boundaries",
+  "compiler": "go1.26.9 linux/amd64",
+  "modules": [
+    {
+      "Path": "github.com/celestiaorg/celestia-app/v10",
+      "Version": "v10.5.0",
+      "Sum": "h1:CEKeiFSFRclu85ozJo5Gdk71H9am3wyEJJ8pMWqBNkc=",
+      "GoModSum": "h1:+lsm9pK+vzPKWnqUyCXwDvCvfIL/CZsqMMg8vM6o4KY="
+    },
+    {
+      "Path": "github.com/cosmos/cosmos-sdk",
+      "Version": "v0.50.13",
+      "Replace": {
+        "Path": "github.com/celestiaorg/cosmos-sdk",
+        "Version": "v0.52.12",
+        "Sum": "h1:muIDlBLLXeuKiIrGA/t+k9ZLpjjRVs460XRzwh1dgqU=",
+        "GoModSum": "h1:skeian5w7HTw2jmUxjGudtu6wzKLcgBh8t+LYvVvzfI="
+      }
+    },
+    {
+      "Path": "cosmossdk.io/x/feegrant",
+      "Version": "v0.1.1",
+      "Sum": "h1:EKFWOeo/pup0yF0svDisWWKAA9Zags6Zd0P3nRvVvw8=",
+      "GoModSum": "h1:2GjVVxX6G2fta8LWj7pC/ytHjryA6MHAJroBWHFNiEQ="
+    },
+    {
+      "Path": "cosmossdk.io/store",
+      "Version": "v1.1.2",
+      "Replace": {
+        "Path": "github.com/celestiaorg/cosmos-sdk/store",
+        "Version": "v1.1.3-celestia.3",
+        "Sum": "h1:REVugKBjd8NeveAtmIfMaMUZ2pKZIfsTveumGvX8cKY=",
+        "GoModSum": "h1:fnkx7NYVW/y3uHrLxThSmJFxp7BZ2yb3FCxZMECBCNY="
+      }
+    }
+  ],
+  "source_commits": {
+    "github.com/celestiaorg/celestia-app/v10": "6013e758d5dceb75827ad191c8d739d7c43cfa04",
+    "github.com/celestiaorg/cosmos-sdk": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+    "cosmossdk.io/x/feegrant": "7828a002440069cbc795c0fba618f4f61c1a2773",
+    "github.com/celestiaorg/cosmos-sdk/store": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4"
+  },
+  "vector_count": 225,
+  "outcomes": {
+    "0": 162,
+    "feegrant/2": 36,
+    "feegrant/3": 18,
+    "feegrant/7": 9
+  },
+  "modes": {
+    "finalize": 75,
+    "check": 75,
+    "recheck": 75
+  },
+  "sha256": {
+    "conformance/antevectors/cases.go": "4c78cfc222dfe95a7afa98d97f7322d02c389f8f978daf10184bde44b8181569",
+    "conformance/antevectors/feegrant_boundaries.go": "b3a29d27ba61b32e9462d320ac35bc2551da774e1af90335c5701255b647e72b",
+    "conformance/antevectors/fuzz.go": "1e4c39503538273b60759171acf5992fd40e54396aec02fda0b47b2fa5d4e815",
+    "conformance/antevectors/go.mod": "e1523e50df29d182e6b561bf4f192538daaced6cb951acf13aedeccf788da5c5",
+    "conformance/antevectors/go.sum": "dc9689d224c19d6690bc5d5b822da0d429b1c55d406266fcfe599b91ebdbfb68",
+    "conformance/antevectors/main.go": "da36ec58a324842d9602660a7a3cc589b812d82c49fb427ee789022b2bdc5d85",
+    "conformance/antevectors/txbuild.go": "8aaccdfca6a9007f6df121b567a31f189b6cc8e7ef0651d61aba9b562d4205c2",
+    "conformance/antevectors/util.go": "5e267f2c97a67c8e0594a32e19c8e77a5f2ba2d0cd119479676b916c9dc7b45a",
+    "conformance/fixtures/antevectors/feegrant-boundaries.json.zst": "e436de0711de47094b753c44f32196a92b2ab7ab01512c9fc604ae2598948a6a"
+  },
+  "generator_binary_sha256": "bc8eea289b01c346f39d40f481e96af72fd4b56a97a04af19c01c540aac4e7d6",
+  "generator_build_info_sha256": "cb492d341d609a268091249512c91cddfa70caff2575cc66e687589319ff894a",
+  "notes": [
+    "Only feegrant-boundaries regenerated; existing fixtures retained.",
+    "Base secp256r1 accounts use random keys, so regenerating need not repeat fixture bytes.",
+    "Every allowance passes official ValidateBasic and real GrantAllowance. Full ante results pin gas, events and persisted writes; no message handlers execute.",
+    "Generator controls enforce intended result codes, exact-fee removal, persisted period resets, no skipped vector and rollback of failed ante writes.",
+    "Each boundary is raw, singly filtered and doubly filtered, in FinalizeBlock, CheckTx and ReCheckTx."
+  ]
+}

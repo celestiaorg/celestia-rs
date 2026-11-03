@@ -50,6 +50,22 @@ Regenerate just this scenario by appending `feegrant-revoke-gas` to the
 generator command above. Use the pinned Go compiler: compiler-dependent
 encoding behavior makes newer Go versions unsuitable substitutes.
 
+`feegrant-boundaries` adds 225 pinned Go v10.5.0 ante vectors: Basic and
+Periodic expiration at one nanosecond before, equal to and after block time;
+fee budgets below/equal/above the fee; period reset equality, exactly one
+period late, strictly later and zero duration; and outer, inner and later-message
+filter denials. Each boundary runs raw, with one filter and with two nested
+filters in FinalizeBlock, CheckTx and ReCheckTx. The signed transactions have
+two messages, so filtering cannot be credited from the first message alone.
+The generator checks valid grant setup, expected codes, exact-fee removal,
+persisted reset timestamps and rollback before writing a fixture. The replay
+compares code/codespace, gas, priority, events and state writes. Regenerate with
+`feegrant-boundaries` as the final generator argument; this scenario rejects a
+compiler other than Go 1.26.9. Its provenance receipt records module versions,
+source commits and input/fixture hashes. These vectors exercise ante handling
+of existing grants, not message execution, historical-v9 replay, block app hashes
+or saturation/observation-window qualification.
+
 Not covered by this vector suite: the full range of existing fee grants,
 fibre stateful/signature checks in
 CheckTx, and IBC redundant-relay checks beyond the nil client message.
