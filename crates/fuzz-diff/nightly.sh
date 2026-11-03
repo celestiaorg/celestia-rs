@@ -87,6 +87,11 @@ run() {
   if [ $rc -ne 0 ]; then
     FAILED=1
     echo "$name" >>"$FINDINGS/failed"
+    # A final backtrace frame alone hides the cause when artifacts cannot be
+    # downloaded. Keep bounded diagnostics in the job log and summary too.
+    echo "  stderr (first 20 / last 40 lines; full output in $name.err):" | tee -a "$SUMMARY"
+    { head -n 20 "$out.err"; tail -n 40 "$out.err"; } \
+      | cut -c1-400 | sed 's/^/  /' | tee -a "$SUMMARY"
     grep -m 20 '^MISMATCH' "$out.out" | sed 's/^/  /' | cut -c1-400 | tee -a "$SUMMARY"
     { echo "seed=$SEED"; echo "env: ${envs[*]}"; echo "cmd: $*"; } >"$out.repro"
   else
