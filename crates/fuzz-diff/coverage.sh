@@ -9,13 +9,36 @@
 # usage: DEVNET_BIN=<dir> crates/fuzz-diff/coverage.sh <out-dir> [blocks]
 #
 # Needs cargo-llvm-cov (`cargo install cargo-llvm-cov --locked`) and the
-# llvm-tools component.
+# llvm-tools component. For LLVM branch counters, select an explicit nightly:
+# COVERAGE_BRANCH=1 COVERAGE_TOOLCHAIN=nightly-2026-11-02 ...
 set -uo pipefail
-OUT=$(mkdir -p "${1:?out dir}" && cd "$1" && pwd)
+OUT_ARG=${1:?fresh out dir}
+mkdir -p "$(dirname -- "$OUT_ARG")" || exit 1
+# Never mix a previous branch inventory with new metadata or a failed rerun.
+mkdir -- "$OUT_ARG" || { echo "coverage requires a fresh output directory" >&2; exit 1; }
+OUT=$(cd "$OUT_ARG" && pwd) || exit 1
 BLOCKS=${2:-150}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
 cd "$ROOT"
+CARGO=(cargo)
+RUSTC=(rustc)
+if [ -n "${COVERAGE_TOOLCHAIN:-}" ]; then
+  CARGO+=("+$COVERAGE_TOOLCHAIN")
+  RUSTC+=("+$COVERAGE_TOOLCHAIN")
+fi
+BRANCH_FLAGS=()
+case ${COVERAGE_BRANCH:-0} in
+  0) ;;
+  1)
+    [ -n "${COVERAGE_TOOLCHAIN:-}" ] || { echo "branch coverage requires explicit COVERAGE_TOOLCHAIN" >&2; exit 1; }
+    BRANCH_FLAGS=(--branch)
+    ;;
+  *) echo "COVERAGE_BRANCH must be 0 or 1" >&2; exit 1 ;;
+esac
+printf '%s\n' "branch=${COVERAGE_BRANCH:-0}" "toolchain=${COVERAGE_TOOLCHAIN:-active}" >"$OUT/coverage-mode.txt"
+"${RUSTC[@]}" -Vv >"$OUT/rustc.txt" || exit 1
+"${CARGO[@]}" llvm-cov --version >"$OUT/cargo-llvm-cov.txt" || exit 1
 # Keep the local ABCI / oracle listeners below Linux's default ephemeral
 # range. Otherwise an unrelated outgoing connection can intermittently
 # occupy a fixed harness port between sequential cases.
@@ -23,10 +46,12 @@ export DEVNET_PORT_OFFSET=${DEVNET_PORT_OFFSET:--10000}
 # Its own target directory: a build in target/ while this runs would
 # replace instrumented libraries.
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/cov}
+# Capture setup failure before sourcing: process substitution can hide it.
+"${CARGO[@]}" llvm-cov show-env --export-prefix --release "${BRANCH_FLAGS[@]}" >"$OUT/coverage-env.sh" || exit 1
 # shellcheck disable=SC1090
-source <(cargo llvm-cov show-env --export-prefix --release)
-cargo llvm-cov clean --workspace
-cargo build --release -p fuzz-diff || exit 1
+source "$OUT/coverage-env.sh" || exit 1
+"${CARGO[@]}" llvm-cov clean --workspace || exit 1
+"${CARGO[@]}" build --locked --release -p fuzz-diff || exit 1
 FUZZ_DIFF=$CARGO_TARGET_DIR/release/fuzz-diff
 [ -x "$FUZZ_DIFF" ] || { echo "no instrumented fuzz-diff at $FUZZ_DIFF" >&2; exit 1; }
 export FUZZ_DIFF
@@ -36,7 +61,7 @@ LOG=$OUT/runs.txt
 : >"$LOG"
 git rev-parse HEAD >"$OUT/revision.txt"
 git diff --binary HEAD >"$OUT/worktree.patch"
-git status --porcelain >"$OUT/worktree.status"
+git status --porcelain --untracked-files=all --ignore-submodules=none >"$OUT/worktree.status"
 if command -v go >/dev/null 2>&1; then
   go version -m "$V10" "$V9" >"$OUT/go-build-info.txt" 2>&1
 else
@@ -79,7 +104,11 @@ for s in 1 2 3 4; do
 done
 run "deliver-upgrade" GO_APPD="$V10" DELIVER_REPLAY_STOP=signal DELIVER_IBC=1 -- \
   crates/fuzz-diff/deliver-diff.sh upgrade "$BLOCKS" 8 1
-cargo llvm-cov report --release --lcov --output-path "$OUT/lcov.info" || exit 1
-cargo llvm-cov report --release --summary-only >"$OUT/summary.txt" || exit 1
+"${CARGO[@]}" llvm-cov report --release --lcov --output-path "$OUT/lcov.info" || exit 1
+"${CARGO[@]}" llvm-cov report --release --summary-only >"$OUT/summary.txt" || exit 1
+"${CARGO[@]}" llvm-cov report --release --json --output-path "$OUT/llvm.json" || exit 1
+if [ "${COVERAGE_BRANCH:-0}" = 1 ]; then
+  python3 crates/fuzz-diff/branch-report.py "$OUT/llvm.json" --out "$OUT/branches.json" || exit 1
+fi
 echo "wrote $OUT/lcov.info and $OUT/summary.txt"
 exit "$FAILED"
