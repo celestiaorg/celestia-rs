@@ -40,9 +40,13 @@ fn ready(addr: SocketAddr) -> bool {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else {
         return false;
     };
+    // The block store reports a height before the app has committed that
+    // block, so height 1 can still mean an app at version 0 that rejects
+    // queries. Block 2 is only stored after block 1 has been committed.
     v["result"]["sync_info"]["latest_block_height"]
         .as_str()
-        .is_some_and(|h| h != "0")
+        .and_then(|h| h.parse::<u64>().ok())
+        .is_some_and(|h| h >= 2)
 }
 fn setup(home: &Path, rpc: SocketAddr, app: SocketAddr, core: SocketAddr, p2p: SocketAddr) {
     let cfg = home.join("config");

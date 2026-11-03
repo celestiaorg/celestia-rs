@@ -287,11 +287,13 @@ async fn production_listeners_report_build_and_compatibility_separately() -> any
             "node exited: {}",
             std::fs::read_to_string(&log_path)?
         );
+        // Wait for block 2: the block store reports height 1 before the app
+        // has committed block 1, and the app rejects queries until then.
         if let Ok((_, status)) = get(rpc, "/status")
             && status["result"]["sync_info"]["latest_block_height"]
                 .as_str()
-                .unwrap_or("0")
-                != "0"
+                .and_then(|h| h.parse::<u64>().ok())
+                .is_some_and(|h| h >= 2)
         {
             break status;
         }
