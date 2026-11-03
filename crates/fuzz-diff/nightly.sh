@@ -205,7 +205,7 @@ regressions)
     "$ROOT/crates/fuzz-diff/exec-diff.sh" fibre 20 13008
   ;;
 json)
-  OPS=json_count,json_gov,json_pfm,json_pfm_next,json_ica_tx,json_ica_vb,json_ica_pd,json_ica_md,json_ics20,json_ack,json_ack_check,json_ica_pb
+  OPS=json_count,json_gov,json_pfm,json_pfm_ack,json_pfm_next,json_ica_tx,json_ica_vb,json_ica_pd,json_ica_md,json_ics20,json_ack,json_ack_check,json_ica_pb
   half=$((BUDGET / 2 - 60))
   for v in 10 9; do
     run "json-v$v-s$SEED" "$half" -- "$FUZZ_DIFF" --app-version $v --ops "$OPS" \
