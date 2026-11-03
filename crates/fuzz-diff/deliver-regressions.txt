@@ -126,3 +126,9 @@ v9-upgrade 100 6 930002 GO_APPD_NEXT=v10 DELIVER_UPGRADE=12 DELIVER_HL=1 DELIVER
 # Reserve mandatory signed setup while preserving the upgrade driver's clock;
 # both incoming paths must finalize at v9 before normal traffic resumes.
 v9-upgrade 300 6 25407 GO_APPD_NEXT=v10 DELIVER_UPGRADE=37 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_IBC=1 DELIVER_WIRE=1
+# Signed SendAuthorization budgets, allow-list precedence, same-grant inner
+# uses, replacement, and atomic rollback after a later staking handler fails.
+# Require all exact signed script txs in order and the expected Go results;
+# matching rejection or dropped transactions cannot count as coverage.
+authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json
+v9-authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json

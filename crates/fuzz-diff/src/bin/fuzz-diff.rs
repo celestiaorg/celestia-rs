@@ -656,6 +656,7 @@ fn main() -> anyhow::Result<()> {
         st.require_hl_coverage()?;
         st.require_gov_coverage()?;
         st.require_type_coverage()?;
+        st.require_script_coverage()?;
         st.require_ibc_coverage()?;
         return Ok(());
     }
