@@ -5,9 +5,14 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "conformance/fixtures/devnet/v105-authz-feegrant"
+CAPTURE_COMMIT = "cabc055deb9dcfa5e438adb2d67365b7a104d9b7"
+# The squash merge preserves every receipted source byte and is reachable in
+# CI's full main history, unlike the original pre-squash capture commit.
+PUBLISHED_SOURCE_COMMIT = "8f9729c9a300751b09679e5f48133bd652a7553f"
 
 
 def require(condition, message):
@@ -15,16 +20,32 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def verify_sources(metadata):
+    require(metadata["source_commit"] == CAPTURE_COMMIT, "capture source commit changed")
+    require("Cargo.lock" in metadata["source_sha256"], "missing lockfile source receipt")
+    for name, expected in metadata["source_sha256"].items():
+        path = (ROOT / name).resolve()
+        require(path.is_relative_to(ROOT), "source escapes repository")
+        try:
+            recorded = subprocess.run(
+                ["git", "show", f"{PUBLISHED_SOURCE_COMMIT}:{name}"],
+                cwd=ROOT, check=True, capture_output=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise ValueError(f"captured source unavailable: {name}") from error
+        require(hashlib.sha256(recorded).hexdigest() == expected, f"source hash mismatch: {name}")
+
+
 def verify():
     metadata = json.loads((OUT / "capture/metadata.json").read_text())
     require(metadata["scenario"] == "v105-authz-feegrant", "wrong scenario")
     require(metadata["comparison"] == "existing-querycorpus-canonicalization", "comparison scope changed")
     require(len(metadata["omissions"]) == 3 and len(metadata["normalizations"]) == 3, "missing comparison limits")
-    for category in ("source_sha256", "artifact_sha256"):
-        for name, expected in metadata[category].items():
-            path = (ROOT / name).resolve()
-            require(path.is_relative_to(ROOT), "artifact escapes repository")
-            require(hashlib.sha256(path.read_bytes()).hexdigest() == expected, f"hash mismatch: {name}")
+    verify_sources(metadata)
+    for name, expected in metadata["artifact_sha256"].items():
+        path = (ROOT / name).resolve()
+        require(path.is_relative_to(ROOT), "artifact escapes repository")
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == expected, f"hash mismatch: {name}")
     for name in ("conformance/devnet/workloads/authz-feegrant.sh",
                  "crates/devnet-conformance/examples/record_queries.rs",
                  "crates/devnet-conformance/src/querycorpus.rs"):

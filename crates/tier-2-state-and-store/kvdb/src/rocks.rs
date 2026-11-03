@@ -149,11 +149,8 @@ static OPEN: std::sync::Mutex<Vec<std::sync::Weak<DB>>> = std::sync::Mutex::new(
 
 /// Before the process exits: writes out the memtables of every database
 /// still open and stops its background work (flushes, compactions),
-/// waiting for running jobs. A database still open when `main` returns
-/// (held by a thread that has not finished) otherwise has background
-/// threads running while the C++ runtime destroys RocksDB's static
-/// objects; on macOS that aborts the process (`pthread lock: Invalid
-/// argument`) after a clean stop. Returns how many were open.
+/// waiting for running jobs. Returns how many were open. Callers must stop
+/// database users before calling this function; it does not join Rust tasks.
 pub fn close_all() -> usize {
     let dbs: Vec<Arc<DB>> = OPEN
         .lock()
@@ -163,16 +160,11 @@ pub fn close_all() -> usize {
         let _ = db.flush();
         db.cancel_all_background_work(true);
     }
-    // The default Env's thread pools are static too: their threads ran
-    // flushes and compactions (thread-local state), and when the Env's
-    // destructor joins them at exit their thread-exit hooks lock RocksDB
-    // statics that may already be destroyed. Retire them now.
-    if let Ok(mut env) = rocksdb::Env::new() {
-        env.set_low_priority_background_threads(0);
-        env.set_high_priority_background_threads(0);
-        env.set_bottom_priority_background_threads(0);
-    }
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Leave the default Env's workers joinable. RocksDB's ordered native exit
+    // handler joins them before its thread-local singletons are destroyed.
+    // Reducing the pools to zero instead makes retiring workers detach: neither
+    // a fixed sleep nor Env::join_all_threads waits for their remaining cleanup
+    // (the latter only joins threads created with Env::StartThread).
     dbs.len()
 }
 

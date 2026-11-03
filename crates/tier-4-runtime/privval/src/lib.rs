@@ -239,10 +239,10 @@ impl LastSignState {
             "{{\n  \"height\": \"{}\",\n  \"round\": {},\n  \"step\": {}",
             self.height, self.round, self.step
         );
-        if let Some(sig) = self.signature.as_ref().filter(|s| !s.is_empty()) {
+        if let Some(sig) = self.signature.as_ref() {
             let _ = write!(s, ",\n  \"signature\": \"{}\"", B64.encode(sig));
         }
-        if let Some(sb) = self.sign_bytes.as_ref().filter(|s| !s.is_empty()) {
+        if let Some(sb) = self.sign_bytes.as_ref() {
             let _ = write!(s, ",\n  \"signbytes\": \"{}\"", hex::encode_upper(sb));
         }
         s.push_str("\n}");
@@ -283,13 +283,38 @@ impl LastSignState {
         };
         let round = i32::try_from(int("round")?).map_err(|e| Error::new(e.to_string()))?;
         let step = i8::try_from(int("step")?).map_err(|e| Error::new(e.to_string()))?;
-        let signature = match v["signature"].as_str() {
-            Some(s) => Some(B64.decode(s).map_err(|e| Error::new(e.to_string()))?),
-            None => None,
+        // cmtjson decodes structs through a raw-value map: the last exact
+        // field name wins, and HexBytes receives its quoted token unchanged.
+        let raw = gojson::parse(bz).map_err(Error::new)?;
+        let field = |name: &str| match &raw.kind {
+            gojson::Kind::Object(members) => members
+                .iter()
+                .rev()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value),
+            _ => None,
         };
-        let sign_bytes = match v["signbytes"].as_str() {
-            Some(s) => Some(hex::decode(s).map_err(|e| Error::new(e.to_string()))?),
-            None => None,
+        let signature = field("signature")
+            .map(gojson::bytes_value)
+            .transpose()
+            .map_err(Error::new)?
+            .flatten()
+            // cmtjson normalizes an empty []byte to a nil slice.
+            .filter(|bytes| !bytes.is_empty());
+        let sign_bytes = match field("signbytes") {
+            None
+            | Some(gojson::Value {
+                kind: gojson::Kind::Null,
+                ..
+            }) => None,
+            Some(value) if matches!(value.kind, gojson::Kind::String(_)) => {
+                let token = &bz[value.span.clone()];
+                Some(
+                    hex::decode(&token[1..token.len() - 1])
+                        .map_err(|e| Error::new(e.to_string()))?,
+                )
+            }
+            Some(_) => return Err(Error::new("invalid signbytes: expected a hex JSON string")),
         };
         Ok(Self {
             height,

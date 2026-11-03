@@ -436,6 +436,52 @@ fn null_state_keeps_go_struct_decoder_semantics() {
     );
 }
 
+#[test]
+fn state_byte_fields_match_the_pinned_go_json_decoder() {
+    let vectors: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/consensus/privval-state-json.json"
+    )))
+    .unwrap();
+    let (mut pv, dir) = temp_pv();
+    let mut signed = vote(&pv, PREVOTE_TYPE, 5, 0, 1);
+    pv.sign_vote("c", &mut signed).unwrap();
+    let key_path = dir.path().join("key.json");
+    let state_path = dir.path().join("state.json");
+    let key = fs::read(&key_path).unwrap();
+    for vector in vectors.as_array().unwrap() {
+        let input = vector["input"].as_str().unwrap();
+        let state = LastSignState::from_json(input.as_bytes());
+        assert_eq!(
+            state.is_ok(),
+            vector["accepted"].as_bool().unwrap(),
+            "{input}"
+        );
+        if let Ok(state) = state {
+            assert_eq!(
+                state.signature.is_none(),
+                vector["signature_nil"],
+                "{input}"
+            );
+            assert_eq!(
+                state.sign_bytes.is_none(),
+                vector["signbytes_nil"],
+                "{input}"
+            );
+            assert_eq!(state.to_json(), vector["canonical"], "{input}");
+        } else {
+            fs::write(&state_path, input).unwrap();
+            assert!(FilePv::load(&key_path, &state_path).is_err(), "{input}");
+            assert!(
+                FilePv::load_or_generate(&key_path, &state_path).is_err(),
+                "{input}"
+            );
+            assert_eq!(fs::read(&state_path).unwrap(), input.as_bytes());
+            assert_eq!(fs::read(&key_path).unwrap(), key);
+        }
+    }
+}
+
 #[derive(Debug)]
 struct VectorOp {
     kind: String,

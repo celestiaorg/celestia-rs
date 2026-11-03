@@ -56,5 +56,10 @@ cargo test --locked -p devnet-conformance --test query_corpus \
 ```
 
 Passing receipt validation establishes integrity and the stated capture scope.
+Source hashes are checked against the preserved capture sources in merge commit
+`8f9729c9a300751b09679e5f48133bd652a7553f`, whose bytes match the original
+pre-squash capture receipt. Artifact hashes still cover the published files.
+Later dependency changes do not rewrite the historical lockfile receipt; a full
+Git checkout containing that merge commit is required for source verification.
 The separate Rust test establishes its recorded replay/comparison result. This
 package is not admitted as complete provider readiness by the evidence ledger.
