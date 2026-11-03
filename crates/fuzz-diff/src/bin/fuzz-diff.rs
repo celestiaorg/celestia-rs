@@ -538,6 +538,15 @@ fn main() -> anyhow::Result<()> {
         for (c, n) in &st.codes {
             println!("CODE {n} {c}");
         }
+        // Print the marker after the complete transaction-error totals so a
+        // truncated indexed section cannot silently appear fully measured.
+        println!("ERROR_ACCOUNTING sdk-message-index-v1");
+        for (c, n) in &st.handler_errors {
+            println!("HANDLER_ERROR {n} {c}");
+        }
+        for (c, n) in &st.unattributed_errors {
+            println!("UNATTRIBUTED_ERROR {n} {c}");
+        }
         for (k, n) in &st.ibc {
             println!("IBC {k} {n}");
         }
@@ -601,6 +610,9 @@ fn main() -> anyhow::Result<()> {
                 "blocks": st.blocks,
                 "delivered": st.delivered,
                 "delivered_ok": st.delivered_ok,
+                "error_accounting": "sdk-message-index-v1",
+                "handler_errors": st.handler_errors,
+                "unattributed_errors": st.unattributed_errors,
                 "mismatches": st.mismatches.len(),
                 "split": st.split,
                 "gov_required": st.gov_required,

@@ -837,6 +837,17 @@ are discarded. `DELIVER_STATS`
 in stderr counts generated blocks and finalized **transactions**, not
 CheckTx attempts or messages within a transaction.
 
+Delivery error accounting distinguishes transaction failures by first message
+(`CODE`) from top-level handler failures identified by the outer SDK message
+index (`HANDLER_ERROR`). `UNATTRIBUTED_ERROR` retains failures without that
+index, including ante, decoding, panic and unknown log forms. The versioned
+`ERROR_ACCOUNTING` marker lets the message table distinguish unmeasured older
+runs from measured runs with no indexed errors. SDK 0.52.8 and 0.52.12
+`BaseApp.runMsgs` add the outer prefix when a message-service handler returns an
+error. Nested errors remain attributed to that top-level handler; proposal
+execution and panic coverage require separate evidence. These diagnostic
+counters do not change transaction generation or qualification volume gates.
+
 After downloading artifacts into separate directories, summarize them:
 
 ```sh

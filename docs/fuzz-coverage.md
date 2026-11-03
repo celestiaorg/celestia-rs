@@ -139,6 +139,23 @@ For nested authority messages the `delivered` / code columns are those of
 the submitting tx; whether the proposal's messages then ran is counted per
 proposal (`GOV proposal_passed`), not per type.
 
+The historical table below and `CODE` records attribute transaction failures
+to the first message, including ante failures and failures in later messages.
+They do not establish per-handler error coverage. New delivery outputs include
+`ERROR_ACCOUNTING sdk-message-index-v1`, `HANDLER_ERROR` and
+`UNATTRIBUTED_ERROR`. The handler counter uses only the outer SDK
+`failed to execute message; message index: N: ` prefix and indexes the decoded
+top-level transaction messages. An inner authz error cannot change that index.
+This identifies the top-level handler returning the error, not the failing
+nested handler or a governance message executed later.
+
+`coverage-table.py` keeps the first-message transaction column separate from
+SDK-indexed handler errors and reports how many delivery outputs have the new
+accounting. Older outputs are explicitly unmeasured. Unattributed failures
+include ante errors, decoding failures, recovered panics and unrecognized log
+forms; they must not all be labeled ante failures. These counters do not close
+F1.3: error reachability, uncovered branches and panic paths still need evidence.
+
 | message | delivered | Go code 0 | CheckTx rejected | Go errors (codespace/code: txs) | recorded ok / fail | recorded nested ok / fail |
 |---|---:|---:|---:|---|---|---|
 | `/celestia.blob.v1.MsgPayForBlobs` | 834 | 802 | 3129 | sdk/11: 22, sdk/13: 10 | 45 / 0 | 0 / 0 |
