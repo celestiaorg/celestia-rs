@@ -1,0 +1,390 @@
+{
+  "analysis": {
+    "all_deliver_diagnostic_totals": {
+      "blocks": 8409,
+      "delivered": 78228,
+      "delivered_ok": 34638,
+      "mismatches": 0
+    },
+    "complete_deliver_runs": 56,
+    "complete_deliver_totals": {
+      "blocks": 8400,
+      "delivered": 78185,
+      "delivered_ok": 34606,
+      "mismatches": 0
+    },
+    "deliver_runs": 57,
+    "failed_cases": [],
+    "handler_errors": "not measured: source predates PR256",
+    "llvm_summary_branches": {
+      "count": 13450,
+      "covered": 5321
+    },
+    "never_go_successful": [
+      "/cosmos.bank.v1beta1.Input",
+      "/cosmos.crisis.v1beta1.MsgUpdateParams",
+      "/cosmos.crisis.v1beta1.MsgVerifyInvariant",
+      "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+      "/cosmos.gov.v1.MsgExecLegacyContent",
+      "/cosmos.gov.v1beta1.MsgSubmitProposal",
+      "/cosmos.mint.v1beta1.MsgUpdateParams",
+      "/cosmos.vesting.v1beta1.MsgCreatePeriodicVestingAccount",
+      "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+      "/ibc.applications.fee.v1.MsgPayPacketFee",
+      "/ibc.applications.fee.v1.MsgPayPacketFeeAsync",
+      "/ibc.applications.fee.v1.MsgRegisterCounterpartyPayee",
+      "/ibc.applications.fee.v1.MsgRegisterPayee",
+      "/ibc.applications.fee.v1.PacketFee",
+      "/ibc.applications.interchain_accounts.controller.v1.MsgRegisterInterchainAccount",
+      "/ibc.applications.interchain_accounts.controller.v1.MsgSendTx",
+      "/ibc.applications.interchain_accounts.controller.v1.MsgUpdateParams",
+      "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams",
+      "/ibc.core.channel.v1.MsgChannelCloseInit",
+      "/ibc.core.channel.v1.MsgChannelUpgradeInit",
+      "/ibc.lightclients.wasm.v1.MsgMigrateContract",
+      "/ibc.lightclients.wasm.v1.MsgRemoveChecksum",
+      "/ibc.lightclients.wasm.v1.MsgStoreCode"
+    ],
+    "profile_bytes": 639391373,
+    "profile_files": 189,
+    "scheduled_runs": 179,
+    "short_runs": [
+      {
+        "blocks": 9,
+        "delivered": 43,
+        "name": "deliver-upgrade",
+        "requested_blocks": 150
+      }
+    ],
+    "source": "5a22054579a1a152cf36028b9e6dd0ba8e11908c",
+    "status": "one bounded full-profile check passed; remaining F1 gates open"
+  },
+  "artifact_root": "/workspace/scratch/celestia-week/full-branch-5a22054",
+  "artifacts": {
+    "analysis.json": "fd7944c5d9fdc8366c5c7b0baf816bf444c4f0df32d2b4173b774d5b87ffc944",
+    "branches.json": "d58f4f02407b8c0cf5da460c1415c1903ac3aad409763183bcd5cc4f8dbd66f6",
+    "cargo-llvm-cov.txt": "f2f5be66bd0c0d1a3ccaa0730e363c793e65ccdfce5dd91d1f957105e30eacfb",
+    "coverage-env.sh": "4a354240b42648b276ea5df1569a1682187b7e00aa3c3891823eac6d5cf59d12",
+    "go-build-info.txt": "f0acd63111a4a4edef0be0f7121945adcb15186a90fdd8495a3e66665056bcd4",
+    "go-v10.build.json": "a29132111ee1695e6201adf1ed4a52cb811180b07bbd798e2c15e9681a16d9cb",
+    "go-v9.build.json": "7e3f01d2ac23e6174645f0e9b009bbc6cb0a32d3142df902b7643ef3a36fe615",
+    "launch-settings.json": "f9f220230054d19d4f8033be36f75bf87635cd9b21da859911d5c907273862ef",
+    "lcov.info": "1b434381bea4bcc8ddcf0aa3818f97a275f4fddd4b072f41f08841d3964cd8d5",
+    "llvm.json": "12c9b0867181b6822bc7fbe8d8f185fb1a04aa51564e1e18dd188d10999dbc97",
+    "message-table.md": "3a78ed032ac0606ff311b63d9f818624a9e028c7a0d79e3b092d75462ae7e53d",
+    "profile-data/fuzz-diff": "e26c2523ba66e91c7fe8ecd625a18f023509c470e61759cf73cfb0e30ffabcc5",
+    "profile-data/sha256.json": "70cdf7897349409c5e6f6abb1826ba354958da95ca54c459b08458282bfb13af",
+    "rec.tsv": "4001f6edf3317e3075fb27389b48ec74259f42e1d826b9bc35f9e330a481ed76",
+    "runs.txt": "7488c759c8d6b12dc848f1a046b7a91108c3e850f93a0906657991d67339b1ba",
+    "rustc.txt": "c68fcc5f9b862bee28df8b51992ca00baeab800e3108b0afa6a46a0d25527b96",
+    "worktree.status": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "branch_summary_by_crate": {
+    "crates/tier-0-primitives/crypto": {
+      "count": 40,
+      "covered": 10
+    },
+    "crates/tier-0-primitives/encoding": {
+      "count": 52,
+      "covered": 27
+    },
+    "crates/tier-0-primitives/gojson": {
+      "count": 118,
+      "covered": 85
+    },
+    "crates/tier-0-primitives/gostr": {
+      "count": 60,
+      "covered": 58
+    },
+    "crates/tier-0-primitives/hash": {
+      "count": 2,
+      "covered": 0
+    },
+    "crates/tier-0-primitives/math": {
+      "count": 138,
+      "covered": 67
+    },
+    "crates/tier-0-primitives/merkle": {
+      "count": 24,
+      "covered": 4
+    },
+    "crates/tier-0-primitives/prost-gostr": {
+      "count": 2,
+      "covered": 1
+    },
+    "crates/tier-0-primitives/prost-gostr-std": {
+      "count": 72,
+      "covered": 35
+    },
+    "crates/tier-1-protocol-types/ctypes": {
+      "count": 818,
+      "covered": 0
+    },
+    "crates/tier-1-protocol-types/legacy-amino": {
+      "count": 610,
+      "covered": 0
+    },
+    "crates/tier-1-protocol-types/leopard": {
+      "count": 114,
+      "covered": 29
+    },
+    "crates/tier-1-protocol-types/shares": {
+      "count": 204,
+      "covered": 94
+    },
+    "crates/tier-1-protocol-types/square": {
+      "count": 304,
+      "covered": 123
+    },
+    "crates/tier-2-state-and-store/iavl": {
+      "count": 232,
+      "covered": 94
+    },
+    "crates/tier-2-state-and-store/ics23-proofs": {
+      "count": 18,
+      "covered": 0
+    },
+    "crates/tier-2-state-and-store/kvdb": {
+      "count": 66,
+      "covered": 0
+    },
+    "crates/tier-2-state-and-store/kvstore": {
+      "count": 54,
+      "covered": 20
+    },
+    "crates/tier-2-state-and-store/multistore": {
+      "count": 122,
+      "covered": 38
+    },
+    "crates/tier-2-state-and-store/snapshots": {
+      "count": 110,
+      "covered": 0
+    },
+    "crates/tier-3-app-modules/sdk": {
+      "count": 402,
+      "covered": 235
+    },
+    "crates/tier-3-app-modules/txdecode": {
+      "count": 606,
+      "covered": 449
+    },
+    "crates/tier-3-app-modules/x/ante": {
+      "count": 756,
+      "covered": 564
+    },
+    "crates/tier-3-app-modules/x/auth": {
+      "count": 100,
+      "covered": 76
+    },
+    "crates/tier-3-app-modules/x/authz": {
+      "count": 174,
+      "covered": 93
+    },
+    "crates/tier-3-app-modules/x/bank": {
+      "count": 114,
+      "covered": 79
+    },
+    "crates/tier-3-app-modules/x/blob": {
+      "count": 68,
+      "covered": 53
+    },
+    "crates/tier-3-app-modules/x/capability": {
+      "count": 46,
+      "covered": 24
+    },
+    "crates/tier-3-app-modules/x/circuit": {
+      "count": 26,
+      "covered": 11
+    },
+    "crates/tier-3-app-modules/x/consensus": {
+      "count": 60,
+      "covered": 28
+    },
+    "crates/tier-3-app-modules/x/distribution": {
+      "count": 112,
+      "covered": 79
+    },
+    "crates/tier-3-app-modules/x/evidence": {
+      "count": 46,
+      "covered": 21
+    },
+    "crates/tier-3-app-modules/x/feegrant": {
+      "count": 102,
+      "covered": 75
+    },
+    "crates/tier-3-app-modules/x/fibre": {
+      "count": 222,
+      "covered": 145
+    },
+    "crates/tier-3-app-modules/x/forwarding": {
+      "count": 64,
+      "covered": 49
+    },
+    "crates/tier-3-app-modules/x/gov": {
+      "count": 276,
+      "covered": 200
+    },
+    "crates/tier-3-app-modules/x/hyperlane": {
+      "count": 326,
+      "covered": 211
+    },
+    "crates/tier-3-app-modules/x/ibc": {
+      "count": 1146,
+      "covered": 696
+    },
+    "crates/tier-3-app-modules/x/icahost": {
+      "count": 164,
+      "covered": 100
+    },
+    "crates/tier-3-app-modules/x/minfee": {
+      "count": 4,
+      "covered": 3
+    },
+    "crates/tier-3-app-modules/x/mint": {
+      "count": 14,
+      "covered": 12
+    },
+    "crates/tier-3-app-modules/x/packetforward": {
+      "count": 136,
+      "covered": 71
+    },
+    "crates/tier-3-app-modules/x/params": {
+      "count": 0,
+      "covered": 0
+    },
+    "crates/tier-3-app-modules/x/signal": {
+      "count": 28,
+      "covered": 22
+    },
+    "crates/tier-3-app-modules/x/slashing": {
+      "count": 72,
+      "covered": 47
+    },
+    "crates/tier-3-app-modules/x/staking": {
+      "count": 462,
+      "covered": 309
+    },
+    "crates/tier-3-app-modules/x/transfer": {
+      "count": 162,
+      "covered": 114
+    },
+    "crates/tier-3-app-modules/x/upgrade": {
+      "count": 54,
+      "covered": 29
+    },
+    "crates/tier-3-app-modules/x/valaddr": {
+      "count": 56,
+      "covered": 24
+    },
+    "crates/tier-3-app-modules/x/warp": {
+      "count": 136,
+      "covered": 112
+    },
+    "crates/tier-3-app-modules/x/zkism": {
+      "count": 172,
+      "covered": 104
+    },
+    "crates/tier-4-runtime/abci-server": {
+      "count": 26,
+      "covered": 6
+    },
+    "crates/tier-4-runtime/api-server": {
+      "count": 278,
+      "covered": 5
+    },
+    "crates/tier-4-runtime/app": {
+      "count": 890,
+      "covered": 434
+    },
+    "crates/tier-4-runtime/evidence": {
+      "count": 146,
+      "covered": 0
+    },
+    "crates/tier-4-runtime/grpc-query": {
+      "count": 558,
+      "covered": 128
+    },
+    "crates/tier-4-runtime/grpc-reflection": {
+      "count": 82,
+      "covered": 16
+    },
+    "crates/tier-4-runtime/grpc-transport": {
+      "count": 38,
+      "covered": 12
+    },
+    "crates/tier-4-runtime/mempool": {
+      "count": 498,
+      "covered": 0
+    },
+    "crates/tier-4-runtime/nodestore": {
+      "count": 354,
+      "covered": 0
+    },
+    "crates/tier-4-runtime/p2p": {
+      "count": 672,
+      "covered": 0
+    },
+    "crates/tier-4-runtime/privval": {
+      "count": 52,
+      "covered": 0
+    },
+    "crates/tier-4-runtime/propagation": {
+      "count": 504,
+      "covered": 0
+    },
+    "crates/tier-5-node/keyring": {
+      "count": 86,
+      "covered": 0
+    }
+  },
+  "qualification": {
+    "binary_sha256": {
+      "/workspace/scratch/celestia-week/oracle-bins/devnet-bin/celestia-appd": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+      "/workspace/scratch/celestia-week/oracle-bins/devnet-bin/v9/celestia-appd": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002"
+    },
+    "command": [
+      "bash",
+      "crates/fuzz-diff/coverage.sh",
+      "/workspace/scratch/celestia-week/full-branch-5a22054",
+      "150"
+    ],
+    "exit_code": 0,
+    "finished_at_unix": 1793723816.6842272,
+    "inputs_unchanged": true,
+    "log_sha256": "f722b6a8901e94b198c31462b3b752e96239753b9363c3b55908973d85496709",
+    "machine": "x86_64",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "schema_version": 1,
+    "scope": "one check only; remaining F1 gates require separate evidence",
+    "source": {
+      "revision": "5a22054579a1a152cf36028b9e6dd0ba8e11908c",
+      "status": "",
+      "tree": "062f4f0fef91e28e7933beeca51fc460e394d8fd"
+    },
+    "source_after": {
+      "revision": "5a22054579a1a152cf36028b9e6dd0ba8e11908c",
+      "status": "",
+      "tree": "062f4f0fef91e28e7933beeca51fc460e394d8fd"
+    },
+    "started_at_unix": 1793722570.17891,
+    "status": "passed",
+    "toolchains": {
+      "cargo": {
+        "error": "",
+        "exit_code": 0,
+        "output": "cargo 1.101.0-nightly (31d3246e0 2026-10-27)"
+      },
+      "go": {
+        "error": "",
+        "exit_code": 0,
+        "output": "go version go1.26.9 linux/amd64"
+      },
+      "rustc": {
+        "error": "",
+        "exit_code": 0,
+        "output": "rustc 1.101.0-nightly (3e92e1a2d 2026-11-01)\nbinary: rustc\ncommit-hash: 3e92e1a2d20b991ef23a6c6064c34d57ee8c98d3\ncommit-date: 2026-11-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.101.0-nightly\nLLVM version: 23.1.5"
+      }
+    }
+  },
+  "schema_version": 1
+}

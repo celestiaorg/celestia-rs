@@ -1,5 +1,9 @@
 # Fuzzing coverage of the consensus code (F1.3)
 
+A [2026-11-03 branch-instrumented profile](fuzz-coverage-2026-11-03.md)
+records a complete bounded run on exact candidate `5a22054`. The historical
+line and message tables below remain separately dated baselines.
+
 *Fresh run 2026-10-21 on `033bc74` (the later `dcdb5b9` changes only this
 evidence text).* Reproduce with
 
@@ -49,9 +53,9 @@ raw region; it does not deduplicate by location or derive LLVM summary
 coverage from the inventory. Inline tests remain included by LLVM. These
 counters describe LLVM-instrumented branch arms, not every semantic path.
 
-This enables measurement; it does not close F1.3. A fresh full differential
-profile, per-message/per-error accounting and reasons for uncovered arms
-are still required. The bounded SDK unit probe used to validate the export
+This enables measurement; it does not close F1.3. The linked 2026-11-03
+profile supplies a fresh full differential measurement for its exact candidate;
+per-handler/per-error accounting and reasons for uncovered arms remain open. The bounded SDK unit probe used to validate the export
 format is not a full differential campaign or production qualification.
 
 The full per-message table below remains the original 2026-10-19 baseline.
