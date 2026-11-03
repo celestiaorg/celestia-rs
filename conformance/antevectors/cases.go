@@ -55,6 +55,7 @@ var scenarios = []scenario{
 	{"fuzz", scenarioFuzz},
 	{"fee-boundaries", scenarioFeeBoundaries},
 	{"feegrant-revoke-gas", scenarioFeegrantRevokeGas},
+	{"feegrant-boundaries", scenarioFeegrantBoundaries},
 }
 
 // An expired allowance's Accept asks the keeper to revoke it before returning
