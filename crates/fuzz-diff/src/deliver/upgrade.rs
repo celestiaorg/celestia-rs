@@ -1047,48 +1047,6 @@ impl Upgrade {
     }
 }
 
-#[cfg(test)]
-mod clock_tests {
-    use super::Upgrade;
-
-    #[test]
-    fn isolated_setup_preserves_one_shot_windows_and_signal_delay() {
-        let mut driver = Upgrade {
-            signal_at: 37,
-            ..Upgrade::default()
-        };
-        let calls: Vec<_> = (0..60)
-            .filter_map(|generated| {
-                let isolated = generated < 17;
-                let bootstrap = generated == 0;
-                let index = driver.block_index(generated, isolated, bootstrap);
-                (!isolated && !bootstrap).then_some((generated, index))
-            })
-            .collect();
-        assert_eq!(
-            calls.iter().take(12).map(|(_, b)| *b).collect::<Vec<_>>(),
-            (1..=12).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            calls.iter().find(|(_, b)| *b >= driver.signal_at),
-            Some(&(53, 37))
-        );
-        assert_eq!(driver.paused_blocks, 16);
-    }
-
-    #[test]
-    fn ordinary_upgrade_clock_is_unchanged() {
-        let mut driver = Upgrade::default();
-        for generated in 0..60 {
-            assert_eq!(
-                driver.block_index(generated, false, generated == 0),
-                generated
-            );
-        }
-        assert_eq!(driver.paused_blocks, 0);
-    }
-}
-
 /// The account number of `acc` (Rust's committed state).
 fn account_number(rust: &mut app::App, acc: &str) -> Option<u64> {
     use celestia_proto::cosmos::auth::v1beta1 as auth;
@@ -1201,4 +1159,46 @@ pub(super) fn queries(gn: &Gen, hl_token: &str) -> Vec<(&'static str, Vec<u8>)> 
         }
     }
     q
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::Upgrade;
+
+    #[test]
+    fn isolated_setup_preserves_one_shot_windows_and_signal_delay() {
+        let mut driver = Upgrade {
+            signal_at: 37,
+            ..Upgrade::default()
+        };
+        let calls: Vec<_> = (0..60)
+            .filter_map(|generated| {
+                let isolated = generated < 17;
+                let bootstrap = generated == 0;
+                let index = driver.block_index(generated, isolated, bootstrap);
+                (!isolated && !bootstrap).then_some((generated, index))
+            })
+            .collect();
+        assert_eq!(
+            calls.iter().take(12).map(|(_, b)| *b).collect::<Vec<_>>(),
+            (1..=12).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            calls.iter().find(|(_, b)| *b >= driver.signal_at),
+            Some(&(53, 37))
+        );
+        assert_eq!(driver.paused_blocks, 16);
+    }
+
+    #[test]
+    fn ordinary_upgrade_clock_is_unchanged() {
+        let mut driver = Upgrade::default();
+        for generated in 0..60 {
+            assert_eq!(
+                driver.block_index(generated, false, generated == 0),
+                generated
+            );
+        }
+        assert_eq!(driver.paused_blocks, 0);
+    }
 }
