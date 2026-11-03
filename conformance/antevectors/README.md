@@ -1,7 +1,7 @@
 # antevectors
 
 Go generator for the `x-ante` conformance vectors. It builds a celestia-app
-v10.4.0 test app (`testutil.SetupTestAppWithGenesisValSet`, real keepers over
+v10.5.0 test app (`testutil.SetupTestAppWithGenesisValSet`, real keepers over
 an in-memory store), funds a fixed set of accounts (secp256k1 with and
 without stored pubkeys, secp256r1, ed25519, 2-of-3 / nested / ed25519-member
 multisigs, a "validator operator" account, poor and unfunded accounts) and
@@ -18,7 +18,7 @@ Regenerate (fixtures are committed, zstd-compressed):
 
 ```
 cd conformance/antevectors
-GOPATH=/tmp/claude-0/gopath GOFLAGS=-mod=mod go run . ../fixtures/antevectors
+GOTOOLCHAIN=go1.26.9 GOFLAGS=-mod=readonly go run . ../fixtures/antevectors
 cargo test -p x-ante --test antevectors
 ```
 
@@ -38,8 +38,20 @@ point of eight base txs), `multisig`, `amino` (30 message types signed with
 MsgPayForFibre gas, IndexWrapper tx bytes) and `fuzz` (1200 seeded random
 combinations).
 
-Not covered (the Go keepers are not ported; `x_ante::StoreDeps` returns
-`ErrNotSupported`): existing fee grants, fibre stateful/signature checks in
+`feegrant-revoke-gas` creates valid Basic and Periodic allowances at an
+earlier block time, then runs after expiration without pruning. It sweeps
+gas limits through fee deduction in FinalizeBlock, CheckTx and ReCheckTx,
+including the revocation reads and deletes. A high-gas control returns the
+ordinary expiry error; gas exhausted during revocation must instead unwind
+to the ante handler's out-of-gas recovery. Vectors retain block time and
+compare code/codespace, gas wanted/used, events and rollback of all ante writes.
+Older vectors without time fields retain their original replay time of zero.
+Regenerate just this scenario by appending `feegrant-revoke-gas` to the
+generator command above. Use the pinned Go compiler: compiler-dependent
+encoding behavior makes newer Go versions unsuitable substitutes.
+
+Not covered by this vector suite: the full range of existing fee grants,
+fibre stateful/signature checks in
 CheckTx, and IBC redundant-relay checks beyond the nil client message.
 Extension options cannot be covered: no `TxExtensionOptionI` implementation
 is registered, so such txs fail decoding before the ante handler.

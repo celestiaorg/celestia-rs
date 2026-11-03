@@ -222,7 +222,16 @@ pub fn use_granted_fees(
         ));
     };
     if remove {
-        let _ = revoke_allowance(ctx, granter, grantee);
+        if let Err(error) = revoke_allowance(ctx, granter, grantee) {
+            // Go ignores an ordinary revoke error, but store gas failures
+            // panic and unwind before Accept's error can be returned.
+            if error.is_panic()
+                || (error.codespace == "sdk"
+                    && (error.code == 11 || (error.code == 35 && ctx.gas.consumed() == u64::MAX)))
+            {
+                return Err(error);
+            }
+        }
         res?;
         use_event(ctx);
         return Ok(());
