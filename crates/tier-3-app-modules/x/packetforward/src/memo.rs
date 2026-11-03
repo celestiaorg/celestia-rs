@@ -338,15 +338,15 @@ pub fn validate(m: &ForwardMetadata) -> Result<(), String> {
 /// error acknowledgement.
 fn identifier(id: &str, min: usize, max: usize) -> Result<(), String> {
     const FILE: &str = "celestiaorg/ibc-go/v8@v8.7.2/modules/core/24-host/validate.go";
+    let length = gostr::go_len(id);
     let (msg, line) = if id.trim().is_empty() {
         ("identifier cannot be blank".to_owned(), 41)
     } else if id.contains('/') {
         (format!("identifier {id} cannot contain separator '/'"), 45)
-    } else if id.len() < min || id.len() > max {
+    } else if length < min || length > max {
         (
             format!(
-                "identifier {id} has invalid length: {}, must be between {min}-{max} characters",
-                id.len()
+                "identifier {id} has invalid length: {length}, must be between {min}-{max} characters"
             ),
             49,
         )

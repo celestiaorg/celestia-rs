@@ -10,6 +10,13 @@ import unittest
 
 
 class NightlyFlagsTest(unittest.TestCase):
+    def test_json_rotation_compares_pfm_acknowledgement_bytes_at_both_versions(self):
+        runs = self.dry_runs("json", 7)
+        self.assertEqual(len(runs), 2)
+        for _, command in runs:
+            self.assertIn("json_pfm_ack", command[command.index("--ops") + 1].split(","))
+        self.assertEqual({command[command.index("--app-version") + 1] for _, command in runs}, {"9", "10"})
+
     def test_each_ism_mode_runs_with_and_without_gas_sweeps(self):
         source = (Path(__file__).resolve().parents[1] / "nightly.sh").read_text()
         functions = []
