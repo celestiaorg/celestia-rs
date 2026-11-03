@@ -34,6 +34,11 @@ v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_GOVPASS=1
 # Celestia's empty legacy router prevents legacy proposal submission.
 gov 40 8 4018 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
 v9-gov 40 8 4018 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
+# Coverage-profile seed 2: the fixed 60m legacy deposit was below the 100m
+# per-deposit threshold in these genesis states. Use the current proposal's
+# normal/expedited minimum and require successful legacy handler execution.
+staking 150 8 2 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_SIM=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
+v9-staking 150 8 2 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_SIM=1 DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit
 # A failed gov proposal's MsgConnectionOpenTry: `PickVersion` prints both
 # version lists (`%v` of `[]*Version`) in its failed_reason: app-hash split
 # (#72, security.md 98).
