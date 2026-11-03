@@ -851,7 +851,10 @@ fn main() -> anyhow::Result<()> {
     rt.shutdown_timeout(std::time::Duration::from_secs(2));
     let open = kvdb::close_all_rocksdb();
     if open > 0 {
-        tracing::debug!(databases = open, "databases still open at exit (closed)");
+        tracing::debug!(
+            databases = open,
+            "background work stopped for databases still open at exit"
+        );
     }
     res
 }

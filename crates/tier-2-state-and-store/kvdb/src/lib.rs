@@ -37,8 +37,8 @@ mod rocks;
 #[cfg(feature = "rocksdb")]
 pub use rocks::{RocksBackend, RocksOptions};
 
-/// Closes every RocksDB still open before the process exits (see
-/// `rocks::close_all`); 0 without the `rocksdb` feature.
+/// Flushes every RocksDB still open and waits for its background work to stop
+/// before process exit (see `rocks::close_all`); 0 without the `rocksdb` feature.
 #[must_use]
 pub fn close_all_rocksdb() -> usize {
     #[cfg(feature = "rocksdb")]
@@ -931,6 +931,86 @@ mod tests {
         let db = RocksBackend::open(&path, RocksOptions::default()).unwrap();
         assert_eq!(db.get(b"y").unwrap(), Some(b"2".to_vec()));
         assert_eq!(collect(db.range(None, None, false).unwrap()).len(), 2_505);
+    }
+
+    #[cfg(feature = "rocksdb")]
+    #[test]
+    fn rocks_shutdown_process_exit() {
+        const CHILD_PATH: &str = "CELESTIA_RS_ROCKS_EXIT_TEST_PATH";
+        const CHILD_RETAIN: &str = "CELESTIA_RS_ROCKS_EXIT_TEST_RETAIN";
+        if let Some(path) = std::env::var_os(CHILD_PATH) {
+            let db = RocksBackend::open(
+                path,
+                RocksOptions {
+                    block_cache_size: 1 << 20,
+                    write_buffer_size: 64 << 10,
+                    ..RocksOptions::default()
+                },
+            )
+            .unwrap();
+            for i in 0u32..64 {
+                let mut batch = WriteBatch::new();
+                batch.put(
+                    i.to_be_bytes().to_vec(),
+                    vec![u8::try_from(i).unwrap(); 16 << 10],
+                );
+                db.write(batch).unwrap();
+            }
+            if std::env::var_os(CHILD_RETAIN).is_some() {
+                // Model an owner surviving main: native process-exit cleanup
+                // still has to join the shared Env's workers without aborting.
+                std::mem::forget(db);
+                assert_eq!(close_all_rocksdb(), 1);
+            } else {
+                drop(db);
+                assert_eq!(close_all_rocksdb(), 0);
+            }
+            std::process::exit(0);
+        }
+        let dir = tempfile::tempdir().unwrap();
+        for retain in [false, true] {
+            for round in 0..3 {
+                let path = dir.path().join(format!("{retain}-{round}"));
+                let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+                child.args([
+                    "--exact",
+                    "tests::rocks_shutdown_process_exit",
+                    "--nocapture",
+                ]);
+                child.env(CHILD_PATH, &path);
+                child.env_remove(CHILD_RETAIN);
+                if retain {
+                    child.env(CHILD_RETAIN, "1");
+                }
+                child.stdout(std::process::Stdio::piped());
+                child.stderr(std::process::Stdio::piped());
+                let mut child = child.spawn().unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+                let mut timed_out = false;
+                while child.try_wait().unwrap().is_none() {
+                    if std::time::Instant::now() >= deadline {
+                        timed_out = true;
+                        child.kill().unwrap();
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                let output = child.wait_with_output().unwrap();
+                assert!(
+                    !timed_out && output.status.success(),
+                    "retain={retain} round={round} timed_out={timed_out}: {}\n{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let reopened = RocksBackend::open(path, RocksOptions::default()).unwrap();
+                for i in 0u32..64 {
+                    assert_eq!(
+                        reopened.get(&i.to_be_bytes()).unwrap(),
+                        Some(vec![u8::try_from(i).unwrap(); 16 << 10])
+                    );
+                }
+            }
+        }
     }
 
     #[test]
