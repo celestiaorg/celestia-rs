@@ -22,6 +22,38 @@ profile, per-run logs and regenerated message table are retained under
 Branch coverage needs llvm-cov's `-Z coverage-options=branch` (nightly
 only); the figures below are line coverage on stable.
 
+The differential coverage driver now supports an opt-in branch run:
+
+```sh
+# Install cargo-llvm-cov 0.9.1 and llvm-tools for the selected nightly first.
+COVERAGE_BRANCH=1 COVERAGE_TOOLCHAIN=nightly-2026-11-02 \
+  DEVNET_BIN=$PWD/target/devnet-bin \
+  crates/fuzz-diff/coverage.sh target/coverage-branches-new 150
+```
+
+The output directory must be new; reruns cannot overwrite or mix older
+inventories with a different mode. The default remains stable line/region
+coverage. Branch mode requires an explicit toolchain, stops if instrumentation
+setup fails, and fails if LLVM reports no measured handwritten branch arms.
+Every mode retains `rustc.txt`, `cargo-llvm-cov.txt`, the exported build
+environment, source status and raw `llvm.json`, alongside the existing logs,
+LCOV and summary. Record pinned Go binary checksums/build receipts and use
+the exact-candidate qualification wrapper when collecting qualifying evidence.
+
+`branches.json` keeps LLVM's per-file summary counters and an inventory of
+exported regions with uncovered true/false arms, source coordinates and
+`review: pending`. LLVM can export regions from uninstantiated functions
+and multiple instantiations which it does not count the same way in its
+summary. The report retains both denominators separately and preserves each
+raw region; it does not deduplicate by location or derive LLVM summary
+coverage from the inventory. Inline tests remain included by LLVM. These
+counters describe LLVM-instrumented branch arms, not every semantic path.
+
+This enables measurement; it does not close F1.3. A fresh full differential
+profile, per-message/per-error accounting and reasons for uncovered arms
+are still required. The bounded SDK unit probe used to validate the export
+format is not a full differential campaign or production qualification.
+
 The full per-message table below remains the original 2026-10-19 baseline.
 Its nested `go_ok` / `nested_ok` counts for **proposal payloads** reflect
 successful submission, not execution. They must not establish handler
