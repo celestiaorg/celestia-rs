@@ -535,10 +535,12 @@ fn main() -> anyhow::Result<()> {
         for (t, (n, ok, rej)) in &st.per_type {
             println!("TYPE {t} delivered={n} go_ok={ok} check_rejected={rej}");
         }
-        println!("ERROR_ACCOUNTING sdk-message-index-v1");
         for (c, n) in &st.codes {
             println!("CODE {n} {c}");
         }
+        // Print the marker after the complete transaction-error totals so a
+        // truncated indexed section cannot silently appear fully measured.
+        println!("ERROR_ACCOUNTING sdk-message-index-v1");
         for (c, n) in &st.handler_errors {
             println!("HANDLER_ERROR {n} {c}");
         }

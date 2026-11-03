@@ -55,6 +55,11 @@ UNATTRIBUTED_ERROR 2 sdk/4
                     result = self.report({"partial": code + "ERROR_ACCOUNTING sdk-message-index-v1\n" + counters})
                     self.assertNotEqual(result.returncode, 0)
 
+    def test_cli_marker_follows_complete_transaction_error_totals(self):
+        source = (SCRIPT.parent / "src/bin/fuzz-diff.rs").read_text()
+        self.assertLess(source.index('println!("CODE {n} {c}")'),
+                        source.index('println!("ERROR_ACCOUNTING sdk-message-index-v1")'))
+
     def test_unversioned_unknown_duplicate_or_negative_counters_fail(self):
         for text in ["HANDLER_ERROR 1 /bank.Send sdk/1\n",
                      "ERROR_ACCOUNTING future-version\n",
