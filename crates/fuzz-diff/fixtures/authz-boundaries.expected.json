@@ -1,0 +1,164 @@
+[
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "sdk",
+    "code": 5,
+    "log_contains": "requested amount is more than spend limit"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "sdk",
+    "code": 4,
+    "log_contains": "cannot send to"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "sdk",
+    "code": 5,
+    "log_contains": "requested amount is more than spend limit"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "staking",
+    "code": 3,
+    "log_contains": "validator does not exist"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  }
+]

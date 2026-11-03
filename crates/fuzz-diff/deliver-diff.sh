@@ -15,6 +15,11 @@
 # types.
 # DELIVER_TYPE_REQUIRE=<exact-url,...> fails unless every listed top-level
 # message type has at least one successfully finalized Go transaction.
+# DELIVER_SCRIPT=<path> sends signed transactions from a fixed script before
+# generated traffic. DELIVER_SCRIPT_REQUIRE=<JSON path> requires every exact
+# scripted transaction to finalize in order with the listed type_url,
+# codespace, code and optional log_contains. Missing or reordered transactions,
+# unfinished scripts and unexpected Go outcomes fail even when both apps agree.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

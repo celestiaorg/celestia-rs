@@ -156,6 +156,12 @@ pub struct Stats {
     pub swept: u64,
     /// Results of the scripted txs (`DELIVER_SCRIPT`).
     pub script: Vec<String>,
+    /// Required Go outcomes of finalized scripted transactions.
+    pub script_required: Vec<ScriptExpectation>,
+    /// Observed type and Go result of every finalized scripted transaction.
+    pub script_outcomes: Vec<(String, abci::ExecTxResult)>,
+    /// A required script must finalize every signed transaction in order.
+    pub script_incomplete: Option<&'static str>,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1234,7 +1240,73 @@ impl HlSeq {
     }
 }
 
+/// Expected Go result of one scripted transaction, in script order.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptExpectation {
+    /// Exact top-level message type URL.
+    pub type_url: String,
+    /// Expected Go codespace; empty for a successful transaction.
+    pub codespace: String,
+    /// Expected Go result code.
+    pub code: u32,
+    /// Required substring of the Go result log, if specified.
+    #[serde(default)]
+    pub log_contains: String,
+}
+
+fn script_expectations(text: &str) -> anyhow::Result<Vec<ScriptExpectation>> {
+    let expected: Vec<ScriptExpectation> = serde_json::from_str(text)?;
+    anyhow::ensure!(
+        !expected.is_empty(),
+        "DELIVER_SCRIPT_REQUIRE must be nonempty"
+    );
+    for result in &expected {
+        anyhow::ensure!(
+            result.type_url.starts_with('/') && result.type_url.len() > 1,
+            "DELIVER_SCRIPT_REQUIRE needs an exact message type URL"
+        );
+        anyhow::ensure!(
+            (result.code == 0) == result.codespace.is_empty(),
+            "DELIVER_SCRIPT_REQUIRE needs an empty codespace only for success"
+        );
+    }
+    Ok(expected)
+}
+
 impl Stats {
+    /// Require every scripted transaction, including deliberate handler failures,
+    /// to reach FinalizeBlock with the expected Go result. Parity is checked
+    /// separately; matching rejection on both apps is insufficient evidence.
+    pub fn require_script_coverage(&self) -> anyhow::Result<()> {
+        if self.script_required.is_empty() {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            self.script_incomplete.is_none()
+                && self.script_required.len() == self.script_outcomes.len(),
+            "incomplete DELIVER_SCRIPT_REQUIRE: expected {} finalized transactions, observed {} (incomplete: {:?})",
+            self.script_required.len(),
+            self.script_outcomes.len(),
+            self.script_incomplete
+        );
+        for (index, (expected, (url, result))) in self
+            .script_required
+            .iter()
+            .zip(&self.script_outcomes)
+            .enumerate()
+        {
+            anyhow::ensure!(
+                expected.type_url == *url
+                    && expected.codespace == result.codespace
+                    && expected.code == result.code
+                    && result.log.contains(&expected.log_contains),
+                "DELIVER_SCRIPT_REQUIRE transaction {index}: expected {expected:?}, observed {url} {result:?}"
+            );
+        }
+        Ok(())
+    }
+
     fn hl_rejection_setup(&self) -> bool {
         self.hl_rejection_cases
             .iter()
@@ -3996,6 +4068,16 @@ pub fn run(
                 .map_err(|_| anyhow::anyhow!("DELIVER_SCRIPT must be UTF-8"))
         })
         .transpose()?;
+    let script_required = std::env::var_os("DELIVER_SCRIPT_REQUIRE")
+        .map(|path| -> anyhow::Result<_> {
+            anyhow::ensure!(
+                script_path.is_some(),
+                "DELIVER_SCRIPT_REQUIRE needs DELIVER_SCRIPT"
+            );
+            script_expectations(&std::fs::read_to_string(path)?)
+        })
+        .transpose()?
+        .unwrap_or_default();
     let allow_postupgrade = std::env::var_os("DELIVER_HL_ALLOW_POSTUPGRADE")
         .map(|value| {
             value
@@ -4073,6 +4155,7 @@ pub fn run(
         gov_required,
         gov_failure_required,
         type_required,
+        script_required,
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
@@ -4407,6 +4490,12 @@ pub fn run(
         Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         None => std::collections::VecDeque::new(),
     };
+    if !stats.script_required.is_empty() {
+        anyhow::ensure!(
+            script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
+            "DELIVER_SCRIPT_REQUIRE must list every script transaction exactly once"
+        );
+    }
     anyhow::ensure!(
         !allow_postupgrade || !script.is_empty(),
         "DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture requires a nonempty DELIVER_SCRIPT"
@@ -4542,6 +4631,7 @@ pub fn run(
             && let Some(block) = script.pop_front()
         {
             scripted = true;
+            let required_count = block.len();
             for (i, mut msg, gas) in block {
                 // `vote <account>`: a yes vote on the latest proposal.
                 if msg.type_url == "vote" {
@@ -4556,6 +4646,9 @@ pub fn run(
                     gn.accts[i].seq += 1;
                     txs.push(t);
                 }
+            }
+            if txs.len() != required_count {
+                stats.script_incomplete = Some("script signing failed");
             }
         } else {
             // IBC uses the dedicated relayer, not the Hyperlane account. Keep
@@ -5160,6 +5253,9 @@ pub fn run(
                 final_txs = forced.txs;
             }
         }
+        if scripted && final_txs != txs {
+            stats.script_incomplete = Some("script transactions dropped, reordered or replaced");
+        }
         let fb = abci::RequestFinalizeBlock {
             txs: final_txs,
             decided_last_commit: Some(commit),
@@ -5244,6 +5340,13 @@ pub fn run(
         }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
             if scripted {
+                if !stats.script_required.is_empty() {
+                    let url = type_urls(app_version, t)
+                        .into_iter()
+                        .next()
+                        .unwrap_or_default();
+                    stats.script_outcomes.push((url, res.clone()));
+                }
                 stats.script.push(format!(
                     "h={height} {:?} code {}/{} gas {}: {}",
                     type_urls(app_version, t),
@@ -6973,6 +7076,95 @@ pub fn coverage() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn script_requirements_reject_incomplete_or_wrong_finalized_results() {
+        let expected = r#"[{"type_url":"/cosmos.authz.v1beta1.MsgExec","codespace":"staking","code":3,"log_contains":"validator does not exist"}]"#;
+        let mut stats = Stats {
+            script_required: script_expectations(expected).unwrap(),
+            ..Stats::default()
+        };
+        assert!(stats.require_script_coverage().is_err());
+        let result = abci::ExecTxResult {
+            codespace: "staking".into(),
+            code: 3,
+            log: "message index: 0: validator does not exist".into(),
+            ..abci::ExecTxResult::default()
+        };
+        stats
+            .script_outcomes
+            .push(("/cosmos.authz.v1beta1.MsgExec".into(), result.clone()));
+        stats.require_script_coverage().unwrap();
+        stats.script_incomplete = Some("script transaction missing");
+        assert!(stats.require_script_coverage().is_err());
+        stats.script_incomplete = None;
+        stats.script_outcomes[0].1.code = 0;
+        assert!(stats.require_script_coverage().is_err());
+        stats.script_outcomes[0].1 = result.clone();
+        stats.script_outcomes[0].1.codespace = "sdk".into();
+        assert!(stats.require_script_coverage().is_err());
+        stats.script_outcomes[0].1 = result.clone();
+        stats.script_outcomes[0].1.log = "an unrelated staking error".into();
+        assert!(stats.require_script_coverage().is_err());
+        stats.script_outcomes[0] = ("/cosmos.authz.v1beta1.MsgGrant".into(), result.clone());
+        assert!(stats.require_script_coverage().is_err());
+        stats.script_outcomes[0].0 = "/cosmos.authz.v1beta1.MsgExec".into();
+        stats
+            .script_outcomes
+            .push(("/cosmos.authz.v1beta1.MsgExec".into(), result));
+        assert!(stats.require_script_coverage().is_err());
+    }
+
+    #[test]
+    fn script_requirement_schema_rejects_empty_or_ambiguous_contracts() {
+        for bad in [
+            "[]",
+            "{}",
+            r#"[{"type_url":"/msg","codespace":"","code":5}]"#,
+            r#"[{"type_url":"/msg","codespace":"sdk","code":0}]"#,
+            r#"[{"type_url":"msg","codespace":"","code":0}]"#,
+            r#"[{"type_url":"/msg","codespace":"","code":0,"typo":true}]"#,
+        ] {
+            assert!(script_expectations(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn authz_boundary_script_reaches_the_real_nested_staking_handler() {
+        use celestia_proto::cosmos::{
+            authz::v1beta1 as authz, bank::v1beta1::MsgSend, staking::v1beta1::MsgDelegate,
+        };
+        use prost::Name;
+        let script = read_script(
+            include_str!("../fixtures/authz-boundaries.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected =
+            script_expectations(include_str!("../fixtures/authz-boundaries.expected.json"))
+                .unwrap();
+        assert_eq!(script.len(), 27);
+        assert_eq!(expected.len(), 27);
+        assert!(script.iter().all(|block| block.len() == 1));
+        for (block, result) in script.iter().zip(&expected) {
+            assert_eq!(block[0].1.type_url, result.type_url);
+        }
+        let (_, outer, _) = &script[18][0];
+        let exec = authz::MsgExec::decode(outer.value.as_slice()).unwrap();
+        assert_eq!(exec.grantee, accounts(1)[1].acc);
+        assert_eq!(exec.msgs.len(), 2);
+        assert_eq!(exec.msgs[0].type_url, MsgSend::type_url());
+        let send = MsgSend::decode(exec.msgs[0].value.as_slice()).unwrap();
+        assert_eq!(send.from_address, accounts(1)[0].acc);
+        assert_eq!(send.amount[0].amount, "5");
+        assert_eq!(exec.msgs[1].type_url, MsgDelegate::type_url());
+        let delegate = MsgDelegate::decode(exec.msgs[1].value.as_slice()).unwrap();
+        assert_eq!(delegate.delegator_address, send.from_address);
+        assert_eq!(delegate.validator_address, accounts(1)[4].val);
+        assert_eq!(expected[18].codespace, "staking");
+        assert_eq!(expected[19].code, 0);
+        assert_eq!(expected[20].codespace, "authz");
+    }
+
     use super::*;
 
     #[test]
