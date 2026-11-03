@@ -180,6 +180,8 @@ pub struct Stats {
     pub hl_verified_versions: BTreeMap<String, u64>,
     /// A signed upgrade run must cover both incoming paths before switching.
     pub hl_preupgrade_required: bool,
+    /// Generated blocks reserved for mandatory signed incoming paths at v9.
+    pub hl_preupgrade_blocks: u64,
     /// Required rejection / successful same-message retry cases.
     pub hl_rejection_cases: Vec<String>,
     /// Complete expected-rejection then successful retry pairs, by case.
@@ -1488,6 +1490,18 @@ impl Stats {
         self.gov_required
             .iter()
             .any(|required| self.gov_executed.get(required).copied().unwrap_or(0) == 0)
+    }
+
+    fn hl_preupgrade_setup(&self, app_version: u64) -> bool {
+        self.hl_preupgrade_required
+            && app_version < 10
+            && ["collateral", "synthetic"].iter().any(|kind| {
+                self.hl_verified_versions
+                    .get(&format!("v9/{kind}"))
+                    .copied()
+                    .unwrap_or(0)
+                    == 0
+            })
     }
 
     /// Require both signed incoming-transfer paths when a multisig ISM was
@@ -3985,7 +3999,7 @@ pub fn run(
     let data = std::fs::read(devnet_conformance::scenario_dir(scenario).join("abci.rec"))?;
     let records = parse(&data)?;
     // `DELIVER_UPGRADE=<n>`: the replay stops before the scenario's first
-    // signal tx (held back for generated block `n`).
+    // signal tx (held back for driver block `n`, excluding isolated setup).
     let mut upg = upgrade::Upgrade::default();
     let mut stop_at = i64::MAX;
     if let Ok(n) = std::env::var("DELIVER_UPGRADE") {
@@ -4414,8 +4428,14 @@ pub fn run(
             a.seq = rust.query_sequence(&a.addr).sequence;
         }
         let mut txs: Vec<Vec<u8>> = Vec::new();
-        let hl_setup = stats.hl_rejection_setup();
-        stats.hl_rejection_blocks += u64::from(hl_setup);
+        // Complete mandatory signed transfers before unrelated governance can
+        // change proposal capacity and starve the larger Merkle-root proof tx.
+        // The requested block budget still bounds setup; missing coverage fails.
+        let hl_preupgrade = upg.on && stats.hl_preupgrade_setup(app_version);
+        let hl_rejection_setup = stats.hl_rejection_setup();
+        let hl_setup = hl_rejection_setup || hl_preupgrade;
+        stats.hl_rejection_blocks += u64::from(hl_rejection_setup);
+        stats.hl_preupgrade_blocks += u64::from(hl_preupgrade);
         let mut hl_pair = None;
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
@@ -4443,13 +4463,6 @@ pub fn run(
         // A signed Hyperlane sequence needs its dedicated account's committed
         // sequence. Before both incoming paths succeed at v9, keep unrelated
         // mempool traffic off that account and defer the held upgrade signal.
-        let hl_preupgrade = upg.on
-            && app_version < 10
-            && ["collateral", "synthetic"].iter().any(|kind| {
-                let key = format!("v9/{kind}");
-                stats.hl_verified_versions.get(&key).copied().unwrap_or(0) == 0
-            })
-            && stats.hl_preupgrade_required;
         gn.reserved_account = hl_preupgrade.then_some(HL_ACCT);
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
@@ -4458,8 +4471,9 @@ pub fn run(
             && upg
                 .upgrade_height
                 .is_some_and(|h| (h..=h + 2).contains(&height));
+        let upgrade_block = upg.block_index(b, hl_setup, bootstrap);
         if upg.on && !bootstrap && !hl_setup {
-            txs = upg.txs(&mut gn, b, height, &hl_seq.token, hl_preupgrade);
+            txs = upg.txs(&mut gn, upgrade_block, height, &hl_seq.token, hl_preupgrade);
         }
         if bootstrap {
             bootstrap = false;
@@ -4546,7 +4560,7 @@ pub fn run(
             if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
                 let msgs = hl_seq.msgs(&gn);
                 let rejection =
-                    if hl_setup && matches!(hl_seq.step, 11 | 14) {
+                    if hl_rejection_setup && matches!(hl_seq.step, 11 | 14) {
                         hl_seq.verifier.rejections().iter().copied().find(|case| {
                             stats.hl_retried.get(case.name()).copied().unwrap_or(0) == 0
                         })
@@ -7224,18 +7238,23 @@ mod tests {
         assert!(stats.require_hl_coverage().is_err());
         stats.hl_verified.insert("synthetic".into(), 1);
         assert!(stats.require_hl_coverage().is_ok());
+        assert!(!stats.hl_preupgrade_setup(9));
 
         stats.hl_preupgrade_required = true;
         assert!(stats.require_hl_coverage().is_err());
+        assert!(stats.hl_preupgrade_setup(9));
+        assert!(!stats.hl_preupgrade_setup(10));
         stats
             .hl_verified_versions
             .insert("v10/collateral".into(), 1);
         stats.hl_verified_versions.insert("v10/synthetic".into(), 1);
         assert!(stats.require_hl_coverage().is_err());
+        assert!(stats.hl_preupgrade_setup(9));
         stats.hl_verified_versions.insert("v9/collateral".into(), 1);
         assert!(stats.require_hl_coverage().is_err());
         stats.hl_verified_versions.insert("v9/synthetic".into(), 1);
         assert!(stats.require_hl_coverage().is_ok());
+        assert!(!stats.hl_preupgrade_setup(9));
     }
 
     #[test]

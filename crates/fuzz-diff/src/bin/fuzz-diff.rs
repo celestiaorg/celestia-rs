@@ -615,6 +615,7 @@ fn main() -> anyhow::Result<()> {
                 "hl_verified": st.hl_verified,
                 "hl_verified_versions": st.hl_verified_versions,
                 "hl_preupgrade_required": st.hl_preupgrade_required,
+                "hl_preupgrade_blocks": st.hl_preupgrade_blocks,
                 "hl_rejection_cases": st.hl_rejection_cases,
                 "hl_retried": st.hl_retried,
                 "hl_rejection_failures": st.hl_rejection_failures,

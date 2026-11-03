@@ -21,7 +21,13 @@
 # fail as incomplete evidence unless both incoming collateral and synthetic
 # transfers succeed. HL_VERIFIED_VERSION and DELIVER_STATS attribute successes
 # to the app version. Signed upgrade runs require both paths at v9 before the
-# held signal is released.
+# held signal is released. During that mandatory setup, unrelated generated
+# traffic (including parameter-changing governance) waits. After both paths
+# succeed, normal traffic resumes. DELIVER_STATS records the reserved block
+# count as hl_preupgrade_blocks; the requested block budget still bounds setup.
+# The upgrade driver's block counter pauses during isolated setup (including
+# rejection setup), preserving its one-shot validator/vesting/grant setup
+# and DELIVER_UPGRADE signal delay.
 # DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture is the narrow exception for
 # a fixed DELIVER_SCRIPT + DELIVER_GOV_FAILURE_REQUIRE state regression.
 # DELIVER_HL_REJECT=1 requires a signed ISM; it first rejects malformed
@@ -36,7 +42,8 @@
 #   GO_APPD=.../v9/celestia-appd GO_APPD_NEXT=.../celestia-appd \
 #     DELIVER_UPGRADE=20 crates/fuzz-diff/deliver-diff.sh v9-upgrade 120
 # DELIVER_UPGRADE=<n> stops the replay before the scenario's signal txs and
-# sends them from generated block n (see crates/fuzz-diff/src/deliver/upgrade.rs);
+# sends them from driver block n (generated blocks excluding isolated setup;
+# see crates/fuzz-diff/src/deliver/upgrade.rs);
 # without it the recorded upgrade of v9-upgrade is replayed (switch included).
 set -euo pipefail
 SCENARIO=${1:?scenario}
