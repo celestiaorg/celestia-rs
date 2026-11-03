@@ -13,6 +13,7 @@ pub const OPS: &[&str] = &[
     "json_count",
     "json_gov",
     "json_pfm",
+    "json_pfm_ack",
     "json_pfm_next",
     "json_ica_tx",
     "json_ica_vb",
@@ -58,13 +59,30 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
             Some((t, s)) => ok(format!("{} {}", h(&t), h(&s))),
             None => fail("unmarshal failed"),
         },
-        "json_pfm" => {
+        "json_pfm" | "json_pfm_ack" => {
             use x_packetforward::memo::{self, Memo};
             match memo::classify(&text) {
                 Memo::NotForward => ok("not_forward".into()),
                 Memo::NilForward => ok("nil_forward".into()),
                 Memo::ParseError(e) => fail(e),
                 Memo::Forward(f) => {
+                    if op == "json_pfm_ack" {
+                        // This error becomes committed ACK data, so compare
+                        // its serialized bytes and commitment, not Err text.
+                        return ok(match memo::validate(&f) {
+                            Ok(()) => "valid".into(),
+                            Err(error) => {
+                                let ack = x_ibc::router::Acknowledgement::error_string(&format!(
+                                    "packet-forward-middleware error: {error}"
+                                ));
+                                format!(
+                                    "{} {}",
+                                    hex::encode(&ack.bytes),
+                                    hex::encode(x_ibc::channel::commit_acknowledgement(&ack.bytes))
+                                )
+                            }
+                        });
+                    }
                     let retries = f.retries.map_or_else(|| "-".into(), |r| r.to_string());
                     let next = match &f.next {
                         None => "-".into(),
@@ -209,8 +227,8 @@ pub fn deep_input(op: &str, d: usize, variant: usize) -> String {
         "json_count" if variant < 2 => format!(r#"{{"messages":[{{}}],"x":{}}}"#, x(d - 1)),
         "json_count" => format!(r#"{{"messages":[{{"a":{}}}]}}"#, x(d - 3)),
         "json_gov" => format!(r#"{{"title":"T","summary":"S","x":{}}}"#, x(d - 1)),
-        "json_pfm" if variant < 2 => format!("{{{FWD}}},\"x\":{}}}", x(d - 1)),
-        "json_pfm" => format!("{{{FWD},\"next\":{}}}}}", x(d - 2)),
+        "json_pfm" | "json_pfm_ack" if variant < 2 => format!("{{{FWD}}},\"x\":{}}}", x(d - 1)),
+        "json_pfm" | "json_pfm_ack" => format!("{{{FWD},\"next\":{}}}}}", x(d - 2)),
         "json_pfm_next" => x(d),
         "json_ica_tx" | "json_ica_vb" => format!(
             r#"{{"messages":[{{"@type":"/cosmos.bank.v1beta1.MsgSend","from_address":"a","to_address":"b","x":{}}}]}}"#,
@@ -420,6 +438,12 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         ],
         "json_gov" => &[
             r#"{"title":"T","authors":["a",null],"summary":"S","details":"d","proposal_forum_url":"u","vote_option_context":"v"}"#,
+        ],
+        "json_pfm_ack" => &[
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0"}}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udfff"}}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udffe"}}"#,
+            r#"{"forward":{"receiver":"","port":"transfer","channel":"channel-0"}}"#,
         ],
         "json_pfm" | "json_pfm_next" => &[
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":"1m","retries":2,"next":{"b":1,"a":[1.50,"<x>",{"c":null}],"b":2}}}"#,

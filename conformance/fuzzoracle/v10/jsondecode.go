@@ -2,16 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
 
 	errorsmod "cosmossdk.io/errors"
+	"cosmossdk.io/log"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	gogoproto "github.com/cosmos/gogoproto/proto"
+	pfm "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward"
+	pfmkeeper "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/keeper"
 	pfmtypes "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/types"
 	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
 	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
@@ -32,6 +36,10 @@ import (
 //	            d["forward"] == nil, then json.Unmarshal into PacketMetadata;
 //	            "not_forward" | "nil_forward" |
 //	            "forward <receiver> <port> <channel> <timeout> <retries|-> <json.Marshal(next)|-|err>"
+//	json_pfm_ack  Same decode/classification, then ForwardMetadata.Validate;
+//	              "valid" or hex PFM validation-error ACK and acknowledgement commitment.
+//	              Validation errors are output bytes, so they ARE compared.
+//
 //	json_pfm_next  PFM keeper retry: json.Unmarshal(memo, metadata.Next) and
 //	            json.Marshal(metadata.Next)
 //	json_ica_tx icatypes.DeserializeCosmosTx(cdc, data, proto3json): Msgs
@@ -74,7 +82,7 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 			return fail(err)
 		}
 		o.Ok, o.Out = true, h(m.Title)+" "+h(m.Summary)
-	case "json_pfm":
+	case "json_pfm", "json_pfm_ack":
 		d := make(map[string]interface{})
 		err := json.Unmarshal(input, &d)
 		if err != nil || d["forward"] == nil {
@@ -90,6 +98,26 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 			return o
 		}
 		f := m.Forward
+		if op == "json_pfm_ack" {
+			o.Ok = true
+			if err := f.Validate(); err != nil {
+				// Validation errors return before keeper/transfer access. Invoke
+				// the real callback, including PFM's private ACK constructor.
+				ctx := sdk.Context{}.WithContext(context.Background()).WithLogger(log.NewNopLogger())
+				im := pfm.NewIBCMiddleware(nil, &pfmkeeper.Keeper{}, 0, 0)
+				data := transfertypes.FungibleTokenPacketData{
+					Denom: "uatom", Amount: "1", Sender: "remote", Receiver: "pfm", Memo: string(input),
+				}
+				ack := im.OnRecvPacket(ctx, channeltypes.Packet{
+					SourcePort: "transfer", SourceChannel: "channel-0",
+					DestinationPort: "transfer", DestinationChannel: "channel-1", Data: data.GetBytes(),
+				}, nil)
+				o.Out = hex.EncodeToString(ack.Acknowledgement()) + " " + hex.EncodeToString(channeltypes.CommitAcknowledgement(ack.Acknowledgement()))
+			} else {
+				o.Out = "valid"
+			}
+			return o
+		}
 		retries, next := "-", "-"
 		if f.Retries != nil {
 			retries = strconv.Itoa(int(*f.Retries))
