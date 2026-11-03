@@ -17,6 +17,7 @@ base64 = "0.23"
 crypto = { path = "../../tier-0-primitives/crypto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 getrandom = "0.2"
+gojson = { path = "../../tier-0-primitives/gojson" }
 hex = "0.4"
 pbjson-types = "0.7"
 prost = "0.13"

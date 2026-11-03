@@ -2950,6 +2950,7 @@ dependencies = [
  "crypto",
  "ctypes",
  "getrandom 0.2.17",
+ "gojson",
  "hash",
  "hex",
  "pbjson-types",

@@ -1,0 +1,20 @@
+{
+  "source_commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+  "source_tag": "v0.42.3",
+  "compiler": "go1.26.9",
+  "scope": "Official JSON/HexBytes source subset with FilePVLastSignState exported field schema; not a live signer or full-node oracle",
+  "source_sha256": {
+    "libs/json/decoder.go": "93c5412a5bbab6b0ffda274736523bb94c499b367647450560c58b8aaab6b2fa",
+    "libs/json/encoder.go": "d39aec253532be53493628f9d86f7a840a26e427def2406161858b4c6a9c9987",
+    "libs/json/structs.go": "2b317d9c290e4806e08f3c8518edac80d846d5c3ba96f9c416550bf5eba42f85",
+    "libs/json/types.go": "bb8b40a82f29c2b62391912ae8bc7590ed8ee1d1af4687fe3142a4459a7705fd",
+    "libs/bytes/bytes.go": "efa5880e80ac7b1c701ea6c26bec01daebfbb9f80679b8b8fb6618a5ab3e67fa",
+    "libs/sync/sync.go": "be7345b0522794ad53140ba8ccf9b47c6c55377b10cc57a1259bab67e1b6f1f6"
+  },
+  "generator": "conformance/consensusvectors/statejson/main.go",
+  "generator_sha256": "cf22eb614f13a207f58e7d514934fb0eb84ac65cc4770e386c2937cae7d33cb8",
+  "fixture_sha256": "48ce28343b44ac8cfb03e136ce4ad068cee36706e585694097fafc70aa40d756",
+  "case_count": 39,
+  "compiler_output": "go version go1.26.9 linux/amd64",
+  "command": "GOTOOLCHAIN=go1.26.9 go run ./cmd/statejson -out privval-state-json.json"
+}

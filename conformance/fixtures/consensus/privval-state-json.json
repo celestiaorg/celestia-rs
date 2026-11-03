@@ -1,0 +1,251 @@
+[
+  {
+    "input": "{}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "null",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":1,\"step\":2,\"signature\":\"AQI=\",\"signbytes\":\"00ff\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": false,
+    "canonical": "{\n  \"height\": \"5\",\n  \"round\": 1,\n  \"step\": 2,\n  \"signature\": \"AQI=\",\n  \"signbytes\": \"00FF\"\n}"
+  },
+  {
+    "input": "{\"signature\":[1,2,255,null],\"signbytes\":\"\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": false,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signature\": \"AQL/AA==\",\n  \"signbytes\": \"\"\n}"
+  },
+  {
+    "input": "{\"signature\":\"A\\nQ\\r==\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signature\": \"AQ==\"\n}"
+  },
+  {
+    "input": "{\"signature\":\"AR==\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signature\": \"AQ==\"\n}"
+  },
+  {
+    "input": "{\"signature\":[]}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "{\"signature\":\"\"}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "{\"signature\":null,\"signbytes\":null}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "{\"signature\":42,\"signature\":\"AQ==\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signature\": \"AQ==\"\n}"
+  },
+  {
+    "input": "{\"signature\":\"AQ==\",\"signature\":42}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"signbytes\":42,\"signbytes\":\"AB\"}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": false,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signbytes\": \"AB\"\n}"
+  },
+  {
+    "input": "{\"signbytes\":\"AB\",\"signbytes\":42}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"signbytes\":\"\\u0041\\u0042\"}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"sign\\u0062ytes\":\"AB\",\"sign\\u0061ture\":\"AQ==\"}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": false,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0,\n  \"signature\": \"AQ==\",\n  \"signbytes\": \"AB\"\n}"
+  },
+  {
+    "input": "{\"Signature\":42,\"SignBytes\":42}",
+    "accepted": true,
+    "signature_nil": true,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"0\",\n  \"round\": 0,\n  \"step\": 0\n}"
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":42}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":true}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":false}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":{}}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[1]}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"5\",\n  \"round\": 0,\n  \"step\": 2,\n  \"signature\": \"AQ==\"\n}"
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[null]}",
+    "accepted": true,
+    "signature_nil": false,
+    "signbytes_nil": true,
+    "canonical": "{\n  \"height\": \"5\",\n  \"round\": 0,\n  \"step\": 2,\n  \"signature\": \"AA==\"\n}"
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[-1]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[256]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[1.0]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signature\":[\"1\"]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":42}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":true}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":false}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":{}}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[1]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[null]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[-1]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[256]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[1.0]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"height\":\"5\",\"round\":0,\"step\":2,\"signbytes\":[\"1\"]}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"signature\":\"%%%\"}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"signbytes\":\"0\"}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  },
+  {
+    "input": "{\"signbytes\":\"zz\"}",
+    "accepted": false,
+    "signature_nil": true,
+    "signbytes_nil": true
+  }
+]
