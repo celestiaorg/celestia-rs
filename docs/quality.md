@@ -101,6 +101,24 @@ much of the entire consensus state machine was fuzzed. Stateful Go differentials
 recorded mainnet replay, cross-architecture determinism, and chaos/restart tests
 remain necessary alongside these byte-oriented targets.
 
+## Exact-source qualification
+
+`scripts/quality/qualify.py` records committed source, worktree status,
+platform/toolchains and hashes of explicitly supplied executables before and
+after one check. Tracked files marked `assume-unchanged` or `skip-worktree`
+can hide modified contents from Git status. Qualification rejects those root
+index flags, even if their files currently match HEAD, and records index flags
+in source evidence so flags added during a check invalidate its result. It does
+not clear those flags or modify source on the caller's behalf. Status checks also
+disable fsmonitor so a stale hook/cache cannot report modified files as clean.
+Use a full checkout without these flags for qualification; sparse checkouts may
+be rejected.
+
+A passed wrapper result covers that one command on that exact source. It does
+not replace the scenario, coverage, volume, compiler, replay or elapsed-window
+gates in MILESTONES.md. External scripts and binaries used by a check must be
+supplied as hashed inputs as well.
+
 ## Reviewing progress
 
 GitHub job summaries give the current results; download `workspace-coverage`,

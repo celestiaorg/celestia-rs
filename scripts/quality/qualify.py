@@ -21,12 +21,18 @@ def git(root, *args):
 
 
 def source(root):
+    # Status honors these index bits even when tracked file contents differ.
+    # Preserve NUL-delimited paths (including whitespace/newlines) in evidence.
+    index_flags = [entry for entry in git(root, "ls-files", "-v", "-z").split("\0")
+                   if entry and (entry[0].islower() or entry[0] == "S")]
     return {
         "revision": git(root, "rev-parse", "HEAD"),
         "tree": git(root, "rev-parse", "HEAD^{tree}"),
         # User Git settings must not hide inputs from qualification evidence.
-        "status": git(root, "status", "--porcelain", "--untracked-files=all",
+        "status": git(root, "-c", "core.fsmonitor=false", "status",
+                      "--porcelain", "--untracked-files=all",
                       "--ignore-submodules=none"),
+        "index_flags": index_flags,
     }
 
 
@@ -48,6 +54,9 @@ def qualify(root, out, command, binaries):
     before = source(root)
     if before["status"]:
         raise ValueError("qualification requires a clean worktree, including untracked files")
+    if before["index_flags"]:
+        raise ValueError("qualification requires tracked files without assume-unchanged "
+                         "or skip-worktree index flags")
     # Never overwrite evidence from an earlier run or turn a rerun into its pass.
     out.mkdir(parents=True, exist_ok=False)
     inputs = {str(path.resolve()): digest(path) for path in binaries}
