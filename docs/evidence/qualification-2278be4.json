@@ -1,0 +1,87 @@
+{
+  "artifact_hashes": {
+    "signed-upgrade/qualification/check.log": "f09d95c4a4e8ead067a294f8897838f5cbbf9b8ff6e779c3c6d2da2311a6beb6",
+    "signed-upgrade/qualification/evidence.json": "3c3ae2c91621bde1acefe8e676a02f74d4e1f5c2d96e83c4aae9448ece57fbf0",
+    "signed-upgrade/runs/settings.json": "70e4e601536c1ed1619df5a0365db6c7567064688a0ab373ed443695826c5eb0",
+    "signed-upgrade/runs/source-visibility.json": "14d9f81b4eceff1f7df57f3c9955bef88f7bd4f4f6d2c6d5330b5c4fb994b649",
+    "signed-upgrade/runs/summary.json": "bdecd10865786601f5c1684d15613cbc48e96042175f92024635f64bdbc20e4c",
+    "upgrade-after-volume.json": "7b8d62c74fd7bbc552474ee644c80b7c3e0584f2451006eceb37fde62bff4eab",
+    "volume-2278be4-report.md": "66e9e08027f942a195a36b6f577d447425e06063440b4d8e30fd13a5fe816bd5",
+    "volume-continuation.json": "5a72ac6d789c9d77a101347ba463f931ce949dab48145b0ed81ce7e2e7c84970"
+  },
+  "artifact_roots": [
+    "/workspace/scratch/celestia-week/full-campaign-2278be4-s211-b2000",
+    "/workspace/scratch/celestia-week/full-campaign-2278be4-s212-b700",
+    "/workspace/scratch/celestia-week/signed-upgrade-2278be4"
+  ],
+  "candidate": {
+    "revision": "2278be4e9e8aeb43a4bafb94ce37ce105184a498",
+    "status": "",
+    "tree": "d9ba98ded9da02e8face3913f014593b494dcd35"
+  },
+  "campaigns": [
+    {
+      "artifact_root": "/workspace/scratch/celestia-week/full-campaign-2278be4-s211-b2000",
+      "completed_cases": 84,
+      "elapsed_seconds": 10730,
+      "exit_code": 0,
+      "qualification_check_sha256": "7d0a666e862d5deabb2d2b5365d2b889bbb3b92d3f3e1d5d43c02c3dcc18de2d",
+      "qualification_evidence_sha256": "68a07e869137455f997731f1be8be52d076a75ba623ce0ff7d163998af0d6570"
+    },
+    {
+      "artifact_root": "/workspace/scratch/celestia-week/full-campaign-2278be4-s212-b700",
+      "elapsed_seconds": 3664,
+      "exit_code": 0,
+      "qualification_check_sha256": "235c3c105448d45b9947a996dfa6e0f736e8d033f5598ee4f424b28e6fc7e161",
+      "qualification_evidence_sha256": "1cc93fa786e4b69b0fd37b2d4b3e6a7316fec6f693289b16f73ae1337568f536"
+    }
+  ],
+  "inputs": {
+    "go_v10_binary_sha256": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+    "go_v10_build_receipt_sha256": "a29132111ee1695e6201adf1ed4a52cb811180b07bbd798e2c15e9681a16d9cb",
+    "go_v9_binary_sha256": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002",
+    "go_v9_build_receipt_sha256": "7e3f01d2ac23e6174645f0e9b009bbc6cb0a32d3142df902b7643ef3a36fe615",
+    "go_version": "go version go1.26.9 linux/amd64",
+    "rust_binary_sha256": "56a1f86ba3dbd92231e5eb6ca65338009b71da235c69301c00cac86644fda949",
+    "rustc_version": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "limitations": [
+    "Raw artifacts are retained in the local engineering workspace, not a public artifact archive.",
+    "The finalized-volume result is not a branch-coverage, scenario-completeness or three-night result.",
+    "The upgrade result uses bounded generated devnet state and does not replace a mainnet-shaped upgrade rehearsal.",
+    "The evidence applies only to this source revision and does not transfer to later commits.",
+    "The three-day mainnet soak, operational drills and determinism gates remain separate."
+  ],
+  "schema_version": 1,
+  "scope": "exact-candidate finalized transaction volume and bounded signed devnet upgrades; no general mainnet recommendation claim",
+  "signed_upgrades": {
+    "blocks": 12000,
+    "delivered": 42790,
+    "delivered_ok": 21363,
+    "exit_code": 0,
+    "ism_runs": {
+      "merkle-root": 25,
+      "message-id": 25
+    },
+    "log_only_differences": 1073,
+    "mismatches": 0,
+    "runs": 50,
+    "signed_v9_paths_required_each_run": true,
+    "source_visibility": {
+      "hidden_root_index_entries_after": [],
+      "hidden_root_index_entries_before": [],
+      "status_with_fsmonitor_disabled_after": "",
+      "status_with_fsmonitor_disabled_before": ""
+    },
+    "status": "passed"
+  },
+  "volume": {
+    "complete_unique_runs": 164,
+    "excluded": {
+      "incomplete_block_count": 4
+    },
+    "finalized_transactions": 1065635,
+    "go_code_0": 352316,
+    "status": "finalized-volume target reached; other F1 gates remain open"
+  }
+}
