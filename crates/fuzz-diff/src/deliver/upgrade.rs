@@ -138,8 +138,10 @@ const V9_ROUTERS: &[(u32, &str)] = &[
 #[allow(clippy::struct_field_names)]
 pub(super) struct Upgrade {
     pub on: bool,
-    /// Generated block from which the held validator txs are sent.
+    /// Driver block from which the held validator txs are sent.
     pub signal_at: usize,
+    /// Non-bootstrap generated blocks reserved for isolated setup.
+    pub paused_blocks: usize,
     /// The scenario validator's recorded signal txs not yet finalized.
     pub held: Vec<Vec<u8>>,
     /// Upgrade height once the signal module holds a pending upgrade.
@@ -181,6 +183,13 @@ fn random_account(gn: &mut Gen, reserve_hl: bool) -> usize {
 }
 
 impl Upgrade {
+    /// Keep one-shot v9 setup and the held signal on a clock that stops while
+    /// unrelated traffic is excluded. Bootstrap was already excluded from txs.
+    pub fn block_index(&mut self, generated: usize, isolated: bool, bootstrap: bool) -> usize {
+        self.paused_blocks += usize::from(isolated && !bootstrap);
+        generated.saturating_sub(self.paused_blocks)
+    }
+
     /// The phase of `height` (volumes are counted per phase).
     pub fn phase(&self, height: i64, app_version: u64) -> String {
         if let Some(h) = self.upgrade_height {
@@ -1035,6 +1044,48 @@ impl Upgrade {
                 u.app_version, u.upgrade_height
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::Upgrade;
+
+    #[test]
+    fn isolated_setup_preserves_one_shot_windows_and_signal_delay() {
+        let mut driver = Upgrade {
+            signal_at: 37,
+            ..Upgrade::default()
+        };
+        let calls: Vec<_> = (0..60)
+            .filter_map(|generated| {
+                let isolated = generated < 17;
+                let bootstrap = generated == 0;
+                let index = driver.block_index(generated, isolated, bootstrap);
+                (!isolated && !bootstrap).then_some((generated, index))
+            })
+            .collect();
+        assert_eq!(
+            calls.iter().take(12).map(|(_, b)| *b).collect::<Vec<_>>(),
+            (1..=12).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            calls.iter().find(|(_, b)| *b >= driver.signal_at),
+            Some(&(53, 37))
+        );
+        assert_eq!(driver.paused_blocks, 16);
+    }
+
+    #[test]
+    fn ordinary_upgrade_clock_is_unchanged() {
+        let mut driver = Upgrade::default();
+        for generated in 0..60 {
+            assert_eq!(
+                driver.block_index(generated, false, generated == 0),
+                generated
+            );
+        }
+        assert_eq!(driver.paused_blocks, 0);
     }
 }
 

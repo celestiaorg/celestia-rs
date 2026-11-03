@@ -116,3 +116,8 @@ v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_
 # scripted account sequence. Merkle-root synthetic delivery then succeeded only
 # after the binary switch, while whole-run counters hid the missing v9 path.
 v9-upgrade 100 6 930002 GO_APPD_NEXT=v10 DELIVER_UPGRADE=12 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1
+# Nightly upgrade-1of2 seed 25407: unrelated governance starved the larger
+# signed synthetic transfer (300 blocks, zero splits, missing v9 coverage).
+# Reserve mandatory signed setup while preserving the upgrade driver's clock;
+# both incoming paths must finalize at v9 before normal traffic resumes.
+v9-upgrade 300 6 25407 GO_APPD_NEXT=v10 DELIVER_UPGRADE=37 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_IBC=1 DELIVER_WIRE=1

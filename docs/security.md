@@ -396,11 +396,18 @@ campaign runs all three modes for each Hyperlane/zkism scenario, both with
 ordinary generation and with `DELIVER_GOVPASS` enabled, and distributes
 its twelve distinct upgrade seeds across all three modes. These selections
 are retained in each run's `.env`. In a signed `DELIVER_UPGRADE` run, the
-harness reserves the scripted Hyperlane account from unrelated traffic and
-holds the upgrade signal until both incoming paths have succeeded at v9. The
-version-scoped counters fail the run if either pre-switch path is missing;
-post-switch counters remain separate evidence. Unrelated traffic continues on
-other accounts, preserving the upgrade driver's IBC and fuzzing schedule.
+harness reserves a setup phase until both incoming paths have succeeded at v9.
+Unrelated traffic waits: parameter-changing governance can otherwise reduce
+proposal capacity and starve the larger Merkle-root transfer even with the
+scripted account reserved. Both Go and Rust still validate every proposal;
+the setup does not bypass their capacity limits. `hl_preupgrade_blocks` in
+`DELIVER_STATS` records this phase, within the requested generated-block budget.
+The upgrade driver's logical block counter pauses during isolated setup
+(including rejection setup), preserving its one-shot validator, vesting and
+grant windows and delaying `DELIVER_UPGRADE` consistently. Physical chain
+heights still govern upgrade handling. Normal IBC and fuzz traffic resumes
+after setup. The version-scoped counters fail the run if either pre-switch
+path is missing; post-switch counters remain separate evidence.
 Budget-skipped campaign cases still make the campaign fail.
 The existing duplicate-error-receipt governance fixture pins the original
 state timeline and sets
