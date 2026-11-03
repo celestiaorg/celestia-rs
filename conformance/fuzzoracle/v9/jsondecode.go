@@ -37,8 +37,8 @@ import (
 //	            "not_forward" | "nil_forward" |
 //	            "forward <receiver> <port> <channel> <timeout> <retries|-> <json.Marshal(next)|-|err>"
 //	json_pfm_ack  Same decode/classification, then ForwardMetadata.Validate;
-//	              "valid" or hex PFM validation-error ACK and acknowledgement commitment.
-//	              Validation errors are output bytes, so they ARE compared.
+//	              "valid" or hex PFM parse/validation-error ACK and acknowledgement commitment.
+//	              Rejected metadata errors are output bytes, so they ARE compared.
 //
 //	json_pfm_next  PFM keeper retry: json.Unmarshal(memo, metadata.Next) and
 //	            json.Marshal(metadata.Next)
@@ -91,6 +91,9 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		}
 		m := &pfmtypes.PacketMetadata{}
 		if err := json.Unmarshal(input, m); err != nil {
+			if op == "json_pfm_ack" {
+				return rejectedPFMMetadataAck(input)
+			}
 			return fail(err)
 		}
 		if m.Forward == nil {
@@ -101,18 +104,7 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		if op == "json_pfm_ack" {
 			o.Ok = true
 			if err := f.Validate(); err != nil {
-				// Validation errors return before keeper/transfer access. Invoke
-				// the real callback, including PFM's private ACK constructor.
-				ctx := sdk.Context{}.WithContext(context.Background()).WithLogger(log.NewNopLogger())
-				im := pfm.NewIBCMiddleware(nil, &pfmkeeper.Keeper{}, 0, 0)
-				data := transfertypes.FungibleTokenPacketData{
-					Denom: "uatom", Amount: "1", Sender: "remote", Receiver: "pfm", Memo: string(input),
-				}
-				ack := im.OnRecvPacket(ctx, channeltypes.Packet{
-					SourcePort: "transfer", SourceChannel: "channel-0",
-					DestinationPort: "transfer", DestinationChannel: "channel-1", Data: data.GetBytes(),
-				}, nil)
-				o.Out = hex.EncodeToString(ack.Acknowledgement()) + " " + hex.EncodeToString(channeltypes.CommitAcknowledgement(ack.Acknowledgement()))
+				return rejectedPFMMetadataAck(input)
 			} else {
 				o.Out = "valid"
 			}
@@ -235,4 +227,14 @@ func validateBasic(m sdk.Msg) (res string) {
 	}
 	cs, code, _ := errorsmod.ABCIInfo(err, false)
 	return fmt.Sprintf("|vb:%s/%d", cs, code)
+}
+
+// Call only after the two-phase decode proves a parse rejection, or after
+// ForwardMetadata.Validate rejects. Both return before keeper/transfer access.
+func rejectedPFMMetadataAck(input []byte) out {
+	ctx := sdk.Context{}.WithContext(context.Background()).WithLogger(log.NewNopLogger())
+	im := pfm.NewIBCMiddleware(nil, &pfmkeeper.Keeper{}, 0, 0)
+	data := transfertypes.FungibleTokenPacketData{Denom: "uatom", Amount: "1", Sender: "remote", Receiver: "pfm", Memo: string(input)}
+	ack := im.OnRecvPacket(ctx, channeltypes.Packet{SourcePort: "transfer", SourceChannel: "channel-0", DestinationPort: "transfer", DestinationChannel: "channel-1", Data: data.GetBytes()}, nil)
+	return out{Ok: true, Out: hex.EncodeToString(ack.Acknowledgement()) + " " + hex.EncodeToString(channeltypes.CommitAcknowledgement(ack.Acknowledgement()))}
 }
