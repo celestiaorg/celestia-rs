@@ -141,6 +141,10 @@ pub struct Stats {
     /// Go's results of finalized txs by first message type and
     /// `codespace/code`.
     pub codes: BTreeMap<String, u64>,
+    /// Top-level handler failures identified by Go's outer SDK message index.
+    pub handler_errors: BTreeMap<String, u64>,
+    /// Finalized failures without a usable SDK handler index (not necessarily ante).
+    pub unattributed_errors: BTreeMap<String, u64>,
     /// Consensus disagreements (app hash, tx result code / data / gas,
     /// validator / param updates, `CheckTx` code / gas, proposals).
     pub mismatches: Vec<String>,
@@ -3772,6 +3776,43 @@ fn executed_type_urls(app_version: u64, tx: &[u8]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Go's runMsgs adds this prefix only when a message-service handler returns
+/// an error. Do not infer a handler from the transaction's first message or
+/// search user-controlled inner error text for another index.
+fn failing_handler_type(app_version: u64, tx: &[u8], log: &str) -> Option<String> {
+    let rest = log.strip_prefix("failed to execute message; message index: ")?;
+    let (index, _) = rest.split_once(": ")?;
+    if index.is_empty() || !index.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let index = index.parse::<usize>().ok()?;
+    let tx = txdecode::decode_for(app_version, tx).ok()?;
+    tx.body
+        .messages
+        .get(index)
+        .map(|message| message.type_url.clone())
+}
+
+fn observe_handler_error(
+    stats: &mut Stats,
+    app_version: u64,
+    tx: &[u8],
+    result: &abci::ExecTxResult,
+) {
+    if result.code == 0 {
+        return;
+    }
+    let code = format!("{}/{}", result.codespace, result.code);
+    if let Some(kind) = failing_handler_type(app_version, tx, &result.log) {
+        *stats
+            .handler_errors
+            .entry(format!("{kind} {code}"))
+            .or_default() += 1;
+    } else {
+        *stats.unattributed_errors.entry(code).or_default() += 1;
+    }
+}
+
 fn message_type_urls(messages: &[Any], proposal_contents: bool) -> Vec<String> {
     let mut out = Vec::new();
     for a in messages {
@@ -5241,6 +5282,7 @@ pub fn run(
                 gn.gas_seen.insert(u, res.gas_used.unsigned_abs());
             }
             if res.code != 0 {
+                observe_handler_error(&mut stats, app_version, t, res);
                 let first = type_urls(app_version, t)
                     .into_iter()
                     .next()
@@ -6932,6 +6974,68 @@ pub fn coverage() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn handler_errors_use_outer_top_level_index_and_retain_unattributed_failures() {
+        let inner = Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend::default());
+        let exec = Any::pack(&celestia_proto::cosmos::authz::v1beta1::MsgExec {
+            msgs: vec![inner],
+            ..Default::default()
+        });
+        let delegate = Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate::default());
+        let body = TxBody {
+            messages: vec![exec, delegate.clone()],
+            ..Default::default()
+        };
+        let tx = wire_tx(&body.encode_to_vec(), &[]);
+        for version in [9, 10] {
+            let mut stats = Stats::default();
+            let failure = |log: &str| abci::ExecTxResult {
+                code: 2,
+                codespace: "staking".into(),
+                log: log.into(),
+                ..Default::default()
+            };
+            observe_handler_error(
+                &mut stats,
+                version,
+                &tx,
+                &failure(
+                    "failed to execute message; message index: 1: inner: failed to execute message; message index: 0: detail",
+                ),
+            );
+            assert_eq!(
+                stats.handler_errors,
+                BTreeMap::from([(format!("{} staking/2", delegate.type_url), 1)])
+            );
+            for log in [
+                "signature verification failed",
+                "user text: failed to execute message; message index: 0: detail",
+                "failed to execute message; message index: 2: outside tx",
+                "failed to execute message; message index: -1: negative",
+                "failed to execute message; message index: +1: non-SDK syntax",
+                "failed to execute message; message index: : empty",
+                "failed to execute message; message index: 999999999999999999999999999: overflow",
+                "recovered: panic",
+            ] {
+                observe_handler_error(&mut stats, version, &tx, &failure(log));
+            }
+            observe_handler_error(
+                &mut stats,
+                version,
+                &[0xff],
+                &failure("failed to execute message; message index: 0: undecodable tx"),
+            );
+            observe_handler_error(&mut stats, version, &tx, &abci::ExecTxResult::default());
+            assert_eq!(stats.handler_errors.len(), 1);
+            assert_eq!(stats.unattributed_errors["staking/2"], 9);
+            assert_eq!(
+                stats.handler_errors.values().sum::<u64>()
+                    + stats.unattributed_errors.values().sum::<u64>(),
+                10
+            );
+        }
+    }
 
     #[test]
     fn rejection_coverage_requires_a_complete_ordered_same_message_pair() {
