@@ -17,6 +17,37 @@ use x_auth::Account;
 
 const STORES: &[&str] = &["acc", "bank", "minfee", "blob", "circuit", "feegrant"];
 
+#[test]
+fn expired_feegrant_does_not_hide_revoke_out_of_gas() {
+    use celestia_proto::cosmos::feegrant::v1beta1::BasicAllowance;
+    let mut ms = setup();
+    let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+    let (sponsor, payer) = ([1u8; 20], [2u8; 20]);
+    let allowance = x_feegrant::Allowance::Basic(BasicAllowance {
+        spend_limit: vec![],
+        expiration: Some(pbjson_types::Timestamp {
+            seconds: 1,
+            nanos: 0,
+        }),
+    });
+    x_feegrant::grant_allowance(&mut ctx, &sponsor, &payer, &allowance, None).unwrap();
+    ctx.header.time.seconds = 2;
+    ctx.gas = kvstore::GasMeter::infinite();
+    x_feegrant::get_allowance(&mut ctx, &sponsor, &payer).unwrap();
+    // Enough gas for the initial grant read, but not revoke's second read.
+    ctx.gas = kvstore::GasMeter::new(ctx.gas.consumed());
+    let error = x_feegrant::use_granted_fees(
+        &mut ctx,
+        &sponsor,
+        &payer,
+        &sdk::coins::Coins::default(),
+        &[],
+    )
+    .unwrap_err();
+    assert_eq!((error.codespace, error.code), ("sdk", 11));
+    assert_eq!(ctx.gas.first_out_of_gas().unwrap().0, "ReadFlat");
+}
+
 fn setup() -> MultiStore {
     let mut ms = MultiStore::new();
     for s in STORES {

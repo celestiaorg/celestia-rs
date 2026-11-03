@@ -89,6 +89,10 @@ struct Vector {
     mode: String,
     simulate: bool,
     height: i64,
+    #[serde(default)]
+    time_seconds: i64,
+    #[serde(default)]
+    time_nanos: i32,
     chain_id: String,
     max_gas: i64,
     node_min_gas_price: String,
@@ -190,6 +194,10 @@ fn run_vector(base: &[Kv], v: &Vector) -> Result<(), String> {
     let header = Header {
         chain_id: v.chain_id.clone(),
         height: v.height,
+        time: pbjson_types::Timestamp {
+            seconds: v.time_seconds,
+            nanos: v.time_nanos,
+        },
         ..Default::default()
     };
     let deps = StoreDeps::new(if v.node_min_gas_price.is_empty() {

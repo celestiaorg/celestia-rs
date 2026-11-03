@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/x/feegrant"
 	blobtypes "github.com/celestiaorg/celestia-app/v10/x/blob/types"
 	fibretypes "github.com/celestiaorg/celestia-app/v10/x/fibre/types"
@@ -53,6 +54,75 @@ var scenarios = []scenario{
 	{"celestia", scenarioCelestia},
 	{"fuzz", scenarioFuzz},
 	{"fee-boundaries", scenarioFeeBoundaries},
+	{"feegrant-revoke-gas", scenarioFeegrantRevokeGas},
+}
+
+// An expired allowance's Accept asks the keeper to revoke it before returning
+// the expiry error. Ordinary revoke errors are ignored; a store gas panic is
+// not. Retain that distinction through the full ante handler's recovery.
+func scenarioFeegrantRevokeGas(g *gen) {
+	g.setupBase()
+	granter, grantee := acc.a[1], acc.a[0]
+	exp := g.header(10).Time.Add(-time.Second)
+	for _, kind := range []string{"basic", "periodic"} {
+		setup := func(ctx sdk.Context) {
+			basic := feegrant.BasicAllowance{SpendLimit: utia(1_000_000), Expiration: &exp}
+			var allowance feegrant.FeeAllowanceI = &basic
+			if kind == "periodic" {
+				allowance = &feegrant.PeriodicAllowance{Basic: basic, Period: time.Hour,
+					PeriodSpendLimit: utia(100_000), PeriodCanSpend: utia(100_000), PeriodReset: exp}
+			}
+			// Grant at an earlier time, then exercise it after expiration without
+			// EndBlock pruning (also reachable with a pruning backlog).
+			if err := g.app.FeeGrantKeeper.GrantAllowance(ctx.WithBlockTime(exp.Add(-time.Second)), granter.addr, grantee.addr, allowance); err != nil {
+				panic(err)
+			}
+		}
+		// Measure one grant read so log assertions below distinguish revoke's
+		// second read from the initial allowance lookup and earlier ante reads.
+		probeStore := g.base.CacheMultiStore()
+		setup(g.setupCtx(probeStore))
+		readCtx := g.setupCtx(probeStore).WithGasMeter(storetypes.NewInfiniteGasMeter())
+		if _, err := g.app.FeeGrantKeeper.GetAllowance(readCtx, granter.addr, grantee.addr); err != nil {
+			panic(err)
+		}
+		readGas := readCtx.GasMeter().GasConsumed()
+		for _, mode := range []modeSpec{finalize, {mode: "check", minGas: "0"}, {mode: "recheck"}} {
+			s := one(grantee, 0, send(grantee, 10))
+			s.granter = granter.addr.String()
+			s.gas = 100_000
+			prefix := kind + "/" + mode.mode
+			g.add(prefix+"/expired", mode, s, setup)
+			control := g.vectors[len(g.vectors)-1].Expect
+			if control.Codespace != "feegrant" || control.Code != 3 {
+				panic(fmt.Sprintf("%s did not reach expired allowance: %+v", prefix, control))
+			}
+			used := control.GasUsed
+			revokeStart := used - 2*storetypes.KVGasConfig().DeleteCost - readGas
+			start := len(g.vectors)
+			for limit := uint64(1); limit < used; limit += max(1, used/64) {
+				s.gas = limit
+				g.add(fmt.Sprintf("%s/gas-%d", prefix, limit), mode, s, setup)
+			}
+			for _, limit := range []uint64{used - 1, used, used + 1} {
+				s.gas = limit
+				g.add(fmt.Sprintf("%s/boundary-%d", prefix, limit), mode, s, setup)
+			}
+			for _, location := range []string{"ReadFlat", "ReadPerByte", "Delete"} {
+				reached := false
+				for _, v := range g.vectors[start:] {
+					e := v.Expect
+					if e.Codespace == "sdk" && e.Code == 11 && e.GasUsed > revokeStart &&
+						strings.Contains(e.Log, "location: "+location+";") {
+						reached = true
+					}
+				}
+				if !reached {
+					panic(prefix + " did not exhaust gas during revoke " + location)
+				}
+			}
+		}
+	}
 }
 
 // Reach fee arithmetic and telemetry before balance deduction. These amounts

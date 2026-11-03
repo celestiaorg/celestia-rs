@@ -67,12 +67,14 @@ type Expect struct {
 
 // Vector is one ante invocation.
 type Vector struct {
-	AppVersion uint64 `json:"app_version,omitempty"`
-	Name       string `json:"name"`
-	Mode       string `json:"mode"`
-	Simulate   bool   `json:"simulate"`
-	Height     int64  `json:"height"`
-	ChainID    string `json:"chain_id"`
+	AppVersion  uint64 `json:"app_version,omitempty"`
+	Name        string `json:"name"`
+	Mode        string `json:"mode"`
+	Simulate    bool   `json:"simulate"`
+	Height      int64  `json:"height"`
+	TimeSeconds int64  `json:"time_seconds,omitempty"`
+	TimeNanos   int32  `json:"time_nanos,omitempty"`
+	ChainID     string `json:"chain_id"`
 	// MaxGas of the block consensus params.
 	MaxGas int64 `json:"max_gas"`
 	// NodeMinGasPrice is the utia node min gas price ("" = none configured).
@@ -303,6 +305,8 @@ func (g *gen) run(s runSpec) {
 		Mode:            s.mode,
 		Simulate:        s.simulate,
 		Height:          s.height,
+		TimeSeconds:     hdr.Time.Unix(),
+		TimeNanos:       int32(hdr.Time.Nanosecond()),
 		ChainID:         chainID,
 		MaxGas:          s.maxGas,
 		NodeMinGasPrice: s.nodeMinGasPrice,
