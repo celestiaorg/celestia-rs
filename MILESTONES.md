@@ -877,6 +877,13 @@ test), then start that harness's count again.
   Rust code against the Go sources it ports (ante chain, square /
   proposal code, msg handlers of every module, IBC core, the upgrade
   handler), with findings fixed or recorded in `docs/security.md`.
+  *Partial source review (2026-11-03):* the
+  [bounded review ledger](docs/reviews/2026-11-03-source-review.md) records
+  selected feegrant, staking and consensus/local-signing inspections by a
+  separate agent, including exact source hashes, inspected test sources and
+  exclusions. No additional concrete discrepancy was established within those
+  scopes. This is partial source review, not completion of F1.12 or additional
+  runtime crash qualification.
 
 ### Carried over from completed milestones
 

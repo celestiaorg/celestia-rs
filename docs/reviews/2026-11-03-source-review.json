@@ -1,0 +1,147 @@
+{
+  "date_utc": "2026-11-03",
+  "limitations": [
+    "Source review only; no new test execution, process-crash, power-loss or live-mainnet evidence.",
+    "Function scope, exclusions and inspected test-source names are in the companion Markdown.",
+    "Older audit revisions retain their identity; matching listed file hashes is not qualification transfer for the entire candidate.",
+    "Go tags identify compatibility source targets, not fresh deployed-mainnet binary versions."
+  ],
+  "recorded_revision": "d37f1a66216609d1de50400fff6ec61d75ed49eb",
+  "reviewer": "separate review_signer agent; did not write this port or modify code during these reviews",
+  "reviews": [
+    {
+      "coverage": "selected functions/regions described in companion Markdown; a whole-file hash does not imply whole-file review",
+      "go_references": [
+        {
+          "commit": "7828a002440069cbc795c0fba618f4f61c1a2773",
+          "files": {
+            "basic_fee.go": "8e7af2294731e4d22c583a46efd61802efb8f0562ad499f8218e8d5d15d2f957",
+            "filtered_fee.go": "9f8fd9e9dff081ecf1b85e72daf221471b62ba5b47e7db55446c2d0db86b1d79",
+            "keeper/keeper.go": "1b4e0e139f237adb5c33b329844971134e7924e296e662148bd3093069eb22e8",
+            "periodic_fee.go": "6568e501663b0e4743b689186fba1d7a4f94692ae07e7c2493f983ad2b723cc5"
+          },
+          "module": "cosmossdk.io/x/feegrant",
+          "version": "v0.1.1"
+        },
+        {
+          "commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+          "files": {
+            "types/coin.go": "6d2eac3f9efa9194fff8366d8b6dad39119789352b9304f42e39c6393af3b75b"
+          },
+          "module": "github.com/celestiaorg/cosmos-sdk",
+          "version": "v0.52.12"
+        }
+      ],
+      "id": "feegrant",
+      "new_runtime_checks_executed": false,
+      "outcome": "No additional concrete discrepancy established within listed scope.",
+      "rust_audit_revision": "5641e7d3837630e5899ba9d7e81ec372883d3cbd",
+      "rust_files": {
+        "crates/tier-3-app-modules/x/feegrant/src/allowance.rs": {
+          "sha256": "08eded5ca08cb92795a774e07d134f4f0539a27def70aa27e62cc6027b8577a5",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/feegrant/src/lib.rs": {
+          "sha256": "cd939621200cbd41eed2ff36ddf88f7cf5cfef2ade58083cb4b879bf8f119a22",
+          "unchanged_at_recorded_revision": true
+        }
+      }
+    },
+    {
+      "coverage": "selected functions/regions described in companion Markdown; a whole-file hash does not imply whole-file review",
+      "go_references": [
+        {
+          "commit": "2dd23a60cf34c3ab90c8a4f15a7f35d9b2ac69b4",
+          "files": {
+            "x/staking/keeper/delegation.go": "57e5216a617cf88895b59923192458f0b1bd9f584b221f8de350e7171c44081d",
+            "x/staking/keeper/msg_server.go": "77e4d5d3e2d89e50e6de71fac08b3671236f98912e1a324f3a6d17a0686bb3df",
+            "x/staking/keeper/slash.go": "500c7254afba9e56381cc90cae2ba4cc23b1bce093c793e34992013aa145f677",
+            "x/staking/keeper/unbonding.go": "a7d6fbb3c90d9887f9c3a6c302576a7998c042c62e81c335f09db5be131f2920",
+            "x/staking/types/delegation.go": "42972d2b9d62bd5b57b955e3878b35d1b26bd8e81d08e386f5f022c7791bedfd"
+          },
+          "module": "github.com/celestiaorg/cosmos-sdk",
+          "version": "v0.52.12"
+        },
+        {
+          "commit": "87a6e78fe762129fa05e9f8357c87cb2a085d2d4",
+          "files": {
+            "x/staking/keeper/slash.go": "500c7254afba9e56381cc90cae2ba4cc23b1bce093c793e34992013aa145f677"
+          },
+          "module": "github.com/celestiaorg/cosmos-sdk",
+          "version": "v0.52.8"
+        }
+      ],
+      "id": "staking",
+      "new_runtime_checks_executed": false,
+      "outcome": "No additional concrete discrepancy established within listed scope.",
+      "rust_audit_revision": "d37f1a66216609d1de50400fff6ec61d75ed49eb",
+      "rust_files": {
+        "crates/tier-3-app-modules/x/staking/src/delegation.rs": {
+          "sha256": "28d43219a50f390f2fcbd50d1128e70ed251e2909db7faf2ce5203ef7ac7d9b9",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/staking/src/msgs.rs": {
+          "sha256": "cb18e327e41f3527d19b78f4f4214cc3e5462f8f20f6385880f7d876973de882",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/staking/src/slash.rs": {
+          "sha256": "dbfcd005b1f3e276130a505dbfc460304325b9c0b5ac7dd0479409e710955923",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/staking/src/store.rs": {
+          "sha256": "9a978e12fc809c1ac51091c5042bc8a3a03f1d21fc302fd3fd9a980a5b8fdd24",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/staking/src/tests.rs": {
+          "sha256": "db86dd959b86c2c4e1cd7ddb12378c21f3415ea3072049c493b4efceafa2888f",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-3-app-modules/x/staking/src/types.rs": {
+          "sha256": "ef6bfeac590ea11927e8721fc4e915865db40b9752a362dd04c63cec6e73e85e",
+          "unchanged_at_recorded_revision": true
+        }
+      }
+    },
+    {
+      "coverage": "selected functions/regions described in companion Markdown; a whole-file hash does not imply whole-file review",
+      "go_references": [
+        {
+          "commit": "a5537d84a008d566abc503d2ea41e30f2301403d",
+          "files": {
+            "consensus/state.go": "98da6dfce64407fc36268353c7e34e6c82d0d8f2f8da48659706a9df1203551c"
+          },
+          "module": "github.com/celestiaorg/celestia-core",
+          "version": "v0.42.3"
+        }
+      ],
+      "id": "consensus-privval",
+      "new_runtime_checks_executed": false,
+      "outcome": "No additional concrete discrepancy established within listed scope.",
+      "rust_audit_revision": "5a22054579a1a152cf36028b9e6dd0ba8e11908c",
+      "rust_files": {
+        "crates/tier-4-runtime/consensus/src/service.rs": {
+          "sha256": "0d3d1c6d6af332c3f839be7c53c8e079aca2c41ca02abc94971fe6fead2e5216",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-4-runtime/consensus/src/state.rs": {
+          "sha256": "3ded2b4d80a59726d3761918b6058c29cb6bbe1cb858b41c637b52e8f57564b7",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-4-runtime/consensus/tests/sim.rs": {
+          "sha256": "95af937f3b2e308ee6156a09a9285bb2d4233c28ca8e2db5ca83ccbd1f7052c3",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-4-runtime/privval/src/lib.rs": {
+          "sha256": "3eb2223506fb35e5a77681255815815ab7a5b7187a1279e3b0c70140e895680a",
+          "unchanged_at_recorded_revision": true
+        },
+        "crates/tier-4-runtime/privval/src/tests.rs": {
+          "sha256": "aa1a514044583ddaf96516dc9be6885f1d858fd7e0d2141be5544d43869de9f1",
+          "unchanged_at_recorded_revision": true
+        }
+      }
+    }
+  ],
+  "schema_version": 1,
+  "status": "partial F1.12 source-review evidence; F1.12 remains open"
+}
