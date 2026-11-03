@@ -4711,6 +4711,7 @@ pub fn run(
                         .type_required
                         .iter()
                         .any(|url| url == "/cosmos.gov.v1beta1.MsgDeposit")
+                        && let Some(amount) = legacy_deposit_amount(&mut rust, id)
                     {
                         // Exercise the legacy deposit message against the
                         // same active v1 proposal. Legacy proposal submission
@@ -4722,10 +4723,7 @@ pub fn run(
                             Any::pack(&celestia_proto::cosmos::gov::v1beta1::MsgDeposit {
                                 proposal_id: id,
                                 depositor: gn.accts[0].acc.clone(),
-                                amount: vec![Coin {
-                                    denom: "utia".into(),
-                                    amount: "60000000".into(),
-                                }],
+                                amount,
                             });
                         if let Some(t) = sign_simple(&gn, 0, vec![legacy_deposit], 600_000) {
                             gn.accts[0].seq += 1;
@@ -5564,6 +5562,32 @@ fn query_app<R: prost::Message + Default>(
     (r.code == 0)
         .then(|| R::decode(r.value.as_slice()).ok())
         .flatten()
+}
+
+/// Use the current proposal minimum instead of a fixed denom/amount. The final
+/// Go-success requirement still catches parameter states that reject deposits.
+fn legacy_deposit_amount(rust: &mut app::App, id: u64) -> Option<Vec<Coin>> {
+    use celestia_proto::cosmos::gov::v1 as gov;
+    let params = query_app::<gov::QueryParamsResponse>(
+        rust,
+        "/cosmos.gov.v1.Query/Params",
+        &gov::QueryParamsRequest {
+            params_type: "deposit".into(),
+        },
+    )?
+    .params?;
+    let proposal = query_app::<gov::QueryProposalResponse>(
+        rust,
+        "/cosmos.gov.v1.Query/Proposal",
+        &gov::QueryProposalRequest { proposal_id: id },
+    )?
+    .proposal?;
+    let amount = if proposal.expedited {
+        params.expedited_min_deposit
+    } else {
+        params.min_deposit
+    };
+    (!amount.is_empty()).then_some(amount)
 }
 
 /// A proposal message whose failure text is deterministic in Go: gov

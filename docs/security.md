@@ -436,8 +436,13 @@ handler under test.
 GOVPASS runs that require legacy deposit coverage deposit through both the current
 `cosmos.gov.v1.MsgDeposit` and legacy `cosmos.gov.v1beta1.MsgDeposit` handlers
 against known v1 proposals. Celestia's empty legacy proposal router prevents a
-valid legacy proposal submission, but the legacy deposit handler remains
-reachable on current proposals. The extra legacy traffic is opt-in so existing
+valid legacy proposal submission; it does not make the legacy deposit handler
+unreachable. Required legacy deposits use the proposal's current normal or
+expedited minimum coin set, queried with current governance params. A fixed
+60 million utia was below the 100 million per-deposit threshold in many
+scenarios, producing matching rejections instead of successful coverage.
+The required-type assertion remains in force if queries fail or no deposit
+succeeds. The extra legacy traffic is opt-in so existing
 fixed-seed GOVPASS findings retain their transaction schedule.
 `DELIVER_TYPE_REQUIRE` accepts comma-separated
 exact top-level message URLs and fails unless Go successfully finalizes each
