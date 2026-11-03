@@ -14,6 +14,10 @@
       "mismatches": 0
     },
     "deliver_runs": 57,
+    "diagnostic_text_differences": {
+      "error-text-only": 5863,
+      "log-only": 115035
+    },
     "failed_cases": [],
     "handler_errors": "not measured: source predates PR256",
     "llvm_summary_branches": {

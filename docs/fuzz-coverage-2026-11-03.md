@@ -1,7 +1,10 @@
 # Differential branch profile, 2026-11-03
 
 A bounded full profile on **`5a22054579a1a152cf36028b9e6dd0ba8e11908c`**
-completed all 179 selected cases with zero differential mismatches. The exact
+completed all 179 selected cases with zero differential mismatches. This excludes
+separately retained log-only and error-text-only differences (115,035 and 5,863
+respectively across case summaries); the run does not establish exact text parity.
+The exact
 candidate wrapper recorded a clean identical tree before and after the run
 (`062f4f0fef91e28e7933beeca51fc460e394d8fd`), unchanged Go binary hashes and
 exit status 0. This is one completed check, not mainnet recommendation or
