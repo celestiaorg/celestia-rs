@@ -99,6 +99,28 @@ class NightlyFlagsTest(unittest.TestCase):
             for wire in (False, True) for sweep in (False, True)
         })
 
+    def test_message_type_url_does_not_create_artifact_subdirectories(self):
+        script = Path(__file__).resolve().parents[1] / "nightly.sh"
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "go").write_text("#!/bin/sh\nexit 0\n")
+            (root / "go").chmod(0o755)
+            result = subprocess.run(
+                ["bash", str(script), "deliver-0of1", "7", str(root / "findings")],
+                env={**os.environ, "DEVNET_BIN": folder, "DRY_RUN": "1",
+                     "BUDGET_SECS": "5400", "BLOCKS": "300",
+                     "PATH": folder + os.pathsep + os.environ["PATH"]},
+                check=True, capture_output=True, text=True,
+            )
+        required = [line for line in result.stdout.splitlines()
+                    if line.startswith("RUN ") and "GOV_REQUIRE=" in line]
+        self.assertTrue(required)
+        for line in required:
+            name, command = line.removeprefix("RUN ").split(": ", 1)
+            self.assertNotIn("/", name)
+            self.assertIn("GOV_REQUIRE=%2Fibc.applications", name)
+            self.assertIn(f"DELIVER_GOV_REQUIRE={self.ICA_HOST_PARAMS}", command)
+
     def test_full_campaign_includes_each_mode_and_preserves_upgrade_seeds(self):
         runs = self.dry_runs("campaign-0of1", 7)
         scenarios = {"hyperlane", "zkism-forwarding", "v9-hyperlane",
