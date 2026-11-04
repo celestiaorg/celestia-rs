@@ -142,3 +142,8 @@ v9-authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boun
 # successes from satisfying the regression.
 authz-feegrant 21 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json
 v9-authz-feegrant 21 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries-v9.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json
+# Celestia App installs no evidence router. Require both the stored-evidence
+# rejection and the recovered nil-router panic for exact, well-formed signed
+# submissions; generic generated evidence failures cannot satisfy these cases.
+evidence 3 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-submit-boundaries.expected.json
+v9-authz-feegrant 2 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.expected.json

@@ -1,0 +1,8 @@
+[
+  {
+    "type_url": "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+    "codespace": "undefined",
+    "code": 111222,
+    "log_contains": "runtime error: invalid memory address or nil pointer dereference"
+  }
+]

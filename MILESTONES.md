@@ -388,6 +388,16 @@ test), then start that harness's count again.
   39/106 to 45/106. The scheduled full profile still needs to rerun on the
   merged candidate; undelegation, redelegation, cancel-unbonding, other
   per-error paths and the remaining uncovered-branch review stay open.
+  *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
+  the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
+  scenario replay and the recovered nil-router panic (`undefined/111222`)
+  for a new, basic-valid equivocation at both pinned app versions. The focused
+  v10 / v9 probes finalized 19 / 18 transactions with zero differential
+  mismatches. Adding only those two instrumented runs to the sealed 185-case
+  profile increased covered `x/evidence/src/lib.rs` branch arms from 21/46 to
+  29/46. These are the reachable terminal outcomes with Celestia App's nil
+  evidence router; they do not turn the app-impossible handler into a
+  successful-path target or complete the remaining per-error/branch review.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

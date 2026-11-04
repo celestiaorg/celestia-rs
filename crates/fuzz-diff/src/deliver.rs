@@ -7418,6 +7418,67 @@ mod tests {
         );
     }
 
+    #[test]
+    fn evidence_submit_script_pins_stored_and_nil_router_outcomes() {
+        use celestia_proto::cosmos::evidence::v1beta1::{Equivocation, MsgSubmitEvidence};
+        use prost::Name;
+
+        let v10 = read_script(
+            include_str!("../fixtures/evidence-submit-boundaries.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let v10_expected = script_expectations(include_str!(
+            "../fixtures/evidence-submit-boundaries.expected.json"
+        ))
+        .unwrap();
+        let v9 = read_script(
+            include_str!("../fixtures/evidence-submit-boundaries-v9.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let v9_expected = script_expectations(include_str!(
+            "../fixtures/evidence-submit-boundaries-v9.expected.json"
+        ))
+        .unwrap();
+        assert_eq!((v10.len(), v10_expected.len()), (2, 2));
+        assert_eq!((v9.len(), v9_expected.len()), (1, 1));
+        assert!(v10.iter().chain(&v9).all(|block| block.len() == 1));
+
+        let decode = |a: &Any| {
+            assert_eq!(a.type_url, MsgSubmitEvidence::type_url());
+            let msg = MsgSubmitEvidence::decode(a.value.as_slice()).unwrap();
+            assert_eq!(msg.submitter, accounts(1)[0].acc);
+            let evidence = msg.evidence.unwrap();
+            assert_eq!(evidence.type_url, Equivocation::type_url());
+            Equivocation::decode(evidence.value.as_slice()).unwrap()
+        };
+        let stored = decode(&v10[0][0].1);
+        assert_eq!((stored.height, stored.power), (19, 52));
+        assert_eq!(stored.time.unwrap().seconds, 1_791_962_284);
+        assert_eq!(
+            stored.consensus_address,
+            "celestiavalcons16ywnaneqxr8f84rg3acggyelrym93697hexncq"
+        );
+        let new_v10 = decode(&v10[1][0].1);
+        let new_v9 = decode(&v9[0][0].1);
+        assert_eq!(new_v10, new_v9);
+        assert_eq!((new_v10.height, new_v10.power), (1, 1));
+        assert_eq!(new_v10.time.unwrap().seconds, 2_000_000_000);
+
+        assert_eq!(
+            (v10_expected[0].codespace.as_str(), v10_expected[0].code),
+            ("evidence", 5)
+        );
+        for expected in [&v10_expected[1], &v9_expected[0]] {
+            assert_eq!(
+                (expected.codespace.as_str(), expected.code),
+                ("undefined", 111_222)
+            );
+            assert!(expected.log_contains.contains("nil pointer dereference"));
+        }
+    }
+
     use super::*;
 
     #[test]
