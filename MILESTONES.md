@@ -293,6 +293,17 @@ test), then start that harness's count again.
   scenarios intentionally stopped at the upgrade signal (167 finalized
   txs) and are excluded from the volume count as incomplete block runs.
   The volume and 3-night requirements remain open.
+  *Exact-candidate volume follow-up (2026-11-03):* clean candidate
+  `2278be4e9e8aeb43a4bafb94ce37ce105184a498` completed 164 unique runs
+  across every scheduled v9 and v10 scenario, including the three signed
+  Hyperlane modes and recorded upgrades. The qualified saturation report
+  counts 1,065,635 finalized transactions with zero consensus mismatches;
+  four deliberately short recorded-upgrade runs are excluded for incomplete
+  block counts. The [receipt](docs/evidence/qualification-2278be4.json)
+  pins the source tree, compiler and binary identities, qualification logs
+  and report hashes. This reaches the finalized-transaction count on that
+  candidate. Scenario/branch coverage and three consecutive scheduled
+  nights remain open, and the result does not transfer to later commits.
 
 - [ ] **F1.3 Measure coverage of consensus code.** The recorded-message
   inventory (`fuzz-diff coverage`) and instrumented campaigns below do
@@ -451,6 +462,15 @@ test), then start that harness's count again.
   bounded devnet evidence on that candidate. Mainnet-shaped rehearsal,
   coverage, saturation and observation-window requirements remain open;
   the evidence does not automatically transfer to later commits.
+  A later clean candidate,
+  `2278be4e9e8aeb43a4bafb94ce37ce105184a498`, repeated the same 50 signed
+  upgrades after its 1,065,635-transaction volume campaign: 25 runs per ISM,
+  12,000 generated blocks, 42,790 finalized transactions, 21,363 code 0 and
+  zero consensus mismatches. Qualification verified unchanged source and
+  input hashes, no hidden root index entries, and clean status with fsmonitor
+  disabled. The [combined receipt](docs/evidence/qualification-2278be4.json)
+  retains those checks. This remains bounded devnet evidence; the
+  mainnet-shaped upgrade rehearsal and other F1 gates remain open.
   Exit: `deliver` across the upgrade (Go v9.0.8 → v10.5.0, Rust in one
   process), with fuzzed state built before it (pending unbondings and
   redelegations, open proposals, grants, allowances, vesting, IBC
