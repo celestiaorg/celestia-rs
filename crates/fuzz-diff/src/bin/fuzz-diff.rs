@@ -653,6 +653,8 @@ fn main() -> anyhow::Result<()> {
             st.zero_threshold_multisig_required.is_some().into();
         deliver_stats["zero_threshold_multisig_completed"] =
             st.zero_threshold_multisig_completed.into();
+        deliver_stats["p256_required"] = st.p256_required.is_some().into();
+        deliver_stats["p256_completed"] = st.p256_completed.into();
         eprintln!("DELIVER_STATS {deliver_stats}");
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
@@ -678,6 +680,7 @@ fn main() -> anyhow::Result<()> {
         st.require_direct_aux_coverage()?;
         st.require_malformed_multisig_coverage()?;
         st.require_zero_threshold_multisig_coverage()?;
+        st.require_p256_coverage()?;
         st.require_evidence_coverage()?;
         st.require_script_coverage()?;
         st.require_ibc_coverage()?;
