@@ -99,6 +99,11 @@ for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting
   esac
   run "pp-$scen" GO_APPD="$A" -- crates/fuzz-diff/pp-diff.sh "$scen" 20 4
 done
+for scen in gov v9-gov; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "gov-abstain-$scen" GO_APPD="$A" DELIVER_GOVPASS=1 DELIVER_GOV_ABSTAIN_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 5
+done
 for s in 1 2 3 4; do
   run "upgrade-$s" GO_APPD="$V9" GO_APPD_NEXT="$V10" DELIVER_UPGRADE=$((10 + s * 5)) DELIVER_IBC=1 DELIVER_HL=1 \
     DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 -- crates/fuzz-diff/deliver-diff.sh v9-upgrade "$BLOCKS" 6 "$s"

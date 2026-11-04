@@ -623,6 +623,8 @@ fn main() -> anyhow::Result<()> {
                 "ibc": st.ibc,
                 "gov_failure_required": st.gov_failure_required,
                 "gov_failure_matches": st.gov_failure_matches,
+                "gov_abstain_required": st.gov_abstain_required.is_some(),
+                "gov_abstain_rejections": st.gov_abstain_rejections,
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
                 "hl_verified_versions": st.hl_verified_versions,
