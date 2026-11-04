@@ -150,7 +150,7 @@ done
 for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "p256-$scen" GO_APPD="$A" DELIVER_P256_REQUIRE=1 -- \
-    crates/fuzz-diff/deliver-diff.sh "$scen" 4 0 17372
+    crates/fuzz-diff/deliver-diff.sh "$scen" 7 0 17372
 done
 for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac

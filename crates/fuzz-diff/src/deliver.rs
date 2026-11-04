@@ -1632,8 +1632,8 @@ impl Stats {
     pub fn require_p256_coverage(&self) -> anyhow::Result<()> {
         if self.p256_required.is_some() {
             anyhow::ensure!(
-                self.p256_completed == 3,
-                "incomplete DELIVER_P256_REQUIRE coverage: expected three completed fixtures, observed {}",
+                self.p256_completed == 6,
+                "incomplete DELIVER_P256_REQUIRE coverage: expected six completed fixtures, observed {}",
                 self.p256_completed
             );
         }
@@ -4430,9 +4430,9 @@ pub fn run(
                 && evidence_requirement.is_none()
                 && std::env::var_os("DELIVER_UPGRADE").is_none()
                 && std::env::var_os("DELIVER_SCRIPT").is_none()
-                && blocks == 4
+                && blocks == 7
                 && per_block == 0),
-        "DELIVER_P256_REQUIRE needs exactly four blocks and zero random transactions, and cannot be combined with other controlled modes"
+        "DELIVER_P256_REQUIRE needs exactly seven blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !pubkey_rejection_required
@@ -5969,7 +5969,7 @@ pub fn run(
         {
             for tx in &gp.txs {
                 if let Some(index) = fixture.tx_index(tx) {
-                    fixture.process_accepted[index] = true;
+                    fixture.process_status[index] = gpp;
                 }
             }
         }
@@ -6037,16 +6037,24 @@ pub fn run(
                 // to compare FinalizeBlock's ante result and cache rollback.
                 final_txs.clone_from(&raw.txs);
             } else if p256_fixture.as_ref().is_some_and(|fixture| {
-                raw.txs.len() == 1 && fixture.tx_index(&raw.txs[0]) == Some(2)
+                raw.txs.len() == 1 && fixture.tx_index(&raw.txs[0]).is_some()
             }) {
-                let rejected = Some(abci::response_process_proposal::ProposalStatus::Reject as i32);
-                if let Some(fixture) = p256_fixture.as_mut() {
-                    fixture.process_rejected = g == rejected;
+                let mut fixture_index = None;
+                if let Some(fixture) = p256_fixture.as_mut()
+                    && let Some(index) = fixture.tx_index(&raw.txs[0])
+                {
+                    fixture.process_status[index] = g;
+                    fixture_index = Some(index);
                 }
-                // The high-S transaction cannot form a consensus-valid
-                // proposal. Apply it directly only in this controlled mode
-                // to compare FinalizeBlock's ante result and rollback.
-                final_txs.clone_from(&raw.txs);
+                if fixture_index.is_some_and(|index| index < 4) {
+                    // Rejected signature-boundary transactions cannot form a
+                    // consensus-valid proposal. Apply them directly only in
+                    // this controlled mode to compare FinalizeBlock's ante
+                    // result and cache rollback.
+                    final_txs.clone_from(&raw.txs);
+                } else if g == accepted {
+                    final_txs.clone_from(&raw.txs);
+                }
             } else if pubkey_rejection_fixture.as_ref().is_some_and(|fixture| {
                 raw.txs.len() == 1 && fixture.tx_index(&raw.txs[0]).is_some()
             }) {
@@ -9138,13 +9146,21 @@ fn pubkey_rejection_send(
 const P256_SEND: u128 = 19;
 const P256_FEE: u128 = 100_000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum P256SignatureCase {
+    Short,
+    ZeroScalar,
+    WrongSignDoc,
+    HighS,
+    Valid,
+}
+
 struct P256Fixture {
-    txs: [Vec<u8>; 3],
-    check: [Option<abci::ResponseCheckTx>; 3],
-    prepare_included: [bool; 3],
-    process_accepted: [bool; 3],
-    process_rejected: bool,
-    completed: [bool; 3],
+    txs: [Vec<u8>; 6],
+    check: [Option<abci::ResponseCheckTx>; 6],
+    prepare_included: [bool; 6],
+    process_status: [Option<i32>; 6],
+    completed: [bool; 6],
     signer: String,
     signer_addr: Vec<u8>,
     signer_balance: u128,
@@ -9170,17 +9186,29 @@ impl P256Fixture {
             "controlled P-256 account unexpectedly has a genesis public key"
         );
         let recipient = gn.accts[2].acc.clone();
+        let cases = [
+            P256SignatureCase::Short,
+            P256SignatureCase::ZeroScalar,
+            P256SignatureCase::WrongSignDoc,
+            P256SignatureCase::HighS,
+            P256SignatureCase::Valid,
+            P256SignatureCase::Valid,
+        ];
+        let txs: [Vec<u8>; 6] = cases
+            .into_iter()
+            .enumerate()
+            .map(|(index, case)| {
+                p256_send(gn, signer, signer.seq + u64::from(index == 5), case, index)
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("wrong P-256 fixture transaction count"))?;
         Ok(Self {
-            txs: [
-                p256_send(gn, signer, signer.seq, false)?,
-                p256_send(gn, signer, signer.seq + 1, false)?,
-                p256_send(gn, signer, signer.seq + 2, true)?,
-            ],
-            check: [None, None, None],
-            prepare_included: [false; 3],
-            process_accepted: [false; 3],
-            process_rejected: false,
-            completed: [false; 3],
+            txs,
+            check: [None, None, None, None, None, None],
+            prepare_included: [false; 6],
+            process_status: [None, None, None, None, None, None],
+            completed: [false; 6],
             signer: signer.acc.clone(),
             signer_addr: signer.addr.clone(),
             signer_balance: account_balance(rust, &signer.acc)?,
@@ -9222,23 +9250,26 @@ impl P256Fixture {
             matches.len()
         );
         let result = matches[0].1;
-        if index < 2 {
+        let accepted = abci::response_process_proposal::ProposalStatus::Accept as i32;
+        let rejected = abci::response_process_proposal::ProposalStatus::Reject as i32;
+        if index >= 4 {
+            let success_index = index - 4;
             anyhow::ensure!(
                 check.codespace.is_empty()
                     && check.code == 0
                     && check.log.is_empty()
                     && check.gas_wanted == 300_000
-                    && check.gas_used == [66_528, 51_811][index]
+                    && check.gas_used == [67_699, 53_033][success_index]
                     && check.data.is_empty()
                     && check.info.is_empty()
                     && check.address == self.signer_addr
                     && check.priority == 333_333
-                    && check.sequence == index as u64,
+                    && check.sequence == success_index as u64,
                 "P-256 success CheckTx {} changed: {check:?}",
                 index + 1
             );
             anyhow::ensure!(
-                self.prepare_included[index] && self.process_accepted[index],
+                self.prepare_included[index] && self.process_status[index] == Some(accepted),
                 "P-256 success transaction {} was not proposed and accepted",
                 index + 1
             );
@@ -9247,7 +9278,7 @@ impl P256Fixture {
                     && result.code == 0
                     && result.log.is_empty()
                     && result.gas_wanted == 300_000
-                    && result.gas_used == [86_180, 71_496][index]
+                    && result.gas_used == [87_402, 72_718][success_index]
                     && result.data
                         == hex::decode(
                             "12260a242f636f736d6f732e62616e6b2e763162657461312e4d736753656e64526573706f6e7365"
@@ -9258,51 +9289,62 @@ impl P256Fixture {
                 index + 1
             );
         } else {
+            let expected_check_gas = [49_389, 49_348, 49_348, 49_348][index];
+            let expected_finalize_gas = [49_338, 49_348, 49_348, 49_348][index];
             anyhow::ensure!(
                 check.codespace == "sdk"
                     && check.code == 4
                     && check.log == self.expected_rejection
                     && check.gas_wanted == 300_000
-                    && check.gas_used == 33_448
+                    && check.gas_used == expected_check_gas
                     && check.data.is_empty()
                     && check.info.is_empty()
                     && check.events.is_empty()
                     && check.address.is_empty()
                     && check.priority == 0
                     && check.sequence == 0,
-                "P-256 high-S CheckTx changed: {check:?}"
+                "P-256 rejection CheckTx {} changed: {check:?}",
+                index + 1
             );
             anyhow::ensure!(
-                !self.prepare_included[index] && self.process_rejected,
-                "P-256 high-S transaction was not excluded and rejected"
+                !self.prepare_included[index] && self.process_status[index] == Some(rejected),
+                "P-256 rejection transaction {} was not excluded and rejected",
+                index + 1
             );
             anyhow::ensure!(
                 result.codespace == check.codespace
                     && result.code == check.code
                     && result.log == self.expected_rejection
                     && result.gas_wanted == 300_000
-                    && result.gas_used == 33_430
+                    && result.gas_used == expected_finalize_gas
                     && result.data.is_empty()
                     && result.info.is_empty()
                     && result.events.is_empty()
                     && result.signers == [self.signer.clone()],
-                "P-256 high-S FinalizeBlock changed: {result:?}"
+                "P-256 rejection FinalizeBlock {} changed: {result:?}",
+                index + 1
             );
         }
-        let successful = (index.min(1) + 1) as u128;
+        let successful = index.saturating_sub(3) as u128;
+        let sent = match successful {
+            0 => 0,
+            1 => P256_SEND + 4,
+            2 => (P256_SEND + 4) + (P256_SEND + 5),
+            _ => anyhow::bail!("invalid P-256 success count {successful}"),
+        };
         anyhow::ensure!(
             account_balance(rust, &self.signer)?
-                == self.signer_balance - successful * (P256_SEND + P256_FEE)
-                && account_balance(rust, &self.recipient)?
-                    == self.recipient_balance + successful * P256_SEND
+                == self.signer_balance - successful * P256_FEE - sent
+                && account_balance(rust, &self.recipient)? == self.recipient_balance + sent
                 && rust.query_sequence(&self.signer_addr).sequence
                     == self.signer_sequence + successful as u64,
             "P-256 transaction {} has wrong committed balances or sequence",
             index + 1
         );
+        let expected_key = (successful > 0).then_some(&self.public_key);
         anyhow::ensure!(
-            account_public_key(rust, &self.signer)?.as_ref() == Some(&self.public_key),
-            "P-256 transaction {} did not preserve the exact account public key",
+            account_public_key(rust, &self.signer)?.as_ref() == expected_key,
+            "P-256 transaction {} did not preserve the exact account public key state",
             index + 1
         );
         anyhow::ensure!(!self.completed[index], "P-256 transaction completed twice");
@@ -9311,7 +9353,13 @@ impl P256Fixture {
     }
 }
 
-fn p256_send(gn: &Gen, signer: &Acct, sequence: u64, high_s: bool) -> anyhow::Result<Vec<u8>> {
+fn p256_send(
+    gn: &Gen,
+    signer: &Acct,
+    sequence: u64,
+    case: P256SignatureCase,
+    index: usize,
+) -> anyhow::Result<Vec<u8>> {
     use celestia_proto::cosmos::bank::v1beta1 as bank;
     use p256::ecdsa::signature::Signer as _;
 
@@ -9321,9 +9369,10 @@ fn p256_send(gn: &Gen, signer: &Acct, sequence: u64, high_s: bool) -> anyhow::Re
             to_address: gn.accts[2].acc.clone(),
             amount: vec![Coin {
                 denom: "utia".into(),
-                amount: P256_SEND.to_string(),
+                amount: (P256_SEND + index as u128).to_string(),
             }],
         })],
+        memo: format!("p256-signature-{index}"),
         ..Default::default()
     }
     .encode_to_vec();
@@ -9346,8 +9395,15 @@ fn p256_send(gn: &Gen, signer: &Acct, sequence: u64, high_s: bool) -> anyhow::Re
         tip: None,
     }
     .encode_to_vec();
+    let signing_body_bytes = if case == P256SignatureCase::WrongSignDoc {
+        let mut body = TxBody::decode(body_bytes.as_slice())?;
+        body.memo.clear();
+        body.encode_to_vec()
+    } else {
+        body_bytes.clone()
+    };
     let direct = SignDoc {
-        body_bytes: body_bytes.clone(),
+        body_bytes: signing_body_bytes,
         auth_info_bytes: auth_info_bytes.clone(),
         chain_id: gn.chain_id.clone(),
         account_number: signer.number,
@@ -9356,16 +9412,26 @@ fn p256_send(gn: &Gen, signer: &Acct, sequence: u64, high_s: bool) -> anyhow::Re
     let secret = p256::ecdsa::SigningKey::from_slice(&[42; 32])?;
     let signature: p256::ecdsa::Signature = secret.sign(&direct);
     let low = signature.normalize_s();
-    let signature = if high_s {
-        let (r, s) = low.split_scalars();
-        p256::ecdsa::Signature::from_scalars(r, -*s)?
-    } else {
-        low
+    let low_bytes = low.to_bytes().to_vec();
+    let signature = match case {
+        P256SignatureCase::Short => low_bytes[..63].to_vec(),
+        P256SignatureCase::ZeroScalar => {
+            let mut bytes = vec![0; 64];
+            bytes[63] = 1;
+            bytes
+        }
+        P256SignatureCase::WrongSignDoc | P256SignatureCase::Valid => low_bytes,
+        P256SignatureCase::HighS => {
+            let (r, s) = low.split_scalars();
+            p256::ecdsa::Signature::from_scalars(r, -*s)?
+                .to_bytes()
+                .to_vec()
+        }
     };
     Ok(TxRaw {
         body_bytes,
         auth_info_bytes,
-        signatures: vec![signature.to_bytes().to_vec()],
+        signatures: vec![signature],
     }
     .encode_to_vec())
 }
@@ -10228,21 +10294,93 @@ mod tests {
     }
 
     #[test]
-    fn p256_fixtures_use_low_s_successes_and_high_s_rejection() {
-        use celestia_proto::cosmos::tx::v1beta1::TxRaw;
+    fn p256_fixtures_bind_signature_boundaries_and_recovery() {
+        use celestia_proto::cosmos::crypto::secp256r1;
+        use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, SignDoc, TxBody, TxRaw};
 
         let mut g = offline_gen(10, 1, false);
         let account = p256_account(&g.accts, 999).unwrap();
         g.accts.push(account);
-        let txs = [
-            p256_send(&g, g.accts.last().unwrap(), 0, false).unwrap(),
-            p256_send(&g, g.accts.last().unwrap(), 1, false).unwrap(),
-            p256_send(&g, g.accts.last().unwrap(), 2, true).unwrap(),
+        let cases = [
+            P256SignatureCase::Short,
+            P256SignatureCase::ZeroScalar,
+            P256SignatureCase::WrongSignDoc,
+            P256SignatureCase::HighS,
+            P256SignatureCase::Valid,
+            P256SignatureCase::Valid,
         ];
+        let txs: Vec<_> = cases
+            .into_iter()
+            .enumerate()
+            .map(|(index, case)| {
+                p256_send(
+                    &g,
+                    g.accts.last().unwrap(),
+                    u64::from(index == 5),
+                    case,
+                    index,
+                )
+                .unwrap()
+            })
+            .collect();
+        let unique: std::collections::BTreeSet<_> = txs.iter().collect();
+        assert_eq!(unique.len(), txs.len());
         for (index, tx) in txs.iter().enumerate() {
             let raw = TxRaw::decode(tx.as_slice()).unwrap();
-            let signature = p256::ecdsa::Signature::from_slice(&raw.signatures[0]).unwrap();
-            assert_eq!(signature.normalize_s() == signature, index < 2);
+            let auth = AuthInfo::decode(raw.auth_info_bytes.as_slice()).unwrap();
+            assert_eq!(auth.signer_infos[0].sequence, u64::from(index == 5));
+            let any = auth.signer_infos[0].public_key.as_ref().unwrap();
+            let key = secp256r1::PubKey::decode(any.value.as_slice()).unwrap().key;
+            assert!(x_ante::signing::p256_point_valid(&key));
+            let body = TxBody::decode(raw.body_bytes.as_slice()).unwrap();
+            assert_eq!(body.memo, format!("p256-signature-{index}"));
+            let submitted = SignDoc {
+                body_bytes: raw.body_bytes.clone(),
+                auth_info_bytes: raw.auth_info_bytes.clone(),
+                chain_id: g.chain_id.clone(),
+                account_number: 999,
+            }
+            .encode_to_vec();
+            let sig = &raw.signatures[0];
+            match index {
+                0 => {
+                    assert_eq!(sig.len(), 63);
+                    assert!(p256::ecdsa::Signature::from_slice(sig).is_err());
+                    assert!(!x_ante::signing::verify_secp256r1(&key, &submitted, sig));
+                }
+                1 => {
+                    assert_eq!(sig.len(), 64);
+                    assert!(sig[..63].iter().all(|byte| *byte == 0));
+                    assert_eq!(sig[63], 1);
+                    assert!(p256::ecdsa::Signature::from_slice(sig).is_err());
+                    assert!(!x_ante::signing::verify_secp256r1(&key, &submitted, sig));
+                }
+                2 => {
+                    let signature = p256::ecdsa::Signature::from_slice(sig).unwrap();
+                    assert_eq!(signature.normalize_s(), signature);
+                    assert!(!x_ante::signing::verify_secp256r1(&key, &submitted, sig));
+                    let mut signing_body = body;
+                    signing_body.memo.clear();
+                    let signed = SignDoc {
+                        body_bytes: signing_body.encode_to_vec(),
+                        auth_info_bytes: raw.auth_info_bytes.clone(),
+                        chain_id: g.chain_id.clone(),
+                        account_number: 999,
+                    }
+                    .encode_to_vec();
+                    assert!(x_ante::signing::verify_secp256r1(&key, &signed, sig));
+                }
+                3 => {
+                    let signature = p256::ecdsa::Signature::from_slice(sig).unwrap();
+                    assert_ne!(signature.normalize_s(), signature);
+                }
+                4 | 5 => {
+                    let signature = p256::ecdsa::Signature::from_slice(sig).unwrap();
+                    assert_eq!(signature.normalize_s(), signature);
+                    assert!(x_ante::signing::verify_secp256r1(&key, &submitted, sig));
+                }
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -10252,9 +10390,9 @@ mod tests {
             p256_required: Some(()),
             ..Stats::default()
         };
-        for completed in 0..=4 {
+        for completed in 0..=7 {
             stats.p256_completed = completed;
-            assert_eq!(stats.require_p256_coverage().is_ok(), completed == 3);
+            assert_eq!(stats.require_p256_coverage().is_ok(), completed == 6);
         }
         assert!(Stats::default().require_p256_coverage().is_ok());
     }

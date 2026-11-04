@@ -442,6 +442,19 @@ test), then start that harness's count again.
   6/14, and `x/ante/src/signing.rs` from 48/72 to 55/72. This is bounded
   application differential and branch evidence; the wider F1.3 gates remain
   open.
+  *P-256 rejection-boundary follow-up (2026-11-04):* controlled seven-block
+  v10/v9 fixtures now submit short, zero-scalar, wrong-sign-doc and high-S
+  signatures at sequence zero from a fresh secp256r1 account. Every rejection
+  requires exact CheckTx code, log and gas, proposal exclusion and rejection,
+  controlled forced-Finalize output, and unchanged fees, balances, sequence
+  and absent public key. Two subsequent low-S sends must recover at sequences
+  zero and one with exact gas, transfers and public-key persistence. Both
+  pinned runs completed all six cases with zero differential or log
+  mismatches. Invalid P-256 key encodings are rejected during full-app
+  transaction decoding before the verifier's key-parse fallback, so this
+  runtime fixture does not claim that unreachable branch. This remains bounded
+  application differential evidence; the merged profile must still measure
+  branch contribution, and the wider F1.3 gates remain open.
   *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
   use fresh funded accounts with no stored key. Malformed-length secp256k1 and
   Ed25519 signer keys must recover with exact `undefined/111222` CheckTx
