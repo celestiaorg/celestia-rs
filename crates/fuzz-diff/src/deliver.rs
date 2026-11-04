@@ -213,6 +213,11 @@ pub struct Stats {
     /// Malformed multisig fixtures that passed CheckTx, proposal, execution,
     /// and committed-state rollback postconditions.
     pub malformed_multisig_completed: u64,
+    /// Whether the run requires zero-threshold multisig persistence coverage.
+    pub zero_threshold_multisig_required: Option<()>,
+    /// Zero-threshold multisig sends that passed exact execution and
+    /// committed-key postconditions.
+    pub zero_threshold_multisig_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -602,6 +607,25 @@ fn accounts(first_number: u64) -> Vec<Acct> {
     out
 }
 
+fn zero_threshold_account(singles: &[Acct], number: u64) -> Acct {
+    let tree = MsKey::Multi {
+        threshold: 0,
+        members: vec![MsKey::Single(0)],
+    };
+    let pk = ms_pubkey(&singles[..ACCOUNTS], &tree);
+    let addr = pk.address().unwrap_or_default();
+    Acct {
+        key: singles[0].key.clone(),
+        acc: encoding::bech32::encode("celestia", &addr).unwrap_or_default(),
+        val: encoding::bech32::encode("celestiavaloper", &addr).unwrap_or_default(),
+        number,
+        seq: 0,
+        addr,
+        pk: pk.to_any(),
+        ms: Some(tree),
+    }
+}
+
 fn max_account_number(v: &serde_json::Value, max: &mut u64) {
     match v {
         serde_json::Value::Object(o) => {
@@ -626,7 +650,12 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     let mut g: serde_json::Value = serde_json::from_slice(app_state)?;
     let mut max = 0;
     max_account_number(&g["auth"]["accounts"], &mut max);
-    let accts = accounts(max + 1);
+    let mut accts = accounts(max + 1);
+    if std::env::var_os("DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE").is_some() {
+        let number = max + 1 + accts.len() as u64;
+        let controlled = zero_threshold_account(&accts, number);
+        accts.push(controlled);
+    }
     let accs = g["auth"]["accounts"]
         .as_array_mut()
         .ok_or_else(|| anyhow::anyhow!("auth.accounts"))?;
@@ -1496,6 +1525,19 @@ impl Stats {
                 self.malformed_multisig_completed == 3,
                 "incomplete DELIVER_MALFORMED_MULTISIG_REQUIRE coverage: expected three completed fixtures, observed {}",
                 self.malformed_multisig_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require both zero-threshold multisig sends to execute and persist the
+    /// exact wire-decoded key across commits.
+    pub fn require_zero_threshold_multisig_coverage(&self) -> anyhow::Result<()> {
+        if self.zero_threshold_multisig_required.is_some() {
+            anyhow::ensure!(
+                self.zero_threshold_multisig_completed == 2,
+                "incomplete DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE coverage: expected two completed fixtures, observed {}",
+                self.zero_threshold_multisig_completed
             );
         }
         Ok(())
@@ -4205,6 +4247,8 @@ pub fn run(
     let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
     let malformed_multisig_required =
         std::env::var_os("DELIVER_MALFORMED_MULTISIG_REQUIRE").is_some();
+    let zero_threshold_multisig_required =
+        std::env::var_os("DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE").is_some();
     anyhow::ensure!(
         !direct_aux_required
             || (!hl_on
@@ -4220,6 +4264,7 @@ pub fn run(
     anyhow::ensure!(
         !malformed_multisig_required
             || (!direct_aux_required
+                && !zero_threshold_multisig_required
                 && !hl_on
                 && !govpass
                 && !ibc_on
@@ -4229,6 +4274,20 @@ pub fn run(
                 && blocks == 4
                 && per_block == 0),
         "DELIVER_MALFORMED_MULTISIG_REQUIRE needs exactly four blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !zero_threshold_multisig_required
+            || (!direct_aux_required
+                && !malformed_multisig_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 3
+                && per_block == 0),
+        "DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE needs exactly three blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !transfer_authz_required
@@ -4505,6 +4564,7 @@ pub fn run(
         script_required,
         direct_aux_required: direct_aux_required.then_some(()),
         malformed_multisig_required: malformed_multisig_required.then_some(()),
+        zero_threshold_multisig_required: zero_threshold_multisig_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -4866,6 +4926,7 @@ pub fn run(
     let mut stake_lifecycle_evidence = None;
     let mut direct_aux_fixture: Option<DirectAuxFixture> = None;
     let mut malformed_multisig_fixture: Option<MalformedMultisigFixture> = None;
+    let mut zero_threshold_multisig_fixture: Option<ZeroThresholdMultisigFixture> = None;
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -4999,6 +5060,9 @@ pub fn run(
                     if hl_preupgrade && i == HL_ACCT {
                         continue;
                     }
+                    if zero_threshold_multisig_required && i + 1 == gn.accts.len() {
+                        continue;
+                    }
                     let msg = Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                         delegator_address: gn.accts[i].acc.clone(),
                         validator_address: v.clone(),
@@ -5025,6 +5089,15 @@ pub fn run(
                 .as_ref()
                 .context("malformed multisig fixture was not initialized")?;
             txs.push(fixture.cases[b - 1].tx.clone());
+        } else if zero_threshold_multisig_required {
+            if zero_threshold_multisig_fixture.is_none() {
+                zero_threshold_multisig_fixture =
+                    Some(ZeroThresholdMultisigFixture::new(&gn, &mut rust)?);
+            }
+            let fixture = zero_threshold_multisig_fixture
+                .as_ref()
+                .context("zero-threshold multisig fixture was not initialized")?;
+            txs.push(fixture.txs[b - 1].clone());
         } else if !hl_setup
             && !gov_setup
             && b >= script_at
@@ -5371,6 +5444,11 @@ pub fn run(
             {
                 case.check = Some(g.clone());
             }
+            if let Some(fixture) = zero_threshold_multisig_fixture.as_mut()
+                && let Some(index) = fixture.tx_index(t)
+            {
+                fixture.check[index] = Some(g.clone());
+            }
             if g.code == 0 {
                 stats.check_ok += 1;
                 pool.push_back(t.clone());
@@ -5601,6 +5679,13 @@ pub fn run(
                 }
             }
         }
+        if let Some(fixture) = zero_threshold_multisig_fixture.as_mut() {
+            for tx in &txs {
+                if let Some(index) = fixture.tx_index(tx) {
+                    fixture.prepare_included[index] = gp.txs.contains(tx);
+                }
+            }
+        }
         let op = rust.prepare_proposal(&prep);
         if op.as_ref().ok() != Some(&gp) {
             stats.mismatches.push(format!(
@@ -5657,6 +5742,15 @@ pub fn run(
                 "{scenario} h={height} ProcessProposal go={gpp:?} rust={opp:?} txs={}",
                 gp.txs.iter().map(hex::encode).collect::<Vec<_>>().join(",")
             ));
+        }
+        if let Some(fixture) = zero_threshold_multisig_fixture.as_mut()
+            && gpp == Some(abci::response_process_proposal::ProposalStatus::Accept as i32)
+        {
+            for tx in &gp.txs {
+                if let Some(index) = fixture.tx_index(tx) {
+                    fixture.process_accepted[index] = true;
+                }
+            }
         }
         // An unfiltered proposal of every generated tx too (data root
         // recomputed), every few blocks; when both accept it, it is
@@ -6033,6 +6127,14 @@ pub fn run(
         {
             fixture.require_complete(tx, &fb.txs, &g.tx_results, &mut rust)?;
             stats.malformed_multisig_completed += 1;
+        }
+        if let Some(fixture) = zero_threshold_multisig_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && let Some(index) = fixture.tx_index(tx)
+            && !fixture.completed[index]
+        {
+            fixture.require_complete(index, &fb.txs, &g.tx_results, &mut rust)?;
+            stats.zero_threshold_multisig_completed += 1;
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -8182,6 +8284,226 @@ fn sign_malformed_multisig_send(gn: &Gen, shape: usize, signer: usize) -> anyhow
     .encode_to_vec())
 }
 
+const ZERO_THRESHOLD_MULTISIG_SEND: u128 = 17;
+const ZERO_THRESHOLD_MULTISIG_FEE: u128 = 100_000;
+
+struct ZeroThresholdMultisigFixture {
+    txs: [Vec<u8>; 2],
+    check: [Option<abci::ResponseCheckTx>; 2],
+    prepare_included: [bool; 2],
+    process_accepted: [bool; 2],
+    completed: [bool; 2],
+    signer: String,
+    signer_addr: Vec<u8>,
+    signer_balance: u128,
+    signer_sequence: u64,
+    recipient: String,
+    recipient_balance: u128,
+    public_key: Any,
+}
+
+impl ZeroThresholdMultisigFixture {
+    fn new(gn: &Gen, rust: &mut app::App) -> anyhow::Result<Self> {
+        let signer = gn
+            .accts
+            .last()
+            .context("zero-threshold multisig account was not added to genesis")?;
+        let recipient = gn.accts[2].acc.clone();
+        anyhow::ensure!(
+            signer.ms.as_ref().is_some_and(|tree| matches!(
+                tree,
+                MsKey::Multi {
+                    threshold: 0,
+                    members
+                } if members.len() == 1
+            )),
+            "controlled zero-threshold account has the wrong key tree"
+        );
+        anyhow::ensure!(
+            account_public_key(rust, &signer.acc)?.is_none(),
+            "controlled zero-threshold account unexpectedly has a genesis public key"
+        );
+        Ok(Self {
+            txs: [
+                zero_threshold_multisig_send(gn, signer, signer.seq),
+                zero_threshold_multisig_send(gn, signer, signer.seq + 1),
+            ],
+            check: [None, None],
+            prepare_included: [false; 2],
+            process_accepted: [false; 2],
+            completed: [false; 2],
+            signer: signer.acc.clone(),
+            signer_addr: signer.addr.clone(),
+            signer_balance: account_balance(rust, &signer.acc)?,
+            signer_sequence: signer.seq,
+            recipient_balance: account_balance(rust, &recipient)?,
+            recipient,
+            public_key: signer.pk.clone(),
+        })
+    }
+
+    fn tx_index(&self, tx: &[u8]) -> Option<usize> {
+        self.txs.iter().position(|candidate| candidate == tx)
+    }
+
+    fn require_complete(
+        &mut self,
+        index: usize,
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        let tx = &self.txs[index];
+        let check = self.check[index]
+            .as_ref()
+            .context("zero-threshold multisig transaction was not checked")?;
+        anyhow::ensure!(
+            check.codespace.is_empty()
+                && check.code == 0
+                && check.log.is_empty()
+                && check.gas_wanted == 300_000
+                && check.gas_used == [64_938, 50_650][index]
+                && check.data.is_empty()
+                && check.info.is_empty()
+                && check.address == self.signer_addr
+                && check.priority == 333_333
+                && check.sequence == index as u64,
+            "zero-threshold multisig CheckTx {} changed: {check:?}",
+            index + 1
+        );
+        anyhow::ensure!(
+            self.prepare_included[index],
+            "zero-threshold multisig transaction {} was excluded by PrepareProposal",
+            index + 1
+        );
+        anyhow::ensure!(
+            self.process_accepted[index],
+            "zero-threshold multisig transaction {} was not accepted by ProcessProposal",
+            index + 1
+        );
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == tx)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1,
+            "zero-threshold multisig transaction {} finalized {} times",
+            index + 1,
+            matches.len()
+        );
+        let result = matches[0].1;
+        anyhow::ensure!(
+            result.codespace.is_empty()
+                && result.code == 0
+                && result.log.is_empty()
+                && result.gas_wanted == 300_000
+                && result.gas_used == [83_879, 69_624][index]
+                && result.data
+                    == hex::decode(
+                        "12260a242f636f736d6f732e62616e6b2e763162657461312e4d736753656e64526573706f6e7365"
+                    )?
+                && result.info.is_empty()
+                && result.signers == [self.signer.clone()],
+            "zero-threshold multisig FinalizeBlock result {} changed: {result:?}",
+            index + 1
+        );
+        let completed = (index + 1) as u128;
+        anyhow::ensure!(
+            account_balance(rust, &self.signer)?
+                == self.signer_balance
+                    - completed * (ZERO_THRESHOLD_MULTISIG_SEND + ZERO_THRESHOLD_MULTISIG_FEE)
+                && account_balance(rust, &self.recipient)?
+                    == self.recipient_balance + completed * ZERO_THRESHOLD_MULTISIG_SEND
+                && rust.query_sequence(&self.signer_addr).sequence
+                    == self.signer_sequence + index as u64 + 1,
+            "zero-threshold multisig transaction {} has wrong committed balances or sequence",
+            index + 1
+        );
+        anyhow::ensure!(
+            account_public_key(rust, &self.signer)?.as_ref() == Some(&self.public_key),
+            "zero-threshold multisig transaction {} did not preserve the exact account public key",
+            index + 1
+        );
+        anyhow::ensure!(
+            !self.completed[index],
+            "zero-threshold multisig transaction {} completed twice",
+            index + 1
+        );
+        self.completed[index] = true;
+        Ok(())
+    }
+}
+
+fn zero_threshold_multisig_send(gn: &Gen, signer: &Acct, sequence: u64) -> Vec<u8> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+
+    let body_bytes = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: signer.acc.clone(),
+            to_address: gn.accts[2].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: ZERO_THRESHOLD_MULTISIG_SEND.to_string(),
+            }],
+        })],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    #[allow(deprecated)]
+    let auth_info_bytes = AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(signer.pk.clone()),
+            mode_info: Some(ModeInfo {
+                sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                    bitarray: Some(bit_array(1, &[])),
+                    mode_infos: Vec::new(),
+                })),
+            }),
+            sequence,
+        }],
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: ZERO_THRESHOLD_MULTISIG_FEE.to_string(),
+            }],
+            gas_limit: 300_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec();
+    TxRaw {
+        body_bytes,
+        auth_info_bytes,
+        signatures: vec![MultiSignature::default().encode_to_vec()],
+    }
+    .encode_to_vec()
+}
+
+fn account_public_key(rust: &mut app::App, address: &str) -> anyhow::Result<Option<Any>> {
+    use celestia_proto::cosmos::auth::v1beta1 as auth;
+    let response = query_app::<auth::QueryAccountResponse>(
+        rust,
+        "/cosmos.auth.v1beta1.Query/Account",
+        &auth::QueryAccountRequest {
+            address: address.into(),
+        },
+    )
+    .context("querying zero-threshold multisig account")?;
+    let account = response
+        .account
+        .context("zero-threshold multisig account query returned no account")?;
+    anyhow::ensure!(
+        account.type_url == auth::BaseAccount::type_url(),
+        "zero-threshold multisig account has unexpected type {}",
+        account.type_url
+    );
+    Ok(auth::BaseAccount::decode(account.value.as_slice())?.pub_key)
+}
+
 /// State and exact outcomes for a direct-aux sender whose fee is paid by a
 /// second signer. The rejected transaction uses the same body and sender
 /// sequence but leaves the fee payer implicit, making that direct-aux signer
@@ -8883,6 +9205,63 @@ mod tests {
         assert!(
             Stats::default()
                 .require_malformed_multisig_coverage()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn zero_threshold_multisig_fixtures_have_no_child_signatures() {
+        use celestia_proto::cosmos::crypto::multisig::LegacyAminoPubKey;
+        use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+
+        let mut g = offline_gen(10, 1, false);
+        let account = zero_threshold_account(&g.accts, 999);
+        g.accts.push(account);
+        for sequence in [0, 1] {
+            let raw = TxRaw::decode(
+                zero_threshold_multisig_send(&g, g.accts.last().unwrap(), sequence).as_slice(),
+            )
+            .unwrap();
+            let auth = AuthInfo::decode(raw.auth_info_bytes.as_slice()).unwrap();
+            let signer = &auth.signer_infos[0];
+            let key =
+                LegacyAminoPubKey::decode(signer.public_key.as_ref().unwrap().value.as_slice())
+                    .unwrap();
+            assert_eq!(key.threshold, 0);
+            assert_eq!(key.public_keys.len(), 1);
+            let mode = match signer.mode_info.as_ref().unwrap().sum.as_ref().unwrap() {
+                mode_info::Sum::Multi(multi) => multi,
+                mode_info::Sum::Single(_) => panic!("fixture must carry multisig mode data"),
+            };
+            assert_eq!(mode.bitarray.as_ref().unwrap(), &bit_array(1, &[]));
+            assert!(mode.mode_infos.is_empty());
+            assert_eq!(signer.sequence, sequence);
+            assert_eq!(raw.signatures.len(), 1);
+            assert!(
+                MultiSignature::decode(raw.signatures[0].as_slice())
+                    .unwrap()
+                    .signatures
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn zero_threshold_multisig_requirement_fails_closed() {
+        let mut stats = Stats {
+            zero_threshold_multisig_required: Some(()),
+            ..Stats::default()
+        };
+        for completed in 0..=3 {
+            stats.zero_threshold_multisig_completed = completed;
+            assert_eq!(
+                stats.require_zero_threshold_multisig_coverage().is_ok(),
+                completed == 2
+            );
+        }
+        assert!(
+            Stats::default()
+                .require_zero_threshold_multisig_coverage()
                 .is_ok()
         );
     }
