@@ -8191,6 +8191,153 @@ mod tests {
     }
 
     #[test]
+    fn stake_authz_operation_scripts_pin_all_staking_message_types() {
+        use celestia_proto::cosmos::{
+            authz::v1beta1 as authz,
+            staking::v1beta1::{
+                MsgBeginRedelegate, MsgCancelUnbondingDelegation, MsgUndelegate,
+                StakeAuthorization, stake_authorization::Policy,
+            },
+        };
+
+        let destination = "celestiavaloper1f4znva43r73c9806e0qkgcgzpdl2p8lz4rurq4";
+        let granter = "celestia1fnkqcndst4mcynj7psupn6l60flrawltny3q7q";
+        let grantee = "celestia1f4znva43r73c9806e0qkgcgzpdl2p8lzsu76kn";
+        for (script_text, source, creation_height) in [
+            (
+                include_str!("../fixtures/stake-authz-operations.script"),
+                "celestiavaloper1295za0yx99pqrjqnms4ez7a3gre6u6zugw8nvy",
+                66,
+            ),
+            (
+                include_str!("../fixtures/stake-authz-operations-v9.script"),
+                "celestiavaloper1p70gu5c3ppwq7al8mp68h8hsxeytvn75tjaptp",
+                46,
+            ),
+        ] {
+            let script = read_script(script_text, ACCOUNTS).unwrap();
+            let expected = script_expectations(include_str!(
+                "../fixtures/stake-authz-operations.expected.json"
+            ))
+            .unwrap();
+            assert_eq!(
+                script.iter().map(Vec::len).collect::<Vec<_>>(),
+                [1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            );
+            let messages: Vec<_> = script.iter().flatten().collect();
+            assert_eq!((messages.len(), expected.len()), (16, 16));
+            for ((_, msg, _), outcome) in messages.iter().zip(&expected) {
+                assert_eq!(msg.type_url, outcome.type_url);
+            }
+
+            let grant = |index: usize| {
+                let msg = authz::MsgGrant::decode(messages[index].1.value.as_slice()).unwrap();
+                assert_eq!(msg.granter, granter);
+                assert_eq!(msg.grantee, grantee);
+                StakeAuthorization::decode(
+                    msg.grant.unwrap().authorization.unwrap().value.as_slice(),
+                )
+                .unwrap()
+            };
+            let inner = |index: usize| {
+                let msg = authz::MsgExec::decode(messages[index].1.value.as_slice()).unwrap();
+                assert_eq!(msg.grantee, grantee);
+                assert_eq!(msg.msgs.len(), 1);
+                msg.msgs.into_iter().next().unwrap()
+            };
+            let policy =
+                |authorization: &StakeAuthorization| match authorization.policy.as_ref().unwrap() {
+                    Policy::AllowList(v) => (true, v.address.clone()),
+                    Policy::DenyList(v) => (false, v.address.clone()),
+                };
+
+            let undelegate_grant = grant(2);
+            assert_eq!(undelegate_grant.authorization_type, 2);
+            assert_eq!(
+                undelegate_grant.max_tokens.as_ref().unwrap().amount,
+                "20000000"
+            );
+            assert_eq!(policy(&undelegate_grant), (true, vec![source.to_owned()]));
+            for (index, amount) in [
+                (3, "5000000"),
+                (4, "16000000"),
+                (5, "15000000"),
+                (6, "1000000"),
+            ] {
+                let msg = MsgUndelegate::decode(inner(index).value.as_slice()).unwrap();
+                assert_eq!(msg.delegator_address, granter);
+                assert_eq!(msg.validator_address, source);
+                let coin = msg.amount.unwrap();
+                assert_eq!(
+                    (coin.denom.as_str(), coin.amount.as_str()),
+                    ("utia", amount)
+                );
+            }
+
+            let rejected_redelegate_grant = grant(7);
+            assert_eq!(rejected_redelegate_grant.authorization_type, 3);
+            assert_eq!(
+                policy(&rejected_redelegate_grant),
+                (true, vec![source.to_owned()])
+            );
+            let redelegate_grant = grant(9);
+            assert_eq!(redelegate_grant.authorization_type, 3);
+            assert_eq!(
+                policy(&redelegate_grant),
+                (true, vec![destination.to_owned()])
+            );
+            for (index, amount) in [
+                (8, "5000000"),
+                (10, "5000000"),
+                (11, "15000000"),
+                (12, "1000000"),
+            ] {
+                let msg = MsgBeginRedelegate::decode(inner(index).value.as_slice()).unwrap();
+                assert_eq!(msg.delegator_address, granter);
+                assert_eq!(msg.validator_src_address, source);
+                assert_eq!(msg.validator_dst_address, destination);
+                let coin = msg.amount.unwrap();
+                assert_eq!(
+                    (coin.denom.as_str(), coin.amount.as_str()),
+                    ("utia", amount)
+                );
+            }
+
+            let cancel_grant = grant(13);
+            assert_eq!(cancel_grant.authorization_type, 4);
+            assert_eq!(cancel_grant.max_tokens.as_ref().unwrap().amount, "5000000");
+            assert_eq!(policy(&cancel_grant), (false, vec![destination.to_owned()]));
+            for (index, amount) in [(14, "5000000"), (15, "1000000")] {
+                let msg =
+                    MsgCancelUnbondingDelegation::decode(inner(index).value.as_slice()).unwrap();
+                assert_eq!(msg.delegator_address, granter);
+                assert_eq!(msg.validator_address, source);
+                assert_eq!(msg.creation_height, creation_height);
+                let coin = msg.amount.unwrap();
+                assert_eq!(
+                    (coin.denom.as_str(), coin.amount.as_str()),
+                    ("utia", amount)
+                );
+            }
+
+            assert_eq!(
+                (expected[4].codespace.as_str(), expected[4].code),
+                ("undefined", 1)
+            );
+            assert_eq!(
+                (expected[8].codespace.as_str(), expected[8].code),
+                ("sdk", 4)
+            );
+            for index in [6, 12, 15] {
+                assert_eq!(
+                    (expected[index].codespace.as_str(), expected[index].code),
+                    ("authz", 2)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn evidence_submit_script_pins_stored_and_nil_router_outcomes() {
         use celestia_proto::cosmos::evidence::v1beta1::{Equivocation, MsgSubmitEvidence};
         use prost::Name;
