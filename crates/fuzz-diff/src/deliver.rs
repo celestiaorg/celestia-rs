@@ -223,6 +223,12 @@ pub struct Stats {
     /// P-256 fixtures that passed their exact execution and persistence
     /// postconditions.
     pub p256_completed: u64,
+    /// Whether the run requires malformed-key panic recovery and Ed25519
+    /// rollback coverage.
+    pub pubkey_rejection_required: Option<()>,
+    /// Controlled public-key fixtures that passed their exact CheckTx,
+    /// proposal, execution, recovery, and committed-state postconditions.
+    pub pubkey_rejection_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -654,6 +660,45 @@ fn p256_account(singles: &[Acct], number: u64) -> anyhow::Result<Acct> {
     })
 }
 
+fn controlled_secp_account(number: u64, case: &str) -> Acct {
+    let mut secret = hash::sha256(format!("fuzz-diff pubkey rejection {case}").as_bytes());
+    secret[0] &= 0x7f;
+    let pub_key = crypto::secp256k1::public_key_from_secret_key(&secret).unwrap_or([2u8; 33]);
+    let key = keyring::KeyRecord {
+        name: format!("pubkey-{case}"),
+        pub_key,
+        secret: Some(secret),
+        kind: keyring::KeyKind::Local,
+    };
+    Acct {
+        addr: key.address().to_vec(),
+        pk: key.pubkey_any(),
+        acc: key.bech32("celestia"),
+        val: key.bech32("celestiavaloper"),
+        key,
+        number,
+        seq: 0,
+        ms: None,
+    }
+}
+
+fn controlled_ed25519_account(singles: &[Acct], number: u64) -> anyhow::Result<Acct> {
+    let pk = x_ante::pubkey::PubKey::Ed25519(vec![45; 32]);
+    let addr = pk
+        .address()
+        .map_err(|error| anyhow::anyhow!("Ed25519 address: {error:?}"))?;
+    Ok(Acct {
+        key: singles[0].key.clone(),
+        acc: encoding::bech32::encode("celestia", &addr)?,
+        val: encoding::bech32::encode("celestiavaloper", &addr)?,
+        number,
+        seq: 0,
+        addr,
+        pk: pk.to_any(),
+        ms: None,
+    })
+}
+
 fn max_account_number(v: &serde_json::Value, max: &mut u64) {
     match v {
         serde_json::Value::Object(o) => {
@@ -688,6 +733,12 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
         let number = max + 1 + accts.len() as u64;
         let controlled = p256_account(&accts, number)?;
         accts.push(controlled);
+    }
+    if std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some() {
+        let number = max + 1 + accts.len() as u64;
+        accts.push(controlled_secp_account(number, "secp"));
+        accts.push(controlled_secp_account(number + 1, "ed-malformed"));
+        accts.push(controlled_ed25519_account(&accts, number + 2)?);
     }
     let accs = g["auth"]["accounts"]
         .as_array_mut()
@@ -1584,6 +1635,32 @@ impl Stats {
                 self.p256_completed == 3,
                 "incomplete DELIVER_P256_REQUIRE coverage: expected three completed fixtures, observed {}",
                 self.p256_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require both malformed public-key panics, their successful recovery
+    /// sends, and two Ed25519 gas-consumer rejections to reach exact runtime
+    /// and committed-state postconditions.
+    pub fn require_pubkey_rejection_coverage(&self) -> anyhow::Result<()> {
+        if self.pubkey_rejection_required.is_some() {
+            anyhow::ensure!(
+                self.pubkey_rejection_completed == 6,
+                "incomplete DELIVER_PUBKEY_REJECTION_REQUIRE coverage: expected six completed fixtures, observed {}",
+                self.pubkey_rejection_completed
+            );
+            anyhow::ensure!(
+                self.log_mismatches.len() == 2
+                    && self
+                        .log_mismatches
+                        .iter()
+                        .any(|line| line.contains("length of pubkey is incorrect"))
+                    && self
+                        .log_mismatches
+                        .iter()
+                        .any(|line| line.contains("pubkey is incorrect size")),
+                "public-key rejection coverage expected exactly the two stack-only malformed-key log differences"
             );
         }
         Ok(())
@@ -4296,6 +4373,7 @@ pub fn run(
     let zero_threshold_multisig_required =
         std::env::var_os("DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE").is_some();
     let p256_required = std::env::var_os("DELIVER_P256_REQUIRE").is_some();
+    let pubkey_rejection_required = std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some();
     anyhow::ensure!(
         !direct_aux_required
             || (!hl_on
@@ -4313,6 +4391,7 @@ pub fn run(
             || (!direct_aux_required
                 && !zero_threshold_multisig_required
                 && !p256_required
+                && !pubkey_rejection_required
                 && !hl_on
                 && !govpass
                 && !ibc_on
@@ -4328,6 +4407,7 @@ pub fn run(
             || (!direct_aux_required
                 && !malformed_multisig_required
                 && !p256_required
+                && !pubkey_rejection_required
                 && !hl_on
                 && !govpass
                 && !ibc_on
@@ -4343,6 +4423,7 @@ pub fn run(
             || (!direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
+                && !pubkey_rejection_required
                 && !hl_on
                 && !govpass
                 && !ibc_on
@@ -4352,6 +4433,22 @@ pub fn run(
                 && blocks == 4
                 && per_block == 0),
         "DELIVER_P256_REQUIRE needs exactly four blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !pubkey_rejection_required
+            || (!direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 7
+                && per_block == 0),
+        "DELIVER_PUBKEY_REJECTION_REQUIRE needs exactly seven blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !transfer_authz_required
@@ -4630,6 +4727,7 @@ pub fn run(
         malformed_multisig_required: malformed_multisig_required.then_some(()),
         zero_threshold_multisig_required: zero_threshold_multisig_required.then_some(()),
         p256_required: p256_required.then_some(()),
+        pubkey_rejection_required: pubkey_rejection_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -4993,6 +5091,7 @@ pub fn run(
     let mut malformed_multisig_fixture: Option<MalformedMultisigFixture> = None;
     let mut zero_threshold_multisig_fixture: Option<ZeroThresholdMultisigFixture> = None;
     let mut p256_fixture: Option<P256Fixture> = None;
+    let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -5110,11 +5209,12 @@ pub fn run(
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
-        let force_raw = ((malformed_multisig_required || p256_required) && b > 0)
-            || (upg.on
-                && upg
-                    .upgrade_height
-                    .is_some_and(|h| (h..=h + 2).contains(&height)));
+        let force_raw =
+            ((malformed_multisig_required || p256_required || pubkey_rejection_required) && b > 0)
+                || (upg.on
+                    && upg
+                        .upgrade_height
+                        .is_some_and(|h| (h..=h + 2).contains(&height)));
         let upgrade_block = upg.block_index(b, hl_setup, bootstrap);
         if upg.on && !bootstrap && !hl_setup {
             txs = upg.txs(&mut gn, upgrade_block, height, &hl_seq.token, hl_preupgrade);
@@ -5129,6 +5229,9 @@ pub fn run(
                     if (zero_threshold_multisig_required || p256_required)
                         && i + 1 == gn.accts.len()
                     {
+                        continue;
+                    }
+                    if pubkey_rejection_required && i + 3 >= gn.accts.len() {
                         continue;
                     }
                     let msg = Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
@@ -5173,6 +5276,14 @@ pub fn run(
             let fixture = p256_fixture
                 .as_ref()
                 .context("P-256 fixture was not initialized")?;
+            txs.push(fixture.txs[b - 1].clone());
+        } else if pubkey_rejection_required {
+            if pubkey_rejection_fixture.is_none() {
+                pubkey_rejection_fixture = Some(PubkeyRejectionFixture::new(&gn, &mut rust)?);
+            }
+            let fixture = pubkey_rejection_fixture
+                .as_ref()
+                .context("public-key rejection fixture was not initialized")?;
             txs.push(fixture.txs[b - 1].clone());
         } else if !hl_setup
             && !gov_setup
@@ -5530,6 +5641,12 @@ pub fn run(
             {
                 fixture.check[index] = Some(g.clone());
             }
+            if let Some(fixture) = pubkey_rejection_fixture.as_mut()
+                && let Some(index) = fixture.tx_index(t)
+            {
+                fixture.check[index] = Some(g.clone());
+                fixture.rust_check[index] = o.as_ref().ok().cloned();
+            }
             if g.code == 0 {
                 stats.check_ok += 1;
                 pool.push_back(t.clone());
@@ -5774,6 +5891,13 @@ pub fn run(
                 }
             }
         }
+        if let Some(fixture) = pubkey_rejection_fixture.as_mut() {
+            for tx in &txs {
+                if let Some(index) = fixture.tx_index(tx) {
+                    fixture.prepare_included[index] = gp.txs.contains(tx);
+                }
+            }
+        }
         let op = rust.prepare_proposal(&prep);
         if op.as_ref().ok() != Some(&gp) {
             stats.mismatches.push(format!(
@@ -5849,6 +5973,15 @@ pub fn run(
                 }
             }
         }
+        if let Some(fixture) = pubkey_rejection_fixture.as_mut()
+            && gpp == Some(abci::response_process_proposal::ProposalStatus::Accept as i32)
+        {
+            for tx in &gp.txs {
+                if let Some(index) = fixture.tx_index(tx) {
+                    fixture.process_status[index] = Some(gpp.unwrap_or_default());
+                }
+            }
+        }
         // An unfiltered proposal of every generated tx too (data root
         // recomputed), every few blocks; when both accept it, it is
         // sometimes the block finalized (a proposer that skips
@@ -5914,6 +6047,26 @@ pub fn run(
                 // proposal. Apply it directly only in this controlled mode
                 // to compare FinalizeBlock's ante result and rollback.
                 final_txs.clone_from(&raw.txs);
+            } else if pubkey_rejection_fixture.as_ref().is_some_and(|fixture| {
+                raw.txs.len() == 1 && fixture.tx_index(&raw.txs[0]).is_some()
+            }) {
+                let mut fixture_index = None;
+                if let Some(fixture) = pubkey_rejection_fixture.as_mut()
+                    && let Some(index) = fixture.tx_index(&raw.txs[0])
+                {
+                    fixture.process_status[index] = g;
+                    fixture_index = Some(index);
+                }
+                if fixture_index.is_some_and(|index| index >= 4) {
+                    // Returned Ed25519 ante errors can be applied directly to
+                    // compare FinalizeBlock rollback. Malformed-key panics are
+                    // kept behind ProcessProposal's rejection: bypassing it
+                    // terminates the Go ABCI process rather than returning a
+                    // tx result, so it is not a consensus-valid finalization.
+                    final_txs.clone_from(&raw.txs);
+                } else if g == accepted {
+                    final_txs.clone_from(&raw.txs);
+                }
             } else if g == accepted && (scripted || force_raw || gn.m.rng.one_in(2)) {
                 final_txs.clone_from(&raw.txs);
             }
@@ -6251,6 +6404,14 @@ pub fn run(
         {
             fixture.require_complete(index, &fb.txs, &g.tx_results, &mut rust)?;
             stats.p256_completed += 1;
+        }
+        if let Some(fixture) = pubkey_rejection_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && let Some(index) = fixture.tx_index(tx)
+            && !fixture.completed[index]
+        {
+            fixture.require_complete(index, &fb.txs, &g.tx_results, &mut rust)?;
+            stats.pubkey_rejection_completed += 1;
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -8620,6 +8781,360 @@ fn account_public_key(rust: &mut app::App, address: &str) -> anyhow::Result<Opti
     Ok(auth::BaseAccount::decode(account.value.as_slice())?.pub_key)
 }
 
+const PUBKEY_REJECTION_SEND: u128 = 23;
+const PUBKEY_REJECTION_FEE: u128 = 100_000;
+
+struct PubkeyRejectionFixture {
+    txs: [Vec<u8>; 6],
+    check: [Option<abci::ResponseCheckTx>; 6],
+    rust_check: [Option<abci::ResponseCheckTx>; 6],
+    prepare_included: [bool; 6],
+    process_status: [Option<i32>; 6],
+    completed: [bool; 6],
+    signers: [String; 3],
+    signer_addrs: [Vec<u8>; 3],
+    signer_balances: [u128; 3],
+    signer_sequences: [u64; 3],
+    public_keys: [Any; 3],
+    recipient: String,
+    recipient_balance: u128,
+}
+
+impl PubkeyRejectionFixture {
+    fn new(gn: &Gen, rust: &mut app::App) -> anyhow::Result<Self> {
+        let base = gn
+            .accts
+            .len()
+            .checked_sub(3)
+            .context("controlled public-key accounts were not added to genesis")?;
+        let controlled = [&gn.accts[base], &gn.accts[base + 1], &gn.accts[base + 2]];
+        anyhow::ensure!(
+            controlled[0].pk.type_url == x_ante::pubkey::SECP256K1_TYPE_URL
+                && controlled[1].pk.type_url == x_ante::pubkey::SECP256K1_TYPE_URL
+                && controlled[2].pk.type_url == x_ante::pubkey::ED25519_TYPE_URL,
+            "controlled public-key accounts have unexpected key types"
+        );
+        for account in controlled {
+            anyhow::ensure!(
+                account_public_key(rust, &account.acc)?.is_none(),
+                "controlled public-key account unexpectedly has a genesis public key"
+            );
+        }
+        let txs = pubkey_rejection_txs(gn, base)?;
+        let recipient = gn.accts[2].acc.clone();
+        let signer_balances = [
+            account_balance(rust, &controlled[0].acc)?,
+            account_balance(rust, &controlled[1].acc)?,
+            account_balance(rust, &controlled[2].acc)?,
+        ];
+        Ok(Self {
+            txs,
+            check: [None, None, None, None, None, None],
+            rust_check: [None, None, None, None, None, None],
+            prepare_included: [false; 6],
+            process_status: [None; 6],
+            completed: [false; 6],
+            signers: std::array::from_fn(|i| controlled[i].acc.clone()),
+            signer_addrs: std::array::from_fn(|i| controlled[i].addr.clone()),
+            signer_balances,
+            signer_sequences: std::array::from_fn(|i| {
+                rust.query_sequence(&controlled[i].addr).sequence
+            }),
+            public_keys: std::array::from_fn(|i| controlled[i].pk.clone()),
+            recipient_balance: account_balance(rust, &recipient)?,
+            recipient,
+        })
+    }
+
+    fn tx_index(&self, tx: &[u8]) -> Option<usize> {
+        self.txs.iter().position(|candidate| candidate == tx)
+    }
+
+    fn require_complete(
+        &mut self,
+        index: usize,
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        let check = self.check[index]
+            .as_ref()
+            .context("public-key fixture transaction was not checked")?;
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == self.txs[index])
+            .collect();
+        let account = index / 2;
+        let accepted = abci::response_process_proposal::ProposalStatus::Accept as i32;
+        let rejected = abci::response_process_proposal::ProposalStatus::Reject as i32;
+        match index {
+            0 | 2 => {
+                let marker =
+                    ["length of pubkey is incorrect", "pubkey is incorrect size"][index / 2];
+                let rust_check = self.rust_check[index]
+                    .as_ref()
+                    .context("Rust public-key fixture transaction was not checked")?;
+                let expected_gas = 1_180;
+                anyhow::ensure!(
+                    check.codespace == "undefined"
+                        && check.code == 111_222
+                        && check
+                            .log
+                            .starts_with(&format!("recovered: {marker}\ncaused by transaction:\n"))
+                        && check.gas_wanted == 0
+                        && check.gas_used == expected_gas
+                        && check.data.is_empty()
+                        && check.info.is_empty()
+                        && check.events.is_empty()
+                        && check.address.is_empty()
+                        && check.priority == 0
+                        && check.sequence == 0,
+                    "malformed public-key CheckTx {} changed: {check:?}",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    exact_rust_malformed_pubkey_check(rust_check, marker),
+                    "Rust malformed public-key CheckTx {} changed: {rust_check:?}",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    self.prepare_included[index]
+                        && self.process_status[index] == Some(rejected)
+                        && !finalized.contains(&self.txs[index])
+                        && matches.is_empty(),
+                    "malformed public-key transaction {} did not preserve exact proposal rejection behavior",
+                    index + 1
+                );
+            }
+            1 | 3 => {
+                anyhow::ensure!(
+                    matches.len() == 1,
+                    "public-key recovery transaction {} finalized {} times",
+                    index + 1,
+                    matches.len()
+                );
+                let result = matches[0].1;
+                anyhow::ensure!(
+                    check.codespace.is_empty()
+                        && check.code == 0
+                        && check.log.is_empty()
+                        && check.gas_wanted == 200_000
+                        && check.gas_used == 63_773
+                        && check.data.is_empty()
+                        && check.info.is_empty()
+                        && check.address == self.signer_addrs[account]
+                        && check.priority == 500_000
+                        && check.sequence == 0,
+                    "public-key recovery CheckTx {} changed: {check:?}",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    self.prepare_included[index] && self.process_status[index] == Some(accepted),
+                    "public-key recovery transaction {} was not proposed and accepted",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    result.codespace.is_empty()
+                        && result.code == 0
+                        && result.log.is_empty()
+                        && result.gas_wanted == 200_000
+                        && result.gas_used == 82_621
+                        && result.data
+                            == hex::decode(
+                                "12260a242f636f736d6f732e62616e6b2e763162657461312e4d736753656e64526573706f6e7365"
+                            )?
+                        && result.info.is_empty()
+                        && result.signers == [self.signers[account].clone()],
+                    "public-key recovery FinalizeBlock {} changed: {result:?}",
+                    index + 1
+                );
+            }
+            4 | 5 => {
+                anyhow::ensure!(
+                    matches.len() == 1,
+                    "Ed25519 transaction {} finalized {} times",
+                    index + 1,
+                    matches.len()
+                );
+                let result = matches[0].1;
+                let expected = "ED25519 public keys are unsupported: invalid pubkey";
+                let expected_check_gas = [44_909, 44_891][index - 4];
+                anyhow::ensure!(
+                    check.codespace == "sdk"
+                        && check.code == 8
+                        && check.log == expected
+                        && check.gas_wanted == 200_000
+                        && check.gas_used == expected_check_gas
+                        && check.data.is_empty()
+                        && check.info.is_empty()
+                        && check.events.is_empty()
+                        && check.address.is_empty()
+                        && check.priority == 0
+                        && check.sequence == 0,
+                    "Ed25519 CheckTx {} changed: {check:?}",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    !self.prepare_included[index] && self.process_status[index] == Some(rejected),
+                    "Ed25519 transaction {} was not excluded and rejected",
+                    index + 1
+                );
+                anyhow::ensure!(
+                    result.codespace == check.codespace
+                        && result.code == check.code
+                        && result.log == expected
+                        && result.gas_wanted == 200_000
+                        && result.gas_used == 44_891
+                        && result.data.is_empty()
+                        && result.info.is_empty()
+                        && result.events.is_empty()
+                        && result.signers == [self.signers[account].clone()],
+                    "Ed25519 FinalizeBlock {} changed: {result:?}",
+                    index + 1
+                );
+            }
+            _ => anyhow::bail!("unknown public-key fixture index {index}"),
+        }
+        let recovery_amounts = [PUBKEY_REJECTION_SEND + 1, PUBKEY_REJECTION_SEND + 3];
+        for signer in 0..3 {
+            let recovered = (signer == 0 && index >= 1) || (signer == 1 && index >= 3);
+            let expected_balance = self.signer_balances[signer]
+                - u128::from(recovered) * (recovery_amounts[signer.min(1)] + PUBKEY_REJECTION_FEE);
+            anyhow::ensure!(
+                account_balance(rust, &self.signers[signer])? == expected_balance
+                    && rust.query_sequence(&self.signer_addrs[signer]).sequence
+                        == self.signer_sequences[signer] + u64::from(recovered),
+                "public-key fixture {} changed signer {} balance or sequence",
+                index + 1,
+                signer
+            );
+            let expected_key = recovered.then_some(&self.public_keys[signer]);
+            anyhow::ensure!(
+                account_public_key(rust, &self.signers[signer])?.as_ref() == expected_key,
+                "public-key fixture {} changed signer {} public key",
+                index + 1,
+                signer
+            );
+        }
+        let recovered_amount = recovery_amounts[0] * u128::from(index >= 1)
+            + recovery_amounts[1] * u128::from(index >= 3);
+        anyhow::ensure!(
+            account_balance(rust, &self.recipient)? == self.recipient_balance + recovered_amount,
+            "public-key fixture {} changed the recipient balance",
+            index + 1
+        );
+        anyhow::ensure!(!self.completed[index], "public-key fixture completed twice");
+        self.completed[index] = true;
+        Ok(())
+    }
+}
+
+fn exact_rust_malformed_pubkey_check(check: &abci::ResponseCheckTx, marker: &str) -> bool {
+    check.codespace == "undefined"
+        && check.code == 111_222
+        && check.log == format!("recovered: {marker}: panic")
+        && check.gas_wanted == 0
+        && check.gas_used == 1_180
+        && check.data.is_empty()
+        && check.info.is_empty()
+        && check.events.is_empty()
+        && check.address.is_empty()
+        && check.priority == 0
+        && check.sequence == 0
+}
+
+fn pubkey_rejection_txs(gn: &Gen, base: usize) -> anyhow::Result<[Vec<u8>; 6]> {
+    let malformed_secp = x_ante::pubkey::PubKey::Secp256k1(vec![2; 32]).to_any();
+    let malformed_ed = x_ante::pubkey::PubKey::Ed25519(vec![3; 31]).to_any();
+    let specs = [
+        (base, malformed_secp, false),
+        (base, gn.accts[base].pk.clone(), true),
+        (base + 1, malformed_ed, false),
+        (base + 1, gn.accts[base + 1].pk.clone(), true),
+        (base + 2, gn.accts[base + 2].pk.clone(), false),
+        (base + 2, gn.accts[base + 2].pk.clone(), false),
+    ];
+    let txs = specs
+        .into_iter()
+        .enumerate()
+        .map(|(index, (signer, public_key, valid_signature))| {
+            pubkey_rejection_send(
+                gn,
+                &gn.accts[signer],
+                public_key,
+                PUBKEY_REJECTION_SEND + index as u128,
+                valid_signature,
+                &format!("pubkey-rejection-{index}"),
+            )
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    txs.try_into()
+        .map_err(|_| anyhow::anyhow!("wrong public-key fixture transaction count"))
+}
+
+fn pubkey_rejection_send(
+    gn: &Gen,
+    signer: &Acct,
+    public_key: Any,
+    amount: u128,
+    valid_signature: bool,
+    memo: &str,
+) -> anyhow::Result<Vec<u8>> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+
+    let body_bytes = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: signer.acc.clone(),
+            to_address: gn.accts[2].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: amount.to_string(),
+            }],
+        })],
+        memo: memo.into(),
+        ..Default::default()
+    }
+    .encode_to_vec();
+    #[allow(deprecated)]
+    let auth_info_bytes = AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(public_key),
+            mode_info: Some(single_mode_info(SignMode::Direct)),
+            sequence: 0,
+        }],
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: PUBKEY_REJECTION_FEE.to_string(),
+            }],
+            gas_limit: 200_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec();
+    let direct = SignDoc {
+        body_bytes: body_bytes.clone(),
+        auth_info_bytes: auth_info_bytes.clone(),
+        chain_id: gn.chain_id.clone(),
+        account_number: signer.number,
+    }
+    .encode_to_vec();
+    let signature = if valid_signature {
+        signer.key.sign(&direct)?.to_vec()
+    } else {
+        vec![7; 64]
+    };
+    Ok(TxRaw {
+        body_bytes,
+        auth_info_bytes,
+        signatures: vec![signature],
+    }
+    .encode_to_vec())
+}
+
 const P256_SEND: u128 = 19;
 const P256_FEE: u128 = 100_000;
 
@@ -9615,6 +10130,101 @@ mod tests {
                 .require_zero_threshold_multisig_coverage()
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn pubkey_rejection_fixtures_bind_key_lengths_and_signers() {
+        use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+        use celestia_proto::cosmos::crypto::{ed25519, secp256k1};
+
+        let mut g = offline_gen(10, 1, false);
+        let base = g.accts.len();
+        g.accts.push(controlled_secp_account(999, "secp"));
+        g.accts.push(controlled_secp_account(1_000, "ed-malformed"));
+        let ed = controlled_ed25519_account(&g.accts, 1_001).unwrap();
+        g.accts.push(ed);
+        let txs = pubkey_rejection_txs(&g, base).unwrap();
+        let expected = [
+            (x_ante::pubkey::SECP256K1_TYPE_URL, 32, base),
+            (x_ante::pubkey::SECP256K1_TYPE_URL, 33, base),
+            (x_ante::pubkey::ED25519_TYPE_URL, 31, base + 1),
+            (x_ante::pubkey::SECP256K1_TYPE_URL, 33, base + 1),
+            (x_ante::pubkey::ED25519_TYPE_URL, 32, base + 2),
+            (x_ante::pubkey::ED25519_TYPE_URL, 32, base + 2),
+        ];
+        let unique: std::collections::BTreeSet<_> = txs.iter().collect();
+        assert_eq!(unique.len(), txs.len());
+        for (index, tx) in txs.iter().enumerate() {
+            let raw = TxRaw::decode(tx.as_slice()).unwrap();
+            let auth = AuthInfo::decode(raw.auth_info_bytes.as_slice()).unwrap();
+            let signer = &auth.signer_infos[0];
+            let public_key = signer.public_key.as_ref().unwrap();
+            assert_eq!(public_key.type_url, expected[index].0);
+            let key_len = if public_key.type_url == x_ante::pubkey::SECP256K1_TYPE_URL {
+                secp256k1::PubKey::decode(public_key.value.as_slice())
+                    .unwrap()
+                    .key
+                    .len()
+            } else {
+                ed25519::PubKey::decode(public_key.value.as_slice())
+                    .unwrap()
+                    .key
+                    .len()
+            };
+            assert_eq!(key_len, expected[index].1);
+            assert_eq!(signer.sequence, 0);
+            assert_eq!(raw.signatures.len(), 1);
+            assert_eq!(raw.signatures[0].len(), 64);
+            let body = TxBody::decode(raw.body_bytes.as_slice()).unwrap();
+            assert_eq!(body.memo, format!("pubkey-rejection-{index}"));
+            assert_eq!(body.messages.len(), 1);
+            let send = MsgSend::decode(body.messages[0].value.as_slice()).unwrap();
+            assert_eq!(send.from_address, g.accts[expected[index].2].acc);
+            assert_eq!(send.to_address, g.accts[2].acc);
+        }
+    }
+
+    #[test]
+    fn pubkey_rejection_requirement_fails_closed() {
+        let mut stats = Stats {
+            pubkey_rejection_required: Some(()),
+            log_mismatches: vec![
+                "length of pubkey is incorrect".into(),
+                "pubkey is incorrect size".into(),
+            ],
+            ..Stats::default()
+        };
+        for completed in 0..=7 {
+            stats.pubkey_rejection_completed = completed;
+            assert_eq!(
+                stats.require_pubkey_rejection_coverage().is_ok(),
+                completed == 6
+            );
+        }
+        stats.pubkey_rejection_completed = 6;
+        stats.log_mismatches.pop();
+        assert!(stats.require_pubkey_rejection_coverage().is_err());
+        assert!(Stats::default().require_pubkey_rejection_coverage().is_ok());
+    }
+
+    #[test]
+    fn pubkey_rejection_rejects_wrong_rust_panic_value() {
+        let mut check = abci::ResponseCheckTx {
+            codespace: "undefined".into(),
+            code: 111_222,
+            log: "recovered: length of pubkey is incorrect: panic".into(),
+            gas_used: 1_180,
+            ..Default::default()
+        };
+        assert!(exact_rust_malformed_pubkey_check(
+            &check,
+            "length of pubkey is incorrect"
+        ));
+        check.log = "recovered: different panic value: panic".into();
+        assert!(!exact_rust_malformed_pubkey_check(
+            &check,
+            "length of pubkey is incorrect"
+        ));
     }
 
     #[test]

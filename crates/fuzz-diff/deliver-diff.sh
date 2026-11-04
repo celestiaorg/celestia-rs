@@ -47,6 +47,13 @@
 # four generated blocks and zero random transactions, and checks proposal and
 # execution outcomes, the controlled forced-Finalize rejection, rollback, and
 # exact public-key persistence.
+# DELIVER_PUBKEY_REJECTION_REQUIRE=1 sends malformed-length secp256k1 and
+# Ed25519 keys, successful recovery sends from both accounts, and two valid
+# Ed25519 rejection controls. It requires exactly seven generated blocks and
+# zero random transactions, and checks exact panic/error outcomes, proposal
+# handling, check-state recovery, and public-key persistence. Malformed-key
+# panics must be rejected by ProcessProposal and are not force-finalized;
+# returned Ed25519 errors are force-finalized to compare rollback.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and
