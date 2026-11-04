@@ -138,6 +138,7 @@ deliver_flags() {
     mode=$(pick "$((s / 3))" noop message-id merkle-root)
     f+=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
     [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+    [ "$mode" = merkle-root ] && f+=(DELIVER_HL_REGISTRY_REQUIRE=1)
     ;;
   esac
   [ $((s % 2)) -eq 0 ] && f+=(DELIVER_WIRE=1)
@@ -168,6 +169,7 @@ campaign_deliver_run() { # <scenario> <seed> <flags...>
     for mode in noop message-id merkle-root; do
       local f=(DELIVER_HL=1 "DELIVER_HL_ISM=$mode")
       [ "$mode" != noop ] && f+=(DELIVER_HL_REJECT=1)
+      [ "$mode" = merkle-root ] && f+=(DELIVER_HL_REGISTRY_REQUIRE=1)
       deliver_run "$scen" "$s" "$@" "${f[@]}"
     done
     ;;

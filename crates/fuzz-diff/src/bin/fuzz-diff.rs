@@ -559,6 +559,9 @@ fn main() -> anyhow::Result<()> {
         for (version_kind, n) in &st.hl_verified_versions {
             println!("HL_VERIFIED_VERSION {version_kind} {n}");
         }
+        for (handler, n) in &st.hl_registry {
+            println!("HL_REGISTRY {handler} {n}");
+        }
         for (case, n) in &st.hl_retried {
             println!("HL_RETRIED {case} {n}");
         }
@@ -628,6 +631,8 @@ fn main() -> anyhow::Result<()> {
                 "hl_verification": st.hl_verification,
                 "hl_verified": st.hl_verified,
                 "hl_verified_versions": st.hl_verified_versions,
+                "hl_registry_required": st.hl_registry_required.is_some(),
+                "hl_registry": st.hl_registry,
                 "hl_preupgrade_required": st.hl_preupgrade_required,
                 "hl_preupgrade_blocks": st.hl_preupgrade_blocks,
                 "hl_rejection_cases": st.hl_rejection_cases,

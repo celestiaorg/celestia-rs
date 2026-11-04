@@ -99,6 +99,12 @@ for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting
   esac
   run "pp-$scen" GO_APPD="$A" -- crates/fuzz-diff/pp-diff.sh "$scen" 20 4
 done
+for scen in hyperlane v9-hyperlane; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "hyperlane-registry-$scen" GO_APPD="$A" DELIVER_HL=1 DELIVER_HL_ISM=merkle-root \
+    DELIVER_HL_REGISTRY_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 6
+done
 for scen in gov v9-gov; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "gov-abstain-$scen" GO_APPD="$A" DELIVER_GOVPASS=1 DELIVER_GOV_ABSTAIN_REQUIRE=1 -- \

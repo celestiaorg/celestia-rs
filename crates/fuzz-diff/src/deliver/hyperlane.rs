@@ -5,8 +5,8 @@ use celestia_proto::Any;
 use celestia_proto::hyperlane::core::interchain_security::v1 as pb;
 use k256::ecdsa::SigningKey;
 use prost::Message as _;
-use x_hyperlane::ism::checkpoint_digest;
-use x_hyperlane::util::{branch_root, keccak256};
+use x_hyperlane::ism::{announcement_digest, checkpoint_digest};
+use x_hyperlane::util::{branch_root, eth_signing_hash, keccak256};
 
 pub(super) struct Verifier {
     name: String,
@@ -99,6 +99,38 @@ fn address(key: &SigningKey) -> [u8; 20] {
     let mut address = [0; 20];
     address.copy_from_slice(&hash[12..]);
     address
+}
+
+/// A valid validator announcement for the controlled Hyperlane mailbox.
+///
+/// The key is harness-only and deterministic so both apps receive identical
+/// signed input. The creator is the transaction signer; the Ethereum key is
+/// the validator being announced.
+pub(super) fn announcement(
+    creator: String,
+    mailbox_id: String,
+    domain: u32,
+) -> anyhow::Result<Any> {
+    let key = SigningKey::from_slice(&[1; 32]).context("fixed Hyperlane validator key")?;
+    let storage_location = "s3://celestia-rs-fuzz/validator-1".to_owned();
+    let mailbox = hex::decode(mailbox_id.trim_start_matches("0x"))
+        .context("controlled Hyperlane mailbox id")?;
+    anyhow::ensure!(
+        mailbox.len() == 32,
+        "controlled Hyperlane mailbox id length"
+    );
+    let digest = announcement_digest(&storage_location, domain, &mailbox);
+    let hash = eth_signing_hash(&digest);
+    let (signature, recovery) = key.sign_prehash_recoverable(&hash);
+    let mut signature = signature.to_bytes().to_vec();
+    signature.push(27 + recovery.to_byte());
+    Ok(Any::pack(&pb::MsgAnnounceValidator {
+        validator: format!("0x{}", hex::encode(address(&key))),
+        storage_location,
+        signature: format!("0x{}", hex::encode(signature)),
+        mailbox_id,
+        creator,
+    }))
 }
 
 impl Verifier {
@@ -216,6 +248,35 @@ mod tests {
     use sdk::{Context, ExecMode, Header, MultiStore};
     use x_hyperlane::ism::Ism;
     use x_hyperlane::util::{HexAddress, HyperlaneMessage};
+
+    #[test]
+    fn controlled_announcement_is_signed_for_its_mailbox() {
+        let mailbox = format!("0x{}", "42".repeat(32));
+        let any = announcement("celestia1creator".into(), mailbox.clone(), 77).unwrap();
+        let message = pb::MsgAnnounceValidator::decode(any.value.as_slice()).unwrap();
+        assert_eq!(message.creator, "celestia1creator");
+        assert_eq!(message.mailbox_id, mailbox);
+        let signature = hex::decode(message.signature.trim_start_matches("0x")).unwrap();
+        let digest = announcement_digest(
+            &message.storage_location,
+            77,
+            &hex::decode(message.mailbox_id.trim_start_matches("0x")).unwrap(),
+        );
+        let hash = eth_signing_hash(&digest);
+        let recovery = k256::ecdsa::RecoveryId::from_byte(signature[64] - 27).unwrap();
+        let recovered = k256::ecdsa::VerifyingKey::recover_from_prehash(
+            &hash,
+            &k256::ecdsa::Signature::from_slice(&signature[..64]).unwrap(),
+            recovery,
+        )
+        .unwrap();
+        let point = recovered.to_sec1_point(false);
+        let validator = keccak256(&[&point.as_bytes()[1..]]);
+        assert_eq!(
+            message.validator,
+            format!("0x{}", hex::encode(&validator[12..]))
+        );
+    }
 
     #[test]
     fn checkpoints_verify_and_reject_changed_messages_and_signatures() {

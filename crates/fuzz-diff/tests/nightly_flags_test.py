@@ -11,7 +11,6 @@ import unittest
 
 class NightlyFlagsTest(unittest.TestCase):
     ICA_HOST_PARAMS = "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams"
-
     def test_json_rotation_compares_pfm_acknowledgement_bytes_at_both_versions(self):
         runs = self.dry_runs("json", 7)
         self.assertEqual(len(runs), 2)
@@ -36,6 +35,8 @@ class NightlyFlagsTest(unittest.TestCase):
             flags = dict(word.split("=", 1) for word in line.split())
             self.assertEqual(flags["DELIVER_HL"], "1")
             self.assertEqual("DELIVER_HL_REJECT" in flags, flags["DELIVER_HL_ISM"] != "noop")
+            self.assertEqual("DELIVER_HL_REGISTRY_REQUIRE" in flags,
+                             flags["DELIVER_HL_ISM"] == "merkle-root")
             if ("DELIVER_GOVPASS" in flags and
                     "DELIVER_GOV_ABSTAIN_REQUIRE" not in flags):
                 self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
@@ -127,6 +128,8 @@ class NightlyFlagsTest(unittest.TestCase):
                 mode = flags["DELIVER_HL_ISM"]
                 self.assertEqual(flags["DELIVER_HL"], "1")
                 self.assertEqual("DELIVER_HL_REJECT" in flags, mode != "noop")
+                self.assertEqual("DELIVER_HL_REGISTRY_REQUIRE" in flags,
+                                 mode == "merkle-root")
                 coverage.add((scenario, mode, "DELIVER_GOVPASS" in flags))
             else:
                 self.assertNotIn("DELIVER_HL_ISM", flags)
