@@ -159,6 +159,12 @@ for scen in authz-feegrant v9-authz-feegrant; do
     crates/fuzz-diff/deliver-diff.sh "$scen" 7 0 17373
 done
 for scen in ibc v9-ibc; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "pfm-metadata-$scen" GO_APPD="$A" DELIVER_IBC=1 \
+    DELIVER_IBC_PFM_METADATA_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 8083
+done
+for scen in ibc v9-ibc; do
   case $scen in
     v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/transfer-authz-boundaries-v9.script ;;
     *) A=$V10; SCRIPT=crates/fuzz-diff/fixtures/transfer-authz-boundaries.script ;;

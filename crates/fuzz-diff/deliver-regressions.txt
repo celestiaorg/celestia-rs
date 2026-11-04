@@ -100,6 +100,12 @@ v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_TIMEOUT_REQUIRE=1
 # Ack for the exact original packet after the refundable unwind path executes.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_EXHAUST_REQUIRE=1
 v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_EXHAUST_REQUIRE=1
+# Receive proof-backed packets whose PFM metadata has one typed parse error,
+# one identifier validation error, and a forward:null ICS-20 success control.
+# Require the official Go Ack bytes, committed Ack hashes and receipts, no
+# forwarding/mint on errors, and the exact control voucher balance.
+ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_METADATA_REQUIRE=1
+v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_METADATA_REQUIRE=1
 # Execute an exact successful ICA host packet under proto3, upgrade that real
 # channel to proto3json, then execute and acknowledge another exact packet.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_ICA_ENCODINGS_REQUIRE=1

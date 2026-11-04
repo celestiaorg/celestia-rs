@@ -432,9 +432,23 @@ const PFM_SUCCESS_ACK_HEX: &str = "7b22726573756c74223a2241513d3d227d";
 const PFM_ERROR_ACK: &[u8] = br#"{"error":"pfm downstream rejection"}"#;
 const PFM_ERROR_ACK_HEX: &str =
     "7b226572726f72223a2270666d20646f776e73747265616d2072656a656374696f6e227d";
+const PFM_METADATA_AMOUNT: &str = "313131313131313131";
+const PFM_METADATA_PARSE_DENOM: &str = "upfmmetadataparse";
+const PFM_METADATA_VALIDATE_DENOM: &str = "upfmmetadatavalidate";
+const PFM_METADATA_CONTROL_DENOM: &str = "upfmmetadatacontrol";
 const ICA_ERROR_AMOUNT: &str = "100000000000";
 const ICA_INSUFFICIENT_FUNDS_ACK: &str =
     "ABCI code: 5: error handling packet: see events for details";
+
+fn fixture_ack(fixture: &str, name: &str) -> Option<Vec<u8>> {
+    serde_json::from_str::<Vec<serde_json::Value>>(fixture)
+        .ok()?
+        .iter()
+        .find(|case| case.get("name").and_then(serde_json::Value::as_str) == Some(name))?
+        .get("ack_hex")?
+        .as_str()
+        .and_then(|ack| hex::decode(ack).ok())
+}
 
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
@@ -477,6 +491,11 @@ pub struct Driver {
     pfm_error_required: bool,
     pfm_timeout_required: bool,
     pfm_exhaust_required: bool,
+    pfm_metadata_required: bool,
+    pfm_metadata_stage: u8,
+    pfm_metadata_pending: Option<(ch::Packet, Vec<u8>, &'static str)>,
+    pfm_metadata_packets: Vec<(ch::Packet, Vec<u8>, &'static str)>,
+    pfm_metadata_diagnostic: Option<String>,
     pfm_stage: u8,
     pfm_original: Option<ch::Packet>,
     pfm_forwarded: Option<ch::Packet>,
@@ -587,6 +606,15 @@ fn is_ica_host_ack_error(
 }
 
 impl Driver {
+    fn required_fixture_ack(&mut self, fixture: &str, name: &str) -> Vec<u8> {
+        fixture_ack(fixture, name).unwrap_or_else(|| {
+            self.pfm_metadata_diagnostic = Some(format!(
+                "embedded PFM acknowledgement fixture has no valid {name} ack"
+            ));
+            Vec::new()
+        })
+    }
+
     /// Enable the counterparty-initiated OpenTry / OpenConfirm flow.
     #[must_use]
     pub fn with_connection_confirm(mut self, enabled: bool) -> Self {
@@ -644,6 +672,14 @@ impl Driver {
         self
     }
 
+    /// Require typed-parse and metadata-validation error acknowledgements,
+    /// followed by a `forward:null` transfer control.
+    #[must_use]
+    pub fn with_pfm_metadata_requirement(mut self, enabled: bool) -> Self {
+        self.pfm_metadata_required = enabled;
+        self
+    }
+
     /// Require successful exact-packet ICA host execution in both encodings.
     #[must_use]
     pub fn with_ica_encoding_requirement(mut self, enabled: bool) -> Self {
@@ -674,6 +710,20 @@ impl Driver {
 
     fn pfm_timeout_enabled(&self) -> bool {
         self.pfm_timeout_required || self.pfm_exhaust_required
+    }
+
+    /// Exact metadata packets and raw acknowledgements credited by the
+    /// event gate. The harness independently checks their committed receipt
+    /// and acknowledgement commitment after all blocks finish.
+    #[must_use]
+    pub fn pfm_metadata_packets(&self) -> &[(ch::Packet, Vec<u8>, &'static str)] {
+        &self.pfm_metadata_packets
+    }
+
+    /// Last non-matching acknowledgement for the pending exact packet.
+    #[must_use]
+    pub fn pfm_metadata_diagnostic(&self) -> Option<&str> {
+        self.pfm_metadata_diagnostic.as_deref()
     }
 
     fn pfm_acknowledgement(&self) -> (&'static [u8], &'static str) {
@@ -1119,6 +1169,12 @@ impl Driver {
     fn steady(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
         let signer = c.signer.clone();
         let a_chan = self.a_transfer.clone()?;
+        if self.pfm_metadata_required && self.pfm_metadata_stage < 3 {
+            if self.pfm_metadata_pending.is_some() {
+                return Some(self.pfm_metadata_relay_pending(c, &signer));
+            }
+            return Some(self.pfm_metadata_recv(c, &signer, &a_chan));
+        }
         if self.pfm_enabled() {
             if self.pfm_stage == 0 {
                 return Some(self.pfm_recv(c, &signer, &a_chan));
@@ -1355,6 +1411,83 @@ impl Driver {
         let h = self.cp.commit(c.now - 8);
         self.pfm_original = Some(packet.clone());
         self.pfm_stage = 1;
+        let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
+        messages.push(Any::pack(&ch::MsgRecvPacket {
+            proof_commitment: self.cp.proof(&format!(
+                "commitments/ports/transfer/channels/{CP_TRANSFER}/sequences/{}",
+                packet.sequence
+            )),
+            packet: Some(packet),
+            proof_height: proof_height(h),
+            signer: signer.into(),
+        }));
+        messages
+    }
+
+    /// Send one exact incoming transfer that either fails PFM metadata
+    /// parsing/validation or proves `forward:null` delegates to ICS-20.
+    fn pfm_metadata_recv(&mut self, c: &StepCtx<'_>, signer: &str, a_chan: &str) -> Vec<Any> {
+        let (memo, denom, acknowledgement, credit) = match self.pfm_metadata_stage {
+            0 => (
+                r#"{"forward":{"receiver":1}}"#,
+                PFM_METADATA_PARSE_DENOM,
+                self.required_fixture_ack(
+                    include_str!(
+                        "../../../conformance/fixtures/packetforward/memo-parse-error-acks.json"
+                    ),
+                    "receiver-number",
+                ),
+                "pfm_metadata_parse_ack",
+            ),
+            1 => (
+                r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udfff"}}"#,
+                PFM_METADATA_VALIDATE_DENOM,
+                self.required_fixture_ack(
+                    include_str!(
+                        "../../../conformance/fixtures/packetforward/memo-validation-acks.json"
+                    ),
+                    "reserved-channel-short-escaped",
+                ),
+                "pfm_metadata_validate_ack",
+            ),
+            _ => (
+                r#"{"forward":null}"#,
+                PFM_METADATA_CONTROL_DENOM,
+                PFM_SUCCESS_ACK.to_vec(),
+                "pfm_metadata_null_control",
+            ),
+        };
+        let data = serde_json::json!({
+            "amount": PFM_METADATA_AMOUNT,
+            "denom": denom,
+            "memo": memo,
+            "receiver": c.accounts[0].0,
+            "sender": "cosmos1pfmmetadataorigin"
+        })
+        .to_string()
+        .into_bytes();
+        let mut packet = ch::Packet {
+            sequence: 0,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: a_chan.into(),
+            data,
+            timeout_height: None,
+            timeout_timestamp: u64::try_from(c.now + 3600).unwrap_or(0) * 1_000_000_000,
+        };
+        self.cp.send(&mut packet);
+        self.pfm_metadata_pending = Some((packet.clone(), acknowledgement, credit));
+        self.pfm_metadata_relay_pending(c, signer)
+    }
+
+    /// Re-prove the same exact pending packet after CheckTx/proposal drops.
+    /// A successful relay is credited during `observe`, before the next step.
+    fn pfm_metadata_relay_pending(&mut self, c: &StepCtx<'_>, signer: &str) -> Vec<Any> {
+        let Some((packet, _, _)) = self.pfm_metadata_pending.clone() else {
+            return Vec::new();
+        };
+        let h = self.cp.commit(c.now - 8);
         let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
         messages.push(Any::pack(&ch::MsgRecvPacket {
             proof_commitment: self.cp.proof(&format!(
@@ -2189,13 +2322,59 @@ impl Driver {
             let mut ica_success_ack = None;
             let mut ica_error_ack = false;
             let mut ica_error_event = false;
+            let mut pfm_metadata_recv = false;
+            let mut pfm_metadata_ack = false;
+            let mut pfm_metadata_sent = false;
             for e in &r.events {
+                if e.r#type == "write_acknowledgement"
+                    && let Some((packet, acknowledgement, credit)) =
+                        self.pfm_metadata_pending.as_ref()
+                    && packet_of(e)
+                        .as_ref()
+                        .is_some_and(|event_packet| same_packet(event_packet, packet))
+                    && attr(e, "packet_ack_hex").as_deref()
+                        != Some(hex::encode(acknowledgement).as_str())
+                {
+                    self.pfm_metadata_diagnostic = Some(format!(
+                        "{credit}: observed {}, expected {}",
+                        attr(e, "packet_ack_hex").unwrap_or_else(|| "<missing>".into()),
+                        hex::encode(acknowledgement)
+                    ));
+                }
                 if self.cu_ack_failure_pending
                     && is_ica_host_ack_error(e, self.a_ica.as_deref(), self.cu_seq)
                 {
                     ack_callback_error = true;
                 }
                 match e.r#type.as_str() {
+                    "recv_packet"
+                        if self
+                            .pfm_metadata_pending
+                            .as_ref()
+                            .is_some_and(|(packet, _, _)| {
+                                packet_of(e)
+                                    .as_ref()
+                                    .is_some_and(|event_packet| same_packet(event_packet, packet))
+                            }) =>
+                    {
+                        pfm_metadata_recv = true;
+                    }
+                    "write_acknowledgement"
+                        if self.pfm_metadata_pending.as_ref().is_some_and(
+                            |(packet, acknowledgement, _)| {
+                                packet_of(e)
+                                    .as_ref()
+                                    .is_some_and(|event_packet| same_packet(event_packet, packet))
+                                    && attr(e, "packet_ack_hex").as_deref()
+                                        == Some(hex::encode(acknowledgement).as_str())
+                            },
+                        ) =>
+                    {
+                        pfm_metadata_ack = true;
+                    }
+                    "send_packet" if self.pfm_metadata_pending.is_some() => {
+                        pfm_metadata_sent = true;
+                    }
                     "create_client" => {
                         if let Some(id) = attr(e, "client_id") {
                             let expired_height = format!("1-{}", self.expired_trusted);
@@ -2463,6 +2642,16 @@ impl Driver {
                     }
                     _ => {}
                 }
+            }
+            if pfm_metadata_recv
+                && pfm_metadata_ack
+                && !pfm_metadata_sent
+                && let Some((packet, acknowledgement, credit)) = self.pfm_metadata_pending.take()
+            {
+                self.pfm_metadata_packets
+                    .push((packet, acknowledgement, credit));
+                self.pfm_metadata_stage += 1;
+                self.bump(credit);
             }
             if completing_pfm_exhaustion {
                 if pfm_timeout && pfm_retry.is_none() && pfm_exhaust_ack {
@@ -3122,6 +3311,91 @@ mod tests {
 
         driver.observe(&[update_result("07-tendermint-1", 10)]);
         assert_eq!(driver.stats.get("recovered_client_update"), Some(&1));
+    }
+
+    #[test]
+    fn pfm_metadata_credit_requires_exact_receipt_ack_and_no_forward() {
+        let packet = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact metadata packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let acknowledgement = fixture_ack(
+            include_str!("../../../conformance/fixtures/packetforward/memo-parse-error-acks.json"),
+            "receiver-number",
+        )
+        .unwrap_or_default();
+        assert!(!acknowledgement.is_empty());
+        let mut driver = Driver {
+            pfm_metadata_required: true,
+            pfm_metadata_pending: Some((
+                packet.clone(),
+                acknowledgement.clone(),
+                "pfm_metadata_parse_ack",
+            )),
+            ..Driver::default()
+        };
+
+        let ack_hex = hex::encode(&acknowledgement);
+        let mut changed = packet.clone();
+        changed.sequence += 1;
+        driver.observe(&[result_events(vec![
+            packet_event("recv_packet", &changed, None),
+            packet_event("write_acknowledgement", &changed, Some(&ack_hex)),
+        ])]);
+        driver.observe(&[result_events(vec![
+            packet_event("recv_packet", &packet, None),
+            packet_event("write_acknowledgement", &packet, Some("00")),
+        ])]);
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &packet,
+            Some(&ack_hex),
+        ))]);
+        driver.observe(&[result_events(vec![
+            packet_event("recv_packet", &packet, None),
+            packet_event("send_packet", &changed, None),
+            packet_event("write_acknowledgement", &packet, Some(&ack_hex)),
+        ])]);
+        driver.observe(&[ExecTxResult {
+            code: 1,
+            events: vec![
+                packet_event("recv_packet", &packet, None),
+                packet_event("write_acknowledgement", &packet, Some(&ack_hex)),
+            ],
+            ..Default::default()
+        }]);
+        assert_eq!(driver.stats.get("pfm_metadata_parse_ack"), None);
+        assert!(driver.pfm_metadata_packets.is_empty());
+
+        driver.observe(&[result_events(vec![
+            packet_event("recv_packet", &packet, None),
+            packet_event("write_acknowledgement", &packet, Some(&ack_hex)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_metadata_parse_ack"), Some(&1));
+        assert_eq!(driver.pfm_metadata_packets.len(), 1);
+        assert_eq!(driver.pfm_metadata_stage, 1);
+
+        driver.observe(&[result_events(vec![
+            packet_event("recv_packet", &packet, None),
+            packet_event("write_acknowledgement", &packet, Some(&ack_hex)),
+        ])]);
+        assert_eq!(driver.stats.get("pfm_metadata_parse_ack"), Some(&1));
+    }
+
+    #[test]
+    fn missing_pfm_metadata_golden_fails_with_a_diagnostic() {
+        let mut driver = Driver::default();
+        assert!(driver.required_fixture_ack("[]", "missing").is_empty());
+        assert_eq!(
+            driver.pfm_metadata_diagnostic(),
+            Some("embedded PFM acknowledgement fixture has no valid missing ack")
+        );
     }
 
     #[test]
