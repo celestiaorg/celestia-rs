@@ -147,3 +147,12 @@ v9-authz-feegrant 21 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/stake-auth
 # submissions; generic generated evidence failures cannot satisfy these cases.
 evidence 3 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-submit-boundaries.expected.json
 v9-authz-feegrant 2 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.expected.json
+# Exact evidence/3 validation boundaries. Non-Equivocation values are rejected
+# by transaction interface unpacking before the handler and cannot count here.
+evidence 7 1 17363 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-validation-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-validation-boundaries.expected.json
+v9-authz-feegrant 7 1 17363 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-validation-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-validation-boundaries.expected.json
+# A failed proposal persists the zero-time evidence validation text in state.
+# Require the exact Go marker so RFC3339 formatting cannot silently fork the
+# proposal failed_reason and app hash.
+gov 8 1 907001 DELIVER_GOVPASS=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-zero-time-governance.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-zero-time-governance.expected.json DELIVER_SCRIPT_AT=4 DELIVER_TIME_JUMP_AT=5 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=+0000 DELIVER_GOV_FAILURE_TYPE_REQUIRE=/cosmos.evidence.v1beta1.MsgSubmitEvidence
+v9-gov 8 1 907001 DELIVER_GOVPASS=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-zero-time-governance.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-zero-time-governance.expected.json DELIVER_SCRIPT_AT=4 DELIVER_TIME_JUMP_AT=5 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=+0000 DELIVER_GOV_FAILURE_TYPE_REQUIRE=/cosmos.evidence.v1beta1.MsgSubmitEvidence

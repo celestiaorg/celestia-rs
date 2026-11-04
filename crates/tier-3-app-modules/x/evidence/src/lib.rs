@@ -165,7 +165,7 @@ fn validate_basic(e: &Equivocation) -> std::result::Result<(), String> {
     if t.seconds <= 0 {
         return Err(format!(
             "invalid equivocation time: {}",
-            sdk::time::format_rfc3339_nano(&t)
+            sdk::time::go_time_string(&t)
         ));
     }
     if e.height < 1 {
@@ -250,4 +250,28 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
     let gs: GenesisState = serde_json::from_value(genesis.clone())
         .map_err(|e| sdkerr::json_unmarshal(e.to_string()))?;
     init_genesis(ctx, &gs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nonpositive_time_errors_use_go_time_string() {
+        let mut e = Equivocation {
+            height: 1,
+            time: Some(Timestamp::default()),
+            power: 1,
+            consensus_address: "celestiavalcons1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqyts84zh".into(),
+        };
+        assert_eq!(
+            validate_basic(&e),
+            Err("invalid equivocation time: 1970-01-01 00:00:00 +0000 UTC".into())
+        );
+        e.time = None;
+        assert_eq!(
+            validate_basic(&e),
+            Err("invalid equivocation time: 0001-01-01 00:00:00 +0000 UTC".into())
+        );
+    }
 }

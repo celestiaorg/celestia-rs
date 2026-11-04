@@ -38,7 +38,10 @@ impl Proposals {
         &mut self,
         events: &[abci::Event],
         executed: &mut BTreeMap<String, u64>,
-    ) {
+        failure_type: Option<&str>,
+        failure_marker: Option<&str>,
+    ) -> u64 {
+        let mut failure_matches = 0;
         for e in events {
             if !matches!(e.r#type.as_str(), "active_proposal" | "inactive_proposal") {
                 continue;
@@ -54,17 +57,30 @@ impl Proposals {
             let Some(messages) = self.pending.remove(&id) else {
                 continue;
             };
+            let result = e
+                .attributes
+                .iter()
+                .find(|a| a.key == "proposal_result")
+                .map(|a| a.value.as_str());
+            if result == Some("proposal_failed")
+                && failure_marker.is_some_and(|marker| {
+                    e.attributes
+                        .iter()
+                        .any(|a| a.key == "proposal_log" && a.value.contains(marker))
+                })
+                && failure_type.is_none_or(|required| messages.iter().any(|m| m == required))
+            {
+                failure_matches += 1;
+            }
             // Failed handler executions roll the whole proposal back.
             // Rejected / expired proposals never execute their payloads.
-            if e.attributes
-                .iter()
-                .any(|a| a.key == "proposal_result" && a.value == "proposal_passed")
-            {
+            if result == Some("proposal_passed") {
                 for t in messages {
                     *executed.entry(t).or_default() += 1;
                 }
             }
         }
+        failure_matches
     }
 }
 
@@ -129,6 +145,39 @@ mod tests {
     }
 
     #[test]
+    fn failed_proposal_marker_is_attributed_to_its_payload_type() {
+        let mut p = Proposals::default();
+        p.remember(
+            &[proposal(&["/evidence"]), proposal(&["/bank"])],
+            &[
+                event("submit_proposal", 1, ""),
+                event("submit_proposal", 2, ""),
+            ],
+        );
+        let mut failed_evidence = event("active_proposal", 1, "proposal_failed");
+        failed_evidence.attributes.push(abci::EventAttribute {
+            key: "proposal_log".into(),
+            value: "invalid equivocation time: +0000 UTC".into(),
+            index: true,
+        });
+        let mut failed_bank = event("active_proposal", 2, "proposal_failed");
+        failed_bank.attributes.push(abci::EventAttribute {
+            key: "proposal_log".into(),
+            value: "other time: +0000 UTC".into(),
+            index: true,
+        });
+        assert_eq!(
+            p.completed(
+                &[failed_evidence, failed_bank],
+                &mut BTreeMap::new(),
+                Some("/evidence"),
+                Some("+0000")
+            ),
+            1
+        );
+    }
+
+    #[test]
     fn submission_is_not_execution_and_only_passed_payloads_count() {
         let mut p = Proposals::default();
         let mut executed = BTreeMap::new();
@@ -148,12 +197,12 @@ mod tests {
             event("active_proposal", 7, "proposal_passed"),
             event("active_proposal", 8, "proposal_failed"),
         ];
-        p.completed(&events, &mut executed);
+        p.completed(&events, &mut executed, None, None);
         assert_eq!(
             executed,
             BTreeMap::from([("/params".into(), 2), ("/bank".into(), 1)])
         );
-        p.completed(&events, &mut executed);
+        p.completed(&events, &mut executed, None, None);
         assert_eq!(executed["/params"], 2);
         assert!(p.pending.is_empty());
     }
@@ -167,13 +216,15 @@ mod tests {
             let mut p = Proposals::default();
             let mut executed = BTreeMap::new();
             p.remember(&[proposal(&["/no"])], &[event("submit_proposal", 1, "")]);
-            p.completed(&[event(kind, 1, result)], &mut executed);
+            p.completed(&[event(kind, 1, result)], &mut executed, None, None);
             assert!(executed.is_empty());
             assert!(p.pending.is_empty());
             p.remember(&[proposal(&["/unknown"])], &[]);
             p.completed(
                 &[event("active_proposal", 2, "proposal_passed")],
                 &mut executed,
+                None,
+                None,
             );
             assert!(executed.is_empty());
         }

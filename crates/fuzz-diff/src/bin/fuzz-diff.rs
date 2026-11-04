@@ -625,6 +625,7 @@ fn main() -> anyhow::Result<()> {
                 "ibc_required": st.ibc_required,
                 "ibc": st.ibc,
                 "gov_failure_required": st.gov_failure_required,
+                "gov_failure_type_required": st.gov_failure_type_required,
                 "gov_failure_matches": st.gov_failure_matches,
                 "gov_abstain_required": st.gov_abstain_required.is_some(),
                 "gov_abstain_rejections": st.gov_abstain_rejections,

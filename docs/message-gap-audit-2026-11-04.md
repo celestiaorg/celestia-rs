@@ -53,8 +53,9 @@ that evidence is useful, but a successful Go execution is not a valid exit
 condition for them. Exact signed `MsgSubmitEvidence` fixtures now require the
 stored-evidence `evidence/5` rejection on v10 and the recovered nil-router panic
 (`undefined/111222`) for a new, basic-valid equivocation on both pinned apps.
-Those outcomes strengthen rejection coverage without changing this
-classification.
+A second fixture requires `evidence/3` for omitted evidence and all four
+`Equivocation.ValidateBasic` boundaries at both versions. Those outcomes
+strengthen rejection coverage without changing this classification.
 
 This audit does not complete F1.3. The profile's per-handler error classes and
 8,129 uncovered LLVM branch arms still require review, and coverage evidence

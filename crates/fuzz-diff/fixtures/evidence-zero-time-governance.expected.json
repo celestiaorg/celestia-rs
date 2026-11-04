@@ -1,0 +1,14 @@
+[
+  {"type_url":"/cosmos.gov.v1.MsgSubmitProposal","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0},
+  {"type_url":"/cosmos.gov.v1.MsgVote","codespace":"","code":0}
+]
