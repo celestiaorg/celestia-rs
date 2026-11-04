@@ -208,6 +208,11 @@ pub struct Stats {
     /// Controlled direct-aux fixtures that passed their exact CheckTx,
     /// proposal, execution, balance, and sequence postconditions.
     pub direct_aux_completed: u64,
+    /// Whether the run requires the controlled malformed multisig fixtures.
+    pub malformed_multisig_required: Option<()>,
+    /// Malformed multisig fixtures that passed CheckTx, proposal, execution,
+    /// and committed-state rollback postconditions.
+    pub malformed_multisig_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1478,6 +1483,19 @@ impl Stats {
                 self.direct_aux_completed == 1,
                 "incomplete DELIVER_DIRECT_AUX_REQUIRE coverage: expected one completed fixture, observed {}",
                 self.direct_aux_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require all three controlled malformed multisig shapes to reach their
+    /// exact terminal signing errors without changing committed state.
+    pub fn require_malformed_multisig_coverage(&self) -> anyhow::Result<()> {
+        if self.malformed_multisig_required.is_some() {
+            anyhow::ensure!(
+                self.malformed_multisig_completed == 3,
+                "incomplete DELIVER_MALFORMED_MULTISIG_REQUIRE coverage: expected three completed fixtures, observed {}",
+                self.malformed_multisig_completed
             );
         }
         Ok(())
@@ -4185,6 +4203,8 @@ pub fn run(
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
     let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
+    let malformed_multisig_required =
+        std::env::var_os("DELIVER_MALFORMED_MULTISIG_REQUIRE").is_some();
     anyhow::ensure!(
         !direct_aux_required
             || (!hl_on
@@ -4196,6 +4216,19 @@ pub fn run(
                 && blocks == 2
                 && per_block == 0),
         "DELIVER_DIRECT_AUX_REQUIRE needs exactly two blocks and zero random transactions, and cannot be combined with Hyperlane, governance, IBC, evidence, scripts, or upgrades"
+    );
+    anyhow::ensure!(
+        !malformed_multisig_required
+            || (!direct_aux_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 4
+                && per_block == 0),
+        "DELIVER_MALFORMED_MULTISIG_REQUIRE needs exactly four blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !transfer_authz_required
@@ -4471,6 +4504,7 @@ pub fn run(
         evidence_required: evidence_requirement.map(|required| required.name().into()),
         script_required,
         direct_aux_required: direct_aux_required.then_some(()),
+        malformed_multisig_required: malformed_multisig_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -4831,6 +4865,7 @@ pub fn run(
         .transpose()?;
     let mut stake_lifecycle_evidence = None;
     let mut direct_aux_fixture: Option<DirectAuxFixture> = None;
+    let mut malformed_multisig_fixture: Option<MalformedMultisigFixture> = None;
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -4948,10 +4983,11 @@ pub fn run(
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
-        let force_raw = upg.on
-            && upg
-                .upgrade_height
-                .is_some_and(|h| (h..=h + 2).contains(&height));
+        let force_raw = (malformed_multisig_required && b > 0)
+            || (upg.on
+                && upg
+                    .upgrade_height
+                    .is_some_and(|h| (h..=h + 2).contains(&height)));
         let upgrade_block = upg.block_index(b, hl_setup, bootstrap);
         if upg.on && !bootstrap && !hl_setup {
             txs = upg.txs(&mut gn, upgrade_block, height, &hl_seq.token, hl_preupgrade);
@@ -4981,6 +5017,14 @@ pub fn run(
             txs.push(fixture.bad.clone());
             txs.push(fixture.good.clone());
             direct_aux_fixture = Some(fixture);
+        } else if malformed_multisig_required {
+            if malformed_multisig_fixture.is_none() {
+                malformed_multisig_fixture = Some(MalformedMultisigFixture::new(&gn, &mut rust)?);
+            }
+            let fixture = malformed_multisig_fixture
+                .as_ref()
+                .context("malformed multisig fixture was not initialized")?;
+            txs.push(fixture.cases[b - 1].tx.clone());
         } else if !hl_setup
             && !gov_setup
             && b >= script_at
@@ -5321,6 +5365,12 @@ pub fn run(
                     fixture.good_check = Some((g.codespace.clone(), g.code, g.log.clone()));
                 }
             }
+            if let Some(case) = malformed_multisig_fixture
+                .as_mut()
+                .and_then(|fixture| fixture.case_for_tx_mut(t))
+            {
+                case.check = Some(g.clone());
+            }
             if g.code == 0 {
                 stats.check_ok += 1;
                 pool.push_back(t.clone());
@@ -5544,6 +5594,13 @@ pub fn run(
             stats.split = true;
             return Ok(stats);
         };
+        if let Some(fixture) = malformed_multisig_fixture.as_mut() {
+            for tx in &txs {
+                if let Some(case) = fixture.case_for_tx_mut(tx) {
+                    case.prepare_excluded = !gp.txs.contains(tx);
+                }
+            }
+        }
         let op = rust.prepare_proposal(&prep);
         if op.as_ref().ok() != Some(&gp) {
             stats.mismatches.push(format!(
@@ -5640,6 +5697,21 @@ pub fn run(
                         .collect::<Vec<_>>()
                         .join(",")
                 ));
+            } else if malformed_multisig_fixture.as_ref().is_some_and(|fixture| {
+                raw.txs.len() == 1 && fixture.cases.iter().any(|case| case.tx == raw.txs[0])
+            }) {
+                let rejected = Some(abci::response_process_proposal::ProposalStatus::Reject as i32);
+                if let Some(fixture) = malformed_multisig_fixture.as_mut() {
+                    for tx in &raw.txs {
+                        if let Some(case) = fixture.case_for_tx_mut(tx) {
+                            case.process_rejected = g == rejected;
+                        }
+                    }
+                }
+                // These invalid transactions cannot form a consensus-valid
+                // proposal. Apply them directly only in this controlled mode
+                // to compare FinalizeBlock's ante result and cache rollback.
+                final_txs.clone_from(&raw.txs);
             } else if g == accepted && (scripted || force_raw || gn.m.rng.one_in(2)) {
                 final_txs.clone_from(&raw.txs);
             }
@@ -5952,6 +6024,15 @@ pub fn run(
             fixture.require_complete(&fb.txs, &g.tx_results, &mut rust)?;
             fixture.completed = true;
             stats.direct_aux_completed += 1;
+        }
+        if let Some(fixture) = malformed_multisig_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && fixture
+                .case_for_tx_mut(tx)
+                .is_some_and(|case| !case.completed)
+        {
+            fixture.require_complete(tx, &fb.txs, &g.tx_results, &mut rust)?;
+            stats.malformed_multisig_completed += 1;
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -7842,6 +7923,265 @@ fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
 const DIRECT_AUX_SEND: u128 = 123;
 const DIRECT_AUX_FEE: u128 = 100_000;
 
+const MALFORMED_MULTISIG_SEND: u128 = 1;
+const MALFORMED_MULTISIG_FEE: u128 = 100_000;
+
+struct MalformedMultisigCase {
+    name: &'static str,
+    expected_log: String,
+    check_gas_used: i64,
+    finalize_gas_used: i64,
+    tx: Vec<u8>,
+    signer: String,
+    signer_addr: Vec<u8>,
+    signer_balance: u128,
+    signer_sequence: u64,
+    check: Option<abci::ResponseCheckTx>,
+    prepare_excluded: bool,
+    process_rejected: bool,
+    completed: bool,
+}
+
+struct MalformedMultisigFixture {
+    cases: Vec<MalformedMultisigCase>,
+    recipient: String,
+    recipient_balance: u128,
+}
+
+impl MalformedMultisigFixture {
+    fn new(gn: &Gen, rust: &mut app::App) -> anyhow::Result<Self> {
+        let recipient = gn.accts[ACCOUNTS - 1].acc.clone();
+        let specs = [
+            (
+                0,
+                "single-key-multi-data",
+                "expected <nil>, got *secp256k1.PubKey",
+            ),
+            (
+                ACCOUNTS,
+                "too-few-set-bits",
+                "not enough signatures set, have 1, expected 2",
+            ),
+            (
+                ACCOUNTS + 1,
+                "nested-data-for-single-key",
+                "unable to parse pubkey of index 0",
+            ),
+        ];
+        let mut cases = Vec::new();
+        let gas = [(32_640, 32_589), (38_229, 38_229), (35_829, 35_829)];
+        for (shape, (signer, name, marker)) in specs.into_iter().enumerate() {
+            let account = &gn.accts[signer];
+            cases.push(MalformedMultisigCase {
+                name,
+                expected_log: format!(
+                    "signature verification failed; please verify account number ({}) and chain-id ({}): ({marker}): unauthorized",
+                    account.number, gn.chain_id
+                ),
+                check_gas_used: gas[shape].0,
+                finalize_gas_used: gas[shape].1,
+                tx: sign_malformed_multisig_send(gn, shape, signer)?,
+                signer: account.acc.clone(),
+                signer_addr: account.addr.clone(),
+                signer_balance: account_balance(rust, &account.acc)?,
+                signer_sequence: rust.query_sequence(&account.addr).sequence,
+                check: None,
+                prepare_excluded: false,
+                process_rejected: false,
+                completed: false,
+            });
+        }
+        Ok(Self {
+            recipient_balance: account_balance(rust, &recipient)?,
+            recipient,
+            cases,
+        })
+    }
+
+    fn case_for_tx_mut(&mut self, tx: &[u8]) -> Option<&mut MalformedMultisigCase> {
+        self.cases.iter_mut().find(|case| case.tx == tx)
+    }
+
+    fn require_complete(
+        &mut self,
+        tx: &[u8],
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        let recipient = self.recipient.clone();
+        let recipient_balance = self.recipient_balance;
+        let case = self
+            .case_for_tx_mut(tx)
+            .context("unknown malformed multisig fixture transaction")?;
+        let check = case
+            .check
+            .as_ref()
+            .context("malformed multisig transaction was not checked")?;
+        anyhow::ensure!(
+            check.codespace == "sdk"
+                && check.code == 4
+                && check.log == case.expected_log
+                && check.gas_wanted == 300_000
+                && check.gas_used == case.check_gas_used
+                && check.data.is_empty()
+                && check.info.is_empty()
+                && check.events.is_empty()
+                && check.address.is_empty()
+                && check.priority == 0
+                && check.sequence == 0,
+            "malformed multisig {} CheckTx changed: {}/{} gas {}/{} {}",
+            case.name,
+            check.codespace,
+            check.code,
+            check.gas_wanted,
+            check.gas_used,
+            check.log
+        );
+        anyhow::ensure!(
+            case.prepare_excluded,
+            "malformed multisig {} was not excluded by PrepareProposal",
+            case.name
+        );
+        anyhow::ensure!(
+            case.process_rejected,
+            "malformed multisig {} raw proposal was not rejected by ProcessProposal",
+            case.name
+        );
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == tx)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1,
+            "malformed multisig {} did not finalize exactly once: {} matches",
+            case.name,
+            matches.len()
+        );
+        let result = matches[0].1;
+        anyhow::ensure!(
+            result.codespace == check.codespace
+                && result.code == check.code
+                && result.log == case.expected_log
+                && result.gas_wanted == 300_000
+                && result.gas_used == case.finalize_gas_used
+                && result.data.is_empty()
+                && result.info.is_empty()
+                && result.events.is_empty()
+                && result.signers == [case.signer.clone()],
+            "malformed multisig {} FinalizeBlock result differs from CheckTx: check={check:?}, final={result:?}",
+            case.name
+        );
+        anyhow::ensure!(
+            account_balance(rust, &case.signer)? == case.signer_balance
+                && rust.query_sequence(&case.signer_addr).sequence == case.signer_sequence
+                && account_balance(rust, &recipient)? == recipient_balance,
+            "malformed multisig {} changed a signer/recipient balance or signer sequence",
+            case.name
+        );
+        anyhow::ensure!(
+            !case.completed,
+            "malformed multisig {} completed twice",
+            case.name
+        );
+        case.completed = true;
+        Ok(())
+    }
+}
+
+fn sign_malformed_multisig_send(gn: &Gen, shape: usize, signer: usize) -> anyhow::Result<Vec<u8>> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+
+    let account = &gn.accts[signer];
+    let body_bytes = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: account.acc.clone(),
+            to_address: gn.accts[ACCOUNTS - 1].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: MALFORMED_MULTISIG_SEND.to_string(),
+            }],
+        })],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    let single = single_mode_info(SignMode::Direct);
+    let mode_info = match shape {
+        0 => ModeInfo {
+            sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                bitarray: Some(bit_array(1, &[0])),
+                mode_infos: vec![single.clone()],
+            })),
+        },
+        1 => ModeInfo {
+            sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                bitarray: Some(bit_array(3, &[0])),
+                mode_infos: vec![single.clone(), single.clone()],
+            })),
+        },
+        2 => ModeInfo {
+            sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                bitarray: Some(bit_array(2, &[0])),
+                mode_infos: vec![ModeInfo {
+                    sum: Some(mode_info::Sum::Multi(mode_info::Multi {
+                        bitarray: Some(bit_array(1, &[0])),
+                        mode_infos: vec![single],
+                    })),
+                }],
+            })),
+        },
+        _ => anyhow::bail!("unknown malformed multisig shape {shape}"),
+    };
+    #[allow(deprecated)]
+    let auth_info_bytes = AuthInfo {
+        signer_infos: vec![SignerInfo {
+            public_key: Some(account.pk.clone()),
+            mode_info: Some(mode_info),
+            sequence: account.seq,
+        }],
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: MALFORMED_MULTISIG_FEE.to_string(),
+            }],
+            gas_limit: 300_000,
+            payer: String::new(),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec();
+    let direct = SignDoc {
+        body_bytes: body_bytes.clone(),
+        auth_info_bytes: auth_info_bytes.clone(),
+        chain_id: gn.chain_id.clone(),
+        account_number: account.number,
+    }
+    .encode_to_vec();
+    let signatures = match shape {
+        0 => vec![gn.accts[0].key.sign(&direct)?.to_vec()],
+        1 => vec![
+            gn.accts[0].key.sign(&direct)?.to_vec(),
+            gn.accts[1].key.sign(&direct)?.to_vec(),
+        ],
+        2 => vec![
+            MultiSignature {
+                signatures: vec![gn.accts[3].key.sign(&direct)?.to_vec()],
+            }
+            .encode_to_vec(),
+        ],
+        _ => unreachable!(),
+    };
+    Ok(TxRaw {
+        body_bytes,
+        auth_info_bytes,
+        signatures: vec![MultiSignature { signatures }.encode_to_vec()],
+    }
+    .encode_to_vec())
+}
+
 /// State and exact outcomes for a direct-aux sender whose fee is paid by a
 /// second signer. The rejected transaction uses the same body and sender
 /// sequence but leaves the fee payer implicit, making that direct-aux signer
@@ -8474,6 +8814,77 @@ mod tests {
         stats.direct_aux_completed = 2;
         assert!(stats.require_direct_aux_coverage().is_err());
         assert!(Stats::default().require_direct_aux_coverage().is_ok());
+    }
+
+    #[test]
+    fn malformed_multisig_fixtures_have_the_three_terminal_shapes() {
+        use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+
+        let g = offline_gen(10, 1, false);
+        let txs: Vec<_> = [(0, 0), (1, ACCOUNTS), (2, ACCOUNTS + 1)]
+            .into_iter()
+            .map(|(shape, signer)| {
+                TxRaw::decode(
+                    sign_malformed_multisig_send(&g, shape, signer)
+                        .unwrap()
+                        .as_slice(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let auths: Vec<_> = txs
+            .iter()
+            .map(|tx| AuthInfo::decode(tx.auth_info_bytes.as_slice()).unwrap())
+            .collect();
+        let mode = |index: usize| match auths[index].signer_infos[0]
+            .mode_info
+            .as_ref()
+            .unwrap()
+            .sum
+            .as_ref()
+            .unwrap()
+        {
+            mode_info::Sum::Multi(multi) => multi,
+            mode_info::Sum::Single(_) => panic!("fixture must carry multisig mode data"),
+        };
+        assert_eq!(mode(0).bitarray.as_ref().unwrap(), &bit_array(1, &[0]));
+        assert_eq!(mode(0).mode_infos.len(), 1);
+        assert_eq!(mode(1).bitarray.as_ref().unwrap(), &bit_array(3, &[0]));
+        assert_eq!(mode(1).mode_infos.len(), 2);
+        assert_eq!(
+            MultiSignature::decode(txs[1].signatures[0].as_slice())
+                .unwrap()
+                .signatures
+                .len(),
+            2
+        );
+        assert_eq!(mode(2).bitarray.as_ref().unwrap(), &bit_array(2, &[0]));
+        assert!(matches!(
+            mode(2).mode_infos[0].sum,
+            Some(mode_info::Sum::Multi(_))
+        ));
+        let outer = MultiSignature::decode(txs[2].signatures[0].as_slice()).unwrap();
+        assert!(MultiSignature::decode(outer.signatures[0].as_slice()).is_ok());
+    }
+
+    #[test]
+    fn malformed_multisig_requirement_fails_closed() {
+        let mut stats = Stats {
+            malformed_multisig_required: Some(()),
+            ..Stats::default()
+        };
+        for completed in 0..=4 {
+            stats.malformed_multisig_completed = completed;
+            assert_eq!(
+                stats.require_malformed_multisig_coverage().is_ok(),
+                completed == 3
+            );
+        }
+        assert!(
+            Stats::default()
+                .require_malformed_multisig_coverage()
+                .is_ok()
+        );
     }
 
     #[test]

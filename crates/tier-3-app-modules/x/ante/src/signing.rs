@@ -215,10 +215,7 @@ pub fn verify_signature(
         }
         Some(multi @ SigData::Multi { .. }) => {
             if !matches!(pk, PubKey::Multisig { .. }) {
-                return Ok(Err(format!(
-                    "expected multisig.PubKey, got {}",
-                    pk.go_type()
-                )));
+                return Ok(Err(format!("expected <nil>, got {}", pk.go_type())));
             }
             verify_multisignature(pk, multi, sd, tx)
         }

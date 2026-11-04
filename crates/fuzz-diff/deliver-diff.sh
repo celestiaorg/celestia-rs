@@ -33,6 +33,11 @@
 # using direct-aux while a separate direct signer pays the fee. It requires
 # exactly two generated blocks and zero random transactions, and checks exact
 # proposal filtering, execution, balances, and signer sequences.
+# DELIVER_MALFORMED_MULTISIG_REQUIRE=1 sends three controlled malformed
+# multisig shapes after bootstrap. It requires exactly four generated blocks
+# and zero random transactions; each tx must fail CheckTx, be excluded by
+# PrepareProposal and rejected by ProcessProposal, then is applied directly to
+# FinalizeBlock to compare the exact ante result and committed-state rollback.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

@@ -418,6 +418,13 @@ test), then start that harness's count again.
   these two reachable direct-aux cases; the next instrumented profile must
   measure their branch contribution, and the wider F1.3 requirements remain
   open.
+  *Malformed multisig signing follow-up (2026-11-04):* controlled v10/v9
+  fixtures exercise a single key paired with multisig data, a 2-of-3 key with
+  too few set bits, and nested multisig data paired with a single child key.
+  They require exact CheckTx and forced FinalizeBlock codes, logs and gas,
+  normal proposal rejection, and complete fee/balance/sequence rollback. This
+  is bounded application differential evidence; the merged profile must still
+  measure the branch contribution, and the wider F1.3 gates remain open.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
   scenario replay and the recovered nil-router panic (`undefined/111222`)
