@@ -455,6 +455,18 @@ test), then start that harness's count again.
   runtime fixture does not claim that unreachable branch. This remains bounded
   application differential evidence; the merged profile must still measure
   branch contribution, and the wider F1.3 gates remain open.
+  *Upgrade-plan persistence follow-up (2026-11-04):* controlled v10/v9
+  fixtures pass one proposal that resets the genesis software-upgrade and
+  cancel-upgrade circuit breakers, then four separate proposals that schedule
+  plan A, overwrite it with plan B, cancel it, and cancel again without a
+  current plan. Each pinned 120-block run requires the exact submit, deposit,
+  vote and passed-proposal counts; exact current-plan state after every
+  proposal; zero applied heights for both plans; unchanged app version; and a
+  final signed bank transfer with exact balances and sequence. The focused
+  runs completed all five proposals and the recovery transfer with zero
+  differential or log mismatches. This is bounded application differential
+  evidence; the merged profile must still measure branch contribution, and it
+  does not satisfy the clean-night, mainnet-soak or production-readiness gates.
   *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
   use fresh funded accounts with no stored key. Malformed-length secp256k1 and
   Ed25519 signer keys must recover with exact `undefined/111222` CheckTx

@@ -54,6 +54,12 @@
 # handling, check-state recovery, and public-key persistence. Malformed-key
 # panics must be rejected by ProcessProposal and are not force-finalized;
 # returned Ed25519 errors are force-finalized to compare rollback.
+# DELIVER_UPGRADE_PLAN_REQUIRE=1 first passes a proposal that resets the two
+# upgrade circuit breakers, then passes separate proposals to schedule plan A,
+# overwrite it with plan B, cancel it, and cancel again with no current plan.
+# It requires exactly 120 blocks and zero random transactions. Every proposal,
+# exact current/applied-plan query, app version and a final signed bank send is
+# gated at both app versions.
 # DELIVER_IBC_PFM_METADATA_REQUIRE=1 uses the signed mock counterparty to
 # relay exact typed-parse and identifier-validation failures plus a
 # forward:null transfer control. It requires the official Go Ack bytes,

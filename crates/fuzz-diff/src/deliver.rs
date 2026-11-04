@@ -53,6 +53,7 @@ mod gov_coverage;
 mod hyperlane;
 mod trace;
 mod upgrade;
+mod upgrade_plan;
 
 /// Funded single-key accounts added to the genesis (the multisig ones of
 /// [`multisig_trees`] follow).
@@ -229,6 +230,11 @@ pub struct Stats {
     /// Controlled public-key fixtures that passed their exact CheckTx,
     /// proposal, execution, recovery, and committed-state postconditions.
     pub pubkey_rejection_completed: u64,
+    /// Whether the run requires the controlled governance upgrade-plan lifecycle.
+    pub upgrade_plan_required: Option<()>,
+    /// Complete schedule, overwrite, cancel, idempotent-cancel, and recovery
+    /// lifecycles that passed every proposal and committed-state postcondition.
+    pub upgrade_plan_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1661,6 +1667,36 @@ impl Stats {
                         .iter()
                         .any(|line| line.contains("pubkey is incorrect size")),
                 "public-key rejection coverage expected exactly the two stack-only malformed-key log differences"
+            );
+        }
+        Ok(())
+    }
+
+    /// Require a passed circuit-reset proposal, then separate passed proposals
+    /// to schedule, overwrite, cancel and cancel again, followed by a normal
+    /// signed recovery transaction.
+    pub fn require_upgrade_plan_coverage(&self) -> anyhow::Result<()> {
+        if self.upgrade_plan_required.is_some() {
+            anyhow::ensure!(
+                self.upgrade_plan_completed == 1
+                    && self
+                        .gov_executed
+                        .get("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade")
+                        .copied()
+                        == Some(2)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.upgrade.v1beta1.MsgCancelUpgrade")
+                        .copied()
+                        == Some(2)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.circuit.v1.MsgResetCircuitBreaker")
+                        .copied()
+                        == Some(1),
+                "incomplete DELIVER_UPGRADE_PLAN_REQUIRE coverage: completed={} executed={:?}",
+                self.upgrade_plan_completed,
+                self.gov_executed
             );
         }
         Ok(())
@@ -4378,7 +4414,9 @@ pub fn run(
         !hl_registry_required || (hl_on && verifier.name() == "merkle-root"),
         "DELIVER_HL_REGISTRY_REQUIRE requires DELIVER_HL and DELIVER_HL_ISM=merkle-root"
     );
-    let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
+    let govpass_env = std::env::var("DELIVER_GOVPASS").is_ok();
+    let upgrade_plan_required = std::env::var_os("DELIVER_UPGRADE_PLAN_REQUIRE").is_some();
+    let govpass = govpass_env || upgrade_plan_required;
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
     let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
@@ -4388,6 +4426,23 @@ pub fn run(
         std::env::var_os("DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE").is_some();
     let p256_required = std::env::var_os("DELIVER_P256_REQUIRE").is_some();
     let pubkey_rejection_required = std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some();
+    anyhow::ensure!(
+        !upgrade_plan_required
+            || (!govpass_env
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !hl_on
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 120
+                && per_block == 0),
+        "DELIVER_UPGRADE_PLAN_REQUIRE needs exactly 120 blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
     anyhow::ensure!(
         !direct_aux_required
             || (!hl_on
@@ -4750,6 +4805,7 @@ pub fn run(
         zero_threshold_multisig_required: zero_threshold_multisig_required.then_some(()),
         p256_required: p256_required.then_some(()),
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
+        upgrade_plan_required: upgrade_plan_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -5118,6 +5174,11 @@ pub fn run(
     let mut zero_threshold_multisig_fixture: Option<ZeroThresholdMultisigFixture> = None;
     let mut p256_fixture: Option<P256Fixture> = None;
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
+    let mut upgrade_plan_fixture =
+        upgrade_plan_required.then(|| upgrade_plan::Fixture::new(height, app_version));
+    if upgrade_plan_fixture.is_some() {
+        upgrade_plan::Fixture::verify_initial(&mut go, cons_conn, &mut rust)?;
+    }
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -5476,7 +5537,9 @@ pub fn run(
                 let vals = bonded_validators(&mut rust);
                 if !vals.is_empty() {
                     govpass_delegated = true;
-                    gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
+                    if !upgrade_plan_required {
+                        gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
+                    }
                     for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
                         let msg =
                             Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
@@ -5490,6 +5553,55 @@ pub fn run(
                         if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
                             gn.accts[i].seq += 1;
                             txs.push(t);
+                        }
+                    }
+                }
+            } else if !hl_setup && upgrade_plan_required && govpass_delegated {
+                let fixture = upgrade_plan_fixture
+                    .as_mut()
+                    .context("upgrade-plan fixture was not initialized")?;
+                if let Some(submit) = fixture.proposal(&gn.accts[1].acc) {
+                    let message = Any::pack(&submit);
+                    if let Some(tx) = sign_simple(&gn, 1, vec![message], 2_000_000) {
+                        gn.accts[1].seq += 1;
+                        fixture.mark_submit(tx.clone());
+                        txs.push(tx);
+                    }
+                } else if fixture.needs_recovery() {
+                    let message = Any::pack(&fixture.recovery_message(&gn, &mut rust)?);
+                    if let Some(tx) = sign_simple(&gn, 0, vec![message], 400_000) {
+                        gn.accts[0].seq += 1;
+                        fixture.mark_recovery(tx.clone());
+                        txs.push(tx);
+                    }
+                }
+                if let Some(id) = fixture.active_proposal() {
+                    if fixture.needs_deposit() {
+                        let deposit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgDeposit {
+                            proposal_id: id,
+                            depositor: gn.accts[0].acc.clone(),
+                            amount: vec![Coin {
+                                denom: "utia".into(),
+                                amount: "10000000000".into(),
+                            }],
+                        });
+                        if let Some(tx) = sign_simple(&gn, 0, vec![deposit], 600_000) {
+                            gn.accts[0].seq += 1;
+                            txs.push(tx);
+                        }
+                    }
+                    if fixture.needs_votes() {
+                        for i in 0..ACCOUNTS - 1 {
+                            let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
+                                proposal_id: id,
+                                voter: gn.accts[i].acc.clone(),
+                                option: 1,
+                                metadata: String::new(),
+                            });
+                            if let Some(tx) = sign_simple(&gn, i, vec![vote], 400_000) {
+                                gn.accts[i].seq += 1;
+                                txs.push(tx);
+                            }
                         }
                     }
                 }
@@ -5584,15 +5696,17 @@ pub fn run(
                     }
                 }
             }
-            let k = if evidence_requirement.is_some() || hl_setup || gov_setup {
-                0
-            } else {
-                match gn.m.rng.below(20) {
-                    0 => 0,
-                    1 => per_block * 4,
-                    _ => 1 + gn.m.rng.below(per_block.max(1)),
-                }
-            };
+            let k =
+                if evidence_requirement.is_some() || hl_setup || gov_setup || upgrade_plan_required
+                {
+                    0
+                } else {
+                    match gn.m.rng.below(20) {
+                        0 => 0,
+                        1 => per_block * 4,
+                        _ => 1 + gn.m.rng.below(per_block.max(1)),
+                    }
+                };
             for _ in 0..k {
                 gn.wire.pending.clear();
                 if let Some(t) = gn.tx() {
@@ -5644,6 +5758,9 @@ pub fn run(
                 }
                 continue;
             };
+            if let Some(fixture) = upgrade_plan_fixture.as_mut() {
+                fixture.observe_check(app_version, t, &g)?;
+            }
             if let Some(fixture) = direct_aux_fixture.as_mut() {
                 if t == &fixture.bad {
                     fixture.bad_check = Some((g.codespace.clone(), g.code, g.log.clone()));
@@ -6249,6 +6366,9 @@ pub fn run(
             }
         }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
+            if let Some(fixture) = upgrade_plan_fixture.as_mut() {
+                fixture.observe_finalized(app_version, t, res)?;
+            }
             if scripted {
                 if !stats.script_required.is_empty() {
                     let url = type_urls(app_version, t)
@@ -6330,6 +6450,11 @@ pub fn run(
             stats.gov_failure_type_required.as_deref(),
             stats.gov_failure_required.as_deref(),
         );
+        if let Some(fixture) = upgrade_plan_fixture.as_mut()
+            && let Some(completed) = fixture.observe_block(&g.events)?
+        {
+            gn.proposals.retain(|proposal| *proposal != completed);
+        }
         let mut abstain_rejected_proposals = Vec::new();
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
             if stats.gov_abstain_required.is_some()
@@ -6446,6 +6571,11 @@ pub fn run(
         {
             fixture.require_complete(index, &fb.txs, &g.tx_results, &mut rust)?;
             stats.pubkey_rejection_completed += 1;
+        }
+        if let Some(fixture) = upgrade_plan_fixture.as_mut()
+            && fixture.after_commit(&mut go, cons_conn, &mut rust, app_version, &gn)?
+        {
+            stats.upgrade_plan_completed += 1;
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -6698,6 +6828,9 @@ pub fn run(
             *d.stats.entry("pfm_metadata_committed_state").or_default() += 1;
         }
         stats.ibc = d.stats;
+    }
+    if let Some(fixture) = upgrade_plan_fixture.as_ref() {
+        fixture.require_complete()?;
     }
     stats.upgrade.append(&mut upg.log);
     if let Some(h) = upg.upgrade_height {
@@ -11485,6 +11618,40 @@ mod tests {
         assert!(!stats.gov_setup());
         assert!(stats.require_gov_coverage().is_ok());
         assert!(Stats::default().require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_upgrade_plan_lifecycle_needs_every_exact_execution() {
+        let complete = || {
+            let mut stats = Stats {
+                upgrade_plan_required: Some(()),
+                upgrade_plan_completed: 1,
+                ..Stats::default()
+            };
+            for (url, count) in [
+                ("/cosmos.circuit.v1.MsgResetCircuitBreaker", 1),
+                ("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade", 2),
+                ("/cosmos.upgrade.v1beta1.MsgCancelUpgrade", 2),
+            ] {
+                stats.gov_executed.insert(url.into(), count);
+            }
+            stats
+        };
+        let stats = complete();
+        assert!(stats.require_upgrade_plan_coverage().is_ok());
+        for url in [
+            "/cosmos.circuit.v1.MsgResetCircuitBreaker",
+            "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+            "/cosmos.upgrade.v1beta1.MsgCancelUpgrade",
+        ] {
+            let mut incomplete = complete();
+            incomplete.gov_executed.remove(url);
+            assert!(incomplete.require_upgrade_plan_coverage().is_err());
+        }
+        let mut stats = complete();
+        stats.upgrade_plan_completed = 0;
+        assert!(stats.require_upgrade_plan_coverage().is_err());
+        assert!(Stats::default().require_upgrade_plan_coverage().is_ok());
     }
 
     #[test]

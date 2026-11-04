@@ -106,6 +106,12 @@ v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_EXHAUST_REQUIRE=1
 # forwarding/mint on errors, and the exact control voucher balance.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_METADATA_REQUIRE=1
 v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_METADATA_REQUIRE=1
+# Reset the genesis circuit breakers through governance, then require separate
+# passed proposals to schedule plan A, overwrite it with plan B, cancel it and
+# cancel again with no current plan. Exact queries and a signed recovery send
+# gate every state transition at both supported app versions.
+authz-feegrant 120 0 17374 DELIVER_UPGRADE_PLAN_REQUIRE=1
+v9-authz-feegrant 120 0 17374 DELIVER_UPGRADE_PLAN_REQUIRE=1
 # Execute an exact successful ICA host packet under proto3, upgrade that real
 # channel to proto3json, then execute and acknowledge another exact packet.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_ICA_ENCODINGS_REQUIRE=1
