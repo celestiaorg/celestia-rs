@@ -1,0 +1,170 @@
+[
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "transfer",
+    "code": 10,
+    "log_contains": "allocations cannot be empty"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "channel",
+    "code": 4,
+    "log_contains": "duplicate source channel ID"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "ibc",
+    "code": 6,
+    "log_contains": "spend limit cannot be nil"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "ibc",
+    "code": 6,
+    "log_contains": "amount is not positive"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "host",
+    "code": 2,
+    "log_contains": "invalid source port ID"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "host",
+    "code": 2,
+    "log_contains": "invalid source channel ID"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "transfer",
+    "code": 10,
+    "log_contains": "duplicate entry in allow list"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "ibc",
+    "code": 3,
+    "log_contains": "requested amount is more than spend limit"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "ibc",
+    "code": 5,
+    "log_contains": "not allowed receiver address"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "transfer",
+    "code": 10,
+    "log_contains": "memo must be empty"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "transfer",
+    "code": 10,
+    "log_contains": "not allowed memo"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "ibc",
+    "code": 16,
+    "log_contains": "requested port and channel allocation does not exist"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "channel",
+    "code": 3,
+    "log_contains": "channel not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "channel",
+    "code": 3,
+    "log_contains": "channel not found"
+  }
+]

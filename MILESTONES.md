@@ -393,8 +393,21 @@ test), then start that harness's count again.
   16 required transactions at each version with zero differential or log
   mismatches. Their focused branch profile covers 25/106 arms in
   `x/authz/src/authorization.rs`, including six arms that were uncovered in
-  the sealed 45/106 baseline. The merged-candidate full-profile union, other
-  per-error paths and the remaining uncovered-branch review stay open.
+  the sealed 45/106 baseline. The exact merged-candidate profile passed all
+  196 cases and measured the resulting union at 51/106 arms. Other per-error
+  paths and the remaining uncovered-branch review stay open.
+  *TransferAuthorization follow-up (2026-11-04):* exact signed v10/v9 IBC
+  fixtures run only after the mock driver establishes `transfer/channel-0`.
+  They cover grant-validation rejections, receiver and memo policies, finite and
+  unbounded budgets, exact deletion versus multi-allocation update, and grant
+  rollback after a transfer handler failure. Each pinned run finalized all 28
+  required outcomes with zero consensus mismatches. A fail-closed postcondition
+  requires exactly seven new packet sequences and the exact final grant after
+  two failed missing-channel transfers. The focused profile covers 46/106
+  `x/authz/src/authorization.rs` arms, including 40 TransferAuthorization arms
+  that were uncovered in the exact 51/106 merged baseline. The next merged
+  full profile must measure the union; this does not complete F1.3 or
+  establish mainnet readiness.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
   scenario replay and the recovered nil-router panic (`undefined/111222`)
