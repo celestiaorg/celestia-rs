@@ -436,9 +436,27 @@ test), then start that harness's count again.
   fresh secp256r1 account for two low-S signed sends and require exact key
   persistence, then require a mathematically valid high-S twin to reject with
   exact proposal, controlled forced-Finalize rejection and rollback results.
-  This is bounded application
-  differential evidence; the merged profile must still measure the branch
-  contribution, and the wider F1.3 gates remain open.
+  The exact merged 206-case profile passed every case at both pins with zero
+  consensus mismatches. It increased the handwritten-tier total from
+  5414/13474 to 5424/13474 branch arms, `x/ante/src/pubkey.rs` from 5/14 to
+  6/14, and `x/ante/src/signing.rs` from 48/72 to 55/72. This is bounded
+  application differential and branch evidence; the wider F1.3 gates remain
+  open.
+  *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
+  use fresh funded accounts with no stored key. Malformed-length secp256k1 and
+  Ed25519 signer keys must recover with exact `undefined/111222` CheckTx
+  outcomes, remain in PrepareProposal, and be rejected by ProcessProposal;
+  successful sequence-zero secp256k1 sends then prove check-state recovery and
+  exact key persistence. Two valid Ed25519 attempts provide an ordering and
+  rollback control: they require exact `sdk/8` outcomes, proposal exclusion,
+  ProcessProposal rejection, and controlled forced-Finalize rollback. Both
+  malformed-key panics stay behind ProcessProposal rejection because bypassing
+  that consensus boundary terminates the Go ABCI connection rather than
+  returning a transaction result. Exact committed balances, sequences,
+  recipient transfers, and stored keys are required after every block. This
+  remains bounded application differential evidence until the merged profile
+  measures its branch contribution; it does not complete F1.3 or establish
+  mainnet readiness.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
   scenario replay and the recovered nil-router panic (`undefined/111222`)
