@@ -155,7 +155,10 @@ deliver_run() { # <scenario> <seed> <flags...>
   local scen=$1 s=$2
   shift 2
   local tag
-  tag=$(echo "$@" | sed 's/DELIVER_//g; s/=1//g; s/ /+/g')
+  # Flag values can be type URLs. Keep the exact values in the recorded
+  # environment, but do not let their path separators escape the findings
+  # directory when constructing the human-readable artifact name.
+  tag=$(echo "$@" | sed 's/DELIVER_//g; s/=1//g; s#/#%2F#g; s/ /+/g')
   run "deliver-$scen-s$s-${tag:-plain}" $((BLOCKS / 2)) GO_APPD="$(appd_for "$scen")" "$@" -- \
     "$ROOT/crates/fuzz-diff/deliver-diff.sh" "$scen" "$BLOCKS" 8 "$s"
 }
