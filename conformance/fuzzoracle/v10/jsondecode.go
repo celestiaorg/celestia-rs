@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
+	evidenceexported "cosmossdk.io/x/evidence/exported"
+	evidencetypes "cosmossdk.io/x/evidence/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
@@ -30,6 +33,8 @@ import (
 //	json_count  app/msg_count.go countJSONMsgs: json.Unmarshal into
 //	            struct{ Messages []struct{} } (v9 has no message count; the
 //	            function is the standard library's either way)
+//	json_evidence_genesis  x/evidence module JSON decode, Validate and
+//	            duplicate detection; returns packed values and hashes
 //	json_gov    x/gov msg_server SubmitProposal: json.Unmarshal into
 //	            govtypes.ProposalMetadata -> "<title> <summary>"
 //	json_pfm    PFM OnRecvPacket: json.Unmarshal into map[string]interface{},
@@ -82,6 +87,36 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 			return fail(err)
 		}
 		o.Ok, o.Out = true, h(m.Title)+" "+h(m.Summary)
+	case "json_evidence_genesis":
+		gs, err := decodeEvidenceGenesis(cdc, input)
+		if err != nil {
+			return fail(fmt.Errorf("decode failed"))
+		}
+		o.Ok = true
+		if err := gs.Validate(); err != nil {
+			o.Out = "invalid " + hex.EncodeToString([]byte(err.Error()))
+			return o
+		}
+		seen := make(map[string]struct{})
+		for _, any := range gs.Evidence {
+			evidence, ok := any.GetCachedValue().(evidenceexported.Evidence)
+			if !ok {
+				o.Out = "invalid " + hex.EncodeToString([]byte("expected evidence"))
+				return o
+			}
+			hash := evidence.Hash()
+			key := string(hash)
+			if _, exists := seen[key]; exists {
+				o.Out = "duplicate " + hex.EncodeToString(hash)
+				return o
+			}
+			seen[key] = struct{}{}
+			o.Msgs = append(o.Msgs, strings.Join([]string{
+				hex.EncodeToString([]byte(any.TypeUrl)),
+				hex.EncodeToString(any.Value),
+				hex.EncodeToString(hash),
+			}, ":"))
+		}
 	case "json_pfm", "json_pfm_ack":
 		d := make(map[string]interface{})
 		err := json.Unmarshal(input, &d)
@@ -207,6 +242,16 @@ func jsonOp(cdc codec.Codec, op string, input []byte) (o out) {
 		o.Err = "unknown op " + op
 	}
 	return o
+}
+
+func decodeEvidenceGenesis(cdc codec.Codec, input []byte) (gs evidencetypes.GenesisState, err error) {
+	defer func() {
+		if recover() != nil {
+			err = fmt.Errorf("decode failed")
+		}
+	}()
+	err = cdc.UnmarshalJSON(input, &gs)
+	return gs, err
 }
 
 // validateBasic runs the message's ValidateBasic as the ICA host's

@@ -289,6 +289,7 @@ pub fn go_json<M: prost::Name>(msg: &M) -> anyhow::Result<Value> {
         .ok_or_else(|| anyhow!("no JSON codec for {}", any.type_url))?
         .map_err(|e| anyhow!("{e}"))?;
     api_server::jsonpb::go_style(&mut v, &M::full_name());
+    celestia_proto::registry::go_form_json_to_text(&mut v);
     Ok(v)
 }
 
@@ -298,6 +299,7 @@ pub fn go_json_bytes(type_url: &str, bytes: &[u8]) -> anyhow::Result<Value> {
         .ok_or_else(|| anyhow!("no JSON codec for {type_url}"))?
         .map_err(|e| anyhow!("{e}"))?;
     api_server::jsonpb::go_style(&mut v, type_url.trim_start_matches('/'));
+    celestia_proto::registry::go_form_json_to_text(&mut v);
     Ok(v)
 }
 
@@ -634,6 +636,16 @@ pub fn decode_tx_json(raw: &[u8]) -> anyhow::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn go_json_emits_reserved_unicode_as_utf8() {
+        let message = celestia_proto::cosmos::evidence::v1beta1::Equivocation::decode(
+            [8, 1, 18, 2, 8, 1, 24, 1, 34, 4, 0xf4, 0x8f, 0xbf, 0xbf].as_slice(),
+        )
+        .expect("valid protobuf");
+        let json = go_json(&message).expect("registered JSON codec");
+        assert_eq!(json["consensus_address"], "\u{10ffff}");
+    }
 
     #[test]
     fn coins() {

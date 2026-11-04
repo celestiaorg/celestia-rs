@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 hash = { path = "../../../tier-0-primitives/hash" }
+gostr = { path = "../../../tier-0-primitives/gostr" }
 pbjson-types = "0.7"
 prost = "0.13"
 sdk = { path = "../../sdk" }

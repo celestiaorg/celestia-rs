@@ -12,6 +12,7 @@ use crate::mutate::Rng;
 pub const OPS: &[&str] = &[
     "json_count",
     "json_gov",
+    "json_evidence_genesis",
     "json_pfm",
     "json_pfm_ack",
     "json_pfm_next",
@@ -70,6 +71,49 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
             Some((t, s)) => ok(format!("{} {}", h(&t), h(&s))),
             None => fail("unmarshal failed"),
         },
+        "json_evidence_genesis" => {
+            let Ok(mut json) = x_ibc::gojson::first_value(input) else {
+                return fail("decode failed");
+            };
+            celestia_proto::registry::go_form_json_to_text(&mut json);
+            let Ok(genesis) = x_evidence::genesis_from_json(&json) else {
+                return fail("decode failed");
+            };
+            let evidence = match x_evidence::validate_genesis(&genesis) {
+                Ok(evidence) => evidence,
+                Err(error) if error == "expected evidence" => return fail("decode failed"),
+                Err(error) => {
+                    return ok(format!(
+                        "invalid {}",
+                        hex::encode(gostr::to_go_bytes(&error))
+                    ));
+                }
+            };
+            let mut seen = std::collections::BTreeSet::new();
+            let mut msgs = Vec::with_capacity(evidence.len());
+            for (any, evidence) in genesis.evidence.iter().zip(evidence) {
+                let hash = x_evidence::hash(&evidence);
+                if !seen.insert(hash.clone()) {
+                    return Out {
+                        ok: true,
+                        msgs,
+                        out: format!("duplicate {}", hex::encode(hash)),
+                        ..Out::default()
+                    };
+                }
+                msgs.push(format!(
+                    "{}:{}:{}",
+                    hex::encode(gostr::to_go_bytes(&any.type_url)),
+                    hex::encode(&any.value),
+                    hex::encode(hash)
+                ));
+            }
+            Out {
+                ok: true,
+                msgs,
+                ..Out::default()
+            }
+        }
         "json_pfm" | "json_pfm_ack" => {
             use x_packetforward::memo::{self, Memo};
             match memo::classify(&text) {
@@ -200,6 +244,14 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
 /// decoded summary; error texts are not compared).
 #[must_use]
 pub fn compare(op: &str, go: &Out, rust: &Out) -> Option<String> {
+    // This op compares decode acceptance and successful validation summaries;
+    // it does not execute InitGenesis or establish cache rollback. Rejection
+    // phase, panic identity and error text are intentionally one class. For
+    // successful outputs, packed bytes, hashes, validation text and duplicate
+    // ordering remain exact below.
+    if op == "json_evidence_genesis" && !go.ok && !rust.ok {
+        return None;
+    }
     (go.ok != rust.ok || go.out != rust.out || go.msgs != rust.msgs || go.panic != rust.panic)
         .then(|| format!("{op}: go {go:?}\n  rust {rust:?}"))
 }
@@ -443,6 +495,18 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
         ],
         "json_gov" => &[
             r#"{"title":"T","authors":["a",null],"summary":"S","details":"d","proposal_forum_url":"u","vote_option_context":"v"}"#,
+        ],
+        "json_evidence_genesis" => &[
+            r"null",
+            r#"{"evidence":[]}"#,
+            r#"{"evidence":null}"#,
+            r#"{"evidence":[null]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"\udbff\udfff"}]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":null,"power":"1","consensus_address":"validator"}]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"one"},{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"0","consensus_address":"later"}]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"same"},{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"same"}]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"same"},{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"same"},{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"0","time":"1970-01-01T00:00:01Z","power":"1","consensus_address":"later"}]}"#,
+            r#"{"evidence":[{"@type":"/cosmos.base.v1beta1.Coin","denom":"utia","amount":"1"}]}"#,
         ],
         "json_pfm_ack" => &[
             r#"{"forward":true}"#,
@@ -718,5 +782,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn evidence_genesis_reads_the_first_json_value() {
+        let input = br#"{"evidence":[{"@type":"/cosmos.evidence.v1beta1.Equivocation","height":"1","time":"1970-01-01T00:00:01Z","power":null,"consensus_address":"\udbff\udfff"}]} x"#;
+        let mut json = x_ibc::gojson::first_value(input).expect("first JSON value");
+        celestia_proto::registry::go_form_json_to_text(&mut json);
+        x_evidence::genesis_from_json(&json).expect("genesis JSON");
+        let out = rust_json(10, "json_evidence_genesis", input);
+        assert_eq!(
+            out.out,
+            "invalid 696e76616c69642065717569766f636174696f6e2076616c696461746f7220706f7765723a2030",
+            "{out:?}"
+        );
     }
 }
