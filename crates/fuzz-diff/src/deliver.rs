@@ -43,7 +43,7 @@ use celestia_proto::cosmos::tx::v1beta1::{
     AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw, mode_info,
 };
 use math::{Int, LegacyDec};
-use prost::Message as _;
+use prost::{Message as _, Name as _};
 use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 
 use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
@@ -1342,6 +1342,125 @@ fn script_expectations(text: &str) -> anyhow::Result<Vec<ScriptExpectation>> {
         );
     }
     Ok(expected)
+}
+
+#[derive(Debug)]
+struct TransferAuthzPlan {
+    granter: String,
+    grantee: String,
+    final_grant: celestia_proto::cosmos::authz::v1beta1::Grant,
+    successful_transfers: u64,
+}
+
+fn transfer_authz_plan(
+    script: &std::collections::VecDeque<Vec<(usize, Any, u64)>>,
+    expected: &[ScriptExpectation],
+) -> anyhow::Result<TransferAuthzPlan> {
+    use celestia_proto::cosmos::authz::v1beta1 as authz;
+    use celestia_proto::ibc::applications::transfer::v1 as transfer;
+
+    let messages: Vec<_> = script.iter().flatten().collect();
+    anyhow::ensure!(
+        messages.len() == expected.len() && script.iter().all(|block| block.len() == 1),
+        "DELIVER_TRANSFER_AUTHZ_REQUIRE needs one exact scripted transaction per block"
+    );
+    let mut final_grant = None;
+    let mut final_grant_index = None;
+    let mut successful_transfers = 0;
+    let mut parties = None;
+    for (index, ((signer, message, _), outcome)) in messages.into_iter().zip(expected).enumerate() {
+        anyhow::ensure!(
+            message.type_url == outcome.type_url,
+            "transfer authorization fixture type mismatch at {index}"
+        );
+        match message.type_url.as_str() {
+            "/cosmos.authz.v1beta1.MsgGrant" => {
+                anyhow::ensure!(
+                    *signer == 1,
+                    "transfer authorization grants must be signed by account 1"
+                );
+                let msg = authz::MsgGrant::decode(message.value.as_slice())?;
+                let grant = msg.grant.context("transfer authorization fixture grant")?;
+                let authorization = grant
+                    .authorization
+                    .as_ref()
+                    .context("transfer authorization fixture authorization")?;
+                anyhow::ensure!(
+                    authorization.type_url == transfer::TransferAuthorization::type_url(),
+                    "transfer authorization fixture contains another grant type"
+                );
+                if let Some((granter, grantee)) = &parties {
+                    anyhow::ensure!(
+                        granter == &msg.granter && grantee == &msg.grantee,
+                        "transfer authorization fixture parties changed"
+                    );
+                } else {
+                    parties = Some((msg.granter.clone(), msg.grantee.clone()));
+                }
+                if outcome.code == 0 {
+                    final_grant = Some(grant);
+                    final_grant_index = Some(index);
+                }
+            }
+            "/cosmos.authz.v1beta1.MsgExec" => {
+                anyhow::ensure!(
+                    *signer == 0,
+                    "transfer authorization executions must be signed by account 0"
+                );
+                let msg = authz::MsgExec::decode(message.value.as_slice())?;
+                let (granter, grantee) =
+                    parties.as_ref().context("grant must precede execution")?;
+                anyhow::ensure!(
+                    &msg.grantee == grantee && msg.msgs.len() == 1,
+                    "transfer authorization execution parties/messages changed"
+                );
+                let inner = &msg.msgs[0];
+                anyhow::ensure!(
+                    inner.type_url == transfer::MsgTransfer::type_url(),
+                    "transfer authorization execution contains another message type"
+                );
+                let transfer = transfer::MsgTransfer::decode(inner.value.as_slice())?;
+                let token = transfer
+                    .token
+                    .as_ref()
+                    .context("transfer authorization token")?;
+                anyhow::ensure!(
+                    &transfer.sender == granter
+                        && transfer.source_port == "transfer"
+                        && matches!(transfer.source_channel.as_str(), "channel-0" | "channel-9")
+                        && token.denom == "utia"
+                        && matches!(
+                            token.amount.as_str(),
+                            "1" | "100" | "123" | "200" | "250" | "456"
+                        ),
+                    "transfer authorization execution fields changed at {index}"
+                );
+                if outcome.code == 0 {
+                    successful_transfers += 1;
+                }
+            }
+            _ => anyhow::bail!("unexpected transfer authorization fixture type at {index}"),
+        }
+    }
+    let final_grant_index =
+        final_grant_index.context("no successful transfer authorization grant")?;
+    anyhow::ensure!(
+        expected[final_grant_index + 1..]
+            .iter()
+            .all(|outcome| outcome.code != 0),
+        "final transfer authorization grant must be followed only by handler failures"
+    );
+    let (granter, grantee) = parties.context("transfer authorization fixture parties")?;
+    anyhow::ensure!(
+        successful_transfers == 7,
+        "transfer authorization fixture must commit seven packets"
+    );
+    Ok(TransferAuthzPlan {
+        granter,
+        grantee,
+        final_grant: final_grant.context("final transfer authorization grant")?,
+        successful_transfers,
+    })
 }
 
 impl Stats {
@@ -4045,6 +4164,15 @@ pub fn run(
     );
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
+    let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
+    anyhow::ensure!(
+        !transfer_authz_required
+            || (ibc_on
+                && std::env::var_os("DELIVER_SCRIPT").is_some()
+                && std::env::var_os("DELIVER_SCRIPT_REQUIRE").is_some()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()),
+        "DELIVER_TRANSFER_AUTHZ_REQUIRE needs DELIVER_IBC, DELIVER_SCRIPT, and DELIVER_SCRIPT_REQUIRE without an upgrade"
+    );
     anyhow::ensure!(
         evidence_requirement.is_none()
             || (!hl_on
@@ -4661,6 +4789,10 @@ pub fn run(
         Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         None => std::collections::VecDeque::new(),
     };
+    let transfer_authz_plan = transfer_authz_required
+        .then(|| transfer_authz_plan(&script, &stats.script_required))
+        .transpose()?;
+    let mut transfer_authz_sequence_start = None;
     let stake_lifecycle_plan = (evidence_requirement == Some(EvidenceRequirement::StakeLifecycle))
         .then(|| stake_lifecycle_plan(&script))
         .transpose()?;
@@ -4816,6 +4948,22 @@ pub fn run(
             && let Some(block) = script.pop_front()
         {
             scripted = true;
+            if transfer_authz_plan.is_some() && transfer_authz_sequence_start.is_none() {
+                let channel = ibc
+                    .as_ref()
+                    .and_then(|driver| driver.a_transfer.as_deref())
+                    .context(
+                        "transfer authorization fixture needs an established IBC transfer channel",
+                    )?;
+                anyhow::ensure!(
+                    channel == "channel-0",
+                    "transfer authorization fixture expected channel-0, observed {channel}"
+                );
+                transfer_authz_sequence_start = Some(
+                    next_sequence_send(&mut rust, "transfer", channel)
+                        .context("transfer authorization starting send sequence")?,
+                );
+            }
             let required_count = block.len();
             for (i, mut msg, gas) in block {
                 // `vote <account>`: a yes vote on the latest proposal.
@@ -5950,6 +6098,33 @@ pub fn run(
             );
         }
     }
+    if let Some(plan) = transfer_authz_plan {
+        stats.require_script_coverage()?;
+        let sequence_start =
+            transfer_authz_sequence_start.context("transfer authorization script did not start")?;
+        let sequence_end = next_sequence_send(&mut rust, "transfer", "channel-0")
+            .context("transfer authorization final send sequence")?;
+        anyhow::ensure!(
+            sequence_end == sequence_start + plan.successful_transfers,
+            "transfer authorization committed packet count changed: start {sequence_start}, end {sequence_end}, expected {}",
+            plan.successful_transfers
+        );
+        let response = query_app::<celestia_proto::cosmos::authz::v1beta1::QueryGrantsResponse>(
+            &mut rust,
+            "/cosmos.authz.v1beta1.Query/Grants",
+            &celestia_proto::cosmos::authz::v1beta1::QueryGrantsRequest {
+                granter: plan.granter,
+                grantee: plan.grantee,
+                msg_type_url: "/ibc.applications.transfer.v1.MsgTransfer".into(),
+                pagination: None,
+            },
+        )
+        .context("transfer authorization final grant query")?;
+        anyhow::ensure!(
+            response.grants == [plan.final_grant],
+            "transfer authorization handler failure did not preserve the exact final grant"
+        );
+    }
     if let Some(d) = ibc {
         stats.ibc = d.stats;
     }
@@ -6009,6 +6184,19 @@ fn query_app<R: prost::Message + Default>(
     (r.code == 0)
         .then(|| R::decode(r.value.as_slice()).ok())
         .flatten()
+}
+
+fn next_sequence_send(rust: &mut app::App, port_id: &str, channel_id: &str) -> Option<u64> {
+    use celestia_proto::ibc::core::channel::v1 as channel;
+    query_app::<channel::QueryNextSequenceSendResponse>(
+        rust,
+        "/ibc.core.channel.v1.Query/NextSequenceSend",
+        &channel::QueryNextSequenceSendRequest {
+            port_id: port_id.into(),
+            channel_id: channel_id.into(),
+        },
+    )
+    .map(|response| response.next_sequence_send)
 }
 
 /// Whether a committed proposal's final tally contains only abstain power.
@@ -8075,6 +8263,136 @@ mod tests {
         assert_eq!(expected[18].codespace, "staking");
         assert_eq!(expected[19].code, 0);
         assert_eq!(expected[20].codespace, "authz");
+    }
+
+    #[test]
+    fn transfer_authz_boundary_scripts_pin_policies_budgets_and_rollback() {
+        use celestia_proto::cosmos::authz::v1beta1 as authz;
+        use celestia_proto::ibc::applications::transfer::v1::{MsgTransfer, TransferAuthorization};
+
+        let script = read_script(
+            include_str!("../fixtures/transfer-authz-boundaries.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let v9_script = read_script(
+            include_str!("../fixtures/transfer-authz-boundaries-v9.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected = script_expectations(include_str!(
+            "../fixtures/transfer-authz-boundaries.expected.json"
+        ))
+        .unwrap();
+        let plan = transfer_authz_plan(&script, &expected).unwrap();
+        transfer_authz_plan(&v9_script, &expected).unwrap();
+        assert_eq!(script, v9_script);
+        assert_eq!(script.len(), 28);
+        assert_eq!(plan.successful_transfers, 7);
+        assert_eq!(plan.granter, accounts(1)[1].acc);
+        assert_eq!(plan.grantee, accounts(1)[0].acc);
+
+        let grant = |index: usize| {
+            let message = authz::MsgGrant::decode(script[index][0].1.value.as_slice()).unwrap();
+            TransferAuthorization::decode(
+                message
+                    .grant
+                    .unwrap()
+                    .authorization
+                    .unwrap()
+                    .value
+                    .as_slice(),
+            )
+            .unwrap()
+        };
+        let execution = |index: usize| {
+            let message = authz::MsgExec::decode(script[index][0].1.value.as_slice()).unwrap();
+            MsgTransfer::decode(message.msgs[0].value.as_slice()).unwrap()
+        };
+
+        assert!(grant(0).allocations.is_empty());
+        assert_eq!(grant(1).allocations.len(), 2);
+        assert_eq!(grant(2).allocations[0].spend_limit, []);
+        assert_eq!(grant(3).allocations[0].spend_limit[0].amount, "0");
+        assert_eq!(grant(4).allocations[0].source_port, "p");
+        assert_eq!(grant(5).allocations[0].source_channel, "x");
+        assert_eq!(grant(6).allocations[0].allow_list, ["same", "same"]);
+
+        let mut authorization = grant(7);
+        let finite = authorization.allocations.remove(0);
+        assert_eq!(finite.spend_limit[0].amount, "300");
+        assert_eq!(finite.allow_list, ["wrong", "cosmos1receiver"]);
+        assert_eq!(execution(8).token.unwrap().amount, "100");
+        assert_eq!(execution(9).token.unwrap().amount, "250");
+        assert_eq!(execution(10).token.unwrap().amount, "200");
+        assert_eq!(
+            (expected[11].codespace.as_str(), expected[11].code),
+            ("authz", 2)
+        );
+
+        assert_eq!(execution(13).receiver, "other");
+        assert_eq!(execution(14).memo, "forbidden");
+        assert_eq!(execution(15).memo, " \t ");
+        assert_eq!(grant(16).allocations[0].allowed_packet_data, ["*", "ok"]);
+        assert_eq!(execution(17).memo, "different");
+        assert_eq!(execution(18).memo, " ok ");
+        assert_eq!(
+            grant(19).allocations[0].spend_limit[0].amount,
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        );
+        assert_eq!(grant(22).allocations.len(), 2);
+        assert_eq!(grant(22).allocations[1].source_channel, "channel-9");
+        let mut authorization = grant(25);
+        let final_allocation = authorization.allocations.remove(0);
+        assert_eq!(final_allocation.source_channel, "channel-9");
+        assert_eq!(final_allocation.spend_limit[0].amount, "100");
+        assert_eq!(
+            (expected[26].codespace.as_str(), expected[26].code),
+            ("channel", 3)
+        );
+        assert_eq!(
+            (expected[27].codespace.as_str(), expected[27].code),
+            ("channel", 3)
+        );
+    }
+
+    #[test]
+    fn transfer_authz_plan_rejects_weakened_fixture_contracts() {
+        use celestia_proto::cosmos::{authz::v1beta1 as authz, bank::v1beta1::MsgSend};
+
+        let load = || {
+            (
+                read_script(
+                    include_str!("../fixtures/transfer-authz-boundaries.script"),
+                    ACCOUNTS,
+                )
+                .unwrap(),
+                script_expectations(include_str!(
+                    "../fixtures/transfer-authz-boundaries.expected.json"
+                ))
+                .unwrap(),
+            )
+        };
+
+        let (mut script, expected) = load();
+        let second_message = script[1][0].clone();
+        script[0].push(second_message);
+        assert!(transfer_authz_plan(&script, &expected).is_err());
+
+        let (mut script, expected) = load();
+        script[7][0].0 = 0;
+        assert!(transfer_authz_plan(&script, &expected).is_err());
+
+        let (mut script, expected) = load();
+        let mut exec = authz::MsgExec::decode(script[8][0].1.value.as_slice()).unwrap();
+        exec.msgs[0].type_url = MsgSend::type_url();
+        script[8][0].1.value = exec.encode_to_vec();
+        assert!(transfer_authz_plan(&script, &expected).is_err());
+
+        let (script, mut expected) = load();
+        expected[26].codespace.clear();
+        expected[26].code = 0;
+        assert!(transfer_authz_plan(&script, &expected).is_err());
     }
 
     #[test]
