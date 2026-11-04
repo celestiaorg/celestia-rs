@@ -360,6 +360,13 @@ test), then start that harness's count again.
   differential mismatches. This closes one reachable gap in the next full
   profile; it does not retroactively reclassify the other 22 entries or close
   F1.3's per-error and branch requirements.
+  *Message-gap audit (2026-11-04):* exact pinned-app source review classifies
+  all 23 never-success entries in the bounded branch profile: two are nested
+  data, 13 have no registered service, seven cannot return code 0 through the
+  apps' enabled routes, and ICA host parameter update is the sole reachable
+  success gap. `docs/message-gap-audit-2026-11-04.md` records the per-type
+  reasons. A fresh full profile must still observe the ICA host success, and
+  per-error and uncovered-branch review remain open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
