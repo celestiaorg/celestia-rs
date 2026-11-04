@@ -23,9 +23,11 @@
 # DELIVER_GOV_FAILURE_REQUIRE=<substring> requires that a tracked proposal fail
 # with that Go log marker. DELIVER_GOV_FAILURE_TYPE_REQUIRE=<type-url> further
 # binds the match to a proposal carrying that exact payload type.
-# DELIVER_EVIDENCE_REQUIRE=stale|removed-validator sends exactly one controlled
-# begin-block misbehavior and fails unless that boundary reaches FinalizeBlock.
-# Stale evidence is supported on v9/v10; removed-validator is v10-only.
+# DELIVER_EVIDENCE_REQUIRE=stale|removed-validator|stake-lifecycle sends exactly
+# one controlled begin-block misbehavior and fails unless that boundary reaches
+# FinalizeBlock. Stale evidence is supported on v9/v10; removed-validator is
+# v10-only. Stake-lifecycle requires its exact DELIVER_SCRIPT and
+# DELIVER_SCRIPT_REQUIRE setup and checks historical-stake slash accounting.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

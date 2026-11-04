@@ -43,6 +43,7 @@ prost = "0.13"
 prost-reflect = "0.14"
 legacy-amino = { path = "../tier-1-protocol-types/legacy-amino" }
 sdk = { path = "../tier-3-app-modules/sdk" }
+math = { path = "../tier-0-primitives/math" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
@@ -50,12 +51,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tonic = { version = "=0.12.3", default-features = false, features = ["transport"] }
 txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-ante = { path = "../tier-3-app-modules/x/ante" }
+x-auth = { path = "../tier-3-app-modules/x/auth" }
+x-bank = { path = "../tier-3-app-modules/x/bank" }
 p256 = { version = "0.14", features = ["ecdsa"] }
 x-gov = { path = "../tier-3-app-modules/x/gov" }
 x-hyperlane = { path = "../tier-3-app-modules/x/hyperlane" }
 x-ibc = { path = "../tier-3-app-modules/x/ibc" }
 x-zkism = { path = "../tier-3-app-modules/x/zkism" }
 x-icahost = { path = "../tier-3-app-modules/x/icahost" }
+x-mint = { path = "../tier-3-app-modules/x/mint" }
 x-evidence = { path = "../tier-3-app-modules/x/evidence" }
 x-packetforward = { path = "../tier-3-app-modules/x/packetforward" }
 x-slashing = { path = "../tier-3-app-modules/x/slashing" }

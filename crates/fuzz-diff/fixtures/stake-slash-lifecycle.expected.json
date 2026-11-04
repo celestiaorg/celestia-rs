@@ -1,0 +1,32 @@
+[
+  {
+    "type_url": "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.staking.v1beta1.MsgDelegate",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.staking.v1beta1.MsgUndelegate",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.staking.v1beta1.MsgUndelegate",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  }
+]
