@@ -606,52 +606,54 @@ fn main() -> anyhow::Result<()> {
         }
         // Machine-readable evidence for F1.2: count finalized txs, not
         // CheckTx attempts or messages nested inside one tx.
-        eprintln!(
-            "DELIVER_STATS {}",
-            serde_json::json!({
-                "scenario": scenario,
-                "seed": seed,
-                "requested_blocks": blocks,
-                "txs_per_block": per_block,
-                "blocks": st.blocks,
-                "delivered": st.delivered,
-                "delivered_ok": st.delivered_ok,
-                "error_accounting": "sdk-message-index-v1",
-                "handler_errors": st.handler_errors,
-                "unattributed_errors": st.unattributed_errors,
-                "evidence_required": st.evidence_required,
-                "evidence_injected": st.evidence_injected,
-                "mismatches": st.mismatches.len(),
-                "split": st.split,
-                "gov_required": st.gov_required,
-                "gov_executed": st.gov_executed,
-                "type_required": st.type_required,
-                "direct_aux_required": st.direct_aux_required.is_some(),
-                "direct_aux_completed": st.direct_aux_completed,
-                "malformed_multisig_required": st.malformed_multisig_required.is_some(),
-                "malformed_multisig_completed": st.malformed_multisig_completed,
-                "ibc_ack_failure_required": st.ibc_ack_failure_required,
-                "ibc_required": st.ibc_required,
-                "ibc": st.ibc,
-                "gov_failure_required": st.gov_failure_required,
-                "gov_failure_type_required": st.gov_failure_type_required,
-                "gov_failure_matches": st.gov_failure_matches,
-                "gov_abstain_required": st.gov_abstain_required.is_some(),
-                "gov_abstain_rejections": st.gov_abstain_rejections,
-                "hl_verification": st.hl_verification,
-                "hl_verified": st.hl_verified,
-                "hl_verified_versions": st.hl_verified_versions,
-                "hl_registry_required": st.hl_registry_required.is_some(),
-                "hl_registry": st.hl_registry,
-                "hl_preupgrade_required": st.hl_preupgrade_required,
-                "hl_preupgrade_blocks": st.hl_preupgrade_blocks,
-                "hl_rejection_cases": st.hl_rejection_cases,
-                "hl_retried": st.hl_retried,
-                "hl_rejection_failures": st.hl_rejection_failures,
-                "hl_rejection_blocks": st.hl_rejection_blocks,
-                "hl_rejection_complete_height": st.hl_rejection_complete_height,
-            })
-        );
+        let mut deliver_stats = serde_json::json!({
+            "scenario": scenario,
+            "seed": seed,
+            "requested_blocks": blocks,
+            "txs_per_block": per_block,
+            "blocks": st.blocks,
+            "delivered": st.delivered,
+            "delivered_ok": st.delivered_ok,
+            "error_accounting": "sdk-message-index-v1",
+            "handler_errors": st.handler_errors,
+            "unattributed_errors": st.unattributed_errors,
+            "evidence_required": st.evidence_required,
+            "evidence_injected": st.evidence_injected,
+            "mismatches": st.mismatches.len(),
+            "split": st.split,
+            "gov_required": st.gov_required,
+            "gov_executed": st.gov_executed,
+            "type_required": st.type_required,
+            "direct_aux_required": st.direct_aux_required.is_some(),
+            "direct_aux_completed": st.direct_aux_completed,
+            "malformed_multisig_required": st.malformed_multisig_required.is_some(),
+            "malformed_multisig_completed": st.malformed_multisig_completed,
+            "ibc_ack_failure_required": st.ibc_ack_failure_required,
+            "ibc_required": st.ibc_required,
+            "ibc": st.ibc,
+            "gov_failure_required": st.gov_failure_required,
+            "gov_failure_type_required": st.gov_failure_type_required,
+            "gov_failure_matches": st.gov_failure_matches,
+            "gov_abstain_required": st.gov_abstain_required.is_some(),
+            "gov_abstain_rejections": st.gov_abstain_rejections,
+            "hl_verification": st.hl_verification,
+            "hl_verified": st.hl_verified,
+            "hl_verified_versions": st.hl_verified_versions,
+            "hl_registry_required": st.hl_registry_required.is_some(),
+            "hl_registry": st.hl_registry,
+            "hl_preupgrade_required": st.hl_preupgrade_required,
+            "hl_preupgrade_blocks": st.hl_preupgrade_blocks,
+            "hl_rejection_cases": st.hl_rejection_cases,
+            "hl_retried": st.hl_retried,
+            "hl_rejection_failures": st.hl_rejection_failures,
+            "hl_rejection_blocks": st.hl_rejection_blocks,
+            "hl_rejection_complete_height": st.hl_rejection_complete_height,
+        });
+        deliver_stats["zero_threshold_multisig_required"] =
+            st.zero_threshold_multisig_required.is_some().into();
+        deliver_stats["zero_threshold_multisig_completed"] =
+            st.zero_threshold_multisig_completed.into();
+        eprintln!("DELIVER_STATS {deliver_stats}");
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
             st.replayed,
@@ -675,6 +677,7 @@ fn main() -> anyhow::Result<()> {
         st.require_type_coverage()?;
         st.require_direct_aux_coverage()?;
         st.require_malformed_multisig_coverage()?;
+        st.require_zero_threshold_multisig_coverage()?;
         st.require_evidence_coverage()?;
         st.require_script_coverage()?;
         st.require_ibc_coverage()?;

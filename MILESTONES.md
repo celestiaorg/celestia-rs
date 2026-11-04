@@ -425,6 +425,13 @@ test), then start that harness's count again.
   normal proposal rejection, and complete fee/balance/sequence rollback. This
   is bounded application differential evidence; the merged profile must still
   measure the branch contribution, and the wider F1.3 gates remain open.
+  *Zero-threshold multisig follow-up (2026-11-04):* controlled v10/v9 fixtures
+  exercise a wire-decoded `LegacyAminoPubKey` whose threshold is zero. Two
+  unsigned sends require exact CheckTx, proposal and FinalizeBlock success,
+  exact fees/transfers/sequences, and persistence of the same account key
+  across the second commit. This is bounded application differential evidence;
+  the merged profile must still measure the branch contribution, and the wider
+  F1.3 gates remain open.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
   scenario replay and the recovered nil-router panic (`undefined/111222`)

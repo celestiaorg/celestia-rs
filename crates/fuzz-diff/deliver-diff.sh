@@ -38,6 +38,10 @@
 # and zero random transactions; each tx must fail CheckTx, be excluded by
 # PrepareProposal and rejected by ProcessProposal, then is applied directly to
 # FinalizeBlock to compare the exact ante result and committed-state rollback.
+# DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE=1 sends two controlled transactions
+# from a wire-decoded threshold-zero multisig. It requires exactly three
+# generated blocks and zero random transactions, and checks successful proposal
+# handling, execution, balances, sequences, and exact public-key persistence.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

@@ -141,6 +141,12 @@ for scen in authz-feegrant v9-authz-feegrant; do
     DELIVER_MALFORMED_MULTISIG_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 4 0 17370
 done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "zero-threshold-multisig-$scen" GO_APPD="$A" \
+    DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 3 0 17371
+done
 for scen in ibc v9-ibc; do
   case $scen in
     v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/transfer-authz-boundaries-v9.script ;;
