@@ -36,7 +36,8 @@ class NightlyFlagsTest(unittest.TestCase):
             flags = dict(word.split("=", 1) for word in line.split())
             self.assertEqual(flags["DELIVER_HL"], "1")
             self.assertEqual("DELIVER_HL_REJECT" in flags, flags["DELIVER_HL_ISM"] != "noop")
-            if "DELIVER_GOVPASS" in flags:
+            if ("DELIVER_GOVPASS" in flags and
+                    "DELIVER_GOV_ABSTAIN_REQUIRE" not in flags):
                 self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
             else:
                 self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
@@ -103,12 +104,19 @@ class NightlyFlagsTest(unittest.TestCase):
                      "v9-zkism-forwarding"}
         coverage = set()
         upgrades = []
+        abstain = set()
         for flags, command in runs:
-            if "DELIVER_GOVPASS" in flags:
+            if ("DELIVER_GOVPASS" in flags and
+                    "DELIVER_GOV_ABSTAIN_REQUIRE" not in flags):
                 self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
             else:
                 self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
             scenario = command[-4]
+            if "DELIVER_GOV_ABSTAIN_REQUIRE" in flags:
+                self.assertEqual(flags["DELIVER_GOV_ABSTAIN_REQUIRE"], "1")
+                self.assertEqual(flags["DELIVER_GOVPASS"], "1")
+                self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
+                abstain.add((scenario, int(command[-1])))
             if scenario == "v9-upgrade":
                 upgrades.append((int(command[-1]), flags["DELIVER_HL_ISM"]))
                 self.assertNotIn("DELIVER_HL_REJECT", flags)
@@ -132,6 +140,7 @@ class NightlyFlagsTest(unittest.TestCase):
         self.assertEqual(len(upgrades), 12)
         self.assertEqual([mode for _, mode in upgrades],
                          ["noop", "message-id", "merkle-root"] * 4)
+        self.assertEqual(abstain, {("gov", 9), ("v9-gov", 9)})
 
     def test_campaign_shards_partition_required_signed_runs(self):
         full = self.dry_runs("campaign-0of1", 7)

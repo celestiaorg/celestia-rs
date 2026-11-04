@@ -173,6 +173,10 @@ pub struct Stats {
     pub gov_failure_required: Option<String>,
     /// Failed Go proposal logs that contained the required substring.
     pub gov_failure_matches: u64,
+    /// Require a rejected proposal whose final tally has only abstain power.
+    pub gov_abstain_required: Option<()>,
+    /// Rejected proposals observed with nonzero abstain and zero other power.
+    pub gov_abstain_rejections: u64,
     /// IBC relays of the mock counterparty (`DELIVER_IBC`), by kind.
     pub ibc: BTreeMap<&'static str, u64>,
     /// Require a code-0 channel-upgrade Ack FAILURE response with the matching
@@ -1378,6 +1382,12 @@ impl Stats {
             anyhow::ensure!(
                 self.gov_failure_matches > 0,
                 "incomplete DELIVER_GOV_FAILURE_REQUIRE coverage: no failed proposal log contained {required:?}"
+            );
+        }
+        if self.gov_abstain_required.is_some() {
+            anyhow::ensure!(
+                self.gov_abstain_rejections > 0,
+                "incomplete DELIVER_GOV_ABSTAIN_REQUIRE coverage: no rejected proposal had an all-abstain final tally"
             );
         }
         Ok(())
@@ -4031,6 +4041,15 @@ pub fn run(
         })
         .transpose()?;
     let gov_required = gov_requirements(required.as_deref(), govpass)?;
+    let gov_abstain_required = std::env::var_os("DELIVER_GOV_ABSTAIN_REQUIRE").is_some();
+    anyhow::ensure!(
+        !gov_abstain_required || govpass,
+        "DELIVER_GOV_ABSTAIN_REQUIRE requires DELIVER_GOVPASS"
+    );
+    anyhow::ensure!(
+        !gov_abstain_required || gov_required.is_empty(),
+        "DELIVER_GOV_ABSTAIN_REQUIRE cannot be combined with DELIVER_GOV_REQUIRE"
+    );
     let ibc_recover_client = gov_required
         .iter()
         .any(|url| url == "/ibc.core.client.v1.MsgRecoverClient");
@@ -4061,6 +4080,10 @@ pub fn run(
             Ok::<_, anyhow::Error>(value)
         })
         .transpose()?;
+    anyhow::ensure!(
+        !gov_abstain_required || gov_failure_required.is_none(),
+        "DELIVER_GOV_ABSTAIN_REQUIRE cannot be combined with DELIVER_GOV_FAILURE_REQUIRE"
+    );
     let script_path = std::env::var_os("DELIVER_SCRIPT")
         .map(|value| {
             value
@@ -4154,6 +4177,7 @@ pub fn run(
     let mut stats = Stats {
         gov_required,
         gov_failure_required,
+        gov_abstain_required: gov_abstain_required.then_some(()),
         type_required,
         script_required,
         ibc_ack_failure_required,
@@ -4531,9 +4555,10 @@ pub fn run(
     );
     let mut sweeps: Vec<(usize, Vec<Any>, u64)> = Vec::new();
     let sim_on = std::env::var("DELIVER_SIM").is_ok();
-    // `DELIVER_GOVPASS`: the fuzz accounts pass every proposal (deposit and
-    // yes votes, re-sent every 4 blocks), so each proposal's messages run
-    // and a failure's text is stored in `failed_reason` (state).
+    // `DELIVER_GOVPASS`: the fuzz accounts decide every proposal (deposit and
+    // votes, re-sent every 4 blocks). Normally they vote yes so each proposal's
+    // messages run. `DELIVER_GOV_ABSTAIN_REQUIRE` makes them all abstain so the
+    // rejected-proposal tally path is exercised instead.
     let mut govpass_delegated = false;
     let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
@@ -4868,7 +4893,11 @@ pub fn run(
                         let vote = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
                             proposal_id: id,
                             voter: gn.accts[i].acc.clone(),
-                            option: 1,
+                            option: if stats.gov_abstain_required.is_some() {
+                                2
+                            } else {
+                                1
+                            },
                             metadata: String::new(),
                         });
                         if let Some(t) = sign_simple(&gn, i, vec![vote], 400_000) {
@@ -5415,6 +5444,7 @@ pub fn run(
         }
         gn.dict.harvest_events(&g.events);
         gov_coverage.completed(&g.events, &mut stats.gov_executed);
+        let mut abstain_rejected_proposals = Vec::new();
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
             let failed = e
                 .attributes
@@ -5427,6 +5457,18 @@ pub fn run(
                     .any(|a| a.key == "proposal_log" && a.value.contains(required))
             {
                 stats.gov_failure_matches += 1;
+            }
+            if stats.gov_abstain_required.is_some()
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "proposal_result" && a.value == "proposal_rejected")
+                && let Some(id) = e
+                    .attributes
+                    .iter()
+                    .find(|a| a.key == "proposal_id")
+                    .and_then(|a| a.value.parse::<u64>().ok())
+            {
+                abstain_rejected_proposals.push(id);
             }
             for a in e.attributes.iter().filter(|a| a.key == "proposal_result") {
                 *stats.gov_results.entry(a.value.clone()).or_default() += 1;
@@ -5483,6 +5525,11 @@ pub fn run(
         };
         go.call_or_exception(cons_conn, &commit_req)?;
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        for id in abstain_rejected_proposals {
+            if proposal_is_all_abstain(&mut rust, id) == Some(true) {
+                stats.gov_abstain_rejections += 1;
+            }
+        }
         // Go raised the app version: switch its binary after this
         // `Commit` (the multiplexer); the Rust app continues.
         if let Some(v) = g
@@ -5707,6 +5754,37 @@ fn query_app<R: prost::Message + Default>(
     (r.code == 0)
         .then(|| R::decode(r.value.as_slice()).ok())
         .flatten()
+}
+
+/// Whether a committed proposal's final tally contains only abstain power.
+fn proposal_is_all_abstain(rust: &mut app::App, id: u64) -> Option<bool> {
+    use celestia_proto::cosmos::gov::v1 as gov;
+    let tally = query_app::<gov::QueryProposalResponse>(
+        rust,
+        "/cosmos.gov.v1.Query/Proposal",
+        &gov::QueryProposalRequest { proposal_id: id },
+    )?
+    .proposal?
+    .final_tally_result?;
+    Some(tally_is_all_abstain(&tally))
+}
+
+fn tally_is_all_abstain(tally: &celestia_proto::cosmos::gov::v1::TallyResult) -> bool {
+    canonical_sdk_uint(&tally.abstain_count) == Some(true)
+        && canonical_sdk_uint(&tally.yes_count) == Some(false)
+        && canonical_sdk_uint(&tally.no_count) == Some(false)
+        && canonical_sdk_uint(&tally.no_with_veto_count) == Some(false)
+}
+
+/// Whether a string is a canonical SDK nonnegative integer, and is nonzero.
+fn canonical_sdk_uint(value: &str) -> Option<bool> {
+    if value == "0" {
+        return Some(false);
+    }
+    (!value.is_empty()
+        && !value.starts_with('0')
+        && value.bytes().all(|byte| byte.is_ascii_digit()))
+    .then_some(true)
 }
 
 /// Use the current proposal minimum instead of a fixed denom/amount. The final
@@ -7324,6 +7402,33 @@ mod tests {
         assert!(stats.require_gov_coverage().is_err());
         stats.gov_failure_matches = 1;
         assert!(stats.require_gov_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_all_abstain_rejection_needs_a_committed_tally() {
+        use celestia_proto::cosmos::gov::v1::TallyResult;
+
+        let mut stats = Stats {
+            gov_abstain_required: Some(()),
+            ..Stats::default()
+        };
+        assert!(stats.require_gov_coverage().is_err());
+        stats.gov_abstain_rejections = 1;
+        assert!(stats.require_gov_coverage().is_ok());
+
+        let tally = |abstain: &str, yes: &str, no: &str, veto: &str| TallyResult {
+            abstain_count: abstain.into(),
+            yes_count: yes.into(),
+            no_count: no.into(),
+            no_with_veto_count: veto.into(),
+        };
+        assert!(tally_is_all_abstain(&tally("1", "0", "0", "0")));
+        for value in ["", "00", "01", "-1", "+1", "one"] {
+            assert!(!tally_is_all_abstain(&tally(value, "0", "0", "0")));
+        }
+        for (yes, no, veto) in [("1", "0", "0"), ("0", "1", "0"), ("0", "0", "1")] {
+            assert!(!tally_is_all_abstain(&tally("1", yes, no, veto)));
+        }
     }
 
     #[test]

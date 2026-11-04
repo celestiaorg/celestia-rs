@@ -295,6 +295,7 @@ campaign-*of*)
   for scen in "${V10_SCENARIOS[@]}" "${V9_SCENARIOS[@]}"; do
     items+=("d:$scen" "g:$scen")
   done
+  items+=("a:gov" "a:v9-gov")
   for i in $(seq 1 12); do items+=("u:$i"); done
   for it in $(shard "$k" "$n" 0 "${items[@]}"); do
     case $it in
@@ -312,6 +313,13 @@ campaign-*of*)
         DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams)
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
       campaign_deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
+      ;;
+    a:*)
+      # Reject one proposal at each app version with all delegated voting
+      # power abstaining, and require its committed final tally.
+      scen=${it#a:}
+      f=(DELIVER_GOVPASS=1 DELIVER_GOV_ABSTAIN_REQUIRE=1)
+      campaign_deliver_run "$scen" "$((SEED + 2))" "${f[@]}"
       ;;
     u:*)
       i=${it#u:}

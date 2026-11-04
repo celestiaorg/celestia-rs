@@ -367,6 +367,16 @@ test), then start that harness's count again.
   success gap. `docs/message-gap-audit-2026-11-04.md` records the per-type
   reasons. A fresh full profile must still observe the ICA host success, and
   per-error and uncovered-branch review remain open.
+  *All-abstain tally follow-up (2026-11-04):* an opt-in governance campaign
+  delegates voting power, casts abstain votes from every delegated fuzz
+  account, and fails closed unless a rejected proposal's committed final
+  tally has nonzero abstain power and zero yes, no and veto power. Targeted
+  60-block pinned v10 / v9 runs finalized 1,133 / 1,025 transactions,
+  attributed 10 / 8 all-abstain rejections and reported zero differential
+  mismatches. The coverage profile and full nightly campaign now include this
+  case at both app versions. This targets the previously uncovered
+  `non_abstain.is_zero()` tally branch; the next instrumented profile must
+  measure it, and the remaining branch and per-error requirements stay open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
