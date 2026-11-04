@@ -146,6 +146,14 @@ for scen in evidence v9-authz-feegrant; do
     DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-validation-boundaries.expected.json -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 7 1 17363
 done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "evidence-stale-$scen" GO_APPD="$A" DELIVER_EVIDENCE_REQUIRE=stale -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 4 0 17364
+done
+run "evidence-removed-validator-authz-feegrant" GO_APPD="$V10" \
+  DELIVER_EVIDENCE_REQUIRE=removed-validator -- \
+  crates/fuzz-diff/deliver-diff.sh authz-feegrant 1 0 17365
 for s in 1 2 3 4; do
   run "upgrade-$s" GO_APPD="$V9" GO_APPD_NEXT="$V10" DELIVER_UPGRADE=$((10 + s * 5)) DELIVER_IBC=1 DELIVER_HL=1 \
     DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 -- crates/fuzz-diff/deliver-diff.sh v9-upgrade "$BLOCKS" 6 "$s"

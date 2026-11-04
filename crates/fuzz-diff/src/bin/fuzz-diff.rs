@@ -562,6 +562,9 @@ fn main() -> anyhow::Result<()> {
         for (handler, n) in &st.hl_registry {
             println!("HL_REGISTRY {handler} {n}");
         }
+        for (boundary, n) in &st.evidence_injected {
+            println!("EVIDENCE_BOUNDARY {boundary} {n}");
+        }
         for (case, n) in &st.hl_retried {
             println!("HL_RETRIED {case} {n}");
         }
@@ -616,6 +619,8 @@ fn main() -> anyhow::Result<()> {
                 "error_accounting": "sdk-message-index-v1",
                 "handler_errors": st.handler_errors,
                 "unattributed_errors": st.unattributed_errors,
+                "evidence_required": st.evidence_required,
+                "evidence_injected": st.evidence_injected,
                 "mismatches": st.mismatches.len(),
                 "split": st.split,
                 "gov_required": st.gov_required,
@@ -664,6 +669,7 @@ fn main() -> anyhow::Result<()> {
         st.require_hl_coverage()?;
         st.require_gov_coverage()?;
         st.require_type_coverage()?;
+        st.require_evidence_coverage()?;
         st.require_script_coverage()?;
         st.require_ibc_coverage()?;
         return Ok(());

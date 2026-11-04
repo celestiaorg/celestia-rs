@@ -56,5 +56,8 @@ x-hyperlane = { path = "../tier-3-app-modules/x/hyperlane" }
 x-ibc = { path = "../tier-3-app-modules/x/ibc" }
 x-zkism = { path = "../tier-3-app-modules/x/zkism" }
 x-icahost = { path = "../tier-3-app-modules/x/icahost" }
+x-evidence = { path = "../tier-3-app-modules/x/evidence" }
 x-packetforward = { path = "../tier-3-app-modules/x/packetforward" }
+x-slashing = { path = "../tier-3-app-modules/x/slashing" }
+x-staking = { path = "../tier-3-app-modules/x/staking" }
 x-transfer = { path = "../tier-3-app-modules/x/transfer" }

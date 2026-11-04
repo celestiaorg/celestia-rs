@@ -415,6 +415,17 @@ test), then start that harness's count again.
   matched failed proposal and zero differential or log mismatches. This closes
   that reproduced path only; the remaining F1.3 and qualification gates stay
   open.
+  *Begin-block evidence follow-up (2026-11-04):* controlled v9.0.8 and v10.5.0
+  runs now require stale duplicate-vote evidence to exceed patched one-block
+  and one-second limits; a separate v10.5.0 run requires the Celestia fork's
+  removed-validator ignore path. The gate verifies the staking and slashing
+  preconditions, matching successful finalization and commit, and unchanged
+  evidence, jail, bond and tombstone state before granting exact boundary
+  credit. All three focused probes finalized their controlled blocks with
+  zero differential or log mismatches. These synthetic branch probes are not
+  mainnet-shaped evidence; their branch-coverage delta awaits the next sealed
+  instrumented profile, and other evidence begin-block/genesis branches remain
+  open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
