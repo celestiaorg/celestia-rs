@@ -28,6 +28,11 @@
 # FinalizeBlock. Stale evidence is supported on v9/v10; removed-validator is
 # v10-only. Stake-lifecycle requires its exact DELIVER_SCRIPT and
 # DELIVER_SCRIPT_REQUIRE setup and checks historical-stake slash accounting.
+# DELIVER_DIRECT_AUX_REQUIRE=1 sends an implicit-fee-payer direct-aux
+# transaction that must fail CheckTx with sdk/4, followed by the same sender
+# using direct-aux while a separate direct signer pays the fee. It requires
+# exactly two generated blocks and zero random transactions, and checks exact
+# proposal filtering, execution, balances, and signer sequences.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

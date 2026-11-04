@@ -40,7 +40,7 @@ use celestia_proto::celestia_core_proto::abci::{self, Request, Response, request
 use celestia_proto::cosmos::base::v1beta1::Coin;
 use celestia_proto::cosmos::tx::signing::v1beta1::SignMode;
 use celestia_proto::cosmos::tx::v1beta1::{
-    AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw, mode_info,
+    AuthInfo, Fee, ModeInfo, SignDoc, SignDocDirectAux, SignerInfo, TxBody, TxRaw, mode_info,
 };
 use math::{Int, LegacyDec};
 use prost::{Message as _, Name as _};
@@ -203,6 +203,11 @@ pub struct Stats {
     pub script_outcomes: Vec<(String, abci::ExecTxResult)>,
     /// A required script must finalize every signed transaction in order.
     pub script_incomplete: Option<&'static str>,
+    /// Whether the run requires the controlled direct-aux signer fixture.
+    pub direct_aux_required: Option<()>,
+    /// Controlled direct-aux fixtures that passed their exact CheckTx,
+    /// proposal, execution, balance, and sequence postconditions.
+    pub direct_aux_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1464,6 +1469,20 @@ fn transfer_authz_plan(
 }
 
 impl Stats {
+    /// Require the exact direct-aux rejection and successful separate-payer
+    /// transaction to complete. Matching behavior without the state
+    /// postconditions is insufficient evidence.
+    pub fn require_direct_aux_coverage(&self) -> anyhow::Result<()> {
+        if self.direct_aux_required.is_some() {
+            anyhow::ensure!(
+                self.direct_aux_completed == 1,
+                "incomplete DELIVER_DIRECT_AUX_REQUIRE coverage: expected one completed fixture, observed {}",
+                self.direct_aux_completed
+            );
+        }
+        Ok(())
+    }
+
     /// Require every scripted transaction, including deliberate handler failures,
     /// to reach FinalizeBlock with the expected Go result. Parity is checked
     /// separately; matching rejection on both apps is insufficient evidence.
@@ -4165,6 +4184,19 @@ pub fn run(
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
+    let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
+    anyhow::ensure!(
+        !direct_aux_required
+            || (!hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 2
+                && per_block == 0),
+        "DELIVER_DIRECT_AUX_REQUIRE needs exactly two blocks and zero random transactions, and cannot be combined with Hyperlane, governance, IBC, evidence, scripts, or upgrades"
+    );
     anyhow::ensure!(
         !transfer_authz_required
             || (ibc_on
@@ -4438,6 +4470,7 @@ pub fn run(
         type_required,
         evidence_required: evidence_requirement.map(|required| required.name().into()),
         script_required,
+        direct_aux_required: direct_aux_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -4797,6 +4830,7 @@ pub fn run(
         .then(|| stake_lifecycle_plan(&script))
         .transpose()?;
     let mut stake_lifecycle_evidence = None;
+    let mut direct_aux_fixture: Option<DirectAuxFixture> = None;
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -4942,6 +4976,11 @@ pub fn run(
                     }
                 }
             }
+        } else if direct_aux_required && b == 1 {
+            let fixture = DirectAuxFixture::new(&gn, &mut rust)?;
+            txs.push(fixture.bad.clone());
+            txs.push(fixture.good.clone());
+            direct_aux_fixture = Some(fixture);
         } else if !hl_setup
             && !gov_setup
             && b >= script_at
@@ -5275,6 +5314,13 @@ pub fn run(
                 }
                 continue;
             };
+            if let Some(fixture) = direct_aux_fixture.as_mut() {
+                if t == &fixture.bad {
+                    fixture.bad_check = Some((g.codespace.clone(), g.code, g.log.clone()));
+                } else if t == &fixture.good {
+                    fixture.good_check = Some((g.codespace.clone(), g.code, g.log.clone()));
+                }
+            }
             if g.code == 0 {
                 stats.check_ok += 1;
                 pool.push_back(t.clone());
@@ -5899,6 +5945,14 @@ pub fn run(
             return Ok(stats);
         }
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        if let Some(fixture) = direct_aux_fixture.as_mut()
+            && !fixture.completed
+            && txs.iter().any(|tx| tx == &fixture.good)
+        {
+            fixture.require_complete(&fb.txs, &g.tx_results, &mut rust)?;
+            fixture.completed = true;
+            stats.direct_aux_completed += 1;
+        }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
                 evidence_requirement.filter(|r| *r != EvidenceRequirement::StakeLifecycle),
@@ -7785,6 +7839,202 @@ fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
     out
 }
 
+const DIRECT_AUX_SEND: u128 = 123;
+const DIRECT_AUX_FEE: u128 = 100_000;
+
+/// State and exact outcomes for a direct-aux sender whose fee is paid by a
+/// second signer. The rejected transaction uses the same body and sender
+/// sequence but leaves the fee payer implicit, making that direct-aux signer
+/// the fee payer.
+struct DirectAuxFixture {
+    bad: Vec<u8>,
+    good: Vec<u8>,
+    sender: String,
+    payer: String,
+    recipient: String,
+    sender_addr: Vec<u8>,
+    payer_addr: Vec<u8>,
+    sender_balance: u128,
+    payer_balance: u128,
+    recipient_balance: u128,
+    sender_sequence: u64,
+    payer_sequence: u64,
+    bad_check: Option<(String, u32, String)>,
+    good_check: Option<(String, u32, String)>,
+    completed: bool,
+}
+
+impl DirectAuxFixture {
+    fn new(gn: &Gen, rust: &mut app::App) -> anyhow::Result<Self> {
+        let sender = gn.accts[0].acc.clone();
+        let payer = gn.accts[1].acc.clone();
+        let recipient = gn.accts[2].acc.clone();
+        Ok(Self {
+            bad: sign_direct_aux_send(gn, None)?,
+            good: sign_direct_aux_send(gn, Some(1))?,
+            sender_balance: account_balance(rust, &sender)?,
+            payer_balance: account_balance(rust, &payer)?,
+            recipient_balance: account_balance(rust, &recipient)?,
+            sender_sequence: rust.query_sequence(&gn.accts[0].addr).sequence,
+            payer_sequence: rust.query_sequence(&gn.accts[1].addr).sequence,
+            sender,
+            payer,
+            recipient,
+            sender_addr: gn.accts[0].addr.clone(),
+            payer_addr: gn.accts[1].addr.clone(),
+            bad_check: None,
+            good_check: None,
+            completed: false,
+        })
+    }
+
+    fn require_complete(
+        &self,
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        let (codespace, code, log) = self
+            .bad_check
+            .as_ref()
+            .context("direct-aux implicit-fee-payer transaction was not checked")?;
+        anyhow::ensure!(
+            codespace == "sdk"
+                && *code == 4
+                && log.contains("cannot sign with SIGN_MODE_DIRECT_AUX"),
+            "direct-aux implicit-fee-payer CheckTx changed: {codespace}/{code} {log}"
+        );
+        let (codespace, code, log) = self
+            .good_check
+            .as_ref()
+            .context("direct-aux separate-fee-payer transaction was not checked")?;
+        anyhow::ensure!(
+            codespace.is_empty() && *code == 0,
+            "direct-aux separate-fee-payer CheckTx changed: {codespace}/{code} {log}"
+        );
+        anyhow::ensure!(
+            !finalized.contains(&self.bad),
+            "rejected direct-aux implicit-fee-payer transaction was finalized"
+        );
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(tx, _)| *tx == &self.good)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1 && matches[0].1.code == 0 && matches[0].1.codespace.is_empty(),
+            "direct-aux separate-fee-payer transaction did not finalize exactly once with code 0: {matches:?}"
+        );
+        anyhow::ensure!(
+            account_balance(rust, &self.sender)? == self.sender_balance - DIRECT_AUX_SEND
+                && account_balance(rust, &self.recipient)?
+                    == self.recipient_balance + DIRECT_AUX_SEND
+                && account_balance(rust, &self.payer)? == self.payer_balance - DIRECT_AUX_FEE,
+            "direct-aux committed balances did not debit the sender transfer, credit the recipient, and charge only the separate fee payer"
+        );
+        anyhow::ensure!(
+            rust.query_sequence(&self.sender_addr).sequence == self.sender_sequence + 1,
+            "direct-aux sender sequence did not advance exactly once"
+        );
+        anyhow::ensure!(
+            rust.query_sequence(&self.payer_addr).sequence == self.payer_sequence + 1,
+            "direct-aux fee-payer sequence did not advance exactly once"
+        );
+        Ok(())
+    }
+}
+
+fn account_balance(rust: &mut app::App, address: &str) -> anyhow::Result<u128> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    let response = query_app::<bank::QueryBalanceResponse>(
+        rust,
+        "/cosmos.bank.v1beta1.Query/Balance",
+        &bank::QueryBalanceRequest {
+            address: address.into(),
+            denom: "utia".into(),
+        },
+    )
+    .context("querying direct-aux account balance")?;
+    response
+        .balance
+        .context("direct-aux account had no utia balance")?
+        .amount
+        .parse()
+        .context("parsing direct-aux utia balance")
+}
+
+fn sign_direct_aux_send(gn: &Gen, payer: Option<usize>) -> anyhow::Result<Vec<u8>> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    let sender = &gn.accts[0];
+    let body_bytes = TxBody {
+        messages: vec![Any::pack(&bank::MsgSend {
+            from_address: sender.acc.clone(),
+            to_address: gn.accts[2].acc.clone(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: DIRECT_AUX_SEND.to_string(),
+            }],
+        })],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    let mut signer_infos = vec![SignerInfo {
+        public_key: Some(sender.pk.clone()),
+        mode_info: Some(single_mode_info(SignMode::DirectAux)),
+        sequence: sender.seq,
+    }];
+    if let Some(i) = payer {
+        signer_infos.push(SignerInfo {
+            public_key: Some(gn.accts[i].pk.clone()),
+            mode_info: Some(single_mode_info(SignMode::Direct)),
+            sequence: gn.accts[i].seq,
+        });
+    }
+    #[allow(deprecated)]
+    let auth_info_bytes = AuthInfo {
+        signer_infos,
+        fee: Some(Fee {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: DIRECT_AUX_FEE.to_string(),
+            }],
+            gas_limit: 300_000,
+            payer: payer.map_or_else(String::new, |i| gn.accts[i].acc.clone()),
+            granter: String::new(),
+        }),
+        tip: None,
+    }
+    .encode_to_vec();
+    #[allow(deprecated)]
+    let aux_bytes = SignDocDirectAux {
+        body_bytes: body_bytes.clone(),
+        public_key: Some(sender.pk.clone()),
+        chain_id: gn.chain_id.clone(),
+        account_number: sender.number,
+        sequence: sender.seq,
+        tip: None,
+    }
+    .encode_to_vec();
+    let mut signatures = vec![sender.key.sign(&aux_bytes)?.to_vec()];
+    if let Some(i) = payer {
+        let payer = &gn.accts[i];
+        let direct = SignDoc {
+            body_bytes: body_bytes.clone(),
+            auth_info_bytes: auth_info_bytes.clone(),
+            chain_id: gn.chain_id.clone(),
+            account_number: payer.number,
+        }
+        .encode_to_vec();
+        signatures.push(payer.key.sign(&direct)?.to_vec());
+    }
+    Ok(TxRaw {
+        body_bytes,
+        auth_info_bytes,
+        signatures,
+    }
+    .encode_to_vec())
+}
+
 /// A plain direct-mode tx of `msgs` signed by account `i`.
 fn sign_simple(gn: &Gen, i: usize, msgs: Vec<Any>, gas: u64) -> Option<Vec<u8>> {
     sign_with(gn, i, msgs, gas, String::new())
@@ -8176,6 +8426,56 @@ pub fn coverage() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn direct_aux_fixture_has_exact_signer_and_fee_payer_shapes() {
+        use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+
+        let g = offline_gen(10, 1, false);
+        let bad = TxRaw::decode(sign_direct_aux_send(&g, None).unwrap().as_slice()).unwrap();
+        let good = TxRaw::decode(sign_direct_aux_send(&g, Some(1)).unwrap().as_slice()).unwrap();
+        assert_eq!(bad.body_bytes, good.body_bytes);
+        let body = TxBody::decode(good.body_bytes.as_slice()).unwrap();
+        let send = MsgSend::decode(body.messages[0].value.as_slice()).unwrap();
+        assert_eq!(send.from_address, g.accts[0].acc);
+        assert_eq!(send.to_address, g.accts[2].acc);
+        assert_eq!(send.amount[0].amount, DIRECT_AUX_SEND.to_string());
+
+        let bad_auth = AuthInfo::decode(bad.auth_info_bytes.as_slice()).unwrap();
+        assert_eq!(bad_auth.signer_infos.len(), 1);
+        assert_eq!(bad.signatures.len(), 1);
+        assert_eq!(bad_auth.fee.unwrap().payer, "");
+        let good_auth = AuthInfo::decode(good.auth_info_bytes.as_slice()).unwrap();
+        assert_eq!(good_auth.signer_infos.len(), 2);
+        assert_eq!(good.signatures.len(), 2);
+        assert_eq!(good_auth.fee.unwrap().payer, g.accts[1].acc);
+        let modes: Vec<_> = good_auth
+            .signer_infos
+            .iter()
+            .map(|info| match &info.mode_info.as_ref().unwrap().sum {
+                Some(mode_info::Sum::Single(single)) => single.mode,
+                _ => panic!("fixture must use single-key modes"),
+            })
+            .collect();
+        assert_eq!(
+            modes,
+            vec![SignMode::DirectAux as i32, SignMode::Direct as i32]
+        );
+    }
+
+    #[test]
+    fn direct_aux_requirement_fails_closed() {
+        let mut stats = Stats {
+            direct_aux_required: Some(()),
+            ..Stats::default()
+        };
+        assert!(stats.require_direct_aux_coverage().is_err());
+        stats.direct_aux_completed = 1;
+        stats.require_direct_aux_coverage().unwrap();
+        stats.direct_aux_completed = 2;
+        assert!(stats.require_direct_aux_coverage().is_err());
+        assert!(Stats::default().require_direct_aux_coverage().is_ok());
+    }
+
     #[test]
     fn script_requirements_reject_incomplete_or_wrong_finalized_results() {
         let expected = r#"[{"type_url":"/cosmos.authz.v1beta1.MsgExec","codespace":"staking","code":3,"log_contains":"validator does not exist"}]"#;

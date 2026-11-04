@@ -626,6 +626,8 @@ fn main() -> anyhow::Result<()> {
                 "gov_required": st.gov_required,
                 "gov_executed": st.gov_executed,
                 "type_required": st.type_required,
+                "direct_aux_required": st.direct_aux_required.is_some(),
+                "direct_aux_completed": st.direct_aux_completed,
                 "ibc_ack_failure_required": st.ibc_ack_failure_required,
                 "ibc_required": st.ibc_required,
                 "ibc": st.ibc,
@@ -669,6 +671,7 @@ fn main() -> anyhow::Result<()> {
         st.require_hl_coverage()?;
         st.require_gov_coverage()?;
         st.require_type_coverage()?;
+        st.require_direct_aux_coverage()?;
         st.require_evidence_coverage()?;
         st.require_script_coverage()?;
         st.require_ibc_coverage()?;
