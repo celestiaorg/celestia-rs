@@ -7305,6 +7305,119 @@ mod tests {
         assert_eq!(expected[20].codespace, "authz");
     }
 
+    #[test]
+    fn stake_authz_boundary_script_uses_real_validator_and_exact_policies() {
+        use celestia_proto::cosmos::{
+            authz::v1beta1 as authz,
+            staking::v1beta1::{MsgDelegate, StakeAuthorization, stake_authorization::Policy},
+        };
+        let script = read_script(
+            include_str!("../fixtures/stake-authz-boundaries.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected = script_expectations(include_str!(
+            "../fixtures/stake-authz-boundaries.expected.json"
+        ))
+        .unwrap();
+        assert_eq!(script.len(), 20);
+        assert_eq!(expected.len(), 20);
+        assert!(script.iter().all(|block| block.len() == 1));
+        for (block, result) in script.iter().zip(&expected) {
+            assert_eq!(block[0].1.type_url, result.type_url);
+        }
+
+        let decode_grant = |index: usize| {
+            let grant = authz::MsgGrant::decode(script[index][0].1.value.as_slice()).unwrap();
+            let authorization = grant.grant.unwrap().authorization.unwrap();
+            StakeAuthorization::decode(authorization.value.as_slice()).unwrap()
+        };
+        let decode_delegate = |index: usize| {
+            let exec = authz::MsgExec::decode(script[index][0].1.value.as_slice()).unwrap();
+            assert_eq!(exec.msgs.len(), 1);
+            MsgDelegate::decode(exec.msgs[0].value.as_slice()).unwrap()
+        };
+
+        let validator = "celestiavaloper19pxhsd5vj4uf8xa0268z7jmsgrm40n94udw976";
+        let missing = "celestiavaloper1jn9nn488lzkyt44u0s9wrcu8stqj2h8p9zcmvy";
+        let first = decode_grant(0);
+        assert_eq!(first.max_tokens.unwrap().amount, "20");
+        assert_eq!(first.authorization_type, 1);
+        assert_eq!(
+            first.policy,
+            Some(Policy::AllowList(
+                celestia_proto::cosmos::staking::v1beta1::stake_authorization::Validators {
+                    address: vec![validator.into()],
+                }
+            ))
+        );
+        assert_eq!(decode_delegate(1).validator_address, validator);
+        assert_eq!(decode_delegate(2).amount.unwrap().amount, "16");
+
+        match decode_grant(5).policy.unwrap() {
+            Policy::AllowList(v) => assert_eq!(v.address, [missing, validator]),
+            Policy::DenyList(_) => panic!("expected allow list"),
+        }
+        match decode_grant(8).policy.unwrap() {
+            Policy::AllowList(v) => assert_eq!(v.address, [validator, missing]),
+            Policy::DenyList(_) => panic!("expected allow list"),
+        }
+        match decode_grant(12).policy.unwrap() {
+            Policy::DenyList(v) => assert_eq!(v.address, [validator]),
+            Policy::AllowList(_) => panic!("expected deny list"),
+        }
+        match decode_grant(14).policy.unwrap() {
+            Policy::DenyList(v) => assert_eq!(v.address, [missing]),
+            Policy::AllowList(_) => panic!("expected deny list"),
+        }
+        let unlimited = decode_grant(17);
+        assert!(unlimited.max_tokens.is_none());
+        assert!(unlimited.policy.is_none());
+
+        let v9_script = read_script(
+            include_str!("../fixtures/stake-authz-boundaries-v9.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        assert_eq!(v9_script.len(), 20);
+        let v9_validator = "celestiavaloper15xzecda33sep38697tvlq7xc8tcz2sm8dlxmkx";
+        let v9_grant = authz::MsgGrant::decode(v9_script[0][0].1.value.as_slice()).unwrap();
+        let v9_authorization = StakeAuthorization::decode(
+            v9_grant
+                .grant
+                .unwrap()
+                .authorization
+                .unwrap()
+                .value
+                .as_slice(),
+        )
+        .unwrap();
+        match v9_authorization.policy.unwrap() {
+            Policy::AllowList(v) => assert_eq!(v.address, [v9_validator]),
+            Policy::DenyList(_) => panic!("expected allow list"),
+        }
+        let v9_exec = authz::MsgExec::decode(v9_script[1][0].1.value.as_slice()).unwrap();
+        let v9_delegate = MsgDelegate::decode(v9_exec.msgs[0].value.as_slice()).unwrap();
+        assert_eq!(v9_delegate.validator_address, v9_validator);
+
+        assert_eq!(
+            (expected[2].codespace.as_str(), expected[2].code),
+            ("undefined", 1)
+        );
+        assert_eq!(
+            (expected[4].codespace.as_str(), expected[4].code),
+            ("authz", 2)
+        );
+        assert_eq!(
+            (expected[11].codespace.as_str(), expected[11].code),
+            ("sdk", 4)
+        );
+        assert_eq!(
+            (expected[13].codespace.as_str(), expected[13].code),
+            ("sdk", 4)
+        );
+    }
+
     use super::*;
 
     #[test]

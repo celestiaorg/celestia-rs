@@ -377,6 +377,17 @@ test), then start that harness's count again.
   case at both app versions. This targets the previously uncovered
   `non_abstain.is_zero()` tally branch; the next instrumented profile must
   measure it, and the remaining branch and per-error requirements stay open.
+  *StakeAuthorization follow-up (2026-11-04):* separate exact signed fixtures
+  use the real v10 and v9 `authz-feegrant` genesis validators to exercise
+  delegate allow-list and deny-list matches, partial and exact max-token
+  consumption, over-limit preservation, grant deletion and an unlimited grant.
+  The pinned 21-block runs each finalized 37 transactions (33 code zero),
+  matched the four required authorization errors and reported zero differential
+  mismatches. Adding only those two runs to the sealed 183-case instrumented
+  profile increased covered `x/authz/src/authorization.rs` branch arms from
+  39/106 to 45/106. The scheduled full profile still needs to rerun on the
+  merged candidate; undelegation, redelegation, cancel-unbonding, other
+  per-error paths and the remaining uncovered-branch review stay open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

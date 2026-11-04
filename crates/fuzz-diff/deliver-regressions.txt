@@ -137,3 +137,8 @@ v9-upgrade 300 6 25407 GO_APPD_NEXT=v10 DELIVER_UPGRADE=37 DELIVER_HL=1 DELIVER_
 # matching rejection or dropped transactions cannot count as coverage.
 authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json
 v9-authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json
+# StakeAuthorization policy and token-budget boundaries against a real genesis
+# validator. Exact signed tx/result attribution prevents unrelated MsgExec
+# successes from satisfying the regression.
+authz-feegrant 21 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json
+v9-authz-feegrant 21 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries-v9.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json
