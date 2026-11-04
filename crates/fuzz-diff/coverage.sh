@@ -110,6 +110,16 @@ for scen in gov v9-gov; do
   run "gov-abstain-$scen" GO_APPD="$A" DELIVER_GOVPASS=1 DELIVER_GOV_ABSTAIN_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 5
 done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in
+    v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries-v9.script ;;
+    *) A=$V10; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries.script ;;
+  esac
+  run "stake-authz-$scen" GO_APPD="$A" \
+    DELIVER_SCRIPT="$SCRIPT" \
+    DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 21 1 17362
+done
 for s in 1 2 3 4; do
   run "upgrade-$s" GO_APPD="$V9" GO_APPD_NEXT="$V10" DELIVER_UPGRADE=$((10 + s * 5)) DELIVER_IBC=1 DELIVER_HL=1 \
     DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 -- crates/fuzz-diff/deliver-diff.sh v9-upgrade "$BLOCKS" 6 "$s"

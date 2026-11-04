@@ -1,0 +1,122 @@
+[
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "undefined",
+    "code": 1,
+    "log_contains": "negative coin amount"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "authz",
+    "code": 2,
+    "log_contains": "authorization not found"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "sdk",
+    "code": 4,
+    "log_contains": "cannot delegate/undelegate to"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "sdk",
+    "code": 4,
+    "log_contains": "cannot delegate/undelegate to"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgExec",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  }
+]
