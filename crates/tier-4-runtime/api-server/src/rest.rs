@@ -677,6 +677,36 @@ mod tests {
     }
 
     #[test]
+    fn response_json_preserves_valid_reserved_unicode_after_invalid_bytes() {
+        use celestia_proto::cosmos::gov::v1::{Proposal, QueryProposalsResponse};
+
+        let request = Request {
+            method: "GET",
+            path: "/cosmos/gov/v1/proposals",
+            query: "proposal_status=PROPOSAL_STATUS_UNSPECIFIED",
+            height: None,
+            body: &[],
+        };
+        let summary = gostr::from_go_bytes(b"bad \x80 \xf4\x8f\xbe\x80").into_owned();
+        let reply = handle_with_metadata(&request, &mut |path, _, _| {
+            assert_eq!(path, "/cosmos.gov.v1.Query/Proposals");
+            Ok((
+                QueryProposalsResponse {
+                    proposals: vec![Proposal {
+                        summary: summary.clone(),
+                        ..Default::default()
+                    }],
+                    pagination: None,
+                }
+                .encode_to_vec(),
+                20,
+            ))
+        });
+        let body: Value = serde_json::from_slice(&crate::reply_body_bytes(&reply)).unwrap();
+        assert_eq!(body["proposals"][0]["summary"], "bad \u{fffd} \u{10ff80}");
+    }
+
+    #[test]
     fn routes_from_bindings() {
         let (m, _, vars) =
             route("GET", "/cosmos/bank/v1beta1/balances/celestia1abc/by_denom").unwrap();

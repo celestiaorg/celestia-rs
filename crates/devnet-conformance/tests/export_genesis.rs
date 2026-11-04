@@ -24,6 +24,7 @@ fn render(exported: &app::export::ExportedApp) -> Value {
                     .unwrap_or_else(|| panic!("{name}: no JSON codec for {}", any.type_url))
                     .unwrap_or_else(|e| panic!("{name}: {e}"));
                 api_server::jsonpb::go_style(&mut v, any.type_url.trim_start_matches('/'));
+                celestia_proto::registry::go_form_json_to_text(&mut v);
                 v
             }
         };

@@ -4802,6 +4802,7 @@ name = "x-evidence"
 version = "0.0.1"
 dependencies = [
  "celestia-proto",
+ "gostr",
  "hash",
  "pbjson-types",
  "prost",

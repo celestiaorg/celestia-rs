@@ -220,14 +220,31 @@ fn hex_upper(b: &[u8]) -> String {
 }
 
 /// `InitGenesis`.
-pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
+pub fn validate_genesis(gs: &GenesisState) -> std::result::Result<Vec<Equivocation>, String> {
+    let mut evidence = Vec::with_capacity(gs.evidence.len());
     for any in &gs.evidence {
-        let e = Equivocation::decode(any.value.as_slice())
-            .map_err(|e| sdk::error::go_panic(e.to_string()))?;
-        validate_basic(&e).map_err(sdk::error::go_panic)?;
+        if any.type_url != Equivocation::type_url() {
+            return Err("expected evidence".into());
+        }
+        let e = Equivocation::decode(any.value.as_slice()).map_err(|_| "expected evidence")?;
+        validate_basic(&e)?;
+        evidence.push(e);
+    }
+    Ok(evidence)
+}
+
+/// `InitGenesis`.
+pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
+    let evidence = validate_genesis(gs).map_err(|e| {
+        sdk::error::go_panic(format!("failed to validate evidence genesis state: {e}"))
+    })?;
+    for e in evidence {
         let h = hash(&e);
         if ctx.get(STORE_KEY, &key(&h))?.is_some() {
-            return Err(sdk::error::go_panic("evidence already exists"));
+            return Err(sdk::error::go_panic(format!(
+                "evidence with hash {} already exists",
+                gostr::from_go_bytes(&h)
+            )));
         }
         set_evidence(ctx, &e)?;
     }
@@ -245,16 +262,93 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
     Ok(GenesisState { evidence })
 }
 
+/// Decode the evidence module's genesis JSON as gogoproto jsonpb does.
+pub fn genesis_from_json(genesis: &serde_json::Value) -> Result<GenesisState> {
+    if genesis.is_null() {
+        return Ok(GenesisState::default());
+    }
+    let mut genesis = genesis.clone();
+    if let serde_json::Value::Object(object) = &mut genesis
+        && object
+            .get("evidence")
+            .is_some_and(serde_json::Value::is_null)
+    {
+        object.insert("evidence".into(), serde_json::Value::Array(Vec::new()));
+    }
+    if let Some(entries) = genesis
+        .get("evidence")
+        .and_then(serde_json::Value::as_array)
+    {
+        for entry in entries {
+            if let Some(type_url) = entry.get("@type").and_then(serde_json::Value::as_str)
+                && type_url != Equivocation::type_url()
+            {
+                return Err(sdk::error::go_panic(format!(
+                    "failed to unmarshal evidence genesis state: unable to resolve type URL {type_url}"
+                )));
+            }
+            if entry.get("time").is_some_and(serde_json::Value::is_null) {
+                return Err(sdk::error::go_panic(
+                    "failed to unmarshal evidence genesis state: can't unmarshal Any nested proto *types.Equivocation: bad Timestamp, should be RFC 3339 encoded: parsing time \"\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"\" as \"2006\"",
+                ));
+            }
+        }
+    }
+    let mut null_entries = Vec::new();
+    if let Some(entries) = genesis
+        .get_mut("evidence")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for (index, entry) in entries.iter_mut().enumerate() {
+            if entry.is_null() {
+                null_entries.push(index);
+                *entry = serde_json::json!({"@type": Equivocation::type_url()});
+            }
+            if let Some(object) = entry.as_object_mut() {
+                for field in ["height", "power", "consensus_address"] {
+                    if object.get(field).is_some_and(serde_json::Value::is_null) {
+                        object.remove(field);
+                    }
+                }
+            }
+        }
+    }
+    let mut state: GenesisState = serde_json::from_value(genesis).map_err(|e| {
+        sdk::error::go_panic(format!("failed to unmarshal evidence genesis state: {e}"))
+    })?;
+    for index in null_entries {
+        state.evidence[index] = Any::default();
+    }
+    Ok(state)
+}
+
 /// `InitGenesis` from JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
-    let gs: GenesisState = serde_json::from_value(genesis.clone())
-        .map_err(|e| sdkerr::json_unmarshal(e.to_string()))?;
-    init_genesis(ctx, &gs)
+    init_genesis(ctx, &genesis_from_json(genesis)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    fn context_store() -> MultiStore {
+        let mut ms = MultiStore::new();
+        ms.mount(STORE_KEY, Kind::Iavl).expect("mount evidence");
+        ms
+    }
+
+    fn valid(address: &str) -> Equivocation {
+        Equivocation {
+            height: 1,
+            time: Some(Timestamp {
+                seconds: 1,
+                nanos: 0,
+            }),
+            power: 1,
+            consensus_address: address.into(),
+        }
+    }
 
     #[test]
     fn nonpositive_time_errors_use_go_time_string() {
@@ -272,6 +366,127 @@ mod tests {
         assert_eq!(
             validate_basic(&e),
             Err("invalid equivocation time: 0001-01-01 00:00:00 +0000 UTC".into())
+        );
+    }
+
+    #[test]
+    fn null_evidence_is_an_empty_genesis() {
+        let mut ms = context_store();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        init_genesis_json(&mut ctx, &serde_json::json!({"evidence": null}))
+            .expect("Go accepts a nil evidence slice");
+        assert!(
+            export_genesis(&mut ctx)
+                .expect("export")
+                .evidence
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn null_genesis_is_empty() {
+        assert!(
+            genesis_from_json(&serde_json::Value::Null)
+                .expect("Go accepts null")
+                .evidence
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn null_time_fails_during_any_json_decode() {
+        let error = genesis_from_json(&serde_json::json!({
+            "evidence": [{
+                "@type": "/cosmos.evidence.v1beta1.Equivocation",
+                "height": "1",
+                "time": null,
+                "power": "1",
+                "consensus_address": "validator"
+            }]
+        }))
+        .expect_err("Go jsonpb rejects a null timestamp in Any");
+        assert!(
+            error
+                .log
+                .starts_with("failed to unmarshal evidence genesis state: can't unmarshal Any nested proto *types.Equivocation: bad Timestamp")
+        );
+    }
+
+    #[test]
+    fn genesis_json_rejects_types_outside_the_evidence_interface() {
+        let error = genesis_from_json(&serde_json::json!({
+            "evidence": [{"@type": "/cosmos.base.v1beta1.Coin", "denom": "utia", "amount": "1"}]
+        }))
+        .expect_err("Coin does not implement the evidence interface");
+        assert_eq!(
+            error.log,
+            "failed to unmarshal evidence genesis state: unable to resolve type URL /cosmos.base.v1beta1.Coin"
+        );
+    }
+
+    #[test]
+    fn validates_every_entry_before_writing() {
+        let good = valid("first");
+        let mut bad = valid("later");
+        bad.power = 0;
+        let genesis = GenesisState {
+            evidence: vec![Any::pack(&good), Any::pack(&bad)],
+        };
+        let mut ms = context_store();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        let error = init_genesis(&mut ctx, &genesis).expect_err("later entry is invalid");
+        assert_eq!(
+            error.log,
+            "failed to validate evidence genesis state: invalid equivocation validator power: 0"
+        );
+        assert!(
+            export_genesis(&mut ctx)
+                .expect("export")
+                .evidence
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn later_validation_error_precedes_an_earlier_duplicate() {
+        let repeated = valid("same");
+        let mut bad = valid("later");
+        bad.height = 0;
+        let genesis = GenesisState {
+            evidence: vec![Any::pack(&repeated), Any::pack(&repeated), Any::pack(&bad)],
+        };
+        let mut ms = context_store();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        let error = init_genesis(&mut ctx, &genesis).expect_err("validation runs first");
+        assert_eq!(
+            error.log,
+            "failed to validate evidence genesis state: invalid equivocation height: 0"
+        );
+        assert!(
+            export_genesis(&mut ctx)
+                .expect("export")
+                .evidence
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn duplicate_error_contains_the_raw_hash() {
+        let evidence = valid("same");
+        let genesis = GenesisState {
+            evidence: vec![Any::pack(&evidence), Any::pack(&evidence)],
+        };
+        let mut ms = context_store();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        let error = init_genesis(&mut ctx, &genesis).expect_err("duplicate");
+        assert_eq!(
+            gostr::to_go_bytes(&error.log).as_ref(),
+            [
+                b"evidence with hash ".as_slice(),
+                hash(&evidence).as_slice(),
+                b" already exists".as_slice(),
+            ]
+            .concat()
         );
     }
 }

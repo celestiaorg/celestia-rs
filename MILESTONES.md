@@ -423,9 +423,23 @@ test), then start that harness's count again.
   evidence, jail, bond and tombstone state before granting exact boundary
   credit. All three focused probes finalized their controlled blocks with
   zero differential or log mismatches. These synthetic branch probes are not
-  mainnet-shaped evidence; their branch-coverage delta awaits the next sealed
-  instrumented profile, and other evidence begin-block/genesis branches remain
-  open.
+  mainnet-shaped evidence. The exact merged `bd692f8` candidate then passed all
+  192 scheduled profile cases with zero consensus mismatches; the added probes
+  increased covered `x/evidence/src/lib.rs` branch arms from 33/46 to 34/46.
+  The other 12 evidence arms, the wider uncovered-branch review and the
+  mainnet-shaped qualification gates remain open.
+  *Evidence genesis follow-up (2026-11-04):* pinned v9.0.8 and v10.5.0 JSON
+  differential probes cover empty and null genesis, nested `Any` Unicode,
+  scalar-null defaults, invalid later entries, duplicates and wrong interface
+  types. Two deterministic 10,022-input mutation runs reported zero mismatches
+  in decode acceptance and successful packed bytes, hashes, validation text
+  and duplicate ordering. Rust now validates the complete genesis list before
+  writing, preserves Go's null/default behavior, emits the raw duplicate hash,
+  and converts JSON strings exactly once across nested `Any` values and
+  ordinary maps. Unit tests also prove that a later validation error leaves no
+  evidence writes. Rejected-input panic identity and error text are deliberately
+  outside this oracle, and these bounded probes do not establish InitGenesis
+  cache rollback, mainnet-shaped replay or production readiness.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
