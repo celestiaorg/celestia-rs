@@ -154,6 +154,24 @@ done
 run "evidence-removed-validator-authz-feegrant" GO_APPD="$V10" \
   DELIVER_EVIDENCE_REQUIRE=removed-validator -- \
   crates/fuzz-diff/deliver-diff.sh authz-feegrant 1 0 17365
+for scen in staking-lifecycle v9-staking; do
+  case $scen in
+    v9-*)
+      A=$V9
+      SCRIPT=crates/fuzz-diff/fixtures/stake-slash-lifecycle-v9.script
+      EXPECT=crates/fuzz-diff/fixtures/stake-slash-lifecycle-v9.expected.json
+      ;;
+    *)
+      A=$V10
+      SCRIPT=crates/fuzz-diff/fixtures/stake-slash-lifecycle.script
+      EXPECT=crates/fuzz-diff/fixtures/stake-slash-lifecycle.expected.json
+      ;;
+  esac
+  run "evidence-stake-lifecycle-$scen" GO_APPD="$A" \
+    DELIVER_EVIDENCE_REQUIRE=stake-lifecycle DELIVER_SCRIPT="$SCRIPT" \
+    DELIVER_SCRIPT_REQUIRE="$EXPECT" -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 8 0 17366
+done
 for s in 1 2 3 4; do
   run "upgrade-$s" GO_APPD="$V9" GO_APPD_NEXT="$V10" DELIVER_UPGRADE=$((10 + s * 5)) DELIVER_IBC=1 DELIVER_HL=1 \
     DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 -- crates/fuzz-diff/deliver-diff.sh v9-upgrade "$BLOCKS" 6 "$s"

@@ -428,6 +428,22 @@ test), then start that harness's count again.
   increased covered `x/evidence/src/lib.rs` branch arms from 33/46 to 34/46.
   The other 12 evidence arms, the wider uncovered-branch review and the
   mainnet-shaped qualification gates remain open.
+  *Historical-stake slashing follow-up (2026-11-04):* exact signed v9.0.8
+  and v10.5.0 fixtures now create a second bonded validator, delegate to the
+  recorded source validator, then create a direct unbonding delegation, a
+  redelegation and a downstream destination unbonding before injecting one
+  fresh duplicate vote. Credit requires all five setup transactions, the
+  recorded infraction validator set, eligible creation heights and nonzero
+  burns, followed by matching finalization and commit plus exact direct,
+  downstream, destination-share, source-token and staking-pool changes,
+  evidence storage, jail, permanent jail end and tombstone. The supply check
+  includes the exact same-block provision calculated from the committed
+  minter. Both focused eight-block probes finalized 22 transactions with zero
+  differential or log mismatches. The two focused instrumented runs increased
+  covered `x/staking/src/slash.rs` branch arms from 15/60 in the sealed merged
+  profile to 32/60. These are synthetic application `BeginBlock` lifecycles;
+  they do not cover Comet evidence-pool admission or signatures, mainnet-shaped
+  state, the remaining slash arms, volume or observation-window gates.
   *Evidence genesis follow-up (2026-11-04):* pinned v9.0.8 and v10.5.0 JSON
   differential probes cover empty and null genesis, nested `Any` Unicode,
   scalar-null defaults, invalid later entries, duplicates and wrong interface

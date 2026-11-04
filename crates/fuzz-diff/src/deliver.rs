@@ -42,6 +42,7 @@ use celestia_proto::cosmos::tx::signing::v1beta1::SignMode;
 use celestia_proto::cosmos::tx::v1beta1::{
     AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw, mode_info,
 };
+use math::{Int, LegacyDec};
 use prost::Message as _;
 use prost_reflect::{Cardinality, FieldDescriptor, Kind, MessageDescriptor};
 
@@ -120,6 +121,7 @@ const CONTROLLED_REMOVED_VALIDATOR: [u8; 20] = [0xa5; 20];
 enum EvidenceRequirement {
     Stale,
     RemovedValidator,
+    StakeLifecycle,
 }
 
 impl EvidenceRequirement {
@@ -132,8 +134,9 @@ impl EvidenceRequirement {
                 match value.as_str() {
                     "stale" => Ok(Self::Stale),
                     "removed-validator" => Ok(Self::RemovedValidator),
+                    "stake-lifecycle" => Ok(Self::StakeLifecycle),
                     _ => {
-                        anyhow::bail!("DELIVER_EVIDENCE_REQUIRE must be stale or removed-validator")
+                        anyhow::bail!("DELIVER_EVIDENCE_REQUIRE must be stale, removed-validator, or stake-lifecycle")
                     }
                 }
             })
@@ -144,6 +147,7 @@ impl EvidenceRequirement {
         match self {
             Self::Stale => "stale",
             Self::RemovedValidator => "removed-validator",
+            Self::StakeLifecycle => "stake-lifecycle",
         }
     }
 }
@@ -4047,8 +4051,15 @@ pub fn run(
                 && !govpass
                 && !ibc_on
                 && std::env::var_os("DELIVER_UPGRADE").is_none()
-                && std::env::var_os("DELIVER_SCRIPT").is_none()),
-        "DELIVER_EVIDENCE_REQUIRE cannot be combined with Hyperlane, governance, IBC, upgrade, or scripted traffic"
+                && (std::env::var_os("DELIVER_SCRIPT").is_none()
+                    || evidence_requirement == Some(EvidenceRequirement::StakeLifecycle))),
+        "DELIVER_EVIDENCE_REQUIRE cannot be combined with Hyperlane, governance, IBC, or upgrade; scripted traffic is reserved for stake-lifecycle"
+    );
+    anyhow::ensure!(
+        evidence_requirement != Some(EvidenceRequirement::StakeLifecycle)
+            || (std::env::var_os("DELIVER_SCRIPT").is_some()
+                && std::env::var_os("DELIVER_SCRIPT_REQUIRE").is_some()),
+        "DELIVER_EVIDENCE_REQUIRE=stake-lifecycle requires DELIVER_SCRIPT and DELIVER_SCRIPT_REQUIRE"
     );
     let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
     let ibc_close_init_failure_required =
@@ -4650,6 +4661,10 @@ pub fn run(
         Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         None => std::collections::VecDeque::new(),
     };
+    let stake_lifecycle_plan = (evidence_requirement == Some(EvidenceRequirement::StakeLifecycle))
+        .then(|| stake_lifecycle_plan(&script))
+        .transpose()?;
+    let mut stake_lifecycle_evidence = None;
     if !stats.script_required.is_empty() {
         anyhow::ensure!(
             script.iter().map(Vec::len).sum::<usize>() == stats.script_required.len(),
@@ -4703,6 +4718,7 @@ pub fn run(
     for b in 0..blocks {
         height += 1;
         gn.height = height;
+        let script_blocks_at_start = script.len();
         if gn.m.rng.one_in(40) {
             time.seconds += [3600, 86_400, 90, 700_000, 1_300_000][gn.m.rng.below(5)];
         } else {
@@ -4713,6 +4729,14 @@ pub fn run(
                 .seconds
                 .checked_add(time_jump_seconds)
                 .context("DELIVER_TIME_JUMP_SECONDS overflowed the block time")?;
+        }
+        if let Some(plan) = stake_lifecycle_plan.as_ref()
+            && stake_lifecycle_evidence.is_none()
+            && script_blocks_at_start == 4
+        {
+            stake_lifecycle_evidence = Some(stake_lifecycle_misbehavior(
+                &rust, plan, height, time, &valsets,
+            )?);
         }
         // Sequences from the committed state.
         for a in &mut gn.accts {
@@ -5230,6 +5254,23 @@ pub fn run(
             ));
         } else if evidence_requirement == Some(EvidenceRequirement::Stale) && b == 2 {
             misbehavior.push(stale_misbehavior(height, &valsets, &times)?);
+        } else if evidence_requirement == Some(EvidenceRequirement::StakeLifecycle)
+            && script_blocks_at_start == 0
+            && stats.evidence_injected.is_empty()
+        {
+            anyhow::ensure!(
+                stats.script_outcomes.len() == 5
+                    && stats
+                        .script_outcomes
+                        .iter()
+                        .all(|(_, result)| result.code == 0 && result.codespace.is_empty()),
+                "stake-lifecycle setup did not finalize five successful scripted transactions"
+            );
+            misbehavior.push(
+                stake_lifecycle_evidence
+                    .clone()
+                    .context("stake-lifecycle never captured an infraction validator set")?,
+            );
         } else if evidence_requirement.is_none() && !no_votes && gn.m.rng.one_in(20) {
             let back = 1 + gn.m.rng.below(4) as i64;
             let h = (height - back).max(template.height + 1);
@@ -5258,9 +5299,20 @@ pub fn run(
             }
         }
         let evidence_state_before = evidence_requirement
+            .filter(|r| *r != EvidenceRequirement::StakeLifecycle)
             .zip(misbehavior.first())
             .map(|(requirement, evidence)| {
                 require_evidence_branch_precondition(requirement, &rust, evidence, height, &time)
+            })
+            .transpose()?;
+        let stake_lifecycle_state_before = evidence_requirement
+            .filter(|r| *r == EvidenceRequirement::StakeLifecycle)
+            .zip(stake_lifecycle_plan.as_ref())
+            .zip(misbehavior.first())
+            .map(|((_, plan), evidence)| {
+                let state = stake_lifecycle_state(&rust, plan, evidence, &time)?;
+                require_stake_lifecycle_precondition(&state, evidence)?;
+                Ok::<_, anyhow::Error>(state)
             })
             .transpose()?;
         let prep = abci::RequestPrepareProposal {
@@ -5701,7 +5753,7 @@ pub fn run(
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
-                evidence_requirement,
+                evidence_requirement.filter(|r| *r != EvidenceRequirement::StakeLifecycle),
                 evidence_state_before.as_ref(),
                 fb.misbehavior.first(),
             )
@@ -5711,6 +5763,21 @@ pub fn run(
             *stats
                 .evidence_injected
                 .entry(requirement.name().into())
+                .or_default() += 1;
+        }
+        if c.is_empty()
+            && evidence_requirement == Some(EvidenceRequirement::StakeLifecycle)
+            && let (Some(plan), Some(before), Some(evidence)) = (
+                stake_lifecycle_plan.as_ref(),
+                stake_lifecycle_state_before.as_ref(),
+                fb.misbehavior.first(),
+            )
+        {
+            let after = stake_lifecycle_state(&rust, plan, evidence, &time)?;
+            require_stake_lifecycle_postcondition(before, &after, evidence)?;
+            *stats
+                .evidence_injected
+                .entry(EvidenceRequirement::StakeLifecycle.name().into())
                 .or_default() += 1;
         }
         for id in abstain_rejected_proposals {
@@ -6574,13 +6641,14 @@ fn update_address(u: &abci::ValidatorUpdate) -> Option<Vec<u8>> {
 /// A validator set: (address, power, joined during the run).
 type ValSet = Vec<(Vec<u8>, i64, bool)>;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct EvidenceBranchState {
     validator_status: Option<x_staking::types::BondStatus>,
     validator_jailed: Option<bool>,
     pubkey_present: bool,
     signing_info_present: bool,
     tombstoned: Option<bool>,
+    jailed_until: Option<pbjson_types::Timestamp>,
     evidence_present: bool,
 }
 
@@ -6605,9 +6673,305 @@ fn evidence_branch_state(
             )?
             .is_some(),
         signing_info_present: signing_info.is_some(),
-        tombstoned: signing_info.map(|info| info.tombstoned),
+        tombstoned: signing_info.as_ref().map(|info| info.tombstoned),
+        jailed_until: signing_info.map(|info| info.jailed_until),
         evidence_present: ctx.get(x_evidence::STORE_KEY, &evidence_key)?.is_some(),
     })
+}
+
+#[derive(Debug)]
+struct StakeLifecycleState {
+    evidence: EvidenceBranchState,
+    source_tokens: Int,
+    destination_tokens: Int,
+    destination_total_shares: LegacyDec,
+    destination_status: x_staking::types::BondStatus,
+    direct_initial: Int,
+    direct_balance: Int,
+    direct_creation_height: i64,
+    redelegation_initial: Int,
+    redelegation_shares: LegacyDec,
+    redelegation_creation_height: i64,
+    downstream_initial: Int,
+    downstream_balance: Int,
+    downstream_creation_height: i64,
+    destination_shares: LegacyDec,
+    slash_factor: LegacyDec,
+    supply: Int,
+    block_provision: Int,
+    bonded_pool: Int,
+    not_bonded_pool: Int,
+}
+
+fn module_balance(ctx: &mut sdk::Context<'_>, module: &str) -> anyhow::Result<Int> {
+    Ok(x_bank::get_balance(
+        ctx,
+        &x_auth::module_address(module),
+        x_staking::DEFAULT_BOND_DENOM,
+    )?
+    .amount)
+}
+
+fn stake_lifecycle_state(
+    rust: &app::App,
+    plan: &StakeLifecyclePlan,
+    misbehavior: &abci::Misbehavior,
+    block_time: &pbjson_types::Timestamp,
+) -> anyhow::Result<StakeLifecycleState> {
+    let source = x_staking::addr::val_from_string(&plan.source)?;
+    let destination = x_staking::addr::val_from_string(&plan.destination)?;
+    let delegator = x_staking::addr::acc_from_string(&plan.delegator)?;
+    let mut state = rust.create_query_context(0, false)?;
+    let mut ctx = state.context();
+    let source_validator = x_staking::store::validator(&mut ctx, &source)?;
+    let destination_validator = x_staking::store::validator(&mut ctx, &destination)?;
+    let direct = x_staking::store::get_ubd(&mut ctx, &delegator, &source)?
+        .context("stake-lifecycle direct unbonding delegation is absent")?;
+    let redelegation = x_staking::store::get_red(&mut ctx, &delegator, &source, &destination)?
+        .context("stake-lifecycle redelegation is absent")?;
+    let downstream = x_staking::store::get_ubd(&mut ctx, &delegator, &destination)?
+        .context("stake-lifecycle downstream unbonding delegation is absent")?;
+    let destination_delegation =
+        x_staking::store::get_delegation(&mut ctx, &delegator, &destination)?
+            .context("stake-lifecycle destination delegation is absent")?;
+    anyhow::ensure!(
+        direct.entries.len() == 1
+            && redelegation.entries.len() == 1
+            && downstream.entries.len() == 1,
+        "stake-lifecycle expected exactly one direct, redelegation, and downstream entry"
+    );
+    let direct = &direct.entries[0];
+    let redelegation = &redelegation.entries[0];
+    let downstream = &downstream.entries[0];
+    let supply = x_bank::get_supply(&mut ctx, x_staking::DEFAULT_BOND_DENOM)?.amount;
+    let mut minter = x_mint::get_minter(&mut ctx)?;
+    let genesis_time = x_mint::get_genesis_time(&mut ctx)?;
+    let inflation = x_mint::calculate_inflation_rate(&genesis_time, block_time)?;
+    if inflation != minter.inflation_rate || minter.annual_provisions.is_zero() {
+        minter.inflation_rate = inflation;
+        minter.annual_provisions = minter
+            .inflation_rate
+            .checked_mul_int(&supply)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
+    let block_provision = minter
+        .previous_block_time
+        .as_ref()
+        .map(|previous| minter.calculate_block_provision(block_time, previous))
+        .transpose()?
+        .map_or_else(Int::zero, |coin| coin.amount);
+    let bonded_pool = module_balance(&mut ctx, x_staking::BONDED_POOL)?;
+    let not_bonded_pool = module_balance(&mut ctx, x_staking::NOT_BONDED_POOL)?;
+    let slash_factor = x_slashing::get_params(&mut ctx)?.slash_fraction_double_sign;
+    Ok(StakeLifecycleState {
+        evidence: evidence_branch_state(rust, misbehavior)?,
+        source_tokens: source_validator.tokens,
+        destination_tokens: destination_validator.tokens,
+        destination_total_shares: destination_validator.delegator_shares,
+        destination_status: destination_validator.status,
+        direct_initial: direct.initial_balance.clone(),
+        direct_balance: direct.balance.clone(),
+        direct_creation_height: direct.creation_height,
+        redelegation_initial: redelegation.initial_balance.clone(),
+        redelegation_shares: redelegation.shares_dst.clone(),
+        redelegation_creation_height: redelegation.creation_height,
+        downstream_initial: downstream.initial_balance.clone(),
+        downstream_balance: downstream.balance.clone(),
+        downstream_creation_height: downstream.creation_height,
+        destination_shares: destination_delegation.shares,
+        slash_factor,
+        supply,
+        block_provision,
+        bonded_pool,
+        not_bonded_pool,
+    })
+}
+
+fn dec_mul_int(dec: &LegacyDec, value: &Int) -> anyhow::Result<Int> {
+    Ok(dec
+        .checked_mul_int(value)
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .truncate_int())
+}
+
+fn tokens_from_shares(
+    shares: &LegacyDec,
+    tokens: &Int,
+    total_shares: &LegacyDec,
+) -> anyhow::Result<Int> {
+    Ok(shares
+        .checked_mul_int(tokens)
+        .and_then(|x| x.checked_quo(total_shares))
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .truncate_int())
+}
+
+fn int_sub(value: &Int, amount: &Int) -> anyhow::Result<Int> {
+    value
+        .checked_sub(amount)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+fn int_add(value: &Int, amount: &Int) -> anyhow::Result<Int> {
+    value
+        .checked_add(amount)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+fn min_int(a: &Int, b: &Int) -> Int {
+    if a < b { a.clone() } else { b.clone() }
+}
+
+fn require_stake_lifecycle_precondition(
+    state: &StakeLifecycleState,
+    misbehavior: &abci::Misbehavior,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        state.evidence.validator_status == Some(x_staking::types::BondStatus::Bonded)
+            && state.evidence.validator_jailed == Some(false)
+            && state.evidence.pubkey_present
+            && state.evidence.signing_info_present
+            && state.evidence.tombstoned == Some(false)
+            && !state.evidence.evidence_present,
+        "stake-lifecycle source validator is not fresh, bonded, and slashable: {:?}",
+        state.evidence
+    );
+    let distribution_height = misbehavior
+        .height
+        .checked_sub(x_evidence::VALIDATOR_UPDATE_DELAY)
+        .context("stake-lifecycle distribution height underflow")?;
+    anyhow::ensure!(
+        state.direct_creation_height >= distribution_height
+            && state.redelegation_creation_height >= distribution_height
+            && state.downstream_creation_height >= distribution_height,
+        "stake-lifecycle entries predate the slash distribution height"
+    );
+    anyhow::ensure!(
+        state.direct_initial == Int::from_u64(200_000_000)
+            && state.direct_balance == state.direct_initial
+            && state.redelegation_initial == Int::from_u64(200_000_000)
+            && state.downstream_initial == Int::from_u64(1_000_000)
+            && state.downstream_balance == state.downstream_initial
+            && state.redelegation_shares.is_positive()
+            && state.destination_shares.is_positive()
+            && state.destination_total_shares.is_positive()
+            && state.destination_status == x_staking::types::BondStatus::Bonded
+            && state.slash_factor.is_positive(),
+        "stake-lifecycle historical stake state is incomplete: {state:?}"
+    );
+    let direct = dec_mul_int(&state.slash_factor, &state.direct_initial)?;
+    let redelegated = dec_mul_int(&state.slash_factor, &state.redelegation_initial)?;
+    anyhow::ensure!(
+        direct.is_positive()
+            && redelegated.is_positive()
+            && min_int(&redelegated, &state.downstream_balance).is_positive(),
+        "stake-lifecycle slash amounts must exercise every historical-stake branch"
+    );
+    Ok(())
+}
+
+fn require_stake_lifecycle_postcondition(
+    before: &StakeLifecycleState,
+    after: &StakeLifecycleState,
+    misbehavior: &abci::Misbehavior,
+) -> anyhow::Result<()> {
+    let power = misbehavior
+        .validator
+        .as_ref()
+        .context("stake-lifecycle evidence has no validator")?
+        .power;
+    let slash_base = x_staking::types::tokens_from_consensus_power(power)?;
+    let total_slash = dec_mul_int(&before.slash_factor, &slash_base)?;
+    let direct_total = dec_mul_int(&before.slash_factor, &before.direct_initial)?;
+    let redelegation_total = dec_mul_int(&before.slash_factor, &before.redelegation_initial)?;
+    let direct_burn = min_int(&direct_total, &before.direct_balance);
+    let downstream_burn = min_int(&redelegation_total, &before.downstream_balance);
+    let mut shares_burn = before
+        .slash_factor
+        .checked_mul(&before.redelegation_shares)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    if shares_burn > before.destination_shares {
+        shares_burn = before.destination_shares.clone();
+    }
+    let destination_burn = tokens_from_shares(
+        &shares_burn,
+        &before.destination_tokens,
+        &before.destination_total_shares,
+    )?;
+    let source_remainder = int_sub(&int_sub(&total_slash, &direct_total)?, &redelegation_total)?;
+    let source_burn = min_int(&source_remainder, &before.source_tokens);
+    anyhow::ensure!(
+        direct_burn.is_positive()
+            && downstream_burn.is_positive()
+            && destination_burn.is_positive()
+            && source_burn.is_positive(),
+        "stake-lifecycle expected nonzero burns in every target branch"
+    );
+    let expected_direct = int_sub(&before.direct_balance, &direct_burn)?;
+    let expected_downstream = int_sub(&before.downstream_balance, &downstream_burn)?;
+    let expected_destination_shares = before
+        .destination_shares
+        .checked_sub(&shares_burn)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let expected_destination_total_shares = before
+        .destination_total_shares
+        .checked_sub(&shares_burn)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let expected_destination_tokens = int_sub(&before.destination_tokens, &destination_burn)?;
+    let expected_source_tokens = int_sub(&before.source_tokens, &source_burn)?;
+    let expected_not_bonded = int_sub(
+        &int_sub(
+            &int_add(&before.not_bonded_pool, &expected_source_tokens)?,
+            &direct_burn,
+        )?,
+        &downstream_burn,
+    )?;
+    let expected_bonded = int_sub(
+        &int_sub(&before.bonded_pool, &before.source_tokens)?,
+        &destination_burn,
+    )?;
+    let total_burn = int_add(
+        &int_add(&direct_burn, &downstream_burn)?,
+        &int_add(&destination_burn, &source_burn)?,
+    )?;
+    let expected_supply = int_sub(
+        &int_add(&before.supply, &before.block_provision)?,
+        &total_burn,
+    )?;
+    anyhow::ensure!(
+        after.evidence.evidence_present
+            && after.evidence.validator_jailed == Some(true)
+            && after.evidence.validator_status == Some(x_staking::types::BondStatus::Unbonding)
+            && after.evidence.tombstoned == Some(true)
+            && after.evidence.jailed_until.is_some_and(|t| {
+                t.seconds == x_evidence::DOUBLE_SIGN_JAIL_END_UNIX && t.nanos == 0
+            }),
+        "stake-lifecycle evidence, jail, or tombstone postcondition failed: {:?}",
+        after.evidence
+    );
+    anyhow::ensure!(
+        after.direct_balance == expected_direct
+            && after.downstream_balance == expected_downstream
+            && after.destination_shares == expected_destination_shares
+            && after.destination_total_shares == expected_destination_total_shares
+            && after.destination_tokens == expected_destination_tokens
+            && after.source_tokens == expected_source_tokens
+            && after.not_bonded_pool == expected_not_bonded
+            && after.bonded_pool == expected_bonded
+            && after.supply == expected_supply,
+        "stake-lifecycle slash accounting differs: before={before:?} after={after:?}"
+    );
+    anyhow::ensure!(
+        after.direct_initial == before.direct_initial
+            && after.direct_creation_height == before.direct_creation_height
+            && after.redelegation_initial == before.redelegation_initial
+            && after.redelegation_shares == before.redelegation_shares
+            && after.redelegation_creation_height == before.redelegation_creation_height
+            && after.downstream_initial == before.downstream_initial
+            && after.downstream_creation_height == before.downstream_creation_height,
+        "stake-lifecycle slash changed immutable historical entry fields"
+    );
+    Ok(())
 }
 
 fn require_evidence_branch_precondition(
@@ -6658,6 +7022,9 @@ fn require_evidence_branch_precondition(
                 "controlled stale evidence does not exceed the patched block and duration limits"
             );
         }
+        EvidenceRequirement::StakeLifecycle => {
+            anyhow::bail!("stake-lifecycle uses its dedicated state precondition")
+        }
     }
     Ok(state)
 }
@@ -6683,6 +7050,9 @@ fn require_evidence_branch_unchanged(
                     && after.tombstoned == before.tombstoned,
                 "controlled stale evidence changed validator jail, bond, or tombstone state: before={before:?} after={after:?}"
             );
+        }
+        EvidenceRequirement::StakeLifecycle => {
+            anyhow::bail!("stake-lifecycle uses its dedicated state postcondition")
         }
     }
     Ok(())
@@ -6733,6 +7103,42 @@ fn stale_misbehavior(
         }),
         height: evidence_height,
         time: Some(evidence_time),
+        total_voting_power: set.iter().map(|v| v.1).sum(),
+    })
+}
+
+fn stake_lifecycle_misbehavior(
+    rust: &app::App,
+    plan: &StakeLifecyclePlan,
+    height: i64,
+    time: pbjson_types::Timestamp,
+    valsets: &BTreeMap<i64, ValSet>,
+) -> anyhow::Result<abci::Misbehavior> {
+    let source = x_staking::addr::val_from_string(&plan.source)?;
+    let mut state = rust.create_query_context(0, false)?;
+    let mut ctx = state.context();
+    let validator = x_staking::store::validator(&mut ctx, &source)?;
+    anyhow::ensure!(
+        validator.status == x_staking::types::BondStatus::Bonded && !validator.jailed,
+        "stake-lifecycle source validator is not bonded and active"
+    );
+    let consensus_address = validator.cons_addr()?;
+    let set = valsets
+        .get(&height)
+        .context("stake-lifecycle has no recorded validator set at the infraction height")?;
+    let (_, power, _) = set
+        .iter()
+        .find(|(address, _, _)| *address == consensus_address)
+        .context("stake-lifecycle source validator is absent from the infraction validator set")?;
+    anyhow::ensure!(*power > 0, "stake-lifecycle source validator has no power");
+    Ok(abci::Misbehavior {
+        r#type: 1,
+        validator: Some(abci::Validator {
+            address: consensus_address,
+            power: *power,
+        }),
+        height,
+        time: Some(time),
         total_voting_power: set.iter().map(|v| v.1).sum(),
     })
 }
@@ -6865,6 +7271,76 @@ fn learn(gn: &mut Gen, app_version: u64, tx: &[u8], res: &abci::ExecTxResult, he
 /// vote on the latest proposal); a line `---` ends a block; `#` starts a
 /// comment.
 type Script = std::collections::VecDeque<Vec<(usize, Any, u64)>>;
+
+#[derive(Debug, Clone)]
+struct StakeLifecyclePlan {
+    delegator: String,
+    source: String,
+    destination: String,
+}
+
+fn required_coin(coin: Option<&Coin>, amount: &str) -> anyhow::Result<()> {
+    let coin = coin.context("stake-lifecycle message has no amount")?;
+    anyhow::ensure!(
+        coin.denom == x_staking::DEFAULT_BOND_DENOM && coin.amount == amount,
+        "stake-lifecycle amount must be {amount} utia, got {coin:?}"
+    );
+    Ok(())
+}
+
+fn stake_lifecycle_plan(script: &Script) -> anyhow::Result<StakeLifecyclePlan> {
+    use celestia_proto::cosmos::staking::v1beta1::{
+        MsgBeginRedelegate, MsgCreateValidator, MsgDelegate, MsgUndelegate,
+    };
+    use prost::Name as _;
+
+    anyhow::ensure!(
+        script.len() == 6 && script.iter().map(Vec::len).eq([1usize, 1, 0, 1, 1, 1]),
+        "stake-lifecycle script must contain the exact six-block setup"
+    );
+    let one = |block: usize, account: usize| -> anyhow::Result<&Any> {
+        let (actual, msg, _) = &script[block][0];
+        anyhow::ensure!(
+            *actual == account,
+            "stake-lifecycle block {block} must use account {account}"
+        );
+        Ok(msg)
+    };
+    let create = MsgCreateValidator::decode(one(0, 0)?.value.as_slice())?;
+    let delegate = MsgDelegate::decode(one(1, 1)?.value.as_slice())?;
+    let direct = MsgUndelegate::decode(one(3, 1)?.value.as_slice())?;
+    let redelegate = MsgBeginRedelegate::decode(one(4, 1)?.value.as_slice())?;
+    let downstream = MsgUndelegate::decode(one(5, 1)?.value.as_slice())?;
+    anyhow::ensure!(
+        one(0, 0)?.type_url == MsgCreateValidator::type_url()
+            && one(1, 1)?.type_url == MsgDelegate::type_url()
+            && one(3, 1)?.type_url == MsgUndelegate::type_url()
+            && one(4, 1)?.type_url == MsgBeginRedelegate::type_url()
+            && one(5, 1)?.type_url == MsgUndelegate::type_url(),
+        "stake-lifecycle script contains an unexpected message type"
+    );
+    required_coin(create.value.as_ref(), "100000000")?;
+    required_coin(delegate.amount.as_ref(), "400000000")?;
+    required_coin(direct.amount.as_ref(), "200000000")?;
+    required_coin(redelegate.amount.as_ref(), "200000000")?;
+    required_coin(downstream.amount.as_ref(), "1000000")?;
+    anyhow::ensure!(
+        delegate.delegator_address == direct.delegator_address
+            && delegate.delegator_address == redelegate.delegator_address
+            && delegate.delegator_address == downstream.delegator_address
+            && delegate.validator_address == direct.validator_address
+            && delegate.validator_address == redelegate.validator_src_address
+            && create.validator_address == redelegate.validator_dst_address
+            && create.validator_address == downstream.validator_address
+            && delegate.validator_address != create.validator_address,
+        "stake-lifecycle script does not describe the required source/destination topology"
+    );
+    Ok(StakeLifecyclePlan {
+        delegator: delegate.delegator_address,
+        source: delegate.validator_address,
+        destination: create.validator_address,
+    })
+}
 
 fn read_script(text: &str, accounts: usize) -> anyhow::Result<Script> {
     let mut out = Script::new();
@@ -7893,6 +8369,63 @@ mod tests {
             .evidence_injected
             .insert("removed-validator".into(), 1);
         assert!(stats.require_evidence_coverage().is_err());
+    }
+
+    #[test]
+    fn stake_lifecycle_scripts_pin_the_required_topology() {
+        for (script_text, expected_text, source) in [
+            (
+                include_str!("../fixtures/stake-slash-lifecycle.script"),
+                include_str!("../fixtures/stake-slash-lifecycle.expected.json"),
+                "celestiavaloper1295za0yx99pqrjqnms4ez7a3gre6u6zugw8nvy",
+            ),
+            (
+                include_str!("../fixtures/stake-slash-lifecycle-v9.script"),
+                include_str!("../fixtures/stake-slash-lifecycle-v9.expected.json"),
+                "celestiavaloper1p70gu5c3ppwq7al8mp68h8hsxeytvn75tjaptp",
+            ),
+        ] {
+            let script = read_script(script_text, ACCOUNTS).unwrap();
+            let expected = script_expectations(expected_text).unwrap();
+            let plan = stake_lifecycle_plan(&script).unwrap();
+            assert_eq!(
+                script.iter().map(Vec::len).collect::<Vec<_>>(),
+                [1, 1, 0, 1, 1, 1]
+            );
+            assert_eq!(expected.len(), 5);
+            assert!(expected.iter().all(|result| result.code == 0));
+            assert_eq!(plan.source, source);
+            assert_eq!(
+                plan.destination,
+                "celestiavaloper1f4znva43r73c9806e0qkgcgzpdl2p8lz4rurq4"
+            );
+            assert_eq!(
+                plan.delegator,
+                "celestia1fnkqcndst4mcynj7psupn6l60flrawltny3q7q"
+            );
+
+            let mut missing_wait = script.clone();
+            missing_wait.remove(2);
+            assert!(stake_lifecycle_plan(&missing_wait).is_err());
+        }
+    }
+
+    #[test]
+    fn stake_lifecycle_uses_cosmos_share_rounding_before_integer_truncation() {
+        let shares = LegacyDec::unmarshal(b"2000000000000000000").unwrap();
+        let total = LegacyDec::unmarshal(b"2000000000000000001").unwrap();
+        let tokens = Int::one();
+        assert_eq!(
+            tokens_from_shares(&shares, &tokens, &total).unwrap(),
+            tokens
+        );
+        let incorrectly_truncated = shares
+            .checked_mul_int(&tokens)
+            .unwrap()
+            .checked_quo_truncate(&total)
+            .unwrap()
+            .truncate_int();
+        assert_eq!(incorrectly_truncated, Int::zero());
     }
 
     #[test]
