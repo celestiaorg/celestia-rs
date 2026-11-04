@@ -582,6 +582,17 @@ test), then start that harness's count again.
   contracts execute PFM's refundable unwind path; differential state equality
   covers its effects, without a separate balance assertion. These are bounded
   regressions, not volume or three-night qualification evidence.
+  *PFM metadata-error follow-up (2026-11-04):* a separate signed-counterparty
+  contract relays exact packets for a typed `receiver` parse error, a
+  U+10FFFF channel identifier validation error, and a `forward:null` transfer
+  control. Credit requires the official pinned-Go acknowledgement bytes in the
+  exact code-0 result, no forwarded packet, the committed acknowledgement hash
+  and unordered-channel receipt, zero error-case voucher balances, and the
+  exact control voucher balance. Dropped relayer transactions are re-proved
+  and retried without changing packet identity. Pinned v9.0.8 and v10.5.0
+  300-block seed-8083 differentials each credited all three cases exactly once
+  with zero consensus mismatches or splits. These are bounded regressions, not
+  exact-current volume, clean-night or mainnet-soak evidence.
   *ICA encoding follow-up (2026-10-29):* an opt-in contract executes an exact
   successful host packet under proto3, upgrades that real ICA channel to
   proto3json, then requires the exact second packet's success acknowledgement.

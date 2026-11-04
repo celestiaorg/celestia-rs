@@ -54,6 +54,11 @@
 # handling, check-state recovery, and public-key persistence. Malformed-key
 # panics must be rejected by ProcessProposal and are not force-finalized;
 # returned Ed25519 errors are force-finalized to compare rollback.
+# DELIVER_IBC_PFM_METADATA_REQUIRE=1 uses the signed mock counterparty to
+# relay exact typed-parse and identifier-validation failures plus a
+# forward:null transfer control. It requires the official Go Ack bytes,
+# committed Ack hashes and packet receipts, no forwarded packet or minted
+# balance for either failure, and the exact control voucher balance.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

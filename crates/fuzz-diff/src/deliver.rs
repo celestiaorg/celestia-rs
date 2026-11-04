@@ -1942,6 +1942,20 @@ impl Stats {
                 "incomplete DELIVER_IBC_PFM_EXHAUST_REQUIRE coverage: no exact delayed refund acknowledgement for the original packet"
             );
         }
+        if self.ibc_required.contains("pfm_metadata_lifecycle") {
+            for event in [
+                "pfm_metadata_parse_ack",
+                "pfm_metadata_validate_ack",
+                "pfm_metadata_null_control",
+                "pfm_metadata_committed_state",
+            ] {
+                anyhow::ensure!(
+                    self.ibc.get(event).copied() == Some(1),
+                    "incomplete DELIVER_IBC_PFM_METADATA_REQUIRE coverage: expected one {event}, observed {:?}",
+                    self.ibc.get(event)
+                );
+            }
+        }
         if self.ibc_required.contains("ica_encoding_lifecycle") {
             anyhow::ensure!(
                 self.ibc.get("ica_proto3_success_ack").copied().unwrap_or(0) > 0,
@@ -4484,6 +4498,7 @@ pub fn run(
     let ibc_pfm_error_required = std::env::var_os("DELIVER_IBC_PFM_ERROR_REQUIRE").is_some();
     let ibc_pfm_timeout_required = std::env::var_os("DELIVER_IBC_PFM_TIMEOUT_REQUIRE").is_some();
     let ibc_pfm_exhaust_required = std::env::var_os("DELIVER_IBC_PFM_EXHAUST_REQUIRE").is_some();
+    let ibc_pfm_metadata_required = std::env::var_os("DELIVER_IBC_PFM_METADATA_REQUIRE").is_some();
     let ibc_ica_encodings_required =
         std::env::var_os("DELIVER_IBC_ICA_ENCODINGS_REQUIRE").is_some();
     let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
@@ -4524,6 +4539,10 @@ pub fn run(
         "DELIVER_IBC_PFM_EXHAUST_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
+        !ibc_pfm_metadata_required || ibc_on,
+        "DELIVER_IBC_PFM_METADATA_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
         !ibc_ica_encodings_required || ibc_on,
         "DELIVER_IBC_ICA_ENCODINGS_REQUIRE requires DELIVER_IBC"
     );
@@ -4548,15 +4567,17 @@ pub fn run(
             + usize::from(ibc_pfm_error_required)
             + usize::from(ibc_pfm_timeout_required)
             + usize::from(ibc_pfm_exhaust_required)
+            + usize::from(ibc_pfm_metadata_required)
             <= 1,
-        "DELIVER_IBC PFM success, error, timeout, and exhaustion requirements are mutually exclusive"
+        "DELIVER_IBC PFM success, error, timeout, exhaustion, and metadata requirements are mutually exclusive"
     );
     anyhow::ensure!(
         !ibc_ica_encodings_required
             || !(ibc_pfm_required
                 || ibc_pfm_error_required
                 || ibc_pfm_timeout_required
-                || ibc_pfm_exhaust_required),
+                || ibc_pfm_exhaust_required
+                || ibc_pfm_metadata_required),
         "DELIVER_IBC_ICA_ENCODINGS_REQUIRE cannot be combined with a PFM lifecycle requirement"
     );
     let required = std::env::var_os("DELIVER_GOV_REQUIRE")
@@ -4672,6 +4693,7 @@ pub fn run(
                 && !ibc_pfm_error_required
                 && !ibc_pfm_timeout_required
                 && !ibc_pfm_exhaust_required
+                && !ibc_pfm_metadata_required
                 && !ibc_ica_encodings_required
                 && !ibc_ica_error_required
                 && !ibc_expired_client_required
@@ -4760,6 +4782,9 @@ pub fn run(
     }
     if ibc_pfm_exhaust_required {
         stats.ibc_required.insert("pfm_exhaust_lifecycle");
+    }
+    if ibc_pfm_metadata_required {
+        stats.ibc_required.insert("pfm_metadata_lifecycle");
     }
     if ibc_ica_encodings_required {
         stats.ibc_required.insert("ica_encoding_lifecycle");
@@ -5067,6 +5092,7 @@ pub fn run(
             .with_pfm_error_requirement(ibc_pfm_error_required)
             .with_pfm_timeout_requirement(ibc_pfm_timeout_required)
             .with_pfm_exhaust_requirement(ibc_pfm_exhaust_required)
+            .with_pfm_metadata_requirement(ibc_pfm_metadata_required)
             .with_ica_encoding_requirement(ibc_ica_encodings_required)
             .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
@@ -6647,7 +6673,30 @@ pub fn run(
             "transfer authorization handler failure did not preserve the exact final grant"
         );
     }
-    if let Some(d) = ibc {
+    if let Some(mut d) = ibc {
+        if ibc_pfm_metadata_required {
+            let (query_mismatches, query_logs) = query_echo(
+                &mut go,
+                cons_conn,
+                &mut rust,
+                &gn,
+                &mut stats.queries,
+                pfm_metadata_queries(&d)?,
+                true,
+            );
+            stats.mismatches.extend(
+                query_mismatches
+                    .into_iter()
+                    .map(|mismatch| format!("PFM metadata committed-state query: {mismatch}")),
+            );
+            stats.log_mismatches.extend(
+                query_logs
+                    .into_iter()
+                    .map(|mismatch| format!("PFM metadata committed-state query: {mismatch}")),
+            );
+            require_pfm_metadata_state(&mut rust, &d)?;
+            *d.stats.entry("pfm_metadata_committed_state").or_default() += 1;
+        }
         stats.ibc = d.stats;
     }
     stats.upgrade.append(&mut upg.log);
@@ -6706,6 +6755,152 @@ fn query_app<R: prost::Message + Default>(
     (r.code == 0)
         .then(|| R::decode(r.value.as_slice()).ok())
         .flatten()
+}
+
+fn require_pfm_metadata_state(
+    rust: &mut app::App,
+    driver: &crate::ibcmock::Driver,
+) -> anyhow::Result<()> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::ibc::applications::transfer::v1::DenomTrace;
+    use celestia_proto::ibc::core::channel::v1 as channel;
+
+    let packets = driver.pfm_metadata_packets();
+    anyhow::ensure!(
+        packets.len() == 3,
+        "PFM metadata requirement credited {} exact packets instead of three; {}",
+        packets.len(),
+        driver
+            .pfm_metadata_diagnostic()
+            .unwrap_or("no matching acknowledgement event observed")
+    );
+    for (index, (packet, acknowledgement, credit)) in packets.iter().enumerate() {
+        let ack = query_app::<channel::QueryPacketAcknowledgementResponse>(
+            rust,
+            "/ibc.core.channel.v1.Query/PacketAcknowledgement",
+            &channel::QueryPacketAcknowledgementRequest {
+                port_id: packet.destination_port.clone(),
+                channel_id: packet.destination_channel.clone(),
+                sequence: packet.sequence,
+            },
+        )
+        .with_context(|| format!("querying committed acknowledgement for {credit}"))?;
+        let expected_commitment = x_ibc::channel::commit_acknowledgement(acknowledgement);
+        anyhow::ensure!(
+            ack.acknowledgement == expected_commitment,
+            "wrong committed acknowledgement for {credit}: got {}, expected {}",
+            hex::encode(ack.acknowledgement),
+            hex::encode(expected_commitment)
+        );
+        let receipt = query_app::<channel::QueryPacketReceiptResponse>(
+            rust,
+            "/ibc.core.channel.v1.Query/PacketReceipt",
+            &channel::QueryPacketReceiptRequest {
+                port_id: packet.destination_port.clone(),
+                channel_id: packet.destination_channel.clone(),
+                sequence: packet.sequence,
+            },
+        )
+        .with_context(|| format!("querying committed receipt for {credit}"))?;
+        anyhow::ensure!(
+            receipt.received,
+            "missing committed packet receipt for {credit}"
+        );
+
+        let data: serde_json::Value = serde_json::from_slice(&packet.data)
+            .with_context(|| format!("decoding exact packet data for {credit}"))?;
+        let receiver = data["receiver"]
+            .as_str()
+            .with_context(|| format!("exact packet for {credit} has no receiver"))?;
+        let base_denom = data["denom"]
+            .as_str()
+            .with_context(|| format!("exact packet for {credit} has no denom"))?;
+        let denom = x_transfer::ibc_denom(&DenomTrace {
+            path: format!("{}/{}", packet.destination_port, packet.destination_channel),
+            base_denom: base_denom.into(),
+        });
+        let balance = query_app::<bank::QueryBalanceResponse>(
+            rust,
+            "/cosmos.bank.v1beta1.Query/Balance",
+            &bank::QueryBalanceRequest {
+                address: receiver.into(),
+                denom,
+            },
+        )
+        .with_context(|| format!("querying exact recipient balance for {credit}"))?
+        .balance;
+        let balance = match balance {
+            Some(coin) => coin
+                .amount
+                .parse::<u128>()
+                .with_context(|| format!("parsing exact recipient balance for {credit}"))?,
+            None => 0,
+        };
+        let expected = if index == 2 {
+            data["amount"]
+                .as_str()
+                .with_context(|| format!("exact packet for {credit} has no amount"))?
+                .parse::<u128>()
+                .with_context(|| format!("parsing exact packet amount for {credit}"))?
+        } else {
+            0
+        };
+        anyhow::ensure!(
+            balance == expected,
+            "wrong recipient balance for {credit}: got {balance}, expected {expected}"
+        );
+    }
+    Ok(())
+}
+
+fn pfm_metadata_queries(
+    driver: &crate::ibcmock::Driver,
+) -> anyhow::Result<Vec<(&'static str, Vec<u8>)>> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::ibc::applications::transfer::v1::DenomTrace;
+    use celestia_proto::ibc::core::channel::v1 as channel;
+
+    let mut queries = Vec::new();
+    for (packet, _, credit) in driver.pfm_metadata_packets() {
+        queries.push((
+            "/ibc.core.channel.v1.Query/PacketAcknowledgement",
+            channel::QueryPacketAcknowledgementRequest {
+                port_id: packet.destination_port.clone(),
+                channel_id: packet.destination_channel.clone(),
+                sequence: packet.sequence,
+            }
+            .encode_to_vec(),
+        ));
+        queries.push((
+            "/ibc.core.channel.v1.Query/PacketReceipt",
+            channel::QueryPacketReceiptRequest {
+                port_id: packet.destination_port.clone(),
+                channel_id: packet.destination_channel.clone(),
+                sequence: packet.sequence,
+            }
+            .encode_to_vec(),
+        ));
+        let data: serde_json::Value = serde_json::from_slice(&packet.data)
+            .with_context(|| format!("decoding exact packet data for {credit}"))?;
+        let receiver = data["receiver"]
+            .as_str()
+            .with_context(|| format!("exact packet for {credit} has no receiver"))?;
+        let base_denom = data["denom"]
+            .as_str()
+            .with_context(|| format!("exact packet for {credit} has no denom"))?;
+        queries.push((
+            "/cosmos.bank.v1beta1.Query/Balance",
+            bank::QueryBalanceRequest {
+                address: receiver.into(),
+                denom: x_transfer::ibc_denom(&DenomTrace {
+                    path: format!("{}/{}", packet.destination_port, packet.destination_channel),
+                    base_denom: base_denom.into(),
+                }),
+            }
+            .encode_to_vec(),
+        ));
+    }
+    Ok(queries)
 }
 
 fn next_sequence_send(rust: &mut app::App, port_id: &str, channel_id: &str) -> Option<u64> {
@@ -11515,6 +11710,25 @@ mod tests {
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("pfm_original_error_ack", 1);
         assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ibc_pfm_metadata_needs_events_and_committed_state() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("pfm_metadata_lifecycle");
+        for event in [
+            "pfm_metadata_parse_ack",
+            "pfm_metadata_validate_ack",
+            "pfm_metadata_null_control",
+        ] {
+            assert!(stats.require_ibc_coverage().is_err());
+            stats.ibc.insert(event, 1);
+        }
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("pfm_metadata_committed_state", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+        stats.ibc.insert("pfm_metadata_parse_ack", 2);
+        assert!(stats.require_ibc_coverage().is_err());
     }
 
     #[test]
