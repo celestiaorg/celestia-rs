@@ -408,6 +408,16 @@ test), then start that harness's count again.
   that were uncovered in the exact 51/106 merged baseline. The next merged
   full profile must measure the union; this does not complete F1.3 or
   establish mainnet readiness.
+  *Direct-aux signing follow-up (2026-11-04):* controlled signed v10/v9
+  runtime fixtures pair the implicit-fee-payer `SIGN_MODE_DIRECT_AUX`
+  rejection with a successful direct-aux sender whose fee is paid by a
+  separate direct signer. Both pinned two-block runs checked the exact
+  `sdk/4` rejection, proposal filtering, successful execution, signer
+  sequences and sender/payer/recipient balances, with zero differential or
+  log mismatches. The scheduled profile now includes both cases. This covers
+  these two reachable direct-aux cases; the next instrumented profile must
+  measure their branch contribution, and the wider F1.3 requirements remain
+  open.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
   scenario replay and the recovered nil-router panic (`undefined/111222`)
