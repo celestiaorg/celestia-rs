@@ -114,6 +114,39 @@ const MULTISIG_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 const BALANCE: u128 = 1_000_000_000_000_000;
 /// The gov module account.
 const GOV: &str = "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7";
+const CONTROLLED_REMOVED_VALIDATOR: [u8; 20] = [0xa5; 20];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EvidenceRequirement {
+    Stale,
+    RemovedValidator,
+}
+
+impl EvidenceRequirement {
+    fn from_env() -> anyhow::Result<Option<Self>> {
+        std::env::var_os("DELIVER_EVIDENCE_REQUIRE")
+            .map(|value| {
+                let value = value
+                    .into_string()
+                    .map_err(|_| anyhow::anyhow!("DELIVER_EVIDENCE_REQUIRE must be UTF-8"))?;
+                match value.as_str() {
+                    "stale" => Ok(Self::Stale),
+                    "removed-validator" => Ok(Self::RemovedValidator),
+                    _ => {
+                        anyhow::bail!("DELIVER_EVIDENCE_REQUIRE must be stale or removed-validator")
+                    }
+                }
+            })
+            .transpose()
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Stale => "stale",
+            Self::RemovedValidator => "removed-validator",
+        }
+    }
+}
 
 /// Outcome counts of a run.
 #[derive(Debug, Default)]
@@ -145,6 +178,10 @@ pub struct Stats {
     pub handler_errors: BTreeMap<String, u64>,
     /// Finalized failures without a usable SDK handler index (not necessarily ante).
     pub unattributed_errors: BTreeMap<String, u64>,
+    /// Exact begin-block evidence boundary selected for this run.
+    pub evidence_required: Option<String>,
+    /// Controlled misbehavior requests injected, by boundary.
+    pub evidence_injected: BTreeMap<String, u64>,
     /// Consensus disagreements (app hash, tx result code / data / gas,
     /// validator / param updates, `CheckTx` code / gas, proposals).
     pub mismatches: Vec<String>,
@@ -1429,6 +1466,21 @@ impl Stats {
                 "incomplete DELIVER_TYPE_REQUIRE coverage: no successful {required} transaction"
             );
         }
+        Ok(())
+    }
+
+    /// Require the selected controlled misbehavior to reach `FinalizeBlock`
+    /// exactly once. Go/Rust result and app-hash comparison establish parity.
+    pub fn require_evidence_coverage(&self) -> anyhow::Result<()> {
+        let Some(required) = &self.evidence_required else {
+            return Ok(());
+        };
+        anyhow::ensure!(
+            self.evidence_injected.get(required).copied() == Some(1)
+                && self.evidence_injected.values().sum::<u64>() == 1,
+            "incomplete DELIVER_EVIDENCE_REQUIRE coverage: expected one controlled {required} injection, observed {:?}",
+            self.evidence_injected
+        );
         Ok(())
     }
 
@@ -3966,6 +4018,7 @@ pub fn run(
     per_block: usize,
     seed: u64,
 ) -> anyhow::Result<Stats> {
+    let evidence_requirement = EvidenceRequirement::from_env()?;
     let verifier = hyperlane::Verifier::from_env()?;
     let hl_on = std::env::var("DELIVER_HL").is_ok();
     let hl_reject = std::env::var("DELIVER_HL_REJECT").is_ok();
@@ -3988,6 +4041,15 @@ pub fn run(
     );
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
+    anyhow::ensure!(
+        evidence_requirement.is_none()
+            || (!hl_on
+                && !govpass
+                && !ibc_on
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()),
+        "DELIVER_EVIDENCE_REQUIRE cannot be combined with Hyperlane, governance, IBC, upgrade, or scripted traffic"
+    );
     let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
     let ibc_close_init_failure_required =
         std::env::var_os("DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE").is_some();
@@ -4235,6 +4297,7 @@ pub fn run(
         gov_failure_type_required,
         gov_abstain_required: gov_abstain_required.then_some(()),
         type_required,
+        evidence_required: evidence_requirement.map(|required| required.name().into()),
         script_required,
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
@@ -4311,6 +4374,18 @@ pub fn run(
         if let Some(request::Value::InitChain(ic)) = &mut req.value {
             let (patched, a) = patch_app_state(&ic.app_state_bytes)?;
             ic.app_state_bytes = patched;
+            if evidence_requirement == Some(EvidenceRequirement::Stale) {
+                let evidence = ic
+                    .consensus_params
+                    .as_mut()
+                    .and_then(|params| params.evidence.as_mut())
+                    .context("DELIVER_EVIDENCE_REQUIRE=stale needs evidence consensus params")?;
+                evidence.max_age_num_blocks = 1;
+                evidence.max_age_duration = Some(pbjson_types::Duration {
+                    seconds: 1,
+                    nanos: 0,
+                });
+            }
             accts = a;
             chain_id.clone_from(&ic.chain_id);
             app_version = ic
@@ -4438,6 +4513,10 @@ pub fn run(
     let Some(template) = last_fb else {
         return Ok(stats);
     };
+    anyhow::ensure!(
+        evidence_requirement != Some(EvidenceRequirement::RemovedValidator) || app_version >= 10,
+        "DELIVER_EVIDENCE_REQUIRE=removed-validator requires app version 10 or newer"
+    );
     if mem_conn == 0 {
         mem_conn = cons_conn + 100;
     }
@@ -4964,7 +5043,7 @@ pub fn run(
                     }
                 }
             }
-            let k = if hl_setup || gov_setup {
+            let k = if evidence_requirement.is_some() || hl_setup || gov_setup {
                 0
             } else {
                 match gn.m.rng.below(20) {
@@ -5137,7 +5216,21 @@ pub fn run(
                 .collect(),
         };
         let mut misbehavior = Vec::new();
-        if !no_votes && gn.m.rng.one_in(20) {
+        if evidence_requirement == Some(EvidenceRequirement::RemovedValidator) && b == 0 {
+            anyhow::ensure!(
+                signers
+                    .iter()
+                    .all(|(address, _, _)| address.as_slice() != CONTROLLED_REMOVED_VALIDATOR),
+                "controlled removed-validator address is present in the current validator set"
+            );
+            misbehavior.push(removed_validator_misbehavior(
+                height,
+                time,
+                signers.iter().map(|v| v.1).sum(),
+            ));
+        } else if evidence_requirement == Some(EvidenceRequirement::Stale) && b == 2 {
+            misbehavior.push(stale_misbehavior(height, &valsets, &times)?);
+        } else if evidence_requirement.is_none() && !no_votes && gn.m.rng.one_in(20) {
             let back = 1 + gn.m.rng.below(4) as i64;
             let h = (height - back).max(template.height + 1);
             if let Some(set) = valsets.get(&h) {
@@ -5164,6 +5257,12 @@ pub fn run(
                 }
             }
         }
+        let evidence_state_before = evidence_requirement
+            .zip(misbehavior.first())
+            .map(|(requirement, evidence)| {
+                require_evidence_branch_precondition(requirement, &rust, evidence, height, &time)
+            })
+            .transpose()?;
         let prep = abci::RequestPrepareProposal {
             max_tx_bytes,
             txs: txs.clone(),
@@ -5591,8 +5690,29 @@ pub fn run(
         let commit_req = Request {
             value: Some(request::Value::Commit(abci::RequestCommit {})),
         };
-        go.call_or_exception(cons_conn, &commit_req)?;
+        let go_commit = go_value(go.call_or_exception(cons_conn, &commit_req)?)?;
+        if !matches!(go_commit, response::Value::Commit(_)) {
+            stats.mismatches.push(format!(
+                "{scenario} h={height} Commit: unexpected Go response {go_commit:?}"
+            ));
+            stats.split = true;
+            return Ok(stats);
+        }
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        if c.is_empty()
+            && let (Some(requirement), Some(before), Some(evidence)) = (
+                evidence_requirement,
+                evidence_state_before.as_ref(),
+                fb.misbehavior.first(),
+            )
+        {
+            let after = evidence_branch_state(&rust, evidence)?;
+            require_evidence_branch_unchanged(requirement, before, &after)?;
+            *stats
+                .evidence_injected
+                .entry(requirement.name().into())
+                .or_default() += 1;
+        }
         for id in abstain_rejected_proposals {
             if proposal_is_all_abstain(&mut rust, id) == Some(true) {
                 stats.gov_abstain_rejections += 1;
@@ -6453,6 +6573,169 @@ fn update_address(u: &abci::ValidatorUpdate) -> Option<Vec<u8>> {
 
 /// A validator set: (address, power, joined during the run).
 type ValSet = Vec<(Vec<u8>, i64, bool)>;
+
+#[derive(Debug, Eq, PartialEq)]
+struct EvidenceBranchState {
+    validator_status: Option<x_staking::types::BondStatus>,
+    validator_jailed: Option<bool>,
+    pubkey_present: bool,
+    signing_info_present: bool,
+    tombstoned: Option<bool>,
+    evidence_present: bool,
+}
+
+fn evidence_branch_state(
+    rust: &app::App,
+    misbehavior: &abci::Misbehavior,
+) -> anyhow::Result<EvidenceBranchState> {
+    let (equivocation, consensus_address) = x_evidence::from_abci(misbehavior);
+    let mut state = rust.create_query_context(0, false)?;
+    let mut ctx = state.context();
+    let validator = x_staking::store::get_validator_by_cons_addr(&mut ctx, &consensus_address)?;
+    let signing_info = x_slashing::get_signing_info(&mut ctx, &consensus_address)?;
+    let mut evidence_key = vec![0x00];
+    evidence_key.extend_from_slice(&x_evidence::hash(&equivocation));
+    Ok(EvidenceBranchState {
+        validator_status: validator.as_ref().map(|v| v.status),
+        validator_jailed: validator.as_ref().map(|v| v.jailed),
+        pubkey_present: ctx
+            .get(
+                x_slashing::STORE_KEY,
+                &x_slashing::addr_pubkey_key(&consensus_address),
+            )?
+            .is_some(),
+        signing_info_present: signing_info.is_some(),
+        tombstoned: signing_info.map(|info| info.tombstoned),
+        evidence_present: ctx.get(x_evidence::STORE_KEY, &evidence_key)?.is_some(),
+    })
+}
+
+fn require_evidence_branch_precondition(
+    requirement: EvidenceRequirement,
+    rust: &app::App,
+    misbehavior: &abci::Misbehavior,
+    block_height: i64,
+    block_time: &pbjson_types::Timestamp,
+) -> anyhow::Result<EvidenceBranchState> {
+    let state = evidence_branch_state(rust, misbehavior)?;
+    anyhow::ensure!(
+        !state.evidence_present,
+        "controlled evidence already exists before FinalizeBlock"
+    );
+    match requirement {
+        EvidenceRequirement::RemovedValidator => anyhow::ensure!(
+            state.validator_status.is_none(),
+            "controlled removed-validator address exists in the staking consensus-address index"
+        ),
+        EvidenceRequirement::Stale => {
+            anyhow::ensure!(
+                state
+                    .validator_status
+                    .is_some_and(|s| s != x_staking::types::BondStatus::Unbonded),
+                "controlled stale-evidence validator is missing or unbonded"
+            );
+            anyhow::ensure!(
+                state.pubkey_present,
+                "controlled stale-evidence validator has no slashing consensus pubkey"
+            );
+            anyhow::ensure!(
+                state.signing_info_present,
+                "controlled stale-evidence validator has no signing info"
+            );
+            anyhow::ensure!(
+                state.tombstoned == Some(false),
+                "controlled stale-evidence validator is already tombstoned"
+            );
+            let evidence_time = misbehavior
+                .time
+                .as_ref()
+                .context("controlled stale evidence has no time")?;
+            anyhow::ensure!(
+                block_height
+                    .checked_sub(misbehavior.height)
+                    .is_some_and(|age| age > 1)
+                    && sdk::time::sub(block_time, evidence_time) > 1_000_000_000,
+                "controlled stale evidence does not exceed the patched block and duration limits"
+            );
+        }
+    }
+    Ok(state)
+}
+
+fn require_evidence_branch_unchanged(
+    requirement: EvidenceRequirement,
+    before: &EvidenceBranchState,
+    after: &EvidenceBranchState,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !after.evidence_present,
+        "controlled ignored evidence was stored"
+    );
+    match requirement {
+        EvidenceRequirement::RemovedValidator => anyhow::ensure!(
+            after.validator_status.is_none(),
+            "controlled removed-validator address appeared in the staking index"
+        ),
+        EvidenceRequirement::Stale => {
+            anyhow::ensure!(
+                after.validator_status == before.validator_status
+                    && after.validator_jailed == before.validator_jailed
+                    && after.tombstoned == before.tombstoned,
+                "controlled stale evidence changed validator jail, bond, or tombstone state: before={before:?} after={after:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn removed_validator_misbehavior(
+    height: i64,
+    time: pbjson_types::Timestamp,
+    total_voting_power: i64,
+) -> abci::Misbehavior {
+    abci::Misbehavior {
+        r#type: 1,
+        validator: Some(abci::Validator {
+            // A deterministic 20-byte consensus address absent from the
+            // controlled fixture's validator set.
+            address: CONTROLLED_REMOVED_VALIDATOR.to_vec(),
+            power: 1,
+        }),
+        height,
+        time: Some(time),
+        total_voting_power,
+    }
+}
+
+fn stale_misbehavior(
+    height: i64,
+    valsets: &BTreeMap<i64, ValSet>,
+    times: &BTreeMap<i64, pbjson_types::Timestamp>,
+) -> anyhow::Result<abci::Misbehavior> {
+    let evidence_height = height
+        .checked_sub(2)
+        .context("controlled stale evidence height underflow")?;
+    let set = valsets
+        .get(&evidence_height)
+        .context("no validator set for controlled stale evidence")?;
+    let (address, power, _) = set
+        .first()
+        .context("empty validator set for controlled stale evidence")?;
+    let evidence_time = times
+        .get(&evidence_height)
+        .copied()
+        .context("no block time for controlled stale evidence")?;
+    Ok(abci::Misbehavior {
+        r#type: 1,
+        validator: Some(abci::Validator {
+            address: address.clone(),
+            power: *power,
+        }),
+        height: evidence_height,
+        time: Some(evidence_time),
+        total_voting_power: set.iter().map(|v| v.1).sum(),
+    })
+}
 
 fn apply_updates(set: &ValSet, updates: &[abci::ValidatorUpdate]) -> ValSet {
     let mut out = set.clone();
@@ -7587,6 +7870,67 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn evidence_requirement_is_exact_and_fail_closed() {
+        assert!(Stats::default().require_evidence_coverage().is_ok());
+
+        let mut stats = Stats {
+            evidence_required: Some("stale".into()),
+            ..Stats::default()
+        };
+        assert!(stats.require_evidence_coverage().is_err());
+        stats
+            .evidence_injected
+            .insert("removed-validator".into(), 1);
+        assert!(stats.require_evidence_coverage().is_err());
+        stats.evidence_injected.clear();
+        stats.evidence_injected.insert("stale".into(), 2);
+        assert!(stats.require_evidence_coverage().is_err());
+        stats.evidence_injected.insert("stale".into(), 1);
+        assert!(stats.require_evidence_coverage().is_ok());
+        stats
+            .evidence_injected
+            .insert("removed-validator".into(), 1);
+        assert!(stats.require_evidence_coverage().is_err());
+    }
+
+    #[test]
+    fn controlled_stale_misbehavior_uses_recorded_validator_and_time() {
+        let time = pbjson_types::Timestamp {
+            seconds: 1_800_000_000,
+            nanos: 123,
+        };
+        let valsets =
+            BTreeMap::from([(8, vec![(vec![7; 20], 41, false), (vec![8; 20], 11, false)])]);
+        let times = BTreeMap::from([(8, time)]);
+        let evidence = stale_misbehavior(10, &valsets, &times).unwrap();
+        assert_eq!(evidence.r#type, 1);
+        assert_eq!(evidence.height, 8);
+        assert_eq!(evidence.time, Some(time));
+        assert_eq!(evidence.total_voting_power, 52);
+        assert_eq!(evidence.validator.unwrap().address, vec![7; 20]);
+
+        assert!(stale_misbehavior(10, &BTreeMap::new(), &times).is_err());
+        assert!(stale_misbehavior(10, &valsets, &BTreeMap::new()).is_err());
+        assert!(stale_misbehavior(i64::MIN, &valsets, &times).is_err());
+    }
+
+    #[test]
+    fn controlled_removed_validator_misbehavior_is_well_formed() {
+        let time = pbjson_types::Timestamp {
+            seconds: 1_800_000_000,
+            nanos: 0,
+        };
+        let evidence = removed_validator_misbehavior(12, time, 53);
+        assert_eq!(evidence.r#type, 1);
+        assert_eq!(evidence.height, 12);
+        assert_eq!(evidence.time, Some(time));
+        assert_eq!(evidence.total_voting_power, 53);
+        let validator = evidence.validator.unwrap();
+        assert_eq!(validator.address, vec![0xa5; 20]);
+        assert_eq!(validator.power, 1);
+    }
 
     #[test]
     fn handler_errors_use_outer_top_level_index_and_retain_unattributed_failures() {

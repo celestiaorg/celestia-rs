@@ -156,3 +156,10 @@ v9-authz-feegrant 7 1 17363 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-va
 # proposal failed_reason and app hash.
 gov 8 1 907001 DELIVER_GOVPASS=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-zero-time-governance.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-zero-time-governance.expected.json DELIVER_SCRIPT_AT=4 DELIVER_TIME_JUMP_AT=5 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=+0000 DELIVER_GOV_FAILURE_TYPE_REQUIRE=/cosmos.evidence.v1beta1.MsgSubmitEvidence
 v9-gov 8 1 907001 DELIVER_GOVPASS=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/evidence-zero-time-governance.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/evidence-zero-time-governance.expected.json DELIVER_SCRIPT_AT=4 DELIVER_TIME_JUMP_AT=5 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=+0000 DELIVER_GOV_FAILURE_TYPE_REQUIRE=/cosmos.evidence.v1beta1.MsgSubmitEvidence
+# Begin-block evidence is older than both patched one-block/one-second age
+# limits. Require the exact controlled injection so a short run cannot pass.
+authz-feegrant 4 0 17364 DELIVER_EVIDENCE_REQUIRE=stale
+v9-authz-feegrant 4 0 17364 DELIVER_EVIDENCE_REQUIRE=stale
+# v10 ignores evidence for an address absent from staking's validator index.
+# v9 returns ErrNoValidatorFound, so this boundary is intentionally v10.
+authz-feegrant 1 0 17365 DELIVER_EVIDENCE_REQUIRE=removed-validator
