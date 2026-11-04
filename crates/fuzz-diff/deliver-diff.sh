@@ -30,6 +30,9 @@
 # traffic (including parameter-changing governance) waits. After both paths
 # succeed, normal traffic resumes. DELIVER_STATS records the reserved block
 # count as hl_preupgrade_blocks; the requested block budget still bounds setup.
+# DELIVER_HL_REGISTRY_REQUIRE=1 additionally requires the reserved sequence's
+# merkle-root ISM creation and signed validator announcement to finalize
+# successfully; unrelated generated handler successes do not count.
 # The upgrade driver's block counter pauses during isolated setup (including
 # rejection setup), preserving its one-shot validator/vesting/grant setup
 # and DELIVER_UPGRADE signal delay.

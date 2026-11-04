@@ -189,6 +189,11 @@ pub struct Stats {
     pub hl_verification: Option<String>,
     /// Successful collateral / synthetic transfers verified by that ISM.
     pub hl_verified: BTreeMap<String, u64>,
+    /// Successful controlled registry handlers, attributed to their reserved
+    /// Hyperlane sequence transaction.
+    pub hl_registry: BTreeMap<String, u64>,
+    /// Both controlled registry handlers must successfully finalize.
+    pub hl_registry_required: Option<()>,
     /// Successful scripted transfers by app version and path
     /// (`v9/collateral`, for example). Signed upgrade runs require these.
     pub hl_verified_versions: BTreeMap<String, u64>,
@@ -994,7 +999,25 @@ impl HlSeq {
 
     fn msgs(&mut self, gn: &Gen) -> Vec<Any> {
         let message = self.msg(gn);
-        if self.verifier.name() != "noop" && matches!(self.step, 11 | 14) {
+        if self.step == 2 {
+            // The mailbox id returned by step 1 makes this a real successful
+            // announcement rather than a state-independent generated shape.
+            match hyperlane::announcement(
+                gn.accts[HL_ACCT].acc.clone(),
+                self.mailbox.clone(),
+                HL_LOCAL,
+            ) {
+                Ok(announcement) => vec![message, announcement],
+                Err(error) => {
+                    // A prerequisite can fail three times and be skipped. Keep
+                    // the sequence's retry/skip policy; an explicit registry
+                    // requirement will fail at the final evidence gate.
+                    self.results
+                        .push(format!("step 2 announcement unavailable: {error}"));
+                    vec![message]
+                }
+            }
+        } else if self.verifier.name() != "noop" && matches!(self.step, 11 | 14) {
             // Other fuzz txs can change mailbox/token overrides. Selecting
             // the immutable multisig immediately before verification in the
             // same atomic tx prevents a noop override from counting as
@@ -1604,6 +1627,14 @@ impl Stats {
             self.hl_rejection_cases,
             self.hl_retried
         );
+        if self.hl_registry_required.is_some() {
+            for handler in ["merkle-root-ism", "validator-announcement"] {
+                anyhow::ensure!(
+                    self.hl_registry.get(handler).copied().unwrap_or(0) > 0,
+                    "incomplete DELIVER_HL_REGISTRY_REQUIRE coverage: no successful controlled {handler} transaction"
+                );
+            }
+        }
         if let Some(mode) = &self.hl_verification
             && mode != "noop"
         {
@@ -3935,6 +3966,7 @@ pub fn run(
     let verifier = hyperlane::Verifier::from_env()?;
     let hl_on = std::env::var("DELIVER_HL").is_ok();
     let hl_reject = std::env::var("DELIVER_HL_REJECT").is_ok();
+    let hl_registry_required = std::env::var_os("DELIVER_HL_REGISTRY_REQUIRE").is_some();
     anyhow::ensure!(
         hl_on || verifier.name() == "noop",
         "DELIVER_HL_ISM requires DELIVER_HL"
@@ -3946,6 +3978,10 @@ pub fn run(
     anyhow::ensure!(
         !hl_reject || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
+    );
+    anyhow::ensure!(
+        !hl_registry_required || (hl_on && verifier.name() == "merkle-root"),
+        "DELIVER_HL_REGISTRY_REQUIRE requires DELIVER_HL and DELIVER_HL_ISM=merkle-root"
     );
     let govpass = std::env::var("DELIVER_GOVPASS").is_ok();
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
@@ -4182,6 +4218,7 @@ pub fn run(
         script_required,
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
+        hl_registry_required: hl_registry_required.then_some(()),
         hl_preupgrade_required: upg.on && hl_on && verifier.name() != "noop" && !allow_postupgrade,
         hl_rejection_cases: if hl_reject {
             verifier
@@ -5339,10 +5376,28 @@ pub fn run(
                 .zip(&g.tx_results)
                 .find(|(t, _)| Some(*t) == hl_seq.pending.as_ref())
             {
-                let u = type_urls(app_version, t)
-                    .into_iter()
-                    .next()
-                    .unwrap_or_default();
+                let urls = type_urls(app_version, t);
+                let u = urls.first().cloned().unwrap_or_default();
+                if res.code == 0
+                    && hl_seq.step == 0
+                    && u == "/hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm"
+                {
+                    *stats
+                        .hl_registry
+                        .entry("merkle-root-ism".into())
+                        .or_default() += 1;
+                }
+                if res.code == 0
+                    && hl_seq.step == 2
+                    && urls.iter().any(|url| {
+                        url == "/hyperlane.core.interchain_security.v1.MsgAnnounceValidator"
+                    })
+                {
+                    *stats
+                        .hl_registry
+                        .entry("validator-announcement".into())
+                        .or_default() += 1;
+                }
                 if res.code == 0 && matches!(hl_seq.step, 11 | 14) {
                     let kind = if hl_seq.step == 11 {
                         "collateral"
@@ -7687,6 +7742,28 @@ mod tests {
         stats.hl_verified_versions.insert("v9/synthetic".into(), 1);
         assert!(stats.require_hl_coverage().is_ok());
         assert!(!stats.hl_preupgrade_setup(9));
+    }
+
+    #[test]
+    fn required_hyperlane_registry_coverage_is_sequence_attributed() {
+        let mut stats = Stats {
+            hl_registry_required: Some(()),
+            ..Stats::default()
+        };
+        // Generic successes cannot substitute for the reserved transactions.
+        stats.per_type.insert(
+            "/hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm".into(),
+            (1, 1, 0),
+        );
+        stats.per_type.insert(
+            "/hyperlane.core.interchain_security.v1.MsgAnnounceValidator".into(),
+            (1, 1, 0),
+        );
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_registry.insert("merkle-root-ism".into(), 1);
+        assert!(stats.require_hl_coverage().is_err());
+        stats.hl_registry.insert("validator-announcement".into(), 1);
+        assert!(stats.require_hl_coverage().is_ok());
     }
 
     #[test]
