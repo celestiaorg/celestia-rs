@@ -5775,7 +5775,9 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
         consensus::v1 as cons, distribution::v1beta1 as distr, gov::v1 as gov,
         slashing::v1beta1 as slashing, staking::v1beta1 as staking,
     };
-    use celestia_proto::ibc::applications::transfer::v1 as transfer;
+    use celestia_proto::ibc::applications::{
+        interchain_accounts::host::v1 as icahost, transfer::v1 as transfer,
+    };
     use celestia_proto::ibc::core::{
         channel::v1 as channel, client::v1 as client, connection::v1 as connection,
     };
@@ -5885,6 +5887,11 @@ fn authority_msgs(rust: &mut app::App, recipient: &str) -> Vec<Any> {
     params!(
         transfer,
         "/ibc.applications.transfer.v1.Query/Params",
+        MsgUpdateParams { signer }
+    );
+    params!(
+        icahost,
+        "/ibc.applications.interchain_accounts.host.v1.Query/Params",
         MsgUpdateParams { signer }
     );
     if let Some(r) = query_app::<gov::QueryParamsResponse>(

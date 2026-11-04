@@ -352,6 +352,14 @@ test), then start that harness's count again.
   isolated amino sign-byte cases are pinned in `tests/regressions.jsonl`.
   C1.4 records subsequent pinned-compiler campaign results. The coverage
   baseline still needs a full rerun with the new accounting.
+  *ICA host-parameter follow-up (2026-11-04):* governance-pass campaigns now
+  query the current ICA host parameters, submit them through
+  `MsgUpdateParams`, and fail closed if the proposal payload never executes.
+  Targeted 60-block pinned v10 / v9 runs executed the handler 18 / 19 times,
+  finalized 1,625 / 1,604 successful message deliveries and reported zero
+  differential mismatches. This closes one reachable gap in the next full
+  profile; it does not retroactively reclassify the other 22 entries or close
+  F1.3's per-error and branch requirements.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
