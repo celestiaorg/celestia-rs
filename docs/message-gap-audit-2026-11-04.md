@@ -50,7 +50,11 @@ target. The nested and unregistered entries should remain in the raw protobuf
 inventory with their classification rather than being forced through a route.
 The app-impossible entries still need representative rejection coverage where
 that evidence is useful, but a successful Go execution is not a valid exit
-condition for them.
+condition for them. Exact signed `MsgSubmitEvidence` fixtures now require the
+stored-evidence `evidence/5` rejection on v10 and the recovered nil-router panic
+(`undefined/111222`) for a new, basic-valid equivocation on both pinned apps.
+Those outcomes strengthen rejection coverage without changing this
+classification.
 
 This audit does not complete F1.3. The profile's per-handler error classes and
 8,129 uncovered LLVM branch arms still require review, and coverage evidence

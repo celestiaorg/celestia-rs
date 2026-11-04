@@ -120,6 +120,25 @@ for scen in authz-feegrant v9-authz-feegrant; do
     DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 21 1 17362
 done
+for scen in evidence v9-authz-feegrant; do
+  case $scen in
+    v9-*)
+      A=$V9
+      SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.script
+      EXPECT=crates/fuzz-diff/fixtures/evidence-submit-boundaries-v9.expected.json
+      N=2
+      ;;
+    *)
+      A=$V10
+      SCRIPT=crates/fuzz-diff/fixtures/evidence-submit-boundaries.script
+      EXPECT=crates/fuzz-diff/fixtures/evidence-submit-boundaries.expected.json
+      N=3
+      ;;
+  esac
+  run "evidence-submit-$scen" GO_APPD="$A" \
+    DELIVER_SCRIPT="$SCRIPT" DELIVER_SCRIPT_REQUIRE="$EXPECT" -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" "$N" 1 17362
+done
 for s in 1 2 3 4; do
   run "upgrade-$s" GO_APPD="$V9" GO_APPD_NEXT="$V10" DELIVER_UPGRADE=$((10 + s * 5)) DELIVER_IBC=1 DELIVER_HL=1 \
     DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 -- crates/fuzz-diff/deliver-diff.sh v9-upgrade "$BLOCKS" 6 "$s"
