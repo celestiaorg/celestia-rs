@@ -42,11 +42,11 @@
 # from a wire-decoded threshold-zero multisig. It requires exactly three
 # generated blocks and zero random transactions, and checks successful proposal
 # handling, execution, balances, sequences, and exact public-key persistence.
-# DELIVER_P256_REQUIRE=1 sends two valid low-S P-256 transactions followed by
-# a mathematically valid high-S twin that must be rejected. It requires exactly
-# four generated blocks and zero random transactions, and checks proposal and
-# execution outcomes, the controlled forced-Finalize rejection, rollback, and
-# exact public-key persistence.
+# DELIVER_P256_REQUIRE=1 sends short, zero-scalar, wrong-sign-doc, and high-S
+# P-256 signatures from a fresh account, followed by two valid low-S recovery
+# transactions. It requires exactly seven generated blocks and zero random
+# transactions, and checks proposal and execution outcomes, controlled
+# forced-Finalize rejection rollback, and exact public-key persistence.
 # DELIVER_PUBKEY_REJECTION_REQUIRE=1 sends malformed-length secp256k1 and
 # Ed25519 keys, successful recovery sends from both accounts, and two valid
 # Ed25519 rejection controls. It requires exactly seven generated blocks and
