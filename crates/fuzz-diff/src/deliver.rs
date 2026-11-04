@@ -171,6 +171,8 @@ pub struct Stats {
     pub gov_required: Vec<String>,
     /// Substring required in a failed proposal's Go `proposal_log`.
     pub gov_failure_required: Option<String>,
+    /// Payload type required on that exact tracked failed proposal.
+    pub gov_failure_type_required: Option<String>,
     /// Failed Go proposal logs that contained the required substring.
     pub gov_failure_matches: u64,
     /// Require a rejected proposal whose final tally has only abstain power.
@@ -1404,7 +1406,8 @@ impl Stats {
         if let Some(required) = &self.gov_failure_required {
             anyhow::ensure!(
                 self.gov_failure_matches > 0,
-                "incomplete DELIVER_GOV_FAILURE_REQUIRE coverage: no failed proposal log contained {required:?}"
+                "incomplete DELIVER_GOV_FAILURE_REQUIRE coverage: no tracked failed proposal with payload {:?} had a log containing {required:?}",
+                self.gov_failure_type_required
             );
         }
         if self.gov_abstain_required.is_some() {
@@ -4116,6 +4119,22 @@ pub fn run(
             Ok::<_, anyhow::Error>(value)
         })
         .transpose()?;
+    let gov_failure_type_required = std::env::var_os("DELIVER_GOV_FAILURE_TYPE_REQUIRE")
+        .map(|value| {
+            let value = value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("DELIVER_GOV_FAILURE_TYPE_REQUIRE must be UTF-8"))?;
+            anyhow::ensure!(
+                value.starts_with('/') && value.len() > 1,
+                "DELIVER_GOV_FAILURE_TYPE_REQUIRE must be an absolute type URL"
+            );
+            Ok::<_, anyhow::Error>(value)
+        })
+        .transpose()?;
+    anyhow::ensure!(
+        gov_failure_type_required.is_none() || gov_failure_required.is_some(),
+        "DELIVER_GOV_FAILURE_TYPE_REQUIRE requires DELIVER_GOV_FAILURE_REQUIRE"
+    );
     anyhow::ensure!(
         !gov_abstain_required || gov_failure_required.is_none(),
         "DELIVER_GOV_ABSTAIN_REQUIRE cannot be combined with DELIVER_GOV_FAILURE_REQUIRE"
@@ -4213,6 +4232,7 @@ pub fn run(
     let mut stats = Stats {
         gov_required,
         gov_failure_required,
+        gov_failure_type_required,
         gov_abstain_required: gov_abstain_required.then_some(()),
         type_required,
         script_required,
@@ -5498,21 +5518,14 @@ pub fn run(
             gn.dict.harvest_events(&res.events);
         }
         gn.dict.harvest_events(&g.events);
-        gov_coverage.completed(&g.events, &mut stats.gov_executed);
+        stats.gov_failure_matches += gov_coverage.completed(
+            &g.events,
+            &mut stats.gov_executed,
+            stats.gov_failure_type_required.as_deref(),
+            stats.gov_failure_required.as_deref(),
+        );
         let mut abstain_rejected_proposals = Vec::new();
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
-            let failed = e
-                .attributes
-                .iter()
-                .any(|a| a.key == "proposal_result" && a.value == "proposal_failed");
-            if failed
-                && let Some(required) = &stats.gov_failure_required
-                && e.attributes
-                    .iter()
-                    .any(|a| a.key == "proposal_log" && a.value.contains(required))
-            {
-                stats.gov_failure_matches += 1;
-            }
             if stats.gov_abstain_required.is_some()
                 && e.attributes
                     .iter()
@@ -7184,7 +7197,7 @@ pub fn coverage() -> String {
                         e.2.insert(sc.clone());
                     }
                 }
-                proposals.completed(&g.events, &mut rec_gov);
+                proposals.completed(&g.events, &mut rec_gov, None, None);
             }
         }
     }
@@ -7477,6 +7490,100 @@ mod tests {
             );
             assert!(expected.log_contains.contains("nil pointer dereference"));
         }
+    }
+
+    #[test]
+    fn evidence_validation_script_pins_each_reachable_boundary() {
+        use celestia_proto::cosmos::evidence::v1beta1::{Equivocation, MsgSubmitEvidence};
+        use prost::Name;
+
+        let script = read_script(
+            include_str!("../fixtures/evidence-validation-boundaries.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected = script_expectations(include_str!(
+            "../fixtures/evidence-validation-boundaries.expected.json"
+        ))
+        .unwrap();
+        assert_eq!((script.len(), expected.len()), (5, 5));
+        assert!(script.iter().all(|block| block.len() == 1));
+
+        let decode = |index: usize| {
+            let any = &script[index][0].1;
+            assert_eq!(any.type_url, MsgSubmitEvidence::type_url());
+            let msg = MsgSubmitEvidence::decode(any.value.as_slice()).unwrap();
+            assert_eq!(msg.submitter, accounts(1)[0].acc);
+            msg
+        };
+        assert!(decode(0).evidence.is_none());
+        let equivocation = |index: usize| {
+            let evidence = decode(index).evidence.unwrap();
+            assert_eq!(evidence.type_url, Equivocation::type_url());
+            Equivocation::decode(evidence.value.as_slice()).unwrap()
+        };
+        assert_eq!(equivocation(1).time.unwrap().seconds, 0);
+        assert_eq!(equivocation(2).height, 0);
+        assert_eq!(equivocation(3).power, 0);
+        assert!(equivocation(4).consensus_address.is_empty());
+
+        let markers = [
+            "missing evidence",
+            "invalid equivocation time",
+            "invalid equivocation height",
+            "invalid equivocation validator power",
+            "invalid equivocation validator consensus address",
+        ];
+        for ((block, result), marker) in script.iter().zip(&expected).zip(markers) {
+            assert_eq!(block[0].1.type_url, result.type_url);
+            assert_eq!((result.codespace.as_str(), result.code), ("evidence", 3));
+            assert!(result.log_contains.contains(marker));
+        }
+    }
+
+    #[test]
+    fn evidence_zero_time_governance_script_pins_persisted_error_path() {
+        use celestia_proto::cosmos::{
+            evidence::v1beta1::{Equivocation, MsgSubmitEvidence},
+            gov::v1::{MsgSubmitProposal, MsgVote},
+        };
+        use prost::Name;
+
+        let script = read_script(
+            include_str!("../fixtures/evidence-zero-time-governance.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected = script_expectations(include_str!(
+            "../fixtures/evidence-zero-time-governance.expected.json"
+        ))
+        .unwrap();
+        assert_eq!((script.len(), expected.len()), (2, 12));
+        assert_eq!((script[0].len(), script[1].len()), (1, 11));
+        assert_eq!(script[0][0].1.type_url, MsgSubmitProposal::type_url());
+        assert!(script[1].iter().all(|(_, msg, _)| msg.type_url == "vote"));
+        assert!(
+            expected[1..]
+                .iter()
+                .all(|result| result.type_url == MsgVote::type_url())
+        );
+
+        let proposal = MsgSubmitProposal::decode(script[0][0].1.value.as_slice()).unwrap();
+        assert!(proposal.expedited);
+        assert_eq!(proposal.messages.len(), 1);
+        let submitted = &proposal.messages[0];
+        assert_eq!(submitted.type_url, MsgSubmitEvidence::type_url());
+        let submitted = MsgSubmitEvidence::decode(submitted.value.as_slice()).unwrap();
+        assert_eq!(
+            submitted.submitter,
+            "celestia10d07y265gmmuvt4z0w9aw880jnsr700jtgz4v7"
+        );
+        let evidence = submitted.evidence.unwrap();
+        assert_eq!(evidence.type_url, Equivocation::type_url());
+        let evidence = Equivocation::decode(evidence.value.as_slice()).unwrap();
+        assert_eq!(evidence.time.unwrap().seconds, 0);
+        assert_eq!((evidence.height, evidence.power), (1, 1));
+        assert!(!evidence.consensus_address.is_empty());
     }
 
     use super::*;

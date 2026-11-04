@@ -398,6 +398,23 @@ test), then start that harness's count again.
   29/46. These are the reachable terminal outcomes with Celestia App's nil
   evidence router; they do not turn the app-impossible handler into a
   successful-path target or complete the remaining per-error/branch review.
+  *Evidence validation follow-up (2026-11-04):* a second exact signed fixture
+  requires `evidence/3` for omitted evidence and each
+  of the four `Equivocation.ValidateBasic` boundaries at both pinned app
+  versions. Focused seven-block v10 / v9 probes each finalized 22 transactions
+  (17 code zero) with zero differential mismatches. Wrong type URLs, including
+  an empty type URL, fail interface unpacking before handler execution. Adding
+  only these two instrumented runs to the sealed 187-case profile increased
+  covered `x/evidence/src/lib.rs` branch arms from 29/46 to 33/46. Other
+  evidence begin-block/genesis branches and the wider F1.3 review remain open.
+  The same review found that Rust formatted a non-positive equivocation time as
+  RFC3339 while Go uses `time.Time.String()`. A passed `MsgSubmitEvidence`
+  proposal persists this handler error in `failed_reason`, producing an app-hash
+  split on the pre-fix code. The formatter now matches Go, with exact signed
+  eight-block proposal lifecycles at v9.0.8 and v10.5.0 each reaching one
+  matched failed proposal and zero differential or log mismatches. This closes
+  that reproduced path only; the remaining F1.3 and qualification gates stay
+  open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)
