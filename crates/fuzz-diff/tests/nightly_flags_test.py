@@ -10,6 +10,8 @@ import unittest
 
 
 class NightlyFlagsTest(unittest.TestCase):
+    ICA_HOST_PARAMS = "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams"
+
     def test_json_rotation_compares_pfm_acknowledgement_bytes_at_both_versions(self):
         runs = self.dry_runs("json", 7)
         self.assertEqual(len(runs), 2)
@@ -34,6 +36,10 @@ class NightlyFlagsTest(unittest.TestCase):
             flags = dict(word.split("=", 1) for word in line.split())
             self.assertEqual(flags["DELIVER_HL"], "1")
             self.assertEqual("DELIVER_HL_REJECT" in flags, flags["DELIVER_HL_ISM"] != "noop")
+            if "DELIVER_GOVPASS" in flags:
+                self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
+            else:
+                self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
             combinations.add((flags["DELIVER_HL_ISM"], "DELIVER_SWEEP" in flags))
         self.assertEqual(combinations, {
             (mode, sweep)
@@ -98,6 +104,10 @@ class NightlyFlagsTest(unittest.TestCase):
         coverage = set()
         upgrades = []
         for flags, command in runs:
+            if "DELIVER_GOVPASS" in flags:
+                self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
+            else:
+                self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
             scenario = command[-4]
             if scenario == "v9-upgrade":
                 upgrades.append((int(command[-1]), flags["DELIVER_HL_ISM"]))
