@@ -120,6 +120,16 @@ for scen in authz-feegrant v9-authz-feegrant; do
     DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-boundaries.expected.json -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 21 1 17362
 done
+for scen in staking-lifecycle v9-staking; do
+  case $scen in
+    v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-operations-v9.script ;;
+    *) A=$V10; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-operations.script ;;
+  esac
+  run "stake-authz-operations-$scen" GO_APPD="$A" \
+    DELIVER_SCRIPT="$SCRIPT" \
+    DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/stake-authz-operations.expected.json -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 18 0 17367
+done
 for scen in evidence v9-authz-feegrant; do
   case $scen in
     v9-*)

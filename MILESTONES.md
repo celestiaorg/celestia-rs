@@ -386,7 +386,14 @@ test), then start that harness's count again.
   mismatches. Adding only those two runs to the sealed 183-case instrumented
   profile increased covered `x/authz/src/authorization.rs` branch arms from
   39/106 to 45/106. The scheduled full profile still needs to rerun on the
-  merged candidate; undelegation, redelegation, cancel-unbonding, other
+  merged candidate. Separate signed v10/v9 staking-lifecycle fixtures now
+  exercise undelegation, redelegation and cancel-unbonding authorizations,
+  including destination-policy selection, failed-budget preservation, exact
+  budget exhaustion and grant deletion. Focused 18-block runs finalized all
+  16 required transactions at each version with zero differential or log
+  mismatches. Their focused branch profile covers 25/106 arms in
+  `x/authz/src/authorization.rs`, including six arms that were uncovered in
+  the sealed 45/106 baseline. The merged-candidate full-profile union, other
   per-error paths and the remaining uncovered-branch review stay open.
   *Evidence submission follow-up (2026-11-04):* exact signed fixtures require
   the `evidence/5` rejection for an equivocation stored by the v10 `evidence`
