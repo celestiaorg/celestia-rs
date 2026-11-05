@@ -230,11 +230,16 @@ pub struct Stats {
     /// Controlled public-key fixtures that passed their exact CheckTx,
     /// proposal, execution, recovery, and committed-state postconditions.
     pub pubkey_rejection_completed: u64,
-    /// Whether the run requires the controlled governance upgrade-plan lifecycle.
+    /// Whether the run requires the controlled governance upgrade-plan lifecycle
+    /// and handler-rejection boundaries.
     pub upgrade_plan_required: Option<()>,
-    /// Complete schedule, overwrite, cancel, idempotent-cancel, and recovery
-    /// lifecycles that passed every proposal and committed-state postcondition.
+    /// Complete schedule, overwrite, cancel, idempotent-cancel, five rejected
+    /// plan boundaries, and recovery lifecycles that passed every proposal and
+    /// committed-state postcondition.
     pub upgrade_plan_completed: u64,
+    /// Distinct upgrade-plan validation/past-height proposal executions that
+    /// failed with their exact expected governance result and query state.
+    pub upgrade_plan_rejections: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1673,12 +1678,13 @@ impl Stats {
     }
 
     /// Require a passed circuit-reset proposal, then separate passed proposals
-    /// to schedule, overwrite, cancel and cancel again, followed by a normal
-    /// signed recovery transaction.
+    /// to schedule, overwrite, cancel and cancel again; five exact failed
+    /// plan validations; and a normal signed recovery transaction.
     pub fn require_upgrade_plan_coverage(&self) -> anyhow::Result<()> {
         if self.upgrade_plan_required.is_some() {
             anyhow::ensure!(
                 self.upgrade_plan_completed == 1
+                    && self.upgrade_plan_rejections == 5
                     && self
                         .gov_executed
                         .get("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade")
@@ -1694,8 +1700,9 @@ impl Stats {
                         .get("/cosmos.circuit.v1.MsgResetCircuitBreaker")
                         .copied()
                         == Some(1),
-                "incomplete DELIVER_UPGRADE_PLAN_REQUIRE coverage: completed={} executed={:?}",
+                "incomplete DELIVER_UPGRADE_PLAN_REQUIRE coverage: completed={} rejections={} executed={:?}",
                 self.upgrade_plan_completed,
+                self.upgrade_plan_rejections,
                 self.gov_executed
             );
         }
@@ -4439,9 +4446,9 @@ pub fn run(
                 && evidence_requirement.is_none()
                 && std::env::var_os("DELIVER_UPGRADE").is_none()
                 && std::env::var_os("DELIVER_SCRIPT").is_none()
-                && blocks == 120
+                && blocks == 240
                 && per_block == 0),
-        "DELIVER_UPGRADE_PLAN_REQUIRE needs exactly 120 blocks and zero random transactions, and cannot be combined with other controlled modes"
+        "DELIVER_UPGRADE_PLAN_REQUIRE needs exactly 240 blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !direct_aux_required
@@ -6831,6 +6838,7 @@ pub fn run(
     }
     if let Some(fixture) = upgrade_plan_fixture.as_ref() {
         fixture.require_complete()?;
+        stats.upgrade_plan_rejections = fixture.rejection_count();
     }
     stats.upgrade.append(&mut upg.log);
     if let Some(h) = upg.upgrade_height {
@@ -11626,6 +11634,7 @@ mod tests {
             let mut stats = Stats {
                 upgrade_plan_required: Some(()),
                 upgrade_plan_completed: 1,
+                upgrade_plan_rejections: 5,
                 ..Stats::default()
             };
             for (url, count) in [
@@ -11650,6 +11659,9 @@ mod tests {
         }
         let mut stats = complete();
         stats.upgrade_plan_completed = 0;
+        assert!(stats.require_upgrade_plan_coverage().is_err());
+        let mut stats = complete();
+        stats.upgrade_plan_rejections = 4;
         assert!(stats.require_upgrade_plan_coverage().is_err());
         assert!(Stats::default().require_upgrade_plan_coverage().is_ok());
     }
