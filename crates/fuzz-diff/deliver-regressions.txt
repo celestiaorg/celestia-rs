@@ -177,3 +177,8 @@ v9-authz-feegrant 4 0 17364 DELIVER_EVIDENCE_REQUIRE=stale
 # v10 ignores evidence for an address absent from staking's validator index.
 # v9 returns ErrNoValidatorFound, so this boundary is intentionally v10.
 authz-feegrant 1 0 17365 DELIVER_EVIDENCE_REQUIRE=removed-validator
+# A passed unknown-name upgrade plan must stop both implementations at its due
+# height. Exact errors, upgrade-info files, retained plans and H-1 committed
+# state are required; matching early errors cannot satisfy this regression.
+authz-feegrant 80 0 17375 DELIVER_UPGRADE_HALT_REQUIRE=1
+v9-authz-feegrant 80 0 17375 DELIVER_UPGRADE_HALT_REQUIRE=1

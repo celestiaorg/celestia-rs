@@ -62,6 +62,11 @@
 # boundaries. It requires exactly 240 blocks and zero random transactions.
 # Every stored proposal, final status/reason/tally, exact current/applied-plan
 # query, app version and a final signed bank send is gated at both app versions.
+# DELIVER_UPGRADE_HALT_REQUIRE=1 passes the circuit reset and an unknown-name
+# upgrade plan due on the last of exactly 80 generated blocks. Both apps must
+# stop at that height with the exact upgrade-needed error, write identical
+# canonical upgrade-info.json files, retain the committed plan and leave the
+# last committed height/app hash at H-1. Any earlier paired error fails.
 # DELIVER_IBC_PFM_METADATA_REQUIRE=1 uses the signed mock counterparty to
 # relay exact typed-parse and identifier-validation failures plus a
 # forward:null transfer control. It requires the official Go Ack bytes,
@@ -111,6 +116,10 @@ PORT=$((37858 + ${DEVNET_PORT_OFFSET:-0}))
 IN=$ROOT/conformance/fixtures/devnet/$SCENARIO
 WORK=$(mktemp -d)
 H=$WORK/home
+if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}" ]; then
+  export DELIVER_UPGRADE_GO_HOME=$H
+  export DELIVER_UPGRADE_RUST_HOME=$WORK/rust-home
+fi
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >"$WORK/init.log" 2>&1 || {
   echo "$APPD init failed:" >&2

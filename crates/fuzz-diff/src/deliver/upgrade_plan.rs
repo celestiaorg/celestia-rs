@@ -5,11 +5,15 @@ use celestia_proto::cosmos::{
     bank::v1beta1 as bank, circuit::v1 as circuit, gov::v1 as gov, upgrade::v1beta1 as upgrade,
 };
 use prost::{Message as _, Name as _};
+use std::path::Path;
 
 use super::{ACCOUNTS, GOV, Gen, GoApp, account_balance};
 
 const PLAN_A: &str = "codex-plan-a";
 const PLAN_B: &str = "codex-plan-b";
+const HALT_PLAN: &str = "codex-missing-handler";
+const HALT_INFO: &str = "controlled missing-handler halt";
+const HALT_OFFSET: i64 = 80;
 const SOFTWARE_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade";
 const CANCEL_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgCancelUpgrade";
 const RECOVERY_AMOUNT: u128 = 7;
@@ -20,8 +24,23 @@ const PROPOSAL_STAGES: usize = SUCCESS_STAGES + FAILURE_STAGES;
 const RECOVERY_STAGE: usize = PROPOSAL_STAGES;
 const COMPLETE_STAGE: usize = RECOVERY_STAGE + 1;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Lifecycle,
+    MissingHandler,
+}
+
+pub(super) struct HaltObservation<'a> {
+    pub height: i64,
+    pub go_error: &'a str,
+    pub rust_error: &'a str,
+    pub go_home: &'a Path,
+    pub rust_home: &'a Path,
+}
+
 /// Controlled governance lifecycle for upgrade-plan persistence.
 pub(super) struct Fixture {
+    mode: Mode,
     plans: [upgrade::Plan; 2],
     initial_height: i64,
     stage: usize,
@@ -41,6 +60,7 @@ pub(super) struct Fixture {
     checked: std::collections::BTreeSet<Vec<u8>>,
     initial_app_version: u64,
     recovery_before: Option<(u128, u128, u64)>,
+    pre_halt_info: Option<(i64, Vec<u8>)>,
 }
 
 impl Fixture {
@@ -54,6 +74,7 @@ impl Fixture {
             upgraded_client_state: None,
         };
         Self {
+            mode: Mode::Lifecycle,
             plans: [
                 plan(PLAN_A, 10_000, "codex upgrade plan A"),
                 plan(PLAN_B, 20_000, "codex upgrade plan B"),
@@ -76,6 +97,30 @@ impl Fixture {
             checked: std::collections::BTreeSet::new(),
             initial_app_version: app_version,
             recovery_before: None,
+            pre_halt_info: None,
+        }
+    }
+
+    pub(super) fn new_missing_handler(height: i64, app_version: u64) -> Self {
+        let mut fixture = Self::new(height, app_version);
+        fixture.mode = Mode::MissingHandler;
+        fixture.plans[0].name = HALT_PLAN.into();
+        fixture.plans[0].height = height + HALT_OFFSET;
+        fixture.plans[0].info = HALT_INFO.into();
+        fixture
+    }
+
+    fn proposal_stages(&self) -> usize {
+        match self.mode {
+            Mode::Lifecycle => PROPOSAL_STAGES,
+            Mode::MissingHandler => 2,
+        }
+    }
+
+    fn success_stages(&self) -> usize {
+        match self.mode {
+            Mode::Lifecycle => SUCCESS_STAGES,
+            Mode::MissingHandler => 2,
         }
     }
 
@@ -111,7 +156,7 @@ impl Fixture {
     }
 
     pub(super) fn proposal(&self, proposer: &str) -> Option<gov::MsgSubmitProposal> {
-        if self.stage >= PROPOSAL_STAGES
+        if self.stage >= self.proposal_stages()
             || self.pending_submit.is_some()
             || self.active_proposal.is_some()
             || self.awaiting_state.is_some()
@@ -136,19 +181,23 @@ impl Fixture {
     }
 
     fn payload(&self) -> Option<Any> {
-        Some(match self.stage {
-            0 => Any::pack(&circuit::MsgResetCircuitBreaker {
+        Some(match (self.mode, self.stage) {
+            (_, 0) => Any::pack(&circuit::MsgResetCircuitBreaker {
                 authority: GOV.into(),
                 msg_type_urls: vec![SOFTWARE_UPGRADE_URL.into(), CANCEL_UPGRADE_URL.into()],
             }),
-            1 | 2 => Any::pack(&upgrade::MsgSoftwareUpgrade {
+            (Mode::MissingHandler, 1) => Any::pack(&upgrade::MsgSoftwareUpgrade {
+                authority: GOV.into(),
+                plan: Some(self.plans[0].clone()),
+            }),
+            (Mode::Lifecycle, 1 | 2) => Any::pack(&upgrade::MsgSoftwareUpgrade {
                 authority: GOV.into(),
                 plan: Some(self.plans[self.stage - 1].clone()),
             }),
-            3 | 4 => Any::pack(&upgrade::MsgCancelUpgrade {
+            (Mode::Lifecycle, 3 | 4) => Any::pack(&upgrade::MsgCancelUpgrade {
                 authority: GOV.into(),
             }),
-            5..PROPOSAL_STAGES => Any::pack(&self.failure_message()),
+            (Mode::Lifecycle, 5..PROPOSAL_STAGES) => Any::pack(&self.failure_message()),
             _ => return None,
         })
     }
@@ -301,7 +350,7 @@ impl Fixture {
             .iter()
             .find(|attribute| attribute.key == "proposal_log")
             .map(|attribute| attribute.value.as_str());
-        if self.stage < SUCCESS_STAGES {
+        if self.stage < self.success_stages() {
             anyhow::ensure!(
                 result == Some("proposal_passed") && proposal_log == Some("passed"),
                 "upgrade-plan proposal {id} did not pass exactly: {:?}",
@@ -397,10 +446,10 @@ impl Fixture {
                 );
             }
             let observed = current_plan(go, conn, rust)?;
-            let expected = match stage {
-                1 => Some(canonical(&self.plans[0])),
-                2 => Some(canonical(&self.plans[1])),
-                0 | 3..PROPOSAL_STAGES => None,
+            let expected = match (self.mode, stage) {
+                (_, 1) => Some(canonical(&self.plans[0])),
+                (Mode::Lifecycle, 2) => Some(canonical(&self.plans[1])),
+                (_, 0) | (Mode::Lifecycle, 3..PROPOSAL_STAGES) => None,
                 _ => anyhow::bail!("invalid upgrade-plan stage {stage}"),
             };
             anyhow::ensure!(
@@ -416,6 +465,18 @@ impl Fixture {
             );
             Self::require_unapplied(go, conn, rust)?;
             self.stage += 1;
+        }
+        if self.mode == Mode::MissingHandler
+            && self.stage == 2
+            && rust.info().last_block_height == self.plans[0].height - 1
+        {
+            let (go_info, rust_info) = info_both(go, conn, rust)?;
+            anyhow::ensure!(
+                go_info.last_block_height == rust_info.last_block_height
+                    && go_info.last_block_app_hash == rust_info.last_block_app_hash,
+                "missing-handler pre-halt Info differed: Go {go_info:?}, Rust {rust_info:?}"
+            );
+            self.pre_halt_info = Some((rust_info.last_block_height, rust_info.last_block_app_hash));
         }
         if self.stage == RECOVERY_STAGE
             && let Some(tx) = self.recovery_tx.as_deref()
@@ -438,6 +499,10 @@ impl Fixture {
     }
 
     pub(super) fn require_complete(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.mode == Mode::Lifecycle,
+            "missing-handler fixture did not reach its terminal halt"
+        );
         anyhow::ensure!(
             self.stage == COMPLETE_STAGE
                 && self.recovery_finalized
@@ -469,6 +534,103 @@ impl Fixture {
 
     pub(super) fn rejection_count(&self) -> u64 {
         self.failures.iter().sum()
+    }
+
+    pub(super) fn halt_height(&self) -> Option<i64> {
+        (self.mode == Mode::MissingHandler && self.stage == 2).then_some(self.plans[0].height)
+    }
+
+    pub(super) fn require_missing_handler_halt(
+        &self,
+        go: &mut GoApp,
+        conn: u32,
+        rust: &mut app::App,
+        observation: HaltObservation<'_>,
+    ) -> anyhow::Result<()> {
+        let HaltObservation {
+            height,
+            go_error,
+            rust_error,
+            go_home,
+            rust_home,
+        } = observation;
+        anyhow::ensure!(
+            self.mode == Mode::MissingHandler
+                && self.stage == 2
+                && self.proposal_ids.len() == 2
+                && self.submits[..2] == [1; 2]
+                && self.deposits[..2] == [1; 2]
+                && self.votes[..2] == [(ACCOUNTS - 1) as u64; 2]
+                && self.passes[..2] == [1; 2]
+                && self.stored_verified[..2] == [true; 2]
+                && self.expected_tally.is_some(),
+            "missing-handler halt reached without two exact passed proposals: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
+            self.stage,
+            self.proposal_ids,
+            &self.submits[..2],
+            &self.deposits[..2],
+            &self.votes[..2],
+            &self.passes[..2],
+            &self.stored_verified[..2]
+        );
+        anyhow::ensure!(
+            height == self.plans[0].height,
+            "missing-handler halt occurred at height {height}, expected {}",
+            self.plans[0].height
+        );
+        let expected = format!("UPGRADE \"{HALT_PLAN}\" NEEDED at height: {height}: {HALT_INFO}");
+        anyhow::ensure!(
+            normalized_upgrade_error(go_error) == Some(expected.as_str()),
+            "Go missing-handler halt differed: expected {expected:?}, got {go_error:?}"
+        );
+        anyhow::ensure!(
+            normalized_upgrade_error(rust_error) == Some(expected.as_str()),
+            "Rust missing-handler halt differed: expected {expected:?}, got {rust_error:?}"
+        );
+
+        let observed = current_plan(go, conn, rust)?;
+        anyhow::ensure!(
+            observed == Some(canonical(&self.plans[0])),
+            "missing-handler halt did not preserve the exact committed plan: {observed:?}"
+        );
+        Self::require_unapplied(go, conn, rust)?;
+        let disabled = disabled_messages(go, conn, rust)?;
+        anyhow::ensure!(
+            [SOFTWARE_UPGRADE_URL, CANCEL_UPGRADE_URL]
+                .iter()
+                .all(|expected| !disabled.iter().any(|url| url == expected)),
+            "missing-handler halt unexpectedly restored a circuit breaker: {disabled:?}"
+        );
+
+        let (go_info, rust_info) = info_both(go, conn, rust)?;
+        let pre_halt_info = self
+            .pre_halt_info
+            .as_ref()
+            .context("missing-handler fixture did not capture committed Info at H-1")?;
+        anyhow::ensure!(
+            go_info.last_block_height == height - 1
+                && rust_info.last_block_height == height - 1
+                && go_info.last_block_app_hash == rust_info.last_block_app_hash
+                && (rust_info.last_block_height, &rust_info.last_block_app_hash)
+                    == (pre_halt_info.0, &pre_halt_info.1),
+            "missing-handler halt advanced committed state: Go info {go_info:?}, Rust info {rust_info:?}"
+        );
+
+        let go_upgrade_info = std::fs::read(go_home.join("data/upgrade-info.json"))
+            .context("reading Go missing-handler upgrade-info.json")?;
+        let rust_upgrade_info = std::fs::read(rust_home.join("data/upgrade-info.json"))
+            .context("reading Rust missing-handler upgrade-info.json")?;
+        let expected_info = format!(
+            "{{\"name\":\"{HALT_PLAN}\",\"time\":\"0001-01-01T00:00:00Z\",\"height\":{height},\"info\":\"{HALT_INFO}\"}}"
+        );
+        anyhow::ensure!(
+            go_upgrade_info == expected_info.as_bytes()
+                && rust_upgrade_info == expected_info.as_bytes(),
+            "missing-handler upgrade-info.json differed: Go {}, Rust {}, expected {expected_info}",
+            String::from_utf8_lossy(&go_upgrade_info),
+            String::from_utf8_lossy(&rust_upgrade_info)
+        );
+        Ok(())
     }
 
     #[allow(deprecated)]
@@ -570,6 +732,7 @@ impl Fixture {
         for name in [
             PLAN_A,
             PLAN_B,
+            HALT_PLAN,
             "codex-rejected-upgrade-0",
             "codex-rejected-upgrade-1",
             "codex-rejected-upgrade-3",
@@ -590,6 +753,32 @@ impl Fixture {
         }
         Ok(())
     }
+}
+
+fn normalized_upgrade_error(error: &str) -> Option<&str> {
+    let line = error.lines().next()?;
+    let line = line.strip_suffix(": invalid request").unwrap_or(line);
+    line.starts_with("UPGRADE \"").then_some(line)
+}
+
+fn info_both(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &app::App,
+) -> anyhow::Result<(
+    celestia_proto::celestia_core_proto::abci::ResponseInfo,
+    celestia_proto::celestia_core_proto::abci::ResponseInfo,
+)> {
+    let request = Request {
+        value: Some(request::Value::Info(
+            celestia_proto::celestia_core_proto::abci::RequestInfo::default(),
+        )),
+    };
+    let go_response = go.call_or_exception(conn, &request)?;
+    let Some(response::Value::Info(go_info)) = go_response.value else {
+        anyhow::bail!("missing-handler Go Info returned {go_response:?}");
+    };
+    Ok((go_info, rust.info()))
 }
 
 #[allow(deprecated)]
@@ -692,4 +881,28 @@ fn query_both<R: prost::Message + Default>(
         go_response.log
     );
     R::decode(go_response.value.as_slice()).context("decoding upgrade-plan query response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_upgrade_error;
+
+    #[test]
+    fn upgrade_error_normalization_only_drops_the_sdk_suffix() {
+        let expected = "UPGRADE \"codex-missing-handler\" NEEDED at height: 9: info";
+        assert_eq!(normalized_upgrade_error(expected), Some(expected));
+        assert_eq!(
+            normalized_upgrade_error(&format!("{expected}: invalid request\nstack")),
+            Some(expected)
+        );
+        assert_eq!(normalized_upgrade_error("unrelated failure"), None);
+        assert_eq!(
+            normalized_upgrade_error(&format!("prefix {expected}")),
+            None
+        );
+        assert_ne!(
+            normalized_upgrade_error(&format!("{expected}: unexpected")),
+            Some(expected)
+        );
+    }
 }

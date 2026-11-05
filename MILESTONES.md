@@ -481,8 +481,19 @@ test), then start that harness's count again.
   governance proposal admission and therefore cannot cover the upgrade
   handler's authority branch. The completed-name branch needs a genuine
   applied-upgrade marker and remains for mainnet-shaped or post-upgrade state.
-  The next exact merged profile must measure this batch's branch contribution;
-  the wider F1.3 and production-qualification gates remain open.
+  The exact merged 212-case branch profile passed every case and increased
+  `x/upgrade/src/lib.rs` from 31/54 to 35/54 branch arms. The wider F1.3 and
+  production-qualification gates remain open.
+  *Missing upgrade-handler halt follow-up (2026-11-05):* controlled v10/v9
+  fixtures now pass a circuit-reset proposal and a separate unknown-name plan
+  due at the last requested block. Credit requires the exact normalized Go and
+  Rust upgrade-needed errors, identical canonical `upgrade-info.json` bytes,
+  the exact plan still committed, both circuit breakers still reset, no applied
+  height, and matching `Info` app hash and height H-1 after the failed
+  FinalizeBlock. Both focused runs passed two proposals, stopped before Commit
+  H, and recorded zero differential or log mismatches. This covers the
+  cosmovisor/operator stop boundary in the application harness; it does not
+  count as a clean night, mainnet soak, or general readiness evidence.
   *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
   use fresh funded accounts with no stored key. Malformed-length secp256k1 and
   Ed25519 signer keys must recover with exact `undefined/111222` CheckTx

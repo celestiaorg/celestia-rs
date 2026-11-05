@@ -240,6 +240,12 @@ pub struct Stats {
     /// Distinct upgrade-plan validation/past-height proposal executions that
     /// failed with their exact expected governance result and query state.
     pub upgrade_plan_rejections: u64,
+    /// Whether the run requires an exact due-plan halt for a binary without
+    /// the scheduled upgrade handler.
+    pub upgrade_halt_required: Option<()>,
+    /// Missing-handler halts that proved the exact error, upgrade-info file,
+    /// retained plan, and absence of a commit at the due height.
+    pub upgrade_halt_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1703,6 +1709,30 @@ impl Stats {
                 "incomplete DELIVER_UPGRADE_PLAN_REQUIRE coverage: completed={} rejections={} executed={:?}",
                 self.upgrade_plan_completed,
                 self.upgrade_plan_rejections,
+                self.gov_executed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require the controlled unknown-handler plan to stop both apps at the
+    /// exact due height without advancing committed state.
+    pub fn require_upgrade_halt_coverage(&self) -> anyhow::Result<()> {
+        if self.upgrade_halt_required.is_some() {
+            anyhow::ensure!(
+                self.upgrade_halt_completed == 1
+                    && self
+                        .gov_executed
+                        .get("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade")
+                        .copied()
+                        == Some(1)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.circuit.v1.MsgResetCircuitBreaker")
+                        .copied()
+                        == Some(1),
+                "incomplete DELIVER_UPGRADE_HALT_REQUIRE coverage: completed={} executed={:?}",
+                self.upgrade_halt_completed,
                 self.gov_executed
             );
         }
@@ -4423,7 +4453,9 @@ pub fn run(
     );
     let govpass_env = std::env::var("DELIVER_GOVPASS").is_ok();
     let upgrade_plan_required = std::env::var_os("DELIVER_UPGRADE_PLAN_REQUIRE").is_some();
-    let govpass = govpass_env || upgrade_plan_required;
+    let upgrade_halt_required = std::env::var_os("DELIVER_UPGRADE_HALT_REQUIRE").is_some();
+    let governed_upgrade_required = upgrade_plan_required || upgrade_halt_required;
+    let govpass = govpass_env || governed_upgrade_required;
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
     let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
@@ -4436,6 +4468,7 @@ pub fn run(
     anyhow::ensure!(
         !upgrade_plan_required
             || (!govpass_env
+                && !upgrade_halt_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4449,6 +4482,24 @@ pub fn run(
                 && blocks == 240
                 && per_block == 0),
         "DELIVER_UPGRADE_PLAN_REQUIRE needs exactly 240 blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !upgrade_halt_required
+            || (!govpass_env
+                && !upgrade_plan_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !hl_on
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 80
+                && per_block == 0),
+        "DELIVER_UPGRADE_HALT_REQUIRE needs exactly 80 blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !direct_aux_required
@@ -4798,7 +4849,16 @@ pub fn run(
         addr: addr.to_owned(),
         conns: BTreeMap::new(),
     };
-    let mut rust = trace::Traced::new(app::App::new())?;
+    let mut rust_app = app::App::new();
+    if upgrade_halt_required {
+        let rust_home = std::env::var_os("DELIVER_UPGRADE_RUST_HOME")
+            .context("DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_RUST_HOME")?;
+        rust_app.set_node_options(app::NodeOptions {
+            home: Some(rust_home.into()),
+            ..Default::default()
+        });
+    }
+    let mut rust = trace::Traced::new(rust_app)?;
     let mut stats = Stats {
         gov_required,
         gov_failure_required,
@@ -4813,6 +4873,7 @@ pub fn run(
         p256_required: p256_required.then_some(()),
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
+        upgrade_halt_required: upgrade_halt_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -5181,8 +5242,14 @@ pub fn run(
     let mut zero_threshold_multisig_fixture: Option<ZeroThresholdMultisigFixture> = None;
     let mut p256_fixture: Option<P256Fixture> = None;
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
-    let mut upgrade_plan_fixture =
-        upgrade_plan_required.then(|| upgrade_plan::Fixture::new(height, app_version));
+    let mut upgrade_plan_fixture = if upgrade_halt_required {
+        Some(upgrade_plan::Fixture::new_missing_handler(
+            height,
+            app_version,
+        ))
+    } else {
+        upgrade_plan_required.then(|| upgrade_plan::Fixture::new(height, app_version))
+    };
     if upgrade_plan_fixture.is_some() {
         upgrade_plan::Fixture::verify_initial(&mut go, cons_conn, &mut rust)?;
     }
@@ -5544,7 +5611,7 @@ pub fn run(
                 let vals = bonded_validators(&mut rust);
                 if !vals.is_empty() {
                     govpass_delegated = true;
-                    if !upgrade_plan_required {
+                    if !governed_upgrade_required {
                         gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
                     }
                     for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
@@ -5563,7 +5630,7 @@ pub fn run(
                         }
                     }
                 }
-            } else if !hl_setup && upgrade_plan_required && govpass_delegated {
+            } else if !hl_setup && governed_upgrade_required && govpass_delegated {
                 let fixture = upgrade_plan_fixture
                     .as_mut()
                     .context("upgrade-plan fixture was not initialized")?;
@@ -5703,17 +5770,19 @@ pub fn run(
                     }
                 }
             }
-            let k =
-                if evidence_requirement.is_some() || hl_setup || gov_setup || upgrade_plan_required
-                {
-                    0
-                } else {
-                    match gn.m.rng.below(20) {
-                        0 => 0,
-                        1 => per_block * 4,
-                        _ => 1 + gn.m.rng.below(per_block.max(1)),
-                    }
-                };
+            let k = if evidence_requirement.is_some()
+                || hl_setup
+                || gov_setup
+                || governed_upgrade_required
+            {
+                0
+            } else {
+                match gn.m.rng.below(20) {
+                    0 => 0,
+                    1 => per_block * 4,
+                    _ => 1 + gn.m.rng.below(per_block.max(1)),
+                }
+            };
             for _ in 0..k {
                 gn.wire.pending.clear();
                 if let Some(t) = gn.tx() {
@@ -6292,7 +6361,43 @@ pub fn run(
         let o = rust.finalize_block(fb.clone());
         let (g, o) = match (g, o) {
             (response::Value::FinalizeBlock(g), Ok(o)) => (g, o),
-            (response::Value::Exception(e), Err(_)) => {
+            (response::Value::Exception(e), Err(rust_error)) => {
+                if upgrade_halt_required {
+                    let fixture = upgrade_plan_fixture
+                        .as_ref()
+                        .context("upgrade-halt fixture was not initialized")?;
+                    let expected_height = fixture
+                        .halt_height()
+                        .context("upgrade-halt fixture was not ready at a paired halt")?;
+                    anyhow::ensure!(
+                        height == expected_height,
+                        "upgrade-halt paired error occurred at {height}, expected {expected_height}"
+                    );
+                    let go_home = std::path::PathBuf::from(
+                        std::env::var_os("DELIVER_UPGRADE_GO_HOME").context(
+                            "DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_GO_HOME",
+                        )?,
+                    );
+                    let rust_home = std::path::PathBuf::from(
+                        std::env::var_os("DELIVER_UPGRADE_RUST_HOME").context(
+                            "DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_RUST_HOME",
+                        )?,
+                    );
+                    fixture.require_missing_handler_halt(
+                        &mut go,
+                        cons_conn,
+                        &mut rust,
+                        upgrade_plan::HaltObservation {
+                            height,
+                            go_error: &e.error,
+                            rust_error: &rust_error.to_string(),
+                            go_home: &go_home,
+                            rust_home: &rust_home,
+                        },
+                    )?;
+                    stats.upgrade_halt_completed += 1;
+                    return Ok(stats);
+                }
                 stats
                     .log_mismatches
                     .push(format!("{scenario} h={height}: both halted: {}", e.error));
@@ -11664,6 +11769,37 @@ mod tests {
         stats.upgrade_plan_rejections = 4;
         assert!(stats.require_upgrade_plan_coverage().is_err());
         assert!(Stats::default().require_upgrade_plan_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_upgrade_halt_needs_exact_governance_and_terminal_credit() {
+        let complete = || {
+            let mut stats = Stats {
+                upgrade_halt_required: Some(()),
+                upgrade_halt_completed: 1,
+                ..Stats::default()
+            };
+            stats
+                .gov_executed
+                .insert("/cosmos.circuit.v1.MsgResetCircuitBreaker".into(), 1);
+            stats
+                .gov_executed
+                .insert("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade".into(), 1);
+            stats
+        };
+        assert!(complete().require_upgrade_halt_coverage().is_ok());
+        for url in [
+            "/cosmos.circuit.v1.MsgResetCircuitBreaker",
+            "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+        ] {
+            let mut incomplete = complete();
+            incomplete.gov_executed.remove(url);
+            assert!(incomplete.require_upgrade_halt_coverage().is_err());
+        }
+        let mut incomplete = complete();
+        incomplete.upgrade_halt_completed = 0;
+        assert!(incomplete.require_upgrade_halt_coverage().is_err());
+        assert!(Stats::default().require_upgrade_halt_coverage().is_ok());
     }
 
     #[test]
