@@ -400,7 +400,7 @@ fn verify_proof(
         .consume(PROOF_VERIFY_COST_GROTH16, "groth16 verify")
         .map_err(|_| errs::out_of_gas(""))?;
     let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    let verify = if sdk::version::is_v9(app_version) {
+    let verify = if sdk::version::is_v9(sdk::version::executing(app_version)) {
         groth16::sp1_verify_v5
     } else {
         groth16::sp1_verify

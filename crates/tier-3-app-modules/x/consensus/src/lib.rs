@@ -198,7 +198,7 @@ pub fn handle_update_params(
     // cosmos-sdk v0.52.12 (app version 10) forbids changing block.MaxGas;
     // v0.52.8 (app version 9) allows it.
     let app_version = cur.version.as_ref().map_or(0, |v| v.app);
-    let v9 = app_version != 0 && app_version < 10;
+    let v9 = sdk::version::is_v9(sdk::version::executing(app_version));
     if !v9 && block.max_gas != cur_block.max_gas {
         return Err(sdk::error::sdk::invalid_request(format!(
             "block.MaxGas cannot be modified; current: {}, requested: {}",

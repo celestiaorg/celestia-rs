@@ -801,6 +801,20 @@ test), then start that harness's count again.
   remaining transactions. This is a shared exact-height limitation, not
   evidence for a permissive restore change or completion of snapshot /
   mainnet-state qualification. Reproduction: `conformance/devnet/README.md`.
+  *Governance/cosmovisor restart (2026-11-05):* a controlled persistent
+  v9 run passes governance to schedule the canonical `v10` plan, halts both
+  pinned v9 apps at the exact due height with byte-identical
+  `upgrade-info.json`, then restarts the same homes under pinned v10.5.0 and
+  Rust v10 execution. The identical block retry, upgrade marker, complete
+  module-version map, fibre/valaddr stores, Commit app hash, Info app version
+  9, second process restart and signed recovery all match with zero
+  differential or log differences. Rust authenticates the disk plan against
+  the identical committed next-height plan before persisting node-local
+  execution identity outside the app hash. Regressions also cover post-upgrade
+  export behavior and authenticated U−1 snapshot restore/store loading. This
+  is one fixed devnet-shaped 82-block case, not the required 50-seed upgrade
+  volume, mainnet-shaped state, three clean nights, three-day mainnet soak or
+  a production-readiness recommendation.
   *Real-world half (2026-10-20):* mainnet's own upgrade at 15,116,658
   executed by `follow` with every app hash and tx result matching (M13).
 

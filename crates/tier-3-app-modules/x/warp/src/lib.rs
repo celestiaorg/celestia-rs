@@ -455,12 +455,7 @@ fn msg_receiver_contract(ctx: &Context<'_>, s: &str) -> Result<String> {
 /// v1.1.0, ADR 0004).
 fn is_v9(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    if v == 0 {
-        // Query contexts carry no consensus params: the app version of the
-        // ABCI call (security.md 71).
-        return sdk::version::is_v9(sdk::version::app_version());
-    }
-    v < 10
+    sdk::version::is_v9(sdk::version::executing(v))
 }
 
 /// `Keeper.RemoteReceiveCollateral`.

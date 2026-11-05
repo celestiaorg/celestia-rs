@@ -4,8 +4,10 @@
 //! 9 is celestia-app v9.0.8).
 //!
 //! The app sets it on the executing thread at every ABCI entry point
-//! ([`set_app_version`]); code with a [`crate::Context`] reads the version
-//! from its consensus params instead.
+//! ([`set_app_version`]). Usually it equals the committed consensus app
+//! version. A governance/cosmovisor upgrade can run the v10 executable while
+//! that committed value remains 9, so context-aware compiled behavior must
+//! use [`executing`] rather than assuming the two identities are equal.
 
 use std::cell::Cell;
 
@@ -22,6 +24,18 @@ pub fn set_app_version(v: u64) {
 #[must_use]
 pub fn app_version() -> u64 {
     APP_VERSION.with(Cell::get)
+}
+
+/// The executing celestia-app release, falling back to a context's committed
+/// app version in isolated module tests where the app did not set one.
+#[must_use]
+pub fn executing(context_version: u64) -> u64 {
+    let current = app_version();
+    if current == 0 {
+        context_version
+    } else {
+        current
+    }
 }
 
 /// Whether `v` is executed with celestia-app v9.0.8 semantics (0 = unset

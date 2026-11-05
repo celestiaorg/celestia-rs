@@ -41,6 +41,13 @@ The upgrade itself:
    are not in the stored version map, so their `InitGenesis` runs with the
    default genesis; no other module's consensus version changes).
 
+The SDK also permits governance to schedule the canonical `v10` plan while
+the committed app version is still 9. In that route the v9 executable halts
+at the plan height and writes `upgrade-info.json`; the operator/cosmovisor
+starts v10 on the same home and retries that height. `ApplyUpgrade` does not
+change `Version.App`, so compiled v10 behavior then runs while `Info` can
+continue to report app version 9.
+
 ## v9.0.8 vs v10.4.0
 
 Mainnet v9.0.8 binaries are built **without** the `fibre` build tag
@@ -104,16 +111,22 @@ initial-version behavior for added stores, crash recovery).
 
 ## Decision
 
-One Rust app, **gated on the block's app version** (the consensus params
-version in state, `ctx.consensus_params.version.app`, which is what decides
-which binary the multiplexer runs). No separate v9 binary or process.
+One Rust app with separate **consensus** and **execution** versions. The
+consensus value in state remains authoritative for `Info`, consensus-param
+updates and signal ordering. Compiled behavior normally follows it, but an
+authenticated governance/cosmovisor restart can select v10 execution while
+the consensus value remains 9. No separate v9 binary or process.
 
 - **Stores:** the mounted store set depends on the app version: v9 mounts
   every v10 store except `fibre` and `valaddr`. InitChain mounts by the
   genesis app version; opening a database mounts what its latest commit
-  info holds. At the commit of the block that raised the app version to 10
-  with a pending `v10` plan at `H+1`, the app mounts `fibre` and `valaddr`
-  with initial version `H+1` (Go's `UpgradeStoreLoader`).
+  info holds. The signal route mounts `fibre` and `valaddr` after the commit
+  that raised the app version. The governance route authenticates the exact
+  next-height `v10` disk plan against the identical committed plan, records
+  node-local execution identity outside the app hash, and mounts both stores
+  at that height (Go's `UpgradeStoreLoader`). Snapshot restore selects these
+  optional stores from the authenticated item stream, since governance does
+  not raise the consensus app version.
 - **Execution:** `FinalizeBlock` runs txs sequentially (`deliverTx` with the
   block gas meter) below app version 10, phased from 10 on.
 - **Decoder:** a per-version interface registry and schema (v9 has no
@@ -124,15 +137,17 @@ which binary the multiplexer runs). No separate v9 binary or process.
   branches at each difference listed above, each citing the v9 source.
 - **Begin/end blockers and genesis order:** v9 lists without fibre/valaddr.
 
-Gating on the app version (rather than on height or chain ID) matches Go
-exactly: blocks at app version 9 are executed by v9.0.8 code no matter
-which binary drives them.
+The signal path still selects behavior from the consensus app version. The
+governance path instead matches Go's executable switch: disk input is trusted
+only when it names the exact committed next-height plan, and the resulting
+node-local identity survives plan clearing and later restarts. A post-upgrade
+snapshot infers v10 execution from the committed fibre and valaddr stores.
 
 ## Implementation
 
 | Difference | Where |
 |---|---|
-| store set, store loader at the upgrade, v10 handler's `RunMigrations` adding fibre / valaddr from default genesis | `app` (`stores::ADDED_IN_V10`, `App::mount_upgrade_stores`, `upgrades::run_migrations`) |
+| execution identity, authenticated store loader, snapshot store selection, v10 handler's `RunMigrations` adding fibre / valaddr from default genesis | `app` (`App::configure_execution_version`, `stores::ADDED_IN_V10`, `App::mount_upgrade_stores`, `upgrades::run_migrations`), `snapshots` |
 | begin / end blockers, init-genesis order, version map | `app` (`stores::exists_at`) |
 | sequential `deliverTx` + block gas meter | `app::execute_txs_sequential` (`tx::run_msgs_gated`) |
 | decoder (registry, `MsgForward` fields, rc4 BlobTx, IndexWrapper, empty tx) | `txdecode::decode_v9`, `unmarshal_blob_tx_v9`, `has_duplicate_tx_raw_field` |
@@ -150,8 +165,10 @@ which binary drives them.
 | zkism SP1 v5 (396-byte vkey, 260-byte proofs, 2 public inputs) | `x-zkism` (`groth16::sp1_verify_v5`; `ValidateBasic` reads `sdk::version`) |
 | signal delay (`arabica-11` instead of `corto-1`) | `x-signal` |
 
-Code without a context (`ValidateBasic`) reads the app version the app
-sets per ABCI call (`sdk::version`).
+Code without a context (`ValidateBasic`) reads the execution version the app
+sets per ABCI call (`sdk::version`). Context-aware compiled differences use
+the same execution identity; the few consensus-version decisions remain
+explicitly state-derived.
 
 Everything listed is ported. The last item (2026-10-16): the legacy
 amino codec of `TxDecodeAmino` / `TxEncodeAmino` runs over v9.0.8's type

@@ -454,10 +454,8 @@ fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
 /// Whether the app version is 9 (celestia-app v9.0.8's registry and schema
 /// for the gogoproto decoding of host messages).
 fn is_v9(ctx: &Context<'_>) -> bool {
-    ctx.consensus_params
-        .version
-        .as_ref()
-        .is_some_and(|v| v.app != 0 && v.app < 10)
+    let version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    sdk::version::is_v9(sdk::version::executing(version))
 }
 
 /// Keeper `OnRecvPacket`: the `TxMsgData` result bytes.

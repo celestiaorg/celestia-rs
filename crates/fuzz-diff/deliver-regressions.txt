@@ -186,3 +186,7 @@ v9-authz-feegrant 80 0 17375 DELIVER_UPGRADE_HALT_REQUIRE=1
 # commit the signed send at H and leave no applied marker or upgrade-info file.
 authz-feegrant 80 0 17376 DELIVER_UPGRADE_SKIP_REQUIRE=1
 v9-authz-feegrant 80 0 17376 DELIVER_UPGRADE_SKIP_REQUIRE=1
+# Governance schedules canonical v10 while Version.App remains 9. Both apps
+# must halt at H, restart persistently under v10 semantics, apply the handler,
+# restart again and commit a signed H+1 recovery without changing Info version.
+v9-authz-feegrant 82 0 17377 DELIVER_UPGRADE_RESTART_REQUIRE=1 GO_APPD_NEXT=v10

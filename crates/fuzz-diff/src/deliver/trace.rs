@@ -40,6 +40,19 @@ impl Traced {
         Ok(Self { app, trace })
     }
 
+    /// Drops the current persistent app before reopening the same database,
+    /// while preserving the response trace across the process boundary.
+    pub fn reopen(
+        &mut self,
+        home: impl AsRef<std::path::Path>,
+        options: app::AppOptions,
+    ) -> anyhow::Result<()> {
+        let old = std::mem::replace(&mut self.app, app::App::new());
+        drop(old);
+        self.app = app::App::open_with(home, options).map_err(|e| anyhow::anyhow!(e.log))?;
+        Ok(())
+    }
+
     fn rec<T: prost::Message, E: std::fmt::Display>(&mut self, tag: u8, r: &Result<T, E>) {
         if let Some(t) = &mut self.trace {
             t.hash.update(&[tag]);

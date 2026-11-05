@@ -64,10 +64,19 @@ pub struct App {
     finalize_header: Option<Header>,
     last_commit_hash: Vec<u8>,
     last_height: i64,
+    /// Celestia-app release whose compiled semantics this process executes.
+    /// Usually this follows the committed app version; a governance upgrade
+    /// can activate v10 while the committed consensus value remains 9.
+    execution_version: Option<u64>,
+    /// Go `UpgradeStoreLoader` height read from an authenticated v10 plan.
+    upgrade_store_height: Option<i64>,
     /// Node-local `x/upgrade` keeper state.
     upgrade: x_upgrade::NodeState,
     /// State-sync snapshots (storage-backed apps only).
     snapshots: Option<snapshots::Manager>,
+    /// Whether the active restore may omit stores added by the v10
+    /// executable while retaining consensus app version 9.
+    snapshot_optional_v10_stores: bool,
     /// Header of the check state (`setState(execModeCheck, ...)` at
     /// InitChain and Commit).
     check_header: Header,
@@ -153,6 +162,10 @@ pub fn dump_upgrade_info(
 
 /// Metadata key of the chain ID in the state database.
 const CHAIN_ID_KEY: &[u8] = b"chain_id";
+/// Node-local activation of v10 semantics after a governance/cosmovisor
+/// switch. Multistore metadata is persisted beside, but excluded from, the
+/// application hash.
+const EXECUTION_VERSION_KEY: &[u8] = b"celestia_rs_execution_version";
 
 /// Options of a storage-backed [`App`] ([`App::open_with`]).
 #[derive(Debug, Clone, Default)]
@@ -245,8 +258,11 @@ impl App {
             finalize_header: None,
             last_commit_hash: sdk_empty_hash(),
             last_height: 0,
+            execution_version: None,
+            upgrade_store_height: None,
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
+            snapshot_optional_v10_stores: false,
             check_header: Header::default(),
             switch_on_commit: false,
             node_min_gas_price: None,
@@ -355,7 +371,6 @@ impl App {
         }
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
-        app.mount_upgrade_stores()?;
         if app.chain_id.is_empty()
             && let Some(chain_id) = &options.chain_id
         {
@@ -365,6 +380,8 @@ impl App {
                 .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
         }
         app.set_node_options(options.node.clone());
+        app.configure_execution_version()?;
+        app.mount_upgrade_stores()?;
         Ok(app)
     }
 
@@ -387,6 +404,84 @@ impl App {
         }
         self.ms.reset_check();
         self.check_header = self.init_check_header();
+        Ok(())
+    }
+
+    /// Selects the executable release and authenticates Go's v10 store
+    /// loader input. The disk file alone is not a durable binary identity:
+    /// its plan must be the exact plan committed for the next height before
+    /// v10 activation is recorded in node-local multistore metadata.
+    fn configure_execution_version(&mut self) -> Result<()> {
+        let recorded = self
+            .ms
+            .root()
+            .get_metadata(EXECUTION_VERSION_KEY)
+            .map_err(store_err)?;
+        if let Some(bytes) = recorded {
+            let bytes: [u8; 8] = bytes.try_into().map_err(|_| {
+                sdk::error::sdk::logic("invalid node-local execution version metadata")
+            })?;
+            let version = u64::from_be_bytes(bytes);
+            if version != upgrades::APP_VERSION {
+                return Err(sdk::error::sdk::logic(format!(
+                    "unsupported node-local execution version {version}"
+                )));
+            }
+            self.execution_version = Some(version);
+        } else if self.ms.root().last_commit_info().is_some_and(|info| {
+            stores::ADDED_IN_V10
+                .iter()
+                .all(|name| info.store_info(name).is_some())
+        }) {
+            // A restored post-governance state may not carry node-local
+            // metadata, but the two v10-only committed stores prove that its
+            // executable semantics have crossed the boundary.
+            self.execution_version = Some(upgrades::APP_VERSION);
+        }
+
+        let Some(home) = self.node.home.as_deref() else {
+            return Ok(());
+        };
+        let path = home.join("data/upgrade-info.json");
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                return Err(sdk::error::sdk::logic(format!(
+                    "unable to read upgrade info from filesystem: {e}"
+                )));
+            }
+        };
+        let disk: celestia_proto::cosmos::upgrade::v1beta1::Plan = serde_json::from_slice(&bytes)
+            .map_err(|e| {
+            sdk::error::sdk::logic(format!("unable to decode upgrade info: {e}"))
+        })?;
+        if disk.name != "v10" {
+            return Ok(());
+        }
+
+        let next_height = self.last_height.saturating_add(1);
+        let header = self.init_check_header();
+        let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+        let committed = x_upgrade::get_upgrade_plan(&mut ctx)?;
+        drop(ctx);
+        let exact_next = disk.height == next_height && committed.as_ref() == Some(&disk);
+        if exact_next {
+            if self.execution_version.is_none() && stores::is_v9(self.app_version()) {
+                self.execution_version = Some(upgrades::APP_VERSION);
+                self.ms.root_mut().set_metadata(
+                    EXECUTION_VERSION_KEY,
+                    upgrades::APP_VERSION.to_be_bytes().to_vec(),
+                );
+            }
+            if !self.node.unsafe_skip_upgrades.contains(&disk.height) {
+                self.upgrade_store_height = Some(disk.height);
+            }
+        } else if self.execution_version.is_none() && stores::is_v9(self.app_version()) {
+            return Err(sdk::error::sdk::logic(format!(
+                "v10 upgrade info does not match the committed plan at next height {next_height}"
+            )));
+        }
         Ok(())
     }
 
@@ -454,6 +549,13 @@ impl App {
             .and_then(|b| <ConsensusParams as prost::Message>::decode(b.as_slice()).ok())
             .and_then(|cp| cp.version)
             .map_or(INITIAL_APP_VERSION, |v| v.app)
+    }
+
+    /// The celestia-app release whose compiled behavior handles this ABCI
+    /// call. This is distinct from [`Self::app_version`] after a governance
+    /// upgrade because the SDK upgrade handler does not update Version.App.
+    fn execution_version(&self) -> u64 {
+        self.execution_version.unwrap_or_else(|| self.app_version())
     }
 
     /// `InitChain`.
@@ -554,9 +656,12 @@ impl App {
             app_hash: self.last_commit_hash.clone(),
             next_validators_hash: req.next_validators_hash.clone(),
         };
+        let configured_execution_version = self.execution_version;
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
         ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
-        sdk::version::set_app_version(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+        let consensus_app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        let execution_version = configured_execution_version.unwrap_or(consensus_app_version);
+        sdk::version::set_app_version(execution_version);
         ctx.vote_infos = req
             .decided_last_commit
             .as_ref()
@@ -566,7 +671,7 @@ impl App {
 
         let mut params_changed = false;
         for module in modules::PRE_BLOCKERS {
-            match modules::pre_block(&mut ctx, module, &mut self.upgrade) {
+            match modules::pre_block(&mut ctx, module, execution_version, &mut self.upgrade) {
                 Ok(changed) => params_changed |= changed,
                 Err(e) => {
                     if is_upgrade_needed(&e.log) {
@@ -596,7 +701,7 @@ impl App {
                 a.index = false;
             }
         }
-        let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        let app_version = execution_version;
         for module in modules::BEGIN_BLOCKERS {
             if stores::exists_at(module, app_version) {
                 modules::begin_block(&mut ctx, module)?;
@@ -633,7 +738,7 @@ impl App {
         self.switch_on_commit = cp
             .as_ref()
             .and_then(|c| c.version.as_ref())
-            .is_some_and(|v| v.app != app_version);
+            .is_some_and(|v| v.app != consensus_app_version);
 
         self.ms.flush()?;
         let app_hash = self.ms.working_hash()?.to_vec();
@@ -701,13 +806,16 @@ impl App {
     }
 
     /// The v10 store loader (`UpgradeStoreLoader(H+1, Added: fibre,
-    /// valaddr)`): once the committed app version is 10 or more, the stores
-    /// v9 lacks are mounted empty with their first version at the next
-    /// height. In Go the multiplexer opens the v10 app right after the
-    /// commit that raised the app version, and that app's loader adds them.
+    /// valaddr)`). The signal path follows the committed app version; a
+    /// governance/cosmovisor restart uses the authenticated disk plan's exact
+    /// height while consensus Version.App may remain 9.
     fn mount_upgrade_stores(&mut self) -> Result<()> {
-        let version = self.app_version();
-        if stores::is_v9(version) || version == INITIAL_APP_VERSION {
+        let consensus_version = self.app_version();
+        let next_height = self.last_height.saturating_add(1);
+        let signal_switch =
+            !stores::is_v9(consensus_version) && consensus_version != INITIAL_APP_VERSION;
+        let governance_switch = self.upgrade_store_height == Some(next_height);
+        if !signal_switch && !governance_switch {
             return Ok(());
         }
         for name in stores::ADDED_IN_V10 {
@@ -826,6 +934,7 @@ impl App {
                 .and_then(|snapshot| manager.begin_restore(snapshot))
                 {
                     Ok(()) => {
+                        self.snapshot_optional_v10_stores = stores::is_v9(req.app_version);
                         // Only accepted offers select stores. A later offer
                         // may replace an abandoned restore of another version.
                         if self.last_height == 0 {
@@ -839,6 +948,10 @@ impl App {
                                     Ok(())
                                 };
                                 if let Err(e) = result {
+                                    self.snapshot_optional_v10_stores = false;
+                                    if let Err(cleanup) = manager.abort_restore() {
+                                        tracing::error!(error = %cleanup, "failed to abort snapshot restore");
+                                    }
                                     tracing::error!(store = name, error = %e, "failed to select snapshot stores");
                                     return abci::ResponseOfferSnapshot {
                                         result: R::Abort as i32,
@@ -879,12 +992,26 @@ impl App {
         let Some(manager) = &mut self.snapshots else {
             return abort();
         };
-        match manager.restore_chunk(self.ms.root_mut(), &req.chunk) {
+        let optional: &[&str] = if self.snapshot_optional_v10_stores {
+            stores::ADDED_IN_V10
+        } else {
+            &[]
+        };
+        match manager.restore_chunk_with_optional_iavl(self.ms.root_mut(), &req.chunk, optional) {
             Ok(done) => {
                 if let Some(id) = done {
+                    self.snapshot_optional_v10_stores = false;
                     tracing::info!(height = id.version, "restored state-sync snapshot");
                     if let Err(e) = self.load_committed_state() {
                         tracing::error!(error = %e, "failed to load restored state");
+                        return abort();
+                    }
+                    if let Err(e) = self.configure_execution_version() {
+                        tracing::error!(error = %e, "failed to select restored execution version");
+                        return abort();
+                    }
+                    if let Err(e) = self.mount_upgrade_stores() {
+                        tracing::error!(error = %e, "failed to mount restored upgrade stores");
                         return abort();
                     }
                 }
@@ -899,6 +1026,10 @@ impl App {
                 reject_senders: vec![req.sender],
             },
             Err(e) => {
+                self.snapshot_optional_v10_stores = false;
+                if let Err(cleanup) = manager.abort_restore() {
+                    tracing::error!(error = %cleanup, "failed to abort snapshot restore");
+                }
                 tracing::error!(error = %e, "failed to restore snapshot");
                 abort()
             }
@@ -1386,6 +1517,242 @@ mod abci_dispatch_tests {
 mod node_options_tests {
     use super::*;
 
+    fn commit_v9_plan(home: &Path, plan: &celestia_proto::cosmos::upgrade::v1beta1::Plan) {
+        let mut app = App::open_with(home, AppOptions::default()).expect("open app");
+        for name in stores::ADDED_IN_V10 {
+            app.ms.unmount_iavl(name).expect("unmount v10 store");
+        }
+        let header = Header {
+            height: 1,
+            ..Header::default()
+        };
+        let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+        x_consensus::set_params(
+            &mut ctx,
+            &ConsensusParams {
+                version: Some(VersionParams { app: 9 }),
+                ..Default::default()
+            },
+        )
+        .expect("set v9 consensus version");
+        x_upgrade::schedule_upgrade(&mut ctx, plan).expect("schedule plan");
+        drop(ctx);
+        app.ms.flush().expect("flush v9 plan");
+        app.ms.commit().expect("commit v9 plan");
+    }
+
+    fn v10_options(home: &Path) -> AppOptions {
+        AppOptions {
+            node: NodeOptions {
+                home: Some(home.to_owned()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn authenticated_governance_upgrade_activates_and_persists_v10_execution() {
+        let home = tempfile::tempdir().expect("temporary app home");
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v10".into(),
+            height: 2,
+            info: "governance upgrade".into(),
+            ..Default::default()
+        };
+        commit_v9_plan(home.path(), &plan);
+        dump_upgrade_info(home.path(), plan.height, &plan).expect("write upgrade info");
+
+        let mut activated =
+            App::open_with(home.path(), v10_options(home.path())).expect("activate v10");
+        assert_eq!(activated.execution_version(), upgrades::APP_VERSION);
+        assert_eq!(activated.info().app_version, 9);
+        for name in stores::ADDED_IN_V10 {
+            assert!(activated.ms.is_mounted(name), "{name} must be mounted");
+        }
+        assert_eq!(
+            activated
+                .ms
+                .root()
+                .get_metadata(EXECUTION_VERSION_KEY)
+                .expect("read execution metadata"),
+            Some(upgrades::APP_VERSION.to_be_bytes().to_vec())
+        );
+
+        let mut ctx = Context::new(
+            &mut activated.ms,
+            Header {
+                height: 2,
+                ..Default::default()
+            },
+            ExecMode::Finalize,
+        );
+        x_upgrade::clear_upgrade_plan(&mut ctx).expect("clear applied plan");
+        drop(ctx);
+        activated.ms.flush().expect("flush cleared plan");
+        activated.ms.commit().expect("persist activation");
+        drop(activated);
+        std::fs::remove_file(home.path().join("data/upgrade-info.json"))
+            .expect("remove consumed upgrade info");
+
+        let reopened = App::open_with(home.path(), v10_options(home.path()))
+            .expect("reopen activated app without plan");
+        assert_eq!(reopened.execution_version(), upgrades::APP_VERSION);
+        assert_eq!(reopened.info().app_version, 9);
+        for name in stores::ADDED_IN_V10 {
+            assert!(reopened.ms.is_mounted(name), "{name} must survive restart");
+        }
+    }
+
+    #[test]
+    fn governance_upgrade_info_must_match_the_committed_next_plan() {
+        let home = tempfile::tempdir().expect("temporary app home");
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v10".into(),
+            height: 2,
+            ..Default::default()
+        };
+        commit_v9_plan(home.path(), &plan);
+        dump_upgrade_info(home.path(), 3, &plan).expect("write mismatched upgrade info");
+
+        let Err(err) = App::open_with(home.path(), v10_options(home.path())) else {
+            panic!("mismatched upgrade info must fail closed");
+        };
+        assert!(
+            err.log
+                .contains("v10 upgrade info does not match the committed plan at next height 2"),
+            "{}",
+            err.log
+        );
+    }
+
+    #[test]
+    fn unsupported_execution_metadata_fails_closed() {
+        let home = tempfile::tempdir().expect("temporary app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        app.ms
+            .root_mut()
+            .set_metadata(EXECUTION_VERSION_KEY, 11u64.to_be_bytes().to_vec());
+        app.ms.commit().expect("commit invalid metadata fixture");
+        drop(app);
+        let Err(err) = App::open_with(home.path(), AppOptions::default()) else {
+            panic!("unsupported execution metadata must fail closed");
+        };
+        assert_eq!(
+            err.log,
+            "unsupported node-local execution version 11: internal logic error"
+        );
+    }
+
+    #[test]
+    fn pre_upgrade_snapshot_restore_runs_authenticated_store_loader() {
+        let source_home = tempfile::tempdir().expect("source app home");
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v10".into(),
+            height: 2,
+            info: "snapshot boundary".into(),
+            ..Default::default()
+        };
+        commit_v9_plan(source_home.path(), &plan);
+        let source =
+            App::open_with(source_home.path(), AppOptions::default()).expect("open source");
+        let snapshot_dir = tempfile::tempdir().expect("source snapshots");
+        let source_manager =
+            snapshots::Manager::new(snapshot_dir.path(), snapshots::SnapshotOptions::default())
+                .expect("source snapshot manager");
+        let snapshot = source_manager
+            .create(source.ms.root(), 1)
+            .expect("create U-1 snapshot");
+
+        let destination_home = tempfile::tempdir().expect("destination app home");
+        let mut destination = App::open_with(
+            destination_home.path(),
+            v10_options(destination_home.path()),
+        )
+        .expect("open empty destination");
+        dump_upgrade_info(destination_home.path(), plan.height, &plan)
+            .expect("write matching upgrade info");
+        let offer = destination.offer_snapshot(abci::RequestOfferSnapshot {
+            snapshot: Some(abci::Snapshot {
+                height: snapshot.height,
+                format: snapshot.format,
+                chunks: snapshot.chunks,
+                hash: snapshot.hash.clone(),
+                metadata: snapshot.metadata_bytes(),
+            }),
+            app_hash: Vec::new(),
+            app_version: 9,
+        });
+        assert_eq!(
+            offer.result,
+            abci::response_offer_snapshot::Result::Accept as i32
+        );
+        for index in 0..snapshot.chunks {
+            let chunk = source_manager
+                .load_chunk(snapshot.height, snapshot.format, index)
+                .expect("load snapshot chunk")
+                .expect("snapshot chunk exists");
+            let applied = destination.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+                index,
+                chunk,
+                sender: String::new(),
+            });
+            assert_eq!(
+                applied.result,
+                abci::response_apply_snapshot_chunk::Result::Accept as i32
+            );
+        }
+        assert_eq!(destination.last_height, 1);
+        assert_eq!(destination.execution_version(), upgrades::APP_VERSION);
+        assert_eq!(destination.info().app_version, 9);
+        for name in stores::ADDED_IN_V10 {
+            assert!(destination.ms.is_mounted(name), "{name} must be mounted");
+        }
+    }
+
+    #[test]
+    fn terminal_snapshot_error_abandons_restore() {
+        let home = tempfile::tempdir().expect("destination app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        let chunk = b"authenticated chunk".to_vec();
+        let chunk_hash = hash::sha256(&chunk).to_vec();
+        let snapshot = snapshots::Snapshot {
+            height: 1,
+            format: snapshots::CURRENT_FORMAT,
+            chunks: 1,
+            hash: chunk_hash.clone(),
+            chunk_hashes: vec![chunk_hash],
+        };
+        let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+            snapshot: Some(abci::Snapshot {
+                height: snapshot.height,
+                format: snapshot.format,
+                chunks: snapshot.chunks,
+                hash: snapshot.hash.clone(),
+                metadata: snapshot.metadata_bytes(),
+            }),
+            app_version: 9,
+            ..Default::default()
+        });
+        assert_eq!(
+            offered.result,
+            abci::response_offer_snapshot::Result::Accept as i32
+        );
+
+        let restore_dir = snapshot_dir(home.path()).join("restore");
+        std::fs::remove_dir_all(&restore_dir).expect("induce terminal restore I/O error");
+        let applied = app.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+            chunk,
+            ..Default::default()
+        });
+        assert_eq!(
+            applied.result,
+            abci::response_apply_snapshot_chunk::Result::Abort as i32
+        );
+        assert!(!app.snapshots.as_ref().expect("manager").restoring());
+        assert!(!restore_dir.exists());
+    }
+
     #[test]
     fn persistent_reopen_applies_upgrade_skip_to_pre_block() {
         let home = tempfile::tempdir().expect("temporary app home");
@@ -1404,6 +1771,7 @@ mod node_options_tests {
             let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
             x_upgrade::schedule_upgrade(&mut ctx, &plan).expect("schedule plan");
         }
+        app.ms.flush().expect("flush scheduled plan");
         app.ms.commit().expect("commit scheduled plan");
         drop(app);
 
@@ -1415,13 +1783,20 @@ mod node_options_tests {
             ..Default::default()
         };
         let mut reopened = App::open_with(home.path(), options).expect("reopen app");
+        let execution_version = reopened.execution_version();
         let header = Header {
             height: 2,
             ..Header::default()
         };
         let mut ctx = Context::new(&mut reopened.ms, header, ExecMode::Finalize);
         assert!(
-            !modules::pre_block(&mut ctx, "upgrade", &mut reopened.upgrade).expect("skip due plan")
+            !modules::pre_block(
+                &mut ctx,
+                "upgrade",
+                execution_version,
+                &mut reopened.upgrade,
+            )
+            .expect("skip due plan")
         );
         assert_eq!(
             x_upgrade::get_upgrade_plan(&mut ctx).expect("query current plan"),

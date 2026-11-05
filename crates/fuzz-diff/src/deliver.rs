@@ -251,6 +251,11 @@ pub struct Stats {
     /// Due-plan skips that cleared the plan and committed the controlled send
     /// without marking the upgrade applied.
     pub upgrade_skip_completed: u64,
+    /// Whether the run requires a persistent governance v9-to-v10 restart.
+    pub upgrade_restart_required: Option<()>,
+    /// Governance upgrades that halted v9, restarted both apps with v10
+    /// semantics, applied and survived a second restart plus recovery block.
+    pub upgrade_restart_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1761,6 +1766,30 @@ impl Stats {
                         == Some(1),
                 "incomplete DELIVER_UPGRADE_SKIP_REQUIRE coverage: completed={} executed={:?}",
                 self.upgrade_skip_completed,
+                self.gov_executed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require the persistent v9 halt, v10 handler retry, second restart and
+    /// recovery block after the exact governance setup.
+    pub fn require_upgrade_restart_coverage(&self) -> anyhow::Result<()> {
+        if self.upgrade_restart_required.is_some() {
+            anyhow::ensure!(
+                self.upgrade_restart_completed == 1
+                    && self
+                        .gov_executed
+                        .get("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade")
+                        .copied()
+                        == Some(1)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.circuit.v1.MsgResetCircuitBreaker")
+                        .copied()
+                        == Some(1),
+                "incomplete DELIVER_UPGRADE_RESTART_REQUIRE coverage: completed={} executed={:?}",
+                self.upgrade_restart_completed,
                 self.gov_executed
             );
         }
@@ -4483,8 +4512,11 @@ pub fn run(
     let upgrade_plan_required = std::env::var_os("DELIVER_UPGRADE_PLAN_REQUIRE").is_some();
     let upgrade_halt_required = std::env::var_os("DELIVER_UPGRADE_HALT_REQUIRE").is_some();
     let upgrade_skip_required = std::env::var_os("DELIVER_UPGRADE_SKIP_REQUIRE").is_some();
-    let governed_upgrade_required =
-        upgrade_plan_required || upgrade_halt_required || upgrade_skip_required;
+    let upgrade_restart_required = std::env::var_os("DELIVER_UPGRADE_RESTART_REQUIRE").is_some();
+    let governed_upgrade_required = upgrade_plan_required
+        || upgrade_halt_required
+        || upgrade_skip_required
+        || upgrade_restart_required;
     let govpass = govpass_env || governed_upgrade_required;
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
@@ -4500,6 +4532,7 @@ pub fn run(
             || (!govpass_env
                 && !upgrade_halt_required
                 && !upgrade_skip_required
+                && !upgrade_restart_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4519,6 +4552,7 @@ pub fn run(
             || (!govpass_env
                 && !upgrade_plan_required
                 && !upgrade_skip_required
+                && !upgrade_restart_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4538,6 +4572,7 @@ pub fn run(
             || (!govpass_env
                 && !upgrade_plan_required
                 && !upgrade_halt_required
+                && !upgrade_restart_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4551,6 +4586,26 @@ pub fn run(
                 && blocks == 80
                 && per_block == 0),
         "DELIVER_UPGRADE_SKIP_REQUIRE needs exactly 80 blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !upgrade_restart_required
+            || (!govpass_env
+                && !upgrade_plan_required
+                && !upgrade_halt_required
+                && !upgrade_skip_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !hl_on
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 82
+                && per_block == 0),
+        "DELIVER_UPGRADE_RESTART_REQUIRE needs exactly 82 blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !direct_aux_required
@@ -4901,9 +4956,9 @@ pub fn run(
         conns: BTreeMap::new(),
     };
     let mut rust_app = app::App::new();
-    if upgrade_halt_required || upgrade_skip_required {
+    if upgrade_halt_required || upgrade_skip_required || upgrade_restart_required {
         let rust_home = std::env::var_os("DELIVER_UPGRADE_RUST_HOME")
-            .context("upgrade halt/skip fixture needs DELIVER_UPGRADE_RUST_HOME")?;
+            .context("upgrade halt/skip/restart fixture needs DELIVER_UPGRADE_RUST_HOME")?;
         let unsafe_skip_upgrades = if upgrade_skip_required {
             vec![
                 std::env::var("DELIVER_UPGRADE_SKIP_HEIGHT")
@@ -4914,11 +4969,23 @@ pub fn run(
         } else {
             Vec::new()
         };
-        rust_app.set_node_options(app::NodeOptions {
-            home: Some(rust_home.into()),
+        let node = app::NodeOptions {
+            home: Some(rust_home.clone().into()),
             unsafe_skip_upgrades,
             ..Default::default()
-        });
+        };
+        if upgrade_restart_required {
+            rust_app = app::App::open_with(
+                std::path::PathBuf::from(rust_home),
+                app::AppOptions {
+                    node,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| anyhow::anyhow!(e.log))?;
+        } else {
+            rust_app.set_node_options(node);
+        }
     }
     let mut rust = trace::Traced::new(rust_app)?;
     let mut stats = Stats {
@@ -4937,6 +5004,7 @@ pub fn run(
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
         upgrade_skip_required: upgrade_skip_required.then_some(()),
+        upgrade_restart_required: upgrade_restart_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -5312,6 +5380,8 @@ pub fn run(
         ))
     } else if upgrade_skip_required {
         Some(upgrade_plan::Fixture::new_skip(height, app_version))
+    } else if upgrade_restart_required {
+        Some(upgrade_plan::Fixture::new_restart(height, app_version))
     } else {
         upgrade_plan_required.then(|| upgrade_plan::Fixture::new(height, app_version))
     };
@@ -5326,6 +5396,10 @@ pub fn run(
             height + i64::try_from(blocks).unwrap_or(i64::MAX)
         );
     }
+    anyhow::ensure!(
+        !upgrade_restart_required || app_version == 9,
+        "DELIVER_UPGRADE_RESTART_REQUIRE needs a v9 scenario, got app version {app_version}"
+    );
     if upgrade_plan_fixture.is_some() {
         upgrade_plan::Fixture::verify_initial(&mut go, cons_conn, &mut rust)?;
     }
@@ -6438,25 +6512,25 @@ pub fn run(
         let (g, o) = match (g, o) {
             (response::Value::FinalizeBlock(g), Ok(o)) => (g, o),
             (response::Value::Exception(e), Err(rust_error)) => {
-                if upgrade_halt_required {
+                if upgrade_halt_required || upgrade_restart_required {
                     let fixture = upgrade_plan_fixture
                         .as_ref()
-                        .context("upgrade-halt fixture was not initialized")?;
+                        .context("upgrade halt/restart fixture was not initialized")?;
                     let expected_height = fixture
                         .halt_height()
-                        .context("upgrade-halt fixture was not ready at a paired halt")?;
+                        .context("upgrade fixture was not ready at a paired halt")?;
                     anyhow::ensure!(
                         height == expected_height,
-                        "upgrade-halt paired error occurred at {height}, expected {expected_height}"
+                        "upgrade paired error occurred at {height}, expected {expected_height}"
                     );
                     let go_home = std::path::PathBuf::from(
                         std::env::var_os("DELIVER_UPGRADE_GO_HOME").context(
-                            "DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_GO_HOME",
+                            "upgrade halt/restart fixture needs DELIVER_UPGRADE_GO_HOME",
                         )?,
                     );
                     let rust_home = std::path::PathBuf::from(
                         std::env::var_os("DELIVER_UPGRADE_RUST_HOME").context(
-                            "DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_RUST_HOME",
+                            "upgrade halt/restart fixture needs DELIVER_UPGRADE_RUST_HOME",
                         )?,
                     );
                     fixture.require_missing_handler_halt(
@@ -6471,13 +6545,49 @@ pub fn run(
                             rust_home: &rust_home,
                         },
                     )?;
-                    stats.upgrade_halt_completed += 1;
+                    if upgrade_halt_required {
+                        stats.upgrade_halt_completed += 1;
+                        return Ok(stats);
+                    }
+
+                    upgrade::switch_go(&mut go, 9, 10)?;
+                    rust.reopen(
+                        &rust_home,
+                        app::AppOptions {
+                            node: app::NodeOptions {
+                                home: Some(rust_home.clone()),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                    )?;
+                    upgrade_plan_fixture
+                        .as_mut()
+                        .context("upgrade restart fixture disappeared")?
+                        .mark_execution_restart()?;
+                    app_version = 10;
+                    gn.app_version = 10;
+                    gn.types = types_for(10, false);
+                    let retry_go = go_value(go.call_or_exception(
+                        cons_conn,
+                        &Request {
+                            value: Some(request::Value::FinalizeBlock(fb.clone())),
+                        },
+                    )?)?;
+                    let retry_rust = rust.finalize_block(fb.clone());
+                    match (retry_go, retry_rust) {
+                        (response::Value::FinalizeBlock(g), Ok(o)) => (g, o),
+                        (go, rust) => anyhow::bail!(
+                            "governance upgrade retry at {height} failed: Go {go:?}, Rust {:?}",
+                            rust.map(|_| "ok").map_err(|err| err.to_string())
+                        ),
+                    }
+                } else {
+                    stats
+                        .log_mismatches
+                        .push(format!("{scenario} h={height}: both halted: {}", e.error));
                     return Ok(stats);
                 }
-                stats
-                    .log_mismatches
-                    .push(format!("{scenario} h={height}: both halted: {}", e.error));
-                return Ok(stats);
             }
             (g, o) => {
                 stats.mismatches.push(format!(
@@ -6765,9 +6875,32 @@ pub fn run(
         {
             if fixture.is_skip() {
                 stats.upgrade_skip_completed += 1;
+            } else if fixture.is_restart() {
+                stats.upgrade_restart_completed += 1;
             } else {
                 stats.upgrade_plan_completed += 1;
             }
+        }
+        if let Some(fixture) = upgrade_plan_fixture.as_mut()
+            && fixture.needs_post_commit_restart(height)
+        {
+            upgrade::switch_go(&mut go, 10, 10)?;
+            let rust_home = std::path::PathBuf::from(
+                std::env::var_os("DELIVER_UPGRADE_RUST_HOME")
+                    .context("upgrade restart fixture needs DELIVER_UPGRADE_RUST_HOME")?,
+            );
+            rust.reopen(
+                &rust_home,
+                app::AppOptions {
+                    node: app::NodeOptions {
+                        home: Some(rust_home.clone()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )?;
+            fixture.mark_post_commit_restart()?;
+            fixture.require_post_commit_restart(&mut go, cons_conn, &mut rust)?;
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -6809,6 +6942,10 @@ pub fn run(
             .consensus_param_updates
             .as_ref()
             .and_then(|c| c.version.as_ref())
+            // A governance/cosmovisor switch changes the executable while
+            // Version.App remains 9. Its migration response repeats that
+            // consensus value; it must not switch the v10 process back.
+            && !upgrade_restart_required
             && v.app != app_version
         {
             upgrade::switch_go(&mut go, app_version, v.app)?;
@@ -11911,6 +12048,37 @@ mod tests {
         incomplete.upgrade_skip_completed = 0;
         assert!(incomplete.require_upgrade_skip_coverage().is_err());
         assert!(Stats::default().require_upgrade_skip_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_upgrade_restart_needs_exact_governance_and_recovery_credit() {
+        let complete = || {
+            let mut stats = Stats {
+                upgrade_restart_required: Some(()),
+                upgrade_restart_completed: 1,
+                ..Stats::default()
+            };
+            stats
+                .gov_executed
+                .insert("/cosmos.circuit.v1.MsgResetCircuitBreaker".into(), 1);
+            stats
+                .gov_executed
+                .insert("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade".into(), 1);
+            stats
+        };
+        assert!(complete().require_upgrade_restart_coverage().is_ok());
+        for url in [
+            "/cosmos.circuit.v1.MsgResetCircuitBreaker",
+            "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+        ] {
+            let mut incomplete = complete();
+            incomplete.gov_executed.remove(url);
+            assert!(incomplete.require_upgrade_restart_coverage().is_err());
+        }
+        let mut incomplete = complete();
+        incomplete.upgrade_restart_completed = 0;
+        assert!(incomplete.require_upgrade_restart_coverage().is_err());
+        assert!(Stats::default().require_upgrade_restart_coverage().is_ok());
     }
 
     #[test]

@@ -15,6 +15,8 @@ const HALT_PLAN: &str = "codex-missing-handler";
 const HALT_INFO: &str = "controlled missing-handler halt";
 const SKIP_PLAN: &str = "codex-skipped-handler";
 const SKIP_INFO: &str = "controlled operator skip";
+const RESTART_PLAN: &str = "v10";
+const RESTART_INFO: &str = "controlled governance v10 restart";
 const HALT_OFFSET: i64 = 80;
 const SOFTWARE_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade";
 const CANCEL_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgCancelUpgrade";
@@ -26,11 +28,12 @@ const PROPOSAL_STAGES: usize = SUCCESS_STAGES + FAILURE_STAGES;
 const RECOVERY_STAGE: usize = PROPOSAL_STAGES;
 const COMPLETE_STAGE: usize = RECOVERY_STAGE + 1;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Lifecycle,
     MissingHandler,
     Skip,
+    Restart,
 }
 
 pub(super) struct HaltObservation<'a> {
@@ -64,6 +67,7 @@ pub(super) struct Fixture {
     initial_app_version: u64,
     recovery_before: Option<(u128, u128, u64)>,
     pre_halt_info: Option<(i64, Vec<u8>)>,
+    execution_restarts: u64,
 }
 
 impl Fixture {
@@ -101,6 +105,7 @@ impl Fixture {
             initial_app_version: app_version,
             recovery_before: None,
             pre_halt_info: None,
+            execution_restarts: 0,
         }
     }
 
@@ -122,21 +127,34 @@ impl Fixture {
         fixture
     }
 
+    pub(super) fn new_restart(height: i64, app_version: u64) -> Self {
+        let mut fixture = Self::new(height, app_version);
+        fixture.mode = Mode::Restart;
+        fixture.plans[0].name = RESTART_PLAN.into();
+        fixture.plans[0].height = height + HALT_OFFSET;
+        fixture.plans[0].info = RESTART_INFO.into();
+        fixture
+    }
+
     pub(super) fn is_skip(&self) -> bool {
         self.mode == Mode::Skip
+    }
+
+    pub(super) fn is_restart(&self) -> bool {
+        self.mode == Mode::Restart
     }
 
     fn proposal_stages(&self) -> usize {
         match self.mode {
             Mode::Lifecycle => PROPOSAL_STAGES,
-            Mode::MissingHandler | Mode::Skip => 2,
+            Mode::MissingHandler | Mode::Skip | Mode::Restart => 2,
         }
     }
 
     fn success_stages(&self) -> usize {
         match self.mode {
             Mode::Lifecycle => SUCCESS_STAGES,
-            Mode::MissingHandler | Mode::Skip => 2,
+            Mode::MissingHandler | Mode::Skip | Mode::Restart => 2,
         }
     }
 
@@ -202,10 +220,12 @@ impl Fixture {
                 authority: GOV.into(),
                 msg_type_urls: vec![SOFTWARE_UPGRADE_URL.into(), CANCEL_UPGRADE_URL.into()],
             }),
-            (Mode::MissingHandler | Mode::Skip, 1) => Any::pack(&upgrade::MsgSoftwareUpgrade {
-                authority: GOV.into(),
-                plan: Some(self.plans[0].clone()),
-            }),
+            (Mode::MissingHandler | Mode::Skip | Mode::Restart, 1) => {
+                Any::pack(&upgrade::MsgSoftwareUpgrade {
+                    authority: GOV.into(),
+                    plan: Some(self.plans[0].clone()),
+                })
+            }
             (Mode::Lifecycle, 1 | 2) => Any::pack(&upgrade::MsgSoftwareUpgrade {
                 authority: GOV.into(),
                 plan: Some(self.plans[self.stage - 1].clone()),
@@ -226,6 +246,10 @@ impl Fixture {
         let ready = match self.mode {
             Mode::Lifecycle => self.stage == RECOVERY_STAGE,
             Mode::Skip => self.stage == 2 && height == self.plans[0].height,
+            // A freshly reopened BaseApp has a height-zero CheckTx context
+            // until it commits one block. Use the following block so the
+            // signed recovery is valid in both CheckTx and FinalizeBlock.
+            Mode::Restart => self.stage == 2 && height == self.plans[0].height + 2,
             Mode::MissingHandler => false,
         };
         ready && self.recovery_tx.is_none()
@@ -415,9 +439,14 @@ impl Fixture {
         app_version: u64,
         gn: &Gen,
     ) -> anyhow::Result<bool> {
+        let expected_execution = if self.mode == Mode::Restart && self.execution_restarts > 0 {
+            10
+        } else {
+            self.initial_app_version
+        };
         anyhow::ensure!(
-            app_version == self.initial_app_version,
-            "upgrade-plan fixture changed the executing app version"
+            app_version == expected_execution,
+            "upgrade-plan fixture executing version mismatch: expected {expected_execution}, got {app_version}"
         );
         if let Some(id) = self.active_proposal
             && !self.stored_verified[self.stage]
@@ -490,7 +519,7 @@ impl Fixture {
             Self::require_unapplied(go, conn, rust)?;
             self.stage += 1;
         }
-        if matches!(self.mode, Mode::MissingHandler | Mode::Skip)
+        if matches!(self.mode, Mode::MissingHandler | Mode::Skip | Mode::Restart)
             && self.stage == 2
             && rust.info().last_block_height == self.plans[0].height - 1
         {
@@ -530,8 +559,14 @@ impl Fixture {
         {
             self.require_skipped_commit(go, conn, rust, app_version)?;
         }
+        if self.mode == Mode::Restart
+            && self.stage == 2
+            && rust.info().last_block_height == self.plans[0].height
+        {
+            self.require_restarted_commit(go, conn, rust)?;
+        }
         if ((self.mode == Mode::Lifecycle && self.stage == RECOVERY_STAGE)
-            || (self.mode == Mode::Skip && self.stage == 2))
+            || (matches!(self.mode, Mode::Skip | Mode::Restart) && self.stage == 2))
             && let Some(tx) = self.recovery_tx.as_deref()
             && self.checked.contains(tx)
             && self.recovery_finalized
@@ -552,7 +587,7 @@ impl Fixture {
     }
 
     pub(super) fn require_complete(&self) -> anyhow::Result<()> {
-        if self.mode == Mode::Skip {
+        if matches!(self.mode, Mode::Skip | Mode::Restart) {
             anyhow::ensure!(
                 self.stage == COMPLETE_STAGE
                     && self.recovery_finalized
@@ -562,9 +597,12 @@ impl Fixture {
                     && self.votes[..2] == [(ACCOUNTS - 1) as u64; 2]
                     && self.passes[..2] == [1; 2]
                     && self.stored_verified[..2] == [true; 2]
-                    && self.expected_tally.is_some(),
-                "incomplete upgrade-skip lifecycle: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
+                    && self.expected_tally.is_some()
+                    && (self.mode != Mode::Restart || self.execution_restarts == 2),
+                "incomplete upgrade due-plan lifecycle: mode={:?} stage={} restarts={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
+                self.mode,
                 self.stage,
+                self.execution_restarts,
                 self.proposal_ids,
                 &self.submits[..2],
                 &self.deposits[..2],
@@ -612,7 +650,133 @@ impl Fixture {
     }
 
     pub(super) fn halt_height(&self) -> Option<i64> {
-        (self.mode == Mode::MissingHandler && self.stage == 2).then_some(self.plans[0].height)
+        (matches!(self.mode, Mode::MissingHandler | Mode::Restart) && self.stage == 2)
+            .then_some(self.plans[0].height)
+    }
+
+    pub(super) fn mark_execution_restart(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.mode == Mode::Restart && self.execution_restarts == 0,
+            "unexpected first governance-upgrade restart"
+        );
+        self.execution_restarts = 1;
+        Ok(())
+    }
+
+    pub(super) fn needs_post_commit_restart(&self, height: i64) -> bool {
+        self.mode == Mode::Restart && self.execution_restarts == 1 && height == self.plans[0].height
+    }
+
+    pub(super) fn mark_post_commit_restart(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.mode == Mode::Restart && self.execution_restarts == 1,
+            "unexpected second governance-upgrade restart"
+        );
+        self.execution_restarts = 2;
+        Ok(())
+    }
+
+    fn require_restarted_commit(
+        &self,
+        go: &mut GoApp,
+        conn: u32,
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        let height = self.plans[0].height;
+        anyhow::ensure!(
+            self.execution_restarts >= 1,
+            "v10 handler committed without the first persistent restart"
+        );
+        anyhow::ensure!(
+            current_plan(go, conn, rust)?.is_none(),
+            "v10 restart did not clear the due plan"
+        );
+        let applied: upgrade::QueryAppliedPlanResponse = query_both(
+            go,
+            conn,
+            rust,
+            "/cosmos.upgrade.v1beta1.Query/AppliedPlan",
+            &upgrade::QueryAppliedPlanRequest {
+                name: RESTART_PLAN.into(),
+            },
+        )?;
+        anyhow::ensure!(
+            applied.height == height,
+            "v10 restart applied height differed: expected {height}, got {}",
+            applied.height
+        );
+        let versions: upgrade::QueryModuleVersionsResponse = query_both(
+            go,
+            conn,
+            rust,
+            "/cosmos.upgrade.v1beta1.Query/ModuleVersions",
+            &upgrade::QueryModuleVersionsRequest::default(),
+        )?;
+        anyhow::ensure!(
+            !versions.module_versions.is_empty()
+                && ["fibre", "valaddr"].iter().all(|name| {
+                    versions
+                        .module_versions
+                        .iter()
+                        .any(|version| version.name == *name && version.version == 1)
+                }),
+            "v10 restart module version map was incomplete: {:?}",
+            versions.module_versions
+        );
+        for name in ["fibre", "valaddr"] {
+            anyhow::ensure!(
+                rust.multistore().is_mounted(name),
+                "v10 restart did not mount {name}"
+            );
+        }
+        let _: celestia_proto::celestia::fibre::v1::QueryParamsResponse = query_both(
+            go,
+            conn,
+            rust,
+            "/celestia.fibre.v1.Query/Params",
+            &celestia_proto::celestia::fibre::v1::QueryParamsRequest {},
+        )?;
+        let _: celestia_proto::celestia::valaddr::v1::QueryAllBondedFibreProvidersResponse =
+            query_both(
+                go,
+                conn,
+                rust,
+                "/celestia.valaddr.v1.Query/AllBondedFibreProviders",
+                &celestia_proto::celestia::valaddr::v1::QueryAllBondedFibreProvidersRequest {},
+            )?;
+        let (go_info, rust_info) = info_both(go, conn, rust)?;
+        anyhow::ensure!(
+            go_info.last_block_height == height
+                && rust_info.last_block_height == height
+                && go_info.app_version == self.initial_app_version
+                && rust_info.app_version == self.initial_app_version
+                && self.initial_app_version == 9
+                && !go_info.last_block_app_hash.is_empty()
+                && go_info.last_block_app_hash == rust_info.last_block_app_hash,
+            "v10 governance restart committed Info differed: Go {go_info:?}, Rust {rust_info:?}"
+        );
+        let pre = self
+            .pre_halt_info
+            .as_ref()
+            .context("v10 restart did not capture committed Info at H-1")?;
+        anyhow::ensure!(
+            pre.0 == height - 1 && !pre.1.is_empty(),
+            "v10 restart pre-height Info was invalid: {pre:?}"
+        );
+        Ok(())
+    }
+
+    pub(super) fn require_post_commit_restart(
+        &self,
+        go: &mut GoApp,
+        conn: u32,
+        rust: &mut app::App,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.execution_restarts == 2,
+            "post-commit restart was not recorded"
+        );
+        self.require_restarted_commit(go, conn, rust)
     }
 
     fn require_skipped_commit(
@@ -683,7 +847,7 @@ impl Fixture {
             rust_home,
         } = observation;
         anyhow::ensure!(
-            self.mode == Mode::MissingHandler
+            matches!(self.mode, Mode::MissingHandler | Mode::Restart)
                 && self.stage == 2
                 && self.proposal_ids.len() == 2
                 && self.submits[..2] == [1; 2]
@@ -692,7 +856,7 @@ impl Fixture {
                 && self.passes[..2] == [1; 2]
                 && self.stored_verified[..2] == [true; 2]
                 && self.expected_tally.is_some(),
-            "missing-handler halt reached without two exact passed proposals: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
+            "due-plan halt reached without two exact passed proposals: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
             self.stage,
             self.proposal_ids,
             &self.submits[..2],
@@ -706,7 +870,12 @@ impl Fixture {
             "missing-handler halt occurred at height {height}, expected {}",
             self.plans[0].height
         );
-        let expected = format!("UPGRADE \"{HALT_PLAN}\" NEEDED at height: {height}: {HALT_INFO}");
+        let (plan_name, plan_info) = match self.mode {
+            Mode::MissingHandler => (HALT_PLAN, HALT_INFO),
+            Mode::Restart => (RESTART_PLAN, RESTART_INFO),
+            _ => anyhow::bail!("mode {:?} cannot halt for a missing handler", self.mode),
+        };
+        let expected = format!("UPGRADE \"{plan_name}\" NEEDED at height: {height}: {plan_info}");
         anyhow::ensure!(
             normalized_upgrade_error(go_error) == Some(expected.as_str()),
             "Go missing-handler halt differed: expected {expected:?}, got {go_error:?}"
@@ -749,7 +918,7 @@ impl Fixture {
         let rust_upgrade_info = std::fs::read(rust_home.join("data/upgrade-info.json"))
             .context("reading Rust missing-handler upgrade-info.json")?;
         let expected_info = format!(
-            "{{\"name\":\"{HALT_PLAN}\",\"time\":\"0001-01-01T00:00:00Z\",\"height\":{height},\"info\":\"{HALT_INFO}\"}}"
+            "{{\"name\":\"{plan_name}\",\"time\":\"0001-01-01T00:00:00Z\",\"height\":{height},\"info\":\"{plan_info}\"}}"
         );
         anyhow::ensure!(
             go_upgrade_info == expected_info.as_bytes()
@@ -862,6 +1031,7 @@ impl Fixture {
             PLAN_B,
             HALT_PLAN,
             SKIP_PLAN,
+            RESTART_PLAN,
             "codex-rejected-upgrade-0",
             "codex-rejected-upgrade-1",
             "codex-rejected-upgrade-3",
@@ -890,7 +1060,7 @@ fn normalized_upgrade_error(error: &str) -> Option<&str> {
     line.starts_with("UPGRADE \"").then_some(line)
 }
 
-fn info_both(
+pub(super) fn info_both(
     go: &mut GoApp,
     conn: u32,
     rust: &app::App,

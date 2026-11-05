@@ -246,7 +246,7 @@ pub fn forward(
     // account's locked coins.
     let balance = x_bank::get_balance(ctx, &forward_addr, &denom)?;
     let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    let locked = if app_version != 0 && app_version < 10 {
+    let locked = if sdk::version::is_v9(sdk::version::executing(app_version)) {
         math::Int::zero()
     } else {
         x_bank::locked_coins(ctx, &forward_addr)?.amount_of(&denom)

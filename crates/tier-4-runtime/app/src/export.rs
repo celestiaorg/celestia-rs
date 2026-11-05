@@ -194,6 +194,10 @@ impl App {
                 "cannot export height {h} (latest height: {last})"
             )));
         }
+        // `celestia-appd export` runs the compiled executable's module
+        // behavior. A governance v9-to-v10 switch keeps Version.App at 9,
+        // so context-aware exporters must see the persisted v10 identity.
+        sdk::version::set_app_version(self.execution_version());
         let mut ms = self.ms.view_at(h).map_err(|e| {
             sdk::error::sdk::invalid_request(format!(
                 "failed to load state at height {h}: {e} (pruned?)"
