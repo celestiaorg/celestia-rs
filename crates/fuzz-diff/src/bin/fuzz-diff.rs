@@ -664,6 +664,11 @@ fn main() -> anyhow::Result<()> {
             st.unbonded_redelegation_rollback_required.is_some().into();
         deliver_stats["unbonded_redelegation_rollback_completed"] =
             st.unbonded_redelegation_rollback_completed.into();
+        deliver_stats["gov_params_rejection_required"] =
+            st.gov_params_rejection_required.is_some().into();
+        deliver_stats["gov_params_rejection_completed"] = st.gov_params_rejection_completed.into();
+        deliver_stats["gov_params_rejection_cases"] =
+            serde_json::to_value(&st.gov_params_rejection_cases)?;
         deliver_stats["validator_removal_rewards_required"] =
             st.validator_removal_rewards_required.is_some().into();
         deliver_stats["validator_removal_rewards_completed"] =
@@ -706,6 +711,7 @@ fn main() -> anyhow::Result<()> {
         st.require_pubkey_rejection_coverage()?;
         st.require_never_bonded_unjail_coverage()?;
         st.require_unbonded_redelegation_rollback_coverage()?;
+        st.require_gov_params_rejection_coverage()?;
         st.require_validator_removal_rewards_coverage()?;
         st.require_upgrade_plan_coverage()?;
         st.require_upgrade_halt_coverage()?;

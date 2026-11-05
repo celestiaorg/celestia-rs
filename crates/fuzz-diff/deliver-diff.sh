@@ -35,6 +35,11 @@
 # validator, attempts to redelegate its entire self-delegation, and requires
 # the late source-not-found error to roll back every message-state write before
 # a signed recovery send. It needs exactly four blocks and no random traffic.
+# DELIVER_GOV_PARAMS_REJECTION_REQUIRE=1 submits 29 single-field invalid
+# MsgUpdateParams payloads, deposits and passes each proposal, then requires
+# exact deterministic failed reasons, queue/index cleanup, refunds and a signed
+# recovery send. It needs exactly six blocks, no random traffic, and the
+# controlled block-4 3600-second time jump.
 # DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 constrains staking to one active
 # validator, creates a lower-power validator that never bonds, jails it by
 # dropping below minimum self-delegation, restores the stake, and requires
