@@ -1056,6 +1056,15 @@ logs `UPGRADE "vN" NEEDED at height: H`, writes `data/upgrade-info.json`
 (Go/cosmovisor format, `{"name":"vN","height":H,…}`) and keeps RPC up:
 install the new binary and restart (11.10); it resumes at `H`.
 
+`--unsafe-skip-upgrades H[,H…]` is the Go-compatible operator override for
+clearing a due governance upgrade plan without running its handler. Use it only
+for a height the network has explicitly agreed to skip. It is a start-time
+option rather than an `app.toml` setting, so supply it again after every restart
+before `H`. The node logs `UPGRADE "name" SKIPPED at H: info`, clears the plan,
+does not mark it applied, and continues with the same app version. The flag is
+also available on `abci` and on the executing `follow` mode; `follow
+--light-only` rejects it because no application blocks are executed.
+
 `halt-height` stops the node cleanly before executing a given block, for
 a coordinated halt announced by the Mocha operators:
 

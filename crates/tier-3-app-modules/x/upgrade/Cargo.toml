@@ -17,3 +17,4 @@ gostr = { path = "../../../tier-0-primitives/gostr" }
 celestia-proto = { path = "../../../tier-1-protocol-types/celestia-proto" }
 prost = "0.13"
 sdk = { path = "../../sdk" }
+tracing = "0.1"

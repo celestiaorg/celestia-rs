@@ -67,6 +67,12 @@
 # stop at that height with the exact upgrade-needed error, write identical
 # canonical upgrade-info.json files, retain the committed plan and leave the
 # last committed height/app hash at H-1. Any earlier paired error fails.
+# DELIVER_UPGRADE_SKIP_REQUIRE=1 passes the same two governance proposals, but
+# starts Go with its real `--unsafe-skip-upgrades H` flag and configures Rust
+# through ordinary NodeOptions. The signed send in block H must commit, the
+# current plan must clear without an applied marker or version change, and
+# neither app may write upgrade-info.json. It requires 80 blocks and no random
+# transactions.
 # DELIVER_IBC_PFM_METADATA_REQUIRE=1 uses the signed mock counterparty to
 # relay exact typed-parse and identifier-validation failures plus a
 # forward:null transfer control. It requires the official Go Ack bytes,
@@ -116,9 +122,15 @@ PORT=$((37858 + ${DEVNET_PORT_OFFSET:-0}))
 IN=$ROOT/conformance/fixtures/devnet/$SCENARIO
 WORK=$(mktemp -d)
 H=$WORK/home
-if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}" ]; then
+UPGRADE_ARGS=()
+if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
   export DELIVER_UPGRADE_GO_HOME=$H
   export DELIVER_UPGRADE_RUST_HOME=$WORK/rust-home
+fi
+if [ -n "${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
+  META_HEIGHT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['committed_heights'])" "$IN/meta.json")
+  export DELIVER_UPGRADE_SKIP_HEIGHT=$((META_HEIGHT + BLOCKS))
+  UPGRADE_ARGS=(--unsafe-skip-upgrades "$DELIVER_UPGRADE_SKIP_HEIGHT")
 fi
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >"$WORK/init.log" 2>&1 || {
@@ -148,7 +160,7 @@ sec = re.sub(r'(?m)^enable = .*$', 'enable = true', s[i:j])
 sec = re.sub(r'(?m)^address = .*$', 'address = "127.0.0.1:%s"' % port, sec)
 open(p, "w").write(s[:i] + sec + s[j:])
 PY
-GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
+GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" "${UPGRADE_ARGS[@]}" >"$WORK/app.log" 2>&1 &
 APP=$!
 echo $APP >"$WORK/app.pid"
 if [ -n "${GO_APPD_NEXT:-}" ]; then

@@ -662,6 +662,8 @@ fn main() -> anyhow::Result<()> {
         deliver_stats["upgrade_plan_rejections"] = st.upgrade_plan_rejections.into();
         deliver_stats["upgrade_halt_required"] = st.upgrade_halt_required.is_some().into();
         deliver_stats["upgrade_halt_completed"] = st.upgrade_halt_completed.into();
+        deliver_stats["upgrade_skip_required"] = st.upgrade_skip_required.is_some().into();
+        deliver_stats["upgrade_skip_completed"] = st.upgrade_skip_completed.into();
         eprintln!("DELIVER_STATS {deliver_stats}");
         eprintln!(
             "{scenario}: replayed {} heights; {} generated blocks, {} txs checked ({} accepted; multisig {} / {}), {} delivered ({} code 0); {} gas-sweep copies; {} mismatches, {} log-only differences{}",
@@ -691,6 +693,7 @@ fn main() -> anyhow::Result<()> {
         st.require_pubkey_rejection_coverage()?;
         st.require_upgrade_plan_coverage()?;
         st.require_upgrade_halt_coverage()?;
+        st.require_upgrade_skip_coverage()?;
         st.require_evidence_coverage()?;
         st.require_script_coverage()?;
         st.require_ibc_coverage()?;
