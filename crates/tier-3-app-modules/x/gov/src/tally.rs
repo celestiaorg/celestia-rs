@@ -50,11 +50,18 @@ fn add_weighted(
 pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
     let mut results: [LegacyDec; 5] = Default::default();
     let mut total = LegacyDec::zero();
-    let mut vals: BTreeMap<Vec<u8>, ValGovInfo> = BTreeMap::new();
+    // Go keys `currValidators` by the operator address string exactly as stored
+    // (`validator.GetOperator()`), not by its decoded bytes. A validator whose
+    // stored operator address is valid Bech32 in a non-canonical form (e.g. all
+    // uppercase) therefore only matches lookups using that exact string. Mirror
+    // that, and skip validators whose operator address fails to decode.
+    let mut vals: BTreeMap<String, ValGovInfo> = BTreeMap::new();
     for v in x_staking::store::get_bonded_validators_by_power(ctx)? {
-        let op = v.operator()?;
+        if v.operator().is_err() {
+            continue;
+        }
         vals.insert(
-            op,
+            v.operator_address.clone(),
             ValGovInfo {
                 bonded_tokens: v.tokens.clone(),
                 delegator_shares: v.delegator_shares.clone(),
@@ -70,15 +77,18 @@ pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
     while let Some((key, value)) = it.next(ctx)? {
         let vote: celestia_proto::cosmos::gov::v1::Vote = decode(&value)?;
         let voter = sdk::address::acc_from_bech32(&vote.voter)?;
-        if let Some(val) = vals.get_mut(&voter) {
+        // Go: `ValidatorAddressCodec().BytesToString(voter)`, i.e. the canonical
+        // lowercase valoper string.
+        let voter_val = x_staking::addr::val_to_string(&voter)?;
+        if let Some(val) = vals.get_mut(&voter_val) {
             val.vote.clone_from(&vote.options);
         }
         let mut dit =
             ctx.prefix_iter(x_staking::STORE_KEY, &x_staking::keys::delegations(&voter))?;
         while let Some((_, dv)) = dit.next(ctx)? {
             let d = x_staking::types::Delegation::decode(&dv)?;
-            let val_addr = x_staking::addr::val_from_string(&d.validator_address)?;
-            if let Some(val) = vals.get_mut(&val_addr) {
+            // Go: `currValidators[delegation.GetValidatorAddr()]`, a string lookup.
+            if let Some(val) = vals.get_mut(&d.validator_address) {
                 val.deductions = val.deductions.checked_add(&d.shares).map_err(math_err)?;
                 let power = d
                     .shares
@@ -92,6 +102,8 @@ pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
         ctx.delete(STORE_KEY, &key)?;
     }
 
+    // Go iterates a map here; the result is order-independent because each
+    // validator's power is computed on its own and only summed.
     for val in vals.values() {
         if val.vote.is_empty() {
             continue;
