@@ -238,6 +238,11 @@ pub struct Stats {
     /// Never-bonded unjail lifecycles that passed all four transactions and
     /// committed validator, delegation, signing-info, pool, and balance gates.
     pub never_bonded_unjail_completed: u64,
+    /// Whether the run requires the all-shares unbonded redelegation rollback.
+    pub unbonded_redelegation_rollback_required: Option<()>,
+    /// Controlled rollback fixtures that reached the exact failed delivery,
+    /// unchanged staking/distribution state, and recovery commit.
+    pub unbonded_redelegation_rollback_completed: u64,
     /// Whether the run requires validator-removal reward cleanup with
     /// nonzero commission and decimal remainders.
     pub validator_removal_rewards_required: Option<()>,
@@ -763,6 +768,7 @@ fn max_account_number(v: &serde_json::Value, max: &mut u64) {
 fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     let mut g: serde_json::Value = serde_json::from_slice(app_state)?;
     if std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some()
+        || std::env::var_os("DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE").is_some()
         || std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some()
     {
         g["staking"]["params"]["max_validators"] = serde_json::Value::from(1);
@@ -1730,6 +1736,19 @@ impl Stats {
                 self.never_bonded_unjail_completed == 1,
                 "incomplete DELIVER_NEVER_BONDED_UNJAIL_REQUIRE coverage: expected one completed fixture, observed {}",
                 self.never_bonded_unjail_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require the all-shares redelegation from an unbonded validator to fail
+    /// after the source-removal path and roll every message-state write back.
+    pub fn require_unbonded_redelegation_rollback_coverage(&self) -> anyhow::Result<()> {
+        if self.unbonded_redelegation_rollback_required.is_some() {
+            anyhow::ensure!(
+                self.unbonded_redelegation_rollback_completed == 1,
+                "incomplete DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE coverage: expected one completed fixture, observed {}",
+                self.unbonded_redelegation_rollback_completed
             );
         }
         Ok(())
@@ -4585,11 +4604,14 @@ pub fn run(
     let pubkey_rejection_required = std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some();
     let never_bonded_unjail_required =
         std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some();
+    let unbonded_redelegation_rollback_required =
+        std::env::var_os("DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE").is_some();
     let validator_removal_rewards_required =
         std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some();
     anyhow::ensure!(
         !never_bonded_unjail_required
-            || (!direct_aux_required
+            || (!unbonded_redelegation_rollback_required
+                && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
                 && !p256_required
@@ -4604,6 +4626,26 @@ pub fn run(
                 && blocks == 5
                 && per_block == 0),
         "DELIVER_NEVER_BONDED_UNJAIL_REQUIRE needs exactly five blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !unbonded_redelegation_rollback_required
+            || (!never_bonded_unjail_required
+                && !validator_removal_rewards_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !governed_upgrade_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 4
+                && per_block == 0),
+        "DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE needs exactly four blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !validator_removal_rewards_required
@@ -5104,6 +5146,8 @@ pub fn run(
         p256_required: p256_required.then_some(()),
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
         never_bonded_unjail_required: never_bonded_unjail_required.then_some(()),
+        unbonded_redelegation_rollback_required: unbonded_redelegation_rollback_required
+            .then_some(()),
         validator_removal_rewards_required: validator_removal_rewards_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
@@ -5478,6 +5522,8 @@ pub fn run(
     let mut p256_fixture: Option<P256Fixture> = None;
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
     let mut never_bonded_unjail_fixture: Option<NeverBondedUnjailFixture> = None;
+    let mut unbonded_redelegation_rollback_fixture: Option<UnbondedRedelegationRollbackFixture> =
+        None;
     let mut validator_removal_rewards_fixture: Option<ValidatorRemovalRewardsFixture> = None;
     let mut zero_slash_recovery: Option<(Vec<u8>, Vec<u8>, u128)> = None;
     let mut upgrade_plan_fixture = if upgrade_halt_required {
@@ -5710,6 +5756,15 @@ pub fn run(
             let fixture = never_bonded_unjail_fixture
                 .as_mut()
                 .context("never-bonded unjail fixture was not initialized")?;
+            txs.push(fixture.tx(&gn, b - 1)?);
+        } else if unbonded_redelegation_rollback_required {
+            if unbonded_redelegation_rollback_fixture.is_none() {
+                unbonded_redelegation_rollback_fixture =
+                    Some(UnbondedRedelegationRollbackFixture::new(&gn, &rust)?);
+            }
+            let fixture = unbonded_redelegation_rollback_fixture
+                .as_mut()
+                .context("unbonded redelegation rollback fixture was not initialized")?;
             txs.push(fixture.tx(&gn, b - 1)?);
         } else if validator_removal_rewards_required {
             if validator_removal_rewards_fixture.is_none() {
@@ -7038,6 +7093,13 @@ pub fn run(
                 stats.never_bonded_unjail_completed += 1;
             }
         }
+        if let Some(fixture) = unbonded_redelegation_rollback_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && fixture.pending_tx.as_deref() == Some(tx.as_slice())
+            && fixture.require_phase(tx, &fb.txs, &g.tx_results, &mut rust)?
+        {
+            stats.unbonded_redelegation_rollback_completed += 1;
+        }
         if let Some(fixture) = validator_removal_rewards_fixture.as_mut()
             && let Some(tx) = txs.first()
             && fixture.tx_matches_phase(tx)
@@ -7387,6 +7449,9 @@ pub fn run(
         stats.upgrade_plan_rejections = fixture.rejection_count();
     }
     if let Some(fixture) = never_bonded_unjail_fixture.as_ref() {
+        fixture.require_complete()?;
+    }
+    if let Some(fixture) = unbonded_redelegation_rollback_fixture.as_ref() {
         fixture.require_complete()?;
     }
     if let Some(fixture) = validator_removal_rewards_fixture.as_ref() {
@@ -9403,6 +9468,428 @@ fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
 const NEVER_BONDED_SELF_DELEGATION: u128 = 1_000_000;
 const CONTROLLED_TX_FEE: u128 = 100_000;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UnbondedRedelegationRollbackState {
+    exact: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+    prefixes: Vec<(Vec<u8>, Vec<u8>)>,
+    destination_current_period: u64,
+    bonded_pool: Int,
+    not_bonded_pool: Int,
+    signer_balance: u128,
+    signer_sequence: u64,
+    recovery_balance: u128,
+}
+
+struct UnbondedRedelegationRollbackFixture {
+    account: String,
+    account_bytes: Vec<u8>,
+    source: String,
+    source_bytes: Vec<u8>,
+    destination: String,
+    destination_bytes: Vec<u8>,
+    recovery: String,
+    baseline: Option<UnbondedRedelegationRollbackState>,
+    pending_tx: Option<Vec<u8>>,
+    phase: usize,
+}
+
+impl UnbondedRedelegationRollbackFixture {
+    fn new(gn: &Gen, rust: &app::App) -> anyhow::Result<Self> {
+        let account = gn.accts[0].acc.clone();
+        let source = gn.accts[0].val.clone();
+        let account_bytes = x_staking::addr::acc_from_string(&account)?;
+        let source_bytes = x_staking::addr::val_from_string(&source)?;
+        let mut state = rust.create_query_context(0, false)?;
+        let mut ctx = state.context();
+        anyhow::ensure!(
+            x_staking::store::get_params(&mut ctx)?.max_validators == 1,
+            "unbonded redelegation rollback fixture did not set max_validators=1"
+        );
+        anyhow::ensure!(
+            x_staking::store::get_validator(&mut ctx, &source_bytes)?.is_none(),
+            "unbonded redelegation rollback source already exists"
+        );
+        let bonded = bonded_validators_from_context(&mut ctx)?;
+        anyhow::ensure!(
+            bonded.len() == 1 && bonded[0] != source,
+            "unbonded redelegation rollback needs one distinct bonded destination"
+        );
+        Ok(Self {
+            destination_bytes: x_staking::addr::val_from_string(&bonded[0])?,
+            destination: bonded[0].clone(),
+            recovery: gn.accts[1].acc.clone(),
+            account,
+            account_bytes,
+            source,
+            source_bytes,
+            baseline: None,
+            pending_tx: None,
+            phase: 0,
+        })
+    }
+
+    fn tx(&mut self, gn: &Gen, phase: usize) -> anyhow::Result<Vec<u8>> {
+        anyhow::ensure!(
+            phase == self.phase,
+            "unbonded redelegation rollback phase changed"
+        );
+        let coin = |amount: u128| {
+            Some(Coin {
+                denom: "utia".into(),
+                amount: amount.to_string(),
+            })
+        };
+        let message = match phase {
+            0 => Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgCreateValidator {
+                    description: Some(celestia_proto::cosmos::staking::v1beta1::Description {
+                        moniker: "unbonded-redelegation-rollback".into(),
+                        ..Default::default()
+                    }),
+                    commission: Some(celestia_proto::cosmos::staking::v1beta1::CommissionRates {
+                        rate: "100000000000000000".into(),
+                        max_rate: "200000000000000000".into(),
+                        max_change_rate: "10000000000000000".into(),
+                    }),
+                    min_self_delegation: NEVER_BONDED_SELF_DELEGATION.to_string(),
+                    #[allow(deprecated)]
+                    delegator_address: String::new(),
+                    validator_address: self.source.clone(),
+                    pubkey: Some(Any::pack(
+                        &celestia_proto::cosmos::crypto::ed25519::PubKey { key: vec![43; 32] },
+                    )),
+                    value: coin(NEVER_BONDED_SELF_DELEGATION),
+                },
+            ),
+            1 => Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgBeginRedelegate {
+                    delegator_address: self.account.clone(),
+                    validator_src_address: self.source.clone(),
+                    validator_dst_address: self.destination.clone(),
+                    amount: coin(NEVER_BONDED_SELF_DELEGATION),
+                },
+            ),
+            2 => Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+                from_address: self.account.clone(),
+                to_address: self.recovery.clone(),
+                amount: vec![coin(1).context("constructing recovery coin")?],
+            }),
+            _ => anyhow::bail!("unbonded redelegation rollback has no phase {phase}"),
+        };
+        let tx = sign_simple(gn, 0, vec![message], 1_000_000)
+            .context("signing unbonded redelegation rollback transaction")?;
+        self.pending_tx = Some(tx.clone());
+        Ok(tx)
+    }
+
+    fn require_phase(
+        &mut self,
+        tx: &[u8],
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &mut app::App,
+    ) -> anyhow::Result<bool> {
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == tx)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1,
+            "unbonded redelegation rollback phase {} did not finalize exactly once",
+            self.phase
+        );
+        let result = matches[0].1;
+        match self.phase {
+            0 => {
+                anyhow::ensure!(
+                    result.code == 0 && result.codespace.is_empty(),
+                    "unbonded redelegation source creation changed: {result:?}"
+                );
+                let state = self.state(rust)?;
+                self.require_source_preconditions(rust, &state)?;
+                self.baseline = Some(state);
+            }
+            1 => {
+                anyhow::ensure!(
+                    result.code == 3
+                        && result.codespace == "staking"
+                        && result.log
+                            == "failed to execute message; message index: 0: validator does not exist",
+                    "unbonded all-shares redelegation result changed: {result:?}"
+                );
+                let baseline = self
+                    .baseline
+                    .as_ref()
+                    .context("unbonded redelegation rollback baseline is absent")?;
+                let after = self.state(rust)?;
+                anyhow::ensure!(
+                    after.exact == baseline.exact
+                        && after.prefixes == baseline.prefixes
+                        && after.destination_current_period == baseline.destination_current_period
+                        && after.bonded_pool == baseline.bonded_pool
+                        && after.not_bonded_pool == baseline.not_bonded_pool
+                        && after.signer_balance + CONTROLLED_TX_FEE == baseline.signer_balance
+                        && after.signer_sequence == baseline.signer_sequence + 1
+                        && after.recovery_balance == baseline.recovery_balance,
+                    "unbonded all-shares redelegation did not roll back exact message state: before={baseline:?} after={after:?}"
+                );
+            }
+            2 => {
+                anyhow::ensure!(
+                    result.code == 0 && result.codespace.is_empty(),
+                    "unbonded redelegation recovery changed: {result:?}"
+                );
+                let baseline = self
+                    .baseline
+                    .as_ref()
+                    .context("unbonded redelegation rollback baseline is absent")?;
+                let after = self.state(rust)?;
+                anyhow::ensure!(
+                    after.exact == baseline.exact
+                        && after.prefixes == baseline.prefixes
+                        && after.destination_current_period == baseline.destination_current_period
+                        && after.bonded_pool == baseline.bonded_pool
+                        && after.not_bonded_pool == baseline.not_bonded_pool
+                        && after.signer_balance + 2 * CONTROLLED_TX_FEE + 1
+                            == baseline.signer_balance
+                        && after.signer_sequence == baseline.signer_sequence + 2
+                        && after.recovery_balance == baseline.recovery_balance + 1,
+                    "unbonded redelegation recovery committed state changed: before={baseline:?} after={after:?}"
+                );
+            }
+            _ => anyhow::bail!("unbonded redelegation rollback completed too many phases"),
+        }
+        self.phase += 1;
+        self.pending_tx = None;
+        Ok(self.phase == 3)
+    }
+
+    fn require_source_preconditions(
+        &self,
+        rust: &mut app::App,
+        state: &UnbondedRedelegationRollbackState,
+    ) -> anyhow::Result<()> {
+        let mut query = rust.create_query_context(0, false)?;
+        let mut ctx = query.context();
+        let validator = x_staking::store::validator(&mut ctx, &self.source_bytes)?;
+        let delegation =
+            x_staking::store::get_delegation(&mut ctx, &self.account_bytes, &self.source_bytes)?
+                .context("unbonded redelegation self-delegation is absent")?;
+        let destination = x_staking::store::validator(&mut ctx, &self.destination_bytes)?;
+        let source_consensus = validator.cons_addr()?;
+        let source_power = validator.potential_consensus_power()?;
+        for (store, key, label) in [
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::validator(&self.source_bytes),
+                "source validator",
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::validator_by_cons_addr(&source_consensus),
+                "source consensus index",
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::power_index(source_power, &self.source_bytes),
+                "source power index",
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::delegation(&self.account_bytes, &self.source_bytes),
+                "source delegation",
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::delegation_by_val(&self.source_bytes, &self.account_bytes),
+                "source delegation index",
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::outstanding_key(&self.source_bytes),
+                "source outstanding rewards",
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::current_key(&self.source_bytes),
+                "source current rewards",
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::commission_key(&self.source_bytes),
+                "source commission",
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::starting_info_key(&self.source_bytes, &self.account_bytes),
+                "source delegator starting info",
+            ),
+        ] {
+            anyhow::ensure!(
+                ctx.get(store, &key)?.is_some(),
+                "unbonded redelegation rollback precondition lacks {label}"
+            );
+        }
+        anyhow::ensure!(
+            !raw_prefix_entries(
+                &mut ctx,
+                x_distribution::STORE_KEY,
+                &x_distribution::store::historical_prefix(&self.source_bytes),
+            )?
+            .is_empty(),
+            "unbonded redelegation rollback precondition lacks source historical rewards"
+        );
+        anyhow::ensure!(
+            validator.status == x_staking::types::BondStatus::Unbonded
+                && !validator.jailed
+                && validator.tokens.to_string() == NEVER_BONDED_SELF_DELEGATION.to_string()
+                && delegation.shares.to_string() == "1000000.000000000000000000"
+                && destination.status == x_staking::types::BondStatus::Bonded
+                && x_slashing::get_signing_info(&mut ctx, &validator.cons_addr()?)?.is_none()
+                && x_staking::store::get_red(
+                    &mut ctx,
+                    &self.account_bytes,
+                    &self.source_bytes,
+                    &self.destination_bytes
+                )?
+                .is_none()
+                && !x_staking::store::has_receiving_redelegation(
+                    &mut ctx,
+                    &self.account_bytes,
+                    &self.source_bytes
+                )?,
+            "unbonded redelegation rollback precondition changed: {state:?}"
+        );
+        Ok(())
+    }
+
+    fn state(&self, rust: &mut app::App) -> anyhow::Result<UnbondedRedelegationRollbackState> {
+        let signer_sequence = rust.query_sequence(&self.account_bytes).sequence;
+        let mut query = rust.create_query_context(0, false)?;
+        let mut ctx = query.context();
+        let source = x_staking::store::validator(&mut ctx, &self.source_bytes)?;
+        let source_consensus = source.cons_addr()?;
+        let source_power = source.potential_consensus_power()?;
+        let destination = x_staking::store::validator(&mut ctx, &self.destination_bytes)?;
+        let destination_power = destination.potential_consensus_power()?;
+        let exact_keys = vec![
+            x_staking::keys::validator(&self.source_bytes),
+            x_staking::keys::validator_by_cons_addr(&source_consensus),
+            x_staking::keys::power_index(source_power, &self.source_bytes),
+            x_staking::keys::delegation(&self.account_bytes, &self.source_bytes),
+            x_staking::keys::delegation_by_val(&self.source_bytes, &self.account_bytes),
+            x_staking::keys::validator(&self.destination_bytes),
+            x_staking::keys::power_index(destination_power, &self.destination_bytes),
+            x_staking::keys::delegation(&self.account_bytes, &self.destination_bytes),
+            x_staking::keys::delegation_by_val(&self.destination_bytes, &self.account_bytes),
+            x_staking::keys::red(
+                &self.account_bytes,
+                &self.source_bytes,
+                &self.destination_bytes,
+            ),
+            x_staking::keys::red_by_val_src(
+                &self.account_bytes,
+                &self.source_bytes,
+                &self.destination_bytes,
+            ),
+            x_staking::keys::red_by_val_dst(
+                &self.account_bytes,
+                &self.source_bytes,
+                &self.destination_bytes,
+            ),
+            x_staking::keys::UNBONDING_ID.to_vec(),
+        ];
+        let mut exact = Vec::new();
+        for key in exact_keys {
+            let value = ctx.get(x_staking::STORE_KEY, &key)?;
+            exact.push((key, value));
+        }
+        for key in [
+            x_distribution::store::outstanding_key(&self.source_bytes),
+            x_distribution::store::commission_key(&self.source_bytes),
+            x_distribution::store::current_key(&self.source_bytes),
+            x_distribution::store::starting_info_key(&self.source_bytes, &self.account_bytes),
+            x_distribution::store::user_outstanding_key(&self.account_bytes, &self.source_bytes),
+            x_distribution::store::starting_info_key(&self.destination_bytes, &self.account_bytes),
+            x_distribution::store::user_outstanding_key(
+                &self.account_bytes,
+                &self.destination_bytes,
+            ),
+        ] {
+            let value = ctx.get(x_distribution::STORE_KEY, &key)?;
+            exact.push((key, value));
+        }
+        let mut prefixes = Vec::new();
+        for (store, prefix) in [
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::historical_prefix(&self.source_bytes),
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::slash_event_prefix(&self.source_bytes),
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::historical_prefix(&self.destination_bytes),
+            ),
+            (
+                x_distribution::STORE_KEY,
+                x_distribution::store::slash_event_prefix(&self.destination_bytes),
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::reds(&self.account_bytes),
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::reds_from_val_src(&self.source_bytes),
+            ),
+            (
+                x_staking::STORE_KEY,
+                x_staking::keys::reds_by_del_to_val_dst(
+                    &self.account_bytes,
+                    &self.destination_bytes,
+                ),
+            ),
+            (
+                x_staking::STORE_KEY,
+                vec![x_staking::keys::REDELEGATION_QUEUE],
+            ),
+            (x_staking::STORE_KEY, vec![x_staking::keys::UNBONDING_QUEUE]),
+            (x_staking::STORE_KEY, vec![x_staking::keys::UNBONDING_INDEX]),
+            (x_staking::STORE_KEY, vec![x_staking::keys::UNBONDING_TYPE]),
+        ] {
+            prefixes.extend(raw_prefix_entries(&mut ctx, store, &prefix)?);
+        }
+        Ok(UnbondedRedelegationRollbackState {
+            exact,
+            prefixes,
+            destination_current_period: x_distribution::store::get_current(
+                &mut ctx,
+                &self.destination_bytes,
+            )?
+            .period,
+            bonded_pool: module_balance(&mut ctx, x_staking::BONDED_POOL)?,
+            not_bonded_pool: module_balance(&mut ctx, x_staking::NOT_BONDED_POOL)?,
+            signer_balance: bank_account_balance(&mut ctx, &self.account_bytes)?,
+            signer_sequence,
+            recovery_balance: account_balance_readonly(rust, &self.recovery)?,
+        })
+    }
+
+    fn require_complete(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.phase == 3 && self.pending_tx.is_none(),
+            "unbonded redelegation rollback completed {} of three phases (pending_tx={})",
+            self.phase,
+            self.pending_tx.is_some()
+        );
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct NeverBondedUnjailState {
     status: x_staking::types::BondStatus,
@@ -10145,6 +10632,19 @@ fn prefix_len(ctx: &mut sdk::Context<'_>, store: &str, prefix: &[u8]) -> anyhow:
         count += 1;
     }
     Ok(count)
+}
+
+fn raw_prefix_entries(
+    ctx: &mut sdk::Context<'_>,
+    store: &str,
+    prefix: &[u8],
+) -> anyhow::Result<Vec<(Vec<u8>, Vec<u8>)>> {
+    let mut iter = ctx.prefix_iter(store, prefix)?;
+    let mut entries = Vec::new();
+    while let Some(entry) = iter.next(ctx)? {
+        entries.push(entry);
+    }
+    Ok(entries)
 }
 
 fn dec_amount_is(coins: &sdk::dec_coins::DecCoins, atomics: i128) -> anyhow::Result<bool> {
@@ -12090,6 +12590,28 @@ mod tests {
         assert!(
             Stats::default()
                 .require_never_bonded_unjail_coverage()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn unbonded_redelegation_rollback_requirement_fails_closed() {
+        let mut stats = Stats {
+            unbonded_redelegation_rollback_required: Some(()),
+            ..Stats::default()
+        };
+        for completed in 0..=2 {
+            stats.unbonded_redelegation_rollback_completed = completed;
+            assert_eq!(
+                stats
+                    .require_unbonded_redelegation_rollback_coverage()
+                    .is_ok(),
+                completed == 1
+            );
+        }
+        assert!(
+            Stats::default()
+                .require_unbonded_redelegation_rollback_coverage()
                 .is_ok()
         );
     }

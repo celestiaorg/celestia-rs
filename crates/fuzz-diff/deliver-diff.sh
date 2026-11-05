@@ -31,6 +31,10 @@
 # Zero-double-sign-slash installs a valid zero double-sign fraction, requires
 # evidence persistence, jail and tombstone with zero burn and no distribution
 # slash record, then commits a signed recovery send in exactly three blocks.
+# DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1 creates an out-of-set
+# validator, attempts to redelegate its entire self-delegation, and requires
+# the late source-not-found error to roll back every message-state write before
+# a signed recovery send. It needs exactly four blocks and no random traffic.
 # DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 constrains staking to one active
 # validator, creates a lower-power validator that never bonds, jails it by
 # dropping below minimum self-delegation, restores the stake, and requires

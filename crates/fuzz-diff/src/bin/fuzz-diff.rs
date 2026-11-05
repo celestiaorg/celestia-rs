@@ -660,6 +660,10 @@ fn main() -> anyhow::Result<()> {
         deliver_stats["never_bonded_unjail_required"] =
             st.never_bonded_unjail_required.is_some().into();
         deliver_stats["never_bonded_unjail_completed"] = st.never_bonded_unjail_completed.into();
+        deliver_stats["unbonded_redelegation_rollback_required"] =
+            st.unbonded_redelegation_rollback_required.is_some().into();
+        deliver_stats["unbonded_redelegation_rollback_completed"] =
+            st.unbonded_redelegation_rollback_completed.into();
         deliver_stats["validator_removal_rewards_required"] =
             st.validator_removal_rewards_required.is_some().into();
         deliver_stats["validator_removal_rewards_completed"] =
@@ -701,6 +705,7 @@ fn main() -> anyhow::Result<()> {
         st.require_p256_coverage()?;
         st.require_pubkey_rejection_coverage()?;
         st.require_never_bonded_unjail_coverage()?;
+        st.require_unbonded_redelegation_rollback_coverage()?;
         st.require_validator_removal_rewards_coverage()?;
         st.require_upgrade_plan_coverage()?;
         st.require_upgrade_halt_coverage()?;

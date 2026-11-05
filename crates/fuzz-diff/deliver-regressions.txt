@@ -191,6 +191,11 @@ v9-authz-feegrant 5 0 17379 DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1
 # slash record. A final signed send proves continued execution.
 authz-feegrant 3 0 17380 DELIVER_EVIDENCE_REQUIRE=zero-double-sign-slash
 v9-authz-feegrant 3 0 17380 DELIVER_EVIDENCE_REQUIRE=zero-double-sign-slash
+# Redelegating every share away from an unbonded validator removes the source
+# tentatively, then fails when getBeginInfo rereads it. The message cache must
+# restore the source, destination, distribution and redelegation state exactly.
+authz-feegrant 4 0 17381 DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1
+v9-authz-feegrant 4 0 17381 DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1
 # A passed unknown-name upgrade plan must stop both implementations at its due
 # height. Exact errors, upgrade-info files, retained plans and H-1 committed
 # state are required; matching early errors cannot satisfy this regression.

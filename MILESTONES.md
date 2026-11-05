@@ -1198,6 +1198,15 @@ test), then start that harness's count again.
   recovery commit. The paired v10.5.0 and historical v9.0.8 synthetic probes
   do not test Comet evidence-pool admission and do not complete F1.12, volume,
   mainnet-shaped state, observation-window or production-readiness gates.
+  *Unbonded last-share redelegation follow-up (2026-11-05):* a controlled
+  differential fixture creates an out-of-set validator whose self-delegation
+  owns every share, then redelegates the full amount to the bonded validator.
+  Both supported oracle lines remove the source tentatively and credit the
+  destination before the source reread returns `validator does not exist`.
+  Exact raw-key, pool, fee, sequence and recovery gates require the failed
+  message's staking, distribution, queue and index writes to roll back. This
+  bounded synthetic path does not complete F1.3, F1.12, volume, mainnet-shaped
+  state, observation-window or production-readiness gates.
 
 ### Carried over from completed milestones
 
