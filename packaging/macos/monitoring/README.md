@@ -58,6 +58,34 @@ The `Network` variable selects mocha, mainnet or both.
   and interval, missing voting power, rounds, peers, txs, mempool, RSS,
   CPU, DB sizes, and the Mac's CPU, memory, disk and network.
 
+### Interpreting evidence
+
+The [2026-11-05 Mac investigation](../../../docs/live-validator-evidence-2026-11-05.md)
+found installed monitoring older than this repository. Inspect the actual
+`nodes.conf`, scripts, rules and launchd arguments before interpreting a
+dashboard. In particular, the old collector derived jailed status from
+`jailed_until`; an expired value does not prove that staking has unjailed
+the validator. Current collection needs the public operator address in
+`nodes.conf` and a successful staking query; unknown is not unjailed.
+
+`check-apphash.sh` compares the local executed height H with the reference
+header H+1, periodically rather than at every height. The collector stores
+the result and check timestamp, not the checked height/hash, and discards
+the script's output. Count distinct check timestamps rather than repeated
+15-second scrapes. Unavailable checks (`-1`) provide no parity evidence;
+they are different from mismatches (`0`). Validate a public reference's
+chain ID and reachability from the collector's execution context. The
+investigation's configured mainnet reference returned HTTP 403, while an
+alternative answered; this alone does not establish the cause of earlier
+failed checks.
+
+Slashing's missed-block counter is a rolling window, not lifetime uptime.
+Local missed-counter estimates can omit downtime and increments around
+process resets. A dated public commit sample provides separate on-chain
+signing evidence. Proposals and Fibre endorsements are separate measures.
+Missing samples remain unknown time; a low block age alone does not prove
+historical zero height lag or an uninterrupted process/candidate soak.
+
 ## Alerts
 
 `rules.yml` defines the alerts from operator guide §11.9. Firing alerts
@@ -83,6 +111,12 @@ every firing critical alert except LowPeers. You get one email per
 network, a reminder every 4 h while it lasts, and a resolved email. If
 Grafana cannot query Prometheus, you get an email about that too. If the
 Mac or Grafana is down, no email is sent.
+
+These are configured behaviors, not proof of delivery. A firing
+Prometheus rule or Grafana's "Sending alerts to local notifier" log shows
+evaluation/forwarding only. Retain a sanitized provider/recipient receipt
+from an authorized delivery test before claiming end-to-end alerting works.
+The Nov 5 investigation did not establish email delivery.
 
 Grafana sends through an SMTP server, configured with environment
 variables on any `install.sh` run. They are saved in
