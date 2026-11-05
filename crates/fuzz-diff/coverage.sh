@@ -128,6 +128,13 @@ for scen in authz-feegrant v9-authz-feegrant; do
 done
 for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "gov-params-rejections-$scen" GO_APPD="$A" \
+    DELIVER_GOV_PARAMS_REJECTION_REQUIRE=1 DELIVER_TIME_JUMP_AT=4 \
+    DELIVER_TIME_JUMP_SECONDS=3600 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 6 0 17382
+done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "validator-removal-rewards-$scen" GO_APPD="$A" \
     DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 5 0 17379

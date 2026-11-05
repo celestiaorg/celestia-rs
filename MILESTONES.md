@@ -588,6 +588,20 @@ test), then start that harness's count again.
   evidence writes. Rejected-input panic identity and error text are deliberately
   outside this oracle, and these bounded probes do not establish InitGenesis
   cache rollback, mainnet-shaped replay or production readiness.
+  *Governance parameter rejection follow-up (2026-11-05):* exact signed
+  v10.5.0 and historical v9.0.8 fixtures submit 29 single-field invalid
+  `MsgUpdateParams` payloads, deposit and cast yes votes from every delegated
+  fuzz account, then require every passed-tally execution to fail with its
+  exact deterministic validation reason. The gate checks stored payloads,
+  proposal phases and indexes, terminal events and tallies, unchanged
+  parameters, removed queue/deposit/vote records, exact refunds, fees,
+  sequences and module balance, plus a signed recovery commit. The nonpositive
+  non-null maximum deposit period case is excluded because Go embeds a
+  process-dependent pointer address in its error text. Both focused six-block
+  probes completed all 29 cases with zero consensus or log mismatches. These
+  bounded synthetic lifecycles still need merged-profile branch accounting and
+  do not complete F1.3, F1.12, volume, mainnet-shaped state,
+  observation-window or production-readiness gates.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

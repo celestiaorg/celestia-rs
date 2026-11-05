@@ -50,6 +50,7 @@ use crate::mutate::{Field, Mutator, encode, parse as parse_fields, put_varint};
 use crate::pp::GoApp;
 
 mod gov_coverage;
+mod gov_params;
 mod hyperlane;
 mod trace;
 mod upgrade;
@@ -243,6 +244,13 @@ pub struct Stats {
     /// Controlled rollback fixtures that reached the exact failed delivery,
     /// unchanged staking/distribution state, and recovery commit.
     pub unbonded_redelegation_rollback_completed: u64,
+    /// Whether the run requires every deterministic governance Params
+    /// validation rejection to persist through a passed-tally proposal.
+    pub gov_params_rejection_required: Option<()>,
+    /// Complete 29-case governance Params rejection lifecycles.
+    pub gov_params_rejection_completed: u64,
+    /// Exact terminal credits by governance Params mutation name.
+    pub gov_params_rejection_cases: BTreeMap<String, u64>,
     /// Whether the run requires validator-removal reward cleanup with
     /// nonzero commission and decimal remainders.
     pub validator_removal_rewards_required: Option<()>,
@@ -1749,6 +1757,42 @@ impl Stats {
                 self.unbonded_redelegation_rollback_completed == 1,
                 "incomplete DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE coverage: expected one completed fixture, observed {}",
                 self.unbonded_redelegation_rollback_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require all deterministic Params validation errors to reach handler
+    /// execution after a passing tally and preserve their exact terminal state.
+    pub fn require_gov_params_rejection_coverage(&self) -> anyhow::Result<()> {
+        if self.gov_params_rejection_required.is_some() {
+            let expected_cases = gov_params::CASE_NAMES
+                .into_iter()
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>();
+            anyhow::ensure!(
+                self.gov_params_rejection_completed == 1
+                    && self.gov_params_rejection_cases.len() == 29
+                    && self
+                        .gov_params_rejection_cases
+                        .keys()
+                        .cloned()
+                        .collect::<BTreeSet<_>>()
+                        == expected_cases
+                    && self
+                        .gov_params_rejection_cases
+                        .values()
+                        .all(|count| *count == 1)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.gov.v1.MsgUpdateParams")
+                        .copied()
+                        .unwrap_or(0)
+                        == 0,
+                "incomplete DELIVER_GOV_PARAMS_REJECTION_REQUIRE coverage: completed={} cases={:?} executed={:?}",
+                self.gov_params_rejection_completed,
+                self.gov_params_rejection_cases,
+                self.gov_executed
             );
         }
         Ok(())
@@ -4588,11 +4632,14 @@ pub fn run(
     let upgrade_halt_required = std::env::var_os("DELIVER_UPGRADE_HALT_REQUIRE").is_some();
     let upgrade_skip_required = std::env::var_os("DELIVER_UPGRADE_SKIP_REQUIRE").is_some();
     let upgrade_restart_required = std::env::var_os("DELIVER_UPGRADE_RESTART_REQUIRE").is_some();
+    let gov_params_rejection_required =
+        std::env::var_os("DELIVER_GOV_PARAMS_REJECTION_REQUIRE").is_some();
     let governed_upgrade_required = upgrade_plan_required
         || upgrade_halt_required
         || upgrade_skip_required
         || upgrade_restart_required;
-    let govpass = govpass_env || governed_upgrade_required;
+    let governed_fixture_required = governed_upgrade_required || gov_params_rejection_required;
+    let govpass = govpass_env || governed_fixture_required;
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
     let direct_aux_required = std::env::var_os("DELIVER_DIRECT_AUX_REQUIRE").is_some();
@@ -4608,6 +4655,37 @@ pub fn run(
         std::env::var_os("DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE").is_some();
     let validator_removal_rewards_required =
         std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some();
+    anyhow::ensure!(
+        !gov_params_rejection_required
+            || (!govpass_env
+                && !governed_upgrade_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !never_bonded_unjail_required
+                && !unbonded_redelegation_rollback_required
+                && !validator_removal_rewards_required
+                && !hl_on
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_GOV_REQUIRE").is_none()
+                && std::env::var_os("DELIVER_GOV_ABSTAIN_REQUIRE").is_none()
+                && std::env::var_os("DELIVER_GOV_FAILURE_REQUIRE").is_none()
+                && std::env::var_os("DELIVER_GOV_FAILURE_TYPE_REQUIRE").is_none()
+                && std::env::var_os("DELIVER_SIM").is_none()
+                && std::env::var_os("DELIVER_RECHECK").is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && std::env::var_os("DELIVER_TIME_JUMP_AT").as_deref()
+                    == Some(std::ffi::OsStr::new("4"))
+                && std::env::var_os("DELIVER_TIME_JUMP_SECONDS").as_deref()
+                    == Some(std::ffi::OsStr::new("3600"))
+                && blocks == 6
+                && per_block == 0),
+        "DELIVER_GOV_PARAMS_REJECTION_REQUIRE needs exactly six blocks, zero random transactions and the controlled block-4 3600-second jump, and cannot be combined with other controlled modes"
+    );
     anyhow::ensure!(
         !never_bonded_unjail_required
             || (!unbonded_redelegation_rollback_required
@@ -4669,6 +4747,7 @@ pub fn run(
     anyhow::ensure!(
         !upgrade_plan_required
             || (!govpass_env
+                && !gov_params_rejection_required
                 && !upgrade_halt_required
                 && !upgrade_skip_required
                 && !upgrade_restart_required
@@ -4689,6 +4768,7 @@ pub fn run(
     anyhow::ensure!(
         !upgrade_halt_required
             || (!govpass_env
+                && !gov_params_rejection_required
                 && !upgrade_plan_required
                 && !upgrade_skip_required
                 && !upgrade_restart_required
@@ -4709,6 +4789,7 @@ pub fn run(
     anyhow::ensure!(
         !upgrade_skip_required
             || (!govpass_env
+                && !gov_params_rejection_required
                 && !upgrade_plan_required
                 && !upgrade_halt_required
                 && !upgrade_restart_required
@@ -4729,6 +4810,7 @@ pub fn run(
     anyhow::ensure!(
         !upgrade_restart_required
             || (!govpass_env
+                && !gov_params_rejection_required
                 && !upgrade_plan_required
                 && !upgrade_halt_required
                 && !upgrade_skip_required
@@ -5148,6 +5230,7 @@ pub fn run(
         never_bonded_unjail_required: never_bonded_unjail_required.then_some(()),
         unbonded_redelegation_rollback_required: unbonded_redelegation_rollback_required
             .then_some(()),
+        gov_params_rejection_required: gov_params_rejection_required.then_some(()),
         validator_removal_rewards_required: validator_removal_rewards_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
@@ -5524,6 +5607,7 @@ pub fn run(
     let mut never_bonded_unjail_fixture: Option<NeverBondedUnjailFixture> = None;
     let mut unbonded_redelegation_rollback_fixture: Option<UnbondedRedelegationRollbackFixture> =
         None;
+    let mut gov_params_rejection_fixture: Option<gov_params::Fixture> = None;
     let mut validator_removal_rewards_fixture: Option<ValidatorRemovalRewardsFixture> = None;
     let mut zero_slash_recovery: Option<(Vec<u8>, Vec<u8>, u128)> = None;
     let mut upgrade_plan_fixture = if upgrade_halt_required {
@@ -5610,7 +5694,9 @@ pub fn run(
         height += 1;
         gn.height = height;
         let script_blocks_at_start = script.len();
-        if gn.m.rng.one_in(40) {
+        if gov_params_rejection_required {
+            time.seconds += 5;
+        } else if gn.m.rng.one_in(40) {
             time.seconds += [3600, 86_400, 90, 700_000, 1_300_000][gn.m.rng.below(5)];
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
@@ -5959,7 +6045,7 @@ pub fn run(
                 let vals = bonded_validators(&mut rust);
                 if !vals.is_empty() {
                     govpass_delegated = true;
-                    if !governed_upgrade_required {
+                    if !governed_fixture_required {
                         gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
                     }
                     for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
@@ -5978,6 +6064,16 @@ pub fn run(
                         }
                     }
                 }
+            } else if !hl_setup && gov_params_rejection_required && govpass_delegated {
+                if gov_params_rejection_fixture.is_none() {
+                    gov_params_rejection_fixture = Some(gov_params::Fixture::new(&gn, &mut rust)?);
+                }
+                txs.extend(
+                    gov_params_rejection_fixture
+                        .as_mut()
+                        .context("governance Params rejection fixture disappeared")?
+                        .txs(&mut gn)?,
+                );
             } else if !hl_setup && governed_upgrade_required && govpass_delegated {
                 let fixture = upgrade_plan_fixture
                     .as_mut()
@@ -6121,7 +6217,7 @@ pub fn run(
             let k = if evidence_requirement.is_some()
                 || hl_setup
                 || gov_setup
-                || governed_upgrade_required
+                || governed_fixture_required
             {
                 0
             } else {
@@ -6184,6 +6280,9 @@ pub fn run(
             };
             if let Some(fixture) = upgrade_plan_fixture.as_mut() {
                 fixture.observe_check(app_version, t, &g)?;
+            }
+            if let Some(fixture) = gov_params_rejection_fixture.as_mut() {
+                fixture.observe_check(t, &g)?;
             }
             if let Some(fixture) = direct_aux_fixture.as_mut() {
                 if t == &fixture.bad {
@@ -6881,6 +6980,9 @@ pub fn run(
             if let Some(fixture) = upgrade_plan_fixture.as_mut() {
                 fixture.observe_finalized(app_version, t, res)?;
             }
+            if let Some(fixture) = gov_params_rejection_fixture.as_mut() {
+                fixture.observe_finalized(t, res)?;
+            }
             if scripted {
                 if !stats.script_required.is_empty() {
                     let url = type_urls(app_version, t)
@@ -6966,6 +7068,9 @@ pub fn run(
             && let Some(completed) = fixture.observe_block(&g.events)?
         {
             gn.proposals.retain(|proposal| *proposal != completed);
+        }
+        if let Some(fixture) = gov_params_rejection_fixture.as_mut() {
+            fixture.observe_block(&g.events)?;
         }
         let mut abstain_rejected_proposals = Vec::new();
         for e in g.events.iter().filter(|e| e.r#type == "active_proposal") {
@@ -7127,6 +7232,14 @@ pub fn run(
             } else {
                 stats.upgrade_plan_completed += 1;
             }
+        }
+        if let Some(fixture) = gov_params_rejection_fixture.as_mut()
+            && fixture.after_commit(&mut go, cons_conn, &mut rust, &gn)?
+        {
+            stats.gov_params_rejection_completed += 1;
+            stats
+                .gov_params_rejection_cases
+                .clone_from(fixture.credits());
         }
         if let Some(fixture) = upgrade_plan_fixture.as_mut()
             && fixture.needs_post_commit_restart(height)
@@ -7452,6 +7565,9 @@ pub fn run(
         fixture.require_complete()?;
     }
     if let Some(fixture) = unbonded_redelegation_rollback_fixture.as_ref() {
+        fixture.require_complete()?;
+    }
+    if let Some(fixture) = gov_params_rejection_fixture.as_ref() {
         fixture.require_complete()?;
     }
     if let Some(fixture) = validator_removal_rewards_fixture.as_ref() {
@@ -12612,6 +12728,42 @@ mod tests {
         assert!(
             Stats::default()
                 .require_unbonded_redelegation_rollback_coverage()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn gov_params_rejection_requirement_fails_closed() {
+        let complete_cases = gov_params::CASE_NAMES
+            .into_iter()
+            .map(|name| (name.to_owned(), 1))
+            .collect::<BTreeMap<_, _>>();
+        let mut stats = Stats {
+            gov_params_rejection_required: Some(()),
+            gov_params_rejection_completed: 1,
+            gov_params_rejection_cases: complete_cases.clone(),
+            ..Stats::default()
+        };
+        assert!(stats.require_gov_params_rejection_coverage().is_ok());
+        stats.gov_params_rejection_completed = 0;
+        assert!(stats.require_gov_params_rejection_coverage().is_err());
+        stats.gov_params_rejection_completed = 1;
+        stats
+            .gov_params_rejection_cases
+            .remove(gov_params::CASE_NAMES[0]);
+        assert!(stats.require_gov_params_rejection_coverage().is_err());
+        stats
+            .gov_params_rejection_cases
+            .insert("wrong-case".into(), 1);
+        assert!(stats.require_gov_params_rejection_coverage().is_err());
+        stats.gov_params_rejection_cases = complete_cases;
+        stats
+            .gov_executed
+            .insert("/cosmos.gov.v1.MsgUpdateParams".into(), 1);
+        assert!(stats.require_gov_params_rejection_coverage().is_err());
+        assert!(
+            Stats::default()
+                .require_gov_params_rejection_coverage()
                 .is_ok()
         );
     }
