@@ -398,4 +398,150 @@ mod tests {
         assert!(ctx.has(STORE_KEY, &k)?);
         Ok(())
     }
+    fn create_validator_msg(
+        validator_address: String,
+    ) -> celestia_proto::cosmos::staking::v1beta1::MsgCreateValidator {
+        use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+        use celestia_proto::cosmos::crypto::ed25519;
+        use celestia_proto::cosmos::staking::v1beta1 as staking_pb;
+
+        #[allow(deprecated)]
+        staking_pb::MsgCreateValidator {
+            description: Some(staking_pb::Description {
+                moniker: "val".into(),
+                ..Default::default()
+            }),
+            commission: Some(staking_pb::CommissionRates {
+                rate: "100000000000000000".into(),
+                max_rate: "200000000000000000".into(),
+                max_change_rate: "10000000000000000".into(),
+            }),
+            min_self_delegation: "1".into(),
+            delegator_address: String::new(),
+            validator_address,
+            pubkey: Some(celestia_proto::Any::pack(&ed25519::PubKey {
+                key: vec![1u8; 32],
+            })),
+            value: Some(PbCoin {
+                denom: "utia".into(),
+                amount: "1000000".into(),
+            }),
+        }
+    }
+
+    /// Creates a bonded validator (1 TIA self-delegation, 9 TIA from another
+    /// delegator) whose `MsgCreateValidator.validator_address` is the canonical
+    /// lowercase or the all-uppercase Bech32 form, has its operator vote YES on
+    /// proposal 1, and tallies it.
+    fn tally_with_validator_address_case(uppercase: bool) -> Result<Proposal> {
+        use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
+        use celestia_proto::cosmos::gov::v1::{MsgVote, VoteOption};
+        use celestia_proto::cosmos::staking::v1beta1 as staking_pb;
+        use sdk::coins::Coin;
+
+        let mut ms = ms();
+        let start = Timestamp {
+            seconds: 1_000_000,
+            nanos: 0,
+        };
+        let end = Timestamp {
+            seconds: 1_000_100,
+            nanos: 0,
+        };
+        let mut ctx = Context::new(
+            &mut ms,
+            Header {
+                chain_id: "celestia".into(),
+                height: 1,
+                time: start,
+                ..Header::default()
+            },
+            ExecMode::Finalize,
+        );
+
+        x_staking::init_genesis(
+            &mut ctx,
+            &serde_json::json!({
+                "params": {
+                    "unbonding_time": "1000s",
+                    "max_validators": 10,
+                    "max_entries": 7,
+                    "historical_entries": 3,
+                    "bond_denom": "utia",
+                    "min_commission_rate": "0.050000000000000000"
+                },
+                "last_total_power": "0",
+                "exported": false
+            }),
+        )?;
+        let mut g = devnet_genesis();
+        g["proposals"] = serde_json::json!([{
+            "id": "1", "messages": [], "status": "PROPOSAL_STATUS_VOTING_PERIOD",
+            "voting_end_time": "1970-01-12T13:48:20Z", "total_deposit": []
+        }]);
+        init_genesis_json(&mut ctx, &g)?;
+
+        let op = [1u8; 20];
+        let del = [2u8; 20];
+        for (addr, amt) in [(&op[..], 1_000_000u64), (&del[..], 9_000_000u64)] {
+            let acct = x_auth::new_account_with_address(&mut ctx, addr)?;
+            x_auth::set_account(&mut ctx, &acct)?;
+            x_bank::set_balance(&mut ctx, addr, &Coin::new("utia", amt))?;
+        }
+
+        let val_lower = x_staking::addr::val_to_string(&op)?;
+        let val_addr = if uppercase {
+            val_lower.to_ascii_uppercase()
+        } else {
+            val_lower.clone()
+        };
+        x_staking::handle_create_validator(&mut ctx, &create_validator_msg(val_addr))?;
+        x_staking::handle_delegate(
+            &mut ctx,
+            &staking_pb::MsgDelegate {
+                delegator_address: sdk::address::to_bech32("celestia", &del),
+                validator_address: val_lower,
+                amount: Some(PbCoin {
+                    denom: "utia".into(),
+                    amount: "9000000".into(),
+                }),
+            },
+        )?;
+        x_staking::end_block(&mut ctx)?;
+
+        msgs::vote(
+            &mut ctx,
+            &MsgVote {
+                proposal_id: 1,
+                voter: sdk::address::to_bech32("celestia", &op),
+                option: VoteOption::Yes as i32,
+                metadata: String::new(),
+            },
+        )?;
+        ctx.header.time = end;
+        end_block(&mut ctx, &NoRouter)?;
+        keeper::must_get_proposal(&mut ctx, 1)
+    }
+
+    #[test]
+    fn tally_lowercase_operator_inherits_delegator_votes() -> Result<()> {
+        let p = tally_with_validator_address_case(false)?;
+        let tally = p.final_tally_result.unwrap_or_default();
+        assert_eq!(tally.yes_count, "10000000");
+        assert_eq!(p.status, ProposalStatus::Passed as i32);
+        Ok(())
+    }
+
+    /// Go keys the tally's validator map by the stored operator address string
+    /// and looks the voter up by its canonical lowercase form, so an operator
+    /// registered with an uppercase address does not cast its delegators'
+    /// votes: only its own delegation counts and the proposal fails quorum.
+    #[test]
+    fn tally_uppercase_operator_matches_go() -> Result<()> {
+        let p = tally_with_validator_address_case(true)?;
+        let tally = p.final_tally_result.unwrap_or_default();
+        assert_eq!(tally.yes_count, "1000000");
+        assert_eq!(p.status, ProposalStatus::Rejected as i32);
+        Ok(())
+    }
 }

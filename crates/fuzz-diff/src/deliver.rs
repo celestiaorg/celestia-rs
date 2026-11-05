@@ -2451,7 +2451,7 @@ impl Gen {
     }
 
     fn valoper_value(&mut self) -> Vec<u8> {
-        match self.m.rng.below(10) {
+        match self.m.rng.below(11) {
             0..=5 => {
                 let v = self.validators.clone();
                 self.pick(&v).unwrap_or_default().into_bytes()
@@ -2463,6 +2463,12 @@ impl Gen {
             8 => {
                 let i = self.acct_idx();
                 self.accts[i].acc.clone().into_bytes()
+            }
+            // Valid BIP-173 all-uppercase Bech32: decodes to the same bytes but
+            // is stored verbatim where Go keeps the original string.
+            9 => {
+                let i = self.acct_idx();
+                self.accts[i].val.to_uppercase().into_bytes()
             }
             _ => self.address_value(),
         }
@@ -3034,7 +3040,13 @@ impl Gen {
                     min_self_delegation: "1".into(),
                     #[allow(deprecated)]
                     delegator_address: String::new(),
-                    validator_address: self.accts[i].val.clone(),
+                    // Sometimes register the operator with its uppercase Bech32
+                    // form, which Go persists verbatim as the operator address.
+                    validator_address: if self.m.rng.one_in(4) {
+                        self.accts[i].val.to_uppercase()
+                    } else {
+                        self.accts[i].val.clone()
+                    },
                     pubkey: Some(Any::pack(
                         &celestia_proto::cosmos::crypto::ed25519::PubKey { key: key.to_vec() },
                     )),
