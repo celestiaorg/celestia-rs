@@ -235,6 +235,12 @@ pub struct Stats {
     /// Never-bonded unjail lifecycles that passed all four transactions and
     /// committed validator, delegation, signing-info, pool, and balance gates.
     pub never_bonded_unjail_completed: u64,
+    /// Whether the run requires validator-removal reward cleanup with
+    /// nonzero commission and decimal remainders.
+    pub validator_removal_rewards_required: Option<()>,
+    /// Validator-removal reward fixtures that passed exact payout,
+    /// conservation, retained-user-reward, and key-deletion gates.
+    pub validator_removal_rewards_completed: u64,
     /// Whether the run requires the controlled governance upgrade-plan lifecycle
     /// and handler-rejection boundaries.
     pub upgrade_plan_required: Option<()>,
@@ -753,8 +759,14 @@ fn max_account_number(v: &serde_json::Value, max: &mut u64) {
 /// InitChain app state; returns the patched state and the accounts.
 fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     let mut g: serde_json::Value = serde_json::from_slice(app_state)?;
-    if std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some() {
+    if std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some()
+        || std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some()
+    {
         g["staking"]["params"]["max_validators"] = serde_json::Value::from(1);
+    }
+    if std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some() {
+        g["distribution"]["params"]["community_tax"] =
+            serde_json::Value::from("0.000000000000000000");
     }
     let mut max = 0;
     max_account_number(&g["auth"]["accounts"], &mut max);
@@ -1709,6 +1721,20 @@ impl Stats {
                 self.never_bonded_unjail_completed == 1,
                 "incomplete DELIVER_NEVER_BONDED_UNJAIL_REQUIRE coverage: expected one completed fixture, observed {}",
                 self.never_bonded_unjail_completed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require removal of an unbonded validator to settle integral
+    /// commission, retain integral delegator rewards, move decimal dust to
+    /// the community pool, and delete every validator-scoped reward record.
+    pub fn require_validator_removal_rewards_coverage(&self) -> anyhow::Result<()> {
+        if self.validator_removal_rewards_required.is_some() {
+            anyhow::ensure!(
+                self.validator_removal_rewards_completed == 1,
+                "incomplete DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE coverage: expected one completed fixture, observed {}",
+                self.validator_removal_rewards_completed
             );
         }
         Ok(())
@@ -4550,6 +4576,8 @@ pub fn run(
     let pubkey_rejection_required = std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some();
     let never_bonded_unjail_required =
         std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some();
+    let validator_removal_rewards_required =
+        std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some();
     anyhow::ensure!(
         !never_bonded_unjail_required
             || (!direct_aux_required
@@ -4567,6 +4595,25 @@ pub fn run(
                 && blocks == 5
                 && per_block == 0),
         "DELIVER_NEVER_BONDED_UNJAIL_REQUIRE needs exactly five blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !validator_removal_rewards_required
+            || (!never_bonded_unjail_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !governed_upgrade_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 5
+                && per_block == 0),
+        "DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE needs exactly five blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !upgrade_plan_required
@@ -5043,6 +5090,7 @@ pub fn run(
         p256_required: p256_required.then_some(()),
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
         never_bonded_unjail_required: never_bonded_unjail_required.then_some(()),
+        validator_removal_rewards_required: validator_removal_rewards_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
         upgrade_skip_required: upgrade_skip_required.then_some(()),
@@ -5416,6 +5464,7 @@ pub fn run(
     let mut p256_fixture: Option<P256Fixture> = None;
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
     let mut never_bonded_unjail_fixture: Option<NeverBondedUnjailFixture> = None;
+    let mut validator_removal_rewards_fixture: Option<ValidatorRemovalRewardsFixture> = None;
     let mut upgrade_plan_fixture = if upgrade_halt_required {
         Some(upgrade_plan::Fixture::new_missing_handler(
             height,
@@ -5646,6 +5695,15 @@ pub fn run(
             let fixture = never_bonded_unjail_fixture
                 .as_mut()
                 .context("never-bonded unjail fixture was not initialized")?;
+            txs.push(fixture.tx(&gn, b - 1)?);
+        } else if validator_removal_rewards_required {
+            if validator_removal_rewards_fixture.is_none() {
+                validator_removal_rewards_fixture =
+                    Some(ValidatorRemovalRewardsFixture::new(&gn, &rust)?);
+            }
+            let fixture = validator_removal_rewards_fixture
+                .as_mut()
+                .context("validator-removal rewards fixture was not initialized")?;
             txs.push(fixture.tx(&gn, b - 1)?);
         } else if !hl_setup
             && !gov_setup
@@ -6930,6 +6988,23 @@ pub fn run(
                 stats.never_bonded_unjail_completed += 1;
             }
         }
+        if let Some(fixture) = validator_removal_rewards_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && fixture.tx_matches_phase(tx)
+        {
+            fixture.require_phase(
+                tx,
+                &fb.txs,
+                &g.tx_results,
+                fb.time
+                    .as_ref()
+                    .context("validator-removal FinalizeBlock time is absent")?,
+                &rust,
+            )?;
+            if fixture.phase == 4 {
+                stats.validator_removal_rewards_completed += 1;
+            }
+        }
         if let Some(fixture) = upgrade_plan_fixture.as_mut()
             && fixture.after_commit(&mut go, cons_conn, &mut rust, app_version, &gn)?
         {
@@ -7223,6 +7298,9 @@ pub fn run(
         stats.upgrade_plan_rejections = fixture.rejection_count();
     }
     if let Some(fixture) = never_bonded_unjail_fixture.as_ref() {
+        fixture.require_complete()?;
+    }
+    if let Some(fixture) = validator_removal_rewards_fixture.as_ref() {
         fixture.require_complete()?;
     }
     stats.upgrade.append(&mut upg.log);
@@ -9247,6 +9325,552 @@ impl NeverBondedUnjailFixture {
     }
 }
 
+const VALIDATOR_REMOVAL_DEPOSIT: u128 = 11;
+
+#[derive(Debug, Clone)]
+struct ValidatorRemovalAccounting {
+    distribution_balance: Int,
+    active_outstanding: sdk::dec_coins::DecCoins,
+    community_pool: sdk::dec_coins::DecCoins,
+    withdraw_balance: u128,
+}
+
+#[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)]
+struct ValidatorRemovalRewardsState {
+    validator: Option<x_staking::types::Validator>,
+    consensus_index_present: bool,
+    power_index_present: bool,
+    delegation: Option<x_staking::types::Delegation>,
+    unbonding: Option<x_staking::types::UnbondingDelegation>,
+    signing_info_present: bool,
+    withdraw_address: Vec<u8>,
+    outstanding: sdk::dec_coins::DecCoins,
+    commission: sdk::dec_coins::DecCoins,
+    current: x_distribution::store::CurrentRewards,
+    outstanding_key_present: bool,
+    commission_key_present: bool,
+    current_key_present: bool,
+    historical_keys: usize,
+    slash_event_keys: usize,
+    starting_info_present: bool,
+    user_outstanding: Option<sdk::coins::Coins>,
+    accounting: ValidatorRemovalAccounting,
+    recovery_balance: u128,
+    unbonding_time: pbjson_types::Duration,
+}
+
+struct ValidatorRemovalRewardsFixture {
+    operator: String,
+    operator_bytes: Vec<u8>,
+    account: String,
+    account_bytes: Vec<u8>,
+    withdraw: String,
+    withdraw_bytes: Vec<u8>,
+    recovery: String,
+    recovery_bytes: Vec<u8>,
+    recovery_initial_balance: u128,
+    active_operator_bytes: Vec<u8>,
+    consensus_address: Option<Vec<u8>>,
+    power_key: Option<Vec<u8>>,
+    before_deposit: Option<ValidatorRemovalAccounting>,
+    after_deposit: Option<ValidatorRemovalAccounting>,
+    removal_block_time: Option<pbjson_types::Timestamp>,
+    phase: usize,
+    pending_tx: Option<Vec<u8>>,
+}
+
+impl ValidatorRemovalRewardsFixture {
+    fn new(gn: &Gen, rust: &app::App) -> anyhow::Result<Self> {
+        let account = gn.accts[0].acc.clone();
+        let operator = gn.accts[0].val.clone();
+        let withdraw = gn.accts[1].acc.clone();
+        let recovery = gn.accts[2].acc.clone();
+        let account_bytes = x_staking::addr::acc_from_string(&account)?;
+        let operator_bytes = x_staking::addr::val_from_string(&operator)?;
+        let withdraw_bytes = x_staking::addr::acc_from_string(&withdraw)?;
+        let recovery_bytes = x_staking::addr::acc_from_string(&recovery)?;
+        let mut state = rust.create_query_context(0, false)?;
+        let mut ctx = state.context();
+        anyhow::ensure!(
+            x_staking::store::get_params(&mut ctx)?.max_validators == 1,
+            "validator-removal rewards fixture did not set max_validators=1"
+        );
+        anyhow::ensure!(
+            x_staking::store::get_validator(&mut ctx, &operator_bytes)?.is_none(),
+            "validator-removal rewards operator already exists"
+        );
+        let bonded = x_staking::store::get_bonded_validators_by_power(&mut ctx)?;
+        anyhow::ensure!(
+            bonded.len() == 1 && x_staking::store::get_all_validators(&mut ctx)?.len() == 1,
+            "validator-removal rewards fixture needs exactly one existing validator"
+        );
+        let active_operator_bytes = bonded[0].operator()?;
+        let recovery_initial_balance = bank_account_balance(&mut ctx, &recovery_bytes)?;
+        Ok(Self {
+            operator,
+            operator_bytes,
+            account,
+            account_bytes,
+            withdraw,
+            withdraw_bytes,
+            recovery,
+            recovery_bytes,
+            recovery_initial_balance,
+            active_operator_bytes,
+            consensus_address: None,
+            power_key: None,
+            before_deposit: None,
+            after_deposit: None,
+            removal_block_time: None,
+            phase: 0,
+            pending_tx: None,
+        })
+    }
+
+    fn tx(&mut self, gn: &Gen, phase: usize) -> anyhow::Result<Vec<u8>> {
+        anyhow::ensure!(
+            phase == self.phase,
+            "validator-removal rewards phase changed"
+        );
+        let staking = |amount: u128| {
+            Some(Coin {
+                denom: "utia".into(),
+                amount: amount.to_string(),
+            })
+        };
+        let messages = match phase {
+            0 => vec![
+                Any::pack(
+                    &celestia_proto::cosmos::staking::v1beta1::MsgCreateValidator {
+                        description: Some(celestia_proto::cosmos::staking::v1beta1::Description {
+                            moniker: "validator-removal-rewards".into(),
+                            ..Default::default()
+                        }),
+                        commission: Some(
+                            celestia_proto::cosmos::staking::v1beta1::CommissionRates {
+                                rate: "100000000000000000".into(),
+                                max_rate: "200000000000000000".into(),
+                                max_change_rate: "10000000000000000".into(),
+                            },
+                        ),
+                        min_self_delegation: NEVER_BONDED_SELF_DELEGATION.to_string(),
+                        #[allow(deprecated)]
+                        delegator_address: String::new(),
+                        validator_address: self.operator.clone(),
+                        pubkey: Some(Any::pack(
+                            &celestia_proto::cosmos::crypto::ed25519::PubKey { key: vec![43; 32] },
+                        )),
+                        value: staking(NEVER_BONDED_SELF_DELEGATION),
+                    },
+                ),
+                Any::pack(
+                    &celestia_proto::cosmos::distribution::v1beta1::MsgSetWithdrawAddress {
+                        delegator_address: self.account.clone(),
+                        withdraw_address: self.withdraw.clone(),
+                    },
+                ),
+            ],
+            1 => {
+                vec![Any::pack(
+                &celestia_proto::cosmos::distribution::v1beta1::MsgDepositValidatorRewardsPool {
+                    depositor: self.account.clone(),
+                    validator_address: self.operator.clone(),
+                    amount: vec![staking(VALIDATOR_REMOVAL_DEPOSIT)
+                        .context("validator-removal deposit coin")?],
+                },
+            )]
+            }
+            2 => vec![Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgUndelegate {
+                    delegator_address: self.account.clone(),
+                    validator_address: self.operator.clone(),
+                    amount: staking(NEVER_BONDED_SELF_DELEGATION),
+                },
+            )],
+            3 => vec![Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+                from_address: self.account.clone(),
+                to_address: self.recovery.clone(),
+                amount: vec![staking(1).context("validator-removal recovery coin")?],
+            })],
+            _ => anyhow::bail!("validator-removal rewards has no phase {phase}"),
+        };
+        let tx = sign_simple(gn, 0, messages, 1_000_000)
+            .context("signing validator-removal rewards transaction")?;
+        self.pending_tx = Some(tx.clone());
+        Ok(tx)
+    }
+
+    fn tx_matches_phase(&self, tx: &[u8]) -> bool {
+        self.pending_tx.as_deref() == Some(tx)
+    }
+
+    fn require_phase(
+        &mut self,
+        tx: &[u8],
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        block_time: &pbjson_types::Timestamp,
+        rust: &app::App,
+    ) -> anyhow::Result<()> {
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == tx)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1 && matches[0].1.code == 0 && matches[0].1.codespace.is_empty(),
+            "validator-removal rewards phase {} was not finalized exactly once with code 0",
+            self.phase
+        );
+        let state = self.state(rust)?;
+        match self.phase {
+            0 => {
+                let validator = state
+                    .validator
+                    .as_ref()
+                    .context("validator-removal validator was not created")?;
+                let delegation = state
+                    .delegation
+                    .as_ref()
+                    .context("validator-removal self-delegation is absent")?;
+                anyhow::ensure!(
+                    validator.status == x_staking::types::BondStatus::Unbonded
+                        && !validator.jailed
+                        && validator.tokens.to_string() == "1000000"
+                        && delegation.shares.to_string() == "1000000.000000000000000000"
+                        && !state.signing_info_present
+                        && state.consensus_index_present
+                        && state.power_index_present
+                        && state.withdraw_address == self.withdraw_bytes
+                        && state.outstanding.is_zero()
+                        && state.commission.is_zero()
+                        && state.current.rewards.is_zero()
+                        && state.outstanding_key_present
+                        && state.commission_key_present
+                        && state.current_key_present
+                        && state.historical_keys > 0
+                        && state.slash_event_keys == 0
+                        && state.starting_info_present
+                        && state.user_outstanding.is_none(),
+                    "validator-removal creation state changed: {state:?}"
+                );
+                self.consensus_address = Some(validator.cons_addr()?);
+                self.power_key = Some(x_staking::keys::power_index(
+                    validator.potential_consensus_power()?,
+                    &self.operator_bytes,
+                ));
+                self.before_deposit = Some(state.accounting);
+            }
+            1 => {
+                self.require_live_validator(&state)?;
+                anyhow::ensure!(
+                    dec_amount_is(&state.outstanding, 11_000_000_000_000_000_000)?
+                        && dec_amount_is(&state.commission, 1_100_000_000_000_000_000)?
+                        && dec_amount_is(&state.current.rewards, 9_900_000_000_000_000_000)?
+                        && state.outstanding_key_present
+                        && state.commission_key_present
+                        && state.current_key_present
+                        && state.historical_keys > 0
+                        && state.starting_info_present
+                        && state.user_outstanding.is_none(),
+                    "validator-removal deposited reward state changed: {state:?}"
+                );
+                let before = self
+                    .before_deposit
+                    .as_ref()
+                    .context("validator-removal pre-deposit accounting is absent")?;
+                anyhow::ensure!(
+                    state.accounting.withdraw_balance == before.withdraw_balance,
+                    "validator-removal deposit paid commission before validator removal"
+                );
+                self.after_deposit = Some(state.accounting);
+            }
+            2 => {
+                self.removal_block_time = Some(*block_time);
+                self.require_removed_validator(&state)?;
+            }
+            3 => {
+                self.require_removed_validator(&state)?;
+                anyhow::ensure!(
+                    state.recovery_balance == self.recovery_initial_balance + 1,
+                    "validator-removal signed recovery transfer did not persist"
+                );
+            }
+            _ => anyhow::bail!("validator-removal rewards completed too many phases"),
+        }
+        self.phase += 1;
+        self.pending_tx = None;
+        Ok(())
+    }
+
+    fn require_live_validator(&self, state: &ValidatorRemovalRewardsState) -> anyhow::Result<()> {
+        let validator = state
+            .validator
+            .as_ref()
+            .context("validator-removal validator disappeared before full undelegation")?;
+        let delegation = state
+            .delegation
+            .as_ref()
+            .context("validator-removal self-delegation disappeared before removal")?;
+        anyhow::ensure!(
+            validator.status == x_staking::types::BondStatus::Unbonded
+                && validator.tokens.to_string() == "1000000"
+                && delegation.shares.to_string() == "1000000.000000000000000000"
+                && !state.signing_info_present
+                && state.consensus_index_present
+                && state.power_index_present
+                && state.withdraw_address == self.withdraw_bytes,
+            "validator-removal live validator state changed: {state:?}"
+        );
+        Ok(())
+    }
+
+    fn require_removed_validator(
+        &self,
+        state: &ValidatorRemovalRewardsState,
+    ) -> anyhow::Result<()> {
+        let unbonding = state
+            .unbonding
+            .as_ref()
+            .context("validator-removal unbonding delegation is absent")?;
+        anyhow::ensure!(
+            unbonding.entries.len() == 1,
+            "validator-removal expected exactly one unbonding entry"
+        );
+        let entry = &unbonding.entries[0];
+        anyhow::ensure!(
+            entry.initial_balance.to_string() == "1000000"
+                && entry.balance.to_string() == "1000000"
+                && entry.completion_time
+                    == sdk::time::add_duration(
+                        self.removal_block_time
+                            .as_ref()
+                            .context("validator-removal block time is absent")?,
+                        &state.unbonding_time
+                    ),
+            "validator-removal unbonding entry changed: {entry:?}; header {:?}; unbonding {:?}; expected {:?}",
+            self.removal_block_time,
+            state.unbonding_time,
+            sdk::time::add_duration(
+                self.removal_block_time
+                    .as_ref()
+                    .context("validator-removal block time is absent")?,
+                &state.unbonding_time
+            )
+        );
+        let user = state
+            .user_outstanding
+            .as_ref()
+            .context("validator-removal retained user rewards are absent")?;
+        anyhow::ensure!(
+            state.validator.is_none()
+                && state.delegation.is_none()
+                && !state.consensus_index_present
+                && !state.power_index_present
+                && !state.signing_info_present
+                && state.withdraw_address == self.withdraw_bytes
+                && state.outstanding.is_zero()
+                && state.commission.is_zero()
+                && state.current.rewards.is_zero()
+                && !state.outstanding_key_present
+                && !state.commission_key_present
+                && !state.current_key_present
+                && state.historical_keys == 0
+                && state.slash_event_keys == 0
+                && !state.starting_info_present
+                && user.amount_of("utia").to_string() == "9",
+            "validator-removal committed cleanup state changed: {state:?}"
+        );
+        let before = self
+            .before_deposit
+            .as_ref()
+            .context("validator-removal pre-deposit accounting is absent")?;
+        anyhow::ensure!(
+            state.accounting.withdraw_balance == before.withdraw_balance + 1,
+            "validator-removal integral commission payout changed"
+        );
+        if self.phase == 2 {
+            let deposited = self
+                .after_deposit
+                .as_ref()
+                .context("validator-removal post-deposit accounting is absent")?;
+            let active_delta = state
+                .accounting
+                .active_outstanding
+                .sub(&deposited.active_outstanding)?;
+            let pool_delta = state
+                .accounting
+                .community_pool
+                .sub(&deposited.community_pool)?;
+            anyhow::ensure!(
+                dec_amount_is(&pool_delta, 1_000_000_000_000_000_000)?,
+                "validator-removal community-pool dust changed: {pool_delta}"
+            );
+            let lhs = dec_from_int(&state.accounting.distribution_balance)?
+                .add(&dec_from_u128(VALIDATOR_REMOVAL_DEPOSIT)?)?;
+            let rhs = dec_from_int(&deposited.distribution_balance)?
+                .add(&active_delta)?
+                .add(&pool_delta)?
+                .add(&dec_from_u128(9)?)?;
+            anyhow::ensure!(
+                lhs == rhs,
+                "validator-removal distribution module conservation changed: left {lhs}, right {rhs}"
+            );
+        }
+        Ok(())
+    }
+
+    fn state(&self, rust: &app::App) -> anyhow::Result<ValidatorRemovalRewardsState> {
+        let mut state = rust.create_query_context(0, false)?;
+        let mut ctx = state.context();
+        let validator = x_staking::store::get_validator(&mut ctx, &self.operator_bytes)?;
+        let current_consensus = validator
+            .as_ref()
+            .map(x_staking::types::Validator::cons_addr)
+            .transpose()?;
+        let consensus = self
+            .consensus_address
+            .as_deref()
+            .or(current_consensus.as_deref());
+        let consensus_index_present = match consensus {
+            Some(consensus) => {
+                x_staking::store::get_validator_by_cons_addr(&mut ctx, consensus)?.is_some()
+            }
+            None => false,
+        };
+        let current_power_key = validator
+            .as_ref()
+            .map(|current| {
+                Ok::<_, sdk::error::SdkError>(x_staking::keys::power_index(
+                    current.potential_consensus_power()?,
+                    &self.operator_bytes,
+                ))
+            })
+            .transpose()?;
+        let power_key = self.power_key.as_deref().or(current_power_key.as_deref());
+        let power_index_present = match power_key {
+            Some(key) => ctx.get(x_staking::STORE_KEY, key)?.is_some(),
+            None => false,
+        };
+        let signing_info_present = if let Some(consensus) = consensus {
+            x_slashing::get_signing_info(&mut ctx, consensus)?.is_some()
+        } else {
+            false
+        };
+        let outstanding_key = x_distribution::store::outstanding_key(&self.operator_bytes);
+        let commission_key = x_distribution::store::commission_key(&self.operator_bytes);
+        let current_key = x_distribution::store::current_key(&self.operator_bytes);
+        let accounting = ValidatorRemovalAccounting {
+            distribution_balance: module_balance(&mut ctx, x_distribution::MODULE_NAME)?,
+            active_outstanding: x_distribution::store::get_outstanding(
+                &mut ctx,
+                &self.active_operator_bytes,
+            )?,
+            community_pool: x_distribution::store::get_fee_pool(&mut ctx)?,
+            withdraw_balance: bank_account_balance(&mut ctx, &self.withdraw_bytes)?,
+        };
+        Ok(ValidatorRemovalRewardsState {
+            validator,
+            consensus_index_present,
+            power_index_present,
+            delegation: x_staking::store::get_delegation(
+                &mut ctx,
+                &self.account_bytes,
+                &self.operator_bytes,
+            )?,
+            unbonding: x_staking::store::get_ubd(
+                &mut ctx,
+                &self.account_bytes,
+                &self.operator_bytes,
+            )?,
+            signing_info_present,
+            withdraw_address: x_distribution::store::get_withdraw_addr(
+                &mut ctx,
+                &self.account_bytes,
+            )?,
+            outstanding: x_distribution::store::get_outstanding(&mut ctx, &self.operator_bytes)?,
+            commission: x_distribution::store::get_commission(&mut ctx, &self.operator_bytes)?,
+            current: x_distribution::store::get_current(&mut ctx, &self.operator_bytes)?,
+            outstanding_key_present: ctx
+                .get(x_distribution::STORE_KEY, &outstanding_key)?
+                .is_some(),
+            commission_key_present: ctx
+                .get(x_distribution::STORE_KEY, &commission_key)?
+                .is_some(),
+            current_key_present: ctx.get(x_distribution::STORE_KEY, &current_key)?.is_some(),
+            historical_keys: prefix_len(
+                &mut ctx,
+                x_distribution::STORE_KEY,
+                &x_distribution::store::historical_prefix(&self.operator_bytes),
+            )?,
+            slash_event_keys: prefix_len(
+                &mut ctx,
+                x_distribution::STORE_KEY,
+                &x_distribution::store::slash_event_prefix(&self.operator_bytes),
+            )?,
+            starting_info_present: x_distribution::store::has_starting_info(
+                &mut ctx,
+                &self.operator_bytes,
+                &self.account_bytes,
+            )?,
+            user_outstanding: x_distribution::store::get_user_outstanding(
+                &mut ctx,
+                &self.account_bytes,
+                &self.operator_bytes,
+            )?,
+            accounting,
+            recovery_balance: bank_account_balance(&mut ctx, &self.recovery_bytes)?,
+            unbonding_time: x_staking::store::get_params(&mut ctx)?.unbonding_time,
+        })
+    }
+
+    fn require_complete(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.phase == 4 && self.pending_tx.is_none(),
+            "validator-removal rewards fixture completed {} of four phases",
+            self.phase
+        );
+        Ok(())
+    }
+}
+
+fn bank_account_balance(ctx: &mut sdk::Context<'_>, address: &[u8]) -> anyhow::Result<u128> {
+    Ok(
+        x_bank::get_balance(ctx, address, x_staking::DEFAULT_BOND_DENOM)?
+            .amount
+            .to_string()
+            .parse()?,
+    )
+}
+
+fn prefix_len(ctx: &mut sdk::Context<'_>, store: &str, prefix: &[u8]) -> anyhow::Result<usize> {
+    let mut iter = ctx.prefix_iter(store, prefix)?;
+    let mut count = 0;
+    while iter.next(ctx)?.is_some() {
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn dec_amount_is(coins: &sdk::dec_coins::DecCoins, atomics: i128) -> anyhow::Result<bool> {
+    Ok(coins.0.len() == 1
+        && coins.0[0].denom == x_staking::DEFAULT_BOND_DENOM
+        && coins.0[0].amount == LegacyDec::unmarshal(atomics.to_string().as_bytes())?)
+}
+
+fn dec_from_int(value: &Int) -> anyhow::Result<sdk::dec_coins::DecCoins> {
+    sdk::dec_coins::DecCoins::from_coins(&sdk::coins::Coins(vec![sdk::coins::Coin::with_amount(
+        x_staking::DEFAULT_BOND_DENOM,
+        value.clone(),
+    )]))
+    .map_err(Into::into)
+}
+
+fn dec_from_u128(value: u128) -> anyhow::Result<sdk::dec_coins::DecCoins> {
+    dec_from_int(&Int::from(u64::try_from(value)?))
+}
+
 fn bonded_validators_from_context(ctx: &mut sdk::Context<'_>) -> anyhow::Result<Vec<String>> {
     Ok(x_staking::store::get_bonded_validators_by_power(ctx)?
         .into_iter()
@@ -11172,6 +11796,26 @@ mod tests {
         assert!(
             Stats::default()
                 .require_never_bonded_unjail_coverage()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn validator_removal_rewards_requirement_fails_closed() {
+        let mut stats = Stats {
+            validator_removal_rewards_required: Some(()),
+            ..Stats::default()
+        };
+        for completed in 0..=2 {
+            stats.validator_removal_rewards_completed = completed;
+            assert_eq!(
+                stats.require_validator_removal_rewards_coverage().is_ok(),
+                completed == 1
+            );
+        }
+        assert!(
+            Stats::default()
+                .require_validator_removal_rewards_coverage()
                 .is_ok()
         );
     }

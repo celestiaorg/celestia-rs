@@ -33,6 +33,11 @@
 # dropping below minimum self-delegation, restores the stake, and requires
 # MsgUnjail to succeed without creating slashing signing info. It needs exactly
 # five generated blocks and zero random transactions.
+# DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1 creates an out-of-set validator,
+# sets a distinct commission withdraw account, deposits 11utia, fully
+# undelegates it and requires exact commission payout, decimal-dust accounting,
+# retained user rewards and deletion of every validator reward record. It needs
+# exactly five generated blocks and zero random transactions.
 # DELIVER_DIRECT_AUX_REQUIRE=1 sends an implicit-fee-payer direct-aux
 # transaction that must fail CheckTx with sdk/4, followed by the same sender
 # using direct-aux while a separate direct signer pays the fee. It requires

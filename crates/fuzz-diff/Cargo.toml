@@ -53,6 +53,7 @@ txdecode = { path = "../tier-3-app-modules/txdecode" }
 x-ante = { path = "../tier-3-app-modules/x/ante" }
 x-auth = { path = "../tier-3-app-modules/x/auth" }
 x-bank = { path = "../tier-3-app-modules/x/bank" }
+x-distribution = { path = "../tier-3-app-modules/x/distribution" }
 p256 = { version = "0.14", features = ["ecdsa"] }
 x-gov = { path = "../tier-3-app-modules/x/gov" }
 x-hyperlane = { path = "../tier-3-app-modules/x/hyperlane" }
