@@ -122,6 +122,12 @@ for scen in authz-feegrant v9-authz-feegrant; do
 done
 for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "unbonded-redelegation-rollback-$scen" GO_APPD="$A" \
+    DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 4 0 17381
+done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "validator-removal-rewards-$scen" GO_APPD="$A" \
     DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 5 0 17379
