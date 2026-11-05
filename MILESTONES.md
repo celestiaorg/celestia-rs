@@ -1188,6 +1188,16 @@ test), then start that harness's count again.
   conservation and a signed recovery transaction prevent a logged-and-ignored
   hook error from passing. This bounded synthetic path does not complete F1.12
   or any volume, mainnet-shaped state, observation-window or readiness gate.
+  *Zero-penalty double-sign follow-up (2026-11-05):* a controlled differential
+  fixture installs the governance-reachable zero double-sign slash fraction,
+  injects fresh duplicate-vote evidence for a positive-power bonded validator
+  and requires the evidence to persist while the validator is jailed and
+  tombstoned. Exact state gates require zero burned stake, unchanged validator
+  tokens and shares, the expected bonded-to-unbonding pool transfer, no
+  distribution slash record or period increment, and a subsequent signed
+  recovery commit. The paired v10.5.0 and historical v9.0.8 synthetic probes
+  do not test Comet evidence-pool admission and do not complete F1.12, volume,
+  mainnet-shaped state, observation-window or production-readiness gates.
 
 ### Carried over from completed milestones
 

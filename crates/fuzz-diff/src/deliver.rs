@@ -123,6 +123,7 @@ enum EvidenceRequirement {
     Stale,
     RemovedValidator,
     StakeLifecycle,
+    ZeroDoubleSignSlash,
 }
 
 impl EvidenceRequirement {
@@ -136,8 +137,9 @@ impl EvidenceRequirement {
                     "stale" => Ok(Self::Stale),
                     "removed-validator" => Ok(Self::RemovedValidator),
                     "stake-lifecycle" => Ok(Self::StakeLifecycle),
+                    "zero-double-sign-slash" => Ok(Self::ZeroDoubleSignSlash),
                     _ => {
-                        anyhow::bail!("DELIVER_EVIDENCE_REQUIRE must be stale, removed-validator, or stake-lifecycle")
+                        anyhow::bail!("DELIVER_EVIDENCE_REQUIRE must be stale, removed-validator, stake-lifecycle, or zero-double-sign-slash")
                     }
                 }
             })
@@ -149,6 +151,7 @@ impl EvidenceRequirement {
             Self::Stale => "stale",
             Self::RemovedValidator => "removed-validator",
             Self::StakeLifecycle => "stake-lifecycle",
+            Self::ZeroDoubleSignSlash => "zero-double-sign-slash",
         }
     }
 }
@@ -766,6 +769,12 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     }
     if std::env::var_os("DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE").is_some() {
         g["distribution"]["params"]["community_tax"] =
+            serde_json::Value::from("0.000000000000000000");
+    }
+    if std::env::var("DELIVER_EVIDENCE_REQUIRE").as_deref()
+        == Ok(EvidenceRequirement::ZeroDoubleSignSlash.name())
+    {
+        g["slashing"]["params"]["slash_fraction_double_sign"] =
             serde_json::Value::from("0.000000000000000000");
     }
     let mut max = 0;
@@ -4795,6 +4804,11 @@ pub fn run(
                 && std::env::var_os("DELIVER_SCRIPT_REQUIRE").is_some()),
         "DELIVER_EVIDENCE_REQUIRE=stake-lifecycle requires DELIVER_SCRIPT and DELIVER_SCRIPT_REQUIRE"
     );
+    anyhow::ensure!(
+        evidence_requirement != Some(EvidenceRequirement::ZeroDoubleSignSlash)
+            || (blocks == 3 && per_block == 0 && std::env::var_os("DELIVER_SCRIPT").is_none()),
+        "DELIVER_EVIDENCE_REQUIRE=zero-double-sign-slash needs exactly three blocks and zero random transactions"
+    );
     let ibc_connection_confirm = std::env::var_os("DELIVER_IBC_CONNECTION_CONFIRM").is_some();
     let ibc_close_init_failure_required =
         std::env::var_os("DELIVER_IBC_CLOSE_INIT_FAILURE_REQUIRE").is_some();
@@ -5465,6 +5479,7 @@ pub fn run(
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
     let mut never_bonded_unjail_fixture: Option<NeverBondedUnjailFixture> = None;
     let mut validator_removal_rewards_fixture: Option<ValidatorRemovalRewardsFixture> = None;
+    let mut zero_slash_recovery: Option<(Vec<u8>, Vec<u8>, u128)> = None;
     let mut upgrade_plan_fixture = if upgrade_halt_required {
         Some(upgrade_plan::Fixture::new_missing_handler(
             height,
@@ -5705,6 +5720,25 @@ pub fn run(
                 .as_mut()
                 .context("validator-removal rewards fixture was not initialized")?;
             txs.push(fixture.tx(&gn, b - 1)?);
+        } else if evidence_requirement == Some(EvidenceRequirement::ZeroDoubleSignSlash) && b == 2 {
+            let recipient = gn.accts[1].addr.clone();
+            let initial = account_balance_readonly(&rust, &gn.accts[1].acc)?;
+            let tx = sign_simple(
+                &gn,
+                0,
+                vec![Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+                    from_address: gn.accts[0].acc.clone(),
+                    to_address: gn.accts[1].acc.clone(),
+                    amount: vec![Coin {
+                        denom: "utia".into(),
+                        amount: "1".into(),
+                    }],
+                })],
+                1_000_000,
+            )
+            .context("signing zero-slash recovery transaction")?;
+            zero_slash_recovery = Some((tx.clone(), recipient, initial));
+            txs.push(tx);
         } else if !hl_setup
             && !gov_setup
             && b >= script_at
@@ -6269,6 +6303,8 @@ pub fn run(
                     .clone()
                     .context("stake-lifecycle never captured an infraction validator set")?,
             );
+        } else if evidence_requirement == Some(EvidenceRequirement::ZeroDoubleSignSlash) && b == 1 {
+            misbehavior.push(active_double_sign_misbehavior(height, &valsets, &times)?);
         } else if evidence_requirement.is_none() && !no_votes && gn.m.rng.one_in(20) {
             let back = 1 + gn.m.rng.below(4) as i64;
             let h = (height - back).max(template.height + 1);
@@ -6297,10 +6333,24 @@ pub fn run(
             }
         }
         let evidence_state_before = evidence_requirement
-            .filter(|r| *r != EvidenceRequirement::StakeLifecycle)
+            .filter(|r| {
+                !matches!(
+                    r,
+                    EvidenceRequirement::StakeLifecycle | EvidenceRequirement::ZeroDoubleSignSlash
+                )
+            })
             .zip(misbehavior.first())
             .map(|(requirement, evidence)| {
                 require_evidence_branch_precondition(requirement, &rust, evidence, height, &time)
+            })
+            .transpose()?;
+        let zero_slash_state_before = evidence_requirement
+            .filter(|r| *r == EvidenceRequirement::ZeroDoubleSignSlash)
+            .zip(misbehavior.first())
+            .map(|(_, evidence)| {
+                let state = zero_slash_state(&rust, evidence, &time)?;
+                require_zero_slash_precondition(&state)?;
+                Ok::<_, anyhow::Error>(state)
             })
             .transpose()?;
         let stake_lifecycle_state_before = evidence_requirement
@@ -7039,7 +7089,13 @@ pub fn run(
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
-                evidence_requirement.filter(|r| *r != EvidenceRequirement::StakeLifecycle),
+                evidence_requirement.filter(|r| {
+                    !matches!(
+                        r,
+                        EvidenceRequirement::StakeLifecycle
+                            | EvidenceRequirement::ZeroDoubleSignSlash
+                    )
+                }),
                 evidence_state_before.as_ref(),
                 fb.misbehavior.first(),
             )
@@ -7050,6 +7106,39 @@ pub fn run(
                 .evidence_injected
                 .entry(requirement.name().into())
                 .or_default() += 1;
+        }
+        if c.is_empty()
+            && evidence_requirement == Some(EvidenceRequirement::ZeroDoubleSignSlash)
+            && let (Some(before), Some(evidence)) =
+                (zero_slash_state_before.as_ref(), fb.misbehavior.first())
+        {
+            let after = zero_slash_state(&rust, evidence, &time)?;
+            require_zero_slash_postcondition(before, &after, evidence, &g.events)?;
+            *stats
+                .evidence_injected
+                .entry(EvidenceRequirement::ZeroDoubleSignSlash.name().into())
+                .or_default() += 1;
+        }
+        if evidence_requirement == Some(EvidenceRequirement::ZeroDoubleSignSlash) && b == 2 {
+            let (tx, recipient, initial) = zero_slash_recovery
+                .as_ref()
+                .context("zero-slash recovery transaction is absent")?;
+            let matches: Vec<_> = fb
+                .txs
+                .iter()
+                .zip(&g.tx_results)
+                .filter(|(candidate, _)| candidate.as_slice() == tx.as_slice())
+                .collect();
+            anyhow::ensure!(
+                matches.len() == 1
+                    && matches[0].1.code == 0
+                    && matches[0].1.codespace.is_empty()
+                    && bank_account_balance(
+                        &mut rust.create_query_context(0, false)?.context(),
+                        recipient,
+                    )? == initial + 1,
+                "zero-slash signed recovery transaction did not commit exactly once"
+            );
         }
         if c.is_empty()
             && evidence_requirement == Some(EvidenceRequirement::StakeLifecycle)
@@ -8161,6 +8250,24 @@ struct EvidenceBranchState {
     evidence_present: bool,
 }
 
+#[derive(Debug)]
+struct ZeroSlashState {
+    evidence: EvidenceBranchState,
+    operator: Vec<u8>,
+    tokens: Int,
+    shares: LegacyDec,
+    power_index_present: bool,
+    slash_factor: LegacyDec,
+    supply: Int,
+    block_provision: Int,
+    bonded_pool: Int,
+    not_bonded_pool: Int,
+    current_period: u64,
+    retained_outstanding: sdk::dec_coins::DecCoins,
+    historical_keys: usize,
+    slash_event_keys: usize,
+}
+
 fn evidence_branch_state(
     rust: &app::App,
     misbehavior: &abci::Misbehavior,
@@ -8186,6 +8293,152 @@ fn evidence_branch_state(
         jailed_until: signing_info.map(|info| info.jailed_until),
         evidence_present: ctx.get(x_evidence::STORE_KEY, &evidence_key)?.is_some(),
     })
+}
+
+fn zero_slash_state(
+    rust: &app::App,
+    misbehavior: &abci::Misbehavior,
+    block_time: &pbjson_types::Timestamp,
+) -> anyhow::Result<ZeroSlashState> {
+    let (_, consensus_address) = x_evidence::from_abci(misbehavior);
+    let mut state = rust.create_query_context(0, false)?;
+    let mut ctx = state.context();
+    let validator = x_staking::store::get_validator_by_cons_addr(&mut ctx, &consensus_address)?
+        .context("zero-slash validator is absent")?;
+    let operator = validator.operator()?;
+    let power_key = x_staking::keys::power_index(validator.potential_consensus_power()?, &operator);
+    let current = x_distribution::store::get_current(&mut ctx, &operator)?;
+    let outstanding = x_distribution::store::get_outstanding(&mut ctx, &operator)?;
+    let commission = x_distribution::store::get_commission(&mut ctx, &operator)?;
+    let supply = x_bank::get_supply(&mut ctx, x_staking::DEFAULT_BOND_DENOM)?.amount;
+    let mut minter = x_mint::get_minter(&mut ctx)?;
+    let genesis_time = x_mint::get_genesis_time(&mut ctx)?;
+    let inflation = x_mint::calculate_inflation_rate(&genesis_time, block_time)?;
+    if inflation != minter.inflation_rate || minter.annual_provisions.is_zero() {
+        minter.inflation_rate = inflation;
+        minter.annual_provisions = minter
+            .inflation_rate
+            .checked_mul_int(&supply)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
+    let block_provision = minter
+        .previous_block_time
+        .as_ref()
+        .map(|previous| minter.calculate_block_provision(block_time, previous))
+        .transpose()?
+        .map_or_else(Int::zero, |coin| coin.amount);
+    Ok(ZeroSlashState {
+        evidence: evidence_branch_state(rust, misbehavior)?,
+        operator: operator.clone(),
+        tokens: validator.tokens,
+        shares: validator.delegator_shares,
+        power_index_present: ctx.get(x_staking::STORE_KEY, &power_key)?.is_some(),
+        slash_factor: x_slashing::get_params(&mut ctx)?.slash_fraction_double_sign,
+        supply,
+        block_provision,
+        bonded_pool: module_balance(&mut ctx, x_staking::BONDED_POOL)?,
+        not_bonded_pool: module_balance(&mut ctx, x_staking::NOT_BONDED_POOL)?,
+        current_period: current.period,
+        retained_outstanding: outstanding.sub(&current.rewards)?.sub(&commission)?,
+        historical_keys: prefix_len(
+            &mut ctx,
+            x_distribution::STORE_KEY,
+            &x_distribution::store::historical_prefix(&operator),
+        )?,
+        slash_event_keys: prefix_len(
+            &mut ctx,
+            x_distribution::STORE_KEY,
+            &x_distribution::store::slash_event_prefix(&operator),
+        )?,
+    })
+}
+
+fn require_zero_slash_precondition(state: &ZeroSlashState) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        state.evidence.validator_status == Some(x_staking::types::BondStatus::Bonded)
+            && state.evidence.validator_jailed == Some(false)
+            && state.evidence.pubkey_present
+            && state.evidence.signing_info_present
+            && state.evidence.tombstoned == Some(false)
+            && !state.evidence.evidence_present
+            && state.tokens.is_positive()
+            && state.shares.is_positive()
+            && state.power_index_present
+            && state.slash_factor.is_zero(),
+        "zero-slash precondition changed: {state:?}"
+    );
+    Ok(())
+}
+
+fn require_zero_slash_postcondition(
+    before: &ZeroSlashState,
+    after: &ZeroSlashState,
+    misbehavior: &abci::Misbehavior,
+    events: &[celestia_proto::celestia_core_proto::abci::Event],
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        after.evidence.evidence_present
+            && after.evidence.validator_jailed == Some(true)
+            && after.evidence.validator_status == Some(x_staking::types::BondStatus::Unbonding)
+            && after.evidence.tombstoned == Some(true)
+            && after.evidence.jailed_until.is_some_and(|time| {
+                time.seconds == x_evidence::DOUBLE_SIGN_JAIL_END_UNIX && time.nanos == 0
+            })
+            && after.operator == before.operator
+            && after.tokens == before.tokens
+            && after.shares == before.shares
+            && !after.power_index_present
+            && after.slash_factor.is_zero(),
+        "zero-slash evidence, jail, tombstone, or validator state changed: before={before:?} after={after:?}"
+    );
+    anyhow::ensure!(
+        after.bonded_pool == int_sub(&before.bonded_pool, &before.tokens)?
+            && after.not_bonded_pool == int_add(&before.not_bonded_pool, &before.tokens)?
+            && after.supply == int_add(&before.supply, &before.block_provision)?,
+        "zero-slash economic accounting changed: before={before:?} after={after:?}"
+    );
+    anyhow::ensure!(
+        after.current_period == before.current_period
+            && after.retained_outstanding == before.retained_outstanding
+            && after.historical_keys == before.historical_keys
+            && after.slash_event_keys == before.slash_event_keys,
+        "zero-slash unexpectedly changed distribution slash accounting: before={before:?} after={after:?}"
+    );
+    let validator = misbehavior
+        .validator
+        .as_ref()
+        .context("zero-slash evidence has no validator")?;
+    let expected_power = validator.power.to_string();
+    let expected_address = encoding::bech32::encode(
+        encoding::bech32::VALIDATOR_CONSENSUS_PREFIX,
+        &validator.address,
+    )?;
+    let slash_events: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event.r#type == "slash"
+                && event
+                    .attributes
+                    .iter()
+                    .any(|attribute| attribute.key == "reason" && attribute.value == "double_sign")
+        })
+        .collect();
+    anyhow::ensure!(
+        slash_events.len() == 1
+            && slash_events[0]
+                .attributes
+                .iter()
+                .any(|attribute| { attribute.key == "burned_coins" && attribute.value == "0" })
+            && slash_events[0]
+                .attributes
+                .iter()
+                .any(|attribute| { attribute.key == "power" && attribute.value == expected_power })
+            && slash_events[0].attributes.iter().any(|attribute| {
+                attribute.key == "address" && attribute.value == expected_address
+            }),
+        "zero-slash event changed: {slash_events:?}"
+    );
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -8534,6 +8787,9 @@ fn require_evidence_branch_precondition(
         EvidenceRequirement::StakeLifecycle => {
             anyhow::bail!("stake-lifecycle uses its dedicated state precondition")
         }
+        EvidenceRequirement::ZeroDoubleSignSlash => {
+            anyhow::bail!("zero-double-sign-slash uses its dedicated state precondition")
+        }
     }
     Ok(state)
 }
@@ -8562,6 +8818,9 @@ fn require_evidence_branch_unchanged(
         }
         EvidenceRequirement::StakeLifecycle => {
             anyhow::bail!("stake-lifecycle uses its dedicated state postcondition")
+        }
+        EvidenceRequirement::ZeroDoubleSignSlash => {
+            anyhow::bail!("zero-double-sign-slash uses its dedicated state postcondition")
         }
     }
     Ok(())
@@ -8613,6 +8872,41 @@ fn stale_misbehavior(
         height: evidence_height,
         time: Some(evidence_time),
         total_voting_power: set.iter().map(|v| v.1).sum(),
+    })
+}
+
+fn active_double_sign_misbehavior(
+    height: i64,
+    valsets: &BTreeMap<i64, ValSet>,
+    times: &BTreeMap<i64, pbjson_types::Timestamp>,
+) -> anyhow::Result<abci::Misbehavior> {
+    let infraction_height = height
+        .checked_sub(1)
+        .context("zero-slash infraction height underflow")?;
+    let set = valsets
+        .get(&infraction_height)
+        .context("zero-slash infraction validator set is absent")?;
+    let (address, power, _) = set
+        .iter()
+        .find(|(_, power, _)| *power > 0)
+        .context("zero-slash infraction validator set has no positive-power validator")?;
+    let time = times
+        .get(&infraction_height)
+        .copied()
+        .context("zero-slash infraction time is absent")?;
+    anyhow::ensure!(
+        x_staking::types::tokens_from_consensus_power(*power)?.is_positive(),
+        "zero-slash evidence power converts to zero tokens"
+    );
+    Ok(abci::Misbehavior {
+        r#type: 1,
+        validator: Some(abci::Validator {
+            address: address.clone(),
+            power: *power,
+        }),
+        height: infraction_height,
+        time: Some(time),
+        total_voting_power: set.iter().map(|validator| validator.1).sum(),
     })
 }
 
@@ -12677,6 +12971,31 @@ mod tests {
             .evidence_injected
             .insert("removed-validator".into(), 1);
         assert!(stats.require_evidence_coverage().is_err());
+    }
+
+    #[test]
+    fn zero_slash_misbehavior_uses_recorded_positive_power_validator() {
+        let address = vec![7; 20];
+        let time = pbjson_types::Timestamp {
+            seconds: 123,
+            nanos: 456,
+        };
+        let valsets = BTreeMap::from([(9, vec![(address.clone(), 53, false)])]);
+        let times = BTreeMap::from([(9, time)]);
+        let evidence = active_double_sign_misbehavior(10, &valsets, &times).unwrap();
+        assert_eq!(evidence.r#type, 1);
+        assert_eq!(evidence.height, 9);
+        assert_eq!(evidence.time, Some(time));
+        assert_eq!(evidence.total_voting_power, 53);
+        assert_eq!(
+            evidence.validator.unwrap(),
+            abci::Validator { address, power: 53 }
+        );
+        assert!(active_double_sign_misbehavior(10, &BTreeMap::new(), &times).is_err());
+        assert!(active_double_sign_misbehavior(10, &valsets, &BTreeMap::new()).is_err());
+        assert!(active_double_sign_misbehavior(i64::MIN, &valsets, &times).is_err());
+        let zero = BTreeMap::from([(9, vec![(vec![8; 20], 0, false)])]);
+        assert!(active_double_sign_misbehavior(10, &zero, &times).is_err());
     }
 
     #[test]

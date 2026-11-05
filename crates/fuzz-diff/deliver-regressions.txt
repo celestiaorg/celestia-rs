@@ -186,6 +186,11 @@ v9-authz-feegrant 5 0 17378 DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1
 # reward records. Exact state gates prevent hook errors from passing silently.
 authz-feegrant 5 0 17379 DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1
 v9-authz-feegrant 5 0 17379 DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1
+# A valid zero double-sign slash fraction still records the evidence, jails and
+# tombstones the validator, while burning no stake and creating no distribution
+# slash record. A final signed send proves continued execution.
+authz-feegrant 3 0 17380 DELIVER_EVIDENCE_REQUIRE=zero-double-sign-slash
+v9-authz-feegrant 3 0 17380 DELIVER_EVIDENCE_REQUIRE=zero-double-sign-slash
 # A passed unknown-name upgrade plan must stop both implementations at its due
 # height. Exact errors, upgrade-info files, retained plans and H-1 committed
 # state are required; matching early errors cannot satisfy this regression.
