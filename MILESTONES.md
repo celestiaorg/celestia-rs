@@ -1178,6 +1178,16 @@ test), then start that harness's count again.
   the source-reviewed optional-signing-info path. These five-block synthetic
   probes do not complete F1.12 or satisfy volume, mainnet-shaped state,
   observation-window or production-readiness gates.
+  *Validator-removal reward follow-up (2026-11-05):* a controlled
+  differential fixture keeps a second validator outside the active set, sets
+  a distinct commission withdraw account, deposits 11utia of rewards and
+  fully self-undelegates it. It requires the removal hook to pay the integral
+  commission, move both decimal remainders into the community pool, retain the
+  integral delegator reward under the upstream user-outstanding record and
+  delete every validator-scoped distribution record. Exact module-account
+  conservation and a signed recovery transaction prevent a logged-and-ignored
+  hook error from passing. This bounded synthetic path does not complete F1.12
+  or any volume, mainnet-shaped state, observation-window or readiness gate.
 
 ### Carried over from completed milestones
 

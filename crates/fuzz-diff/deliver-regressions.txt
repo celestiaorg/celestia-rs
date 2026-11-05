@@ -181,6 +181,11 @@ authz-feegrant 1 0 17365 DELIVER_EVIDENCE_REQUIRE=removed-validator
 # A never-bonded validator can be unjailed without a slashing signing record.
 authz-feegrant 5 0 17378 DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1
 v9-authz-feegrant 5 0 17378 DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1
+# Removing an unbonded validator with deposited rewards must pay integral
+# commission, move decimal dust, retain user rewards and delete validator
+# reward records. Exact state gates prevent hook errors from passing silently.
+authz-feegrant 5 0 17379 DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1
+v9-authz-feegrant 5 0 17379 DELIVER_VALIDATOR_REMOVAL_REWARDS_REQUIRE=1
 # A passed unknown-name upgrade plan must stop both implementations at its due
 # height. Exact errors, upgrade-info files, retained plans and H-1 committed
 # state are required; matching early errors cannot satisfy this regression.

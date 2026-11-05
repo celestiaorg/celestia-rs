@@ -1617,6 +1617,7 @@ dependencies = [
  "x-ante",
  "x-auth",
  "x-bank",
+ "x-distribution",
  "x-evidence",
  "x-gov",
  "x-hyperlane",
