@@ -198,6 +198,10 @@ authz-feegrant 4 0 17381 DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1
 v9-authz-feegrant 4 0 17381 DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE=1
 authz-feegrant 6 0 17382 DELIVER_GOV_PARAMS_REJECTION_REQUIRE=1 DELIVER_TIME_JUMP_AT=4 DELIVER_TIME_JUMP_SECONDS=3600
 v9-authz-feegrant 6 0 17382 DELIVER_GOV_PARAMS_REJECTION_REQUIRE=1 DELIVER_TIME_JUMP_AT=4 DELIVER_TIME_JUMP_SECONDS=3600
+# Reachable governance message-server boundaries must preserve rejected state,
+# pass the invalid-authors metadata control and commit a recovery transaction.
+authz-feegrant 6 0 17383 DELIVER_GOV_HANDLER_REJECTION_REQUIRE=1 DELIVER_TIME_JUMP_AT=4 DELIVER_TIME_JUMP_SECONDS=3600
+v9-authz-feegrant 6 0 17383 DELIVER_GOV_HANDLER_REJECTION_REQUIRE=1 DELIVER_TIME_JUMP_AT=4 DELIVER_TIME_JUMP_SECONDS=3600
 # A passed unknown-name upgrade plan must stop both implementations at its due
 # height. Exact errors, upgrade-info files, retained plans and H-1 committed
 # state are required; matching early errors cannot satisfy this regression.
