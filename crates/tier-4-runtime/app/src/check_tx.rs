@@ -49,8 +49,9 @@ fn signer_data(tx: &Tx) -> Result<(Vec<u8>, u64), String> {
 impl App {
     /// `CheckTx`.
     pub fn check_tx(&mut self, req: &RequestCheckTx) -> Result<ResponseCheckTx, String> {
-        sdk::version::set_app_version(self.app_version());
-        if crate::stores::is_v9(self.app_version()) {
+        let version = self.execution_version();
+        sdk::version::set_app_version(version);
+        if crate::stores::is_v9(version) {
             return self.check_tx_v9(req);
         }
         let raw = &req.tx;

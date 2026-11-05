@@ -145,7 +145,9 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
         );
     }
     let mut messages = Vec::new();
-    let v9 = sdk::version::is_v9(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+    let v9 = sdk::version::is_v9(sdk::version::executing(
+        ctx.consensus_params.version.as_ref().map_or(0, |v| v.app),
+    ));
     let mut by_internal = std::collections::BTreeMap::new();
     for ism in &isms {
         let id = decode_hex_address(&ism.id)?;
@@ -263,6 +265,39 @@ mod tests {
             init_genesis(&mut ctx2, &bad).map_err(|e| (e.codespace, e.code)),
             Err((MODULE_NAME, 2))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn export_uses_executable_version_over_consensus_version() -> Result<()> {
+        let mut ms = MultiStore::new();
+        ms.mount(STORE_KEY, Kind::Iavl)?;
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version =
+            Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 9 });
+        let id = format!("0x{}", hex::encode([7u8; 32]));
+        let messages = (0..101).map(|n| format!("0x{n:064x}")).collect::<Vec<_>>();
+        init_genesis(
+            &mut ctx,
+            &GenesisState {
+                isms: vec![InterchainSecurityModule {
+                    id: id.clone(),
+                    owner: "owner".into(),
+                    ..Default::default()
+                }],
+                messages: vec![GenesisMessages {
+                    id,
+                    messages: messages.clone(),
+                }],
+                submissions: Vec::new(),
+            },
+        )?;
+
+        sdk::version::set_app_version(0);
+        assert_eq!(export_genesis(&mut ctx)?.messages[0].messages.len(), 100);
+        sdk::version::set_app_version(10);
+        assert_eq!(export_genesis(&mut ctx)?.messages[0].messages, messages);
+        sdk::version::set_app_version(0);
         Ok(())
     }
 }

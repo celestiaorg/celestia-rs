@@ -319,7 +319,7 @@ fn run_ante(
 #[must_use]
 pub fn is_v9(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    v != 0 && v < 10
+    sdk::version::is_v9(sdk::version::executing(v))
 }
 
 fn run_chain(

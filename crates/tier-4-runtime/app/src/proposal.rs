@@ -329,6 +329,7 @@ impl App {
         f: impl FnOnce(&mut Context<'_>, &x_ante::StoreDeps) -> T,
     ) -> T {
         let deps = x_ante::StoreDeps::new(None);
+        let configured_execution_version = self.execution_version;
         let mut ctx = Context::new(&mut self.ms, header, mode);
         let base = ctx.multistore().depth();
         ctx.multistore().branch();
@@ -336,7 +337,8 @@ impl App {
             .ok()
             .flatten()
             .unwrap_or_default();
-        sdk::version::set_app_version(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+        let consensus_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        sdk::version::set_app_version(configured_execution_version.unwrap_or(consensus_version));
         let out = f(&mut ctx, &deps);
         while ctx.multistore().depth() > base {
             ctx.multistore().discard_branch();

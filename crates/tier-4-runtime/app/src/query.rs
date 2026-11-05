@@ -184,8 +184,9 @@ impl App {
         data: &[u8],
         height: i64,
     ) -> Result<(Vec<u8>, i64), GrpcQueryError> {
-        sdk::version::set_app_version(self.app_version());
-        if absent_at(self.app_version(), path) {
+        let version = self.execution_version();
+        sdk::version::set_app_version(version);
+        if absent_at(version, path) {
             let svc = path
                 .trim_start_matches('/')
                 .split('/')
@@ -234,7 +235,8 @@ impl App {
     }
 
     fn query_present(&mut self, req: &RequestQuery) -> ResponseQuery {
-        sdk::version::set_app_version(self.app_version());
+        let version = self.execution_version();
+        sdk::version::set_app_version(version);
         let mut req = req.clone();
         if req.height == 0 {
             req.height = self.last_height;
@@ -242,7 +244,7 @@ impl App {
         if req.path == QUERY_PATH_BROADCAST_TX {
             return query_result(&errs::invalid_request("can't route a broadcast tx message"));
         }
-        let absent_v9 = absent_at(self.app_version(), &req.path);
+        let absent_v9 = absent_at(version, &req.path);
         let app_route = crate::query_services::route(&req.path);
         if !absent_v9 && (app_route.is_some() || grpc_query::router().route(&req.path).is_some()) {
             return self.handle_query_grpc(&req);

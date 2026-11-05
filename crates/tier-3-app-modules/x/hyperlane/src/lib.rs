@@ -75,7 +75,7 @@ pub const NOOP_HOOKS_KEY: [u8; 2] = [2, 5];
 /// v1.1.0 (celestia-app v9.0.8, ADR 0004) instead of celestia's v1.3.0.
 pub(crate) fn is_v9(ctx: &sdk::Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    v != 0 && v < 10
+    sdk::version::is_v9(sdk::version::executing(v))
 }
 
 /// `authtypes.NewModuleAddress(name)`: `sha256(name)[:20]`.

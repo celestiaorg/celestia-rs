@@ -254,7 +254,7 @@ pub fn try_upgrade(
             )));
         }
         // The binary's version (v9.0.8 / v10.4.0 delays).
-        let current = app_version(ctx);
+        let current = sdk::version::executing(app_version(ctx));
         let upgrade = Upgrade {
             app_version: version,
             upgrade_height: ctx.header.height

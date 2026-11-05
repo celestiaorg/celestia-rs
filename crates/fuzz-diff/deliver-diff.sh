@@ -73,6 +73,12 @@
 # current plan must clear without an applied marker or version change, and
 # neither app may write upgrade-info.json. It requires 80 blocks and no random
 # transactions.
+# DELIVER_UPGRADE_RESTART_REQUIRE=1 starts from the pinned v9 executable,
+# schedules the canonical v10 plan for the last of 80 generated blocks, and
+# requires GO_APPD_NEXT. Both apps must halt at H, write identical upgrade
+# info, restart on their persistent homes with v10 execution semantics, retry
+# the identical block, commit the handler result, restart once more, and
+# commit a signed recovery send at H+1 while Info.app_version remains 9.
 # DELIVER_IBC_PFM_METADATA_REQUIRE=1 uses the signed mock counterparty to
 # relay exact typed-parse and identifier-validation failures plus a
 # forward:null transfer control. It requires the official Go Ack bytes,
@@ -123,9 +129,13 @@ IN=$ROOT/conformance/fixtures/devnet/$SCENARIO
 WORK=$(mktemp -d)
 H=$WORK/home
 UPGRADE_ARGS=()
-if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
+if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}${DELIVER_UPGRADE_SKIP_REQUIRE:-}${DELIVER_UPGRADE_RESTART_REQUIRE:-}" ]; then
   export DELIVER_UPGRADE_GO_HOME=$H
   export DELIVER_UPGRADE_RUST_HOME=$WORK/rust-home
+fi
+if [ -n "${DELIVER_UPGRADE_RESTART_REQUIRE:-}" ] && [ -z "${GO_APPD_NEXT:-}" ]; then
+  echo "DELIVER_UPGRADE_RESTART_REQUIRE needs GO_APPD_NEXT" >&2
+  exit 2
 fi
 if [ -n "${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
   META_HEIGHT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['committed_heights'])" "$IN/meta.json")
@@ -168,7 +178,13 @@ if [ -n "${GO_APPD_NEXT:-}" ]; then
   cat >"$WORK/switch.sh" <<SH
 set -e
 OLD=\$(cat "$WORK/app.pid")
-kill \$OLD; while kill -0 \$OLD 2>/dev/null; do sleep 0.2; done
+kill \$OLD
+while kill -0 \$OLD 2>/dev/null; do
+  case \$(ps -o stat= -p \$OLD 2>/dev/null) in
+    "" | *Z*) break ;;
+  esac
+  sleep 0.2
+done
 GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$GO_APPD_NEXT" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >>"$WORK/app.log" 2>&1 &
 echo \$! >"$WORK/app.pid"
 until (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; do sleep 0.2; done

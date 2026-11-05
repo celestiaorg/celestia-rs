@@ -20,6 +20,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -796,6 +797,18 @@ impl Manager {
         store: &mut multistore::Store,
         chunk: &[u8],
     ) -> Result<Option<multistore::CommitId>> {
+        self.restore_chunk_with_optional_iavl(store, chunk, &[])
+    }
+
+    /// Applies a chunk while selecting `optional` IAVL stores from the
+    /// authenticated snapshot stream itself. This handles stores added by an
+    /// executable upgrade whose consensus app version did not change.
+    pub fn restore_chunk_with_optional_iavl(
+        &mut self,
+        store: &mut multistore::Store,
+        chunk: &[u8],
+        optional: &[&str],
+    ) -> Result<Option<multistore::CommitId>> {
         let restore = self.restore.as_mut().ok_or(Error::NoRestore)?;
         let index = restore.next_chunk;
         let expected = usize::try_from(index)
@@ -816,6 +829,17 @@ impl Manager {
         let paths: Vec<PathBuf> = (0..restore.snapshot.chunks)
             .map(|i| restore.dir.join(i.to_string()))
             .collect();
+        if !optional.is_empty() {
+            let names = snapshot_store_names(paths.clone())?;
+            for name in optional {
+                let mounted = store.get_store(name).is_ok();
+                if names.contains(*name) && !mounted {
+                    store.mount_store(*name, multistore::StoreKind::Iavl)?;
+                } else if !names.contains(*name) && mounted {
+                    store.unmount_store(name)?;
+                }
+            }
+        }
         let result = restore_from(store, restore.snapshot.height, paths);
         fs::remove_dir_all(&restore.dir)?;
         result.map(Some)
@@ -858,6 +882,26 @@ fn restore_from(
     };
     let mut decoder = BufReader::new(ZlibDecoder::new(reader));
     read_items(store, height, &mut decoder)
+}
+
+fn snapshot_store_names(paths: Vec<PathBuf>) -> Result<BTreeSet<String>> {
+    let reader = ChunkReader {
+        paths: paths.into_iter(),
+        current: None,
+    };
+    let mut decoder = BufReader::new(ZlibDecoder::new(reader));
+    let mut names = BTreeSet::new();
+    while let Some(item) = read_item(&mut decoder)? {
+        if let Some(Item::Store(store)) = item.item
+            && !names.insert(store.name.clone())
+        {
+            return Err(Error::Decode(format!(
+                "duplicate snapshot store {}",
+                store.name
+            )));
+        }
+    }
+    Ok(names)
 }
 
 /// Complete snapshots under `root`, newest first. A directory pruned by
@@ -1149,6 +1193,56 @@ mod tests {
                 .unwrap(),
             src.last_commit_id().unwrap()
         );
+    }
+
+    #[test]
+    fn restore_selects_optional_stores_from_the_snapshot_stream() {
+        fn restore(
+            source: &Manager,
+            snapshot: &Snapshot,
+            destination: &mut multistore::Store,
+        ) -> multistore::CommitId {
+            let dir = tempfile::tempdir().unwrap();
+            let mut manager = Manager::new(dir.path(), SnapshotOptions::default()).unwrap();
+            manager.begin_restore(snapshot.clone()).unwrap();
+            let mut result = None;
+            for index in 0..snapshot.chunks {
+                let chunk = source
+                    .load_chunk(snapshot.height, snapshot.format, index)
+                    .unwrap()
+                    .unwrap();
+                result = manager
+                    .restore_chunk_with_optional_iavl(destination, &chunk, &["zempty"])
+                    .unwrap();
+            }
+            result.unwrap()
+        }
+
+        let source_dir = tempfile::tempdir().unwrap();
+        let source_manager = Manager::new(source_dir.path(), SnapshotOptions::default()).unwrap();
+        let mut source = store(Arc::new(kvdb::MemBackend::new()));
+        fill(&mut source, 1);
+        let snapshot = source_manager.create(&source, 1).unwrap();
+        let mut destination = store(Arc::new(kvdb::MemBackend::new()));
+        destination.unmount_store("zempty").unwrap();
+        assert_eq!(
+            restore(&source_manager, &snapshot, &mut destination),
+            source.last_commit_id().unwrap()
+        );
+        assert!(destination.get_store("zempty").is_ok());
+
+        let source_dir = tempfile::tempdir().unwrap();
+        let source_manager = Manager::new(source_dir.path(), SnapshotOptions::default()).unwrap();
+        let mut source = store(Arc::new(kvdb::MemBackend::new()));
+        source.unmount_store("zempty").unwrap();
+        fill(&mut source, 1);
+        let snapshot = source_manager.create(&source, 1).unwrap();
+        let mut destination = store(Arc::new(kvdb::MemBackend::new()));
+        assert_eq!(
+            restore(&source_manager, &snapshot, &mut destination),
+            source.last_commit_id().unwrap()
+        );
+        assert!(destination.get_store("zempty").is_err());
     }
 
     #[test]

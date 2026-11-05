@@ -62,7 +62,8 @@ pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, S
     let cp = ctx.branch();
     // The tx decoder of the current app version (v9.0.8's registry at
     // app version 9).
-    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let app_version =
+        sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
     let (mut p, res) = tx::run_ante(
         &mut ctx,
         tx_bytes,

@@ -1056,6 +1056,17 @@ logs `UPGRADE "vN" NEEDED at height: H`, writes `data/upgrade-info.json`
 (Go/cosmovisor format, `{"name":"vN","height":H,…}`) and keeps RPC up:
 install the new binary and restart (11.10); it resumes at `H`.
 
+Governance can also schedule the canonical `v10` software-upgrade plan while
+the chain still reports app version 9. In that case the v9 execution path
+halts at `H`; restart the supporting release on the same home and it
+authenticates `data/upgrade-info.json` against the identical committed plan
+at exactly `H` before mounting the v10 stores and retrying the block. Do not
+edit or copy an upgrade-info file between homes. The SDK handler does not
+raise the consensus app version on this route, so `Info.app_version` may
+remain 9 even though the node correctly executes v10 semantics; the
+node-local activation record and the committed v10 stores preserve that
+choice across later restarts and state sync.
+
 `--unsafe-skip-upgrades H[,H…]` is the Go-compatible operator override for
 clearing a due governance upgrade plan without running its handler. Use it only
 for a height the network has explicitly agreed to skip. It is a start-time

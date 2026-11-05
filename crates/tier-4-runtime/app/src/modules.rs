@@ -197,13 +197,15 @@ pub fn install_staking_hooks() {
 pub fn pre_block(
     ctx: &mut Context<'_>,
     module: &str,
+    execution_version: u64,
     upgrade: &mut x_upgrade::NodeState,
 ) -> Result<bool> {
     match module {
-        "upgrade" => {
-            let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-            x_upgrade::pre_block(ctx, &crate::upgrades::Handlers::at(app_version), upgrade)
-        }
+        "upgrade" => x_upgrade::pre_block(
+            ctx,
+            &crate::upgrades::Handlers::at(execution_version),
+            upgrade,
+        ),
         _ => Ok(false),
     }
 }

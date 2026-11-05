@@ -85,7 +85,7 @@ pub fn handle_equivocation(ctx: &mut Context<'_>, e: &Equivocation, cons: &[u8])
         // App version 9 (cosmossdk.io/x/evidence v0.1.1): `ValidatorByConsAddr`
         // fails with ErrNoValidatorFound and BeginBlock returns it.
         let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-        if app_version != 0 && app_version < 10 {
+        if sdk::version::is_v9(sdk::version::executing(app_version)) {
             return Err(sdk::SdkError::new("staking", 3, "validator does not exist"));
         }
         // celestia fork v0.1.2 (v10): evidence for a removed validator is
