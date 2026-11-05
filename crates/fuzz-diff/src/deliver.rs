@@ -230,6 +230,11 @@ pub struct Stats {
     /// Controlled public-key fixtures that passed their exact CheckTx,
     /// proposal, execution, recovery, and committed-state postconditions.
     pub pubkey_rejection_completed: u64,
+    /// Whether the run requires the controlled never-bonded unjail lifecycle.
+    pub never_bonded_unjail_required: Option<()>,
+    /// Never-bonded unjail lifecycles that passed all four transactions and
+    /// committed validator, delegation, signing-info, pool, and balance gates.
+    pub never_bonded_unjail_completed: u64,
     /// Whether the run requires the controlled governance upgrade-plan lifecycle
     /// and handler-rejection boundaries.
     pub upgrade_plan_required: Option<()>,
@@ -748,6 +753,9 @@ fn max_account_number(v: &serde_json::Value, max: &mut u64) {
 /// InitChain app state; returns the patched state and the accounts.
 fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     let mut g: serde_json::Value = serde_json::from_slice(app_state)?;
+    if std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some() {
+        g["staking"]["params"]["max_validators"] = serde_json::Value::from(1);
+    }
     let mut max = 0;
     max_account_number(&g["auth"]["accounts"], &mut max);
     let mut accts = accounts(max + 1);
@@ -1688,6 +1696,19 @@ impl Stats {
                         .iter()
                         .any(|line| line.contains("pubkey is incorrect size")),
                 "public-key rejection coverage expected exactly the two stack-only malformed-key log differences"
+            );
+        }
+        Ok(())
+    }
+
+    /// Require the never-bonded validator to pass the complete jail, stake
+    /// restoration, and unjail lifecycle without ever gaining signing info.
+    pub fn require_never_bonded_unjail_coverage(&self) -> anyhow::Result<()> {
+        if self.never_bonded_unjail_required.is_some() {
+            anyhow::ensure!(
+                self.never_bonded_unjail_completed == 1,
+                "incomplete DELIVER_NEVER_BONDED_UNJAIL_REQUIRE coverage: expected one completed fixture, observed {}",
+                self.never_bonded_unjail_completed
             );
         }
         Ok(())
@@ -4527,6 +4548,26 @@ pub fn run(
         std::env::var_os("DELIVER_ZERO_THRESHOLD_MULTISIG_REQUIRE").is_some();
     let p256_required = std::env::var_os("DELIVER_P256_REQUIRE").is_some();
     let pubkey_rejection_required = std::env::var_os("DELIVER_PUBKEY_REJECTION_REQUIRE").is_some();
+    let never_bonded_unjail_required =
+        std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some();
+    anyhow::ensure!(
+        !never_bonded_unjail_required
+            || (!direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !governed_upgrade_required
+                && !hl_on
+                && !govpass
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 5
+                && per_block == 0),
+        "DELIVER_NEVER_BONDED_UNJAIL_REQUIRE needs exactly five blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
     anyhow::ensure!(
         !upgrade_plan_required
             || (!govpass_env
@@ -5001,6 +5042,7 @@ pub fn run(
         zero_threshold_multisig_required: zero_threshold_multisig_required.then_some(()),
         p256_required: p256_required.then_some(()),
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
+        never_bonded_unjail_required: never_bonded_unjail_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
         upgrade_skip_required: upgrade_skip_required.then_some(()),
@@ -5373,6 +5415,7 @@ pub fn run(
     let mut zero_threshold_multisig_fixture: Option<ZeroThresholdMultisigFixture> = None;
     let mut p256_fixture: Option<P256Fixture> = None;
     let mut pubkey_rejection_fixture: Option<PubkeyRejectionFixture> = None;
+    let mut never_bonded_unjail_fixture: Option<NeverBondedUnjailFixture> = None;
     let mut upgrade_plan_fixture = if upgrade_halt_required {
         Some(upgrade_plan::Fixture::new_missing_handler(
             height,
@@ -5596,6 +5639,14 @@ pub fn run(
                 .as_ref()
                 .context("public-key rejection fixture was not initialized")?;
             txs.push(fixture.txs[b - 1].clone());
+        } else if never_bonded_unjail_required {
+            if never_bonded_unjail_fixture.is_none() {
+                never_bonded_unjail_fixture = Some(NeverBondedUnjailFixture::new(&gn, &rust)?);
+            }
+            let fixture = never_bonded_unjail_fixture
+                .as_mut()
+                .context("never-bonded unjail fixture was not initialized")?;
+            txs.push(fixture.tx(&gn, b - 1)?);
         } else if !hl_setup
             && !gov_setup
             && b >= script_at
@@ -6870,6 +6921,15 @@ pub fn run(
             fixture.require_complete(index, &fb.txs, &g.tx_results, &mut rust)?;
             stats.pubkey_rejection_completed += 1;
         }
+        if let Some(fixture) = never_bonded_unjail_fixture.as_mut()
+            && let Some(tx) = txs.first()
+            && fixture.tx_matches_phase(tx)
+        {
+            fixture.require_phase(tx, &fb.txs, &g.tx_results, &rust)?;
+            if fixture.phase == 4 {
+                stats.never_bonded_unjail_completed += 1;
+            }
+        }
         if let Some(fixture) = upgrade_plan_fixture.as_mut()
             && fixture.after_commit(&mut go, cons_conn, &mut rust, app_version, &gn)?
         {
@@ -7161,6 +7221,9 @@ pub fn run(
     if let Some(fixture) = upgrade_plan_fixture.as_ref() {
         fixture.require_complete()?;
         stats.upgrade_plan_rejections = fixture.rejection_count();
+    }
+    if let Some(fixture) = never_bonded_unjail_fixture.as_ref() {
+        fixture.require_complete()?;
     }
     stats.upgrade.append(&mut upg.log);
     if let Some(h) = upg.upgrade_height {
@@ -8963,6 +9026,243 @@ fn sweep_txs(gn: &mut Gen, i: usize, msgs: &[Any], used: u64) -> Vec<Vec<u8>> {
         }
     }
     out
+}
+
+const NEVER_BONDED_SELF_DELEGATION: u128 = 1_000_000;
+const CONTROLLED_TX_FEE: u128 = 100_000;
+
+#[derive(Debug)]
+struct NeverBondedUnjailState {
+    status: x_staking::types::BondStatus,
+    jailed: bool,
+    tokens: String,
+    shares: String,
+    signing_info_present: bool,
+    bonded_pool: u128,
+    not_bonded_pool: u128,
+    account_balance: u128,
+}
+
+struct NeverBondedUnjailFixture {
+    operator: String,
+    account: String,
+    account_bytes: Vec<u8>,
+    initial_balance: u128,
+    initial_bonded_pool: u128,
+    initial_not_bonded_pool: u128,
+    phase: usize,
+    pending_tx: Option<Vec<u8>>,
+}
+
+impl NeverBondedUnjailFixture {
+    fn new(gn: &Gen, rust: &app::App) -> anyhow::Result<Self> {
+        let account = gn.accts[0].acc.clone();
+        let operator = gn.accts[0].val.clone();
+        let account_bytes = x_staking::addr::acc_from_string(&account)?;
+        let operator_bytes = x_staking::addr::val_from_string(&operator)?;
+        let mut state = rust.create_query_context(0, false)?;
+        let mut ctx = state.context();
+        anyhow::ensure!(
+            x_staking::store::get_params(&mut ctx)?.max_validators == 1,
+            "never-bonded unjail fixture did not set max_validators=1"
+        );
+        anyhow::ensure!(
+            x_staking::store::get_validator(&mut ctx, &operator_bytes)?.is_none(),
+            "never-bonded unjail operator already exists"
+        );
+        anyhow::ensure!(
+            bonded_validators_from_context(&mut ctx)?.len() == 1,
+            "never-bonded unjail fixture needs exactly one active validator"
+        );
+        Ok(Self {
+            initial_balance: account_balance_readonly(rust, &account)?,
+            initial_bonded_pool: module_balance(&mut ctx, x_staking::BONDED_POOL)?
+                .to_string()
+                .parse()?,
+            initial_not_bonded_pool: module_balance(&mut ctx, x_staking::NOT_BONDED_POOL)?
+                .to_string()
+                .parse()?,
+            operator,
+            account,
+            account_bytes,
+            phase: 0,
+            pending_tx: None,
+        })
+    }
+
+    fn tx(&mut self, gn: &Gen, phase: usize) -> anyhow::Result<Vec<u8>> {
+        anyhow::ensure!(phase == self.phase, "never-bonded unjail phase changed");
+        let staking = |amount: u128| {
+            Some(Coin {
+                denom: "utia".into(),
+                amount: amount.to_string(),
+            })
+        };
+        let message = match phase {
+            0 => Any::pack(
+                &celestia_proto::cosmos::staking::v1beta1::MsgCreateValidator {
+                    description: Some(celestia_proto::cosmos::staking::v1beta1::Description {
+                        moniker: "never-bonded-unjail".into(),
+                        ..Default::default()
+                    }),
+                    commission: Some(celestia_proto::cosmos::staking::v1beta1::CommissionRates {
+                        rate: "100000000000000000".into(),
+                        max_rate: "200000000000000000".into(),
+                        max_change_rate: "10000000000000000".into(),
+                    }),
+                    min_self_delegation: NEVER_BONDED_SELF_DELEGATION.to_string(),
+                    #[allow(deprecated)]
+                    delegator_address: String::new(),
+                    validator_address: self.operator.clone(),
+                    pubkey: Some(Any::pack(
+                        &celestia_proto::cosmos::crypto::ed25519::PubKey { key: vec![42; 32] },
+                    )),
+                    value: staking(NEVER_BONDED_SELF_DELEGATION),
+                },
+            ),
+            1 => Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgUndelegate {
+                delegator_address: self.account.clone(),
+                validator_address: self.operator.clone(),
+                amount: staking(1),
+            }),
+            2 => Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
+                delegator_address: self.account.clone(),
+                validator_address: self.operator.clone(),
+                amount: staking(1),
+            }),
+            3 => Any::pack(&celestia_proto::cosmos::slashing::v1beta1::MsgUnjail {
+                validator_addr: self.operator.clone(),
+            }),
+            _ => anyhow::bail!("never-bonded unjail has no phase {phase}"),
+        };
+        let tx = sign_simple(gn, 0, vec![message], 1_000_000)
+            .context("signing never-bonded unjail transaction")?;
+        self.pending_tx = Some(tx.clone());
+        Ok(tx)
+    }
+
+    fn tx_matches_phase(&self, tx: &[u8]) -> bool {
+        self.pending_tx.as_deref() == Some(tx)
+    }
+
+    fn require_phase(
+        &mut self,
+        tx: &[u8],
+        finalized: &[Vec<u8>],
+        results: &[abci::ExecTxResult],
+        rust: &app::App,
+    ) -> anyhow::Result<()> {
+        let matches: Vec<_> = finalized
+            .iter()
+            .zip(results)
+            .filter(|(candidate, _)| candidate.as_slice() == tx)
+            .collect();
+        anyhow::ensure!(
+            matches.len() == 1 && matches[0].1.code == 0 && matches[0].1.codespace.is_empty(),
+            "never-bonded unjail phase {} was not finalized exactly once with code 0",
+            self.phase
+        );
+        let state = self.state(rust)?;
+        let (jailed, tokens, shares, balance_debit, pool_credit) = match self.phase {
+            0 => (
+                false,
+                1_000_000,
+                1_000_000,
+                NEVER_BONDED_SELF_DELEGATION + CONTROLLED_TX_FEE,
+                1_000_000,
+            ),
+            1 => (
+                true,
+                999_999,
+                999_999,
+                NEVER_BONDED_SELF_DELEGATION + 2 * CONTROLLED_TX_FEE,
+                1_000_000,
+            ),
+            2 => (
+                true,
+                1_000_000,
+                1_000_000,
+                NEVER_BONDED_SELF_DELEGATION + 3 * CONTROLLED_TX_FEE + 1,
+                1_000_001,
+            ),
+            3 => (
+                false,
+                1_000_000,
+                1_000_000,
+                NEVER_BONDED_SELF_DELEGATION + 4 * CONTROLLED_TX_FEE + 1,
+                1_000_001,
+            ),
+            _ => anyhow::bail!("never-bonded unjail completed too many phases"),
+        };
+        anyhow::ensure!(
+            state.status == x_staking::types::BondStatus::Unbonded
+                && state.jailed == jailed
+                && state.tokens == tokens.to_string()
+                && state.shares == format!("{shares}.000000000000000000")
+                && !state.signing_info_present
+                && state.bonded_pool == self.initial_bonded_pool
+                && state.not_bonded_pool == self.initial_not_bonded_pool + pool_credit
+                && state.account_balance == self.initial_balance - balance_debit,
+            "never-bonded unjail phase {} committed state changed: {state:?}",
+            self.phase
+        );
+        self.phase += 1;
+        self.pending_tx = None;
+        Ok(())
+    }
+
+    fn state(&self, rust: &app::App) -> anyhow::Result<NeverBondedUnjailState> {
+        let operator = x_staking::addr::val_from_string(&self.operator)?;
+        let mut state = rust.create_query_context(0, false)?;
+        let mut ctx = state.context();
+        let validator = x_staking::store::validator(&mut ctx, &operator)?;
+        let consensus_address = validator.cons_addr()?;
+        let delegation =
+            x_staking::store::get_delegation(&mut ctx, &self.account_bytes, &operator)?
+                .context("never-bonded self-delegation is absent")?;
+        Ok(NeverBondedUnjailState {
+            status: validator.status,
+            jailed: validator.jailed,
+            tokens: validator.tokens.to_string(),
+            shares: delegation.shares.to_string(),
+            signing_info_present: x_slashing::get_signing_info(&mut ctx, &consensus_address)?
+                .is_some(),
+            bonded_pool: module_balance(&mut ctx, x_staking::BONDED_POOL)?
+                .to_string()
+                .parse()?,
+            not_bonded_pool: module_balance(&mut ctx, x_staking::NOT_BONDED_POOL)?
+                .to_string()
+                .parse()?,
+            account_balance: account_balance_readonly(rust, &self.account)?,
+        })
+    }
+
+    fn require_complete(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.phase == 4 && self.pending_tx.is_none(),
+            "never-bonded unjail fixture completed {} of four phases",
+            self.phase
+        );
+        Ok(())
+    }
+}
+
+fn bonded_validators_from_context(ctx: &mut sdk::Context<'_>) -> anyhow::Result<Vec<String>> {
+    Ok(x_staking::store::get_bonded_validators_by_power(ctx)?
+        .into_iter()
+        .map(|validator| validator.operator_address)
+        .collect())
+}
+
+fn account_balance_readonly(rust: &app::App, address: &str) -> anyhow::Result<u128> {
+    let mut state = rust.create_query_context(0, false)?;
+    let mut ctx = state.context();
+    Ok(
+        x_bank::get_balance(&mut ctx, &x_auth::parse_bech32(address)?, "utia")?
+            .amount
+            .to_string()
+            .parse()?,
+    )
 }
 
 const DIRECT_AUX_SEND: u128 = 123;
@@ -10852,6 +11152,26 @@ mod tests {
         assert!(
             Stats::default()
                 .require_zero_threshold_multisig_coverage()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn never_bonded_unjail_requirement_fails_closed() {
+        let mut stats = Stats {
+            never_bonded_unjail_required: Some(()),
+            ..Stats::default()
+        };
+        for completed in 0..=2 {
+            stats.never_bonded_unjail_completed = completed;
+            assert_eq!(
+                stats.require_never_bonded_unjail_coverage().is_ok(),
+                completed == 1
+            );
+        }
+        assert!(
+            Stats::default()
+                .require_never_bonded_unjail_coverage()
                 .is_ok()
         );
     }

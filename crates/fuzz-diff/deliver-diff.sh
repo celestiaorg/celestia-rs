@@ -28,6 +28,11 @@
 # FinalizeBlock. Stale evidence is supported on v9/v10; removed-validator is
 # v10-only. Stake-lifecycle requires its exact DELIVER_SCRIPT and
 # DELIVER_SCRIPT_REQUIRE setup and checks historical-stake slash accounting.
+# DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 constrains staking to one active
+# validator, creates a lower-power validator that never bonds, jails it by
+# dropping below minimum self-delegation, restores the stake, and requires
+# MsgUnjail to succeed without creating slashing signing info. It needs exactly
+# five generated blocks and zero random transactions.
 # DELIVER_DIRECT_AUX_REQUIRE=1 sends an implicit-fee-payer direct-aux
 # transaction that must fail CheckTx with sdk/4, followed by the same sender
 # using direct-aux while a separate direct signer pays the fee. It requires
