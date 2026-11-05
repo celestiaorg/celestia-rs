@@ -657,6 +657,9 @@ fn main() -> anyhow::Result<()> {
         deliver_stats["p256_completed"] = st.p256_completed.into();
         deliver_stats["pubkey_rejection_required"] = st.pubkey_rejection_required.is_some().into();
         deliver_stats["pubkey_rejection_completed"] = st.pubkey_rejection_completed.into();
+        deliver_stats["never_bonded_unjail_required"] =
+            st.never_bonded_unjail_required.is_some().into();
+        deliver_stats["never_bonded_unjail_completed"] = st.never_bonded_unjail_completed.into();
         deliver_stats["upgrade_plan_required"] = st.upgrade_plan_required.is_some().into();
         deliver_stats["upgrade_plan_completed"] = st.upgrade_plan_completed.into();
         deliver_stats["upgrade_plan_rejections"] = st.upgrade_plan_rejections.into();
@@ -693,6 +696,7 @@ fn main() -> anyhow::Result<()> {
         st.require_zero_threshold_multisig_coverage()?;
         st.require_p256_coverage()?;
         st.require_pubkey_rejection_coverage()?;
+        st.require_never_bonded_unjail_coverage()?;
         st.require_upgrade_plan_coverage()?;
         st.require_upgrade_halt_coverage()?;
         st.require_upgrade_skip_coverage()?;

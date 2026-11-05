@@ -1165,6 +1165,19 @@ test), then start that harness's count again.
   exclusions. No additional concrete discrepancy was established within those
   scopes. This is partial source review, not completion of F1.12 or additional
   runtime crash qualification.
+  *Never-bonded unjail follow-up (2026-11-05):* a controlled differential
+  lifecycle constrains staking to one active validator, creates a lower-power
+  validator that remains unbonded and has no slashing signing record, drops
+  its self-delegation below the minimum so staking jails it, restores the
+  missing stake, and executes signed `MsgUnjail`. Exact v10.5.0 and historical
+  v9.0.8 probes each completed the four controlled transactions with matching
+  transaction results and app hashes, zero consensus or log mismatches, and
+  exact committed validator status, jail flag, tokens, self-delegation shares,
+  bonded/not-bonded pool balances and signer balance after every transition.
+  The post-unjail gate requires the signing record to remain absent, covering
+  the source-reviewed optional-signing-info path. These five-block synthetic
+  probes do not complete F1.12 or satisfy volume, mainnet-shaped state,
+  observation-window or production-readiness gates.
 
 ### Carried over from completed milestones
 

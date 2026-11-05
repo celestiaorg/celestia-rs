@@ -230,6 +230,12 @@ done
 run "evidence-removed-validator-authz-feegrant" GO_APPD="$V10" \
   DELIVER_EVIDENCE_REQUIRE=removed-validator -- \
   crates/fuzz-diff/deliver-diff.sh authz-feegrant 1 0 17365
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "never-bonded-unjail-$scen" GO_APPD="$A" \
+    DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 5 0 17378
+done
 for scen in staking-lifecycle v9-staking; do
   case $scen in
     v9-*)
