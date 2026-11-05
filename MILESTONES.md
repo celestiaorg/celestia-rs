@@ -602,6 +602,24 @@ test), then start that harness's count again.
   bounded synthetic lifecycles still need merged-profile branch accounting and
   do not complete F1.3, F1.12, volume, mainnet-shaped state,
   observation-window or production-readiness gates.
+  *Governance message-server follow-up (2026-11-05):* focused pinned v10.5.0
+  and historical v9.0.8 fixtures cover the invalid-`authors` metadata fallback,
+  nil legacy content panic, weighted-vote overflow and both legacy text length
+  limits. The metadata control carries a valid unchanged `MsgUpdateParams`,
+  passes with a yes-only tally, and binds its exact payload, advisory metadata,
+  phase indexes, cleanup, refund and recovery accounting. Rejected transactions
+  bind successful CheckTx, exact codes and deterministic logs; the nil-content
+  panic binds its stable code and marker because Go's recovered log includes a
+  process-specific stack. Both six-block probes completed all five cases with
+  zero consensus mismatches and the expected one nil-panic log-only difference.
+  An empty v1 proposal is rejected by Celestia App's ante
+  `ParamFilterDecorator` (`sdk/18`) before the message server, and an
+  unregistered legacy content type is rejected
+  by interface decoding before the legacy handler, so neither can honestly
+  credit those handler arms in a full-app run. These bounded synthetic cases
+  still need merged-profile branch accounting and do not complete F1.3, F1.12,
+  volume, mainnet-shaped state, observation-window or production-readiness
+  gates.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

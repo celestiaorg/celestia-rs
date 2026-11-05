@@ -40,6 +40,11 @@
 # exact deterministic failed reasons, queue/index cleanup, refunds and a signed
 # recovery send. It needs exactly six blocks, no random traffic, and the
 # controlled block-4 3600-second time jump.
+# DELIVER_GOV_HANDLER_REJECTION_REQUIRE=1 exercises the metadata fallback,
+# nil legacy content, weighted-vote overflow and legacy
+# title/description bounds with exact rollback, proposal lifecycle, refunds
+# and a signed recovery send. It needs exactly six blocks, no random traffic,
+# and the controlled block-4 3600-second time jump.
 # DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 constrains staking to one active
 # validator, creates a lower-power validator that never bonds, jails it by
 # dropping below minimum self-delegation, restores the stake, and requires
