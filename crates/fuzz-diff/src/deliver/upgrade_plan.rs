@@ -14,20 +14,29 @@ const SOFTWARE_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade";
 const CANCEL_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgCancelUpgrade";
 const RECOVERY_AMOUNT: u128 = 7;
 const TX_FEE: u128 = 100_000;
+const SUCCESS_STAGES: usize = 5;
+const FAILURE_STAGES: usize = 5;
+const PROPOSAL_STAGES: usize = SUCCESS_STAGES + FAILURE_STAGES;
+const RECOVERY_STAGE: usize = PROPOSAL_STAGES;
+const COMPLETE_STAGE: usize = RECOVERY_STAGE + 1;
 
 /// Controlled governance lifecycle for upgrade-plan persistence.
 pub(super) struct Fixture {
     plans: [upgrade::Plan; 2],
+    initial_height: i64,
     stage: usize,
     pending_submit: Option<Vec<u8>>,
     recovery_tx: Option<Vec<u8>>,
     recovery_finalized: bool,
     active_proposal: Option<u64>,
     proposal_ids: Vec<u64>,
-    submits: [u64; 5],
-    deposits: [u64; 5],
-    votes: [u64; 5],
-    passes: [u64; 5],
+    submits: [u64; PROPOSAL_STAGES],
+    deposits: [u64; PROPOSAL_STAGES],
+    votes: [u64; PROPOSAL_STAGES],
+    passes: [u64; SUCCESS_STAGES],
+    failures: [u64; FAILURE_STAGES],
+    stored_verified: [bool; PROPOSAL_STAGES],
+    expected_tally: Option<gov::TallyResult>,
     awaiting_state: Option<usize>,
     checked: std::collections::BTreeSet<Vec<u8>>,
     initial_app_version: u64,
@@ -49,16 +58,20 @@ impl Fixture {
                 plan(PLAN_A, 10_000, "codex upgrade plan A"),
                 plan(PLAN_B, 20_000, "codex upgrade plan B"),
             ],
+            initial_height: height,
             stage: 0,
             pending_submit: None,
             recovery_tx: None,
             recovery_finalized: false,
             active_proposal: None,
             proposal_ids: Vec::new(),
-            submits: [0; 5],
-            deposits: [0; 5],
-            votes: [0; 5],
-            passes: [0; 5],
+            submits: [0; PROPOSAL_STAGES],
+            deposits: [0; PROPOSAL_STAGES],
+            votes: [0; PROPOSAL_STAGES],
+            passes: [0; SUCCESS_STAGES],
+            failures: [0; FAILURE_STAGES],
+            stored_verified: [false; PROPOSAL_STAGES],
+            expected_tally: None,
             awaiting_state: None,
             checked: std::collections::BTreeSet::new(),
             initial_app_version: app_version,
@@ -98,27 +111,14 @@ impl Fixture {
     }
 
     pub(super) fn proposal(&self, proposer: &str) -> Option<gov::MsgSubmitProposal> {
-        if self.stage >= 5
+        if self.stage >= PROPOSAL_STAGES
             || self.pending_submit.is_some()
             || self.active_proposal.is_some()
             || self.awaiting_state.is_some()
         {
             return None;
         }
-        let payload = match self.stage {
-            0 => Any::pack(&circuit::MsgResetCircuitBreaker {
-                authority: GOV.into(),
-                msg_type_urls: vec![SOFTWARE_UPGRADE_URL.into(), CANCEL_UPGRADE_URL.into()],
-            }),
-            1 | 2 => Any::pack(&upgrade::MsgSoftwareUpgrade {
-                authority: GOV.into(),
-                plan: Some(self.plans[self.stage - 1].clone()),
-            }),
-            3 | 4 => Any::pack(&upgrade::MsgCancelUpgrade {
-                authority: GOV.into(),
-            }),
-            _ => return None,
-        };
+        let payload = self.payload()?;
         Some(gov::MsgSubmitProposal {
             messages: vec![payload],
             initial_deposit: vec![celestia_proto::cosmos::base::v1beta1::Coin {
@@ -130,8 +130,26 @@ impl Fixture {
             proposer: proposer.into(),
             metadata: String::new(),
             title: format!("upgrade-plan-stage-{}", self.stage),
-            summary: "controlled upgrade-plan persistence coverage".into(),
+            summary: "controlled upgrade-plan persistence and rejection coverage".into(),
             expedited: false,
+        })
+    }
+
+    fn payload(&self) -> Option<Any> {
+        Some(match self.stage {
+            0 => Any::pack(&circuit::MsgResetCircuitBreaker {
+                authority: GOV.into(),
+                msg_type_urls: vec![SOFTWARE_UPGRADE_URL.into(), CANCEL_UPGRADE_URL.into()],
+            }),
+            1 | 2 => Any::pack(&upgrade::MsgSoftwareUpgrade {
+                authority: GOV.into(),
+                plan: Some(self.plans[self.stage - 1].clone()),
+            }),
+            3 | 4 => Any::pack(&upgrade::MsgCancelUpgrade {
+                authority: GOV.into(),
+            }),
+            5..PROPOSAL_STAGES => Any::pack(&self.failure_message()),
+            _ => return None,
         })
     }
 
@@ -140,7 +158,7 @@ impl Fixture {
     }
 
     pub(super) fn needs_recovery(&self) -> bool {
-        self.stage == 5 && self.recovery_tx.is_none()
+        self.stage == RECOVERY_STAGE && self.recovery_tx.is_none()
     }
 
     pub(super) fn recovery_message(
@@ -278,20 +296,29 @@ impl Fixture {
             .iter()
             .find(|attribute| attribute.key == "proposal_result")
             .map(|attribute| attribute.value.as_str());
-        anyhow::ensure!(
-            result == Some("proposal_passed"),
-            "upgrade-plan proposal {id} ended as {result:?}: {:?}",
-            event.attributes
-        );
-        anyhow::ensure!(
-            event
-                .attributes
-                .iter()
-                .find(|attribute| attribute.key == "proposal_log")
-                .is_some_and(|attribute| attribute.value == "passed"),
-            "upgrade-plan proposal {id} did not have the exact success log: {:?}",
-            event.attributes
-        );
+        let proposal_log = event
+            .attributes
+            .iter()
+            .find(|attribute| attribute.key == "proposal_log")
+            .map(|attribute| attribute.value.as_str());
+        if self.stage < SUCCESS_STAGES {
+            anyhow::ensure!(
+                result == Some("proposal_passed") && proposal_log == Some("passed"),
+                "upgrade-plan proposal {id} did not pass exactly: {:?}",
+                event.attributes
+            );
+            self.passes[self.stage] += 1;
+        } else {
+            let reason = self.failure_reason();
+            let expected_log =
+                format!("passed, but msg 0 ({SOFTWARE_UPGRADE_URL}) failed on execution: {reason}");
+            anyhow::ensure!(
+                result == Some("proposal_failed") && proposal_log == Some(expected_log.as_str()),
+                "upgrade-plan rejection proposal {id} did not fail with the exact log {expected_log:?}: {:?}",
+                event.attributes
+            );
+            self.failures[self.stage - SUCCESS_STAGES] += 1;
+        }
         anyhow::ensure!(
             self.submits[self.stage] == 1
                 && self.deposits[self.stage] == 1
@@ -302,7 +329,6 @@ impl Fixture {
             self.deposits[self.stage],
             self.votes[self.stage]
         );
-        self.passes[self.stage] += 1;
         self.awaiting_state = Some(self.stage);
         self.active_proposal = None;
         Ok(Some(id))
@@ -320,12 +346,61 @@ impl Fixture {
             app_version == self.initial_app_version,
             "upgrade-plan fixture changed the executing app version"
         );
+        if let Some(id) = self.active_proposal
+            && !self.stored_verified[self.stage]
+        {
+            let proposal = query_proposal(go, conn, rust, id)?;
+            let expected = self
+                .stored_payload()
+                .context("upgrade-plan stored proposal payload")?;
+            anyhow::ensure!(
+                proposal.messages == [expected]
+                    && proposal.status == gov::ProposalStatus::DepositPeriod as i32,
+                "upgrade-plan proposal {id} did not preserve its exact payload in deposit period: {proposal:?}"
+            );
+            self.stored_verified[self.stage] = true;
+        }
         if let Some(stage) = self.awaiting_state.take() {
+            let id = self.proposal_ids[stage];
+            let proposal = query_proposal(go, conn, rust, id)?;
+            let tally = proposal
+                .final_tally_result
+                .clone()
+                .context("upgrade-plan proposal final tally")?;
+            anyhow::ensure!(
+                tally.yes_count != "0"
+                    && tally.no_count == "0"
+                    && tally.abstain_count == "0"
+                    && tally.no_with_veto_count == "0",
+                "upgrade-plan proposal {id} had an unexpected final tally: {tally:?}"
+            );
+            if let Some(expected) = &self.expected_tally {
+                anyhow::ensure!(
+                    &tally == expected,
+                    "upgrade-plan proposal {id} tally changed: expected {expected:?}, got {tally:?}"
+                );
+            } else {
+                self.expected_tally = Some(tally);
+            }
+            if stage < SUCCESS_STAGES {
+                anyhow::ensure!(
+                    proposal.status == gov::ProposalStatus::Passed as i32
+                        && proposal.failed_reason.is_empty(),
+                    "upgrade-plan proposal {id} query did not preserve passed status: {proposal:?}"
+                );
+            } else {
+                let reason = self.failure_reason();
+                anyhow::ensure!(
+                    proposal.status == gov::ProposalStatus::Failed as i32
+                        && proposal.failed_reason == reason,
+                    "upgrade-plan rejection proposal {id} query mismatch: expected reason {reason:?}, got {proposal:?}"
+                );
+            }
             let observed = current_plan(go, conn, rust)?;
             let expected = match stage {
                 1 => Some(canonical(&self.plans[0])),
                 2 => Some(canonical(&self.plans[1])),
-                0 | 3 | 4 => None,
+                0 | 3..PROPOSAL_STAGES => None,
                 _ => anyhow::bail!("invalid upgrade-plan stage {stage}"),
             };
             anyhow::ensure!(
@@ -342,7 +417,7 @@ impl Fixture {
             Self::require_unapplied(go, conn, rust)?;
             self.stage += 1;
         }
-        if self.stage == 5
+        if self.stage == RECOVERY_STAGE
             && let Some(tx) = self.recovery_tx.as_deref()
             && self.checked.contains(tx)
             && self.recovery_finalized
@@ -356,7 +431,7 @@ impl Fixture {
                     && rust.query_sequence(&sender.addr).sequence == sequence_before + 1,
                 "upgrade-plan recovery send committed-state postcondition failed"
             );
-            self.stage = 6;
+            self.stage = COMPLETE_STAGE;
             return Ok(true);
         }
         Ok(false)
@@ -364,22 +439,96 @@ impl Fixture {
 
     pub(super) fn require_complete(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.stage == 6
+            self.stage == COMPLETE_STAGE
                 && self.recovery_finalized
-                && self.proposal_ids.len() == 5
-                && self.submits == [1; 5]
-                && self.passes == [1; 5]
-                && self.deposits == [1; 5]
-                && self.votes == [(ACCOUNTS - 1) as u64; 5],
-            "incomplete upgrade-plan lifecycle: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?}",
+                && self.proposal_ids.len() == PROPOSAL_STAGES
+                && self.submits == [1; PROPOSAL_STAGES]
+                && self.passes == [1; SUCCESS_STAGES]
+                && self.failures == [1; FAILURE_STAGES]
+                && self.stored_verified == [true; PROPOSAL_STAGES]
+                && self.expected_tally.is_some()
+                && self.deposits == [1; PROPOSAL_STAGES]
+                && self.votes == [(ACCOUNTS - 1) as u64; PROPOSAL_STAGES],
+            "incomplete upgrade-plan lifecycle: stage={} pending_submit={} pending_checked={} active={:?} awaiting={:?} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} failure={:?}",
             self.stage,
+            self.pending_submit.is_some(),
+            self.pending_submit
+                .as_ref()
+                .is_some_and(|tx| self.checked.contains(tx)),
+            self.active_proposal,
+            self.awaiting_state,
             self.proposal_ids,
             self.submits,
             self.deposits,
             self.votes,
-            self.passes
+            self.passes,
+            self.failures
         );
         Ok(())
+    }
+
+    pub(super) fn rejection_count(&self) -> u64 {
+        self.failures.iter().sum()
+    }
+
+    #[allow(deprecated)]
+    fn failure_message(&self) -> upgrade::MsgSoftwareUpgrade {
+        let index = self.stage - SUCCESS_STAGES;
+        let mut plan = upgrade::Plan {
+            name: format!("codex-rejected-upgrade-{index}"),
+            time: None,
+            height: self.initial_height + 30_000 + index as i64,
+            info: format!("controlled rejected upgrade {index}"),
+            upgraded_client_state: None,
+        };
+        match index {
+            0 => {
+                plan.time = Some(pbjson_types::Timestamp {
+                    seconds: 1,
+                    nanos: 0,
+                });
+            }
+            1 => {
+                // Use a registered benign concrete type so recursive Any
+                // unpacking cannot preempt proposal admission. The upgrade
+                // module rejects the non-null field before interpreting it.
+                plan.upgraded_client_state = Some(Any::pack(&bank::MsgSend::default()));
+            }
+            2 => plan.name.clear(),
+            3 => plan.height = 0,
+            4 => plan.height = self.initial_height,
+            _ => unreachable!("failure stage is bounded"),
+        }
+        upgrade::MsgSoftwareUpgrade {
+            authority: GOV.into(),
+            plan: Some(plan),
+        }
+    }
+
+    fn failure_reason(&self) -> String {
+        match self.stage - SUCCESS_STAGES {
+            0 => "time-based upgrades have been deprecated in the SDK: invalid request".into(),
+            1 => "upgrade logic for IBC has been moved to the IBC module: invalid request".into(),
+            2 => "name cannot be empty: invalid request".into(),
+            3 => "height must be greater than 0: invalid request".into(),
+            4 => "upgrade cannot be scheduled in the past: invalid request".into(),
+            _ => unreachable!("failure stage is bounded"),
+        }
+    }
+
+    #[allow(deprecated)]
+    fn stored_payload(&self) -> Option<Any> {
+        let payload = self.payload()?;
+        if payload.type_url != SOFTWARE_UPGRADE_URL {
+            return Some(payload);
+        }
+        let mut message = upgrade::MsgSoftwareUpgrade::decode(payload.value.as_slice()).ok()?;
+        if let Some(plan) = message.plan.as_mut()
+            && plan.time.is_none()
+        {
+            plan.time = Some(sdk::time::go_zero());
+        }
+        Some(Any::pack(&message))
     }
 
     fn relevant_tx(&self, app_version: u64, tx: &[u8]) -> bool {
@@ -418,7 +567,14 @@ impl Fixture {
     }
 
     fn require_unapplied(go: &mut GoApp, conn: u32, rust: &mut app::App) -> anyhow::Result<()> {
-        for name in [PLAN_A, PLAN_B] {
+        for name in [
+            PLAN_A,
+            PLAN_B,
+            "codex-rejected-upgrade-0",
+            "codex-rejected-upgrade-1",
+            "codex-rejected-upgrade-3",
+            "codex-rejected-upgrade-4",
+        ] {
             let response: upgrade::QueryAppliedPlanResponse = query_both(
                 go,
                 conn,
@@ -456,6 +612,23 @@ fn current_plan(
         &upgrade::QueryCurrentPlanRequest {},
     )?
     .plan)
+}
+
+fn query_proposal(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    proposal_id: u64,
+) -> anyhow::Result<gov::Proposal> {
+    query_both::<gov::QueryProposalResponse>(
+        go,
+        conn,
+        rust,
+        "/cosmos.gov.v1.Query/Proposal",
+        &gov::QueryProposalRequest { proposal_id },
+    )?
+    .proposal
+    .context("upgrade-plan proposal query returned no proposal")
 }
 
 fn disabled_messages(

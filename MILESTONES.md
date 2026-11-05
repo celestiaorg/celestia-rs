@@ -464,9 +464,25 @@ test), then start that harness's count again.
   proposal; zero applied heights for both plans; unchanged app version; and a
   final signed bank transfer with exact balances and sequence. The focused
   runs completed all five proposals and the recovery transfer with zero
-  differential or log mismatches. This is bounded application differential
-  evidence; the merged profile must still measure branch contribution, and it
-  does not satisfy the clean-night, mainnet-soak or production-readiness gates.
+  differential or log mismatches. The exact merged 212-case profile passed
+  every case and increased `x/upgrade/src/lib.rs` from 29/54 to 31/54 branch
+  arms. This is bounded application differential and branch evidence; it does
+  not satisfy the clean-night, mainnet-soak or production-readiness gates.
+  *Upgrade-plan rejection follow-up (2026-11-05):* the same controlled mode
+  now passes five additional separately tracked proposals whose software
+  upgrade payloads must fail execution for nonzero deprecated time, non-null
+  upgraded client state, empty name, nonpositive height and past height. Every
+  case requires its exact stored payload, consecutive proposal ID, submit /
+  deposit / vote counts, failed event log, queried failed reason and status,
+  matching final tally, absent current plan, zero applied heights and unchanged
+  app version. Final 240-block v10.5.0 and v9.0.8 runs completed all five
+  rejected executions plus the existing lifecycle and signed recovery with
+  zero differential or log mismatches. Invalid authority is rejected during
+  governance proposal admission and therefore cannot cover the upgrade
+  handler's authority branch. The completed-name branch needs a genuine
+  applied-upgrade marker and remains for mainnet-shaped or post-upgrade state.
+  The next exact merged profile must measure this batch's branch contribution;
+  the wider F1.3 and production-qualification gates remain open.
   *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
   use fresh funded accounts with no stored key. Malformed-length secp256k1 and
   Ed25519 signer keys must recover with exact `undefined/111222` CheckTx
