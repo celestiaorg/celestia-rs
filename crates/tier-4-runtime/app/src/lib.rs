@@ -85,7 +85,8 @@ pub struct App {
     proposed: proposal::ProposedSquare,
 }
 
-/// Node-local settings of `app.toml` that do not affect consensus state.
+/// Node-local settings that do not affect consensus state. Most come from
+/// `app.toml`; unsafe upgrade skips are start-time options only.
 #[derive(Debug, Clone, Default)]
 pub struct NodeOptions {
     /// `min-retain-blocks`: `ResponseCommit.retain_height` keeps at least
@@ -96,6 +97,9 @@ pub struct NodeOptions {
     pub halt_height: u64,
     /// `halt-time` (Unix seconds): same for blocks at or after this time.
     pub halt_time: u64,
+    /// Go `--unsafe-skip-upgrades`: planned upgrade heights this node skips.
+    /// This must be supplied again when the node restarts before the height.
+    pub unsafe_skip_upgrades: Vec<i64>,
     /// Node home: `x/upgrade` writes `data/upgrade-info.json` there when an
     /// upgrade without a handler is due (cosmovisor's trigger).
     pub home: Option<PathBuf>,
@@ -253,6 +257,9 @@ impl App {
 
     /// Sets the node-local options (`AppOptions::node`).
     pub fn set_node_options(&mut self, node: NodeOptions) {
+        self.upgrade
+            .skip_heights
+            .clone_from(&node.unsafe_skip_upgrades);
         self.node = node;
     }
 
@@ -317,7 +324,6 @@ impl App {
         let db =
             kvdb::open_backend(&data_dir(home), STATE_DB_NAME, &options.db).map_err(store_err)?;
         let mut app = Self::open_backend(db, &options)?;
-        app.node = options.node.clone();
         app.snapshots = Some(
             snapshots::Manager::new(snapshot_dir(home), options.snapshots).map_err(store_err)?,
         );
@@ -358,6 +364,7 @@ impl App {
                 .root_mut()
                 .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
         }
+        app.set_node_options(options.node.clone());
         Ok(app)
     }
 
@@ -1372,5 +1379,57 @@ mod abci_dispatch_tests {
         assert!(matches!(r, response::Value::CheckTx(_)), "{r:?}");
         let r = app.handle(request::Value::Query(abci::RequestQuery::default()));
         assert!(matches!(r, response::Value::Query(_)), "{r:?}");
+    }
+}
+
+#[cfg(test)]
+mod node_options_tests {
+    use super::*;
+
+    #[test]
+    fn persistent_reopen_applies_upgrade_skip_to_pre_block() {
+        let home = tempfile::tempdir().expect("temporary app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "unknown-v11".into(),
+            height: 2,
+            info: "operator override".into(),
+            ..Default::default()
+        };
+        {
+            let header = Header {
+                height: 1,
+                ..Header::default()
+            };
+            let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+            x_upgrade::schedule_upgrade(&mut ctx, &plan).expect("schedule plan");
+        }
+        app.ms.commit().expect("commit scheduled plan");
+        drop(app);
+
+        let options = AppOptions {
+            node: NodeOptions {
+                unsafe_skip_upgrades: vec![2],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut reopened = App::open_with(home.path(), options).expect("reopen app");
+        let header = Header {
+            height: 2,
+            ..Header::default()
+        };
+        let mut ctx = Context::new(&mut reopened.ms, header, ExecMode::Finalize);
+        assert!(
+            !modules::pre_block(&mut ctx, "upgrade", &mut reopened.upgrade).expect("skip due plan")
+        );
+        assert_eq!(
+            x_upgrade::get_upgrade_plan(&mut ctx).expect("query current plan"),
+            None
+        );
+        assert_eq!(
+            x_upgrade::get_done_height(&mut ctx, "unknown-v11").expect("query applied plan"),
+            0
+        );
     }
 }

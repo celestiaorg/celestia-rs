@@ -494,6 +494,17 @@ test), then start that harness's count again.
   H, and recorded zero differential or log mismatches. This covers the
   cosmovisor/operator stop boundary in the application harness; it does not
   count as a clean night, mainnet soak, or general readiness evidence.
+  *Unsafe upgrade-skip follow-up (2026-11-05):* `NodeOptions` and the production
+  `start`, `abci` and executing `follow` paths now carry Go-compatible
+  `--unsafe-skip-upgrades` heights into the actual upgrade PreBlock state;
+  persistent reopen and in-memory ABCI use the same setter. Controlled v10/v9
+  fixtures pass the reset and unknown-handler plan proposals, put a signed send
+  in due block H, and require successful Finalize/Commit, exact equal nonempty
+  H app hashes, cleared current plan, zero applied height, unchanged app
+  version, reset breakers, committed send state and no `upgrade-info.json`.
+  Both focused 80-block runs completed with zero differential/log mismatches.
+  This is bounded operator/configuration parity and branch evidence, not a
+  clean night, volume run, mainnet soak, or readiness recommendation.
   *Public-key rejection follow-up (2026-11-04):* controlled v10/v9 fixtures
   use fresh funded accounts with no stored key. Malformed-length secp256k1 and
   Ed25519 signer keys must recover with exact `undefined/111222` CheckTx

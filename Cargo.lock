@@ -5073,6 +5073,7 @@ dependencies = [
  "gostr",
  "prost",
  "sdk",
+ "tracing",
 ]
 
 [[package]]

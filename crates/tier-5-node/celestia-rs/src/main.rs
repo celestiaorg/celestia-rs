@@ -171,6 +171,14 @@ struct StartArgs {
     /// Go `halt-time` (Unix seconds; default: app.toml).
     #[arg(long = "halt-time")]
     halt_time: Option<u64>,
+    /// Go `--unsafe-skip-upgrades`: comma-separated upgrade heights to skip.
+    /// Supply the flag again after a restart before the configured height.
+    #[arg(
+        long = "unsafe-skip-upgrades",
+        value_delimiter = ',',
+        allow_hyphen_values = true
+    )]
+    unsafe_skip_upgrades: Vec<i64>,
     /// Stop after committing this height (testing; 0 = run forever).
     #[arg(long = "stop-at-height", default_value_t = 0)]
     stop_at_height: i64,
@@ -291,6 +299,13 @@ struct FollowArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// Upgrade heights to skip while executing followed blocks.
+    #[arg(
+        long = "unsafe-skip-upgrades",
+        value_delimiter = ',',
+        allow_hyphen_values = true
+    )]
+    unsafe_skip_upgrades: Vec<i64>,
 }
 
 #[derive(Args, Debug)]
@@ -337,6 +352,13 @@ struct AbciArgs {
     /// Go `halt-height`.
     #[arg(long, default_value_t = 0)]
     halt_height: u64,
+    /// Go `--unsafe-skip-upgrades`: comma-separated upgrade heights to skip.
+    #[arg(
+        long = "unsafe-skip-upgrades",
+        value_delimiter = ',',
+        allow_hyphen_values = true
+    )]
+    unsafe_skip_upgrades: Vec<i64>,
     /// gRPC query server address; empty disables.
     #[arg(long, default_value = "127.0.0.1:9090")]
     grpc_address: String,
@@ -1046,6 +1068,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         halt_time: args
             .and_then(|a| a.halt_time)
             .unwrap_or_else(|| u64::try_from(files.int(File::App, "halt-time")).unwrap_or(0)),
+        unsafe_skip_upgrades: args
+            .map(|a| a.unsafe_skip_upgrades.clone())
+            .unwrap_or_default(),
         home: Some(home.to_path_buf()),
     };
     Ok(opts)
@@ -1100,6 +1125,10 @@ fn prepare_network(home: &Path, name: &str) -> anyhow::Result<()> {
 }
 
 async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !a.light_only || a.unsafe_skip_upgrades.is_empty(),
+        "--unsafe-skip-upgrades requires block execution; remove --light-only"
+    );
     let mut app = app::AppOptions::default();
     app.store.pruning = multistore::PruningOptions {
         keep_recent: a.pruning_keep_recent,
@@ -1114,6 +1143,7 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         keep_recent: 0,
     };
     app.node.min_retain_blocks = a.keep_blocks;
+    app.node.unsafe_skip_upgrades = a.unsafe_skip_upgrades.clone();
     let trust_hash = if a.trust_hash.is_empty() {
         None
     } else {
@@ -1277,6 +1307,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         discard_abci_responses = opts.discard_abci_responses,
         halt_height = opts.app.node.halt_height,
         halt_time = opts.app.node.halt_time,
+        unsafe_skip_upgrades = ?opts.app.node.unsafe_skip_upgrades,
         "starting node"
     );
     let res = tokio::task::spawn_blocking(move || node::start(&opts)).await?;
@@ -1288,8 +1319,17 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
 
 async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> {
     app::comet::set_rpc_address((!a.rpc_address.is_empty()).then_some(a.rpc_address.clone()));
+    let node_options = app::NodeOptions {
+        min_retain_blocks: a.min_retain_blocks,
+        halt_height: a.halt_height,
+        halt_time: 0,
+        unsafe_skip_upgrades: a.unsafe_skip_upgrades.clone(),
+        home: (!a.in_memory && home_given).then(|| home.to_path_buf()),
+    };
     let mut app = if !home_given || a.in_memory {
-        app::App::new()
+        let mut app = app::App::new();
+        app.set_node_options(node_options);
+        app
     } else {
         let mut options = app::AppOptions {
             chain_id: a.chain_id.clone(),
@@ -1307,12 +1347,7 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
             interval: a.snapshot_interval,
             keep_recent: a.snapshot_keep_recent,
         };
-        options.node = app::NodeOptions {
-            min_retain_blocks: a.min_retain_blocks,
-            halt_height: a.halt_height,
-            halt_time: 0,
-            home: Some(home.to_path_buf()),
-        };
+        options.node = node_options;
         let app = app::App::open_with(home, options)
             .map_err(|e| anyhow!("open {}: {}", home.display(), e.log))?;
         let info = app.info();
@@ -1728,4 +1763,59 @@ fn utia_min_gas_price(s: &str) -> anyhow::Result<Option<math::LegacyDec>> {
         }
     }
     Ok(Some(amount))
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    fn skip_heights(args: &[&str]) -> Vec<i64> {
+        let cli = Cli::try_parse_from(args).expect("parse CLI");
+        match cli.command {
+            Cmd::Start(args) => args.unsafe_skip_upgrades,
+            Cmd::Abci(args) => args.unsafe_skip_upgrades,
+            Cmd::Follow(args) => args.unsafe_skip_upgrades,
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unsafe_skip_upgrades_accepts_go_compatible_lists() {
+        assert_eq!(
+            skip_heights(&[
+                "celestia-rs",
+                "start",
+                "--unsafe-skip-upgrades",
+                "9,12",
+                "--unsafe-skip-upgrades",
+                "-7,9",
+                "--halt-height",
+                "44",
+            ]),
+            [9, 12, -7, 9]
+        );
+        assert_eq!(
+            skip_heights(&[
+                "celestia-rs",
+                "abci",
+                "--in-memory",
+                "--unsafe-skip-upgrades",
+                "20,21",
+            ]),
+            [20, 21]
+        );
+        assert_eq!(
+            skip_heights(&[
+                "celestia-rs",
+                "follow",
+                "--rpc",
+                "http://127.0.0.1:26657",
+                "--unsafe-skip-upgrades",
+                "30",
+                "--unsafe-skip-upgrades",
+                "31",
+            ]),
+            [30, 31]
+        );
+    }
 }

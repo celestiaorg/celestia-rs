@@ -180,7 +180,9 @@ the same, peers' vote counts alike.
   → `ResponseCommit.retain_height`, `halt-height`/`halt-time` as Go's
   `checkHalt`, Prometheus with celestia-core metric names), stops cleanly on
   SIGINT/SIGTERM, and on a due upgrade without a handler writes
-  `data/upgrade-info.json` and halts consensus like Go. CLI: `init`
+  `data/upgrade-info.json` and halts consensus like Go; the node-local
+  `--unsafe-skip-upgrades` start/ABCI option clears an explicitly configured
+  due plan like Go (executing `follow` accepts the same override). CLI: `init`
   (Go templates), `keys` (new `keyring` crate: Go test/file keyrings, JWE
   items, argon2 armor), `genesis`, `tx`, `query`, `status`, `config`,
   `rollback` (state + `RollbackToVersion`), `export` (every module's

@@ -273,6 +273,12 @@ pub fn pre_block(
     };
     if should_execute(&plan, h) {
         if skip {
+            tracing::info!(
+                "UPGRADE \"{}\" SKIPPED at {}: {}",
+                plan.name,
+                plan.height,
+                plan.info
+            );
             clear_upgrade_plan(ctx)?;
             return Ok(false);
         }
@@ -426,6 +432,47 @@ mod tests {
         let mut fresh = NodeState::default();
         clear_upgrade_plan(&mut ctx)?;
         assert!(pre_block(&mut ctx, &Handlers(vec![]), &mut fresh).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn configured_height_skips_unknown_plan_only_when_due() -> Result<()> {
+        let mut ms = MultiStore::new();
+        ms.mount(STORE_KEY, Kind::Iavl)?;
+        let header = Header {
+            height: 8,
+            ..Header::default()
+        };
+        let mut ctx = Context::new(&mut ms, header, ExecMode::Finalize);
+        let plan = Plan {
+            name: "unknown-v11".into(),
+            height: 9,
+            info: "operator override".into(),
+            ..Plan::default()
+        };
+        schedule_upgrade(&mut ctx, &plan)?;
+
+        let mut wrong_height = NodeState {
+            skip_heights: vec![8, 10],
+            ..Default::default()
+        };
+        ctx.header.height = 9;
+        let error = pre_block(&mut ctx, &Handlers(vec![]), &mut wrong_height).unwrap_err();
+        assert!(error.log.starts_with("UPGRADE \"unknown-v11\" NEEDED"));
+        let retained = get_upgrade_plan(&mut ctx)?.expect("plan retained after wrong skip height");
+        assert_eq!(
+            (retained.name, retained.height, retained.info),
+            (plan.name.clone(), plan.height, plan.info.clone())
+        );
+
+        let mut configured = NodeState {
+            skip_heights: vec![9],
+            ..Default::default()
+        };
+        assert!(!pre_block(&mut ctx, &Handlers(vec![]), &mut configured)?);
+        assert_eq!(get_upgrade_plan(&mut ctx)?, None);
+        assert_eq!(get_done_height(&mut ctx, "unknown-v11")?, 0);
+        assert_eq!(get_last_completed_upgrade(&mut ctx)?, (String::new(), 0));
         Ok(())
     }
 }

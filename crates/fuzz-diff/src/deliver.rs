@@ -246,6 +246,11 @@ pub struct Stats {
     /// Missing-handler halts that proved the exact error, upgrade-info file,
     /// retained plan, and absence of a commit at the due height.
     pub upgrade_halt_completed: u64,
+    /// Whether the run requires a configured unsafe skip of a due plan.
+    pub upgrade_skip_required: Option<()>,
+    /// Due-plan skips that cleared the plan and committed the controlled send
+    /// without marking the upgrade applied.
+    pub upgrade_skip_completed: u64,
     /// Results of the proposals that ended (`active_proposal` events).
     pub gov_results: BTreeMap<String, u64>,
     /// Messages actually executed by Go in passed generated proposals,
@@ -1733,6 +1738,29 @@ impl Stats {
                         == Some(1),
                 "incomplete DELIVER_UPGRADE_HALT_REQUIRE coverage: completed={} executed={:?}",
                 self.upgrade_halt_completed,
+                self.gov_executed
+            );
+        }
+        Ok(())
+    }
+
+    /// Require the configured due-plan skip and its exact governance setup.
+    pub fn require_upgrade_skip_coverage(&self) -> anyhow::Result<()> {
+        if self.upgrade_skip_required.is_some() {
+            anyhow::ensure!(
+                self.upgrade_skip_completed == 1
+                    && self
+                        .gov_executed
+                        .get("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade")
+                        .copied()
+                        == Some(1)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.circuit.v1.MsgResetCircuitBreaker")
+                        .copied()
+                        == Some(1),
+                "incomplete DELIVER_UPGRADE_SKIP_REQUIRE coverage: completed={} executed={:?}",
+                self.upgrade_skip_completed,
                 self.gov_executed
             );
         }
@@ -4454,7 +4482,9 @@ pub fn run(
     let govpass_env = std::env::var("DELIVER_GOVPASS").is_ok();
     let upgrade_plan_required = std::env::var_os("DELIVER_UPGRADE_PLAN_REQUIRE").is_some();
     let upgrade_halt_required = std::env::var_os("DELIVER_UPGRADE_HALT_REQUIRE").is_some();
-    let governed_upgrade_required = upgrade_plan_required || upgrade_halt_required;
+    let upgrade_skip_required = std::env::var_os("DELIVER_UPGRADE_SKIP_REQUIRE").is_some();
+    let governed_upgrade_required =
+        upgrade_plan_required || upgrade_halt_required || upgrade_skip_required;
     let govpass = govpass_env || governed_upgrade_required;
     let ibc_on = std::env::var("DELIVER_IBC").is_ok();
     let transfer_authz_required = std::env::var_os("DELIVER_TRANSFER_AUTHZ_REQUIRE").is_some();
@@ -4469,6 +4499,7 @@ pub fn run(
         !upgrade_plan_required
             || (!govpass_env
                 && !upgrade_halt_required
+                && !upgrade_skip_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4487,6 +4518,7 @@ pub fn run(
         !upgrade_halt_required
             || (!govpass_env
                 && !upgrade_plan_required
+                && !upgrade_skip_required
                 && !direct_aux_required
                 && !malformed_multisig_required
                 && !zero_threshold_multisig_required
@@ -4500,6 +4532,25 @@ pub fn run(
                 && blocks == 80
                 && per_block == 0),
         "DELIVER_UPGRADE_HALT_REQUIRE needs exactly 80 blocks and zero random transactions, and cannot be combined with other controlled modes"
+    );
+    anyhow::ensure!(
+        !upgrade_skip_required
+            || (!govpass_env
+                && !upgrade_plan_required
+                && !upgrade_halt_required
+                && !direct_aux_required
+                && !malformed_multisig_required
+                && !zero_threshold_multisig_required
+                && !p256_required
+                && !pubkey_rejection_required
+                && !hl_on
+                && !ibc_on
+                && evidence_requirement.is_none()
+                && std::env::var_os("DELIVER_UPGRADE").is_none()
+                && std::env::var_os("DELIVER_SCRIPT").is_none()
+                && blocks == 80
+                && per_block == 0),
+        "DELIVER_UPGRADE_SKIP_REQUIRE needs exactly 80 blocks and zero random transactions, and cannot be combined with other controlled modes"
     );
     anyhow::ensure!(
         !direct_aux_required
@@ -4850,11 +4901,22 @@ pub fn run(
         conns: BTreeMap::new(),
     };
     let mut rust_app = app::App::new();
-    if upgrade_halt_required {
+    if upgrade_halt_required || upgrade_skip_required {
         let rust_home = std::env::var_os("DELIVER_UPGRADE_RUST_HOME")
-            .context("DELIVER_UPGRADE_HALT_REQUIRE needs DELIVER_UPGRADE_RUST_HOME")?;
+            .context("upgrade halt/skip fixture needs DELIVER_UPGRADE_RUST_HOME")?;
+        let unsafe_skip_upgrades = if upgrade_skip_required {
+            vec![
+                std::env::var("DELIVER_UPGRADE_SKIP_HEIGHT")
+                    .context("DELIVER_UPGRADE_SKIP_REQUIRE needs DELIVER_UPGRADE_SKIP_HEIGHT")?
+                    .parse()
+                    .context("DELIVER_UPGRADE_SKIP_HEIGHT must be an integer")?,
+            ]
+        } else {
+            Vec::new()
+        };
         rust_app.set_node_options(app::NodeOptions {
             home: Some(rust_home.into()),
+            unsafe_skip_upgrades,
             ..Default::default()
         });
     }
@@ -4874,6 +4936,7 @@ pub fn run(
         pubkey_rejection_required: pubkey_rejection_required.then_some(()),
         upgrade_plan_required: upgrade_plan_required.then_some(()),
         upgrade_halt_required: upgrade_halt_required.then_some(()),
+        upgrade_skip_required: upgrade_skip_required.then_some(()),
         ibc_ack_failure_required,
         hl_verification: hl_on.then(|| verifier.name().to_owned()),
         hl_registry_required: hl_registry_required.then_some(()),
@@ -5247,9 +5310,22 @@ pub fn run(
             height,
             app_version,
         ))
+    } else if upgrade_skip_required {
+        Some(upgrade_plan::Fixture::new_skip(height, app_version))
     } else {
         upgrade_plan_required.then(|| upgrade_plan::Fixture::new(height, app_version))
     };
+    if upgrade_skip_required {
+        let configured: i64 = std::env::var("DELIVER_UPGRADE_SKIP_HEIGHT")
+            .context("DELIVER_UPGRADE_SKIP_REQUIRE needs DELIVER_UPGRADE_SKIP_HEIGHT")?
+            .parse()
+            .context("DELIVER_UPGRADE_SKIP_HEIGHT must be an integer")?;
+        anyhow::ensure!(
+            configured == height + i64::try_from(blocks).unwrap_or(i64::MAX),
+            "upgrade skip height {configured} does not match final generated height {}",
+            height + i64::try_from(blocks).unwrap_or(i64::MAX)
+        );
+    }
     if upgrade_plan_fixture.is_some() {
         upgrade_plan::Fixture::verify_initial(&mut go, cons_conn, &mut rust)?;
     }
@@ -5641,7 +5717,7 @@ pub fn run(
                         fixture.mark_submit(tx.clone());
                         txs.push(tx);
                     }
-                } else if fixture.needs_recovery() {
+                } else if fixture.needs_recovery(height) {
                     let message = Any::pack(&fixture.recovery_message(&gn, &mut rust)?);
                     if let Some(tx) = sign_simple(&gn, 0, vec![message], 400_000) {
                         gn.accts[0].seq += 1;
@@ -6687,7 +6763,11 @@ pub fn run(
         if let Some(fixture) = upgrade_plan_fixture.as_mut()
             && fixture.after_commit(&mut go, cons_conn, &mut rust, app_version, &gn)?
         {
-            stats.upgrade_plan_completed += 1;
+            if fixture.is_skip() {
+                stats.upgrade_skip_completed += 1;
+            } else {
+                stats.upgrade_plan_completed += 1;
+            }
         }
         if c.is_empty()
             && let (Some(requirement), Some(before), Some(evidence)) = (
@@ -11800,6 +11880,37 @@ mod tests {
         incomplete.upgrade_halt_completed = 0;
         assert!(incomplete.require_upgrade_halt_coverage().is_err());
         assert!(Stats::default().require_upgrade_halt_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_upgrade_skip_needs_exact_governance_and_commit_credit() {
+        let complete = || {
+            let mut stats = Stats {
+                upgrade_skip_required: Some(()),
+                upgrade_skip_completed: 1,
+                ..Stats::default()
+            };
+            stats
+                .gov_executed
+                .insert("/cosmos.circuit.v1.MsgResetCircuitBreaker".into(), 1);
+            stats
+                .gov_executed
+                .insert("/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade".into(), 1);
+            stats
+        };
+        assert!(complete().require_upgrade_skip_coverage().is_ok());
+        for url in [
+            "/cosmos.circuit.v1.MsgResetCircuitBreaker",
+            "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+        ] {
+            let mut incomplete = complete();
+            incomplete.gov_executed.remove(url);
+            assert!(incomplete.require_upgrade_skip_coverage().is_err());
+        }
+        let mut incomplete = complete();
+        incomplete.upgrade_skip_completed = 0;
+        assert!(incomplete.require_upgrade_skip_coverage().is_err());
+        assert!(Stats::default().require_upgrade_skip_coverage().is_ok());
     }
 
     #[test]

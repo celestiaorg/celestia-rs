@@ -170,6 +170,12 @@ for scen in authz-feegrant v9-authz-feegrant; do
     DELIVER_UPGRADE_HALT_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 80 0 17375
 done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "upgrade-skip-$scen" GO_APPD="$A" \
+    DELIVER_UPGRADE_SKIP_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 80 0 17376
+done
 for scen in ibc v9-ibc; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "pfm-metadata-$scen" GO_APPD="$A" DELIVER_IBC=1 \

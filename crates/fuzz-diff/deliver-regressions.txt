@@ -182,3 +182,7 @@ authz-feegrant 1 0 17365 DELIVER_EVIDENCE_REQUIRE=removed-validator
 # state are required; matching early errors cannot satisfy this regression.
 authz-feegrant 80 0 17375 DELIVER_UPGRADE_HALT_REQUIRE=1
 v9-authz-feegrant 80 0 17375 DELIVER_UPGRADE_HALT_REQUIRE=1
+# The real node-local unsafe-skip flag must clear a due unknown-handler plan,
+# commit the signed send at H and leave no applied marker or upgrade-info file.
+authz-feegrant 80 0 17376 DELIVER_UPGRADE_SKIP_REQUIRE=1
+v9-authz-feegrant 80 0 17376 DELIVER_UPGRADE_SKIP_REQUIRE=1

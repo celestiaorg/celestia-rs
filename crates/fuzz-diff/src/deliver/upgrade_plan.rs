@@ -13,6 +13,8 @@ const PLAN_A: &str = "codex-plan-a";
 const PLAN_B: &str = "codex-plan-b";
 const HALT_PLAN: &str = "codex-missing-handler";
 const HALT_INFO: &str = "controlled missing-handler halt";
+const SKIP_PLAN: &str = "codex-skipped-handler";
+const SKIP_INFO: &str = "controlled operator skip";
 const HALT_OFFSET: i64 = 80;
 const SOFTWARE_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade";
 const CANCEL_UPGRADE_URL: &str = "/cosmos.upgrade.v1beta1.MsgCancelUpgrade";
@@ -28,6 +30,7 @@ const COMPLETE_STAGE: usize = RECOVERY_STAGE + 1;
 enum Mode {
     Lifecycle,
     MissingHandler,
+    Skip,
 }
 
 pub(super) struct HaltObservation<'a> {
@@ -110,17 +113,30 @@ impl Fixture {
         fixture
     }
 
+    pub(super) fn new_skip(height: i64, app_version: u64) -> Self {
+        let mut fixture = Self::new(height, app_version);
+        fixture.mode = Mode::Skip;
+        fixture.plans[0].name = SKIP_PLAN.into();
+        fixture.plans[0].height = height + HALT_OFFSET;
+        fixture.plans[0].info = SKIP_INFO.into();
+        fixture
+    }
+
+    pub(super) fn is_skip(&self) -> bool {
+        self.mode == Mode::Skip
+    }
+
     fn proposal_stages(&self) -> usize {
         match self.mode {
             Mode::Lifecycle => PROPOSAL_STAGES,
-            Mode::MissingHandler => 2,
+            Mode::MissingHandler | Mode::Skip => 2,
         }
     }
 
     fn success_stages(&self) -> usize {
         match self.mode {
             Mode::Lifecycle => SUCCESS_STAGES,
-            Mode::MissingHandler => 2,
+            Mode::MissingHandler | Mode::Skip => 2,
         }
     }
 
@@ -186,7 +202,7 @@ impl Fixture {
                 authority: GOV.into(),
                 msg_type_urls: vec![SOFTWARE_UPGRADE_URL.into(), CANCEL_UPGRADE_URL.into()],
             }),
-            (Mode::MissingHandler, 1) => Any::pack(&upgrade::MsgSoftwareUpgrade {
+            (Mode::MissingHandler | Mode::Skip, 1) => Any::pack(&upgrade::MsgSoftwareUpgrade {
                 authority: GOV.into(),
                 plan: Some(self.plans[0].clone()),
             }),
@@ -206,8 +222,13 @@ impl Fixture {
         self.pending_submit = Some(tx);
     }
 
-    pub(super) fn needs_recovery(&self) -> bool {
-        self.stage == RECOVERY_STAGE && self.recovery_tx.is_none()
+    pub(super) fn needs_recovery(&self, height: i64) -> bool {
+        let ready = match self.mode {
+            Mode::Lifecycle => self.stage == RECOVERY_STAGE,
+            Mode::Skip => self.stage == 2 && height == self.plans[0].height,
+            Mode::MissingHandler => false,
+        };
+        ready && self.recovery_tx.is_none()
     }
 
     pub(super) fn recovery_message(
@@ -215,7 +236,10 @@ impl Fixture {
         gn: &Gen,
         rust: &mut app::App,
     ) -> anyhow::Result<bank::MsgSend> {
-        anyhow::ensure!(self.needs_recovery(), "upgrade-plan recovery was not ready");
+        anyhow::ensure!(
+            self.recovery_tx.is_none(),
+            "upgrade-plan recovery was not ready"
+        );
         let sender = &gn.accts[0];
         let recipient = &gn.accts[2];
         self.recovery_before = Some((
@@ -466,10 +490,22 @@ impl Fixture {
             Self::require_unapplied(go, conn, rust)?;
             self.stage += 1;
         }
-        if self.mode == Mode::MissingHandler
+        if matches!(self.mode, Mode::MissingHandler | Mode::Skip)
             && self.stage == 2
             && rust.info().last_block_height == self.plans[0].height - 1
         {
+            anyhow::ensure!(
+                current_plan(go, conn, rust)? == Some(canonical(&self.plans[0])),
+                "due-plan fixture did not retain its exact plan at H-1"
+            );
+            Self::require_unapplied(go, conn, rust)?;
+            let disabled = disabled_messages(go, conn, rust)?;
+            anyhow::ensure!(
+                [SOFTWARE_UPGRADE_URL, CANCEL_UPGRADE_URL]
+                    .iter()
+                    .all(|expected| !disabled.iter().any(|url| url == expected)),
+                "due-plan fixture restored a circuit breaker at H-1: {disabled:?}"
+            );
             let (go_info, rust_info) = info_both(go, conn, rust)?;
             anyhow::ensure!(
                 go_info.last_block_height == rust_info.last_block_height
@@ -477,8 +513,25 @@ impl Fixture {
                 "missing-handler pre-halt Info differed: Go {go_info:?}, Rust {rust_info:?}"
             );
             self.pre_halt_info = Some((rust_info.last_block_height, rust_info.last_block_app_hash));
+            if self.mode == Mode::Skip {
+                for variable in ["DELIVER_UPGRADE_GO_HOME", "DELIVER_UPGRADE_RUST_HOME"] {
+                    let home = std::env::var_os(variable)
+                        .with_context(|| format!("{variable} is required"))?;
+                    anyhow::ensure!(
+                        !Path::new(&home).join("data/upgrade-info.json").exists(),
+                        "upgrade skip unexpectedly wrote {variable}/data/upgrade-info.json before H"
+                    );
+                }
+            }
         }
-        if self.stage == RECOVERY_STAGE
+        if self.mode == Mode::Skip
+            && self.stage == 2
+            && rust.info().last_block_height == self.plans[0].height
+        {
+            self.require_skipped_commit(go, conn, rust, app_version)?;
+        }
+        if ((self.mode == Mode::Lifecycle && self.stage == RECOVERY_STAGE)
+            || (self.mode == Mode::Skip && self.stage == 2))
             && let Some(tx) = self.recovery_tx.as_deref()
             && self.checked.contains(tx)
             && self.recovery_finalized
@@ -499,6 +552,28 @@ impl Fixture {
     }
 
     pub(super) fn require_complete(&self) -> anyhow::Result<()> {
+        if self.mode == Mode::Skip {
+            anyhow::ensure!(
+                self.stage == COMPLETE_STAGE
+                    && self.recovery_finalized
+                    && self.proposal_ids.len() == 2
+                    && self.submits[..2] == [1; 2]
+                    && self.deposits[..2] == [1; 2]
+                    && self.votes[..2] == [(ACCOUNTS - 1) as u64; 2]
+                    && self.passes[..2] == [1; 2]
+                    && self.stored_verified[..2] == [true; 2]
+                    && self.expected_tally.is_some(),
+                "incomplete upgrade-skip lifecycle: stage={} ids={:?} submit={:?} deposit={:?} vote={:?} pass={:?} stored={:?}",
+                self.stage,
+                self.proposal_ids,
+                &self.submits[..2],
+                &self.deposits[..2],
+                &self.votes[..2],
+                &self.passes[..2],
+                &self.stored_verified[..2]
+            );
+            return Ok(());
+        }
         anyhow::ensure!(
             self.mode == Mode::Lifecycle,
             "missing-handler fixture did not reach its terminal halt"
@@ -538,6 +613,59 @@ impl Fixture {
 
     pub(super) fn halt_height(&self) -> Option<i64> {
         (self.mode == Mode::MissingHandler && self.stage == 2).then_some(self.plans[0].height)
+    }
+
+    fn require_skipped_commit(
+        &self,
+        go: &mut GoApp,
+        conn: u32,
+        rust: &mut app::App,
+        app_version: u64,
+    ) -> anyhow::Result<()> {
+        let height = self.plans[0].height;
+        anyhow::ensure!(
+            app_version == self.initial_app_version,
+            "upgrade skip changed the executing app version"
+        );
+        anyhow::ensure!(
+            current_plan(go, conn, rust)?.is_none(),
+            "upgrade skip did not clear the due plan"
+        );
+        Self::require_unapplied(go, conn, rust)?;
+        let disabled = disabled_messages(go, conn, rust)?;
+        anyhow::ensure!(
+            [SOFTWARE_UPGRADE_URL, CANCEL_UPGRADE_URL]
+                .iter()
+                .all(|expected| !disabled.iter().any(|url| url == expected)),
+            "upgrade skip unexpectedly restored a circuit breaker: {disabled:?}"
+        );
+        let (go_info, rust_info) = info_both(go, conn, rust)?;
+        anyhow::ensure!(
+            go_info.last_block_height == height
+                && rust_info.last_block_height == height
+                && go_info.app_version == self.initial_app_version
+                && rust_info.app_version == self.initial_app_version
+                && !go_info.last_block_app_hash.is_empty()
+                && go_info.last_block_app_hash == rust_info.last_block_app_hash,
+            "upgrade skip committed Info differed: Go {go_info:?}, Rust {rust_info:?}"
+        );
+        let pre = self
+            .pre_halt_info
+            .as_ref()
+            .context("upgrade skip did not capture committed Info at H-1")?;
+        anyhow::ensure!(
+            pre.0 == height - 1 && !pre.1.is_empty(),
+            "upgrade skip pre-height Info was invalid: {pre:?}"
+        );
+        for variable in ["DELIVER_UPGRADE_GO_HOME", "DELIVER_UPGRADE_RUST_HOME"] {
+            let home =
+                std::env::var_os(variable).with_context(|| format!("{variable} is required"))?;
+            anyhow::ensure!(
+                !Path::new(&home).join("data/upgrade-info.json").exists(),
+                "upgrade skip unexpectedly wrote {variable}/data/upgrade-info.json"
+            );
+        }
+        Ok(())
     }
 
     pub(super) fn require_missing_handler_halt(
@@ -733,6 +861,7 @@ impl Fixture {
             PLAN_A,
             PLAN_B,
             HALT_PLAN,
+            SKIP_PLAN,
             "codex-rejected-upgrade-0",
             "codex-rejected-upgrade-1",
             "codex-rejected-upgrade-3",
