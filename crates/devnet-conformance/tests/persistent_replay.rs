@@ -316,20 +316,22 @@ fn v9_snapshot_restore_resumes_replay_with_full_parity() -> anyhow::Result<()> {
 }
 
 fn snapshot_restore_resumes_replay(scenario: &str, app_version: u64) -> anyhow::Result<()> {
-    snapshot_restore_after_offers(scenario, app_version, false)
+    snapshot_restore_after_offers(scenario, app_version, false, false)
 }
 
-/// A rejected v9 offer must not change a later v10 restore, and an accepted
-/// but abandoned v9 offer must be replaceable with a v10 offer.
+/// Rejected offers must not change the active store selection, and an
+/// accepted but abandoned v9 offer must be replaceable with a v10 offer.
 #[test]
 fn snapshot_restore_recovers_after_v9_offers() -> anyhow::Result<()> {
-    snapshot_restore_after_offers("staking", 10, true)
+    snapshot_restore_after_offers("staking", 10, true, false)?;
+    snapshot_restore_after_offers("v9-staking", 9, false, true)
 }
 
 fn snapshot_restore_after_offers(
     scenario: &str,
     app_version: u64,
     prior_v9_offers: bool,
+    reject_after_v9_offer: bool,
 ) -> anyhow::Result<()> {
     let hashes = go_app_hashes(&load_exchanges(scenario)?);
     let last = hashes.last().map_or(0, |(h, _)| *h);
@@ -377,14 +379,33 @@ fn snapshot_restore_after_offers(
             assert!(!dst.multistore().is_mounted(name));
         }
     }
-    let offer = dst.offer_snapshot(
-        celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
-            snapshot: Some(snapshot.clone()),
-            app_hash: Vec::new(),
-            app_version,
-        },
-    );
-    assert_eq!(offer.result, 1, "accept");
+    if reject_after_v9_offer {
+        let accepted = dst.offer_snapshot(
+            celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
+                snapshot: Some(snapshot.clone()),
+                app_hash: Vec::new(),
+                app_version: 9,
+            },
+        );
+        assert_eq!(accepted.result, 1, "accept v9 restore");
+        let rejected = dst.offer_snapshot(
+            celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
+                snapshot: None,
+                app_version: 10,
+                ..Default::default()
+            },
+        );
+        assert_eq!(rejected.result, 3, "reject missing replacement");
+    } else {
+        let offer = dst.offer_snapshot(
+            celestia_proto::celestia_core_proto::abci::RequestOfferSnapshot {
+                snapshot: Some(snapshot.clone()),
+                app_hash: Vec::new(),
+                app_version,
+            },
+        );
+        assert_eq!(offer.result, 1, "accept");
+    }
     for index in 0..snapshot.chunks {
         let chunk = src
             .load_snapshot_chunk(

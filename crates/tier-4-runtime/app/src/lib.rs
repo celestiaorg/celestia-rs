@@ -74,6 +74,9 @@ pub struct App {
     upgrade: x_upgrade::NodeState,
     /// State-sync snapshots (storage-backed apps only).
     snapshots: Option<snapshots::Manager>,
+    /// Whether the active restore may omit stores added by the v10
+    /// executable while retaining consensus app version 9.
+    snapshot_optional_v10_stores: bool,
     /// Header of the check state (`setState(execModeCheck, ...)` at
     /// InitChain and Commit).
     check_header: Header,
@@ -259,6 +262,7 @@ impl App {
             upgrade_store_height: None,
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
+            snapshot_optional_v10_stores: false,
             check_header: Header::default(),
             switch_on_commit: false,
             node_min_gas_price: None,
@@ -930,6 +934,7 @@ impl App {
                 .and_then(|snapshot| manager.begin_restore(snapshot))
                 {
                     Ok(()) => {
+                        self.snapshot_optional_v10_stores = stores::is_v9(req.app_version);
                         // Only accepted offers select stores. A later offer
                         // may replace an abandoned restore of another version.
                         if self.last_height == 0 {
@@ -943,6 +948,10 @@ impl App {
                                     Ok(())
                                 };
                                 if let Err(e) = result {
+                                    self.snapshot_optional_v10_stores = false;
+                                    if let Err(cleanup) = manager.abort_restore() {
+                                        tracing::error!(error = %cleanup, "failed to abort snapshot restore");
+                                    }
                                     tracing::error!(store = name, error = %e, "failed to select snapshot stores");
                                     return abci::ResponseOfferSnapshot {
                                         result: R::Abort as i32,
@@ -983,13 +992,15 @@ impl App {
         let Some(manager) = &mut self.snapshots else {
             return abort();
         };
-        match manager.restore_chunk_with_optional_iavl(
-            self.ms.root_mut(),
-            &req.chunk,
-            stores::ADDED_IN_V10,
-        ) {
+        let optional: &[&str] = if self.snapshot_optional_v10_stores {
+            stores::ADDED_IN_V10
+        } else {
+            &[]
+        };
+        match manager.restore_chunk_with_optional_iavl(self.ms.root_mut(), &req.chunk, optional) {
             Ok(done) => {
                 if let Some(id) = done {
+                    self.snapshot_optional_v10_stores = false;
                     tracing::info!(height = id.version, "restored state-sync snapshot");
                     if let Err(e) = self.load_committed_state() {
                         tracing::error!(error = %e, "failed to load restored state");
@@ -1015,6 +1026,10 @@ impl App {
                 reject_senders: vec![req.sender],
             },
             Err(e) => {
+                self.snapshot_optional_v10_stores = false;
+                if let Err(cleanup) = manager.abort_restore() {
+                    tracing::error!(error = %cleanup, "failed to abort snapshot restore");
+                }
                 tracing::error!(error = %e, "failed to restore snapshot");
                 abort()
             }
@@ -1693,6 +1708,49 @@ mod node_options_tests {
         for name in stores::ADDED_IN_V10 {
             assert!(destination.ms.is_mounted(name), "{name} must be mounted");
         }
+    }
+
+    #[test]
+    fn terminal_snapshot_error_abandons_restore() {
+        let home = tempfile::tempdir().expect("destination app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        let chunk = b"authenticated chunk".to_vec();
+        let chunk_hash = hash::sha256(&chunk).to_vec();
+        let snapshot = snapshots::Snapshot {
+            height: 1,
+            format: snapshots::CURRENT_FORMAT,
+            chunks: 1,
+            hash: chunk_hash.clone(),
+            chunk_hashes: vec![chunk_hash],
+        };
+        let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+            snapshot: Some(abci::Snapshot {
+                height: snapshot.height,
+                format: snapshot.format,
+                chunks: snapshot.chunks,
+                hash: snapshot.hash.clone(),
+                metadata: snapshot.metadata_bytes(),
+            }),
+            app_version: 9,
+            ..Default::default()
+        });
+        assert_eq!(
+            offered.result,
+            abci::response_offer_snapshot::Result::Accept as i32
+        );
+
+        let restore_dir = snapshot_dir(home.path()).join("restore");
+        std::fs::remove_dir_all(&restore_dir).expect("induce terminal restore I/O error");
+        let applied = app.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+            chunk,
+            ..Default::default()
+        });
+        assert_eq!(
+            applied.result,
+            abci::response_apply_snapshot_chunk::Result::Abort as i32
+        );
+        assert!(!app.snapshots.as_ref().expect("manager").restoring());
+        assert!(!restore_dir.exists());
     }
 
     #[test]

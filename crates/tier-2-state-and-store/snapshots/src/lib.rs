@@ -789,6 +789,16 @@ impl Manager {
         self.restore.is_some()
     }
 
+    /// Abandons an active state-sync restore and removes its partial chunks.
+    pub fn abort_restore(&mut self) -> Result<()> {
+        if let Some(restore) = self.restore.take()
+            && restore.dir.exists()
+        {
+            fs::remove_dir_all(restore.dir)?;
+        }
+        Ok(())
+    }
+
     /// Applies the next chunk (ABCI `ApplySnapshotChunk`). After the last
     /// chunk the snapshot is imported into `store` and its commit ID is
     /// returned; earlier chunks return `None`.
