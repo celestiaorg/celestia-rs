@@ -23,11 +23,14 @@
 # DELIVER_GOV_FAILURE_REQUIRE=<substring> requires that a tracked proposal fail
 # with that Go log marker. DELIVER_GOV_FAILURE_TYPE_REQUIRE=<type-url> further
 # binds the match to a proposal carrying that exact payload type.
-# DELIVER_EVIDENCE_REQUIRE=stale|removed-validator|stake-lifecycle sends exactly
+# DELIVER_EVIDENCE_REQUIRE=stale|removed-validator|stake-lifecycle|zero-double-sign-slash sends exactly
 # one controlled begin-block misbehavior and fails unless that boundary reaches
 # FinalizeBlock. Stale evidence is supported on v9/v10; removed-validator is
 # v10-only. Stake-lifecycle requires its exact DELIVER_SCRIPT and
 # DELIVER_SCRIPT_REQUIRE setup and checks historical-stake slash accounting.
+# Zero-double-sign-slash installs a valid zero double-sign fraction, requires
+# evidence persistence, jail and tombstone with zero burn and no distribution
+# slash record, then commits a signed recovery send in exactly three blocks.
 # DELIVER_NEVER_BONDED_UNJAIL_REQUIRE=1 constrains staking to one active
 # validator, creates a lower-power validator that never bonds, jails it by
 # dropping below minimum self-delegation, restores the stake, and requires
