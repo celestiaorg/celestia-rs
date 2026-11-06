@@ -148,6 +148,8 @@ elif '--output-path' in a:
         self.assertIn("authz-grant-validation-v9-authz-feegrant.out", outputs)
         self.assertIn("ica-encodings-ibc.out", outputs)
         self.assertIn("ica-encodings-v9-ibc.out", outputs)
+        self.assertIn("ica-order-ibc.out", outputs)
+        self.assertIn("ica-order-v9-ibc.out", outputs)
 
     def test_stable_mode_does_not_require_branch_data(self):
         result, outputs, commands = self.run_driver(branch="0", toolchain="", no_branches=True)

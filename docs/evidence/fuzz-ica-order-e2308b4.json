@@ -1,0 +1,84 @@
+{
+  "baseline": {
+    "revision": "e2308b487affd4ac4aac9cd85539e92fa807905c",
+    "status": "merged",
+    "x_ibc_upgrade_arms": {
+      "count": 160,
+      "covered": 88
+    }
+  },
+  "focused_coverage": {
+    "branches_json_sha256": "b23a2da5ad3e14adbf9953baeb335c796684e747edb8643c1dc5a4de4a3b2f32",
+    "global_handwritten_arms": {
+      "count": 13522,
+      "covered": 3583
+    },
+    "llvm_json_sha256": "859fc0e1b204d86062b419687107c1d5f393a2718ee3d5065c38957a4f5019a2",
+    "profile_sha256": "16105ac12db4064299442b14bef9c07aa60fa774746763c1095ec8223bcbf528",
+    "x_ibc_upgrade_arms": {
+      "count": 160,
+      "covered": 52
+    }
+  },
+  "inputs": {
+    "go_v10_binary_sha256": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+    "go_v9_binary_sha256": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002",
+    "go_version": "go version go1.26.9 linux/amd64",
+    "rust_binary_sha256": "1917e652f741a6282cbd4ed9f31400b4056d75c37b90d58203d293698ff86dc7",
+    "rust_toolchain": "nightly-2026-11-02"
+  },
+  "limitations": [
+    "Raw artifacts are retained in the local engineering workspace, not a public artifact archive.",
+    "The focused profile proves the targeted sequence-rewrite arms execute but is not an exact merged-candidate profile.",
+    "The result does not complete uncovered-branch review, volume, mainnet-shaped replay, observation windows, soak, or production readiness."
+  ],
+  "measured_contribution": {
+    "new_x_ibc_upgrade_arms": [
+      "crates/tier-3-app-modules/x/ibc/src/upgrade.rs:1015:8 true",
+      "crates/tier-3-app-modules/x/ibc/src/upgrade.rs:1015:48 true",
+      "crates/tier-3-app-modules/x/ibc/src/upgrade.rs:1019:8 false",
+      "crates/tier-3-app-modules/x/ibc/src/upgrade.rs:1019:50 true"
+    ],
+    "x_ibc_upgrade_union": {
+      "after": 92,
+      "before": 88,
+      "count": 160
+    }
+  },
+  "runs": {
+    "v10": {
+      "blocks": 300,
+      "delivered": 583,
+      "delivered_ok": 250,
+      "lifecycle_credits": {
+        "ica_ordered_success_ack": 1,
+        "ica_unordered_baseline_success_ack": 1,
+        "ica_unordered_success_ack": 1,
+        "ica_upgrade_to_ordered": 1,
+        "ica_upgrade_to_unordered": 1
+      },
+      "log_only_differences": 37,
+      "mismatches": 0,
+      "stderr_sha256": "452e3ce940de20b8d62ed599310dfa1b051728d46a52f9f4a826c6f5dece0e53",
+      "stdout_sha256": "5a4a2b709160d5bc9fdd8bcdc7916988665063809eb142f88782388939a0956d"
+    },
+    "v9": {
+      "blocks": 300,
+      "delivered": 521,
+      "delivered_ok": 236,
+      "lifecycle_credits": {
+        "ica_ordered_success_ack": 1,
+        "ica_unordered_baseline_success_ack": 1,
+        "ica_unordered_success_ack": 1,
+        "ica_upgrade_to_ordered": 1,
+        "ica_upgrade_to_unordered": 1
+      },
+      "log_only_differences": 47,
+      "mismatches": 0,
+      "stderr_sha256": "cb75ad83ba8352dcdb8c7d52d96c5c2e257284c2df4477a894e393d310cf4efd",
+      "stdout_sha256": "a58a32fcc5ecec0c5ea341bec51064efc07c9a822103998adde8f199fd0b3bd5"
+    }
+  },
+  "schema_version": 1,
+  "scope": "focused ICA Unordered-to-Ordered-to-Unordered differential and branch evidence"
+}

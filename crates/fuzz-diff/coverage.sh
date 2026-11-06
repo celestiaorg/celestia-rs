@@ -232,6 +232,12 @@ for scen in ibc v9-ibc; do
     crates/fuzz-diff/deliver-diff.sh "$scen" 300 8 8083
 done
 for scen in ibc v9-ibc; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "ica-order-$scen" GO_APPD="$A" DELIVER_IBC=1 \
+    DELIVER_IBC_ICA_ORDER_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 300 8 8083
+done
+for scen in ibc v9-ibc; do
   case $scen in
     v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/transfer-authz-boundaries-v9.script ;;
     *) A=$V10; SCRIPT=crates/fuzz-diff/fixtures/transfer-authz-boundaries.script ;;

@@ -753,6 +753,19 @@ test), then start that harness's count again.
   contribution is fail-closed lifecycle evidence on each future candidate,
   not new channel-upgrade semantic coverage, volume, observation-window or
   readiness evidence.
+  *ICA order-transition follow-up (2026-11-06):* an opt-in signed-counterparty
+  contract first requires an exact successful packet on the Unordered ICA
+  channel, upgrades it to Ordered and requires the exact next packet, then
+  upgrades back to Unordered and requires a third exact packet. Dropped relays
+  retain and re-prove the same packet sequence; upgrade credit binds the exact
+  channel, upgrade sequence and emitted ordering. Pinned v10.5.0 and v9.0.8
+  300-block seed-8083 differentials delivered 583 / 521 transactions (250 /
+  236 code zero), credited the baseline, both transitions and both
+  post-transition acknowledgements exactly once, and had zero consensus
+  mismatches. Focused branch instrumentation newly reaches four previously
+  uncovered arms in `x/ibc/src/upgrade.rs` at the two sequence-rewrite
+  conditions. This is bounded synthetic lifecycle evidence, not complete IBC
+  coverage, volume, observation-window, mainnet-soak or readiness evidence.
   *Expired-client follow-up (2026-10-29):* an opt-in contract creates a
   dedicated one-second Tendermint client while it is active, binds its ID to
   the exact client type and consensus height, then submits a valid signed

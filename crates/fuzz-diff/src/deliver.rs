@@ -2262,6 +2262,21 @@ impl Stats {
                 "incomplete DELIVER_IBC_ICA_ENCODINGS_REQUIRE coverage: no exact successful proto3json packet acknowledgement after channel upgrade"
             );
         }
+        if self.ibc_required.contains("ica_order_lifecycle") {
+            for event in [
+                "ica_unordered_baseline_success_ack",
+                "ica_upgrade_to_ordered",
+                "ica_ordered_success_ack",
+                "ica_upgrade_to_unordered",
+                "ica_unordered_success_ack",
+            ] {
+                anyhow::ensure!(
+                    self.ibc.get(event).copied() == Some(1),
+                    "incomplete DELIVER_IBC_ICA_ORDER_REQUIRE coverage: expected exactly one {event}, observed {:?}",
+                    self.ibc.get(event)
+                );
+            }
+        }
         if self.ibc_required.contains("ica_error_ack") {
             anyhow::ensure!(
                 self.ibc.get("ica_error_ack").copied().unwrap_or(0) > 0,
@@ -5042,6 +5057,7 @@ pub fn run(
     let ibc_pfm_metadata_required = std::env::var_os("DELIVER_IBC_PFM_METADATA_REQUIRE").is_some();
     let ibc_ica_encodings_required =
         std::env::var_os("DELIVER_IBC_ICA_ENCODINGS_REQUIRE").is_some();
+    let ibc_ica_order_required = std::env::var_os("DELIVER_IBC_ICA_ORDER_REQUIRE").is_some();
     let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
     let ibc_expired_client_required =
         std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
@@ -5088,12 +5104,19 @@ pub fn run(
         "DELIVER_IBC_ICA_ENCODINGS_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
+        !ibc_ica_order_required || ibc_on,
+        "DELIVER_IBC_ICA_ORDER_REQUIRE requires DELIVER_IBC"
+    );
+    anyhow::ensure!(
         !ibc_ica_error_required || ibc_on,
         "DELIVER_IBC_ICA_ERROR_REQUIRE requires DELIVER_IBC"
     );
     anyhow::ensure!(
-        !ibc_ica_encodings_required || !ibc_ica_error_required,
-        "DELIVER_IBC ICA encoding-success and application-error requirements are mutually exclusive"
+        usize::from(ibc_ica_encodings_required)
+            + usize::from(ibc_ica_order_required)
+            + usize::from(ibc_ica_error_required)
+            <= 1,
+        "DELIVER_IBC ICA encoding-success, order-transition, and application-error requirements are mutually exclusive"
     );
     anyhow::ensure!(
         !ibc_expired_client_required || ibc_on,
@@ -5113,13 +5136,13 @@ pub fn run(
         "DELIVER_IBC PFM success, error, timeout, exhaustion, and metadata requirements are mutually exclusive"
     );
     anyhow::ensure!(
-        !ibc_ica_encodings_required
+        !(ibc_ica_encodings_required || ibc_ica_order_required)
             || !(ibc_pfm_required
                 || ibc_pfm_error_required
                 || ibc_pfm_timeout_required
                 || ibc_pfm_exhaust_required
                 || ibc_pfm_metadata_required),
-        "DELIVER_IBC_ICA_ENCODINGS_REQUIRE cannot be combined with a PFM lifecycle requirement"
+        "DELIVER_IBC ICA success requirements cannot be combined with a PFM lifecycle requirement"
     );
     let required = std::env::var_os("DELIVER_GOV_REQUIRE")
         .map(|v| {
@@ -5236,6 +5259,7 @@ pub fn run(
                 && !ibc_pfm_exhaust_required
                 && !ibc_pfm_metadata_required
                 && !ibc_ica_encodings_required
+                && !ibc_ica_order_required
                 && !ibc_ica_error_required
                 && !ibc_expired_client_required
                 && !ibc_frozen_client_required,
@@ -5371,6 +5395,9 @@ pub fn run(
     }
     if ibc_ica_encodings_required {
         stats.ibc_required.insert("ica_encoding_lifecycle");
+    }
+    if ibc_ica_order_required {
+        stats.ibc_required.insert("ica_order_lifecycle");
     }
     if ibc_ica_error_required {
         stats.ibc_required.insert("ica_error_ack");
@@ -5677,6 +5704,7 @@ pub fn run(
             .with_pfm_exhaust_requirement(ibc_pfm_exhaust_required)
             .with_pfm_metadata_requirement(ibc_pfm_metadata_required)
             .with_ica_encoding_requirement(ibc_ica_encodings_required)
+            .with_ica_order_requirement(ibc_ica_order_required)
             .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
             .with_frozen_client_requirement(ibc_frozen_client_required)
@@ -14517,6 +14545,25 @@ mod tests {
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("ica_proto3json_success_ack", 1);
         assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn required_ica_order_needs_each_transition_and_exact_ack_once() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("ica_order_lifecycle");
+        for event in [
+            "ica_unordered_baseline_success_ack",
+            "ica_upgrade_to_ordered",
+            "ica_ordered_success_ack",
+            "ica_upgrade_to_unordered",
+            "ica_unordered_success_ack",
+        ] {
+            assert!(stats.require_ibc_coverage().is_err());
+            stats.ibc.insert(event, 1);
+        }
+        assert!(stats.require_ibc_coverage().is_ok());
+        stats.ibc.insert("ica_unordered_success_ack", 2);
+        assert!(stats.require_ibc_coverage().is_err());
     }
 
     #[test]
