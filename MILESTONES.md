@@ -742,7 +742,17 @@ test), then start that harness's count again.
   successful host packet under proto3, upgrades that real ICA channel to
   proto3json, then requires the exact second packet's success acknowledgement.
   Credit is tied to each full packet and its code-0 acknowledgement; scheduled
-  packets and channel-upgrade events alone do not count.
+  packets and channel-upgrade events alone do not count. The existing pinned
+  v10/v9 regressions are now part of the instrumented candidate profile rather
+  than nightly-only checks. Fresh 300-block focused runs finalized 642 / 539
+  transactions (301 / 242 code zero), credited both exact acknowledgements
+  once per version and had zero consensus mismatches. The exact full profile
+  increased global handwritten coverage from 5621/13522 to 5624/13522 through
+  one arm each in SDK coins, feegrant allowance and the Tendermint light
+  client, while `x/ibc/src/upgrade.rs` remained 88/160. Its primary
+  contribution is fail-closed lifecycle evidence on each future candidate,
+  not new channel-upgrade semantic coverage, volume, observation-window or
+  readiness evidence.
   *Expired-client follow-up (2026-10-29):* an opt-in contract creates a
   dedicated one-second Tendermint client while it is active, binds its ID to
   the exact client type and consensus height, then submits a valid signed
