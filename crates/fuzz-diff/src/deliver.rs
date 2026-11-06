@@ -2391,6 +2391,7 @@ impl Stats {
             for event in [
                 "upgrade_timeout_try",
                 "upgrade_try_fast_forward_confirm",
+                "upgrade_try_fast_forward_stale_open_rejected",
                 "upgrade_try_fast_forward_open",
                 "upgrade_timeout_recovery_ack",
                 "upgrade_timeout_recovery_state",
@@ -2402,8 +2403,8 @@ impl Stats {
                 );
             }
             anyhow::ensure!(
-                self.ibc.get("upgrade_timeout_check_ok").copied() == Some(4),
-                "incomplete DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE coverage: expected exactly four accepted controlled CheckTx transactions, observed {:?}",
+                self.ibc.get("upgrade_timeout_check_ok").copied() == Some(5),
+                "incomplete DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE coverage: expected exactly five accepted controlled CheckTx transactions, observed {:?}",
                 self.ibc.get("upgrade_timeout_check_ok")
             );
             for event in [
@@ -5937,6 +5938,7 @@ pub fn run(
     });
     let mut ibc_upgrade_timeout_checkpoint: Option<UpgradeTimeoutCheckpoint> = None;
     let mut ibc_upgrade_initial_checkpoint: Option<UpgradeTimeoutCheckpoint> = None;
+    let mut ibc_upgrade_confirm_checkpoint: Option<UpgradeTimeoutCheckpoint> = None;
     // The relayer: the last single-key fuzz account.
     let relayer = ACCOUNTS - 1;
     let mut script = match script_path {
@@ -7731,7 +7733,21 @@ pub fn run(
                     && checkpoint.error_receipt.is_none(),
                 "committed fast-forward Confirm state is unexpected: channel={channel:?}, local={local_upgrade:?}, counterparty={counterparty_upgrade:?}"
             );
+            ibc_upgrade_confirm_checkpoint = Some(checkpoint);
             driver.confirm_upgrade_try_fast_forward_confirm_checkpoint();
+        }
+        if let Some(driver) = ibc.as_mut()
+            && driver.upgrade_try_fast_forward_needs_stale_open_checkpoint()
+        {
+            let observed =
+                capture_upgrade_timeout_checkpoint(&mut go, cons_conn, &mut rust, driver)?;
+            ensure_upgrade_timeout_checkpoint_unchanged(
+                ibc_upgrade_confirm_checkpoint
+                    .as_ref()
+                    .context("stale-sequence Open has no committed Confirm checkpoint")?,
+                &observed,
+            )?;
+            driver.confirm_upgrade_try_fast_forward_stale_open_checkpoint();
         }
         if let Some(driver) = ibc.as_mut()
             && driver.upgrade_timeout_needs_cleanup_checkpoint()
@@ -14740,15 +14756,16 @@ mod tests {
         for event in [
             "upgrade_timeout_try",
             "upgrade_try_fast_forward_confirm",
+            "upgrade_try_fast_forward_stale_open_rejected",
             "upgrade_try_fast_forward_open",
             "upgrade_timeout_recovery_ack",
             "upgrade_timeout_recovery_state",
         ] {
             stats.ibc.insert(event, 1);
         }
-        stats.ibc.insert("upgrade_timeout_check_ok", 3);
-        assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("upgrade_timeout_check_ok", 4);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("upgrade_timeout_check_ok", 5);
         assert!(stats.require_ibc_coverage().is_ok());
 
         stats.ibc.insert("upgrade_timeout_unexpected_result", 1);
